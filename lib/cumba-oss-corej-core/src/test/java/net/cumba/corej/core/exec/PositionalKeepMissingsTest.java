@@ -34,10 +34,12 @@ class PositionalKeepMissingsTest
         Rule rule = load(check);
         assertNotNull(rule.getLoadError(),
                 check + " must not load: its keep_missings would be bound and silently ignored");
+        // Runbook W8 (D-W8-7) widened the guard to `within`, which the same call also binds by
+        // position, so one load error names both keyword spellings.
         assertTrue(
                 rule.getLoadError()
-                        .contains("`keep_missings` on has_multiple_values_for is read"
-                                + " by keyword only — write keep_missings=true"),
+                        .contains("on has_multiple_values_for are read by keyword"
+                                + " only — write within=W, keep_missings=true"),
                 rule.getLoadError());
     }
 

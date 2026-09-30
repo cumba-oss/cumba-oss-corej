@@ -12,7 +12,7 @@ package net.cumba.corej.core.exec;
  * This is the <em>name-pattern</em> heuristic, used for table-less callers and as a fallback. The
  * authoritative, data-driven split key (mirroring Python's
  * {@code SDTMDatasetMetadata.unsplit_name}, read from the {@code DOMAIN}/{@code RDOMAIN} columns)
- * is {@link OperationExecutor#unsplitNameFromData}; scope matching prefers that and only falls back
+ * is {@link DatasetIdentity#unsplitNameFromData}; scope matching prefers that and only falls back
  * here when no dataset is available.
  * </p>
  */

@@ -71,6 +71,12 @@ class EngineErrorMessageContractTest
     private static final String UNGATED_PROVIDER_REACH_MESSAGE_SUFFIX = " — the provider gate should have skipped this rule before any row was read";
 
     /**
+     * Site 9 (runbook W2a, {@code PLAN-operation-replacements} §2.2): {@code read_value(…,
+     * mode="ONLY")} matched several rows. Built at exactly one site, the exception's constructor.
+     */
+    private static final String READ_VALUE_AMBIGUOUS_MESSAGE_SUFFIX = " — ONLY asserts exactly one qualifying row";
+
+    /**
      * ⚠⚠ <b>A SECOND cross-repository coupling, and a different one from the four above.</b> Those
      * protect {@code ViolationNormaliser}'s ERROR classification; this one protects a test
      * ALLOWLIST. Verbatim copy of the {@code messageSubstring} of the single
@@ -259,9 +265,12 @@ class EngineErrorMessageContractTest
         // given its own catch in review round 1 so that ViolationNormaliser classifies it by the
         // exception's fixed message tail (UNGATED_PROVIDER_REACH, pinned below) rather than
         // folding it into COLUMN_TYPE_MISMATCH's catch.
+        // Site 9 is runbook W2a's read_value ONLY-ambiguity (PLAN-operation-replacements §2.2,
+        // owner D13): ReadValueAmbiguityException, its own catch so ViolationNormaliser classifies
+        // it by the exception's fixed message tail (READ_VALUE_AMBIGUOUS, pinned below).
         long sites = source("RuleRunner.java").lines()
                 .filter(l -> l.contains("RuleExecutionStatus.ERROR")).count();
-        Assertions.assertEquals(8, sites,
+        Assertions.assertEquals(9, sites,
                 "RuleRunner's ERROR-producing sites changed. Re-derive the ErrorReason vocabulary "
                         + "in the rules repository's ViolationNormaliser before accepting this.");
     }
@@ -332,6 +341,29 @@ class EngineErrorMessageContractTest
                 "the tripwire's message tail moved or was reworded — every such ERROR would "
                         + "classify as OTHER; update this constant AND ViolationNormaliser's "
                         + "UNGATED_PROVIDER_REACH_MESSAGE_SUFFIX in the rules repository");
+    }
+
+
+    @Test
+    void theReadValueAmbiguitySuffixIsStillTheEngineSWording() throws IOException
+    {
+        // Built at exactly ONE site, the exception's constructor (expr/eval); the classifier in
+        // the rules repository matches the tail because the head names the column, dataset and
+        // match count.
+        String flattened = sourceAt(SRC.resolveSibling("expr").resolve("eval")
+                .resolve("ReadValueAmbiguityException.java")).replaceAll("\"\\s*\\+\\s*\"", "");
+        int count = 0;
+        for (int from = flattened
+                .indexOf(READ_VALUE_AMBIGUOUS_MESSAGE_SUFFIX); from >= 0; from = flattened.indexOf(
+                        READ_VALUE_AMBIGUOUS_MESSAGE_SUFFIX,
+                        from + READ_VALUE_AMBIGUOUS_MESSAGE_SUFFIX.length()))
+        {
+            count++;
+        }
+        Assertions.assertEquals(1, count,
+                "read_value's ONLY-ambiguity message tail moved or was reworded — every such ERROR "
+                        + "would classify as OTHER; update this constant AND ViolationNormaliser's "
+                        + "READ_VALUE_AMBIGUOUS_MESSAGE_SUFFIX in the rules repository");
     }
 
 

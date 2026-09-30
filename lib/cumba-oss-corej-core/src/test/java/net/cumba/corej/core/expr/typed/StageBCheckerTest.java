@@ -9,8 +9,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import net.cumba.corej.core.expr.CheckExpressionParser;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.MatchDataset;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.VariableRequirement;
 import net.cumba.datatable.IDataTable;
@@ -414,15 +414,17 @@ class StageBCheckerTest
     }
 
 
+    /**
+     * A {@code --} surviving in a binding's expression is caught like one in the Check. (Until
+     * runbook W8 the vehicle was a declared {@code max} operation record; the binding is a compiled
+     * one now, and its expression is a stage-B root.)
+     */
     @Test
-    void aSurvivingOperationWildcardIsCaught()
+    void aSurvivingBindingWildcardIsCaught()
     {
         Rule rule = rule("$max_dy > 0");
-        Operation op = new Operation();
-        op.setId("$max_dy");
-        op.setOperator("max");
-        op.setName("--DY");
-        rule.setOperations(List.of(op));
+        rule.setCompiledBindings(List.of(new CompiledBinding("$max_dy",
+                CheckExpressionParser.parse("max(--DY)"), List.of(), null)));
         StageBReport report = StageBChecker.check(rule, MockTable.of().col("AEDY", "1").build(),
                 true, null, Set.of());
         List<StageBFinding> wildcards = of(report, StageBErrorKind.UNRESOLVED_WILDCARD);

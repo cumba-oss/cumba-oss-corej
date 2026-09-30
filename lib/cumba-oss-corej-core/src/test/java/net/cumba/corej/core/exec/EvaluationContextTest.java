@@ -2,7 +2,16 @@ package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import net.cumba.corej.core.expr.CheckExpressionParser;
+import net.cumba.corej.core.expr.eval.ConstVector;
+import net.cumba.corej.core.expr.eval.Domain;
+import net.cumba.corej.core.expr.eval.FunctionDescriptor;
+import net.cumba.corej.core.expr.eval.FunctionKind;
+import net.cumba.corej.core.expr.eval.RegistryTestSeam;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
@@ -110,25 +119,37 @@ class EvaluationContextTest
     }
 
 
-    /** A null id must short-circuit BEFORE any LazyValue is forced. */
+    /**
+     * A null id must short-circuit BEFORE any binding is evaluated. (A {@code LazyValue} operation
+     * supplier was the vehicle until runbook W8; a compiled binding over a counting probe makes the
+     * same claim.)
+     */
     @Test
-    void resolveVariable_nullId_doesNotForceALazyValue()
+    void resolveVariable_nullId_doesNotEvaluateABinding()
     {
         IDataTable table = MockTable.of().col("X", "1").build();
-        java.util.concurrent.atomic.AtomicInteger forced = new java.util.concurrent.atomic.AtomicInteger();
-        Map<String, Object> vars = new java.util.HashMap<>();
-        vars.put("$op", new LazyValue<>(() ->
+        AtomicInteger evaluated = new AtomicInteger();
+        FunctionDescriptor counted = new FunctionDescriptor("__ec_counted__", List.of(),
+                FunctionKind.VALUE, (run, args) ->
+                {
+                    evaluated.incrementAndGet();
+                    return ConstVector.of("computed");
+                }).aggregating();
+        try (var _ = RegistryTestSeam.register(counted))
         {
-            forced.incrementAndGet();
-            return "computed";
-        }));
-        EvaluationContext ctx = EvaluationContext.builder().table(table).variables(vars).build();
+            Map<String, Object> vars = new java.util.HashMap<>();
+            vars.put("$b", new BindingValue(new CompiledBinding("$b",
+                    CheckExpressionParser.parse("__ec_counted__()"), List.of(), Domain.DATASET)));
+            EvaluationContext ctx = EvaluationContext.builder().table(table).variables(vars)
+                    .build();
 
-        assertNull(ctx.resolveVariable(null));
-        assertEquals(0, forced.get(), "a null probe must not force any Operation");
+            assertNull(ctx.resolveVariable(null));
+            assertEquals(0, evaluated.get(), "a null probe must not evaluate any binding");
 
-        assertEquals("computed", ctx.resolveVariable("$op"), "a real read still unwraps LazyValue");
-        assertEquals(1, forced.get());
+            assertEquals("computed", ctx.resolveVariable("$b"),
+                    "a real read still hands the binding's value over");
+            assertEquals(1, evaluated.get());
+        }
     }
 
 }

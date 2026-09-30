@@ -7,12 +7,13 @@ import java.io.Serial;
  * capability ({@link ProviderNeed}; {@code PLAN-binding-expressions} §5.2 (c)).
  *
  * <p>
- * On the operation surface the same situation returns the {@code LIBRARY_NOT_AVAILABLE} sentinel,
- * which {@code RuleRunner}'s eager arm turns into {@code SKIPPED}. A function returns a
- * {@link Vector}, and a sentinel inside a vector would leak into every consumer (a membership set
- * holding the sentinel, a {@code not in} firing on every row). So a capability-carrying function
- * that has nothing usable <b>throws</b> this instead of answering its empty result — which would
- * otherwise let {@code not empty($x)} read {@code false} and the rule silently PASS.
+ * On the operation surface the same situation returned a {@code LIBRARY_NOT_AVAILABLE} sentinel,
+ * which {@code RuleRunner}'s eager arm turned into {@code SKIPPED} (both went with the last
+ * library-dependent operation in wave 4b). A function returns a {@link Vector}, and a sentinel
+ * inside a vector would leak into every consumer (a membership set holding the sentinel, a
+ * {@code not in} firing on every row). So a capability-carrying function that has nothing usable
+ * <b>throws</b> this instead of answering its empty result — which would otherwise let
+ * {@code not empty($x)} read {@code false} and the rule silently PASS.
  * </p>
  *
  * <p>

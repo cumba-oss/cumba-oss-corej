@@ -48,8 +48,16 @@
             written in the same commit to kill its share directly. A small binary primitive had
             NO unit test and was being verified, incidentally, by the most expensive test in the
             repository.
+
+            StoreMetadataProviderFactoryAdamTest is excluded for the same reason as the seeder
+            conformance test: its environment-gated probes seed a store from the REAL pickle
+            corpus (and its hermetic probes seed through the real PickleStoreSeeder), so pitest
+            re-running it per covered mutant costs seed passes, not assertions. It keeps running
+            in every surefire pass; only its use as a mutant killer stops. StoreFieldManifestTest
+            stays included on purpose: it seeds no store and is a direct killer of its own
+            subject.
         -->
-        <pitest.excludedTestClasses>net.cumba.corej.core.exec.JoinCacheConcurrencyTest,net.cumba.corej.core.metadata.store.seed.StoreSeederRealDataConformanceTest</pitest.excludedTestClasses>
+        <pitest.excludedTestClasses>net.cumba.corej.core.exec.JoinCacheConcurrencyTest,net.cumba.corej.core.metadata.store.seed.StoreSeederRealDataConformanceTest,net.cumba.corej.core.metadata.store.StoreMetadataProviderFactoryAdamTest</pitest.excludedTestClasses>
         <!--
             Mutation ratchet. The targets sit a few points under this module's score from a
             COLD full-module run (a warm/incremental run reuses prior verdicts and measures

@@ -28,8 +28,9 @@ import org.opentest4j.AssertionFailedError;
  * <b>verdict</b> level ({@code PLAN-missing-identity-nonstring-functions} §3 evidence (ii) and
  * (iii)): {@code len}, {@code char}, {@code abs} / {@code round} / {@code floor} / {@code ceil},
  * {@code num}, {@code year} / {@code month} / {@code day}, {@code earliest_possible} /
- * {@code latest_possible}, {@code coalesce}, {@code dy} and {@code colref} answer a missing input's
- * <b>own</b> missing — {@code .A} stays {@code .A} — never a fresh {@code MIS}.
+ * {@code latest_possible}, {@code coalesce}, {@code dy}, {@code date_diff_days} and {@code colref}
+ * answer a missing input's <b>own</b> missing — {@code .A} stays {@code .A} — never a fresh
+ * {@code MIS}.
  *
  * <p>
  * Over {@code X, Y ∈ {p1, p2, MIS, .A, .B}} (a 5 × 5 grid), with {@code p1 < p2} two present inputs
@@ -58,8 +59,8 @@ import org.opentest4j.AssertionFailedError;
  * ⚠ The byte-identical findings snapshot is blind to all of this — {@code testdata/study} is
  * Dataset-JSON, which cannot encode a special missing, and no {@code .cdt} holds one — so this
  * class, the identity rows of {@code BuiltinFunctionsTest} / {@code StudyDayTest} /
- * {@code CoalesceEmptySemanticsTest} / {@code PerRowListProducersNullFreeTest} and the materialised
- * target of {@code ComputedTargetOperationTest} are the evidence.
+ * {@code CoalesceEmptySemanticsTest} / {@code PerRowListProducersNullFreeTest} (and, until runbook
+ * W8 retired it with the computed target, {@code ComputedTargetOperationTest}) are the evidence.
  * </p>
  */
 class NonStringFunctionMissingIdentityTest
@@ -119,6 +120,8 @@ class NonStringFunctionMissingIdentityTest
                 new Case("latest_possible(%s)", DataValueType.STRING, "2021-01-01", "2021-01-02"),
                 new Case("coalesce(%s, Z)", DataValueType.STRING, "a", "b"),
                 new Case("dy(%s, R)", DataValueType.STRING, "2021-01-02", "2021-01-03"),
+                // runbook W2b: the ported date_diff_days hands a missing input through as dy does
+                new Case("date_diff_days(%s, R)", DataValueType.STRING, "2021-01-02", "2021-01-03"),
                 // The first hop names a DOUBLE column (IDVAR-style): colref(X) reads VX, whose
                 // cells are the grid values; the identity is the second hop's (TR §E).
                 new Case("colref(%s)", DataValueType.DOUBLE, 1.5, 2.5)).map(Arguments::of);
@@ -426,7 +429,7 @@ class NonStringFunctionMissingIdentityTest
     void theGridsPresentInputsArePresent()
     {
         List<Arguments> all = cases().toList();
-        assertEquals(22, all.size(),
+        assertEquals(23, all.size(),
                 "every function of §2 with a scalar result is in the grid, colref included");
         for (Arguments a : all)
         {

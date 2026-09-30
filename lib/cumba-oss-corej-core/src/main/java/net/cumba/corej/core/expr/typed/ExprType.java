@@ -35,6 +35,12 @@ public sealed interface ExprType permits ExprType.Primitive, ExprType.ListOf, Ex
          * cell type is a stage-B fact (§1.2, D10).
          */
         COLUMN_REFERENCE,
+        /**
+         * ⭐ A dataset name is not a string either (owner D10, 2026-09-22; built by runbook W2a for
+         * {@code read_value(…, domain=D)}): the bare reference {@code TS} or the quoted
+         * {@code "TS"} both name the dataset, never a column and never a value. Parameter-only.
+         */
+        DATASET_REFERENCE,
         /** The closed parameter-only enum {@code {DATA, DEFINE, LIBRARY}} (§1.1). */
         METADATA_LEVEL;
 

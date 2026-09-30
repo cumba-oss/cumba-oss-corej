@@ -19,26 +19,25 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * ⭐ <b>Two birth sites, never per row</b> ({@code PLAN-no-null-list-elements} §3):
- * {@link OperationExecutor#executeOne} — every operation result, once per operation per (rule ×
- * dataset), memoised by {@link LazyValue} — and
+ * ⭐ <b>One birth site, never per row</b> ({@code PLAN-no-null-list-elements} §3; the operation
+ * result's site went with the carrier in runbook W8):
  * {@link net.cumba.corej.core.expr.eval.ConstVector#of} for a {@code Collection} value — literal
- * list bindings, {@code variableVector} over an operation result, the list accessors, the injected
- * {@code library_variable_*_values}, compile-time constant folds — once per construction. Per-row
- * list producers ({@code split_by}, {@code tuple}, the list form of {@code upper}/{@code lower},
- * the VLM lists) are null-free by construction — pinned by {@code PerRowListProducersNullFreeTest},
- * not by this guard — and are deliberately <b>not</b> guarded per row: a {@code GroupedResult}
- * becomes a per-row {@code ComputedVector}, and rescanning a ~50-name list on every row is the cost
- * §3 rejected.
+ * list bindings, the dataset-level lists of the registry functions, the list accessors, the
+ * injected {@code library_variable_*_values}, compile-time constant folds — once per construction.
+ * Per-row list producers ({@code split_by}, {@code tuple}, the list form of
+ * {@code upper}/{@code lower}, the VLM lists, a grouped function's per-row lists) are null-free by
+ * construction — pinned by {@code PerRowListProducersNullFreeTest}, not by this guard — and are
+ * deliberately <b>not</b> guarded per row: rescanning a ~50-name list on every row is the cost §3
+ * rejected.
  * </p>
  *
  * <p>
- * The scan covers a top-level {@link Collection}, <b>one</b> nesting level (the
- * {@code distinct([A, B])} reference tuples) and every {@code Collection} value of a
- * {@link GroupedResult}. A scalar {@code null} is <b>not</b> this guard's concern — that is the
- * untyped scalar channel {@code NF §1} still lists as {@code target}. An array is not a list value
- * and is not scanned: no producer emits one, and the consumers' dead {@code Object[]} arms were
- * deleted rather than guarded ({@code PLAN-no-null-list-elements} review round 1, LOW-2).
+ * The scan covers a top-level {@link Collection} and <b>one</b> nesting level (the
+ * {@code distinct([A, B])} reference tuples). A scalar {@code null} is <b>not</b> this guard's
+ * concern — that is the untyped scalar channel {@code NF §1} still lists as {@code target}. An
+ * array is not a list value and is not scanned: no producer emits one, and the consumers' dead
+ * {@code Object[]} arms were deleted rather than guarded ({@code PLAN-no-null-list-elements} review
+ * round 1, LOW-2).
  * </p>
  *
  * <p>
@@ -62,9 +61,8 @@ public final class ListValueGuard
      * Rejects a list value that holds a {@code null} element.
      *
      * @param value
-     *            the value born at the call site — anything; only a {@link Collection}, its nested
-     *            {@link Collection} elements and a {@link GroupedResult}'s {@link Collection}
-     *            values are scanned
+     *            the value born at the call site — anything; only a {@link Collection} and its
+     *            nested {@link Collection} elements are scanned
      * @param producer
      *            names the producer for the message — evaluated only on a hit
      * @throws IllegalStateException
@@ -77,16 +75,6 @@ public final class ListValueGuard
         if (value instanceof Collection<?> col)
         {
             requireNoNullElement(col, producer, TOP_LEVEL);
-        }
-        else if (value instanceof GroupedResult grouped)
-        {
-            for (Object v : grouped.results().values())
-            {
-                if (v instanceof Collection<?> col)
-                {
-                    requireNoNullElement(col, producer, TOP_LEVEL);
-                }
-            }
         }
     }
 

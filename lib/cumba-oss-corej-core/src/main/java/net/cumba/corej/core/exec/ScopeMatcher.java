@@ -61,7 +61,7 @@ public final class ScopeMatcher
      * <p>
      * It is <b>data-driven</b>: it takes the dataset's canonical unsplit (base) name — computed
      * from the {@code DOMAIN}/{@code RDOMAIN} columns via
-     * {@link OperationExecutor#unsplitNameFromData} — rather than guessing it from the name (a
+     * {@link DatasetIdentity#unsplitNameFromData} — rather than guessing it from the name (a
      * table-less overload that derived the base through {@link SplitDatasetUtil#unsplitName} was
      * retired 2026-09-25, U1 / A5: the name heuristic strips a single trailing letter, so
      * {@code SUPPLBHM} became {@code SUPPLBH} there and {@code SUPPLB} here, and a strict
@@ -119,7 +119,7 @@ public final class ScopeMatcher
      * dataset — silently, with every test still green, because the split legs simply never run.
      * {@code DatasetRuleResolver} did exactly that until 2026-09-17: it passed
      * {@code LibraryValidator}'s {@code CdiscDomainResolver.cdiscDomainOf(table)}, and that
-     * resolver and {@code OperationExecutor.unsplitNameFromData} <b>both read the row-0
+     * resolver and {@code DatasetIdentity.unsplitNameFromData} <b>both read the row-0
      * {@code DOMAIN} cell first</b>. ⇒ {@code domainName} is the <b>member</b> name
      * ({@code meta.getName()}), {@code unsplitName} the data-derived base. See D125 in
      * {@code plans/PLAN-typed-expression-engine.md} and the guard
@@ -134,7 +134,7 @@ public final class ScopeMatcher
      *            member name is available; see the warning above
      * @param unsplitName
      *            the dataset's canonical base name (e.g. "FA" for "FAAE"), derived from the data by
-     *            {@link OperationExecutor#unsplitNameFromData}; when {@code null} the dataset is
+     *            {@link DatasetIdentity#unsplitNameFromData}; when {@code null} the dataset is
      *            treated as not a split
      * @return {@code null} when matching, otherwise the mismatch description
      */
@@ -606,7 +606,10 @@ public final class ScopeMatcher
      * Check), so a template scoped to {@code TRTxxP} applies when {@code TRT01P} exists and is
      * skipped — naming the entry — when no concrete column matches;</li>
      * <li>a literal entry is a name lookup ({@link DataTableMeta#getColumnIndex(String)}, which
-     * ignores letter case);</li>
+     * ignores letter case) and, for an untyped entry, the SUPP-QNAM pivot of the primary
+     * ({@link ScopeVariableSource#localQualifier}, W2a ruling C1 (a)) — uniformly in {@code All},
+     * {@code Any}, {@code All_Or_None} and {@code None}, so every facet agrees with
+     * {@code var_exists} about what "present" means;</li>
      * <li>a <b>qualified</b> entry — {@code DATASET.VARIABLE}, naming a variable in another dataset
      * ({@code DM.ARM}, {@code ADSL.TRTxxPN}, {@code SUPP--.QVAL}; Fix #124, parsed per
      * {@link ScopeVariableEntry#parse}) — keeps every semantic above on its variable half while the
@@ -873,7 +876,11 @@ public final class ScopeMatcher
             addColumnsMatching(meta, pattern, names);
             return new EntryNames(label, names, true, null);
         }
-        if (meta.getColumnIndex(resolved) >= 0)
+        // W2a (C1 ruled (a)) — the bare arm mirrors describeIncludeEntry's: a column SUPP<domain>
+        // of the primary delivers as a qualifier is present, so All_Or_None, All and
+        // var_exists agree about what "present" means (combined review W2 M4).
+        if (meta.getColumnIndex(resolved) >= 0
+                || (foreign != null && foreign.localQualifier(resolved)))
         {
             names.add(resolved.toUpperCase(Locale.ROOT));
         }
@@ -1224,6 +1231,13 @@ public final class ScopeMatcher
         }
         else if (meta.getColumnIndex(resolved) < 0)
         {
+            // W2a (C1 ruled (a)): a bare entry SUPP<domain> delivers as a qualifier is present
+            // for the existence surface. An untagged entry only — a typed requirement on a
+            // qualifier is not a shipped shape and keeps the absent answer.
+            if (required == null && foreign != null && foreign.localQualifier(resolved))
+            {
+                return null;
+            }
             // required variable missing
             return EntryMismatch.absent("Requirements.Variables." + facet + " variable "
                     + entryLabel(varName, entry.variable(), resolved) + " not present in dataset");
@@ -1462,6 +1476,16 @@ public final class ScopeMatcher
             // excluded variable is present
             return "Requirements.Variables.None variable "
                     + entryLabel(varName, entry.variable(), resolved) + " present in dataset";
+        }
+        else if (foreign != null && foreign.localQualifier(resolved))
+        {
+            // W2a (C1 ruled (a)) — the mirror of describeIncludeEntry's bare arm: a variable
+            // SUPP<domain> delivers as a qualifier is present for the existence surface, so
+            // None must exclude it exactly when var_exists would answer true (combined review
+            // W2 M4).
+            return "Requirements.Variables.None variable "
+                    + entryLabel(varName, entry.variable(), resolved)
+                    + " present as a supplemental qualifier of the dataset";
         }
         return null;
     }
@@ -1923,7 +1947,7 @@ public final class ScopeMatcher
      * Extended-name and split-form datasets are reached through the <em>callers'</em> split-base
      * re-test, not through this method: {@link #describeDomainMismatch(Rule, String, String)}
      * re-tests the dataset's canonical unsplit name — read from the {@code DOMAIN} /
-     * {@code RDOMAIN} columns by {@link OperationExecutor#unsplitNameFromData} — so
+     * {@code RDOMAIN} columns by {@link DatasetIdentity#unsplitNameFromData} — so
      * {@code Domains.Include = ["LB"]} still covers {@code LB1} and {@code LBCHEM} when they carry
      * {@code DOMAIN=LB}, exactly as Python's {@code SDTMDatasetMetadata.unsplit_name} does. A rule
      * that genuinely wants family-prefix breadth (e.g. every {@code ADLB*} dataset) declares it

@@ -52,8 +52,8 @@ class LoadConsistencyGateTest
         {
             throw new IllegalArgumentException("bad test fixture: " + json, e);
         }
-        // 7b: an external binder materialises the Bindings itself — see normalizeOperations.
-        RulePackageLoader.normalizeOperations(rule);
+        // 7b: an external binder materialises the Bindings itself — see materialiseBindings.
+        RulePackageLoader.materialiseBindings(rule);
         RulePackageLoader.validateEnumFields(rule);
         return rule;
     }
@@ -164,16 +164,16 @@ class LoadConsistencyGateTest
 
 
     @Nested
-    @DisplayName("3c is gone — a grouped operation is a row cursor, whatever the type says")
-    class GroupedOperationOnAnyType
+    @DisplayName("3c is gone — a grouped binding is a row cursor, whatever the type says")
+    class GroupedBindingOnAnyType
     {
 
         private static final String GROUPED_OP = "\"Bindings\":[{\"name\": \"$n\", \"expression\": \"record_count(group=[USUBJID])\"}],"
                 + "\"Check\":{\"all\":[{\"expression\": \"$n == 1\"}]}";
 
         @Test
-        @DisplayName("a grouped operation loads without any type gate (phase 6, leaf-scope plan)")
-        void groupedOperationLoadsWithoutATypeGate()
+        @DisplayName("a grouped binding loads without any type gate (phase 6, leaf-scope plan)")
+        void groupedBindingLoadsWithoutATypeGate()
         {
             assertNull(validate(rule(GROUPED_OP)));
         }

@@ -1,17 +1,12 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.values.GroupKey;
@@ -21,8 +16,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * EC-44 — {@link IndexHelper#groupByPresent} and the five grouped {@link OperationExecutor}
- * evaluators that route through it.
+ * EC-44 — {@link IndexHelper#groupByPresent} and the grouped evaluators that route through it (the
+ * five {@code OperationExecutor} evaluators when EC-44 landed; registry functions since the
+ * runbook, the executor retired in W8).
  *
  * <p>
  * <b>The contract under test.</b> An absent column cannot differentiate any row from any other, so
@@ -41,9 +37,49 @@ class IndexHelperGroupByPresentTest
 
     private static final DatasetResolver NO_RESOLVER = _ -> null;
 
+    /**
+     * {@code record_count(...)} as the registry function it is since runbook W6
+     * ({@code RecordCount}, over this class's {@code groupByPresent}): every row's count through
+     * the identity-key broadcast.
+     */
+    private static List<Object> counts(String aCall, IDataTable aTable, DatasetResolver aResolver)
+    {
+        EvaluationContext ctx = EvaluationContext.builder().table(aTable).datasetResolver(aResolver)
+                .ruleId("GBP").build();
+        net.cumba.corej.core.expr.eval.Vector v = net.cumba.corej.core.expr.eval.ExprCompiler
+                .evaluateValueExpression(
+                        net.cumba.corej.core.expr.CheckExpressionParser.parse(aCall), ctx);
+        assertNotNull(v);
+        List<Object> out = new java.util.ArrayList<>();
+        for (int row = 0; row < ctx.rowCount(); row++)
+        {
+            out.add(v.value(row).cell().getValue());
+        }
+        return out;
+    }
+
+
+    /** The per-row list cells of a grouped list function (runbook W7, {@code distinct}). */
+    private static List<Object> lists(String aCall, IDataTable aTable, DatasetResolver aResolver)
+    {
+        EvaluationContext ctx = EvaluationContext.builder().table(aTable).datasetResolver(aResolver)
+                .ruleId("GBP").build();
+        net.cumba.corej.core.expr.eval.Vector v = net.cumba.corej.core.expr.eval.ExprCompiler
+                .evaluateValueExpression(
+                        net.cumba.corej.core.expr.CheckExpressionParser.parse(aCall), ctx);
+        assertNotNull(v);
+        List<Object> out = new java.util.ArrayList<>();
+        for (int row = 0; row < ctx.rowCount(); row++)
+        {
+            out.add(v.value(row).resolved());
+        }
+        return out;
+    }
+
     // -----------------------------------------------------------------------
     // IndexHelper.groupByPresent — the partition itself
     // -----------------------------------------------------------------------
+
 
     @Test
     void oneOfTwoGroupColumnsAbsent_groupsOnTheSurvivor()
@@ -89,8 +125,8 @@ class IndexHelperGroupByPresentTest
      * {@code ""} (there is no cell to classify), while a genuinely missing cell keys under its
      * {@code MissingValue} identity ({@code PLAN-grouping-key-identity}) — and that is fine for the
      * contract, whose observable half is verdicts: each side of every lookup derives the same key
-     * ({@link GroupedResult#identityKey}), so a lookup agrees with its own build in both scenarios
-     * and no verdict can tell them apart.
+     * ({@link GroupKeyIdentity#identityKey}), so a lookup agrees with its own build in both
+     * scenarios and no verdict can tell them apart.
      * </p>
      *
      * <p>
@@ -145,7 +181,7 @@ class IndexHelperGroupByPresentTest
         Object key = g.blocks().get(0).key();
         assertEquals(GroupKey.of("", ""), key, "expected two empty components, got " + debug(key));
         // and it must equal what the per-row lookup computes on the same table
-        assertEquals(GroupedResult.identityKey(t.getMetaData(), t, declared, 0), key);
+        assertEquals(GroupKeyIdentity.identityKey(t.getMetaData(), t, declared, 0), key);
     }
 
 
@@ -157,18 +193,9 @@ class IndexHelperGroupByPresentTest
     void partialDropStillSeparatesTheSurvivingKeysValues()
     {
         IDataTable t = MockTable.of().col("USUBJID", "S1", "S1", "S2").build();
-
-        Operation op = makeOp("$N", "record_count");
-        op.setGroup(List.of("USUBJID", "EPOCH"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
-        GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$N"));
-
-        assertEquals(2, gr.results().size());
-        assertEquals(2L, gr.results().get(
-                GroupedResult.identityKey(t.getMetaData(), t, List.of("USUBJID", "EPOCH"), 0)));
-        assertEquals(1L, gr.results().get(
-                GroupedResult.identityKey(t.getMetaData(), t, List.of("USUBJID", "EPOCH"), 2)));
+        // S1's two rows read 2, S2's row reads 1: the partition respects the survivor.
+        assertEquals(List.of(2L, 2L, 1L),
+                counts("record_count(group=[USUBJID, EPOCH])", t, NO_RESOLVER));
     }
 
 
@@ -231,44 +258,26 @@ class IndexHelperGroupByPresentTest
         // is the case under test.
         IDataTable t = MockTable.of().col("TSPARMCD", "HLTSUBJI", "TDIGRP", "TITLE")
                 .col("TSVAL", "N", "", "A Study").build();
-
-        Operation op = makeOp("$HLTSUBJI_N", "record_count");
-        op.setGroup(List.of("TSGRPID"));
-        op.setFilter(Map.of("TSPARMCD", "HLTSUBJI", "TSVAL", "N"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
-
-        GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$HLTSUBJI_N"));
-        assertEquals(1, gr.results().size());
-        assertEquals(1L, gr.results().values().iterator().next());
-        // The declared column list is retained, so the per-row lookup key still matches.
-        assertEquals(List.of("TSGRPID"), gr.groupColumns());
+        // One whole-table group holding the one matching row; the declared column list is
+        // retained on both sides of the broadcast, so every row reads that group's 1.
+        assertEquals(List.of(1L, 1L, 1L), counts(
+                "record_count(group=[TSGRPID], filter=(TSPARMCD == \"HLTSUBJI\" and TSVAL == \"N\"))",
+                t, NO_RESOLVER));
     }
 
 
     /**
-     * The key built from the index side and the key {@link GroupedResult#getForRow} builds from a
-     * row must agree, or every row would miss and read {@code missingKeyDefault}. They agree
-     * because both sides are the one derivation {@link GroupedResult#identityKey}, which keys an
-     * absent column as {@code ""}.
+     * The key built from the index side and the key a per-row lookup builds from a row (the retired
+     * {@code GroupedResult.getForRow} until runbook W8) must agree, or every row would miss and
+     * read {@code missingKeyDefault}. They agree because both sides are the one derivation
+     * {@link GroupKeyIdentity#identityKey}, which keys an absent column as {@code ""}.
      */
     @Test
     void degenerateGroupKey_matchesTheRowSideLookupKey()
     {
         IDataTable t = MockTable.of().col("TSPARMCD", "HLTSUBJI", "TDIGRP").build();
-
-        Operation op = makeOp("$N", "record_count");
-        op.setGroup(List.of("TSGRPID"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
-        GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$N"));
-
-        Object rowKey = GroupedResult.identityKey(t.getMetaData(), t, List.of("TSGRPID"), 0);
-        assertTrue(gr.results().containsKey(rowKey),
-                "row-side key " + debug(rowKey) + " not among index-side keys "
-                        + gr.results().keySet().stream().map(IndexHelperGroupByPresentTest::debug)
-                                .collect(Collectors.joining(", ")));
-        assertEquals(2L, gr.results().get(rowKey));
+        // Both rows find the degenerate whole-table group (its key is "" on both sides).
+        assertEquals(List.of(2L, 2L), counts("record_count(group=[TSGRPID])", t, NO_RESOLVER));
     }
 
 
@@ -276,58 +285,26 @@ class IndexHelperGroupByPresentTest
     void recordCountGrouped_missingKeyDefaultStillResolvesToZero()
     {
         IDataTable t = MockTable.of().col("TSPARMCD", "TITLE", "TITLE").build();
-
-        Operation op = makeOp("$N", "record_count");
-        op.setGroup(List.of("TSGRPID"));
-        op.setFilter(Map.of("TSPARMCD", "HLTSUBJI"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
-        GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$N"));
-
-        // No row matches the filter, but the group exists ⇒ 0, and an unknown key also reads 0.
-        assertEquals(0L, gr.results().values().iterator().next());
-        assertEquals(0L, gr.defaultForMissingKey());
-    }
-
-
-    @Test
-    void maxGrouped_absentGroupColumn_isTheDatasetWideMaximum()
-    {
-        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
-        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
-        // declare a numeric column. Do not put this back to col(...) with digit strings.
-        IDataTable t = MockTable.of().colLong("SEQ", 3L, 7L, 5L).build();
-
-        Operation op = makeOp("$MAX", "max");
-        op.setName("SEQ");
-        op.setGroup(List.of("TSGRPID"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
-        GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$MAX"));
-
-        assertEquals(1, gr.results().size());
-        assertEquals(7.0, gr.results().values().iterator().next());
+        // No row matches the filter, but the group exists ⇒ 0 (and a row with no group reads the
+        // same 0 — RecordCountFunctionTest).
+        assertEquals(List.of(0L, 0L),
+                counts("record_count(group=[TSGRPID], filter=(TSPARMCD == \"HLTSUBJI\"))", t,
+                        NO_RESOLVER));
     }
 
 
     @Test
     void distinctGrouped_absentGroupColumn_isTheDatasetWideDistinctSet()
     {
+        // (distinct is a registry function since runbook W7 — PLAN-distinct-function — answering
+        // each row its group's list; the claim is the same.)
         IDataTable t = MockTable.of().col("ARM", "A", "B", "A").build();
-
-        Operation op = makeOp("$D", "distinct");
-        op.setName("ARM");
-        op.setGroup(List.of("TSGRPID"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
-        GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$D"));
-
-        assertEquals(1, gr.results().size());
-        assertEquals(List.of("A", "B"), gr.results().values().iterator().next());
+        assertEquals(List.of(List.of("A", "B"), List.of("A", "B"), List.of("A", "B")),
+                lists("distinct(ARM, group=[TSGRPID])", t, NO_RESOLVER));
     }
 
     // -----------------------------------------------------------------------
-    // EC-44 residual §7 — evalDistinctGrouped honours the operation filter
+    // EC-44 residual §7 — the grouped distinct honours its filter (a registry function since W7)
     // -----------------------------------------------------------------------
 
 
@@ -349,79 +326,12 @@ class IndexHelperGroupByPresentTest
     {
         IDataTable t = MockTable.of().col("USUBJID", "S1", "S1", "S1")
                 .col("AEDECOD", "HEADACHE", "NAUSEA", "RASH").col("AESER", "Y", "N", "Y").build();
-
-        Operation op = makeOp("$D", "distinct");
-        op.setName("AEDECOD");
-        op.setGroup(List.of("USUBJID"));
-        op.setFilter(Map.of("AESER", "Y"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
-        GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$D"));
-
-        assertEquals(1, gr.results().size());
         // NAUSEA is filtered out; without the filter this was [HEADACHE, NAUSEA, RASH].
-        assertEquals(List.of("HEADACHE", "RASH"), gr.results().values().iterator().next());
-    }
-
-
-    /** The filter and the EC-44 absent-column drop compose: filter first, then one group. */
-    @Test
-    void distinctGrouped_filterAppliesWhenTheGroupColumnIsAbsentToo()
-    {
-        IDataTable t = MockTable.of().col("AEDECOD", "HEADACHE", "NAUSEA", "RASH")
-                .col("AESER", "Y", "N", "Y").build();
-
-        Operation op = makeOp("$D", "distinct");
-        op.setName("AEDECOD");
-        op.setGroup(List.of("TSGRPID"));
-        op.setFilter(Map.of("AESER", "Y"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
-        GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$D"));
-
-        assertEquals(1, gr.results().size());
-        assertEquals(List.of("HEADACHE", "RASH"), gr.results().values().iterator().next());
-    }
-
-
-    /**
-     * A group left with nothing after filtering contributes no entry — the same convention
-     * {@code evalMaxGrouped} and {@code evalDateExtremeGrouped} already use (they {@code put} only
-     * when a value survived).
-     */
-    @Test
-    void distinctGrouped_groupFilteredEmpty_contributesNoEntry()
-    {
-        IDataTable t = MockTable.of().col("USUBJID", "S1", "S2")
-                .col("AEDECOD", "HEADACHE", "NAUSEA").col("AESER", "Y", "N").build();
-
-        Operation op = makeOp("$D", "distinct");
-        op.setName("AEDECOD");
-        op.setGroup(List.of("USUBJID"));
-        op.setFilter(Map.of("AESER", "Y"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
-        GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$D"));
-
-        assertEquals(1, gr.results().size());
-        assertEquals(List.of("HEADACHE"), gr.results().values().iterator().next());
-    }
-
-
-    @Test
-    void maxDateGrouped_absentGroupColumn_isTheDatasetWideExtreme()
-    {
-        IDataTable t = MockTable.of().col("DTC", "2020-01-02", "2021-06-01", "2019-01-01").build();
-
-        Operation op = makeOp("$MD", "max_date");
-        op.setName("DTC");
-        op.setGroup(List.of("TSGRPID"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
-        GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$MD"));
-
-        assertEquals(1, gr.results().size());
-        assertEquals("2021-06-01", gr.results().values().iterator().next());
+        assertEquals(
+                List.of(List.of("HEADACHE", "RASH"), List.of("HEADACHE", "RASH"),
+                        List.of("HEADACHE", "RASH")),
+                lists("distinct(AEDECOD, group=[USUBJID], filter=(AESER == \"Y\"))", t,
+                        NO_RESOLVER));
     }
 
 
@@ -441,9 +351,9 @@ class IndexHelperGroupByPresentTest
      * for the group really <em>is</em> zero records, so the row reads a correct answer and a
      * {@code $N > 0} leaf does not fire. The property that matters is therefore the non-firing,
      * which the second half of this test now asserts rather than leaving implied. For a
-     * {@link net.cumba.corej.core.model.EmptyResult#MISSING}-declaring aggregate the same path
-     * reads "no value" instead, the comparison folds it to {@code ""} and the check fires — also
-     * correct, and also decided by the declaration rather than by the shape of the join.
+     * {@code MISSING}-declaring aggregate (the retired {@code EmptyResult}) the same path reads "no
+     * value" instead, the comparison folds it to {@code ""} and the check fires — also correct, and
+     * also decided by the declaration rather than by the shape of the join.
      * </p>
      *
      * <p>
@@ -460,32 +370,11 @@ class IndexHelperGroupByPresentTest
         IDataTable eval = MockTable.of().name("DS").col("USUBJID", "S1", "S2")
                 .col("EPOCH", "SCREENING", "TREATMENT").build();
         IDataTable foreign = MockTable.of().name("DM").col("USUBJID", "S1", "S2").build();
-
-        Operation op = makeOp("$N", "record_count");
-        op.setDomain("DM");
-        op.setGroup(List.of("USUBJID", "EPOCH"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), eval,
-                d -> "DM".equals(d) ? foreign : null);
-        GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$N"));
-
-        // Grouped on the foreign table, where EPOCH is absent ⇒ keys carry "" for it.
-        Object foreignKey = gr.results().keySet().iterator().next();
-        Object evalRowKey = GroupedResult.identityKey(eval.getMetaData(), eval,
-                List.of("USUBJID", "EPOCH"), 0);
-        assertEquals(2, gr.results().size());
-        assertNotEquals(evalRowKey, foreignKey,
-                "expected the cross-table keys to differ; both were " + debug(foreignKey));
-
-        // EC-45 §5.3 — the property that actually matters: every evaluation row misses, and what
-        // it then reads is record_count's DECLARED empty result (0L, "no record for the group is
-        // zero records"), not an accident. A `$N > 0` leaf therefore does not fire.
-        EvaluationContext ctx = EvaluationContext.builder().table(eval).build();
-        for (long r = 0; r < eval.getRowCount(); r++)
-        {
-            assertNull(gr.getForRow(ctx, r), "row " + r + " must miss");
-            assertEquals(0L, gr.getForRowOrDefault(ctx, r), "row " + r + " reads the declaration");
-        }
+        // Grouped on the foreign table, where EPOCH is absent, the keys carry "" for it; the
+        // evaluated rows carry their real EPOCH, so no key meets and every row reads
+        // record_count's declared empty result, 0 — "no record for the group" is zero records.
+        assertEquals(List.of(0L, 0L), counts("record_count(domain=DM, group=[USUBJID, EPOCH])",
+                eval, d -> "DM".equals(d) ? foreign : null));
     }
 
     // -----------------------------------------------------------------------
@@ -518,12 +407,4 @@ class IndexHelperGroupByPresentTest
         return "[" + String.valueOf(key).replace("\0", "\\0") + "]";
     }
 
-
-    private static Operation makeOp(String id, String operator)
-    {
-        Operation op = new Operation();
-        op.setId(id);
-        op.setOperator(operator);
-        return op;
-    }
 }

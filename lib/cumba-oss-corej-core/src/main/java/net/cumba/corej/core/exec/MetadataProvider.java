@@ -12,9 +12,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * SPI for resolving CDISC Library metadata at rule execution time.
  * <p>
- * Operations like {@code required_variables}, {@code domain_is_custom}, and {@code codelist_terms}
- * require access to the CDISC Library to look up standard variable definitions, codelist values,
- * and domain classifications.
+ * Functions like {@code required_variables()}, {@code domain_is_custom()}, and
+ * {@code codelist_terms(…)} require access to the CDISC Library to look up standard variable
+ * definitions, codelist values, and domain classifications.
  * </p>
  * <p>
  * Implementations read a concrete offline metadata source — since cache P4 the unified metadata
@@ -118,10 +118,10 @@ public interface MetadataProvider
      * ⚠ The distinction this predicate carries is <b>semantic, not merely operational</b>: a rule
      * whose {@code Description} says <em>"a variable that the ADaM standard designates as
      * Required"</em> has not answered that question if the answer came from a sponsor's Define-XML
-     * {@code ItemRef/@Mandatory}. {@link net.cumba.corej.core.exec.OperationExecutor} therefore
-     * maps {@code true} here to {@code LIBRARY_NOT_AVAILABLE} — a loud SKIP — for every
-     * library-dependent operation, <b>without</b> first testing whether some other tier could have
-     * produced a value. Substitution from Define-XML is available, but only as an explicit opt-in
+     * {@code ItemRef/@Mandatory}. Every Library-backed function therefore maps {@code true} here to
+     * its unusable-answer signal ({@code UnusableProviderAnswerException}) — a loud SKIP —
+     * <b>without</b> first testing whether some other tier could have produced a value.
+     * Substitution from Define-XML is available, but only as an explicit opt-in
      * ({@code -Dcorej.degradedDefineFallback=true}, default off).
      * </p>
      *
@@ -348,8 +348,8 @@ public interface MetadataProvider
      * EC-13 — the union of variable NAMES across every dataset the run's IG standard defines (Java
      * mirror of the Python reference engine's {@code variable_names} operation). Only the
      * CDISC-Library product provider serves a meaningful list; the default is {@code null} so other
-     * providers signal "not available" — the {@code variable_names} operation then SKIPs the rule
-     * (mapped to {@code LIBRARY_NOT_AVAILABLE}). Backs the {@code variable_names} operation.
+     * providers signal "not available" — the {@code variable_names()} function then SKIPs the rule.
+     * Backs the {@code variable_names()} function.
      *
      * @return the order-preserving union of standard variable names, or {@code null} when no
      *         product is configured / the library is unavailable
@@ -365,8 +365,8 @@ public interface MetadataProvider
      * datasets unioned with the SDTM Model product's datasets (Java mirror of the Python reference
      * engine's {@code standard_domains} operation). Only the CDISC-Library product provider serves
      * a meaningful list; the default is {@code null} so other providers signal "not available" —
-     * the {@code standard_domains} operation then SKIPs the rule (mapped to
-     * {@code LIBRARY_NOT_AVAILABLE}). Backs the {@code standard_domains} operation.
+     * the {@code standard_domains()} function then SKIPs the rule. Backs the
+     * {@code standard_domains()} function.
      *
      * @return the order-preserving union of standard dataset names, or {@code null} when no product
      *         is configured / the library is unavailable
@@ -402,8 +402,8 @@ public interface MetadataProvider
      * ({@code MetadataKeys.CODELIST_SUBMISSION_VALUE} / {@code CODELIST_CONCEPT_ID} /
      * {@code CODELIST_PREFERRED_TERM}) and its terms as {@code ICodelistEntry} instances
      * ({@code getCodeValue()} = submission value, {@code getDecodeValue()} = NCI preferred term,
-     * {@code getConceptId()} = NCI C-code). This is what lets
-     * {@code OperationExecutor.codelistTerms} honour every {@code (level, returntype)} shape of the
+     * {@code getConceptId()} = NCI C-code). This is what lets {@code LibraryLists}'
+     * {@code codelist_terms} honour every {@code (level, returntype)} shape of the
      * {@code codelist_terms} operation rather than always answering term submission values.
      *
      * <p>
@@ -413,8 +413,8 @@ public interface MetadataProvider
      * relocated into the fallback. So the default returns {@link Optional#empty()}, the executor
      * keeps serving the one shape {@code getCodelistTerms} proves
      * ({@code level="term", returntype="value"}) without this accessor, and every other shape on a
-     * provider without a real implementation becomes {@code LIBRARY_NOT_AVAILABLE} — the rule SKIPs
-     * loudly instead of validating against the wrong representation.
+     * provider without a real implementation is an unusable answer — the rule SKIPs loudly instead
+     * of validating against the wrong representation.
      * </p>
      *
      * @param aCodelistName
@@ -657,9 +657,8 @@ public interface MetadataProvider
      * {@code SdtmClass.classVariables()} / ADaM {@code AdamVariableSet.analysisVariables()}
      * hierarchy. Implementations without product access return {@code null} as the "library not
      * available" signal — callers (e.g. {@code RuleRunner}) translate that into a SKIPPED rule
-     * outcome, identically to how
-     * {@link net.cumba.corej.core.exec.OperationExecutor#LIBRARY_NOT_AVAILABLE} is treated for
-     * other library-dependent operations.
+     * outcome, identically to every other Library-backed function's unusable answer
+     * ({@code UnusableProviderAnswerException}).
      * </p>
      *
      * @param aTable

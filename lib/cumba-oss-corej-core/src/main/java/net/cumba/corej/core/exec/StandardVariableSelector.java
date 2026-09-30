@@ -96,11 +96,11 @@ final class StandardVariableSelector
      * resolved variable rows to {@code sourceInspector} before filtering them.
      *
      * <p>
-     * The inspector exists for the {@code key_name} diagnostic
-     * ({@code OperationExecutor.warnUnservedKeyName}): whether the level serves the declared key is
-     * a property of these rows, and only this method knows which of the two sources (the
-     * class-aware resolver or the legacy per-domain fallback) actually answered. It is invoked
-     * once, after the source is known to be non-empty, and must not mutate the rows.
+     * The inspector exists for the {@code key_name} diagnostic (the retired executor's
+     * {@code warnUnservedKeyName}): whether the level serves the declared key is a property of
+     * these rows, and only this method knows which of the two sources (the class-aware resolver or
+     * the legacy per-domain fallback) actually answered. It is invoked once, after the source is
+     * known to be non-empty, and must not mutate the rows.
      * </p>
      *
      * @param sourceInspector
@@ -127,8 +127,9 @@ final class StandardVariableSelector
             sourceInspector.accept(source);
         }
         // EC-36: variable names -> variable prefix; "" for SUPP, AP suffix for AP.
-        String prefix = Objects.requireNonNullElse(OperationExecutor.variableWildcardPrefix(table,
-                OperationExecutor.domainPrefix(table)), "");
+        String prefix = Objects.requireNonNullElse(
+                DatasetIdentity.variableWildcardPrefix(table, DatasetIdentity.domainPrefix(table)),
+                "");
         net.cumba.datatable.DataTableMeta meta = table.getMetaData();
         List<String> out = new ArrayList<>();
         for (Map<String, String> varRow : source)

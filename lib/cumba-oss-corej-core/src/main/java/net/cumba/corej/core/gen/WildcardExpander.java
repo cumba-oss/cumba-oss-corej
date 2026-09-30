@@ -22,7 +22,6 @@ import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionAny;
 import net.cumba.corej.core.model.CheckConditionExpression;
 import net.cumba.corej.core.model.CheckConditionNot;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.OutputVariableToken;
 import net.cumba.corej.core.model.Rule;
@@ -1142,32 +1141,13 @@ public final class WildcardExpander
         // `AyIND` entry in AD0790's `Output_Variables` and for the `AyIND` occurrences in every one
         // of the five Descriptions / Outcome messages.
         //
-        // The fix binds those operation-side templates the way a qualified scope entry is bound
+        // The fix bound those operation-side templates the way a qualified scope entry is bound
         // (Fix #124): derive the concrete name from THIS expansion tuple, so `y=1` maps `AyIND` and
-        // `ByIND` onto `A1IND` / `B1IND` together and the two sides can never disagree. Folding
-        // them into one map keeps a single substitution surface for the Check, the Scope, the
-        // Output_Variables, the free text and the operations.
+        // `ByIND` onto `A1IND` / `B1IND` together and the two sides can never disagree. Since
+        // runbook W8 there is no operation list: a binding is a compiled expression, and its
+        // templates are collected by collectWildcardNames like the Check's own (R22), so the map
+        // needs no second source.
         Map<String, String> nameMap = new LinkedHashMap<>(wildcardToColumn);
-        for (String opTemplate : operationNames(template.getOperations()))
-        {
-            if (nameMap.containsKey(opTemplate) || !isWildcard(opTemplate))
-            {
-                continue;
-            }
-            WildcardPattern pat = WildcardPattern.parse(opTemplate);
-            if (pat.groupNames().isEmpty())
-            {
-                // A mixed-case literal the loose `isWildcard` heuristic flags but the parser finds
-                // no marker in ("Char", "TRTyyP"). Never rewrite it.
-                continue;
-            }
-            String concrete = concreteFromTuple(pat, tuple);
-            if (concrete != null)
-            {
-                nameMap.put(opTemplate, concrete);
-            }
-        }
-
         // Whole-name map lookup: the engine-owned markers bind a complete template name to a
         // complete column name, so a name that is not a key is carried over untouched.
         java.util.function.UnaryOperator<String> rename = n -> nameMap.getOrDefault(n, n);
@@ -1243,13 +1223,16 @@ public final class WildcardExpander
         // ScopeMatcher matches those tokens literally, never as wildcards.
         rule.setScope(template.getScope());
         rule.setRequirements(expandRequirements(template.getRequirements(), nameMap, tuple));
-        rule.setOperations(renameOperationNames(template.getOperations(), rename));
         // PLAN-binding-expressions R22: the compiled bindings are renamed like the Check — a
         // fresh `new Rule()` would otherwise drop them silently from every expanded child.
         rule.setCompiledBindings(substituteCompiledBindings(template.getCompiledBindings(), rename,
                 StringLiteralPolicy.EXISTS_NAME_ONLY));
         rule.setMatchDatasets(template.getMatchDatasets());
         rule.setGroupingVariables(template.getGroupingVariables());
+        // Supp_Merge is a top-level field like Severity: this method builds the child from a fresh
+        // `new Rule()`, so a template's `Supp_Merge: false` was silently dropped and every expanded
+        // child pivoted SUPP-- qualifiers the template had switched off (combined review W2 M2).
+        rule.setSuppMerge(template.getSuppMerge());
         rule.setGrouping(template.getGrouping());
         // The expanded rule inherits the template's Check, so its Sensitivity is derivable from the
         // rule body like any other (PLAN-derive-rule-type-sensitivity phase 7). The old blanket
@@ -1259,163 +1242,6 @@ public final class WildcardExpander
         RulePackageLoader.deriveOmittedFields(rule);
 
         return rule;
-    }
-
-
-    /**
-     * Every <em>column-position</em> string of {@code operations}, in encounter order.
-     * <p>
-     * Derived by running {@link #renameOperationNames} with a recording identity operator rather
-     * than by a second field walk, so the collector and the rewriter cannot drift apart — the same
-     * "name in, name out" contract {@link #substituteNames} has for the Check tree. Non-column
-     * positions ({@code id}, {@code subtract}, {@code domain}, {@code operator}, filter
-     * <em>values</em>, …) are not visited and therefore never reported.
-     * </p>
-     *
-     * @param operations
-     *            the template's operations, possibly {@code null}
-     * @return the column-position names, never {@code null}
-     */
-    private static Set<String> operationNames(@Nullable List<Operation> operations)
-    {
-        if (operations == null || operations.isEmpty())
-        {
-            return Set.of();
-        }
-        Set<String> seen = new LinkedHashSet<>();
-        renameOperationNames(operations, n ->
-        {
-            seen.add(n);
-            return n;
-        });
-        return seen;
-    }
-
-
-    /**
-     * Returns {@code operations} with {@code rename} applied to every column-position string.
-     * <p>
-     * Fix #152 (engine-gap ADaM-G6). Before it, {@code expandRule} handed the template's operations
-     * to the expanded rule verbatim, so an operation naming a wildcard template
-     * ({@code max("AyIND", …)}) survived expansion pointing at a column that does not exist. This
-     * is the third hand-written field-by-field {@link Operation} copy in the engine, alongside
-     * {@code OperationExecutor.resolvePrefixes} and {@code OperationExecutor.expandGroupRefs}; all
-     * three are guarded reflectively by {@code OperationFieldRegistrationTest}, because a field
-     * this routine forgets is silently dropped from every expanded rule.
-     * </p>
-     * <p>
-     * The column positions are {@code name}, {@code names}, {@code group}, {@code reference},
-     * {@code offset}, {@code minuend_match} and the <b>keys</b> of {@code filter}
-     * ({@code ordering}, {@code external_dictionary_term_variable}, {@code dictionary_parent} and
-     * {@code qualifying_any_populated} went with wave 1's ports, D-W1-6). Everything else is a
-     * literal, a dataset name, an operator name or a {@code $}-reference and is copied unchanged —
-     * in particular {@code id}, {@code subtract} and the {@code minus} {@code value} list, which
-     * name operation results rather than columns, and the filter <em>values</em>, which are data.
-     * </p>
-     * <p>
-     * Returns the argument itself when {@code rename} changed nothing, so the overwhelmingly common
-     * no-operation-template case keeps sharing the template's list exactly as before.
-     * </p>
-     *
-     * @param operations
-     *            the template's operations, possibly {@code null}
-     * @param rename
-     *            the name rewriter; must return its argument unchanged when there is nothing to do
-     * @return the rewritten operations ({@code null} in, {@code null} out)
-     */
-    static @Nullable List<Operation> renameOperationNames(@Nullable List<Operation> operations,
-            java.util.function.UnaryOperator<String> rename)
-    {
-        if (operations == null || operations.isEmpty())
-        {
-            return operations;
-        }
-        List<Operation> copies = operations.stream().map(op -> renameOperation(op, rename))
-                .toList();
-        // Operation is a Lombok @Data, so equals() covers every field: an all-identity rewrite is
-        // detected structurally and the shared template list is handed back untouched.
-        return copies.equals(operations) ? operations : copies;
-    }
-
-
-    /** Single-operation core of {@link #renameOperationNames}. */
-    private static Operation renameOperation(Operation op,
-            java.util.function.UnaryOperator<String> rename)
-    {
-        Operation copy = new Operation();
-        // --- column positions: rewritten ---
-        copy.setName(renameOne(op.getName(), rename));
-        copy.setNameExpr(op.getNameExpr());
-        copy.setNames(renameEach(op.getNames(), rename));
-        copy.setGroup(renameEach(op.getGroup(), rename));
-        copy.setReference(renameOne(op.getReference(), rename));
-        copy.setOffset(renameOne(op.getOffset(), rename));
-        copy.setMinuendMatch(renameEach(op.getMinuendMatch(), rename));
-        copy.setFilter(renameFilterKeys(op.getFilter(), rename));
-        // --- everything else: copied verbatim ---
-        copy.setId(op.getId());
-        copy.setOperator(op.getOperator());
-        copy.setExpression(op.getExpression());
-        copy.setSubtract(op.getSubtract());
-        copy.setValue(op.getValue());
-        copy.setDomain(op.getDomain());
-        copy.setDelimiter(op.getDelimiter());
-        copy.setReferenceExtreme(op.getReferenceExtreme());
-        copy.setMissingValues(op.getMissingValues());
-        copy.setKeepMissings(op.getKeepMissings());
-        copy.setMinuendDomain(op.getMinuendDomain());
-        copy.setCodelists(op.getCodelists());
-        copy.setLevel(op.getLevel());
-        copy.setReturntype(op.getReturntype());
-        copy.setKeyName(op.getKeyName());
-        copy.setKeyValue(op.getKeyValue());
-        copy.setModelClass(op.getModelClass());
-        copy.setCtPackageTypes(op.getCtPackageTypes());
-        copy.setRegex(op.getRegex());
-        copy.setNamePattern(op.getNamePattern());
-        copy.setValueIsReference(op.getValueIsReference());
-        copy.setMinLength(op.getMinLength());
-        copy.setExternalDictionaryType(op.getExternalDictionaryType());
-        copy.setDictionaryTermType(op.getDictionaryTermType());
-        copy.setCaseSensitive(op.getCaseSensitive());
-        copy.setOriginalName(op.getOriginalName());
-        return copy;
-    }
-
-
-    private static @Nullable String renameOne(@Nullable String name,
-            java.util.function.UnaryOperator<String> rename)
-    {
-        return name == null ? null : rename.apply(name);
-    }
-
-
-    private static @Nullable List<String> renameEach(@Nullable List<String> names,
-            java.util.function.UnaryOperator<String> rename)
-    {
-        return names == null ? null
-                : names.stream().map(n -> n == null ? null : rename.apply(n)).toList();
-    }
-
-
-    /**
-     * Rewrites the <b>keys</b> of a row-filter map; the values are data literals and are carried
-     * over untouched. Mirrors {@code OperationExecutor.resolveFilterKeys} (EC-28(b) / Fix #131),
-     * which established that a filter key is a column position.
-     */
-    private static @Nullable Map<String, Object> renameFilterKeys(@Nullable Map<String, Object> f,
-            java.util.function.UnaryOperator<String> rename)
-    {
-        if (f == null)
-        {
-            return null;
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        for (var e : f.entrySet())
-        {
-            out.put(e.getKey() == null ? null : rename.apply(e.getKey()), e.getValue());
-        }
-        return out;
     }
 
 

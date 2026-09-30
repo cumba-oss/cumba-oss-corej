@@ -3,6 +3,7 @@ package net.cumba.corej.core.integration;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -10,10 +11,9 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleRunnerCalls;
-import net.cumba.corej.core.expr.CheckToExpr;
+import net.cumba.corej.core.expr.eval.BindingDomains;
 import net.cumba.corej.core.expr.eval.Domain;
 import net.cumba.corej.core.expr.eval.DomainScan;
-import net.cumba.corej.core.expr.eval.OperationKinds;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
@@ -26,15 +26,15 @@ import org.junit.jupiter.api.Test;
  *
  * <p>
  * The re-authored {@code PMDA-AD0253} runs on ADAE, reads SDTM {@code AE} as reference data through
- * an {@code Operations[].domain} entry, and asserts set containment with {@code not_contains_all}
- * while {@code minus} supplies the missing keys. Every ingredient ships, but two assemblies have
- * <b>zero</b> shipped instances: a tuple {@code distinct} with no {@code domain:} (all 5 shipped
- * tuple users pin a domain) and {@code not_contains_all} between two <em>tuple</em> sets (the 17
- * shipped users compare flat string lists &mdash; {@code PMDA-AD0047} is the flat-list twin this
- * probe isolates the tuple element type against). Both sides stringify through the tuple's
- * {@code List} form, so the mechanism should hold &mdash; this probe proves it empirically through
- * {@code RuleRunner}, per the standing rule that probes must run through the runner rather than
- * poke internals.
+ * a binding's {@code domain=} keyword (an {@code Operations[].domain} entry when it was authored),
+ * and asserts set containment with {@code not_contains_all} while {@code minus} supplies the
+ * missing keys. Every ingredient ships, but two assemblies have <b>zero</b> shipped instances: a
+ * tuple {@code distinct} with no {@code domain:} (all 5 shipped tuple users pin a domain) and
+ * {@code not_contains_all} between two <em>tuple</em> sets (the 17 shipped users compare flat
+ * string lists &mdash; {@code PMDA-AD0047} is the flat-list twin this probe isolates the tuple
+ * element type against). Both sides stringify through the tuple's {@code List} form, so the
+ * mechanism should hold &mdash; this probe proves it empirically through {@code RuleRunner}, per
+ * the standing rule that probes must run through the runner rather than poke internals.
  * </p>
  *
  * <p>
@@ -86,9 +86,14 @@ class PmdaAd0253TupleContainmentProbeTest
         Rule rule = MAPPER.readValue(RULE_YAML, Rule.class);
         // rules-src does not author Sensitivity — the loader derives it, so a
         // hand-bound rule must be completed the same way (and its Bindings materialised, 7b).
-        RulePackageLoader.normalizeOperations(rule);
+        RulePackageLoader.materialiseBindings(rule);
         RulePackageLoader.deriveOmittedFields(rule);
-        rule.setCheckExpr(CheckToExpr.toExpr(rule.getCheck()));
+        // (Since runbook W7 every binding here is a COMPILED one — distinct is a registry
+        // function — and a compiled binding's hand-over form depends on the domain the loader's
+        // native install derives for it: run that install, as the production path does, instead
+        // of hand-setting the Check alone.)
+        RulePackageLoader.installNativeExpr(rule);
+        assertNull(rule.getLoadError(), rule.getLoadError());
         return rule;
     }
 
@@ -150,7 +155,7 @@ class PmdaAd0253TupleContainmentProbeTest
         Rule rule = loadRule();
         assertNotNull(rule.getCheckExpr(), "the shape must raise to a native expression");
         assertEquals(Domain.DATASET,
-                DomainScan.infer(rule.getCheckExpr(), OperationKinds.forRule(rule)),
+                DomainScan.infer(rule.getCheckExpr(), BindingDomains.forRule(rule)),
                 "the sole leaf is a whole-column verdict, so no cursor survives: the dataset"
                         + " domain, one finding per dataset");
         assertEquals(Sensitivity.DATASET, rule.getSensitivity(),
@@ -279,7 +284,7 @@ class PmdaAd0253TupleContainmentProbeTest
         // The resolver knows no AE at all — the study simply has none loaded.
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, adae, _ -> null);
         assertEquals(0, result.getViolationCount(),
-                "absent AE ⇒ $ae_keys is the operator's declared EmptyResult.SET ⇒"
+                "absent AE ⇒ $ae_keys is the empty set (the retired EmptyResult.SET) ⇒"
                         + " containsAll([]) is true ⇒ the rule passes with no finding. This is"
                         + " the arm that pins the flood being fixed.");
         assertFalse(result.isError(), "absence must not surface as an execution error");

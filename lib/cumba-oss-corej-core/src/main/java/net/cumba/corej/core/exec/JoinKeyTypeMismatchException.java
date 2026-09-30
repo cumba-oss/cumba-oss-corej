@@ -65,11 +65,11 @@ final class JoinKeyTypeMismatchException extends RuntimeException
 
     /**
      * The grouped-lookup arm ({@code PLAN-grouping-key-identity}, owner 2026-09-27, Q2: <i>"Beside
-     * this, I agree to error out."</i>): a grouped operation's result, grouped on one dataset, is
+     * this, I agree to error out."</i>): a grouped function's result, grouped on one dataset, is
      * read against another whose key column has the other kind. The lookup keys on the typed
      * identity, so the two sides would silently never meet — the <i>"silent mismatch"</i>
-     * {@code D4-R2} refuses. Thrown from {@link GroupedResult#requireCompatibleKeys} and caught
-     * where every other {@code JoinKeyTypeMismatchException} is, so the rule ERRORs.
+     * {@code D4-R2} refuses. Thrown from {@link GroupKeyIdentity#requireCompatibleKeyColumns} and
+     * caught where every other {@code JoinKeyTypeMismatchException} is, so the rule ERRORs.
      *
      * @param aGroupedColumn
      *            the key column on the grouped side
@@ -92,7 +92,7 @@ final class JoinKeyTypeMismatchException extends RuntimeException
     {
         return new JoinKeyTypeMismatchException("Grouped lookup: key column " + aGroupedColumn
                 + " is " + describe(aGroupedKind) + " in " + aGroupedDataset
-                + ", where the operation grouped, and "
+                + ", where the function grouped, and "
                 + (aGroupedColumn.equals(aEvaluatedColumn) ? ""
                         : "its counterpart " + aEvaluatedColumn + " is ")
                 + describe(aEvaluatedKind) + " in " + aEvaluatedDataset

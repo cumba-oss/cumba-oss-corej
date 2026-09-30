@@ -110,13 +110,11 @@ public final class CheckExpressionParser
 
     private Expr parsePrimary()
     {
-        if (peek().type() == TokenType.LPAREN)
-        {
-            advance();
-            Expr e = parseOr();
-            expect(TokenType.RPAREN, ")");
-            return e;
-        }
+        // No parenthesis arm of its own any more (runbook W2a): every `(` is parseAtom's, which
+        // parses a whole expression inside the parentheses and then lets the arithmetic and
+        // comparison chain continue after them — `((A - B) / B) * 100` and `(A == 1) and B == 2`
+        // alike. A second arm here consumed a leading `(…)` as a complete primary and could not
+        // continue with `/ B` after it.
         return parseComparison();
     }
 
@@ -233,8 +231,12 @@ public final class CheckExpressionParser
         }
         case LPAREN ->
         {
+            // A parenthesised operand is a whole expression, so a boolean may be handed to a
+            // function as an argument — `read_value(X, domain=D, filter=(TSPARMCD == "SPECIES"))`
+            // (owner D9 / D12; runbook W2a). Arithmetic grouping `(A + B) * C` parses as before:
+            // parseOr descends through comparison to the sum.
             advance();
-            Expr e = parseSum();
+            Expr e = parseOr();
             expect(TokenType.RPAREN, ")");
             yield e;
         }

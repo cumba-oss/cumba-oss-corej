@@ -21,8 +21,8 @@ import org.junit.jupiter.api.Test;
  * Phase 3 of {@code plans/done/PLAN-unified-callable-surface.md} — the two features carried into
  * the unified callable ABI: §3.1 kwargs reach the function (raw {@link Expr} nodes, dropped before
  * for functions), and §3.2 pure VALUE subtrees memoise once per dataset run through
- * {@link net.cumba.corej.core.exec.ExpressionResultCache} (the {@code LazyValue} single-execution
- * replacement), shared across rules over the same table.
+ * {@link net.cumba.corej.core.exec.ExpressionResultCache} (the replacement of the single execution
+ * the since-retired {@code LazyValue} gave), shared across rules over the same table.
  */
 class CallableSurfacePhase3Test
 {
@@ -142,8 +142,8 @@ class CallableSurfacePhase3Test
                 "boolean root AND the pure value subtree are both cached, got " + afterRule1);
 
         // Rule 2: a DIFFERENT boolean root sharing the same value subtree — the upper(VAR1)
-        // entry is reused, so exactly one new (boolean) entry appears. This is the LazyValue
-        // single-execution replacement across rules.
+        // entry is reused, so exactly one new (boolean) entry appears. This is the single
+        // execution the retired LazyValue gave, across rules.
         Expr rule2 = new Expr.Binary(Expr.BinOp.EQ,
                 new Expr.Call("upper", List.of(ref("VAR1")), Map.of()),
                 new Expr.Lit(Expr.LitKind.STRING, "B"));

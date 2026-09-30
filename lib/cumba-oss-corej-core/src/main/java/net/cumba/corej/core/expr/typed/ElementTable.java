@@ -51,12 +51,14 @@ public final class ElementTable
             Map.entry("concat", Primitive.STRING), Map.entry("substring", Primitive.STRING),
             Map.entry("prefix", Primitive.STRING), Map.entry("suffix", Primitive.STRING),
             // temporal results (phase 3b). ⭐ min_date/max_date are the corpus' only two
-            // date-valued operations (OperationType declares an EmptyResult but never a result
+            // date-valued operations (an operation type declared an empty result but never a result
             // type — Review 0b's finding); typing them date is what makes an untagged
             // `RFXSTDTC != $max_…` site visible to the §5.2 mixed check once stage B knows the
-            // column, and is what lets Review 0's four "no edit" sites stay legal. ⚠ row_max /
-            // row_min / ts_parameter_value are date-SHAPED but string-typed by ruling — do not
-            // add them here.
+            // column, and is what lets Review 0's four "no edit" sites stay legal. ⚠ row_max is
+            // date-SHAPED but string-typed by ruling — do not add it here (a registry function
+            // since W3 answering the winning cell, typed by the columns it reads; row_min went in
+            // W1,
+            // ts_parameter_value became read_value in W2a, typed by the column it reads).
             Map.entry("min_date", Primitive.DATE), Map.entry("max_date", Primitive.DATE),
             Map.entry("date_diff_days", Primitive.NUMBER),
             // collection results
@@ -64,6 +66,36 @@ public final class ElementTable
             // wave 0's list-valued exemplar (PLAN-binding-expressions): one list of CT attribute
             // values — a set by content, a list by carrier (§1.5).
             Map.entry("get_codelist_attributes", new ListOf(Primitive.STRING)),
+            // wave 4's dataset-level list functions (PLAN-list-functions D-W4-11): one list of
+            // names / terms / dates — a set by content, a list by carrier; get_parent_model_column_
+            // order's is per row but list-typed all the same.
+            Map.entry("required_variables", new ListOf(Primitive.STRING)),
+            Map.entry("expected_variables", new ListOf(Primitive.STRING)),
+            Map.entry("get_column_order_from_library", new ListOf(Primitive.STRING)),
+            Map.entry("get_model_column_order", new ListOf(Primitive.STRING)),
+            Map.entry("variable_names", new ListOf(Primitive.STRING)),
+            Map.entry("standard_domains", new ListOf(Primitive.STRING)),
+            Map.entry("get_dataset_filtered_variables", new ListOf(Primitive.STRING)),
+            Map.entry("natural_key_variables", new ListOf(Primitive.STRING)),
+            Map.entry("get_model_filtered_variables", new ListOf(Primitive.STRING)),
+            Map.entry("valid_codelist_dates", new ListOf(Primitive.STRING)),
+            Map.entry("codelist_terms", new ListOf(Primitive.STRING)),
+            Map.entry("get_parent_model_column_order", new ListOf(Primitive.STRING)),
+            Map.entry("define_variable_names", new ListOf(Primitive.STRING)),
+            Map.entry("define_dataset_names", new ListOf(Primitive.STRING)),
+            Map.entry("define_key_variables", new ListOf(Primitive.STRING)),
+            Map.entry("get_column_order_from_dataset", new ListOf(Primitive.STRING)),
+            Map.entry("dataset_names", new ListOf(Primitive.STRING)),
+            Map.entry("study_domains", new ListOf(Primitive.STRING)),
+            Map.entry("split_sibling_length_mismatch", new ListOf(Primitive.STRING)),
+            Map.entry("duplicate_label_variables", new ListOf(Primitive.STRING)),
+            Map.entry("minus", new ListOf(Primitive.STRING)),
+            // runbook W7 (PLAN-distinct-function): distinct answers ONE list — of the column's
+            // distinct values, or of the distinct row tuples over a list of columns — a set by
+            // content, a list by carrier, whose element type is the target's (Unknown);
+            // referenced_dataset_variables a per-row list of variable names.
+            Map.entry("distinct", new ListOf(Unknown.UNKNOWN)),
+            Map.entry("referenced_dataset_variables", new ListOf(Primitive.STRING)),
             // §1.5: tuple(…) is sugar for a list<column-reference> composite key
             Map.entry("tuple", new ListOf(Primitive.COLUMN_REFERENCE)));
 

@@ -6,16 +6,11 @@ import java.util.List;
 import java.util.SequencedSet;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.ast.Expr;
-import net.cumba.corej.core.expr.convert.OperationExpressionParser;
 import net.cumba.corej.core.expr.eval.ArgumentBinder;
-import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionRegistry;
 import net.cumba.corej.core.expr.eval.ProviderNeed;
-import net.cumba.corej.core.model.BoundBinding;
 import net.cumba.corej.core.model.CompiledBinding;
-import net.cumba.corej.core.model.Operation;
-import net.cumba.corej.core.model.OperationType;
 import net.cumba.corej.core.model.Rule;
 import org.jspecify.annotations.Nullable;
 
@@ -25,21 +20,17 @@ import org.jspecify.annotations.Nullable;
  * answer.
  *
  * <p>
- * It reads <b>both keys</b> a need can be declared under:
+ * It reads the <b>one key</b> a need is declared under — a registry function's
+ * {@linkplain FunctionDescriptor#provider() provider capability} ({@link ProviderNeed}), for a
+ * function call anywhere, in a compiled binding or inline. (The second key, an operation type, went
+ * with the Operation carrier in runbook W8; it had needed nothing since wave 4b, when the last
+ * provider-reading operation became a registry function.)
  * </p>
- * <ul>
- * <li>an {@link OperationType}'s predicates ({@link OperationExecutor#isLibraryDependent},
- * {@link OperationExecutor#isDefineDependent}, {@link OperationExecutor#isDictionaryDependent}
- * minus the {@code dictionary_available} gate itself, which is never a dependency) — a declared
- * operation binding or an inline operation call;</li>
- * <li>a registry function's {@linkplain FunctionDescriptor#provider() provider capability}
- * ({@link ProviderNeed}) — a function call anywhere, in a compiled binding or inline.</li>
- * </ul>
  * <p>
- * and it walks every surface a call can sit on: declared operations, compiled binding expressions
- * and (for {@link #ofExpr}) any expression the caller hands it — the Check and the Precondition. So
- * a call in a binding and the same call inline in the Check are gated alike, and a ported callable
- * keeps its gates the moment its {@code OperationType} is deleted.
+ * It walks every surface a call can sit on: compiled binding expressions and (for {@link #ofExpr})
+ * any expression the caller hands it — the Check and the Precondition. So a call in a binding and
+ * the same call inline in the Check are gated alike, and a ported callable kept its gates the
+ * moment its operation type was deleted.
  * </p>
  *
  * <p>
@@ -113,10 +104,10 @@ public record ProviderNeeds(boolean library, boolean define, boolean dictionary,
 
 
     /**
-     * The needs of a rule's <b>bindings</b> — every declared operation binding and every compiled
-     * binding expression, in authored order. This is the surface {@code RuleRunner}'s eager SKIP
-     * arms gate: a {@code $}-bound call gets no injected Precondition gate, so the runner itself
-     * must SKIP a rule whose binding needs an absent provider.
+     * The needs of a rule's <b>bindings</b> — every compiled binding expression, in authored order.
+     * This is the surface {@code RuleRunner}'s eager SKIP arms gate: a {@code $}-bound call gets no
+     * injected Precondition gate, so the runner itself must SKIP a rule whose binding needs an
+     * absent provider.
      *
      * @param rule
      *            the rule
@@ -125,40 +116,11 @@ public record ProviderNeeds(boolean library, boolean define, boolean dictionary,
     public static ProviderNeeds ofBindings(Rule rule)
     {
         ProviderNeeds needs = NONE;
-        for (BoundBinding binding : rule.bindingOrder())
+        for (CompiledBinding compiled : rule.bindingOrder())
         {
-            needs = needs.union(switch (binding)
-            {
-            case BoundBinding.OfOperation op -> ofOperation(op.operation());
-            case CompiledBinding compiled -> ofExpr(compiled.expression());
-            });
+            needs = needs.union(ofExpr(compiled.expression()));
         }
         return needs;
-    }
-
-
-    /**
-     * The needs of one declared operation, read off its {@link OperationType}.
-     *
-     * @param op
-     *            the operation
-     * @return the needs
-     */
-    public static ProviderNeeds ofOperation(Operation op)
-    {
-        OperationType type = op.getOperationType();
-        boolean dictionary = OperationExecutor.isDictionaryDependent(type);
-        SequencedSet<String> types = new LinkedHashSet<>();
-        String dictionaryType = op.getExternalDictionaryType();
-        if (dictionary && dictionaryType != null && !dictionaryType.isBlank())
-        {
-            types.add(dictionaryType);
-        }
-        boolean library = OperationExecutor.isLibraryDependent(type);
-        boolean define = OperationExecutor.isDefineDependent(type);
-        return library || define || dictionary
-                ? new ProviderNeeds(library, define, dictionary, types)
-                : NONE;
     }
 
 
@@ -225,11 +187,11 @@ public record ProviderNeeds(boolean library, boolean define, boolean dictionary,
 
 
     /**
-     * The needs of ONE call, not its arguments: an inline {@link OperationType} call by its
-     * predicates, a registry function by its {@linkplain FunctionDescriptor#provider() provider
-     * capability}. For a {@link ProviderNeed.Kind#DICTIONARY} capability the type is the static
-     * string literal bound to the declared type parameter; a non-literal leaves the type unnamed
-     * (wave 1 makes that a load error).
+     * The needs of ONE call, not its arguments: a registry function is read by its
+     * {@linkplain FunctionDescriptor#provider() provider capability}. For a
+     * {@link ProviderNeed.Kind#DICTIONARY} capability the type is the static string literal bound
+     * to the declared type parameter; a non-literal leaves the type unnamed (wave 1 makes that a
+     * load error).
      *
      * @param call
      *            the call
@@ -237,17 +199,6 @@ public record ProviderNeeds(boolean library, boolean define, boolean dictionary,
      */
     public static ProviderNeeds ofCall(Expr.Call call)
     {
-        if (ExprCompiler.isInlineOperation(call))
-        {
-            try
-            {
-                return ofOperation(OperationExpressionParser.fromCall(call, null));
-            }
-            catch (RuntimeException _)
-            {
-                return NONE; // not a well-formed operation call — the compiler rejects it itself
-            }
-        }
         FunctionDescriptor descriptor = FunctionRegistry.descriptor(call.name());
         if (descriptor == null)
         {
@@ -271,10 +222,10 @@ public record ProviderNeeds(boolean library, boolean define, boolean dictionary,
      * ⭐ Wave 1 (D-W1-3 (iv)/(v)) — the <b>typeless dictionary calls</b> of an expression, a view of
      * this reader and never a sibling: every call, nested calls included, that needs a dictionary
      * ({@link #ofCall} answers {@link #dictionary()}) but names no static string-literal type — an
-     * inline {@code OperationType} call with a blank {@code external_dictionary_type}, or a
-     * registry function whose type argument is absent, unbindable or not a string literal. The
-     * loader makes each a load error, because the gate is decided before any row is read and a type
-     * known only at lookup time could not be gated at all.
+     * inline call with a blank {@code external_dictionary_type}, or a registry function whose type
+     * argument is absent, unbindable or not a string literal. The loader makes each a load error,
+     * because the gate is decided before any row is read and a type known only at lookup time could
+     * not be gated at all.
      *
      * @param expr
      *            the expression to walk
@@ -335,7 +286,9 @@ public record ProviderNeeds(boolean library, boolean define, boolean dictionary,
         FunctionDescriptor descriptor = FunctionRegistry.descriptor(call.name());
         if (descriptor == null)
         {
-            return true; // an inline operation: fromCall already accepted it in ofCall
+            // Unreachable from collectTypeless (a dictionary need comes only from a registered
+            // descriptor); an unregistered name is the compiler's own "no native function" error.
+            return true;
         }
         try
         {

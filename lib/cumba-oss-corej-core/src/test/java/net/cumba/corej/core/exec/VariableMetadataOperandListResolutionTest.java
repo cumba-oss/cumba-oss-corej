@@ -6,12 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.Operation;
-import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
-import net.cumba.corej.core.model.RuleCore;
-import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
@@ -35,8 +30,8 @@ import org.junit.jupiter.api.Test;
  * Pre-Fix-#64, the per-variable {@code partialEvaluateVariable} fold called
  * {@code evaluateLeafAgainstMetadata} with a {@code varMeta} map that only carried
  * {@code VariableMetadataResult} entries from {@code ctx.getVariables()}. Plain
- * {@code List<String>} Operation results (like {@code $allowed_variables} from
- * {@code get_model_column_order}) were not copied through, so the metadata-leaf evaluator's
+ * {@code List<String>} operation results, as bindings were then (like {@code $allowed_variables}
+ * from {@code get_model_column_order}) were not copied through, so the metadata-leaf evaluator's
  * {@code metadata.containsKey(targetStr)} check missed them. {@code targetStr} stayed as the
  * literal {@code "$allowed_variables"} text and the operator's substring fallback
  * {@code !targetStr.contains(metaStr)} returned true for every column — one violation per column,
@@ -45,39 +40,29 @@ import org.junit.jupiter.api.Test;
 class VariableMetadataOperandListResolutionTest
 {
 
-    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
-    {
-        return new net.cumba.corej.core.model.CheckConditionExpression(
-                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
-    }
-
-
     private static Rule allowedVariablesRule()
     {
-        // Operations: $allowed_variables = get_model_column_order
-        Operation op = new Operation();
-        op.setId("$allowed_variables");
-        op.setOperator("get_model_column_order");
-
-        // Check: { all: [{ name: "variable_name", op: "is_not_contained_by",
-        // value: "$allowed_variables" }] }
-        net.cumba.corej.core.model.CheckConditionExpression leaf = expr(
-                "varname() not in $allowed_variables");
-
-        Rule rule = new Rule();
-        RuleCore core = new RuleCore();
-        core.setId("FDA-SD0058");
-        rule.setCore(core);
-        rule.setOperations(List.of(op));
-        rule.setCheck(new CheckConditionAll(List.of(leaf)));
-        rule.setSensitivity(Sensitivity.DATASET);
-        Outcome outcome = new Outcome();
-        outcome.setMessage("Variables not listed in the Model List of Allowed Variables for "
-                + "Observation Class should be in SUPPQUAL.");
-        outcome.setOutputVariables(List.of("variable_name", "$allowed_variables"));
-        rule.setOutcome(outcome);
-        net.cumba.corej.core.RulePackageLoader.installNativeExpr(rule);
-        return rule;
+        // Bindings: $allowed_variables = get_model_column_order() — a registry function since wave
+        // 4, so the rule is loaded the way the corpus loads it (the binding is compiled and routed
+        // by the loader). Check: varname() not in $allowed_variables (FDA-SD0058's shape).
+        String json = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"FDA-SD0058\"},"
+                + "\"Sensitivity\":\"Dataset\"," + "\"Bindings\":[{\"name\":\"$allowed_variables\","
+                + "\"expression\":\"get_model_column_order()\"}],"
+                + "\"Check\":{\"expression\":\"varname() not in $allowed_variables\"},"
+                + "\"Outcome\":{\"Message\":\"Variables not listed in the Model List of Allowed"
+                + " Variables for Observation Class should be in SUPPQUAL.\","
+                + "\"Output_Variables\":[\"variable_name\",\"$allowed_variables\"]}}}}";
+        try
+        {
+            Rule rule = net.cumba.corej.core.RulePackageLoader.loadFromString(json).getRules()
+                    .get("x");
+            org.junit.jupiter.api.Assertions.assertNull(rule.getLoadError(), rule.getLoadError());
+            return rule;
+        }
+        catch (java.io.IOException e)
+        {
+            throw new IllegalStateException(e);
+        }
     }
 
 
@@ -255,8 +240,9 @@ class VariableMetadataOperandListResolutionTest
     @Test
     void emptyAllowedList_skipsRule()
     {
-        // When get_model_column_order returns an empty list, OperationExecutor maps it to
-        // LIBRARY_NOT_AVAILABLE so RuleRunner Phase 2a.1 reports the rule SKIPPED. This is
+        // When get_model_column_order answers an empty list, the function (LibraryLists; the
+        // retired OperationExecutor before wave 4) raises its unusable-answer (formerly
+        // LIBRARY_NOT_AVAILABLE) so RuleRunner reports the rule SKIPPED. This is
         // existing Fix #42 Phase 1 behaviour — the test pins it down so a future change to the
         // SKIP-on-empty contract has to update both this test and the operator dispatch.
         IDataTable table = MockTable.of().col("STUDYID", "S001").build();

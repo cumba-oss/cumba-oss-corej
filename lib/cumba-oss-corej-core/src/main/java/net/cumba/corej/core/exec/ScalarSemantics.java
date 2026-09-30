@@ -27,10 +27,10 @@ import org.jspecify.annotations.Nullable;
  * epsilon), the structural ISO-8601 date-prefix validators, the integer check and the ISO-8601
  * duration grammar. They exist so that every caller answers the same scalar question the same way:
  * the native expression evaluator (package {@code net.cumba.corej.core.expr.eval}, chiefly
- * {@code Primitives}), the {@code Operations}/{@code Bindings} pre-pass in
- * {@code OperationExecutor}, the lookup and merge machinery ({@code DatasetLookup},
- * {@code ValueResolver}, {@code ChildMatchPreMerger}, {@code GroupSemantics}) and
- * {@link OperatorRegistry}'s name-existence probes. The {@code ScalarSemantics*Test} suites — plus
+ * {@code Primitives}), the {@code Operations}/{@code Bindings} pre-pass in the registry functions,
+ * the lookup and merge machinery ({@code DatasetLookup}, {@code ValueResolver},
+ * {@code ChildMatchPreMerger}, {@code GroupSemantics}) and {@link OperatorRegistry}'s
+ * name-existence probes. The {@code ScalarSemantics*Test} suites — plus
  * {@code NumericToleranceTest} and {@code IsoDateLayoutDifferentialTest} — pin these primitives
  * directly.
  * </p>

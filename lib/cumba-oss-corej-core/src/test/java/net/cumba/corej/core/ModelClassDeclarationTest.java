@@ -4,27 +4,23 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import net.cumba.corej.core.expr.RuleDefinitionException;
-import net.cumba.corej.core.expr.convert.OperationExpressionParser;
 import net.cumba.corej.core.metadata.SdtmObservationClasses;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import org.junit.jupiter.api.Test;
 
 /**
- * EC-85 — the {@code model_class} declaration on {@code get_model_filtered_variables}, on all three
- * authoring surfaces (field form, expression form, inline call). The two rejections — a
- * non-consuming operator and an unknown class spelling — land on the rule's {@code loadError}
- * channel, and an accepted value is normalised to the resolver's spelling (D-5).
+ * EC-85's {@code model_class} vocabulary on {@code get_model_filtered_variables}. Until wave 4 the
+ * operation parser's {@code validateModelClass} owned it; since {@code PLAN-list-functions}
+ * (D-W4-3) the walk is a registry function, the vocabulary is {@code ExprCompiler}'s compile seam
+ * (matched after the same normalisation the function applies), and a function that does not declare
+ * the parameter refuses it by construction.
  */
 class ModelClassDeclarationTest
 {
 
-    /** Loads a one-rule package through the production loader and returns the rule. */
     private static Rule load(String ruleJson)
     {
         try
@@ -40,94 +36,63 @@ class ModelClassDeclarationTest
     }
 
 
-    private static Operation normalize(String expression)
+    private static Rule binding(String expression)
     {
-        Operation op = new Operation();
-        op.setId("$x");
-        op.setExpression(expression);
-        return OperationExpressionParser.normalize(op);
+        return load(
+                "{\"Core\":{\"Id\":\"X-1\"},\"Bindings\":[{\"name\": \"$ev\", \"expression\": \""
+                        + expression.replace("\"", "\\\"")
+                        + "\"}],\"Check\":{\"expression\":\"varname() in $ev\"}}");
     }
 
 
     @Test
-    void expressionForm_acceptsAndNormalisesAKnownClass()
+    void aKnownClassLoadsInAnySpellingTheNormaliserAccepts()
     {
-        Operation op = normalize("get_model_filtered_variables(model_class=\"events\")");
-        assertEquals("get_model_filtered_variables", op.getOperator());
-        assertEquals("EVENTS", op.getModelClass());
-        assertEquals("FINDINGS ABOUT",
-                normalize("get_model_filtered_variables(model_class=\" Findings About \")")
-                        .getModelClass());
+        assertNull(binding("get_model_filtered_variables(model_class=\"events\")").getLoadError());
+        assertNull(binding("get_model_filtered_variables(model_class=\" Findings About \")")
+                .getLoadError());
         // Composes with the role filter — the filter tail is shared.
-        Operation composed = normalize(
-                "get_model_filtered_variables(model_class=\"EVENTS\", key_name=\"role\","
-                        + " key_value=\"Topic\")");
-        assertEquals("EVENTS", composed.getModelClass());
-        assertEquals("role", composed.getKeyName());
-        assertEquals("Topic", composed.getKeyValue());
+        Rule composed = binding("get_model_filtered_variables(model_class=\"EVENTS\","
+                + " key_name=\"role\", key_value=\"Topic\")");
+        assertNull(composed.getLoadError());
+        assertNotNull(composed.compiledBinding("$ev"), "a compiled binding, not an operation");
     }
 
 
     @Test
-    void expressionForm_rejectsAnUnknownClassSpelling()
+    void anUnknownClassSpellingIsALoadError()
     {
-        RuleDefinitionException ex = assertThrows(RuleDefinitionException.class,
-                () -> normalize("get_model_filtered_variables(model_class=\"EVENT\")"));
-        assertTrue(ex.getMessage().contains("unknown `model_class` value `EVENT`"),
-                ex.getMessage());
-        assertTrue(ex.getMessage().contains("EVENTS"), ex.getMessage());
+        String error = binding("get_model_filtered_variables(model_class=\"EVENT\")")
+                .getLoadError();
+        assertNotNull(error);
+        assertTrue(error.contains("unknown `model_class` value `EVENT`"), error);
+        assertTrue(error.contains("EVENTS"), error);
+        String twice = binding(
+                "get_model_filtered_variables(model_class=\"special-purpose datasets\")")
+                        .getLoadError();
+        assertNotNull(twice, "normalised once, never twice");
+        assertTrue(twice.contains("unknown `model_class`"), twice);
     }
 
 
     @Test
-    void expressionForm_rejectsANonConsumingOperator()
+    void aFunctionThatDoesNotDeclareTheParameterRefusesIt()
     {
-        RuleDefinitionException ex = assertThrows(RuleDefinitionException.class,
-                () -> normalize("get_model_column_order(model_class=\"EVENTS\")"));
-        assertTrue(
-                ex.getMessage()
-                        .contains("`model_class` is only valid on operation"
-                                + " `get_model_filtered_variables`, not `get_model_column_order`"),
-                ex.getMessage());
+        String error = binding("get_model_column_order(model_class=\"EVENTS\")").getLoadError();
+        assertNotNull(error);
+        assertTrue(error.contains("model_class"), error);
     }
 
 
     @Test
-    void fieldForm_isValidatedAndNormalisedByTheLoader()
-    {
-        Rule ok = load(
-                "{\"Core\":{\"Id\":\"X-1\"},\"Bindings\":[{\"name\": \"$ev\", \"expression\": \"get_model_filtered_variables(model_class=\\\"events\\\")\"}],"
-                        + "\"Check\":{\"expression\":\"varname() in $ev\"}}");
-        assertNull(ok.getLoadError());
-        assertNotNull(ok.getOperations());
-        assertEquals("EVENTS", ok.getOperations().get(0).getModelClass());
-
-        Rule badClass = load(
-                "{\"Core\":{\"Id\":\"X-1\"},\"Bindings\":[{\"name\": \"$ev\", \"expression\": \"get_model_filtered_variables(model_class=\\\"EVENT\\\")\"}],"
-                        + "\"Check\":{\"expression\":\"varname() in $ev\"}}");
-        assertNotNull(badClass.getLoadError());
-        assertTrue(badClass.getLoadError().contains("unknown `model_class` value"),
-                badClass.getLoadError());
-
-        Rule badOperator = load(
-                "{\"Core\":{\"Id\":\"X-1\"},\"Bindings\":[{\"name\": \"$ev\", \"expression\": \"get_model_column_order(model_class=\\\"EVENTS\\\")\"}],"
-                        + "\"Check\":{\"expression\":\"varname() in $ev\"}}");
-        assertNotNull(badOperator.getLoadError());
-        assertTrue(badOperator.getLoadError().contains("only valid on operation"),
-                badOperator.getLoadError());
-    }
-
-
-    @Test
-    void inlineForm_isValidatedByTheLoader()
+    void theInlineFormIsValidatedAtLoadToo()
     {
         Rule bad = load("{\"Core\":{\"Id\":\"X-1\"},\"Check\":{\"expression\":"
-                + "\"varname() in get_model_filtered_variables(model_class=\\\"EVENT\\\")\"}}");
+                + "\"AETERM in get_model_filtered_variables(model_class=\\\"EVENT\\\")\"}}");
         assertNotNull(bad.getLoadError());
         assertTrue(bad.getLoadError().contains("unknown `model_class` value"), bad.getLoadError());
-
         Rule ok = load("{\"Core\":{\"Id\":\"X-1\"},\"Check\":{\"expression\":"
-                + "\"varname() in get_model_filtered_variables(model_class=\\\"EVENTS\\\")\"}}");
+                + "\"AETERM in get_model_filtered_variables(model_class=\\\"EVENTS\\\")\"}}");
         assertNull(ok.getLoadError());
     }
 
@@ -135,7 +100,7 @@ class ModelClassDeclarationTest
     @Test
     void theVocabularyIsTheResolversOwn()
     {
-        // The parser and MetadataLibraryProvider read ONE set of names, normalised ONE way.
+        // The seam and MetadataLibraryProvider read ONE set of names, normalised ONE way.
         for (String name : SdtmObservationClasses.DETECTABLE)
         {
             assertTrue(SdtmObservationClasses.isDetectable(name), name);
@@ -147,14 +112,11 @@ class ModelClassDeclarationTest
         assertEquals("FINDINGS ABOUT", SdtmObservationClasses.normalise("findings about"));
         assertNull(SdtmObservationClasses.normalise(null));
         // Every allowed name is a fixed point of normalise(), so the load-time validation and the
-        // resolver's in-walk normalisation cannot disagree (review finding: "special-purpose
-        // datasets" normalises to SPECIAL-PURPOSE and then AGAIN to SPECIAL PURPOSE).
+        // resolver's in-walk normalisation cannot disagree.
         for (String name : SdtmObservationClasses.MODEL_CLASS_NAMES)
         {
             assertEquals(name, SdtmObservationClasses.normalise(name), name);
         }
-        assertThrows(RuleDefinitionException.class, () -> normalize(
-                "get_model_filtered_variables(model_class=\"special-purpose datasets\")"));
         assertFalse(SdtmObservationClasses.isDetectable(null));
         assertFalse(SdtmObservationClasses.isDetectable("SPECIAL PURPOSE"));
     }

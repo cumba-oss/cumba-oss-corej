@@ -214,4 +214,23 @@ class MatchFilterExecutionTest
                 inventory(study(primary, ae())), "DM", null, null, null);
         assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus(), result.getStatusMessage());
     }
+
+
+    @Test
+    @DisplayName("a filter reading the study inventory sees the run's datasets (W4 L3)")
+    void aFilterReadingTheStudyInventorySeesTheRunsDatasets() throws IOException
+    {
+        // Combined review of runbook W2–W8, W4 L3: the filter's sub-context carried no resolver,
+        // so dataset_names() hit the loud no-inventory arm (D-W4-5) and the rule ERRORed. With the
+        // run's study handed through it answers as filterComposesWithTheFlag does. RED before the
+        // fix: status ERROR.
+        Rule r = rule(aeJoin("AEOUT == \"FATAL\" and \"DM\" in dataset_names()"),
+                "AE._matched_ and DTHFL != \"Y\"");
+        assertNull(r.getLoadError(), "the filter loads: " + r.getLoadError());
+        IDataTable primary = dm();
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, ae())), "DM", null, null, null);
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        assertEquals(List.of("P1"), firedSubjects(result, primary));
+    }
 }

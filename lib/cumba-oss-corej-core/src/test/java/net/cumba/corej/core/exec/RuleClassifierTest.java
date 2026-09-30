@@ -39,8 +39,8 @@ class RuleClassifierTest
         {
             Rule bound = MAPPER.readValue(json, Rule.class);
             // An external binder must materialise the Bindings itself (7b) — see
-            // RulePackageLoader.normalizeOperations' javadoc.
-            RulePackageLoader.normalizeOperations(bound);
+            // RulePackageLoader.materialiseBindings' javadoc.
+            RulePackageLoader.materialiseBindings(bound);
             return bound;
         }
         catch (Exception e)
@@ -315,7 +315,8 @@ class RuleClassifierTest
         @Test
         void aRecordScopedOperationMakesItRecord()
         {
-            // `row_max` returns a GroupedResult — grounded from OperationExecutor.
+            // `row_max` is a per-row registry function (a GroupedResult from the operation
+            // executor before wave 3 ported it).
             assertEquals(Sensitivity.RECORD, sensitivity(
                     "{\"Bindings\":[{\"name\": \"$last\", \"expression\": \"row_max(name_pattern=\\\"^SE.*DTC$\\\")\"}],\"Check\":{\"all\":[{\"expression\": \"$last == true\"}]}}"));
         }
@@ -653,4 +654,19 @@ class RuleClassifierTest
 
     }
 
+    /**
+     * W5 ({@code PLAN-grouped-aggregate-functions} D-W5-7): a grouped aggregate call in a compiled
+     * binding denotes the usage its operation denoted — a grouped aggregate resolves per primary
+     * row (RECORD), whatever its domain; its foreign columns name no operand of the primary.
+     */
+    @Test
+    void aGroupedAggregateFunctionBindingIsRecordSensitive()
+    {
+        assertEquals(Sensitivity.RECORD, sensitivity("{\"Bindings\":[{\"name\":\"$v\","
+                + "\"expression\":\"max_date(DSSTDTC, domain=\\\"DS\\\", group=[USUBJID])\"}],"
+                + "\"Check\":{\"expression\":\"date(RFXENDTC) != $v\"}}"));
+        assertEquals(Sensitivity.RECORD, sensitivity("{\"Bindings\":[{\"name\":\"$v\","
+                + "\"expression\":\"max(AVAL, group=[USUBJID, PARAMCD], filter=(ABLFL == \\\"Y\\\"))\"}],"
+                + "\"Check\":{\"expression\":\"AVAL != $v\"}}"));
+    }
 }

@@ -16,7 +16,6 @@ import java.util.Map;
 import net.cumba.corej.core.exec.RecordKeyResolver.KeySource;
 import net.cumba.corej.core.exec.RecordKeyResolver.RowKeySpec;
 import net.cumba.corej.core.metadata.CustomDomainWalkFixture;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
@@ -200,13 +199,12 @@ class RecordKeyResolverTest
         assertEquals(List.of("XXTESTCD", "XXCAT", "XXORRES", "VISITNUM", "XXDTC"), names(spec));
         // One definition of the natural-key set: the key is the topic plus exactly what the
         // natural_key_variables operation answers on the same dataset.
-        Operation op = new Operation();
-        op.setId("$nk");
-        op.setOperator("natural_key_variables");
         List<Object> expected = new ArrayList<>();
         expected.add("XXTESTCD");
-        expected.addAll((List<?>) OperationExecutorCalls
-                .execute(List.of(op), xx, NO_RESOLVER, library).get("$nk"));
+        expected.addAll((List<?>) java.util.Objects.requireNonNull(LibraryLists.naturalKeyVariables(
+                net.cumba.corej.core.expr.eval.EvalRun.fullRange(EvaluationContext.builder()
+                        .table(xx).libraryProvider(library).datasetResolver(NO_RESOLVER).build()),
+                List.of()).value(0).resolved()));
         assertEquals(expected, names(spec));
     }
 

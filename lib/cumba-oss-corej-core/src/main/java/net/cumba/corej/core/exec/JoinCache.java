@@ -6,6 +6,7 @@ import java.util.function.Supplier;
 
 import net.cumba.corej.core.exec.DatasetLookup.SharedJoinedIndex;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -98,6 +99,15 @@ public final class JoinCache
 
         private final WildcardForeignColumnCache wildcardColumns;
 
+        private final IdentityWeakCache<String, SuppQnamIndexHolder> suppQnamIndexes;
+
+        /**
+         * The materialised pivot columns ({@link SuppPivot}), keyed by the PARENT table and the
+         * (index, QNAM) pair — once per run, not once per rule (combined review of runbook W2–W8,
+         * XCUT PERF 1: a QNAM column materialised per rule × dataset).
+         */
+        private final IdentityWeakCache<SuppQnamColumnKey, IDataValue[]> suppQnamColumns;
+
         /** A cache for one validation run. */
         public SharedIndexCache()
         {
@@ -116,6 +126,58 @@ public final class JoinCache
             keyMatchIndexes = new IdentityWeakCache<>(aIdentityHash);
             wildcardColumns = new WildcardForeignColumnCache(
                     new IdentityWeakCache<>(aIdentityHash));
+            suppQnamIndexes = new IdentityWeakCache<>(aIdentityHash);
+            suppQnamColumns = new IdentityWeakCache<>(aIdentityHash);
+        }
+
+
+        /**
+         * The parsed qualifier rows of one {@code SUPP--} table, built once per table per run for
+         * the declared SUPP merge ({@link SuppPivot}) and the existence probes
+         * ({@code OperatorRegistry.existsInSuppQnam}); {@code null} when the table has no
+         * {@code QNAM} column.
+         */
+        @Nullable
+        SuppQnamIndex getOrBuildSuppQnamIndex(IDataTable aSupp)
+        {
+            return suppQnamIndexes
+                    .getOrBuild(aSupp, "", _ -> new SuppQnamIndexHolder(SuppQnamIndex.of(aSupp)))
+                    .index();
+        }
+
+
+        int suppQnamIndexBuildCount()
+        {
+            return suppQnamIndexes.buildCount();
+        }
+
+
+        /**
+         * The cells of one pivoted qualifier column of {@code aParent} — {@code aQnam} of
+         * {@code anIndex} resolved against the parent's rows — built once per run through
+         * {@code aBuild} and shared by every rule reading that qualifier of that table.
+         *
+         * @param aParent
+         *            the parent table (identity)
+         * @param anIndex
+         *            the parsed {@code SUPP--} index the column is resolved from (identity)
+         * @param aQnam
+         *            the qualifier name
+         * @param aBuild
+         *            the resolution, run at most once per (parent, index, QNAM)
+         * @return the cells, one per parent row
+         */
+        IDataValue[] getOrBuildSuppQnamColumn(IDataTable aParent, SuppQnamIndex anIndex,
+                String aQnam, Supplier<IDataValue[]> aBuild)
+        {
+            return suppQnamColumns.getOrBuild(aParent, new SuppQnamColumnKey(anIndex, aQnam),
+                    _ -> aBuild.get());
+        }
+
+
+        int suppQnamColumnBuildCount()
+        {
+            return suppQnamColumns.buildCount();
         }
 
 
@@ -239,6 +301,20 @@ public final class JoinCache
      * {@link ConcurrentHashMap}, which itself forbids {@code null} values.
      */
     private record ChildMatchIndexHolder(@Nullable ChildMatchIndex index)
+    {
+    }
+
+
+    private record SuppQnamIndexHolder(@Nullable SuppQnamIndex index)
+    {
+    }
+
+
+    /**
+     * The sub-key of a materialised pivot column: the index (identity — {@link SuppQnamIndex} does
+     * not override {@code equals}) and the qualifier name.
+     */
+    private record SuppQnamColumnKey(SuppQnamIndex index, String qnam)
     {
     }
 

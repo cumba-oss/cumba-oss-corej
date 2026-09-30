@@ -521,8 +521,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
     /**
      * Fix #369 — {@code true} for a provider built by
      * {@link #degraded(IMetadataLibrary, Throwable)}, i.e. one whose CDISC Library product fetch
-     * threw. The provider itself keeps answering truthfully from its study library; it is
-     * {@code OperationExecutor.evalLibrary} that decides a non-library source is not an admissible
+     * threw. The provider itself keeps answering truthfully from its study library; it is the
+     * retired executor's {@code evalLibrary} that decided a non-library source is not an admissible
      * basis for a library-citing rule.
      */
     @Override
@@ -663,8 +663,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * {@code adam-nca-1-0} publishes {@code BASIC DATA STRUCTURE} only as
      * {@code NON-COMPARTMENTAL ANALYSIS}, so a plain BDS dataset has nothing applicable there.
      * Returning {@code List.of()} would say <em>"this structure requires nothing"</em> and pass the
-     * rule vacuously; {@code null} says <em>"no such structure here"</em> and lets
-     * {@code OperationExecutor}'s outer token chain try the next token, then SKIP loudly.
+     * rule vacuously; {@code null} says <em>"no such structure here"</em> and lets the Library
+     * walks' outer token chain try the next token, then SKIP loudly.
      * </p>
      *
      * <p>
@@ -1020,7 +1020,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * {@code findStoredDataStructureByClassName} compared raw {@code class} strings and
      * {@code adamClassForDomain} returned one verbatim — so declaring {@code adam/adam-adae-1-0}
      * made {@code getDatasetClass("ADAE")} answer the raw {@code "ADAE"}, which is in no token
-     * vocabulary any consumer knows ({@code OperationExecutor}'s class-keyed grouping,
+     * vocabulary any consumer knows (the Library walks' class-keyed grouping,
      * {@code LibraryValidator}'s AP-inherit walk, {@code ScopeMatcher.describeClassMismatch}).
      * Factoring it here makes the mapping a single implementation shared by every caller.
      * </p>
@@ -2033,8 +2033,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * PLAN-library-variable-key-name-breadth.md P3, because both engines filter these rows by an
      * arbitrary caller-supplied {@code key_name} and a field the row omits makes such a filter
      * match nothing on every dataset, with no diagnostic (the FDA-SD1078 shape). A field the source
-     * did not publish stays absent from the map, which is what the runtime diagnostic
-     * ({@code OperationExecutor.warnUnservedKeyName}) reads.
+     * did not publish stays absent from the map, which is what the runtime diagnostic (the retired
+     * executor's {@code warnUnservedKeyName}) reads.
      * </p>
      *
      * <p>
@@ -3363,7 +3363,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * ⛔⛔ <b>Phase 11 finding F1 — this returned {@code ds.className()} verbatim.</b> Declaring
      * {@code -mp adam/adam-adae-1-0} therefore made {@code getDatasetClass("ADAE")} answer the raw
      * {@code "ADAE"}, which is in none of {@link AdamDataStructureDetector#STRUCTURE_TOKENS} — so
-     * every consumer of the class token ({@code OperationExecutor}'s class-keyed grouping,
+     * every consumer of the class token (the Library walks' class-keyed grouping,
      * {@code LibraryValidator}'s AP-inherit walk, {@code ScopeMatcher.describeClassMismatch}) saw a
      * token it has no vocabulary for. Before the product could be declared at all the same dataset
      * fell through to the FU-4 {@code ADAM OTHER} sentinel, i.e. declaring the product made the

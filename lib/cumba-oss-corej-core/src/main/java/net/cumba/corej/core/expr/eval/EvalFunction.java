@@ -36,11 +36,10 @@ public interface EvalFunction
      * Kwargs-aware entry point (plan unified-callable-surface §3.1): the compiler invokes this
      * form, passing the call's keyword arguments as <b>raw {@link Expr} nodes</b> — predicate /
      * column kwargs ({@code filter=}, {@code group=}, {@code within=}, …) stay unevaluated so the
-     * function decides how to compile or resolve them, mirroring how
-     * {@code OperationExpressionParser} consumes operation kwargs. Plain functions ignore kwargs:
-     * this {@code default} delegates to {@link #apply(EvalRun, List)}, so every existing
-     * implementation (lambdas included) is unchanged. A kwarg-consuming function overrides this
-     * form instead.
+     * function decides how to compile or resolve them, mirroring how the retired operation parser
+     * consumed operation kwargs. Plain functions ignore kwargs: this {@code default} delegates to
+     * {@link #apply(EvalRun, List)}, so every existing implementation (lambdas included) is
+     * unchanged. A kwarg-consuming function overrides this form instead.
      *
      * @param kwargs
      *            the call's keyword arguments, keyed by kwarg name, in source order; never

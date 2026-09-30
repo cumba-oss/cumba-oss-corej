@@ -2,6 +2,7 @@ package net.cumba.corej.core.expr.typed;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -14,8 +15,8 @@ import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.typed.ExprType.Primitive;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.MatchDataset;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.datatable.report.Severity;
@@ -60,6 +61,16 @@ class StageACheckerTest
         return report.typedLevels().get(Severity.ERROR);
     }
 
+
+    /**
+     * A compiled binding {@code name} over {@code source} — the one kind of binding since runbook
+     * W8 (the declared operation records these tests used to build went with the carrier).
+     */
+    private static CompiledBinding binding(String name, String source)
+    {
+        return new CompiledBinding(name, CheckExpressionParser.parse(source), List.of(), null);
+    }
+
     // ------------------------------------------------------------------
     // Typed AST shape
     // ------------------------------------------------------------------
@@ -99,7 +110,7 @@ class StageACheckerTest
 
 
     @Test
-    void aGroupedInlineOperationCarriesGroupGranularity()
+    void aGroupedInlineCallCarriesGroupGranularity()
     {
         TypedExpr root = root(check("max(AESEQ, group=[USUBJID]) == AESEQ"));
         // group(K) ⊔ record = record (the comparison is per row)
@@ -114,13 +125,10 @@ class StageACheckerTest
     @Test
     void aGroupedBindingReferenceCarriesGroupGranularity()
     {
+        // (max is a registry function since runbook W5: the grouped binding is a COMPILED one.)
         Rule rule = new Rule();
-        Operation op = new Operation();
-        op.setId("$m");
-        op.setOperator("max");
-        op.setName("AESEQ");
-        op.setGroup(List.of("USUBJID"));
-        rule.setOperations(List.of(op));
+        rule.setCompiledBindings(List.of(new CompiledBinding("$m",
+                CheckExpressionParser.parse("max(AESEQ, group=[USUBJID])"), List.of(), null)));
         TypedExpr root = root(check(rule, "$m == AESEQ"));
         assertEquals(new Granularity.Group(java.util.Set.of("USUBJID")),
                 root.children().get(0).level().granularity());
@@ -223,22 +231,13 @@ class StageACheckerTest
     void aForwardOrSelfBindingReferenceIsAStageAError()
     {
         Rule rule = new Rule();
-        Operation first = new Operation();
-        first.setId("$a");
-        first.setExpression("$b");
-        Operation second = new Operation();
-        second.setId("$b");
-        second.setOperator("min");
-        second.setName("AESEQ");
-        rule.setOperations(List.of(first, second));
+        rule.setCompiledBindings(
+                List.of(binding("$a", "$b"), binding("$b", "max(AESEQ, group=[USUBJID])")));
         assertEquals(List.of(StageAErrorKind.FORWARD_OR_CYCLIC_BINDING),
                 kinds(check(rule, "$a == 1")));
 
         Rule selfRule = new Rule();
-        Operation self = new Operation();
-        self.setId("$a");
-        self.setExpression("$a");
-        selfRule.setOperations(List.of(self));
+        selfRule.setCompiledBindings(List.of(binding("$a", "$a")));
         StageAReport report = check(selfRule, "$a == 1");
         assertEquals(List.of(StageAErrorKind.FORWARD_OR_CYCLIC_BINDING), kinds(report));
         assertTrue(report.findings().get(0).message().contains("itself"));
@@ -249,14 +248,8 @@ class StageACheckerTest
     void backwardBindingReferencesAreClean()
     {
         Rule rule = new Rule();
-        Operation first = new Operation();
-        first.setId("$a");
-        first.setOperator("max");
-        first.setName("AESEQ");
-        Operation second = new Operation();
-        second.setId("$b");
-        second.setExpression("$a");
-        rule.setOperations(List.of(first, second));
+        rule.setCompiledBindings(
+                List.of(binding("$a", "max(AESEQ, group=[USUBJID])"), binding("$b", "$a")));
         assertEquals(List.of(), check(rule, "$b == 1").findings());
     }
 
@@ -533,10 +526,7 @@ class StageACheckerTest
                 kinds(check(rule, "SUPP--.QVAL == \"x\"")), "SUPP--.QVAL in a Check");
         assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
                 kinds(check(rule, "SUPP--.**VAL == \"x\"")), "SUPP--.**VAL in a Check");
-        Operation op = new Operation();
-        op.setId("$q");
-        op.setExpression("SUPP--.QVAL");
-        rule.setOperations(List.of(op));
+        rule.setCompiledBindings(List.of(binding("$q", "SUPP--.QVAL")));
         assertTrue(
                 kinds(check(rule, "$q == \"x\"")).contains(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
                 "SUPP--.QVAL in a Binding");
@@ -544,7 +534,7 @@ class StageACheckerTest
         rule.getMatchDatasets().get(0).setChild(Boolean.FALSE);
         assertFalse(
                 kinds(check(rule, "$q == \"x\"")).contains(StageAErrorKind.DOTTED_REF_CHILD_ENTRY));
-        rule.setOperations(null);
+        rule.setCompiledBindings(null);
         assertFalse(kinds(check(rule, "SUPP--.QVAL == \"x\""))
                 .contains(StageAErrorKind.DOTTED_REF_CHILD_ENTRY));
     }
@@ -621,10 +611,7 @@ class StageACheckerTest
         // through a binding is the same refusal.
         Rule rule = ruleJoining("AE", null, "USUBJID", "IDVAR", "IDVARVAL");
         rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
-        Operation op = new Operation();
-        op.setId("$smie");
-        op.setExpression("AE.AESMIE");
-        rule.setOperations(List.of(op));
+        rule.setCompiledBindings(List.of(binding("$smie", "AE.AESMIE")));
         StageAReport report = check(rule, "$smie != \"Y\"");
         assertTrue(kinds(report).contains(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
                 "the binding's AE.AESMIE reads the Child entry: " + report.findings());
@@ -704,11 +691,7 @@ class StageACheckerTest
     {
         // Bindings carry 0 dotted refs in the shipped corpus, so this arm too is instrument-only.
         Rule rule = ruleJoining("AE", "left", "USUBJID");
-        Operation op = new Operation();
-        op.setId("$x");
-        op.setOperator("max");
-        op.setExpression("DM.AGE");
-        rule.setOperations(List.of(op));
+        rule.setCompiledBindings(List.of(binding("$x", "DM.AGE")));
         StageAReport report = check(rule, "AGE > 0");
         assertTrue(kinds(report).contains(StageAErrorKind.DOTTED_REF_UNDECLARED),
                 String.valueOf(report.findings()));
@@ -741,7 +724,7 @@ class StageACheckerTest
 
 
     @Test
-    void anOperationRefInAFilterIsALeftSideError()
+    void aBindingRefInAFilterIsALeftSideError()
     {
         StageAReport report = check(ruleWithFilter("AEOUT in $fatal_terms"), "not AE._matched_");
         assertEquals(List.of(StageAErrorKind.FILTER_LEFT_REFERENCE), kinds(report));
@@ -1014,12 +997,9 @@ class StageACheckerTest
         // binding reference meets the §5.2 operator as a date — Review 0's "no edit" sites
         // ($min_ds_dsstdtc against date(DSSTDTC)) stay legal…
         Rule rule = new Rule();
-        Operation op = new Operation();
-        op.setId("$min_ds_dsstdtc");
-        op.setOperator("min_date");
-        op.setName("DSSTDTC");
-        op.setGroup(List.of("USUBJID"));
-        rule.setOperations(List.of(op));
+        rule.setCompiledBindings(List.of(new CompiledBinding("$min_ds_dsstdtc",
+                CheckExpressionParser.parse("min_date(DSSTDTC, group=[USUBJID])"), List.of(),
+                null)));
         StageAReport report = check(rule, "date(DSSTDTC) == $min_ds_dsstdtc");
         assertEquals(List.of(), report.findings());
         assertEquals(Primitive.DATE, root(report).children().get(1).type());
@@ -1130,4 +1110,43 @@ class StageACheckerTest
         StageAChecker.runAndApply(new Rule(), levels(CheckExpressionParser.parse("empty(AEOUT)")));
     }
 
+
+    /**
+     * Combined review of runbook W2–W8, XCUT H1: a declared row reader
+     * ({@code FunctionDescriptor.readingRows} — {@code row_max}, whose only operand is a static
+     * pattern) is at least RECORD level, the same flag {@code DomainScan} reads.
+     */
+    @Test
+    void aDeclaredRowReaderIsRecordLevelWithoutAColumnOperand()
+    {
+        StageAReport report = check("row_max(name_pattern=\"^TR..EDT$\") != \"\"");
+        assertEquals(Level.RECORD, root(report).level());
+        assertEquals(List.of(), kinds(report));
+    }
+
+
+    /**
+     * Combined review of runbook W2–W8, XCUT L3: an ungrouped {@code read_value(…, domain=X)} reads
+     * ANOTHER dataset and answers one value for the run — {@code DATASET}, as {@code DomainScan}
+     * classifies it. Pre-fix Stage A joined its column arguments and typed it {@code RECORD}, so
+     * the two calculi disagreed on the same call.
+     */
+    @Test
+    void anUngroupedForeignReadValueIsDatasetLevelAsDomainScanSays()
+    {
+        String source = "read_value(TSVAL, domain=TS, filter=(TSPARMCD == \"SPECIES\"),"
+                + " mode=\"FIRST\") == \"RAT\"";
+        assertEquals(net.cumba.corej.core.expr.eval.Domain.DATASET,
+                net.cumba.corej.core.expr.eval.DomainScan.infer(CheckExpressionParser.parse(source),
+                        net.cumba.corej.core.expr.eval.BindingDomains.NONE),
+                "the DomainScan side of the agreement");
+        assertEquals(Level.DATASET, root(check(source)).level(),
+                "Stage A must agree: the foreign read is one value for the run, not per row");
+        // The grouped arm keeps precedence: a grouped foreign read is per primary group, never
+        // folded to one value for the run by the new arm.
+        String grouped = "read_value(TSVAL, domain=TS, filter=(TSPARMCD == \"SPECIES\"),"
+                + " mode=\"FIRST\", group=[USUBJID]) == \"RAT\"";
+        assertNotEquals(Level.DATASET, root(check(grouped)).level(),
+                "a grouped read_value keeps its group(K) granularity");
+    }
 }

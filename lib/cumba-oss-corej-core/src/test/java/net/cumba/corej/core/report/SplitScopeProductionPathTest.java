@@ -9,8 +9,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import net.cumba.corej.core.exec.DatasetIdentity;
 import net.cumba.corej.core.exec.MetadataProvider;
-import net.cumba.corej.core.exec.OperationExecutor;
 import net.cumba.corej.core.metadata.CdiscDomainResolver;
 import net.cumba.corej.core.metadata.MetadataKeys;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
@@ -46,12 +46,12 @@ import org.junit.jupiter.api.Test;
  * ⛔ <b>Production could never reach that path.</b> {@code LibraryValidator} resolved one name —
  * {@code CdiscDomainResolver.cdiscDomainOf(table)} — and handed it to
  * {@code DatasetRuleResolver.setDomainName}; the resolver passed <em>that</em> value as
- * {@code domainName} and {@code OperationExecutor.unsplitNameFromData(table)} as
- * {@code unsplitName}. <b>Both derivations read the row-0 {@code DOMAIN} cell first and return
- * it</b>, so for every dataset carrying a {@code DOMAIN} column the two arguments were equal by
- * construction: {@code isSplit} was permanently {@code false}, {@code Include_Split_Datasets} could
- * never match on either leg, and the member-name leg of {@code Include}/{@code Exclude} was dead.
- * No test saw it, because no test went through the caller.
+ * {@code domainName} and {@code DatasetIdentity.unsplitNameFromData(table)} as {@code unsplitName}.
+ * <b>Both derivations read the row-0 {@code DOMAIN} cell first and return it</b>, so for every
+ * dataset carrying a {@code DOMAIN} column the two arguments were equal by construction:
+ * {@code isSplit} was permanently {@code false}, {@code Include_Split_Datasets} could never match
+ * on either leg, and the member-name leg of {@code Include}/{@code Exclude} was dead. No test saw
+ * it, because no test went through the caller.
  * </p>
  *
  * <p>
@@ -250,13 +250,13 @@ class SplitScopeProductionPathTest
         assertEquals(SPLIT_MEMBER, split.getMetaData().getName());
         assertEquals(DOMAIN_CODE, CdiscDomainResolver.cdiscDomainOf(split),
                 "the DOMAIN column is what makes LBCHEM a split of LB");
-        assertEquals(DOMAIN_CODE, OperationExecutor.unsplitNameFromData(split),
+        assertEquals(DOMAIN_CODE, DatasetIdentity.unsplitNameFromData(split),
                 "the canonical base is data-derived, not guessed from the name");
         assertNotEquals(CdiscDomainResolver.cdiscDomainOf(split), split.getMetaData().getName(),
                 "the fixture must be a REAL split — if these coincide this class measures nothing");
         // ⛔ D125a in one assertion: the two derivations are interchangeable, so a caller that used
         // either one twice got isSplit == false for free.
-        assertEquals(OperationExecutor.unsplitNameFromData(split),
+        assertEquals(DatasetIdentity.unsplitNameFromData(split),
                 CdiscDomainResolver.cdiscDomainOf(split),
                 "both derivations read row-0 DOMAIN first — that is why the conflation was silent");
 

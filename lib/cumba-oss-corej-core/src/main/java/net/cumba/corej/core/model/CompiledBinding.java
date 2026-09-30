@@ -7,26 +7,24 @@ import net.cumba.corej.core.expr.eval.Domain;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A {@code Bindings:} entry whose expression is <b>not</b> a single top-level {@link OperationType}
- * call — a registry-function call, a column or dotted reference, arithmetic, a boolean expression,
- * a nested operation call or a reference to an earlier binding ({@code PLAN-binding-expressions}
- * §2). It is compiled exactly like the {@code Check} and its value is visible everywhere a binding
- * is visible (SPEC §3.2).
+ * A {@code Bindings:} entry, parsed once — a registry-function call, a column or dotted reference,
+ * arithmetic, a boolean expression or a reference to an earlier binding
+ * ({@code PLAN-binding-expressions} §2). It is compiled exactly like the {@code Check} and its
+ * value is visible everywhere a binding is visible (SPEC §3.2). Since runbook W8
+ * ({@code PLAN-retire-operation-surface}) it is the ONE kind of binding: the operation record that
+ * a single top-level operation call used to materialise went with the retired carrier.
  *
  * <p>
  * <b>Runtime-only.</b> Materialised from the authored {@link Binding} by
- * {@code RulePackageLoader.normalizeOperations}, never serialised: the authoring surface stays
+ * {@code RulePackageLoader.materialiseBindings}, never serialised: the authoring surface stays
  * {@code name:} + {@code expression:}.
  * </p>
  *
  * <p>
- * <b>Why {@link #predecessors} and not an index.</b> Operation bindings live in
- * {@code Rule.getOperations()}, which several passes rewrite after load — the two load-time
- * inliners <em>drop</em> entries, the specialiser and the expanders copy the list. An absolute
- * authored index would shift under a drop and put a compiled binding after an operation authored
- * later than it (which the forward-reference check would then misread). The names of the bindings
- * authored before this one survive every one of those rewrites, so {@link Rule#bindingOrder()}
- * places the binding directly after the last of them still present.
+ * <b>Why {@link #predecessors} and not an index.</b> The names of the bindings authored before this
+ * one are what the forward-reference check (SPEC §3.2, stage A) and every ordering reader consult;
+ * they survive the specialiser's and the expanders' copies of the list, where an absolute authored
+ * index would not.
  * </p>
  *
  * @param name
@@ -42,7 +40,7 @@ import org.jspecify.annotations.Nullable;
  *            {@code null} until then
  */
 public record CompiledBinding(String name, Expr expression, List<String> predecessors,
-        @Nullable Domain domain) implements BoundBinding
+        @Nullable Domain domain)
 {
 
     /**
@@ -85,9 +83,9 @@ public record CompiledBinding(String name, Expr expression, List<String> predece
 
     /**
      * Whether the binding's value varies per row or per variable — {@code true} when its derived
-     * domain demands a cursor, and conservatively {@code true} while no domain is installed. An
-     * operation (dataset-level by construction) may read only a binding for which this is
-     * {@code false} (§5.0's hand-over contract).
+     * domain demands a cursor, and conservatively {@code true} while no domain is installed. A
+     * reader that takes the binding as a dataset-level list ({@code minus}) may read only a binding
+     * for which this is {@code false} (§5.0's hand-over contract).
      *
      * @return whether the value needs a cursor
      */

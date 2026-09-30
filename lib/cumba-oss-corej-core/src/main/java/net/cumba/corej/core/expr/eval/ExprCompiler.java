@@ -20,15 +20,14 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.cumba.corej.core.exec.ArithmeticSemantics;
 import net.cumba.corej.core.exec.BindingValue;
+import net.cumba.corej.core.exec.DatasetIdentity;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.ExpressionResultCache;
 import net.cumba.corej.core.exec.GroupSemantics;
-import net.cumba.corej.core.exec.GroupedResult;
 import net.cumba.corej.core.exec.JoinLookup;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.exec.OperandSubstitutor;
-import net.cumba.corej.core.exec.OperationExecutor;
 import net.cumba.corej.core.exec.OperatorRegistry;
 import net.cumba.corej.core.exec.ScalarSemantics;
 import net.cumba.corej.core.exec.VariableMetadataResult;
@@ -37,13 +36,10 @@ import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.corej.core.expr.ast.Expr;
-import net.cumba.corej.core.expr.convert.OperationExpressionParser;
 import net.cumba.corej.core.metadata.CdiscDomainResolver;
 import net.cumba.corej.core.metadata.DefineMetadataListCodec;
 import net.cumba.corej.core.metadata.VlmResolver;
 import net.cumba.corej.core.model.NextRecordRelation;
-import net.cumba.corej.core.model.Operation;
-import net.cumba.corej.core.model.OperationType;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
@@ -655,75 +651,6 @@ public final class ExprCompiler
     }
 
 
-    /**
-     * Whether an operation may join the unified boolean surface (boolean position and
-     * {@code == true/false} via the BoolPlan path): it must be boolean-valued <em>and</em>
-     * non-library-dependent. {@code domain_is_custom} is excluded: it is library-dependent, so
-     * without a Library it resolves to the {@code LIBRARY_NOT_AVAILABLE} sentinel — which under a
-     * {@code not}/{@code invert} would mis-fire every row — and its §9.C skip-gate only exists on
-     * converted Form-B rules, not an inline Form-A use. It keeps its operand-position
-     * {@code == true/false} behaviour unchanged.
-     *
-     * <p>
-     * ⚠ This paragraph used to claim that {@code domain_is_custom} was the only boolean-valued
-     * operation and that the predicate therefore admitted <b>none</b>. That was already untrue when
-     * written: {@code variable_is_null} (T5a) is boolean-valued and library-independent, so it has
-     * been admitted all along. The admitted set is now {@code variable_is_null} and
-     * {@code variable_exists} — read it off {@link OperationExecutor#isBooleanValued} minus
-     * {@link OperationExecutor#isLibraryDependent}, never off this prose.
-     * </p>
-     *
-     * <p>
-     * ⚑ {@code variable_exists} is admitted here only as a consequence of being boolean-valued; it
-     * is <b>not</b> the intended way to test column existence. Existence is a check function
-     * ({@code var_exists(X)} / {@code var_exists("D.X")}, see
-     * {@code plans/done/PLAN-variable-exists-cross-dataset.md}) and the operation exists to carry
-     * the answer into {@code Output_Variables}
-     * ({@code plans/done/PLAN-retired-operators-as-operations.md}). The two agree by construction —
-     * {@code OperationExecutor.evalVariableExists} reads the same facts — so an inline use here
-     * cannot disagree with the function; it is merely a longer way to say the same thing.
-     * </p>
-     */
-    private static boolean isUnifiableBooleanOperation(@Nullable OperationType type)
-    {
-        return OperationExecutor.isBooleanValued(type)
-                && !OperationExecutor.isLibraryDependent(type);
-    }
-
-
-    /**
-     * Bridges an inline boolean <em>operation</em> — compiled by {@link #operationCallPlan} to a
-     * {@link ValuePlan} that broadcasts a {@link Boolean} — to a verdict {@link BitSet}: each row
-     * fires where the operation resolved to {@link Boolean#TRUE}. Such an operation is a total
-     * dataset-level broadcast (every row identical, always a {@code Boolean}), so under
-     * {@link #invert} the structural complement is correct. Only operations admitted by
-     * {@link #isUnifiableBooleanOperation} reach here (currently none — see that method); the
-     * {@code null} guard is defensive (the operand plan broadcasts a {@code ConstVector}, never a
-     * Java {@code null}). Retained as general scaffolding for a future non-library boolean
-     * operation.
-     */
-    private static ExprProgram.BoolPlan valueAsBool(ValuePlan vp)
-    {
-        return run ->
-        {
-            Vector v = vp.eval(run);
-            BitSet out = new BitSet(run.rowCount());
-            if (v == null)
-            {
-                return out;
-            }
-            for (int r = 0; r < run.rowCount(); r++)
-            {
-                if (Boolean.TRUE.equals(v.value(r).resolved()))
-                {
-                    out.set(r);
-                }
-            }
-            return out;
-        };
-    }
-
-
     private static boolean isCaseInsensitiveEqualityCall(Expr e)
     {
         return e instanceof Expr.Call c && "equalsIgnoreCase".equals(c.name())
@@ -937,13 +864,12 @@ public final class ExprCompiler
 
 
     /**
-     * Whether {@code e} is a call to a registered function (never an inline operation) whose
-     * declared result is a list ({@code ElementTable}), e.g. {@code get_codelist_attributes(…)}.
+     * Whether {@code e} is a call to a registered function whose declared result is a list
+     * ({@code ElementTable}), e.g. {@code get_codelist_attributes(…)}.
      */
     private static boolean isListValuedFunctionCall(Expr e)
     {
-        return e instanceof Expr.Call call && !isInlineOperation(call)
-                && FunctionRegistry.descriptor(call.name()) != null
+        return e instanceof Expr.Call call && FunctionRegistry.descriptor(call.name()) != null
                 && net.cumba.corej.core.expr.typed.ElementTable.resultType(
                         call.name()) instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf;
     }
@@ -1055,7 +981,7 @@ public final class ExprCompiler
         // probe is parsed and compared against the numeric members, so "10.0"/"01" both match the
         // member 10. A MIXED list literal (a NUMBER and a STRING member) is a load error. This
         // classification applies ONLY to a static list literal, never to a $-var list, a ${*}
-        // wildcard, or a per-row GroupedResult (their contents are dynamic / not statically typed)
+        // wildcard, or a per-row binding (their contents are dynamic / not statically typed)
         // — those stay textual. The case-insensitive surface (upper(X) in [...]) is all-string and
         // never numeric (numbers have no case). (The retired legacy membership path ran the same
         // classification on the JSON-array node types, isNumber() vs isTextual(), which agree
@@ -1096,7 +1022,7 @@ public final class ExprCompiler
         // ⛔⛔ It takes a LIST LITERAL only (narrowed at the terminal review). Taken for every
         // right-hand side it was a latent regression in two shapes `buildSet` cannot serve: a
         // `${*}` wildcard (it would have thrown `unsupported` where `wildcardMembershipPlan`
-        // answers) and a `$`-ref resolving to a per-row GroupedResult (it would have substituted an
+        // answers) and a `$`-ref resolving to a per-row binding (it would have substituted an
         // EMPTY set for a per-row one). A temporal probe against a dynamic set keeps its textual
         // behaviour — a STATED gap, pinned by a test, whose fix is a temporal counterpart to
         // `groupedMembership` rather than a wider condition here.
@@ -1172,10 +1098,6 @@ public final class ExprCompiler
         {
             return wildcardMembershipPlan(nameP, wild, negate, caseInsensitive);
         }
-        // §9.A: the RHS may be an inline list operation (Form A) — computed like a $-operation ref,
-        // supporting both the broadcast-set and the per-row GroupedResult shapes (e.g. an inlined
-        // `X in distinct(SV.VISITNUM, group=[USUBJID])`). Built once at compile time.
-        Operation inlineSetOp = inlineSetOperation(right);
         // Review round 1, L2 (decided: SUPPORT, not a load error): a list-valued REGISTRY function
         // written inline as the right-hand side reads its Vector exactly as a compiled binding
         // holding the same call does (boundMembership). A binding is only a name for its
@@ -1217,29 +1139,6 @@ public final class ExprCompiler
                             listLhs);
                 }
             }
-            // A $-reference may resolve to a per-row GroupedResult (e.g. CDISC-CG0034's
-            // $sv_visitnum, a distinct-per-USUBJID operation). The membership set is then resolved
-            // PER ROW (GroupedResult.getForRow) with a per-row loop instead of the broadcast
-            // constant set.
-            if (right instanceof Expr.Ref ref
-                    && run.ctx().resolveVariable(ref.name()) instanceof GroupedResult grouped)
-            {
-                return groupedMembership(v, grouped, run, negate, caseInsensitive);
-            }
-            if (inlineSetOp != null)
-            {
-                Object result = inlineOperationResult(inlineSetOp, run.ctx());
-                if (result instanceof GroupedResult grouped)
-                {
-                    return groupedMembership(v, grouped, run, negate, caseInsensitive);
-                }
-                Primitives.MemberSet inlineSet = toSet(result, caseInsensitive);
-                return listLhs
-                        ? Primitives.listMembership(v, inlineSet, run.rowCount(), negate,
-                                caseInsensitive)
-                        : Primitives.membership(v, inlineSet, run.rowCount(), negate,
-                                caseInsensitive);
-            }
             Primitives.MemberSet set = buildSet(run, right, caseInsensitive);
             return listLhs
                     ? Primitives.listMembership(v, set, run.rowCount(), negate, caseInsensitive)
@@ -1264,13 +1163,17 @@ public final class ExprCompiler
             boolean negate)
     {
         ValuePlan lhsPlan = operandPlan(tupleCall, true);
-        Operation inlineSetOp = inlineSetOperation(right);
+        // Runbook W7 (PLAN-distinct-function): a list-valued registry call written inline on the
+        // right — `tuple(A, B) not in distinct([A, B], domain="D")` — reads its dataset-level list
+        // exactly as the $-binding holding the same call does (resolveVariable's hand-over form).
+        ValuePlan rightCallP = isListValuedFunctionCall(right) ? valuePlan(right) : null;
         return run ->
         {
             Object rhs;
-            if (inlineSetOp != null)
+            if (rightCallP != null)
             {
-                rhs = inlineOperationResult(inlineSetOp, run.ctx());
+                Vector members = rightCallP.eval(run);
+                rhs = members instanceof ConstVector constant ? constant.value() : null;
             }
             else if (right instanceof Expr.Ref ref
                     && run.ctx().getVariables().containsKey(ref.name()))
@@ -1449,40 +1352,6 @@ public final class ExprCompiler
 
 
     /**
-     * Per-row membership against a {@link GroupedResult}-valued {@code $}-reference — mirrors the
-     * row-aware string-list resolution + {@code Primitives.membership} semantics: the row's group
-     * value resolves via {@code getForRow} and folds through {@link #toSet} ({@code null} elements
-     * contribute the empty string, a scalar is a singleton, an absent group is the empty set), a
-     * missing probe is a member only of a set holding that same missing ({@code D81} +
-     * {@code D34 #5-2}), and the probe and set fold case only on the case-insensitive surface.
-     * Package-private so {@code MemberSetBuilderIdentityTest} can put a missing into the set
-     * directly.
-     */
-    static BitSet groupedMembership(Vector v, GroupedResult grouped, EvalRun run, boolean negate,
-            boolean caseInsensitive)
-    {
-        EvaluationContext ctx = run.ctx();
-        // Q2 of PLAN-grouping-key-identity: bound to this table once, before the row scan — a
-        // result grouped on another dataset whose key column has the other kind ERRORs the rule.
-        ctx.requireCompatibleGroupedKeys(grouped);
-        // ⚠ R-P7 review M3 is HISTORY since 2026-09-21: Primitives.scan is no longer
-        // candidate-aware and an unqualified name never reaches a join. Formerly it got
-        // the legacy forEachJoinedValue ANY-MATCH semantics here too.
-        return Primitives.scan(v, run.rowCount(), (dv, r) ->
-        {
-            // ⭐ PLAN-member-set-identity-hardening: the row's group value folds through toSet,
-            // whose contract is exactly the one this loop spelled by hand (a collection
-            // contributes its elements with a null element as "", a scalar is a singleton, null is
-            // the empty set) — except that a MissingValue member now keeps its IDENTITY instead of
-            // rendering to "." and matching a present "." cell.
-            Primitives.MemberSet set = toSet(grouped.getForRow(ctx, r), caseInsensitive);
-            // D81 (phase 6b): the probe is =='s own per-member decision tree.
-            return negate != Primitives.isMember(dv, set, caseInsensitive);
-        });
-    }
-
-
-    /**
      * Membership against a <b>compiled binding</b>'s Vector ({@code PLAN-binding-expressions} §4.1,
      * option 2 — a list travels inside a Vector).
      *
@@ -1492,13 +1361,13 @@ public final class ExprCompiler
      * branch feeds, so a compiled list binding and an operation's list answer identically
      * ({@code CDISC-CG0288}'s {@code TSVALCD not in $VALID_TERM_CODES}).</li>
      * <li><b>Per row</b> — any other Vector: each row's cell is its own set (a collection its
-     * elements, a scalar a singleton, a missing cell the empty set — the {@link #toSet} contract
-     * {@link #groupedMembership} follows). ⭐ The set of the most recent list <em>instance</em> is
-     * kept in ONE slot and reused while consecutive rows carry that same instance, so a run of rows
-     * sharing a list folds it once. ⚠ One slot, never a map (review round 2, LOW-2): a per-row list
-     * callable such as {@code split_by} makes every row's list distinct, and a per-instance map
-     * would then hold N sets beside the vector's own N lists. No per-row array is materialised
-     * beyond the vector's own memo (D-W0-3).</li>
+     * elements, a scalar a singleton, a missing cell the empty set — the {@link #toSet} contract).
+     * ⭐ The set of the most recent list <em>instance</em> is kept in ONE slot and reused while
+     * consecutive rows carry that same instance, so a run of rows sharing a list folds it once. ⚠
+     * One slot, never a map (review round 2, LOW-2): a per-row list callable such as
+     * {@code split_by} makes every row's list distinct, and a per-instance map would then hold N
+     * sets beside the vector's own N lists. No per-row array is materialised beyond the vector's
+     * own memo (D-W0-3).</li>
      * </ul>
      *
      * Package-private for the unit tests.
@@ -1508,7 +1377,7 @@ public final class ExprCompiler
     {
         if (bound instanceof ConstVector constant)
         {
-            Primitives.MemberSet set = toSet(constant.value(), caseInsensitive);
+            Primitives.MemberSet set = toSet(constant.memberValue(), caseInsensitive);
             return listLhs ? Primitives.listMembership(v, set, rowCount, negate, caseInsensitive)
                     : Primitives.membership(v, set, rowCount, negate, caseInsensitive);
         }
@@ -1645,10 +1514,8 @@ public final class ExprCompiler
         // Unified boolean surface: a boolean callable compared to true/false (or to another boolean
         // callable) is a boolean condition, not a value comparison. `f() == true` behaves as `f()`,
         // `f() == false` as `not f()` (true = all-1 vector, false = all-0), realised at the
-        // BoolPlan level so it works for EVERY boolean callable — registered functions, the
-        // hard-coded *exists*/group operators, and any inline boolean operation admitted by the
-        // unified-surface gate (currently none; domain_is_custom is library-dependent and
-        // excluded).
+        // BoolPlan level so it works for EVERY boolean callable — registered functions and the
+        // hard-coded *exists*/group operators (no boolean OPERATION is left since wave 4b).
         // A value operand (a plain column, a value function) is unaffected.
         if (b.op() == Expr.BinOp.EQ || b.op() == Expr.BinOp.NEQ)
         {
@@ -1797,21 +1664,17 @@ public final class ExprCompiler
      * {@link FunctionKind#BOOLEAN} function — since phase 7 that includes the compiler-dispatched
      * boolean calls, declared with {@code fn == null} by
      * {@code net.cumba.corej.core.expr.eval.spi.CompilerDispatchedCalls}, so the registry is the
-     * ONE authority (the hand-mirrored {@code HARDCODED_BOOLEAN_CALLS} set is retired) — or an
-     * inline boolean operation admitted by {@link #isUnifiableBooleanOperation} (currently none —
-     * {@code domain_is_custom} is library-dependent and excluded). A value operand (column ref,
-     * value function) returns {@code false} so its {@code == true/false} comparison keeps the
-     * ordinary value-equality semantics.
+     * ONE authority (the hand-mirrored {@code HARDCODED_BOOLEAN_CALLS} set is retired). No inline
+     * operation is boolean-valued since wave 4b retired {@code domain_is_custom}, the last one (and
+     * the boolean-operation bridge with it). A value operand (column ref, value function) returns
+     * {@code false} so its {@code == true/false} comparison keeps the ordinary value-equality
+     * semantics.
      */
     private static boolean isBooleanCall(Expr e)
     {
         if (!(e instanceof Expr.Call c))
         {
             return false;
-        }
-        if (isInlineOperation(c))
-        {
-            return isUnifiableBooleanOperation(OperationType.fromJson(c.name()));
         }
         FunctionDescriptor d = FunctionRegistry.descriptorAccepting(c.name(), c.args().size());
         return d != null && d.kind() == FunctionKind.BOOLEAN;
@@ -2020,7 +1883,7 @@ public final class ExprCompiler
         // the retired HARDCODED_BOOLEAN_CALLS mirror invited cannot recur in this direction. (The
         // opposite direction — a declared boolean call no arm compiles — is the registry tail's
         // DISPATCH_DRIFT_SENTINEL, held by CompilerDispatchDriftGateTest.)
-        if (FunctionRegistry.descriptor(name) == null && !isInlineOperation(c))
+        if (FunctionRegistry.descriptor(name) == null)
         {
             throw unsupported("no native function '" + name + "'");
         }
@@ -2163,24 +2026,6 @@ public final class ExprCompiler
         {
             return invert(compileIsNotOrderedSubsetOf(c));
         }
-        if (isInlineOperation(c))
-        {
-            // §9.B / unified surface: a non-library boolean-valued inline operation compiles in
-            // boolean position by bridging its broadcast result to a verdict BitSet. A non-boolean
-            // operation (variable_count, …) is not a condition; a library-dependent boolean op
-            // (domain_is_custom) is excluded — its LIBRARY_NOT_AVAILABLE sentinel under a
-            // `not`/`invert` would mis-fire every row when no Library is configured (the §9.C
-            // skip-gate exists only on converted Form-B rules, not an inline Form-A use), so it
-            // stays on the operand-position `== true/false` path. ⚠ The set admitted here is
-            // whatever isBooleanValued minus isLibraryDependent yields — today variable_is_null and
-            // variable_exists; do not re-derive it from a comment (this one claimed "no operation"
-            // while variable_is_null was already admitted).
-            if (isUnifiableBooleanOperation(OperationType.fromJson(name)))
-            {
-                return valueAsBool(operationCallPlan(c));
-            }
-            throw unsupported("operation '" + name + "' is not a boolean condition");
-        }
         FunctionDescriptor descriptor = FunctionRegistry.descriptor(name);
         if (descriptor == null)
         {
@@ -2272,13 +2117,13 @@ public final class ExprCompiler
 
     /**
      * ⭐ The inline-in-Check catch point of the provider capability's "answered but unusable" signal
-     * ({@code PLAN-binding-expressions} §0.2 a). A capability-carrying function (or a
-     * provider-dependent inline operation) with nothing usable raises
-     * {@link UnusableProviderAnswerException} instead of answering an empty result; inside
+     * ({@code PLAN-binding-expressions} §0.2 a). A capability-carrying function with nothing usable
+     * raises {@link UnusableProviderAnswerException} instead of answering an empty result; inside
      * {@code available(<call>)} — the gate the loader injects for an inline provider call — that is
-     * exactly "not available", so the argument evaluates to the {@code LIBRARY_NOT_AVAILABLE}
-     * sentinel, which {@code available} reads as {@code false} and never lets out of the gate. The
-     * injected Precondition then SKIPs the rule, as it does for the operation sentinel.
+     * exactly "not available", so the argument evaluates to the empty result, which
+     * {@code available} reads as {@code false} and never lets out of the gate. The injected
+     * Precondition then SKIPs the rule. (The operation-side {@code LIBRARY_NOT_AVAILABLE} sentinel
+     * this mirrored went with the last library-dependent operation in wave 4b.)
      */
     private static ValuePlan unusableAsUnavailable(ValuePlan argument)
     {
@@ -2291,8 +2136,7 @@ public final class ExprCompiler
             catch (UnusableProviderAnswerException ex)
             {
                 LOGGER.log(System.Logger.Level.DEBUG, "available(): {0}", ex.getMessage());
-                // The empty result: isResultAvailable reads it as "not available", exactly as it
-                // reads the operation sentinel — which never leaves this gate either way.
+                // The empty result: isResultAvailable reads it as "not available".
                 return ConstVector.of(List.of());
             }
         };
@@ -2628,10 +2472,10 @@ public final class ExprCompiler
      * slot so that the positional and the keyword spelling are one binding (D9; review round 1 of
      * {@code PLAN-function-surface-wave1}: the kwargs-only reader {@link #groupKeyPolicy} bound a
      * positional {@code keep_missings} and then ignored it). {@code keep_missings} without a
-     * non-empty {@code group} is a load error (pre-go review L5), as
-     * {@code OperationExpressionParser.validateKeepMissings} made it for exactly these two
-     * operators: with no grouping key the disposition would have no effect. A value that is not a
-     * boolean literal is a load error too.
+     * non-empty {@code group} is a load error (pre-go review L5), as the retired operation parser's
+     * {@code validateKeepMissings} made it for exactly these two operators: with no grouping key
+     * the disposition would have no effect. A value that is not a boolean literal is a load error
+     * too.
      */
     private static GroupKeyPolicy groupKeyPolicyRequiringGroup(String function,
             @Nullable Expr keepMissings, List<String> group, GroupKeyPolicy base)
@@ -2815,7 +2659,7 @@ public final class ExprCompiler
 
 
     /**
-     * Native plan for {@code is_sorted_by(TARGET, by=[asc/desc("col")…], within=COL)} — emitted
+     * Native plan for {@code is_sorted_by(TARGET, by=[asc(COL), desc(COL)…], within=COL)} — emitted
      * only under {@code not} (the {@code target_is_not_sorted_by} surface, Q1). Extracts the
      * target, the ordered sort-key column names from the {@code by=} descriptors (the asc/desc
      * direction is ignored, matching the legacy operator) and the optional single {@code within}
@@ -2839,15 +2683,31 @@ public final class ExprCompiler
         for (Expr d : descs)
         {
             if (!(d instanceof Expr.Call dc) || dc.args().size() != 1
-                    || !(dc.args().get(0) instanceof Expr.Lit nameLit)
-                    || nameLit.kind() != Expr.LitKind.STRING)
+                    || !("asc".equals(dc.name()) || "desc".equals(dc.name())))
             {
-                throw unsupported("is_sorted_by descriptor must be asc/desc(\"col\")");
+                throw unsupported("is_sorted_by descriptor must be asc(COL) or desc(COL)");
             }
-            rawSortVars.add((String) nameLit.value());
+            Expr key = dc.args().get(0);
+            if (key instanceof Expr.Lit keyLit && keyLit.kind() == Expr.LitKind.STRING)
+            {
+                // Runbook W8 (D-W8-6, R1): the descriptor used to REQUIRE the quoted spelling; a
+                // quoted name is a string, never a column.
+                throw unsupported("is_sorted_by descriptor " + dc.name() + "(\"" + keyLit.value()
+                        + "\") takes a column reference, not a string literal — write " + dc.name()
+                        + "(" + keyLit.value() + "); a quoted name is a string, never a column");
+            }
+            rawSortVars.add(groupOperandName(key));
         }
         List<String> within = withinColumns(c.kwargs().get("within"));
-        String rawWithinCol = within.size() == 1 ? within.get(0) : null;
+        if (within.size() > 1)
+        {
+            // Combined review of runbook W2–W8, round 2 (corpus M4): the ordering plan partitions
+            // by ONE column, and a longer list used to compile to "no within" — the call loaded
+            // and ran UNGROUPED, silently.
+            throw unsupported("is_sorted_by's within= takes one column (or a one-element list),"
+                    + " not " + within);
+        }
+        String rawWithinCol = within.isEmpty() ? null : within.get(0);
         // ⚠ FOLD_BLANK_KEYS is this operator's SHIPPED default, and it is the questionable one for
         // an ordering operator — keeping blank keys chains one subject's last row to another's
         // first within each blank kind ("" its own bucket, each missing marker its own since
@@ -2932,7 +2792,7 @@ public final class ExprCompiler
         {
             // $-ref members (e.g. $TIMING_VARIABLES from get_dataset_filtered_variables) resolve
             // only against the run context, so splice them to their underlying column lists here —
-            // mirroring how record_count's group= is expanded by OperationExecutor.expandGroupRefs.
+            // mirroring how record_count's group= is spliced (RecordCount.splice).
             List<String> members = expandRefKeys(rawMembers, run.ctx());
             return GroupSemantics.uniqueSetViolations(run.ctx().getTable(), run.rowCount(),
                     resolveDomainPrefixes(members, run.ctx()), regex, flagDuplicates, policy);
@@ -3018,8 +2878,7 @@ public final class ExprCompiler
      * (an operation result such as {@code $TIMING_VARIABLES} from
      * {@code get_dataset_filtered_variables}); a non-{@code $} member, and a {@code $}-ref that
      * does not resolve to a collection, passes through unchanged so the downstream column lookup
-     * reports it. Kept symmetric with {@code OperationExecutor.expandGroupRefs} so the two cannot
-     * drift.
+     * reports it. Kept symmetric with {@code RecordCount.splice} so the two cannot drift.
      */
     private static List<String> expandRefKeys(List<String> rawKeys, EvaluationContext ctx)
     {
@@ -3091,10 +2950,14 @@ public final class ExprCompiler
      */
     private static GroupKeyPolicy groupKeyPolicy(Expr.Call c, GroupKeyPolicy base)
     {
+        // Unconditionally, before the keep_missings= kwarg is read (combined review of runbook
+        // W2–W8, W8 M1): inside the `e == null` arm a keyword keep_missings= skipped the check, so
+        // has_multiple_values_for(COHORTN, COHORT, USUBJID, keep_missings=true) loaded and ran
+        // UNGROUPED, its positional `within` silently dropped.
+        rejectPositionalKeywordOnly(c);
         Expr e = c.kwargs().get("keep_missings");
         if (e == null)
         {
-            rejectPositionalKeepMissings(c);
             return base;
         }
         if (!(e instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.BOOL)
@@ -3104,18 +2967,26 @@ public final class ExprCompiler
         return base.withKeepMissings((Boolean) lit.value());
     }
 
+    /**
+     * The parameters the pre-existing compiler-dispatched grouped readers read from the call's
+     * <b>keywords only</b>: {@code keep_missings} (W1 review round 2, L-12) and {@code within}
+     * (runbook W8, {@code PLAN-retire-operation-surface} D-W8-7). The descriptor Stage A binds the
+     * call through ({@code CompilerDispatchedCalls}) declares each as an ordinary optional
+     * parameter, so a positional one bound cleanly and was then silently ignored — the rule ran on
+     * its default disposition / ungrouped. Wave 1's own grouped callables read the bound slot
+     * ({@link #groupKeyPolicyRequiringGroup}); for these older readers a positional spelling is a
+     * load error naming the keyword (chosen over reading the slot: a load error changes no
+     * verdict). Measured per reader: {@code has_multiple_values_for} is the one whose optional
+     * slots are reachable by position — every other reader is loud on its own diagnostic first.
+     */
+    private static final Set<String> KEYWORD_ONLY_PARAMETERS = Set.of("keep_missings", "within");
 
     /**
-     * W1 review round 2, L-12: the readers behind {@link #groupKeyPolicy} read
-     * {@code keep_missings} from the keywords only, but the descriptor Stage A binds the call
-     * through ({@code CompilerDispatchedCalls}) declares it as an ordinary optional parameter, so a
-     * positional {@code keep_missings} bound cleanly and was then silently ignored — the rule ran
-     * on its default disposition. Wave 1's own grouped callables read the bound slot
-     * ({@link #groupKeyPolicyRequiringGroup}); these older readers belong to W8's strict-binding
-     * sweep (runbook §7), so until then a positional {@code keep_missings} is a load error naming
-     * the keyword spelling. A call that does not bind is left to the reader's own diagnostics.
+     * Refuses a positional argument bound to a {@link #KEYWORD_ONLY_PARAMETERS keyword-only}
+     * parameter, naming the keyword spelling. A call that does not bind is left to the reader's own
+     * diagnostics.
      */
-    private static void rejectPositionalKeepMissings(Expr.Call c)
+    private static void rejectPositionalKeywordOnly(Expr.Call c)
     {
         FunctionDescriptor descriptor = FunctionRegistry.descriptor(c.name());
         if (descriptor == null)
@@ -3132,16 +3003,29 @@ public final class ExprCompiler
         {
             return; // arity is Stage A's and the reader's to report
         }
+        List<String> names = new ArrayList<>(2);
+        List<String> spellings = new ArrayList<>(2);
         for (int i = 0; i < params.size() && i < bound.size(); i++)
         {
             Expr slot = bound.get(i);
-            if (slot != null && "keep_missings".equals(params.get(i).name()))
+            String name = params.get(i).name();
+            if (slot != null && KEYWORD_ONLY_PARAMETERS.contains(name)
+                    && !c.kwargs().containsKey(name))
             {
-                String value = slot instanceof Expr.Lit lit ? String.valueOf(lit.value()) : "…";
-                throw unsupported("`keep_missings` on " + c.name()
-                        + " is read by keyword only — write keep_missings=" + value
-                        + "; a positional keep_missings was bound and then ignored");
+                String value = slot instanceof Expr.Lit lit && lit.kind() != Expr.LitKind.LIST
+                        ? String.valueOf(lit.value())
+                        : ExpressionPrinter.print(slot);
+                names.add("`" + name + "`");
+                spellings.add(name + "=" + value);
             }
+        }
+        if (!names.isEmpty())
+        {
+            boolean one = names.size() == 1;
+            throw unsupported(String.join(", ", names) + " on " + c.name() + (one ? " is" : " are")
+                    + " read by keyword only — write " + String.join(", ", spellings)
+                    + "; a positional " + String.join(" / ", names).replace("`", "")
+                    + (one ? " was" : " were") + " bound and then ignored");
         }
     }
 
@@ -3270,7 +3154,7 @@ public final class ExprCompiler
         }
         String requiredRef = c.args().size() >= 2 && c.args().get(1) instanceof Expr.Ref vr
                 && vr.name().startsWith("$") ? vr.name() : null;
-        List<String> requiredCols = requiredRef != null ? List.of() : keyColumns(c);
+        List<String> requiredCols = requiredRef != null ? List.of() : keyValues(c);
         String name = rawName;
         return run ->
         {
@@ -3479,6 +3363,60 @@ public final class ExprCompiler
 
 
     /**
+     * The {@code keys=} list of a VALUE-keyed reader ({@code not_contains_all(NAME, keys=[…])}):
+     * its members are <b>values</b> the distinct column values are held to, not columns — a bare
+     * {@code AGEU} (the JSON array's raised reference, the shipped spelling) and a quoted
+     * {@code "AGEU"} are the same text. Kept lenient on purpose while {@link #groupOperandName}
+     * became strict in runbook W8: a value position has no column to name.
+     */
+    private static List<String> keyValues(Expr.Call c)
+    {
+        List<String> values = new ArrayList<>();
+        for (int i = 1; i < c.args().size(); i++)
+        {
+            values.add(valueMemberText(c.args().get(i)));
+        }
+        Expr keys = c.kwargs().get("keys");
+        if (keys instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+        {
+            @SuppressWarnings("unchecked")
+            List<Expr> items = (List<Expr>) lit.value();
+            for (Expr item : items)
+            {
+                values.add(valueMemberText(item));
+            }
+        }
+        else if (keys != null)
+        {
+            throw unsupported("keys= must be a list of values");
+        }
+        return values;
+    }
+
+
+    private static String valueMemberText(Expr e)
+    {
+        if (e instanceof Expr.Ref r)
+        {
+            return r.name();
+        }
+        if (e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING)
+        {
+            return (String) lit.value();
+        }
+        throw unsupported("keys= member must be a value (a bare word or a string literal), got "
+                + e.getClass().getSimpleName());
+    }
+
+
+    /** Whether {@code e} is a STRING literal. */
+    private static boolean isStringLiteral(Expr e)
+    {
+        return e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING;
+    }
+
+
+    /**
      * The raw name of a group-operator operand: a plain column reference, or a {@code --}-prefix
      * domain wildcard — returned RAW and resolved against the run's domain prefix inside the plan
      * closure (via {@link #resolveDomainPrefix}), so the compiled program stays dataset-agnostic
@@ -3491,12 +3429,15 @@ public final class ExprCompiler
         {
             return r.name();
         }
-        // A name operand may also be written as a string literal (the generator's preferred form),
-        // equivalent by definition to the bare reference; a leading --prefix is resolved downstream
-        // by resolveDomainPrefixes exactly as for the bare-ref form.
+        // Runbook W8 (PLAN-retire-operation-surface D-W8-6, runbook R1): a quoted "X" is a string
+        // literal, never a column — the last place on the function surface where a string was
+        // still read as a name (the retired operation parser's stringOf was the other). The
+        // message names the bare spelling, as the registry functions' strict readers do.
         if (e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING)
         {
-            return (String) lit.value();
+            throw unsupported("group operator operand takes a column reference, not the string"
+                    + " literal \"" + lit.value() + "\" — write it bare: " + lit.value()
+                    + " (a quoted name is a string, never a column)");
         }
         throw unsupported("group operator operand must be a plain column or --prefix reference"
                 + " (got " + e.getClass().getSimpleName() + ")");
@@ -3552,9 +3493,9 @@ public final class ExprCompiler
         {
             return List.of();
         }
-        if (within instanceof Expr.Ref)
+        if (within instanceof Expr.Ref || isStringLiteral(within))
         {
-            return List.of(groupOperandName(within));
+            return List.of(groupOperandName(within)); // a string literal is refused there (R1)
         }
         if (within instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
         {
@@ -3584,9 +3525,9 @@ public final class ExprCompiler
         {
             return List.of();
         }
-        if (within instanceof Expr.Ref)
+        if (within instanceof Expr.Ref || isStringLiteral(within))
         {
-            return List.of(List.of(groupOperandName(within)));
+            return List.of(List.of(groupOperandName(within))); // a string literal is refused (R1)
         }
         if (within instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
         {
@@ -3758,6 +3699,61 @@ public final class ExprCompiler
             }
             return result;
         };
+    }
+
+
+    /**
+     * Runbook W5 ({@code PLAN-grouped-aggregate-functions} §2.2) — {@code max} / {@code max_date} /
+     * {@code min_date}: {@link net.cumba.corej.core.exec.GroupedAggregate#spec} reads the call (its
+     * own message is the load error) and the plan broadcasts the per-group cells per run.
+     */
+    private static ValuePlan compileGroupedAggregate(Expr.Call c)
+    {
+        net.cumba.corej.core.exec.GroupedAggregate.Spec spec = net.cumba.corej.core.exec.GroupedAggregate
+                .spec(c);
+        return spec::evaluate;
+    }
+
+
+    /**
+     * Runbook W6 ({@code PLAN-record-count-function} §2.2) — {@code record_count(domain=, filter=,
+     * group=, keep_missings=, regex=)}: {@link net.cumba.corej.core.exec.RecordCount#spec} reads
+     * the call (its own message is the load error); the plan counts the target table's kept rows —
+     * one dataset-level value, or per group broadcast per run.
+     */
+    private static ValuePlan compileRecordCount(Expr.Call c)
+    {
+        return net.cumba.corej.core.exec.RecordCount.spec(c)::evaluate;
+    }
+
+
+    /**
+     * Runbook W7 ({@code PLAN-distinct-function} §2.2) — {@code distinct(name, domain=, filter=,
+     * group=, keep_missings=)}: {@link net.cumba.corej.core.exec.Distinct#spec} reads the call (its
+     * own message is the load error; the target's shape — a column or a list of columns — decides
+     * whether the plan answers a value set or a tuple set); one dataset-level list, or per group
+     * broadcast per run.
+     */
+    private static ValuePlan compileDistinct(Expr.Call c)
+    {
+        return net.cumba.corej.core.exec.Distinct.spec(c)::evaluate;
+    }
+
+
+    /**
+     * Runbook W2a ({@code PLAN-operation-replacements} §2.2) — {@code read_value(X, domain=D,
+     * filter=(…), mode="…")}: the compiler-dispatched read of one value of another dataset. Its
+     * arguments are read from the call at load time by
+     * {@link net.cumba.corej.core.exec.ReadValue#spec} (they name columns of {@code D}, never of
+     * the primary, so none is compiled as a vector here); a malformed call is the rule's load error
+     * with the reader's own message. The plan resolves {@code D}, filters its rows and broadcasts
+     * the selected cell per run.
+     */
+    private static ValuePlan compileReadValue(Expr.Call c)
+    {
+        // ReadValue.spec throws the ExpressionException itself (the reader's own message is the
+        // rule's load error), so nothing is caught and rethrown here.
+        return net.cumba.corej.core.exec.ReadValue.spec(c)::evaluate;
     }
 
 
@@ -4423,6 +4419,24 @@ public final class ExprCompiler
 
 
     /**
+     * A registry function's bound argument: a static <b>list literal</b> (wave 4,
+     * {@code codelist_terms(codelists=["DOMAIN"], …)}, {@code minus(["AGEU", …], subtract=…)}) is
+     * the one constant list its members spell — exactly what the same list bound as a
+     * {@code $}-binding is ({@link #compileBinding}), so a list authored inline and one authored as
+     * a binding answer alike; everything else is the operand plan.
+     */
+    private static ValuePlan argumentPlan(Expr arg)
+    {
+        if (arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+        {
+            ConstVector list = ConstVector.of(listLiteralValues(lit));
+            return _ -> list;
+        }
+        return operandPlan(arg, true);
+    }
+
+
+    /**
      * ⭐⭐ <b>The {@code foldAbsentColumn} parameter is GONE (2026-09-21).</b> This method used to
      * have a three-argument overload whose flag decided whether a name-position column resolving to
      * nothing materialised as an absent COLUMN or stayed {@code null}. Its own javadoc explained
@@ -4538,9 +4552,30 @@ public final class ExprCompiler
             {
                 yield operandPlan(untag(c), namePosition);
             }
-            if (isInlineOperation(c))
+            if (net.cumba.corej.core.exec.ReadValue.NAME.equals(c.name()))
             {
-                yield operationCallPlan(c);
+                yield compileReadValue(c);
+            }
+            if (net.cumba.corej.core.exec.GroupedAggregate.isFunction(c.name()))
+            {
+                // Runbook W5 (PLAN-grouped-aggregate-functions §2.2): max / max_date / min_date
+                // are name-based grouped plans — GroupedAggregate.spec reads the call (the
+                // reader's own message is the load error) and broadcasts the per-group cells.
+                yield compileGroupedAggregate(c);
+            }
+            if (net.cumba.corej.core.exec.RecordCount.NAME.equals(c.name()))
+            {
+                // Runbook W6 (PLAN-record-count-function §2.2): record_count on the same plan —
+                // RecordCount.spec reads the call; the ungrouped count is a dataset-level
+                // constant, the grouped one is broadcast per row.
+                yield compileRecordCount(c);
+            }
+            if (net.cumba.corej.core.exec.Distinct.NAME.equals(c.name()))
+            {
+                // Runbook W7 (PLAN-distinct-function §2.2): distinct on the same plan —
+                // Distinct.spec reads the call; the ungrouped value / tuple set is a
+                // dataset-level constant, the grouped value sets are broadcast per row.
+                yield compileDistinct(c);
             }
             MetadataAttribute metaAttr = MetadataAttribute.fromFunction(c.name());
             if (metaAttr != null)
@@ -4970,7 +5005,7 @@ public final class ExprCompiler
             Object var = ctx.resolveVariable(name);
             if (var != null)
             {
-                return variableVector(ctx, rc, var, () -> "variable " + name);
+                return ConstVector.of(var, () -> "variable " + name);
             }
             if (name.startsWith("$"))
             {
@@ -4989,6 +5024,16 @@ public final class ExprCompiler
             {
                 return new ColumnVector(name, ctx.getTable().getColumn(idx),
                         meta.getColumn(idx).getType());
+            }
+            // Runbook W2a (PLAN-operation-replacements §2.3, C1 ruled (a)): a bare name the
+            // primary does not carry may be a SUPP<domain> qualifier of the record — readable
+            // per record through the pivot, never a variable of the dataset (the table's column
+            // set is untouched, so the variable-metadata surface does not see it).
+            IDataTableColumn qualifier = net.cumba.corej.core.exec.SuppPivot.qualifierColumn(ctx,
+                    name);
+            if (qualifier != null)
+            {
+                return new ColumnVector(name, qualifier, DataValueType.STRING);
             }
             // ⛔⛔ REMOVED 2026-09-21, and this is the paragraph that described it. A join fallback
             // stood here: an unqualified name absent from the primary table was resolved out of a
@@ -5064,7 +5109,7 @@ public final class ExprCompiler
             Object var = ctx.resolveVariable(name);
             if (var != null)
             {
-                return variableVector(ctx, rc, var, () -> "variable " + name);
+                return ConstVector.of(var, () -> "variable " + name);
             }
             if (name.startsWith("$"))
             {
@@ -5076,6 +5121,16 @@ public final class ExprCompiler
             {
                 return new ColumnVector(name, ctx.getTable().getColumn(idx),
                         meta.getColumn(idx).getType());
+            }
+            // Runbook W2a (PLAN-operation-replacements §2.3, C1 ruled (a)): a bare name the
+            // primary does not carry may be a SUPP<domain> qualifier of the record — readable
+            // per record through the pivot, never a variable of the dataset (the table's column
+            // set is untouched, so the variable-metadata surface does not see it).
+            IDataTableColumn qualifier = net.cumba.corej.core.exec.SuppPivot.qualifierColumn(ctx,
+                    name);
+            if (qualifier != null)
+            {
+                return new ColumnVector(name, qualifier, DataValueType.STRING);
             }
             // EC-43 / D76 / D96a — a column absent from the primary table AND every
             // Match_Datasets join is a PRESENT column carrying its type default in every row
@@ -5118,50 +5173,11 @@ public final class ExprCompiler
 
 
     /**
-     * Whether {@code c} is an inline operation-function call (Form A) — a call whose name is a
-     * known {@link OperationType} that should be computed through the {@link OperationExecutor}
-     * rather than the {@link FunctionRegistry}.
-     *
-     * <p>
-     * ⭐ Phase 6b (D91e): this is no longer the D5 <b>namespace tiebreak</b>. Before the
-     * one-descriptor model, {@code record_count} was registered in two namespaces at the same
-     * {@code (name, arity=0)} key — the arity-0 row-count VALUE builtin and the operation — and
-     * "does the call carry a keyword argument" silently selected which implementation ran. Under
-     * one-descriptor-per-name the definition is single: {@code OperationDescriptors.RECORD_COUNT}
-     * is <em>the</em> {@code record_count} — one parameter list, one authority for which keywords
-     * exist (an unknown keyword now errors instead of selecting a namespace) — and the registry's
-     * parameterless entry is that descriptor's <b>bare-form fast path</b>, pinned verdict-identical
-     * to the unfiltered/ungrouped executor path by {@code RecordCountSingleDescriptorTest} (both
-     * read {@code table.getRowCount()}). The routing below therefore chooses a <em>plan</em>, never
-     * a <em>meaning</em>: a call that binds any parameter compiles through the executor; the bare
-     * call takes the registry's constant plan. The registry/operation name overlap is exactly
-     * {@code record_count} (since wave 1 deleted the {@code DICTIONARY_AVAILABLE} operation the
-     * §9.C gate builtin {@code dictionary_available} has no operation twin), pinned by
-     * {@code RecordCountSingleDescriptorTest}.
-     * </p>
-     */
-    // Public so BroadcastFold can recognise an inline-operation call as the dataset-fact operand
-    // equivalent of a $-operation reference (native broadcast-verdict retention parity), and so
-    // RulePackageLoader.injectInlineOperationGates detects ungated library/define/dictionary-
-    // dependent inline calls with the engine's own recognition (single authority).
-    public static boolean isInlineOperation(Expr.Call c)
-    {
-        if (OperationType.fromJson(c.name()) == null)
-        {
-            return false;
-        }
-        boolean hasBuiltin = FunctionRegistry.descriptorAccepting(c.name(),
-                c.args().size()) != null;
-        return !hasBuiltin || !c.kwargs().isEmpty();
-    }
-
-
-    /**
      * ⭐ Phase 6b (D3/D14 — the R11 bridge): compiles and evaluates a VALUE expression over the full
-     * row range of {@code ctx}'s table — the entry {@code TargetExpressionMaterializer} uses to
+     * row range of {@code ctx}'s table — the entry the grouped functions' expression targets use to
      * materialise an operation's computed target ({@code max(num(WEIGHT), …)}) into a synthetic
      * column. Returns {@code null} when a referenced column is unresolvable (the operation then
-     * answers its own {@code EmptyResult}, exactly as over an absent target column).
+     * answers its own empty value, exactly as over an absent target column).
      *
      * @throws ExpressionException
      *             for an expression shape the native value surface does not support — a load-time
@@ -5174,152 +5190,14 @@ public final class ExprCompiler
 
 
     /**
-     * Compiles an inline operation-function (Form A) to a {@link ValuePlan} that, per evaluation,
-     * runs the operation through the shared {@link OperationExecutor} against the live context
-     * (primary table, dataset resolver, library provider, prior {@code $}-variables) and broadcasts
-     * its result with {@link #variableVector} — exactly as a {@code $}-operation reference does, so
-     * a scalar broadcasts as a {@link ConstVector} and a {@link GroupedResult} resolves per row.
-     *
-     * <p>
-     * The {@link Operation} is built once at compile time from the call (the
-     * {@link OperationExpressionParser} mapping shared with the Form-B loader path). Only
-     * {@code cross_dataset_variable_metadata} is refused here: it resolves per variable
-     * ({@code VariableMetadataResult}) and has no inline operand surface, so an inline use of it is
-     * a {@link RuleDefinitionException} — a definitional rule error (loud {@code loadError} /
-     * ERROR) — rather than a decline, because it is a definitional fault of the rule: an
-     * {@link ExpressionException} would surface only as the generic "no native expression form"
-     * ERROR, while a {@link RuleDefinitionException} becomes a load error naming the fault
-     * ({@code RulePackageLoader}'s catch around {@code installCompiledLevels}). Library-dependent
-     * operations <b>do</b> compile inline on this path (§9.C): their SKIP-on-missing-Library
-     * semantics are restored by the {@code library_available() and available(<op-call>)}
-     * Precondition that {@code RulePackageLoader.injectInlineOperationGates} adds at load. (On the
-     * membership-set path, {@link #inlineSetOperation}, a library-dependent call is not inlined.)
-     * </p>
-     *
-     * <p>
-     * The supported inline surface is the <b>operand position</b> of a comparison / arithmetic /
-     * function argument (where {@link #operandPlan} runs). A list-returning operation used as a
-     * membership right-hand side or a group operand is not reached here ({@code buildSet} /
-     * {@code groupOperandName} handle those positions) and stays Form B.
-     * </p>
-     *
-     * <p>
-     * No per-occurrence memoisation: the result is recomputed on every {@code eval(run)} (so a
-     * variable-level rule that re-evaluates per column recomputes per column). The shipped corpus
-     * is Form B, so inline operations are a hand-authoring surface; keep an expensive
-     * inventory-scanning operation (e.g. {@code variable_count}) as an {@code Operations} entry to
-     * retain the {@code LazyValue} single-execution.
-     * </p>
-     */
-    private static ValuePlan operationCallPlan(Expr.Call c)
-    {
-        OperationType type = OperationType.fromJson(c.name());
-        // cross_dataset_variable_metadata resolves per-variable (VariableMetadataResult) and has no
-        // inline operand surface — author it as a var_*(dataset=) accessor (§9.D) instead.
-        // Library-dependent operations DO compile inline (§9.C); their SKIP-on-missing-Library
-        // semantics are restored by the `library_available() and available(<op>)` Precondition
-        // RulePackageLoader.injectInlineOperationGates adds at load — a library op produces
-        // LIBRARY_NOT_AVAILABLE here only when the gate has already skipped the rule, so the check
-        // never reaches it.
-        if (type == OperationType.CROSS_DATASET_VARIABLE_METADATA)
-        {
-            throw new RuleDefinitionException("operation '" + c.name()
-                    + "' cannot be inlined; author it as a var_*(dataset=) accessor");
-        }
-        Operation op = OperationExpressionParser.fromCall(c, null);
-        ProviderNeed.Kind provider = OperationExecutor.isLibraryDependent(type)
-                ? ProviderNeed.Kind.LIBRARY
-                : OperationExecutor.isDefineDependent(type) ? ProviderNeed.Kind.DEFINE : null;
-        return run ->
-        {
-            EvaluationContext ctx = run.ctx();
-            Object result = inlineOperationResult(op, ctx);
-            if (provider != null && OperationExecutor.isNotAvailableSentinel(result))
-            {
-                // Wave 0 (PLAN-binding-expressions §5.2 (c)): the provider answered nothing
-                // usable. In the Check this is unreachable — the loader-injected
-                // `available(<call>)` gate SKIPs first, and now reads this very signal — but a
-                // provider call nested inside a COMPILED binding has no injected gate: the signal
-                // is what makes RuleRunner's eager arm SKIP it instead of letting the sentinel
-                // broadcast into the binding's arithmetic or membership.
-                throw new UnusableProviderAnswerException(c.name(), provider,
-                        "the provider returned no usable data");
-            }
-            // A skipped / unresolvable operation (null) broadcasts null — no row fires — mirroring
-            // an absent $-operation reference (valueRefPlan / nameRefPlan).
-            return result == null ? ConstVector.of(null)
-                    : variableVector(ctx, run.rowCount(), result,
-                            () -> "inline operation " + c.name());
-        };
-    }
-
-
-    /**
-     * Runs an inline operation against the live context, returning its raw result (a scalar / list
-     * / {@link GroupedResult}, or {@code null} when skipped / unresolvable). Shared by the operand
-     * path ({@link #operationCallPlan}) and the §9.A membership-set path so both feed
-     * {@link OperationExecutor#executeOne} identically (same {@link #forcedPriors} group-$-var
-     * unwrap).
-     */
-    private static @Nullable Object inlineOperationResult(Operation op, EvaluationContext ctx)
-    {
-        // Resolve `--` domain wildcards in name/domain/group against the run's domain prefix before
-        // executing. Since D77 the compiled program is per (rule × dataset), NOT shared across
-        // domains: RuleSpecialiser.specialise runs ExprPrefixResolver over the Check, so a `--` in
-        // an inline call is normally already resolved by the time it is compiled. What this call
-        // is FOR are the keyword-argument KEYS of a filter= map: ExprPrefixResolver leaves them as
-        // written, they travel into the Operation's filter map, and resolvePrefixes (its
-        // resolveFilterKeys step) is the only place they are resolved — without this call a
-        // `--`-keyed filter names a non-existent column and matches nothing, silently.
-        // ⚑ For the name operand of variable_count (D92a, the inventory fold; its sibling
-        // variable_value_count was deleted by wave 1), which ExprPrefixResolver also leaves as a
-        // TEMPLATE, the call is not what makes it work: resolvePrefixes resolves the name against
-        // THIS dataset but stashes the template as originalName, and the executor re-resolves
-        // that template (originalName, or the name when nothing was stashed) against each
-        // inventory dataset itself (countVariableAcrossInventory → resolveTemplate), so `--LNKGRP`
-        // becomes AELNKGRP, CMLNKGRP, … whether or not this call ran.
-        Operation resolved = OperationExecutor.resolvePrefixes(op, ctx.getDomainPrefix(),
-                ctx.getVariableWildcardPrefix());
-        return OperationExecutor.executeOne(resolved, ctx.getTable(), ctx.getDatasetResolver(),
-                ctx.getLibraryProvider(), forcedPriors(resolved, ctx), ctx.getRuleId(),
-                ctx.getDictionaryProvider(), ctx.getDefineProvider(),
-                ctx.getNumericExpectedColumns());
-    }
-
-
-    /**
-     * The {@link Operation} for an inline list operation used as a membership right-hand side
-     * (§9.A), or {@code null} when {@code right} is not an inlinable operation call (a
-     * {@code $}-ref, a list literal, a wildcard, or a library / cross-dataset operation that cannot
-     * be inlined). A {@code null} return lets the caller fall through to the {@code $}-ref /
-     * literal {@link #buildSet} path (or its unsupported rejection).
-     */
-    private static @Nullable Operation inlineSetOperation(Expr right)
-    {
-        if (!(right instanceof Expr.Call c) || !isInlineOperation(c))
-        {
-            return null;
-        }
-        OperationType type = OperationType.fromJson(c.name());
-        if (OperationExecutor.isLibraryDependent(type)
-                || type == OperationType.CROSS_DATASET_VARIABLE_METADATA)
-        {
-            return null;
-        }
-        return OperationExpressionParser.fromCall(c, null);
-    }
-
-
-    /**
-     * Folds an operation result into a membership {@link Set} with the same contract as
+     * Folds a binding's dataset-level value into a membership {@link Set} with the same contract as
      * {@link #buildSet}'s {@code $}-reference branch: a {@link java.util.Collection} contributes
-     * its (case-folded) elements, a non-grouped scalar a singleton, and a {@code null} /
-     * unresolvable / {@link GroupedResult} result the empty set (a {@link GroupedResult} is handled
-     * per row before this is reached). The members are classified through
-     * {@link Primitives.MemberSet} — a {@code MissingValue} keeps its identity instead of rendering
-     * to {@code "."} (owner 2026-09-25, {@code PLAN-member-set-identity-hardening}); no element is
-     * {@code null} (register {@code NNL §1}: the result passed the {@code ListValueGuard} at its
-     * birth site). Package-private for {@code MemberSetBuilderIdentityTest}.
+     * its (case-folded) elements, a scalar a singleton, and a {@code null} / unresolvable result
+     * the empty set. The members are classified through {@link Primitives.MemberSet} — a
+     * {@code MissingValue} keeps its identity instead of rendering to {@code "."} (owner
+     * 2026-09-25, {@code PLAN-member-set-identity-hardening}); no element is {@code null} (register
+     * {@code NNL §1}: the result passed the {@code ListValueGuard} at its birth site).
+     * Package-private for {@code MemberSetBuilderIdentityTest}.
      */
     static Primitives.MemberSet toSet(@Nullable Object result, boolean caseInsensitive)
     {
@@ -5327,53 +5205,11 @@ public final class ExprCompiler
         {
             return Primitives.MemberSet.of(col, caseInsensitive);
         }
-        if (result != null && !(result instanceof GroupedResult))
+        if (result != null)
         {
             return Primitives.MemberSet.of(List.of(result), caseInsensitive);
         }
         return EMPTY_MEMBERS;
-    }
-
-
-    /**
-     * The prior-{@code $}-variable map to feed {@link OperationExecutor#executeOne} for an inline
-     * operation. The executor reads a prior {@code $}-entry in exactly three places —
-     * {@code expandGroupRefs} (the {@code group} list), {@code evalMinus} (the {@code name} /
-     * {@code subtract} operands) and {@code TargetExpressionMaterializer} (a computed target) — and
-     * none of them unwraps a {@link net.cumba.corej.core.exec.LazyValue} or a compiled binding's
-     * holder. So when the operation references any {@code $}-variable
-     * ({@link OperationExecutor#priorReferences}), return a small map with exactly those entries
-     * forced through {@link BindingValue#forOperation(Object, java.util.function.Supplier)} — the
-     * one hand-over helper; other variables stay lazy. With no {@code $}-reference the live map is
-     * passed through unchanged (nothing in it is read).
-     */
-    private static Map<String, Object> forcedPriors(Operation op, EvaluationContext ctx)
-    {
-        Set<String> refs = OperationExecutor.priorReferences(op);
-        if (refs.isEmpty())
-        {
-            return ctx.getVariables();
-        }
-        // ⭐ Wave 0 (PLAN-binding-expressions I5): every $-entry the operation reads — its group,
-        // its
-        // name / subtract operands and its computed target — is forced through the ONE hand-over
-        // helper RuleRunner's supplier uses. Before, only the group was forced here, so an inline
-        // `minus($a, subtract=$b)` read its operands as raw LazyValue wrappers (normalizeToList's
-        // scalar arm → one `LazyValue.toString()` element), and a compiled binding would have
-        // reached the executor as its holder object.
-        Map<String, Object> forced = new LinkedHashMap<>();
-        for (String ref : refs)
-        {
-            if (ctx.getVariables().containsKey(ref))
-            {
-                Object value = BindingValue.forOperation(ctx.getVariables().get(ref), () -> ctx);
-                if (value != null)
-                {
-                    forced.put(ref, value);
-                }
-            }
-        }
-        return forced;
     }
 
     // Package-private (not private) so NativeExprEvaluatorTest can assert the Phase 10 literal-only
@@ -5437,7 +5273,7 @@ public final class ExprCompiler
         List<@Nullable ValuePlan> argPlans = new ArrayList<>(bound.size());
         for (Expr arg : bound)
         {
-            argPlans.add(arg == null ? null : operandPlan(arg, true));
+            argPlans.add(arg == null ? null : argumentPlan(arg));
         }
         // Constant-fold a pure value function whose arguments are ALL literals: evaluate it once at
         // compile time (against a 1-row context-free run — the allowlisted transforms read only
@@ -5583,9 +5419,9 @@ public final class ExprCompiler
      * §3.2 (plan unified-callable-surface): the value twin of {@link #cachedBool} — a pure value
      * call (per the {@link DatasetExpressionCache} VALUE allow-list) is computed once per
      * {@code (table-instance, canonical-expression, domain-prefix)} and reused across the dataset's
-     * rules, replacing the legacy {@code $}-var {@code LazyValue} single-execution advantage. The
-     * §3.6 {@code cacheableAt} gate applies at eval time exactly as for booleans. {@link Vector}s
-     * are immutable, so unlike the boolean path no defensive clone is needed; a {@code null} result
+     * rules, replacing the legacy {@code $}-var single-execution advantage. The §3.6
+     * {@code cacheableAt} gate applies at eval time exactly as for booleans. {@link Vector}s are
+     * immutable, so unlike the boolean path no defensive clone is needed; a {@code null} result
      * (missing column) is never stored — it falls through uncached.
      */
     private static ValuePlan cachedValue(Expr e, ValuePlan inner)
@@ -5833,11 +5669,16 @@ public final class ExprCompiler
             {
                 // Reuse the operation's own builder so the inline var_*(dataset=) value is
                 // byte-identical to cross_dataset_variable_metadata (label / data_type / length /
-                // format, including the STRING->"Char" / else->"Num" data_type mapping).
+                // format, including the STRING->"Char" / else->"Num" data_type mapping). The
+                // excluded "self" is the DATASET under evaluation, exactly as the function passes
+                // it — not its domain: a split QSCG (domain QS) excluded a dataset named "QS" and
+                // so read its own label under dataset="*" (combined review, W3W4b M4 / F-W4b-2).
                 String field = crossDatasetField(attr);
                 Object value = name == null ? null
-                        : VariableMetadataResult.build(ctx.getDatasetResolver(), foreign, field,
-                                ctx.getDomainName()).getForVariable(name);
+                        : VariableMetadataResult
+                                .build(ctx.getDatasetResolver(), foreign, field,
+                                        ctx.getTable().getMetaData().getName())
+                                .getForVariable(name);
                 return ConstVector.of(value);
             }
             String raw = readMetadata(ctx, attr, level, name);
@@ -5973,7 +5814,7 @@ public final class ExprCompiler
             // on DataTableMeta, it is derived from the data. unsplitNameFromData is the SAME leg
             // Scope.Domains matches against, so `dataset_domain == "X"` and
             // `Scope.Domains.Include: [X]` agree by construction.
-            case DS_DOMAIN -> OperationExecutor.unsplitNameFromData(ctx.getTable());
+            case DS_DOMAIN -> DatasetIdentity.unsplitNameFromData(ctx.getTable());
             default -> null;
             };
         }
@@ -6382,12 +6223,12 @@ public final class ExprCompiler
      * <ol>
      * <li><b>Tier 2 — the CDISC domain</b>, resolved by {@link CdiscDomainResolver#cdiscDomainOf}:
      * <em>exactly</em> the resolution the retired {@code domain_label()} operation used. ⚠
-     * Deliberately <b>not</b> {@code OperationExecutor.unsplitNameFromData} — the two differ for a
+     * Deliberately <b>not</b> {@code DatasetIdentity.unsplitNameFromData} — the two differ for a
      * dataset with no {@code DOMAIN} column or no rows, and identical resolution is what made
      * retiring {@code domain_label()} onto this accessor (<b>Fix #371</b>) a refactor rather than a
      * behaviour change hiding inside a cleanup. ⚑ {@code domain_label()} and its
-     * {@code OperationType.DOMAIN_LABEL} arm no longer exist; this accessor is the only
-     * dataset-label read left.</li>
+     * {@code DOMAIN_LABEL} operation arm no longer exist; this accessor is the only dataset-label
+     * read left.</li>
      * <li><b>Tier 3 — {@code SUPP--} / {@code SQ--} → {@code SUPPQUAL}</b>, with the label template
      * substituted from {@code RDOMAIN}; see {@link #suppQualMetadata}.</li>
      * </ol>
@@ -6482,7 +6323,7 @@ public final class ExprCompiler
         // The contract builds this map with putIfPresent, so an in-repo provider never yields a
         // null value; an out-of-repo one could, and the map is walked wholesale.
         out.values().removeIf(Objects::isNull);
-        String parent = OperationExecutor.firstRowValue(table, "RDOMAIN");
+        String parent = DatasetIdentity.firstRowValue(table, "RDOMAIN");
         if (parent != null)
         {
             out.replaceAll((_, v) -> substitutePlaceholder(v, parent));
@@ -6611,28 +6452,6 @@ public final class ExprCompiler
     }
 
 
-    private static Vector variableVector(EvaluationContext ctx, int rowCount, Object var,
-            java.util.function.Supplier<String> producer)
-    {
-        if (var instanceof GroupedResult grouped)
-        {
-            // Q2 of PLAN-grouping-key-identity: bound to this table once, never per row — a
-            // result grouped on another dataset whose key column has the other kind ERRORs the
-            // rule instead of silently matching no row.
-            ctx.requireCompatibleGroupedKeys(grouped);
-            // getForRowOrDefault (not getForRow): an absent group key resolves to the op-scoped
-            // default (0L for record_count -- a subject with zero matching rows is a real 0, so
-            // e.g. `$count <= 1` fires -- null otherwise), mirroring the legacy
-            // the row-loop default. The same default
-            // now flows to the comparison value side and the report output (RuleRunner), so a
-            // record_count $var renders and compares as 0 on every path.
-            return new ComputedVector(rowCount, DataValueType.STRING,
-                    row -> grouped.getForRowOrDefault(ctx, row));
-        }
-        return ConstVector.of(var, producer);
-    }
-
-
     /**
      * Whether {@code right} is a non-empty list literal of string literals only — the shape that
      * states a character expectation for the Phase 3 membership gate.
@@ -6744,9 +6563,7 @@ public final class ExprCompiler
             // CDISC-CG0370's value_is_reference `distinct` ($rdomain_variables) when the SUPP--
             // table it runs on has no RDOMAIN column.
             // Legacy then runs is_(not_)contained_by against an empty set, and so must the native
-            // path. A GroupedResult never reaches here — compileMembership routes
-            // GroupedResult-valued refs to groupedMembership before calling buildSet. The
-            // Collection / scalar / null folding is shared with the §9.A inline-set path via toSet.
+            // path. The Collection / scalar / null folding is toSet's.
             return toSet(var, caseInsensitive);
         }
         throw unsupported("membership right-hand side must be a list literal or a $-variable list");
@@ -7090,6 +6907,9 @@ public final class ExprCompiler
             }
         }
         rejectNonLiteralDictionaryFlags(descriptor, bound);
+        rejectNonLiteralStaticStrings(descriptor, bound);
+        rejectNonLiteralListArguments(descriptor, bound);
+        rejectScalarFunctionArguments(descriptor, bound);
     }
 
 
@@ -7120,6 +6940,351 @@ public final class ExprCompiler
             {
                 throw unsupported("argument 'case_sensitive' of '" + descriptor.name()
                         + "' takes a boolean literal (true or false), not " + describe(e));
+            }
+        }
+    }
+
+
+    /**
+     * Wave 3 ({@code PLAN-per-row-functions} D-W3-4), a companion of
+     * {@link #rejectNonLiteralDictionaryFlags}: the parameters a registry function reads ONCE per
+     * call rather than per row — the dictionary level ({@code dictionary_term_type}) of the
+     * membership functions and {@code row_max}'s column selector ({@code name_pattern}) — take a
+     * static string literal. A column or any other expression bound there would be read at row 0
+     * and silently stand for every row (the FDA-SD1078 silent shape); on the retired operation
+     * surface both were string fields, so a non-string was a load error there too. A
+     * {@code name_pattern} that does not compile as a regular expression is a load error as well
+     * (the operation answered {@code null} and the rule fired nothing, silently). Retired with the
+     * other seams when {@code PARAMETER_TYPE} is armed.
+     *
+     * <p>
+     * Keyed by <b>(function, parameter)</b> ({@link #STATIC_STRING_PARAMETERS}), as wave 4's
+     * vocabularies are: a parameter that merely shares one of these names on another function — an
+     * ordinary per-row operand called {@code name_pattern} — is not held to a literal by accident
+     * (combined review of runbook W2–W8, W3W4b L3: the seam was keyed by the parameter name alone).
+     * </p>
+     */
+    private static void rejectNonLiteralStaticStrings(FunctionDescriptor descriptor,
+            List<@Nullable Expr> bound)
+    {
+        Set<String> statics = STATIC_STRING_PARAMETERS.getOrDefault(descriptor.name(), Set.of());
+        if (statics.isEmpty())
+        {
+            return;
+        }
+        List<Parameter> params = descriptor.parameters();
+        for (int i = 0; i < params.size() && i < bound.size(); i++)
+        {
+            Expr e = bound.get(i);
+            String name = params.get(i).name();
+            if (e == null || !statics.contains(name))
+            {
+                continue;
+            }
+            if (!(e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING))
+            {
+                throw unsupported("argument '" + name + "' of '" + descriptor.name()
+                        + "' takes a static string literal, not " + describe(e));
+            }
+            if (net.cumba.corej.core.exec.RowMax.PATTERN_PARAMETER.equals(name))
+            {
+                try
+                {
+                    net.cumba.corej.core.exec.RowMax.compile(String.valueOf(lit.value()));
+                }
+                catch (java.util.regex.PatternSyntaxException bad)
+                {
+                    ExpressionException error = unsupported("argument '" + name + "' of '"
+                            + descriptor.name() + "' is not a valid regular expression: "
+                            + bad.getDescription());
+                    error.initCause(bad);
+                    throw error;
+                }
+            }
+        }
+    }
+
+    /**
+     * The registry parameters {@link #rejectNonLiteralStaticStrings} holds to a string literal,
+     * keyed <b>function → parameters</b>: the dictionary level of the two membership functions and
+     * the column-selecting {@code name_pattern} of {@code row_max}, {@code variable_count} and
+     * {@code column_series_metadata} (each a regular expression, validated as one).
+     */
+    private static final Map<String, Set<String>> STATIC_STRING_PARAMETERS = Map.of(
+            net.cumba.corej.core.exec.DictionaryFunctions.VALUE,
+            Set.of(net.cumba.corej.core.exec.DictionaryFunctions.LEVEL_PARAMETER),
+            net.cumba.corej.core.exec.DictionaryFunctions.CODE,
+            Set.of(net.cumba.corej.core.exec.DictionaryFunctions.LEVEL_PARAMETER),
+            net.cumba.corej.core.exec.RowMax.NAME,
+            Set.of(net.cumba.corej.core.exec.RowMax.PATTERN_PARAMETER),
+            net.cumba.corej.core.exec.ScalarMetadataFunctions.VARIABLE_COUNT,
+            Set.of(net.cumba.corej.core.exec.ScalarMetadataFunctions.PATTERN_PARAMETER),
+            net.cumba.corej.core.exec.ScalarMetadataFunctions.COLUMN_SERIES_METADATA,
+            Set.of(net.cumba.corej.core.exec.ScalarMetadataFunctions.PATTERN_PARAMETER));
+
+    /**
+     * Wave 4 ({@code PLAN-list-functions} D-W4-3), keyed by <b>(function, parameter)</b> so a
+     * parameter name shared with another function is not caught by accident: the list functions'
+     * static string parameters, each with the vocabulary it must spell. A {@code null} vocabulary
+     * is "any string literal".
+     */
+    private static final Map<String, Map<String, @Nullable Set<String>>> STATIC_STRING_VOCABULARIES = Map
+            .of(net.cumba.corej.core.exec.LibraryLists.CODELIST_TERMS,
+                    map2(net.cumba.corej.core.exec.LibraryLists.LEVEL_PARAMETER,
+                            net.cumba.corej.core.exec.LibraryLists.LEVELS,
+                            net.cumba.corej.core.exec.LibraryLists.RETURNTYPE_PARAMETER,
+                            net.cumba.corej.core.exec.LibraryLists.RETURNTYPES),
+                    net.cumba.corej.core.exec.LibraryLists.GET_DATASET_FILTERED_VARIABLES,
+                    map2(net.cumba.corej.core.exec.LibraryLists.KEY_NAME_PARAMETER,
+                            net.cumba.corej.core.metadata.LibraryVariableAttributes.KEYS,
+                            net.cumba.corej.core.exec.LibraryLists.KEY_VALUE_PARAMETER, null),
+                    net.cumba.corej.core.exec.LibraryLists.GET_MODEL_FILTERED_VARIABLES,
+                    map3(net.cumba.corej.core.exec.LibraryLists.KEY_NAME_PARAMETER,
+                            net.cumba.corej.core.metadata.LibraryVariableAttributes.KEYS,
+                            net.cumba.corej.core.exec.LibraryLists.KEY_VALUE_PARAMETER, null,
+                            net.cumba.corej.core.exec.LibraryLists.MODEL_CLASS_PARAMETER,
+                            net.cumba.corej.core.metadata.SdtmObservationClasses.MODEL_CLASS_NAMES),
+                    // Wave 4b (PLAN-scalar-metadata-functions D-W4b-6): the scalar functions'
+                    // metadata keys, template, base column and source dataset — each read once
+                    // per call. cross_dataset_variable_metadata's key has a closed vocabulary
+                    // (the retired operation answered null for any other key, silently);
+                    // extract_metadata's stays open (any provider metadata key, D-W4b-3).
+                    net.cumba.corej.core.exec.ScalarMetadataFunctions.EXTRACT_METADATA,
+                    map1(net.cumba.corej.core.exec.ScalarMetadataFunctions.NAME_PARAMETER, null),
+                    net.cumba.corej.core.exec.ScalarMetadataFunctions.CROSS_DATASET_VARIABLE_METADATA,
+                    map2(net.cumba.corej.core.exec.ScalarMetadataFunctions.NAME_PARAMETER,
+                            net.cumba.corej.core.exec.ScalarMetadataFunctions.VARIABLE_METADATA_FIELDS,
+                            net.cumba.corej.core.exec.ScalarMetadataFunctions.DOMAIN_PARAMETER,
+                            null),
+                    net.cumba.corej.core.exec.ScalarMetadataFunctions.VARIABLE_COUNT,
+                    map1(net.cumba.corej.core.exec.ScalarMetadataFunctions.NAME_PARAMETER, null),
+                    net.cumba.corej.core.exec.ScalarMetadataFunctions.COLUMN_SERIES_METADATA,
+                    map1(net.cumba.corej.core.exec.ScalarMetadataFunctions.NAME_PARAMETER, null));
+
+    /**
+     * Wave 4: the list functions' <b>list</b> parameters. A list literal bound there must hold
+     * string literals only — {@code codelists=[DOMAIN]} would otherwise compile silently, since
+     * {@code DOMAIN} is a real column (R1: a bare name is a column, a quoted one a string). The
+     * static ones ({@code codelists}, {@code ct_package_types}) must BE a list literal (read once
+     * per call); {@code minus}'s operands are a {@code $}-binding or a list literal, never an
+     * inline expression.
+     */
+    private static final Map<String, Set<String>> STATIC_LIST_PARAMETERS = Map.of(
+            net.cumba.corej.core.exec.LibraryLists.CODELIST_TERMS,
+            Set.of(net.cumba.corej.core.exec.LibraryLists.CODELISTS_PARAMETER),
+            net.cumba.corej.core.exec.LibraryLists.VALID_CODELIST_DATES,
+            Set.of(net.cumba.corej.core.exec.LibraryLists.CT_PACKAGE_TYPES_PARAMETER));
+
+    private static final Map<String, Set<String>> LIST_EXPRESSION_PARAMETERS = Map.of(
+            net.cumba.corej.core.exec.Minus.NAME,
+            Set.of(net.cumba.corej.core.exec.Minus.VALUE_PARAMETER,
+                    net.cumba.corej.core.exec.Minus.SUBTRACT_PARAMETER));
+
+    private static Map<String, @Nullable Set<String>> map1(String k1, @Nullable Set<String> v1)
+    {
+        Map<String, @Nullable Set<String>> m = new java.util.HashMap<>();
+        m.put(k1, v1);
+        return m;
+    }
+
+
+    /**
+     * Wave 4b ({@code PLAN-scalar-metadata-functions} D-W4b-4 / D-W4b-6): the scalar functions'
+     * argument rules the (function, parameter) vocabularies cannot state — {@code variable_count}'s
+     * template and {@code name_pattern} are mutually exclusive (the retired operation let the
+     * pattern win silently), and {@code column_series_metadata}'s {@code min_length} is a
+     * non-negative integer literal (read once per call). Retired with the other seams when
+     * {@code PARAMETER_TYPE} is armed.
+     */
+    private static void rejectScalarFunctionArguments(FunctionDescriptor descriptor,
+            List<@Nullable Expr> bound)
+    {
+        String function = descriptor.name();
+        Expr first = bound.isEmpty() ? null : bound.get(0);
+        Expr second = bound.size() < 2 ? null : bound.get(1);
+        Expr third = bound.size() < 3 ? null : bound.get(2);
+        if (net.cumba.corej.core.exec.ScalarMetadataFunctions.VARIABLE_COUNT.equals(function)
+                && first != null && second != null)
+        {
+            throw unsupported("'" + function + "' takes a template (" + describe(first)
+                    + ") or a name_pattern, never both — two counts under one name; give one");
+        }
+        if (net.cumba.corej.core.exec.ScalarMetadataFunctions.COLUMN_SERIES_METADATA
+                .equals(function)
+                && third != null
+                && !(third instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.NUMBER
+                        && lit.value() instanceof Double d && d >= 0
+                        && Double.compare(d, Math.rint(d)) == 0))
+        {
+            throw unsupported("argument '"
+                    + net.cumba.corej.core.exec.ScalarMetadataFunctions.MIN_LENGTH_PARAMETER
+                    + "' of '" + function + "' takes a non-negative integer literal, not "
+                    + describe(third));
+        }
+    }
+
+
+    private static Map<String, @Nullable Set<String>> map2(String k1, @Nullable Set<String> v1,
+            String k2, @Nullable Set<String> v2)
+    {
+        Map<String, @Nullable Set<String>> m = new java.util.HashMap<>();
+        m.put(k1, v1);
+        m.put(k2, v2);
+        return m;
+    }
+
+
+    private static Map<String, @Nullable Set<String>> map3(String k1, @Nullable Set<String> v1,
+            String k2, @Nullable Set<String> v2, String k3, @Nullable Set<String> v3)
+    {
+        Map<String, @Nullable Set<String>> m = map2(k1, v1, k2, v2);
+        m.put(k3, v3);
+        return m;
+    }
+
+
+    /**
+     * Wave 4 ({@code PLAN-list-functions} D-W4-3): the argument seams of a registry call, run at
+     * <b>load</b> for a call written inline in a Check or a Precondition — the binder's arity /
+     * unknown-parameter errors, the R1 column-vs-literal seam, the static-string and static-list
+     * seams and their vocabularies. A binding's call meets the same seams when its program
+     * compiles; an inline call is compiled lazily, so the loader runs this for every inline
+     * registry call except the compiler-dispatched ones ({@code RulePackageLoader}'s
+     * {@code registryCallSeamExemptions}). An unknown name is left to the compiler's own error.
+     *
+     * @param c
+     *            the call
+     * @throws ExpressionException
+     *             when an argument does not bind or a seam refuses it
+     */
+    public static void validateRegistryCall(Expr.Call c)
+    {
+        FunctionDescriptor descriptor = FunctionRegistry.descriptor(c.name());
+        if (descriptor == null)
+        {
+            return;
+        }
+        rejectLiteralColumnArguments(descriptor, ArgumentBinder.bind(descriptor, c));
+    }
+
+
+    /**
+     * Wave 4's companion of {@link #rejectNonLiteralStaticStrings} ({@code PLAN-list-functions}
+     * D-W4-3): the list functions' static string parameters take a string literal spelling a word
+     * of their vocabulary ({@code level}, {@code returntype}, {@code key_name}, {@code model_class}
+     * — the retired operation parser's {@code validateKeyName} / {@code validateModelClass}, now a
+     * compile seam), and their list parameters take string literals only (a bare {@code [DOMAIN]}
+     * is a load error naming the quoted spelling). Retired with the other seams when
+     * {@code PARAMETER_TYPE} is armed.
+     */
+    private static void rejectNonLiteralListArguments(FunctionDescriptor descriptor,
+            List<@Nullable Expr> bound)
+    {
+        Map<String, @Nullable Set<String>> vocabularies = STATIC_STRING_VOCABULARIES
+                .getOrDefault(descriptor.name(), Map.of());
+        Set<String> staticLists = STATIC_LIST_PARAMETERS.getOrDefault(descriptor.name(), Set.of());
+        Set<String> listExpressions = LIST_EXPRESSION_PARAMETERS.getOrDefault(descriptor.name(),
+                Set.of());
+        List<Parameter> params = descriptor.parameters();
+        for (int i = 0; i < params.size() && i < bound.size(); i++)
+        {
+            Expr e = bound.get(i);
+            String name = params.get(i).name();
+            if (e == null)
+            {
+                continue;
+            }
+            if (vocabularies.containsKey(name))
+            {
+                if (!(e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING))
+                {
+                    throw unsupported("argument '" + name + "' of '" + descriptor.name()
+                            + "' takes a static string literal, not " + describe(e));
+                }
+                Set<String> vocabulary = vocabularies.get(name);
+                String value = String.valueOf(lit.value());
+                if (vocabulary != null && !vocabulary.contains(vocabularyWord(name, value)))
+                {
+                    throw unsupported(
+                            vocabularyMessage(descriptor.name(), name, value, vocabulary));
+                }
+            }
+            if (staticLists.contains(name) || listExpressions.contains(name))
+            {
+                if (e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+                {
+                    requireStringLiteralMembers(descriptor.name(), name, lit);
+                }
+                else if (staticLists.contains(name))
+                {
+                    throw unsupported("argument '" + name + "' of '" + descriptor.name()
+                            + "' takes a static list of string literals, not " + describe(e));
+                }
+                else if (!(e instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF))
+                {
+                    // Combined review of runbook W2–W8, W4 M3: a list-expression operand is read
+                    // ONCE per call (row 0 of a non-constant vector), so a column, a per-row call
+                    // or any other inline expression would silently stand for every row. Only a
+                    // $-binding (Stage A refuses one that needs a cursor —
+                    // OPERATION_READS_CURSOR_BINDING) or a list literal is a dataset-level list.
+                    throw unsupported("argument '" + name + "' of '" + descriptor.name()
+                            + "' takes a dataset-level list — a $-binding of one or a list"
+                            + " literal — not `" + ExpressionPrinter.print(e) + "`: an inline"
+                            + " operand is read once, at row 0, and would stand for every row;"
+                            + " bind it and read the binding ($x)");
+                }
+            }
+        }
+    }
+
+
+    /** {@code model_class} is matched after the normalisation the function applies. */
+    private static String vocabularyWord(String parameter, String value)
+    {
+        if (net.cumba.corej.core.exec.LibraryLists.MODEL_CLASS_PARAMETER.equals(parameter))
+        {
+            String norm = net.cumba.corej.core.metadata.SdtmObservationClasses
+                    .normalise(value.trim());
+            return norm == null ? value : norm;
+        }
+        return value;
+    }
+
+
+    private static String vocabularyMessage(String function, String parameter, String value,
+            Set<String> vocabulary)
+    {
+        String sorted = new TreeSet<>(vocabulary).toString();
+        if (net.cumba.corej.core.exec.LibraryLists.KEY_NAME_PARAMETER.equals(parameter))
+        {
+            return "`key_name` `" + value + "` on '" + function + "' is not an attribute of a"
+                    + " library variable, so the filter can never match; expected one of " + sorted;
+        }
+        if (net.cumba.corej.core.exec.LibraryLists.MODEL_CLASS_PARAMETER.equals(parameter))
+        {
+            return "unknown `model_class` value `" + value + "` on '" + function
+                    + "'; expected one of " + sorted;
+        }
+        return "unknown `" + parameter + "` value `" + value + "` on '" + function
+                + "'; expected one of " + sorted;
+    }
+
+
+    private static void requireStringLiteralMembers(String function, String parameter,
+            Expr.Lit list)
+    {
+        @SuppressWarnings("unchecked")
+        List<Expr> items = (List<Expr>) list.value();
+        for (Expr item : items)
+        {
+            if (!(item instanceof Expr.Lit member) || member.kind() != Expr.LitKind.STRING)
+            {
+                String spelling = item instanceof Expr.Ref ref ? "\"" + ref.name() + "\""
+                        : describe(item);
+                throw unsupported("argument '" + parameter + "' of '" + function
+                        + "' takes a list of string literals; " + describe(item)
+                        + " is not one — a name means a column, a quoted name " + spelling
+                        + " a string");
             }
         }
     }

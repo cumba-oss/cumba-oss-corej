@@ -368,7 +368,7 @@ class GroupKeyPolicyUnificationTest
 
 
     /**
-     * {@code GroupedResult.identityKey} is the per-row <b>lookup</b> twin of
+     * {@code GroupKeyIdentity.identityKey} is the per-row <b>lookup</b> twin of
      * {@code IndexHelper.buildGroupKey}'s block-representative key (since
      * {@code PLAN-grouping-key-identity} the very same function). The plan lists six missing-key
      * implementations; this is a seventh, and it is the one whose divergence would be hardest to
@@ -401,7 +401,7 @@ class GroupKeyPolicyUnificationTest
             for (int row : block.rows())
             {
                 assertEquals(block.key(),
-                        GroupedResult.identityKey(t.getMetaData(), t, List.of("K"), row),
+                        GroupKeyIdentity.identityKey(t.getMetaData(), t, List.of("K"), row),
                         "the lookup key must reproduce the block key for EVERY row of the block,"
                                 + " including the block whose key is a genuine missing");
             }

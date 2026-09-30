@@ -2,13 +2,11 @@ package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import net.cumba.corej.core.expr.CheckExpressionParser;
-import net.cumba.corej.core.expr.convert.BindingRouting;
 import net.cumba.corej.core.expr.eval.ConstVector;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionKind;
@@ -17,14 +15,13 @@ import net.cumba.corej.core.expr.eval.ProviderNeed;
 import net.cumba.corej.core.expr.eval.RegistryTestSeam;
 import net.cumba.corej.core.expr.typed.ExprType;
 import net.cumba.corej.core.expr.typed.ExprType.Primitive;
-import net.cumba.corej.core.model.Operation;
 import org.junit.jupiter.api.Test;
 
 /**
  * The provider capability's ONE reader ({@code PLAN-binding-expressions} §5.2, M2) on the arms wave
  * 0 ships no function for — DEFINE, and DICTIONARY with its type argument (W1's D-W1-3 reuses
- * exactly this) — plus the routing predicate every reader shares and the operation-side
- * {@code $}-read census ({@link OperationExecutor#priorReferences}, I5).
+ * exactly this). The routing predicate and the operation-side {@code $}-read census this class also
+ * pinned went with the operation carrier in runbook W8.
  */
 class ProviderNeedsTest
 {
@@ -102,14 +99,18 @@ class ProviderNeedsTest
 
 
     @Test
-    void aMalformedInlineOperationCallNeedsNothingItTheCompilerRejectsIt()
+    void aFunctionCallNeedsItsDescriptorsCapability()
     {
-        // Review round 1, T3: a LIBRARY-dependent operation, so "needs nothing" is a real answer —
-        // the well-formed call needs the Library (the positive control), and the malformed one
-        // (an unknown keyword the operation parser refuses) reports no need rather than guessing
-        // one; the compiler raises the real error.
-        assertTrue(needsOf("not domain_is_custom()").library(), "the positive control");
-        assertTrue(needsOf("not domain_is_custom(bogus=1)").isEmpty());
+        // Review round 1, T3 pinned that a malformed LIBRARY-dependent operation call reported no
+        // need. Since wave 4b (PLAN-scalar-metadata-functions) no operation needs a provider at
+        // all — domain_is_custom, the vehicle, is a registry function whose need is its
+        // descriptor's LIBRARY capability, whatever its arguments (the compiler raises the arity
+        // error itself).
+        assertTrue(needsOf("not domain_is_custom()").library(), "the function's capability");
+        assertTrue(needsOf("not domain_is_custom(bogus=1)").library(),
+                "the capability is the descriptor's, not the call's shape");
+        assertTrue(needsOf("distinct(USUBJID, domain=\"DM\") == 1").isEmpty(),
+                "a function without a capability needs nothing (distinct since runbook W7)");
     }
 
 
@@ -120,35 +121,6 @@ class ProviderNeedsTest
                 () -> new ProviderNeed(ProviderNeed.Kind.LIBRARY, "t"));
         assertThrows(IllegalArgumentException.class,
                 () -> new ProviderNeed(ProviderNeed.Kind.DICTIONARY, null));
-    }
-
-
-    @Test
-    void routingKeepsASingleOperationCallAndUnparseableTextOnTheOperationPath()
-    {
-        assertTrue(BindingRouting.routesToOperation("record_count()"));
-        assertTrue(BindingRouting.routesToOperation("((("), "unparseable stays an operation");
-        assertTrue(BindingRouting.routesToOperation(null));
-        assertTrue(BindingRouting.routesToOperation("  "));
-        assertFalse(BindingRouting.routesToOperation("upper(AETERM)"));
-        assertFalse(BindingRouting.routesToOperation("record_count() + 0"));
-        assertNull(BindingRouting.tryParse("((("));
-        assertNull(BindingRouting.tryParse(null));
-    }
-
-
-    @Test
-    void priorReferencesReadEveryDollarNameTheExecutorConsults()
-    {
-        Operation op = new Operation();
-        op.setGroup(List.of("USUBJID", "$g"));
-        op.setName("$n");
-        op.setSubtract("$s");
-        op.setNameExpr(CheckExpressionParser.parse("concat($a, \"x\") == \"y\" and not ($c > 1"
-                + " or $d < 2) and upper($e) in [\"A\", \"B\"]"));
-        assertEquals(List.of("$g", "$n", "$s", "$a", "$c", "$d", "$e"),
-                List.copyOf(OperationExecutor.priorReferences(op)));
-        assertTrue(OperationExecutor.priorReferences(new Operation()).isEmpty());
     }
 
 }

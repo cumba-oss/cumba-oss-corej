@@ -2,6 +2,7 @@ package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -739,7 +740,8 @@ class NativeExprEvaluatorTest
         // group B is a singleton -> skipped.
         IDataTable t = MockTable.of().col("GRP", "A", "A", "B").col("ORD", "2", "1", "1")
                 .col("VAL", "3", "5", "1").build();
-        String source = "not is_sorted_by(VAL, by=[asc(\"ORD\")], within=GRP)";
+        // (Runbook W8, R1: the sort key is a column reference — asc(ORD), never asc("ORD").)
+        String source = "not is_sorted_by(VAL, by=[asc(ORD)], within=GRP)";
         assertParity(source, t);
         assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(px(source), ctx(t)),
                 "target_is_not_sorted_by (not is_sorted_by(...) surface)");
@@ -1172,11 +1174,12 @@ class NativeExprEvaluatorTest
     @Test
     void contextDependentCallNotFolded()
     {
-        // record_count() reads run.ctx() and is NOT in the fold allowlist: it stays per-row and
-        // still evaluates correctly (broadcasting the table row count from its own body).
-        ExprCompiler.ValuePlan plan = ExprCompiler.valueCallPlan((Expr.Call) call("record_count"));
+        // record_count() reads run.ctx() and is never constant-folded: it evaluates against the
+        // run's table (since runbook W6 through its own compiler-dispatched plan, so it is reached
+        // through operandPlan rather than the registry tail).
         IDataTable t = MockTable.of().col("X", "a", "b", "c").build();
-        Vector v = plan.eval(EvalRun.fullRange(ctx(t)));
+        Vector v = ExprCompiler.evaluateValueExpression(call("record_count"), ctx(t));
+        assertNotNull(v);
         assertEquals(3L, ((Number) v.value(0).resolved()).longValue(), "record_count() = 3");
     }
 

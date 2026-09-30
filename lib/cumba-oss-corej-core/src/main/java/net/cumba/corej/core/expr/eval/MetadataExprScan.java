@@ -137,7 +137,7 @@ public final class MetadataExprScan
         // Row-independent references in a metadata expression: the variable_name anchor and
         // $-operation results (P4 — broadcast-constant per evaluation; a per-variable
         // VariableMetadataResult is projected onto the per-column cursor context by
-        // RuleRunner.evaluateMetadataNative, and a per-row GroupedResult is excluded at dispatch
+        // RuleRunner.evaluateMetadataNative, and a per-row binding is excluded at dispatch
         // by RuleRunner's runtime guard, mirroring the removed legacy engine's ROW leaf
         // classification).
         // Any other reference is a per-row column read.

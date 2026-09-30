@@ -12,7 +12,6 @@ import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
@@ -24,12 +23,12 @@ import org.junit.jupiter.api.Test;
  * {@code FDA-SD1078} automatically.
  *
  * <p>
- * The load-time guard ({@code OperationExpressionParser.validateKeyName}) rejects a key <em>no</em>
- * level can serve. It deliberately cannot reject {@code core} on
- * {@code get_model_filtered_variables}, the shape FDA-SD1078 got wrong, because the Model walk
- * <em>does</em> publish {@code core} for SUPP--/SQ-- datasets and for every ADaM dataset. So the
- * distinction — "the filter matched nothing" versus "this level cannot serve this key at all" — is
- * drawn where the rows are, at runtime.
+ * The load-time guard (the compile seam {@code ExprCompiler.rejectNonLiteralListArguments}, the
+ * retired operation parser's {@code validateKeyName}) rejects a key <em>no</em> level can serve. It
+ * deliberately cannot reject {@code core} on {@code get_model_filtered_variables}, the shape
+ * FDA-SD1078 got wrong, because the Model walk <em>does</em> publish {@code core} for SUPP--/SQ--
+ * datasets and for every ADaM dataset. So the distinction — "the filter matched nothing" versus
+ * "this level cannot serve this key at all" — is drawn where the rows are, at runtime.
  * </p>
  *
  * <p>
@@ -39,8 +38,6 @@ import org.junit.jupiter.api.Test;
  */
 class UnservedKeyNameDiagnosticTest
 {
-
-    private static final DatasetResolver NO_RESOLVER = d -> null;
 
     /** A standard SDTM domain, as FDA-SD1078 was run against. */
     private static IDataTable ae()
@@ -71,22 +68,36 @@ class UnservedKeyNameDiagnosticTest
                 Map.of("name", "AETERM", "role", "Topic", "core", "Req"));
     }
 
-
-    private static Operation filterOp(String keyName, String keyValue)
+    /**
+     * The bound {@code key_name} / {@code key_value} of a {@code get_model_filtered_variables}
+     * call.
+     */
+    private record Filter(@Nullable String keyName, @Nullable String keyValue)
     {
-        Operation op = new Operation();
-        op.setId("$t");
-        op.setOperator("get_model_filtered_variables");
-        op.setKeyName(keyName);
-        op.setKeyValue(keyValue);
-        return op;
+    }
+
+    private static Filter filterOp(@Nullable String keyName, @Nullable String keyValue)
+    {
+        return new Filter(keyName, keyValue);
     }
 
 
-    private static Map<String, Object> run(List<Map<String, String>> rows, Operation op)
+    /** The function's answer under {@code $t} — the vocabulary the retired operation gave. */
+    private static Map<String, Object> run(List<Map<String, String>> rows, Filter filter)
     {
-        return OperationExecutorCalls.execute(List.of(op), ae(), NO_RESOLVER,
-                new ModelRowProvider(rows));
+        // get_model_filtered_variables is a registry function since wave 4; the diagnostic is
+        // the same WARNING (D-W4-12).
+        Object answer = LibraryLists.modelFilteredVariables(
+                net.cumba.corej.core.expr.eval.EvalRun.fullRange(EvaluationContext.builder()
+                        .table(ae()).libraryProvider(new ModelRowProvider(rows)).build()),
+                java.util.Arrays.asList(
+                        filter.keyName() == null ? null
+                                : net.cumba.corej.core.expr.eval.ConstVector.of(filter.keyName()),
+                        filter.keyValue() == null ? null
+                                : net.cumba.corej.core.expr.eval.ConstVector.of(filter.keyValue()),
+                        null))
+                .value(0).resolved();
+        return Map.of("$t", java.util.Objects.requireNonNull(answer));
     }
 
 
@@ -136,7 +147,7 @@ class UnservedKeyNameDiagnosticTest
     @Test
     void noFilterMeansNoDiagnostic()
     {
-        Operation unfiltered = filterOp(null, null);
+        Filter unfiltered = filterOp(null, null);
         assertEquals(List.of(), capture(() -> run(modelRowsWithoutCore(), unfiltered)));
         assertEquals(List.of("AESEV", "AETERM"), run(modelRowsWithoutCore(), unfiltered).get("$t"));
     }
@@ -152,12 +163,12 @@ class UnservedKeyNameDiagnosticTest
     }
 
 
-    /** Runs {@code body} with a handler attached to {@link OperationExecutor}'s class logger. */
+    /** Runs {@code body} with a handler attached to {@link LibraryLists}' class logger. */
     private static List<String> capture(Runnable body)
     {
         CapturingHandler handler = new CapturingHandler();
         handler.setLevel(Level.ALL);
-        Logger juli = Logger.getLogger(OperationExecutor.class.getName());
+        Logger juli = Logger.getLogger(LibraryLists.class.getName());
         Level previous = juli.getLevel();
         juli.addHandler(handler);
         juli.setLevel(Level.ALL);
@@ -260,7 +271,7 @@ class UnservedKeyNameDiagnosticTest
 
 
     /**
-     * Collects the {@link LogRecord}s emitted by {@link OperationExecutor}'s class logger. Lombok's
+     * Collects the {@link LogRecord}s emitted by {@link LibraryLists}' class logger. Lombok's
      * {@code @CustomLog} yields a {@link System.Logger}, which the JDK routes through
      * {@code java.util.logging}.
      */

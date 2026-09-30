@@ -110,43 +110,6 @@ class RuleModelTest
 
 
     @Test
-    void testOperation()
-    {
-        Operation op = new Operation();
-        op.setId("$var");
-        op.setOperator("distinct");
-        op.setName("USUBJID");
-        op.setDomain("DM");
-        op.setGroup(List.of("STUDYID"));
-        op.setRegex("^[A-Z]");
-        op.setKeyName("key");
-        op.setKeyValue("val");
-        op.setCtPackageTypes(List.of("sdtm"));
-        op.setReturntype("string");
-        op.setLevel("top");
-        op.setCodelists(List.of("CL1"));
-        op.setValueIsReference(true);
-
-        assertEquals("$var", op.getId());
-        assertEquals(OperationType.DISTINCT, op.getOperationType());
-        assertEquals("USUBJID", op.getName());
-        assertEquals("DM", op.getDomain());
-        assertEquals(List.of("STUDYID"), op.getGroup());
-        assertEquals("^[A-Z]", op.getRegex());
-        assertTrue(op.getValueIsReference());
-    }
-
-
-    @Test
-    void testOperation_unknownOperator()
-    {
-        Operation op = new Operation();
-        op.setOperator("future_operator");
-        assertNull(op.getOperationType());
-    }
-
-
-    @Test
     void testMatchDataset()
     {
         MatchDataset md = new MatchDataset();

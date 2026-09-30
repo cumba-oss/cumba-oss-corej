@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,9 +28,7 @@ import net.cumba.corej.core.expr.eval.Parameter;
 import net.cumba.corej.core.expr.eval.RegistryTestSeam;
 import net.cumba.corej.core.expr.eval.Vector;
 import net.cumba.corej.core.expr.typed.ExprType;
-import net.cumba.corej.core.model.BoundBinding;
 import net.cumba.corej.core.model.CompiledBinding;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
@@ -39,11 +38,11 @@ import org.junit.jupiter.api.Test;
 /**
  * Wave 0 of {@code RUNBOOK-operations-to-functions} ({@code PLAN-binding-expressions}): a
  * {@code Bindings:} entry may hold ANY expression, not only a single operation call. These tests
- * pin the loader's routing (R1), the ordered binding view (§5.0), the dangling / order gates over
- * both kinds (R6, R25), the lazy per-context storage (R10, D-W0-3), the hand-over contract an
- * operation reads a compiled binding through (§5.0 / I5) and the membership arms (I4). Probe
- * functions are planted through the registry's test seam ({@link RegistryTestSeam}) — never through
- * the corpus.
+ * pin the loader's parse (R1; since runbook W8 every binding is compiled — the operation path and
+ * the hand-over contract an operation read a compiled binding through went with the carrier), the
+ * ordered binding view (§5.0), the dangling / order gates (R6, R25), the lazy per-context storage
+ * (R10, D-W0-3) and the membership arms (I4). Probe functions are planted through the registry's
+ * test seam ({@link RegistryTestSeam}) — never through the corpus.
  */
 class CompiledBindingTest
 {
@@ -121,7 +120,7 @@ class CompiledBindingTest
 
     private static List<String> names(Rule rule)
     {
-        return rule.bindingOrder().stream().map(BoundBinding::name).toList();
+        return rule.bindingOrder().stream().map(CompiledBinding::name).toList();
     }
 
 
@@ -136,32 +135,35 @@ class CompiledBindingTest
 
 
     @Test
-    void aSingleTopLevelOperationCallKeepsTheOperationPathAndEverythingElseCompiles()
-        throws Exception
+    void everyBindingCompilesInAuthoredOrder() throws Exception
     {
-        Rule rule = loadClean("$u == \"HEADACHE\"", "$n", "record_count()", "$u", "upper(AETERM)",
-                "$d", "distinct(AETERM)", "$m", "record_count() + 0");
-        assertEquals(List.of("$n", "$d"),
-                rule.getOperations().stream().map(Operation::getId).toList(),
-                "a single top-level OperationType call keeps the operation path (D-W0-1)");
-        assertEquals(List.of("$u", "$m"),
+        Rule rule = loadClean("$u == \"HEADACHE\"", "$n", "distinct(AEDECOD)", "$u",
+                "upper(AETERM)", "$d", "distinct(AETERM)", "$m", "record_count() + 0");
+        // Runbook W7 retired the last OperationType constant (distinct) and W8 the operation
+        // path itself: every binding compiles, in authored order.
+        assertEquals(List.of("$n", "$u", "$d", "$m"),
                 rule.getCompiledBindings().stream().map(CompiledBinding::name).toList(),
-                "every other expression is compiled — a nested operation call included");
+                "every expression is compiled — the former operation calls included");
         assertEquals(List.of("$n", "$u", "$d", "$m"), names(rule),
-                "the ordered view interleaves both kinds in authored order");
+                "the ordered view is the authored order");
         assertEquals(List.of("$n"), rule.compiledBinding("$u").predecessors());
     }
 
 
+    /**
+     * D-W8-4 ({@code PLAN-retire-operation-surface}): an expression that does not parse is the load
+     * error "invalid binding expression" naming the text — the one behaviour the operation carrier
+     * still had (its load error said "invalid operation expression").
+     */
     @Test
-    void theOrderedViewSurvivesADroppedOperationBinding() throws Exception
+    void anUnparseableBindingExpressionIsALoadErrorNamingIt() throws Exception
     {
-        Rule rule = loadClean("$v == 1", "$a", "record_count()", "$u", "upper(AETERM)", "$b",
-                "record_count()", "$v", "$b + 0");
-        // An inliner drops operation bindings after load; the compiled ones must keep their place
-        // relative to the survivors (an absolute index would shift $u past $b).
-        rule.setOperations(List.of(rule.getOperations().get(1)));
-        assertEquals(List.of("$u", "$b", "$v"), names(rule));
+        Rule rule = load("$x == \"A\"", List.of(), "$x", "upper(AETERM");
+        assertNotNull(rule.getLoadError(), "an unparseable binding never loads");
+        assertTrue(rule.getLoadError().contains("invalid binding expression `upper(AETERM`"),
+                rule.getLoadError());
+        assertFalse(rule.getLoadError().contains("invalid operation expression"),
+                rule.getLoadError());
     }
 
 
@@ -171,10 +173,10 @@ class CompiledBindingTest
         for (String[] pair : new String[][]
         {
                 {
-                        "record_count()", "record_count()"
+                        "distinct(AETERM)", "distinct(AETERM)"
                 },
                 {
-                        "record_count()", "upper(AETERM)"
+                        "distinct(AETERM)", "upper(AETERM)"
                 },
                 {
                         "upper(AETERM)", "lower(AETERM)"
@@ -185,7 +187,7 @@ class CompiledBindingTest
             assertNotNull(rule.getLoadError(), pair[0] + " + " + pair[1]);
             assertTrue(rule.getLoadError().contains("`$x` is declared twice"), rule.getLoadError());
             // Review round 1, L4: the name IS authored — no second, false "dangling" diagnosis.
-            assertFalse(rule.getLoadError().contains("which no Operations entry defines"),
+            assertFalse(rule.getLoadError().contains("which no binding defines"),
                     rule.getLoadError());
         }
     }
@@ -216,8 +218,7 @@ class CompiledBindingTest
         Rule rule = load("$a > 0", List.of(), "$a", "$y + 1");
         assertNotNull(rule.getLoadError());
         assertTrue(rule.getLoadError().contains("$y"), rule.getLoadError());
-        assertTrue(rule.getLoadError().contains("which no Operations entry defines"),
-                rule.getLoadError());
+        assertTrue(rule.getLoadError().contains("which no binding defines"), rule.getLoadError());
         assertTrue(rule.getLoadError().contains("Bindings"),
                 "names the surface it was found on: " + rule.getLoadError());
     }
@@ -228,18 +229,18 @@ class CompiledBindingTest
     @Test
     void aForwardReferenceAcrossBindingKindsIsAStageAError() throws Exception
     {
-        Rule compiledReadsLaterOperation = load("$a > 0", List.of(), "$a", "$b + 1", "$b",
-                "record_count()");
-        assertNotNull(compiledReadsLaterOperation.getLoadError());
-        assertTrue(compiledReadsLaterOperation.getLoadError().contains("declared later"),
-                compiledReadsLaterOperation.getLoadError());
+        Rule readsALaterDistinct = load("$a > 0", List.of(), "$a", "size($b) + 1", "$b",
+                "distinct(AETERM)");
+        assertNotNull(readsALaterDistinct.getLoadError());
+        assertTrue(readsALaterDistinct.getLoadError().contains("declared later"),
+                readsALaterDistinct.getLoadError());
         try (var _ = RegistryTestSeam.register(constList("__w0_order_list__")))
         {
-            Rule operationReadsLaterCompiled = load("X in $m", List.of(), "$m",
-                    "minus($l, subtract=$s)", "$s", "distinct(X)", "$l", "__w0_order_list__()");
-            assertNotNull(operationReadsLaterCompiled.getLoadError());
-            assertTrue(operationReadsLaterCompiled.getLoadError().contains("declared later"),
-                    operationReadsLaterCompiled.getLoadError());
+            Rule minusReadsALaterList = load("X in $m", List.of(), "$m", "minus($l, subtract=$s)",
+                    "$s", "distinct(X)", "$l", "__w0_order_list__()");
+            assertNotNull(minusReadsALaterList.getLoadError());
+            assertTrue(minusReadsALaterList.getLoadError().contains("declared later"),
+                    minusReadsALaterList.getLoadError());
         }
     }
 
@@ -294,20 +295,10 @@ class CompiledBindingTest
         assertTrue(run(miss, ae()).getViolations().isEmpty());
     }
 
-
-    @Test
-    void theTwoRoutesForRecordCountAgree() throws Exception
-    {
-        // D91e pin: `$n: record_count()` is a single top-level OperationType call (operation path)
-        // and `$m: record_count() + 0` compiles through the registry's bare-form fast path — the
-        // two routes wave 0 creates for one name must agree on the same table.
-        Rule rule = loadClean("$n == $m", "$n", "record_count()", "$m", "record_count() + 0");
-        assertNotNull(rule.getOperations());
-        assertNotNull(rule.compiledBinding("$m"));
-        assertFalse(run(rule, ae()).getViolations().isEmpty(), "3 == 3");
-        Rule differ = loadClean("$n != $m", "$n", "record_count()", "$m", "record_count() + 0");
-        assertTrue(run(differ, ae()).getViolations().isEmpty());
-    }
+    // (theTwoRoutesForRecordCountAgree — the D91e pin that `$n: record_count()` on the operation
+    // path and `$m: record_count() + 0` on the registry's bare-form fast path agree — retired with
+    // runbook W6: record_count is ONE compiled registry function, and its bare call IS its
+    // unfiltered ungrouped branch, pinned by RecordCountFunctionTest.)
 
 
     @Test
@@ -358,26 +349,30 @@ class CompiledBindingTest
 
 
     @Test
-    void anOperationCannotReadAPerRowCompiledBinding() throws Exception
+    void aListReaderCannotReadAPerRowCompiledBinding() throws Exception
     {
         Rule rule = load("X in $m", List.of(), "$u", "upper(AETERM)", "$s", "distinct(Y)", "$m",
                 "minus($u, subtract=$s)");
+        // (minus is a registry function since wave 4; the same load-time finding — stage A's
+        // OPERATION_READS_CURSOR_BINDING — keeps the retired operation's runtime refusal.)
         assertNotNull(rule.getLoadError(), "§5.0 row 3: a per-row value has no row to pick");
         assertTrue(rule.getLoadError().contains("cannot read the per-row or per-variable binding"),
                 rule.getLoadError());
     }
 
 
+    /**
+     * {@code resolveVariable} unwraps a per-row binding to its {@link Vector}. (Until runbook W8
+     * this test also pinned {@code BindingValue.forOperation}'s refusal to hand an operation a
+     * per-row vector; the helper went with the carrier.)
+     */
     @Test
-    void theHandOverHelperThrowsRatherThanHandingAnOperationAPerRowVector() throws Exception
+    void resolveVariableHandsAPerRowBindingOverAsItsVector() throws Exception
     {
         Rule rule = loadClean("$u == \"A\"", "$u", "upper(AETERM)");
         BindingValue value = new BindingValue(rule.compiledBinding("$u"));
         EvaluationContext ctx = EvaluationContext.builder().table(ae())
                 .variables(Map.of("$u", value)).build();
-        IllegalStateException backstop = org.junit.jupiter.api.Assertions.assertThrows(
-                IllegalStateException.class, () -> BindingValue.forOperation(value, () -> ctx));
-        assertTrue(backstop.getMessage().contains("$u"), backstop.getMessage());
         Object handedOver = ctx.resolveVariable("$u");
         assertInstanceOf(Vector.class, handedOver,
                 "resolveVariable hands a per-row binding over as its Vector");
@@ -387,9 +382,9 @@ class CompiledBindingTest
     @Test
     void anInlineMinusReadsItsBindingOperandsForcedNotAsLazyWrappers() throws Exception
     {
-        // I5 (ExprCompiler.forcedPriors): before wave 0 an inline operation with no $-group got
-        // the live variables map, so an inline minus read its operands as raw LazyValue wrappers
-        // (normalizeToList's scalar arm → one `LazyValue.toString()` element).
+        // I5 (ExprCompiler.forcedPriors, until runbook W8): before wave 0 an inline operation with
+        // no $-group got the live variables map, so an inline minus read its operands as raw
+        // LazyValue wrappers (normalizeToList's scalar arm → one `LazyValue.toString()` element).
         Rule rule = loadClean("X in minus($l, subtract=$s)", "$l", "distinct(X)", "$s",
                 "distinct(Y)");
         assertEquals(Set.of(1L, 2L), firedRows(run(rule, ae())), "[A,B,C] minus [A,Z,Q]");
@@ -599,10 +594,15 @@ class CompiledBindingTest
                         "get_codelist_attributes(TSVCDREF, TSVCDVER, ct_attribute=\"Term CCODE\")")
                                 .getLoadError(),
                 "a list-valued FUNCTION binding is known statically too");
-        // Unchanged: an operation list, membership against the list binding, a scalar binding.
-        assertEquals(Set.of(0L, 1L, 2L),
-                firedRows(run(loadClean("X != $d", "$d", "distinct(Y)"), ae())),
-                "probe F1: an operation list keeps its (shipped) behaviour");
+        // Runbook W7: distinct is a list-valued registry function, so probe F1's exemption (an
+        // OPERATION-produced list kept `X != $d` firing on every row) ended with the last
+        // operation — the same load error now, and no shipped rule compares a distinct binding
+        // with a scalar operator (measured: every consumer is in / not in / contains /
+        // contains_all).
+        Rule distinctList = load("X != $d", List.of(), "$d", "distinct(Y)");
+        assertNotNull(distinctList.getLoadError());
+        assertTrue(distinctList.getLoadError().contains("COMPARISON_WITH_LIST_BINDING"),
+                distinctList.getLoadError());
         loadClean("X not in $l", "$l", "[\"A\"]");
         loadClean("X != $u", "$u", "upper(X)");
     }
@@ -644,7 +644,7 @@ class CompiledBindingTest
         assertNotNull(inCheck.getLoadError(), "probe E2a");
         assertTrue(
                 inCheck.getLoadError().contains("OPERATION_READS_CURSOR_BINDING") && inCheck
-                        .getLoadError().contains("the inline operation minus(…) in the Check"),
+                        .getLoadError().contains("the list function minus(…) in the Check"),
                 inCheck.getLoadError());
         Rule inBinding = load("$e == true", List.of(), "$a", "[\"A\"]", "$p", "upper(X)", "$e",
                 "empty(minus($a, subtract=$p))");
@@ -659,8 +659,9 @@ class CompiledBindingTest
 
 
     /**
-     * Review round 1, T2: a library-dependent OperationType nested in a compiled binding is SKIPPED
-     * by the provider GATE ("no Library access"), not by the unusable-answer layer.
+     * Review round 1, T2: a library-dependent call (an OperationType until wave 4b) nested in a
+     * compiled binding is SKIPPED by the provider GATE ("no Library access"), not by the
+     * unusable-answer layer.
      */
     @Test
     void aNestedLibraryOperationWithNoLibraryIsSkippedByTheProviderGate() throws Exception
@@ -754,4 +755,57 @@ class CompiledBindingTest
         };
     }
 
+
+    /**
+     * Combined review of runbook W2–W8, XCUT H1: a per-row function WITHOUT a column operand
+     * (row_max selects its columns by a static regex) used to be classified dataset-level, and
+     * every dataset-level reader — the broadcast fold's synthetic row, the hand-over, the report —
+     * then read ROW 0 for the whole table (CDISC-/PMDA-AD0084 decided from row 0, silently). A
+     * dataset-level binding whose rows disagree now fails loud, naming the binding.
+     */
+    @Test
+    void aDatasetLevelBindingWhoseRowsDisagreeFailsLoudInsteadOfReadingRowZero() throws Exception
+    {
+        try (var _ = RegistryTestSeam.register(rowReaderWithoutColumnOperand()))
+        {
+            Rule rule = loadClean("$v == \"B\"", "$v", "__cfx_row_reader__()");
+            // P7 decision 2 (no fallback): a native evaluation error PROPAGATES; the upstream
+            // contract (LibraryValidator / StudyValidationService) turns it into the rule's
+            // ERROR result. Pre-fix: EXECUTED with 0 findings, row 0's "A" compared for every row.
+            IllegalStateException refused = assertThrows(IllegalStateException.class,
+                    () -> RuleRunnerCalls.execute(rule, ae()),
+                    "row 0 reads A, row 1 reads B: not one value for the table");
+            assertTrue(refused.getMessage().contains("$v"),
+                    "the message names the binding: " + refused.getMessage());
+        }
+    }
+
+
+    /**
+     * The same function declared a row reader ({@code FunctionDescriptor.readingRows}) is a per-row
+     * binding: the Check reads every row's own value.
+     */
+    @Test
+    void aDeclaredRowReaderIsAPerRowBinding() throws Exception
+    {
+        try (var _ = RegistryTestSeam.register(rowReaderWithoutColumnOperand().readingRows()))
+        {
+            Rule rule = loadClean("$v == \"B\"", "$v", "__cfx_row_reader__()");
+            assertEquals(Set.of(1L), firedRows(run(rule, ae())), "X = A, B, C: row 1 only");
+        }
+    }
+
+
+    /** A per-row probe with NO column operand: row r answers column X of row r (like row_max). */
+    private static FunctionDescriptor rowReaderWithoutColumnOperand()
+    {
+        return new FunctionDescriptor("__cfx_row_reader__", List.of(), FunctionKind.VALUE,
+                (run, args) ->
+                {
+                    IDataTable t = run.ctx().getTable();
+                    int x = t.getMetaData().getColumnIndex("X");
+                    return new ComputedVector(run.rowCount(), DataValueType.STRING,
+                            row -> t.getDataValue(row, x).getValueAsString());
+                });
+    }
 }

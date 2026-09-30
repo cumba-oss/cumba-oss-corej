@@ -9,7 +9,6 @@ import net.cumba.corej.core.model.ClassScope;
 import net.cumba.corej.core.model.DataStructureScope;
 import net.cumba.corej.core.model.DatasetScope;
 import net.cumba.corej.core.model.DomainScope;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.Scope;
 import net.cumba.corej.core.model.Sensitivity;
@@ -76,44 +75,36 @@ public final class StudyRuleClassifier
     /**
      * Calls that read a dataset but accept an explicit {@code domain=} naming which one. They are
      * study-safe exactly when that domain is pinned to a concrete name (no {@code --} wildcard,
-     * which would resolve against the dataset under evaluation).
+     * which would resolve against the dataset under evaluation) and the call is ungrouped.
+     * {@code read_value} is one of them (combined review XCUT L2): ungrouped, its answer is one
+     * value of the pinned dataset broadcast to every row (R2), exactly as an ungrouped
+     * {@code max_date} is.
      */
-    private static final Set<String> DOMAIN_PINNED_CALLS = Set.of("record_count", "variable_count",
-            "distinct", "max", "max_date", "min_date");
+    private static final Set<String> DOMAIN_PINNED_CALLS = Set.of(RecordCount.NAME, Distinct.NAME,
+            GroupedAggregate.MAX, GroupedAggregate.MAX_DATE, GroupedAggregate.MIN_DATE,
+            ReadValue.NAME);
 
     /**
-     * Operators whose result is a study-level fact. {@code minus} composes other operations, so its
-     * operands are checked recursively.
+     * Registry functions whose result is a study-level fact — they interrogate the study inventory,
+     * never the dataset under evaluation. {@code minus} composes other lists, so its operands are
+     * checked recursively.
      */
-    private static final Set<String> STUDY_LEVEL_OPERATORS = Set.of("dataset_names",
+    private static final Set<String> STUDY_LEVEL_FUNCTIONS = Set.of("dataset_names",
             "define_dataset_names", "study_domains", "standard_domains", "minus");
 
     /**
-     * Operators that read a dataset but are study-safe when pinned to an explicit {@code domain}.
-     * An <em>allowlist</em>, mirroring {@link #DOMAIN_PINNED_CALLS}: the operator vocabulary is
-     * large and most of it ({@code date_diff_days}, {@code extract_metadata}, the dictionary
-     * validators, …) resolves against the record under evaluation, so anything unrecognised must be
-     * assumed to read the primary dataset. ({@code dy} and {@code is_last_in_group}, once named
-     * here as examples, are registry functions since wave 1; they never were on this list.) There
-     * is no {@code min} operation — {@code min_date} is the earliest-date aggregate — so the
-     * {@code "min"} both sets used to carry matched nothing.
-     */
-    private static final Set<String> DOMAIN_PINNED_OPERATORS = Set.of("record_count",
-            "variable_count", "distinct", "max", "max_date", "min_date");
-
-    /**
-     * Whether {@code operator} names an operation whose result is a study-level fact — it
+     * Whether {@code function} names a registry function whose result is a study-level fact — it
      * interrogates the study inventory rather than the dataset under evaluation. Shared with
      * {@link RuleClassifier} so the {@code Sensitivity} derivation and the anchor-eligibility
      * decision cannot drift apart.
      *
-     * @param operator
-     *            the operation's {@code operator} value
-     * @return {@code true} when the operation is study-level
+     * @param function
+     *            the call's function name
+     * @return {@code true} when the function is study-level
      */
-    public static boolean isStudyLevelOperator(String operator)
+    public static boolean isStudyLevelFunction(String function)
     {
-        return STUDY_LEVEL_OPERATORS.contains(operator);
+        return STUDY_LEVEL_FUNCTIONS.contains(function);
     }
 
 
@@ -307,77 +298,10 @@ public final class StudyRuleClassifier
         seen.add(opRef);
         // PLAN-binding-expressions R27: a COMPILED binding reads the primary dataset exactly when
         // its expression does — walked like the Check, never assumed the worst.
+        // Runbook W8: every binding is a compiled binding; a `$`-name no binding defines is the
+        // dangling-reference load error's, and is assumed to read the primary here.
         net.cumba.corej.core.model.CompiledBinding compiled = rule.compiledBinding(opRef);
-        if (compiled != null)
-        {
-            return readsPrimaryDataset(compiled.expression(), rule);
-        }
-        Operation op = findOperation(opRef, rule);
-        if (op == null)
-        {
-            // Unresolvable reference — assume the worst.
-            return true;
-        }
-        String operator = op.getOperator();
-        if (operator != null && STUDY_LEVEL_OPERATORS.contains(operator))
-        {
-            if (!"minus".equals(operator))
-            {
-                return false;
-            }
-            // `minus` is a set difference over two other operands; both must be study-level. A
-            // non-`$` operand names a column of the dataset under evaluation.
-            for (String operand : new String[]
-            {
-                    op.getName(), op.getSubtract()
-            })
-            {
-                if (operand == null || operand.isBlank())
-                {
-                    continue;
-                }
-                if (!operand.startsWith("$") || operationReadsPrimaryDataset(operand, rule, seen))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-        // A grouped aggregate resolves per primary row: OperationExecutor routes it to the
-        // *Grouped variants and GroupedResult.getForRow reads the evaluation table's group
-        // columns, so it is dataset-dependent whatever its domain says.
-        if (op.getGroup() != null && !op.getGroup().isEmpty())
-        {
-            return true;
-        }
-        // `--` is resolved against the dataset under evaluation in several operation fields, not
-        // just `domain`. The anchor pass runs with domainPrefix == null, so an unresolved token
-        // would reach the executor as a non-existent column and silently yield null.
-        if (hasUnresolvedWildcard(op))
-        {
-            return true;
-        }
-        return operator == null || !DOMAIN_PINNED_OPERATORS.contains(operator)
-                || !isPinnedDomain(op.getDomain());
-    }
-
-
-    /** The rule's {@code Operations} entry with this {@code $}-id, or {@code null}. */
-    private static @Nullable Operation findOperation(String opRef, Rule rule)
-    {
-        List<Operation> operations = rule.getOperations();
-        if (operations == null)
-        {
-            return null;
-        }
-        for (Operation op : operations)
-        {
-            if (opRef.equals(op.getId()))
-            {
-                return op;
-            }
-        }
-        return null;
+        return compiled == null || readsPrimaryDataset(compiled.expression(), rule);
     }
 
 
@@ -388,6 +312,15 @@ public final class StudyRuleClassifier
         {
             return false;
         }
+        if (isStudyLevelFunction(name))
+        {
+            // Wave 4 (PLAN-list-functions D-W4-6): the study-level list functions
+            // (dataset_names, define_dataset_names, study_domains, standard_domains) interrogate
+            // the study inventory or the Define, never the primary table; minus is study-safe
+            // exactly when every operand is — the operation-era recursive rule, as an operand walk.
+            return anyReadsPrimaryDataset(call.args(), rule)
+                    || anyReadsPrimaryDataset(List.copyOf(call.kwargs().values()), rule);
+        }
         if ("var_exists".equals(name) || "var_not_exists".equals(name))
         {
             // Study-safe only when the argument names its dataset (DM.ARM); a bare column asks
@@ -397,26 +330,51 @@ public final class StudyRuleClassifier
         }
         if (DOMAIN_PINNED_CALLS.contains(name))
         {
-            Expr domain = call.kwargs().get("domain");
-            if (!(domain instanceof Expr.Lit lit) || !isPinnedDomain(String.valueOf(lit.value())))
+            if (!isPinnedDomain(domainName(call.kwargs().get(GroupedAggregate.DOMAIN_PARAMETER))))
             {
                 return true;
             }
-            // The domain is pinned, but a filter= (or any other) argument may still reach into the
-            // dataset under evaluation.
-            return anyReadsPrimaryDataset(call.args(), rule)
-                    || anyReadsPrimaryDataset(List.copyOf(call.kwargs().values()), rule);
+            // A GROUPED call resolves per primary row — its group key is read on the dataset under
+            // evaluation too (the broadcast, runbook R2) — so it is dataset-dependent whatever its
+            // domain says: the retired operation arm's rule, carried.
+            Expr group = call.kwargs().get("group");
+            if (group != null
+                    && !(group instanceof Expr.Lit groupLit && groupLit.kind() == Expr.LitKind.LIST
+                            && groupLit.value() instanceof List<?> items && items.isEmpty()))
+            {
+                return true;
+            }
+            // The domain is pinned: a BARE column argument names a column of THAT dataset (owner
+            // D13 Q4 / D10 — the strict readers refuse a dotted or `--` reference under domain=),
+            // exactly as the retired operation's target and filter keys did, so it is no read of
+            // the dataset under evaluation (runbook W7, PLAN-distinct-function D-W7-12). The same
+            // holds INSIDE filter=(…), a boolean over the pinned dataset's own columns
+            // (GroupedAggregate.readFilter, ReadValue — combined review W7 MEDIUM-2: the filter
+            // used to be walked as a primary read). What can still reach the primary is a `--`
+            // name, a `$` reference, a dotted reference or a nested call, so those are walked.
+            return anyPinnedArgumentReadsPrimaryDataset(call.args(), rule)
+                    || anyPinnedArgumentReadsPrimaryDataset(List.copyOf(call.kwargs().values()),
+                            rule);
         }
         // Anything outside the allowlist is assumed to read the primary dataset.
         return true;
     }
 
 
-    private static boolean anyElementReadsPrimaryDataset(List<?> elements, Rule rule)
+    /**
+     * {@link #anyReadsPrimaryDataset} for the arguments of a domain-pinned call, with
+     * pinned-dataset semantics: a <b>bare</b> column reference is the pinned dataset's column and
+     * reads nothing of the dataset under evaluation — as the target, as a {@code domain=DS}
+     * reference (D10) and anywhere inside {@code filter=(…)}. Everything else is walked as a
+     * primary read: a {@code --} name (it resolves against the dataset under evaluation — the
+     * readers refuse it under {@code domain=} at load, so this is defence in depth, combined review
+     * W7 MEDIUM-1), a {@code $} or dotted reference, and a nested call.
+     */
+    private static boolean anyPinnedArgumentReadsPrimaryDataset(List<Expr> arguments, Rule rule)
     {
-        for (Object element : elements)
+        for (Expr argument : arguments)
         {
-            if (element instanceof Expr e && readsPrimaryDataset(e, rule))
+            if (pinnedArgumentReadsPrimaryDataset(argument, rule))
             {
                 return true;
             }
@@ -425,32 +383,46 @@ public final class StudyRuleClassifier
     }
 
 
+    private static boolean pinnedArgumentReadsPrimaryDataset(Expr argument, Rule rule)
+    {
+        return switch (argument)
+        {
+        case Expr.Ref ref -> ref.kind() != OperandKind.COLUMN && readsPrimaryDataset(ref, rule);
+        case Expr.Lit lit -> lit.kind() == Expr.LitKind.LIST && lit.value() instanceof List<?> items
+                && items.stream().anyMatch(item -> item instanceof Expr e
+                        && pinnedArgumentReadsPrimaryDataset(e, rule));
+        case Expr.Not n -> pinnedArgumentReadsPrimaryDataset(n.inner(), rule);
+        case Expr.And a -> anyPinnedArgumentReadsPrimaryDataset(a.parts(), rule);
+        case Expr.Or o -> anyPinnedArgumentReadsPrimaryDataset(o.parts(), rule);
+        case Expr.Binary b -> pinnedArgumentReadsPrimaryDataset(b.left(), rule)
+                || pinnedArgumentReadsPrimaryDataset(b.right(), rule);
+        case Expr.Call c -> callReadsPrimaryDataset(c, rule);
+        };
+    }
+
+
     /**
-     * Whether any operation field carries an unresolved {@code --} wildcard. Mirrors the field set
-     * {@code OperationExecutor.resolvePrefixes} rewrites.
+     * The dataset a {@code domain=} argument names, in either spelling the readers accept (D10,
+     * {@code GroupedAggregate.readDataset}): the bare reference {@code DS} or the quoted
+     * {@code "DS"}; {@code null} for an absent or any other argument.
      */
-    private static boolean hasUnresolvedWildcard(Operation op)
+    private static @Nullable String domainName(@Nullable Expr domain)
     {
-        return containsWildcard(op.getName()) || containsWildcard(op.getSubtract())
-                || anyContainsWildcard(op.getNames()) || anyContainsWildcard(op.getGroup());
+        return switch (domain)
+        {
+        case null -> null;
+        case Expr.Ref ref when ref.kind() == OperandKind.COLUMN -> ref.name();
+        case Expr.Lit lit when lit.kind() == Expr.LitKind.STRING -> String.valueOf(lit.value());
+        default -> null;
+        };
     }
 
 
-    private static boolean containsWildcard(@Nullable String value)
+    private static boolean anyElementReadsPrimaryDataset(List<?> elements, Rule rule)
     {
-        return value != null && value.contains("--");
-    }
-
-
-    private static boolean anyContainsWildcard(@Nullable List<String> entries)
-    {
-        if (entries == null)
+        for (Object element : elements)
         {
-            return false;
-        }
-        for (String e : entries)
-        {
-            if (containsWildcard(e))
+            if (element instanceof Expr e && readsPrimaryDataset(e, rule))
             {
                 return true;
             }

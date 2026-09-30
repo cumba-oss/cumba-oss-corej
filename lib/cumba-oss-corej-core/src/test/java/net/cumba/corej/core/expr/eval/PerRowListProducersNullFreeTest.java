@@ -16,10 +16,11 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Register {@code NNL §1}, {@code PLAN-no-null-list-elements} §3(c): the per-row list producers are
- * <b>not</b> guarded per row — a {@code GroupedResult} becomes a per-row {@code ComputedVector},
- * and rescanning a list on every row is the cost §3 rejected — so their null-freedom is a property
- * of their construction, and this test is what pins it (review round 1, L-3: the deletion of plan
- * row 15's {@code caseFold} null test had claimed the guard covers this channel; it does not).
+ * <b>not</b> guarded per row — a per-row result is a {@code ComputedVector} (as a
+ * {@code GroupedResult} became one until runbook W8), and rescanning a list on every row is the
+ * cost §3 rejected — so their null-freedom is a property of their construction, and this test is
+ * what pins it (review round 1, L-3: the deletion of plan row 15's {@code caseFold} null test had
+ * claimed the guard covers this channel; it does not).
  *
  * <p>
  * Each producer is driven over every input shape that could tempt it to emit a {@code null}: a

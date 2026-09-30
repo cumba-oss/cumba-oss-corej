@@ -111,8 +111,6 @@ class CodelistAttributesTest
         assertEquals(ProviderNeed.LIBRARY, d.provider(),
                 "the library dependence the operation's isLibraryDependent declared");
         assertTrue(d.aggregate(), "one list for the dataset (SPEC §1.4)");
-        assertNull(net.cumba.corej.core.model.OperationType.fromJson(CodelistAttributes.NAME),
-                "the OperationType is gone (R1/R3) — no compatibility arm");
         assertTrue(ProviderNeeds
                 .ofCall((Expr.Call) CheckExpressionParser.parse(
                         "get_codelist_attributes(TSVCDREF, TSVCDVER, ct_attribute=\"Term CCODE\")"))
@@ -227,7 +225,6 @@ class CodelistAttributesTest
     {
         Rule rule = cg0288Shape();
         assertNull(rule.getLoadError(), rule.getLoadError());
-        assertNull(rule.getOperations(), "the binding is compiled, not an operation");
         assertEquals(Domain.DATASET, rule.compiledBinding("$VALID_TERM_CODES").domain(),
                 "an aggregate binding is dataset-level");
         assertEquals(List.of("TSVALCD", "TSVCDREF", "$VALID_TERM_CODES"),

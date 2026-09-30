@@ -163,7 +163,8 @@ class NativePreconditionParityTest
     @Test
     void groupedRefPrecondition_undecidedContinuesOnBothEngines() throws Exception
     {
-        // The $-ref resolves to a per-row GroupedResult at runtime: the native tri-state fold is
+        // The $-ref resolves to a per-row value at runtime (a GroupedResult until runbook W8, the
+        // per-row compiled binding's vector since): the native tri-state fold is
         // UNKNOWN and continues — exactly the legacy fold, which classifies the leaf ROW and
         // cannot decide it either.
         Rule rule = loadRule(String.format(GROUPED_PRE_RULE_TMPL, ""));

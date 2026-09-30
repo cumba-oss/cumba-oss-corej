@@ -2,13 +2,13 @@ package net.cumba.corej.core.report;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -169,23 +169,27 @@ class LibraryValidatorStudySensitivityTest
     @Test
     void studyRuleSkippedOnEveryDatasetYieldsOneSkippedStudyResult()
     {
-        // A define-dependent operation with no Define provider SKIPs the rule on every dataset.
-        Operation defineOp = new Operation();
-        defineOp.setId("$define_dataset_names");
-        defineOp.setOperator("define_dataset_names");
-
-        Rule r = new Rule();
+        // A define-dependent binding (define_dataset_names(), a registry function since wave 4)
+        // with no Define provider SKIPs the rule on every dataset. Loaded as the corpus loads it,
+        // so the binding is compiled and routed by the loader.
+        String json = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"CORE-STUDY-SKIP\"},"
+                + "\"Sensitivity\":\"Study\","
+                + "\"Bindings\":[{\"name\":\"$define_dataset_names\","
+                + "\"expression\":\"define_dataset_names()\"}],"
+                + "\"Check\":{\"expression\":\"STUDYID in $define_dataset_names\"},"
+                + "\"Outcome\":{\"Message\":\"never fires (skipped)\","
+                + "\"Output_Variables\":[\"STUDYID\"]}}}}";
+        Rule r;
+        try
+        {
+            r = net.cumba.corej.core.RulePackageLoader.loadFromString(json).getRules().get("x");
+        }
+        catch (java.io.IOException e)
+        {
+            throw new IllegalStateException(e);
+        }
+        assertNull(r.getLoadError(), r.getLoadError());
         r.setId("uuid-CORE-STUDY-SKIP");
-        RuleCore core = new RuleCore();
-        core.setId("CORE-STUDY-SKIP");
-        r.setCore(core);
-        r.setSensitivity(Sensitivity.STUDY);
-        Outcome outcome = new Outcome();
-        outcome.setMessage("never fires (skipped)");
-        outcome.setOutputVariables(List.of("STUDYID"));
-        r.setOutcome(outcome);
-        r.setOperations(List.of(defineOp));
-        r.setCheck(new CheckConditionAll(List.of(expr("STUDYID in $define_dataset_names"))));
 
         // No .defineProvider(...) → the define-dependent rule is SKIPPED on both datasets.
         ValidationReport report = LibraryValidator.builder().provider(providerWithDmAndAe())

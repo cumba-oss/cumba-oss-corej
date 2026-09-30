@@ -20,7 +20,6 @@ import net.cumba.corej.core.exec.ScopeVariableSource;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.ExpansionDirective;
 import net.cumba.corej.core.model.MatchDataset;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.OutputVariableToken;
 import net.cumba.corej.core.model.Rule;
@@ -709,7 +708,10 @@ public final class TokenExpander
         rule.setScope(template.getScope());
         rule.setRequirements(template.getRequirements());
         rule.setMatchDatasets(substituteMatchDatasets(template.getMatchDatasets(), substitutions));
-        rule.setOperations(substituteOperations(template.getOperations(), substitutions));
+        // Supp_Merge is a top-level field like Severity: this method builds the child from a fresh
+        // `new Rule()`, so a template's `Supp_Merge: false` was silently dropped and every expanded
+        // child pivoted SUPP-- qualifiers the template had switched off (combined review W2 M2).
+        rule.setSuppMerge(template.getSuppMerge());
         // PLAN-binding-expressions R21: the compiled bindings get the Check's substitution — this
         // method builds a fresh Rule, so a binding list it did not name would be dropped silently
         // from every expanded rule and its $-references would dangle.
@@ -775,24 +777,6 @@ public final class TokenExpander
         {
             out.add(MAPPER.convertValue(substituteTree(MAPPER.valueToTree(md), substitutions),
                     MatchDataset.class));
-        }
-        return List.copyOf(out);
-    }
-
-
-    /** Same JSON-tree rewrite for {@code Operations}, so a future template can tokenise one. */
-    private static @Nullable List<Operation> substituteOperations(
-            @Nullable List<Operation> operations, Map<String, String> substitutions)
-    {
-        if (operations == null)
-        {
-            return null;
-        }
-        List<Operation> out = new ArrayList<>(operations.size());
-        for (Operation op : operations)
-        {
-            out.add(MAPPER.convertValue(substituteTree(MAPPER.valueToTree(op), substitutions),
-                    Operation.class));
         }
         return List.copyOf(out);
     }

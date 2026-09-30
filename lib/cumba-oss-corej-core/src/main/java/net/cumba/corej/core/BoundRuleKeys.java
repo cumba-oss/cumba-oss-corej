@@ -55,7 +55,8 @@ public final class BoundRuleKeys
             "Authorities", "Scope", "Requirements", "Outcome", "Bindings", "Match_Datasets",
             "Grouping_Variables", "Grouping", "Precondition", "Expansion", "skipIfLibraryDefined",
             "wildcards", "wildcardExclude", "wildcardPairCatalogue", "Check", "Rule_Type",
-            "Sensitivity", "Severity", "Executability", "Variable_Universe", "Operations");
+            "Sensitivity", "Severity", "Executability", "Variable_Universe", "Operations",
+            "Supp_Merge");
 
     /** A package — {@link RulePackage}. */
     public static final Set<String> RULE_PACKAGE = Set.of("rules", "standards");

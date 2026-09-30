@@ -2,13 +2,11 @@ package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import net.cumba.corej.core.metadata.ScopeClassLadder;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.IDataTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -30,12 +28,17 @@ class CaseInsensitiveColumnNameSurfacesTest
 
     private static final DatasetResolver NO_RESOLVER = _ -> null;
 
-    private static Operation op(String id, String operator)
+    /** {@code column_series_metadata("COVAL", name_pattern="^COVAL\\d+$")} over {@code co}. */
+    private static @Nullable Object columnSeries(IDataTable co)
     {
-        Operation op = new Operation();
-        op.setId(id);
-        op.setOperator(operator);
-        return op;
+        return ScalarMetadataFunctions
+                .columnSeriesMetadata(
+                        net.cumba.corej.core.expr.eval.EvalRun.fullRange(EvaluationContext.builder()
+                                .table(co).datasetResolver(NO_RESOLVER).build()),
+                        java.util.Arrays.asList(
+                                net.cumba.corej.core.expr.eval.ConstVector.of("COVAL"),
+                                net.cumba.corej.core.expr.eval.ConstVector.of("^COVAL\\d+$"), null))
+                .value(0).resolved();
     }
 
 
@@ -72,12 +75,9 @@ class CaseInsensitiveColumnNameSurfacesTest
     void columnSeriesMetadataRecognisesALowercaseBaseColumn()
     {
         IDataTable co = RealTables.of("CO").str("coval", "a").str("coval2", "c").build();
-        Operation series = op("$s", "column_series_metadata");
-        series.setNamePattern("^COVAL\\d+$");
-        series.setName("COVAL");
 
-        Object result = OperationExecutorCalls.executeOne(series, co, NO_RESOLVER, null,
-                new HashMap<>());
+        // A registry function since wave 4b (PLAN-scalar-metadata-functions).
+        Object result = columnSeries(co);
 
         assertEquals(true, result, "coval is the base (0), coval2 is 2 — the gap at 1 fires");
     }
@@ -89,13 +89,7 @@ class CaseInsensitiveColumnNameSurfacesTest
     {
         IDataTable co = RealTables.of("CO").str("coval", "a").str("coval1", "b").str("coval2", "c")
                 .build();
-        Operation series = op("$s", "column_series_metadata");
-        series.setNamePattern("^COVAL\\d+$");
-        series.setName("COVAL");
-
-        assertEquals(false,
-                OperationExecutorCalls.executeOne(series, co, NO_RESOLVER, null, new HashMap<>()),
-                "0, 1, 2 contiguous ⇒ complete");
+        assertEquals(false, columnSeries(co), "0, 1, 2 contiguous ⇒ complete");
     }
 
     // -- StandardVariableSelector: natural_key_variables / get_dataset_filtered_variables --------
@@ -119,10 +113,12 @@ class CaseInsensitiveColumnNameSurfacesTest
                 .variable("LB", Map.of("name", "--TESTCD", "role", "Topic"))
                 .variable("LB", Map.of("name", "--ORRES", "role", "Result Qualifier"));
 
-        Map<String, Object> vars = OperationExecutorCalls
-                .execute(List.of(op("$nk", "natural_key_variables")), lb, NO_RESOLVER, library);
+        Object nk = LibraryLists.naturalKeyVariables(
+                net.cumba.corej.core.expr.eval.EvalRun.fullRange(EvaluationContext.builder()
+                        .table(lb).libraryProvider(library).datasetResolver(NO_RESOLVER).build()),
+                List.of()).value(0).resolved();
 
-        assertEquals(List.of("visitnum", "lbspec"), vars.get("$nk"),
+        assertEquals(List.of("visitnum", "lbspec"), nk,
                 "Timing + Record Qualifier present in any case, in the dataset's spelling; "
                         + "Identifier / Topic excluded, the absent --ORRES dropped");
     }
@@ -136,7 +132,7 @@ class CaseInsensitiveColumnNameSurfacesTest
     {
         IDataTable aplb = RealTables.of("APLB").str("apid", "P1").str("domain", "APLB").build();
 
-        assertEquals("LB", OperationExecutor.apSuffixOf(aplb, "APLB"));
+        assertEquals("LB", DatasetIdentity.apSuffixOf(aplb, "APLB"));
     }
 
 
@@ -146,7 +142,7 @@ class CaseInsensitiveColumnNameSurfacesTest
     {
         IDataTable aplb = RealTables.of("APLB").str("usubjid", "U1").str("domain", "APLB").build();
 
-        assertEquals("", OperationExecutor.apSuffixOf(aplb, "APLB"));
+        assertEquals("", DatasetIdentity.apSuffixOf(aplb, "APLB"));
     }
 
 

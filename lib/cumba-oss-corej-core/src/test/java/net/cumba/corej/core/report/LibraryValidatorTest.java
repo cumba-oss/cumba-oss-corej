@@ -16,9 +16,7 @@ import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
-import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.DomainScope;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -526,23 +524,24 @@ class LibraryValidatorTest
         IDataTable table = MockTable.of().name("DM").col("USUBJID", "S01", "S02")
                 .col("RFICDTC", "2024-01-01", "2024-02-01").build();
 
-        Operation op = new Operation();
-        op.setId("$codelist_dates");
-        op.setOperator("valid_codelist_dates");
-
-        net.cumba.corej.core.model.CheckConditionExpression opCheck = expr(
-                "RFICDTC not in $codelist_dates");
-
-        Rule rule = new Rule();
-        RuleCore core = new RuleCore();
-        core.setId("CORE-THROW");
-        rule.setCore(core);
-        Outcome outcome = new Outcome();
-        outcome.setMessage("boom rule");
-        outcome.setOutputVariables(List.of("USUBJID"));
-        rule.setOutcome(outcome);
-        rule.setCheck(new CheckConditionAll(List.of(opCheck)));
-        rule.setOperations(List.of(op));
+        // valid_codelist_dates() is a registry function since wave 4: the throwing provider is
+        // reached through the compiled binding's eager forcing. Loaded as the corpus loads it.
+        String json = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"CORE-THROW\"},"
+                + "\"Bindings\":[{\"name\":\"$codelist_dates\","
+                + "\"expression\":\"valid_codelist_dates()\"}],"
+                + "\"Check\":{\"expression\":\"RFICDTC not in $codelist_dates\"},"
+                + "\"Outcome\":{\"Message\":\"boom rule\","
+                + "\"Output_Variables\":[\"USUBJID\"]}}}}";
+        Rule rule;
+        try
+        {
+            rule = net.cumba.corej.core.RulePackageLoader.loadFromString(json).getRules().get("x");
+        }
+        catch (java.io.IOException e)
+        {
+            throw new IllegalStateException(e);
+        }
+        assertNull(rule.getLoadError(), rule.getLoadError());
 
         // Capture System.Logger output (CustomLog routes through java.util.logging) from the
         // LibraryValidator class logger.

@@ -16,16 +16,18 @@ import java.util.Objects;
 import java.util.Set;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.expr.eval.BindingDomains;
 import net.cumba.corej.core.expr.eval.ConstVector;
+import net.cumba.corej.core.expr.eval.Domain;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionKind;
-import net.cumba.corej.core.expr.eval.OperationKinds;
 import net.cumba.corej.core.expr.eval.Parameter;
 import net.cumba.corej.core.expr.eval.ProviderNeed;
 import net.cumba.corej.core.expr.eval.RegistryTestSeam;
 import net.cumba.corej.core.expr.eval.UnusableProviderAnswerException;
 import net.cumba.corej.core.expr.eval.Vector;
 import net.cumba.corej.core.expr.typed.ExprType;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
@@ -33,9 +35,10 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Wave 0 ({@code PLAN-binding-expressions} §5.1): every reader that resolved a {@code $}-name
- * against {@code getOperations()} alone must see a <b>compiled</b> binding too. One negative
- * control per silent-hole row — each asserts the widened behaviour, which the pre-wave-0 reader
- * could not produce (the binding would have been invisible to it).
+ * against the declared operations alone (the {@code getOperations()} list, retired in runbook W8)
+ * must see a <b>compiled</b> binding too. One negative control per silent-hole row — each asserts
+ * the widened behaviour, which the pre-wave-0 reader could not produce (the binding would have been
+ * invisible to it).
  */
 class CompiledBindingReadersTest
 {
@@ -83,7 +86,8 @@ class CompiledBindingReadersTest
         // `$c > EXSTDTC` names only $c; read through, it is `date($m) > EXSTDTC` — the silencing
         // positive leaf the guard exists for.
         Rule rule = load("$c > EXSTDTC", List.of(), "$m",
-                "min_date(EXSTDTC, missing_values=\"indeterminate\")", "$c", "date($m)");
+                "min_date(EXSTDTC, group=[USUBJID], missing_values=\"indeterminate\")", "$c",
+                "date($m)");
         assertNotNull(rule.getLoadError(), "R2: consumed through the compiled binding");
         assertTrue(rule.getLoadError().contains("positive-polarity leaf `greater_than`"),
                 rule.getLoadError());
@@ -94,7 +98,7 @@ class CompiledBindingReadersTest
     void anIndeterminateInlineCallInsideACompiledBindingIsRejected() throws Exception
     {
         Rule rule = load("$c > EXSTDTC", List.of(), "$c",
-                "date(min_date(EXSTDTC, missing_values=\"indeterminate\"))");
+                "date(min_date(EXSTDTC, group=[USUBJID], missing_values=\"indeterminate\"))");
         assertNotNull(rule.getLoadError(), "R2: the inline call lives inside the binding");
         assertTrue(rule.getLoadError().contains("positive-polarity leaf"), rule.getLoadError());
     }
@@ -104,7 +108,8 @@ class CompiledBindingReadersTest
     void aComparisonInsideAConditionBindingIsAConsumer() throws Exception
     {
         Rule rule = load("$b == true", List.of(), "$m",
-                "min_date(EXSTDTC, missing_values=\"indeterminate\")", "$b", "date($m) > EXSTDTC");
+                "min_date(EXSTDTC, group=[USUBJID], missing_values=\"indeterminate\")", "$b",
+                "date($m) > EXSTDTC");
         assertNotNull(rule.getLoadError(), "R2: the binding itself compares the extreme");
         assertTrue(rule.getLoadError().contains("positive-polarity leaf `greater_than`"),
                 rule.getLoadError());
@@ -114,38 +119,31 @@ class CompiledBindingReadersTest
 
 
     @Test
-    void anOperationACompiledBindingReadsIsNeverInlinedAway() throws Exception
+    void aCompiledBindingReadByAnotherCompiledBindingStaysReadable() throws Exception
     {
-        Rule rule = loadClean("$v == true and $x == true", "$v", "variable_exists(AETERM)", "$x",
+        // R4's shape after runbook W2a: `$v` is the compiled boolean binding var_exists("AETERM")
+        // (the variable_exists OPERATION it used to be is gone), read by `$x`. No inliner can
+        // drop it any more, and the reading chain still answers once for the dataset.
+        Rule rule = loadClean("$v == true and $x == true", "$v", "var_exists(\"AETERM\")", "$x",
                 "$v");
-        assertNotNull(rule.getOperations(), "R4: $v is read by $x, so it is not dropped");
-        assertEquals("$v", rule.getOperations().get(0).getId());
+        assertEquals(List.of("$v", "$x"),
+                rule.bindingOrder().stream().map(CompiledBinding::name).toList(),
+                "both bindings compile");
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae());
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
         assertEquals(1, result.getViolations().size(),
-                "AETERM exists, so $x (= $v) is true — the dataset-level verdict fires once; a"
-                        + " dropped $v would have left $x dangling and the rule silent");
+                "AETERM exists, so $x (= $v) is true — the dataset-level verdict fires once");
     }
 
     // ------------------------------------------------------------------ R7 / R8 load gates
 
 
     @Test
-    void anUnresolvedWildcardInsideACompiledBindingIsALoadError() throws Exception
-    {
-        Rule rule = load("$last == true", List.of(), "$last",
-                "date_diff_days(SESTDTC, reference=\"--SEQ\") > 0");
-        assertNotNull(rule.getLoadError(),
-                "R7: the nested operation call is on the inline surface");
-        assertTrue(rule.getLoadError().contains("is not `--`-resolved"), rule.getLoadError());
-    }
-
-
-    @Test
     void aTypelessDictionaryCallInsideACompiledBindingIsALoadError() throws Exception
     {
         Rule rule = load("$ok == true", List.of(), "$ok",
-                "valid_external_dictionary_value(AETERM) == true");
+                "valid_external_dictionary_value(AETERM, external_dictionary_type=\"\","
+                        + " dictionary_term_type=\"PT\") == true");
         assertNotNull(rule.getLoadError(), "R8: the nested dictionary call names no type");
         assertTrue(rule.getLoadError().contains("installing dictionaries cannot help"),
                 rule.getLoadError());
@@ -158,9 +156,11 @@ class CompiledBindingReadersTest
     void aRecordLevelCompiledBindingIsPerRowForLevelInference() throws Exception
     {
         Rule rule = loadClean("$u == \"A\"", "$u", "upper(AETERM)", "$n", "record_count() + 0");
-        OperationKinds kinds = OperationKinds.forRule(rule);
-        assertEquals(OperationExecutor.ResultKind.PER_ROW, kinds.kindOf("$u"));
-        assertEquals(OperationExecutor.ResultKind.SCALAR, kinds.kindOf("$n"));
+        BindingDomains kinds = BindingDomains.forRule(rule);
+        // (Runbook W8: the OperationExecutor.ResultKind this asserted went with the carrier; the
+        // derived domain is the surviving classification.)
+        assertEquals(Domain.ROW, kinds.domainOf("$u"));
+        assertEquals(Domain.DATASET, kinds.domainOf("$n"));
     }
 
     // ------------------------------------------------------------------ R11 specialiser
@@ -268,8 +268,8 @@ class CompiledBindingReadersTest
     void aDictionaryCallNestedInACompiledBindingIsAProviderNeed() throws Exception
     {
         Rule rule = loadClean("$ok == true", "$ok",
-                "valid_external_dictionary_value(AETERM, external_dictionary_type=\"meddra\")"
-                        + " == true");
+                "valid_external_dictionary_value(AETERM, external_dictionary_type=\"meddra\","
+                        + " dictionary_term_type=\"PT\") == true");
         ProviderNeeds needs = ProviderNeeds.ofBindings(rule);
         assertTrue(needs.dictionary());
         assertEquals(List.of("meddra"), List.copyOf(needs.dictionaryTypes()));

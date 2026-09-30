@@ -387,7 +387,7 @@ public final class StudyValidationService
         // serve LIBRARY-level reads (Fix #369), which is precisely the run with the most skips.
         net.cumba.corej.core.exec.ProviderRequirements.SkipForecast skipForecast = net.cumba.corej.core.exec.ProviderRequirements
                 .forecast(inUseCase,
-                        net.cumba.corej.core.exec.OperationExecutor.libraryAnswerable(provider),
+                        net.cumba.corej.core.exec.LibraryAnswerability.libraryAnswerable(provider),
                         defineProvider != null);
         logSkipForecast(skipForecast);
 
@@ -460,11 +460,11 @@ public final class StudyValidationService
         String libraryMetadataBasis = null;
         if (provider.isLibraryUnavailable())
         {
-            libraryMetadataBasis = net.cumba.corej.core.exec.OperationExecutor
+            libraryMetadataBasis = net.cumba.corej.core.exec.LibraryAnswerability
                     .libraryAnswerable(provider)
                             ? "Define-XML (sponsor declarations) — the CDISC Library could not be "
                                     + "consulted for this run and -D"
-                                    + net.cumba.corej.core.exec.OperationExecutor.DEGRADED_DEFINE_FALLBACK_PROPERTY
+                                    + net.cumba.corej.core.exec.LibraryAnswerability.DEGRADED_DEFINE_FALLBACK_PROPERTY
                                     + "=true was given"
                             // §6.1 gap 2 — the COUNT, not just the fact. Every library-dependent
                             // rule of this run is unanswerable in this branch (the library cannot
@@ -1074,10 +1074,11 @@ public final class StudyValidationService
      * Null — and therefore absent from {@code Conformance_Details}, following the
      * {@code Library_Metadata_Basis} precedent ({@code Fix #369}) — when every dictionary rule in
      * the run is answerable, including the trivial case of a run selecting no dictionary rules. A
-     * dictionary rule here is one declaring a {@code valid_external_dictionary_*} /
-     * {@code dictionary_has_decode} operation; the {@code dictionary_available} gate is not
-     * counted, because a rule gated by it is <em>designed</em> to answer either way. Operations
-     * authored inline are not walked: no shipped rule inlines one, a typeless one is a load error
+     * dictionary rule here is one whose bindings call a {@code valid_external_dictionary_*} /
+     * {@code dictionary_has_decode} function (registry functions since waves 1 and 3, read through
+     * {@code ProviderNeeds}); the {@code dictionary_available} gate is not counted, because a rule
+     * gated by it is <em>designed</em> to answer either way. Calls authored inline in the Check are
+     * not walked: no shipped rule inlines one, a typeless one is a load error
      * ({@code RulePackageLoader.validateDictionaryOperationTypes}), and a typed inline one is
      * self-gating — its rule answers either way, like the gate itself.
      * </p>

@@ -154,8 +154,8 @@ final class RelrecExpandedLookup implements JoinLookup
         {
             return columnName;
         }
-        return java.util.Objects.requireNonNullElse(OperationExecutor.variableWildcardPrefix(target,
-                OperationExecutor.domainPrefix(target)), "") + columnName.substring(2);
+        return java.util.Objects.requireNonNullElse(DatasetIdentity.variableWildcardPrefix(target,
+                DatasetIdentity.domainPrefix(target)), "") + columnName.substring(2);
     }
 
 

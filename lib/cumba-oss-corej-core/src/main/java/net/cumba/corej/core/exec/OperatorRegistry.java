@@ -85,7 +85,10 @@ public final class OperatorRegistry
         }
         // existsCommon decides every null name, so the local-schema lookup sees a real one.
         String colName = java.util.Objects.requireNonNull(name);
-        return ctx.getTable().getMetaData().getOptionalColumn(colName) != null;
+        // W2a (C1 ruled (a)): a qualifier SUPP<domain> delivers for this table exists for the
+        // existence surface too — the same pivot the value read uses, gated by Supp_Merge.
+        return ctx.getTable().getMetaData().getOptionalColumn(colName) != null
+                || SuppPivot.exists(ctx, colName);
     }
 
 
@@ -93,10 +96,9 @@ public final class OperatorRegistry
      * T5a — per-variable all-null: {@code true} when {@code name} is absent from the dataset under
      * evaluation, or present but empty ("" / missing) for <em>every</em> record; {@code false} as
      * soon as any row carries a value. A {@code null} name (an unresolved cursor) reads as
-     * all-null. Mirrors {@code OperationExecutor}'s {@code variable_is_null} and the Python
-     * reference engine's {@code variable_is_null}
-     * ({@code (series.isnull() | (series == "")).all()}). Backs the native {@code var_is_null(X)}
-     * cursor predicate.
+     * all-null. Mirrors the retired executor's {@code variable_is_null} and the Python reference
+     * engine's {@code variable_is_null} ({@code (series.isnull() | (series == "")).all()}). Backs
+     * the native {@code var_is_null(X)} cursor predicate.
      */
     public static boolean variableIsNull(EvaluationContext ctx, @Nullable String name)
     {
@@ -106,11 +108,14 @@ public final class OperatorRegistry
         }
         DataTableMeta meta = ctx.getTable().getMetaData();
         int colIdx = meta.getColumnIndex(name);
-        if (colIdx < 0)
+        // W2a: a SUPP-delivered qualifier is readable per record (C1 ruled (a)), so its nullity is
+        // read over the pivoted column; an absent column stays null.
+        IDataTableColumn col = colIdx < 0 ? SuppPivot.qualifierColumn(ctx, name)
+                : ctx.getTable().getColumn(colIdx);
+        if (col == null)
         {
-            return true; // absent column => null (Python variable_is_null parity)
+            return true; // absent column => null
         }
-        IDataTableColumn col = ctx.getTable().getColumn(colIdx);
         int rowCount = ctx.rowCount();
         for (int r = 0; r < rowCount; r++)
         {
@@ -432,12 +437,14 @@ public final class OperatorRegistry
         // shape. (Routing through SplitDomainResolution keeps the site uniform; the
         // two-character bound means a SUPP<domain> name still resolves exactly — a split
         // SUPPLB never unions here, matching ScopeVariableSource's literal-half behaviour.)
-        if (!domain.startsWith("SUPP"))
+        // PLAN-operation-replacements §2.3: the pivot is the existence half of the declared SUPP
+        // merge, so a rule that declares Supp_Merge: false does not get it either.
+        if (ctx.isSuppMerge() && !domain.startsWith("SUPP"))
         {
             String suppName = "SUPP" + domain;
             IDataTable supp = SplitDomainResolution.resolveTableOrThrow(ctx.getDatasetResolver(),
                     suppName, ctx.getRuleId());
-            if (supp != null && existsInSuppQnam(supp, col))
+            if (supp != null && existsInSuppQnam(supp, col, ctx.getSharedIndexCache()))
             {
                 return true;
             }
@@ -456,9 +463,9 @@ public final class OperatorRegistry
      * contains a column name is still a string in the engine"</i>). Review round 1 of that plan had
      * made this comparison ignore case (E5); the owner reverted it. The engine reads the
      * {@code QNAM} cell here itself — for a qualified {@code Requirements} entry and the
-     * {@code Check}'s dotted {@code exists} alike, as {@code OperationExecutor.evalSuppQnamJoin}
-     * does for {@code supp_qnam_present} / {@code supp_qnam_value} — so a rule has no place to fold
-     * it: a lowercase {@code QNAM} cell does not match an upper-case qualifier name.
+     * {@code Check}'s dotted {@code exists} alike, as {@link SuppPivot} does for a bare qualifier
+     * read under {@code Supp_Merge} — so a rule has no place to fold it: a lowercase {@code QNAM}
+     * cell does not match an upper-case qualifier name.
      * </p>
      * <p>
      * Fix #124 widened the visibility to package-private so {@link ScopeVariableSource} can reuse
@@ -475,26 +482,37 @@ public final class OperatorRegistry
      */
     static boolean existsInSuppQnam(IDataTable supp, String col)
     {
-        int qnamIdx = supp.getMetaData().getColumnIndex("QNAM");
-        if (qnamIdx < 0)
-        {
-            return false;
-        }
-        long rowCount = supp.getRowCount();
-        for (long r = 0; r < rowCount; r++)
-        {
-            IDataValue dv = supp.getDataValue(r, qnamIdx);
-            if (isMissing(dv))
-            {
-                continue;
-            }
-            String s = dv.getValueAsString();
-            if (s != null && !s.isEmpty() && s.equals(col))
-            {
-                return true;
-            }
-        }
-        return false;
+        return existsInSuppQnam(supp, col, null);
+    }
+
+
+    /**
+     * As {@link #existsInSuppQnam(IDataTable, String)}, reading the SUPP table through the run's
+     * shared index when there is one.
+     * <p>
+     * Combined review of runbook W2–W8, W2 L2 / round 2 L2: ONE parse of the SUPP table for
+     * existence and for the pivot — the {@link SuppQnamIndex}, taken from
+     * {@code JoinCache.SharedIndexCache} (built once per table per run, as {@link SuppPivot} takes
+     * it) and parsed afresh only without a cache. Existence is the index's {@code QNAM} set: every
+     * non-blank {@code QNAM} cell the table carries, whether or not one of its rows can qualify a
+     * record — the same answer the QNAM-column scan this replaced gave. No {@code QNAM} column: no
+     * qualifier exists.
+     * </p>
+     *
+     * @param supp
+     *            the resolved {@code SUPP--} table
+     * @param col
+     *            the qualifier name being looked for
+     * @param cache
+     *            the run's shared index cache, or {@code null}
+     * @return whether the table carries the qualifier
+     */
+    static boolean existsInSuppQnam(IDataTable supp, String col,
+            JoinCache.@Nullable SharedIndexCache cache)
+    {
+        SuppQnamIndex index = cache != null ? cache.getOrBuildSuppQnamIndex(supp)
+                : SuppQnamIndex.of(supp);
+        return index != null && index.qnams().contains(col);
     }
 
 

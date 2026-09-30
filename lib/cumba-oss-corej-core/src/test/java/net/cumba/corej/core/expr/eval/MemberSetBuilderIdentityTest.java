@@ -9,10 +9,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.exec.EvaluationContext;
-import net.cumba.corej.core.exec.GroupedResult;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
 
@@ -24,11 +24,12 @@ import org.junit.jupiter.api.Test;
  * {@code PLAN-member-set-identity-hardening}, owner 2026-09-25: <i>"route all four."</i> Four
  * builders in {@link ExprCompiler} rendered each member with {@code item.toString()} —
  * {@code listAccessorSet}, the per-row VLM accessor set ({@code vlmListMembership}),
- * {@code groupedMembership} and {@code toSet} (the {@code $}-reference and inline-operation set).
- * {@code MissingValue.MIS.toString()} is {@code "."}, so a missing member became the text
- * {@code "."}: a <b>present</b> {@code "."} cell matched it, and a <b>missing</b> probe — which
- * {@code D81} + {@code D34 #5-2} make a member of a set holding that same missing — did not. That
- * is the {@code JKM R5} collision class, one level up from join keys.
+ * {@code groupedMembership} (retired with {@code GroupedResult} in runbook W8 — its per-row
+ * successor is {@code boundMembership}'s per-row arm, pinned below) and {@code toSet} (the
+ * {@code $}-reference set). {@code MissingValue.MIS.toString()} is {@code "."}, so a missing member
+ * became the text {@code "."}: a <b>present</b> {@code "."} cell matched it, and a <b>missing</b>
+ * probe — which {@code D81} + {@code D34 #5-2} make a member of a set holding that same missing —
+ * did not. That is the {@code JKM R5} collision class, one level up from join keys.
  * </p>
  *
  * <p>
@@ -84,7 +85,7 @@ class MemberSetBuilderIdentityTest
         return NativeExprEvaluator.evaluate(CheckExpressionParser.parse(expr), ctx);
     }
 
-    // ---- toSet: the $-reference and inline-operation set ---------------------------------------
+    // ---- toSet: the $-reference set -------------------------------------------------------------
 
 
     @Test
@@ -115,10 +116,6 @@ class MemberSetBuilderIdentityTest
         assertEquals(Set.of("7"), ExprCompiler.toSet(7L, false).present(),
                 "a present scalar is a singleton of its text");
         assertTrue(ExprCompiler.toSet(null, false).present().isEmpty(), "null is the empty set");
-        assertTrue(
-                ExprCompiler.toSet(new GroupedResult(List.of("G"), Map.of()), false).present()
-                        .isEmpty(),
-                "a GroupedResult is handled per row elsewhere, so here it is the empty set");
     }
 
 
@@ -146,35 +143,27 @@ class MemberSetBuilderIdentityTest
                 "MIS is not .A (JKM R5: identity is per marker), and a present '.' is neither");
     }
 
-    // ---- groupedMembership: the per-row GroupedResult set ---------------------------------------
+    // ---- boundMembership: the per-row compiled-binding set -------------------------------------
 
 
+    /**
+     * The per-row set a per-row compiled binding answers (one list per row). Until runbook W8 this
+     * was pinned on {@code groupedMembership} over a {@code GroupedResult} in the variables map;
+     * that shape is gone, and {@code boundMembership}'s per-row arm is the builder left.
+     */
     @Test
-    void groupedMembershipMatchesAMissingByIdentity()
+    void perRowBoundMembershipMatchesAMissingByIdentity()
     {
         IDataTable t = probeTable();
-        GroupedResult grouped = new GroupedResult(List.of("G"),
-                Map.<String, Object> of("g1", List.of(MissingValue.MIS, "A")));
-        EvaluationContext c = EvaluationContext.builder().table(t)
-                .variables(Map.of("$grp", grouped)).build();
-        assertEquals(bits(1, 2), eval("X in $grp", c),
-                "the per-row group set keeps MIS by identity: row 2 matches, the present '.' of"
-                        + " row 0 does not — before the fix this read {0, 1}");
-        assertEquals(bits(0), eval("X not in $grp", c), "not in is the exact complement");
-    }
-
-
-    @Test
-    void groupedMembershipMatchesAMissingScalarGroupValue()
-    {
-        IDataTable t = probeTable();
-        GroupedResult grouped = new GroupedResult(List.of("G"),
-                Map.<String, Object> of("g1", MissingValue.MIS));
-        BitSet fired = ExprCompiler.groupedMembership(col(t, "X"), grouped,
-                EvalRun.fullRange(EvaluationContext.builder().table(t).build()), false, false);
-        assertEquals(bits(2), fired,
-                "a SCALAR missing group value is a singleton by identity — it used to render '.'"
-                        + " and match row 0 instead of row 2");
+        List<Object> members = List.of(MissingValue.MIS, "A");
+        Vector perRow = new ComputedVector(3, DataValueType.STRING, _ -> members);
+        assertEquals(bits(1, 2),
+                ExprCompiler.boundMembership(col(t, "X"), perRow, 3, false, false, false),
+                "the per-row set keeps MIS by identity: row 2 matches, the present '.' of row 0"
+                        + " does not");
+        assertEquals(bits(0),
+                ExprCompiler.boundMembership(col(t, "X"), perRow, 3, true, false, false),
+                "not in is the exact complement");
     }
 
     // ---- listAccessorSet: the list-valued metadata accessor set
@@ -317,21 +306,21 @@ class MemberSetBuilderIdentityTest
 
 
     /**
-     * The grouped set's present {@code ""} member (review round 1, L-4 — re-pinned from the retired
+     * The per-row set's present {@code ""} member (review round 1, L-4 — re-pinned from the retired
      * {@code groupedMembershipFoldsANullElementToTheEmptyString}, whose {@code null} element
-     * register {@code NNL §1} made impossible): a present {@code ""} member matches a present blank
-     * row and NOT a missing row ({@code D12}). Mockito-free.
+     * register {@code NNL §1} made impossible; re-pinned again from {@code groupedMembership} onto
+     * {@code boundMembership}'s per-row arm in runbook W8): a present {@code ""} member matches a
+     * present blank row and NOT a missing row ({@code D12}). Mockito-free.
      */
     @Test
-    void groupedMembershipMatchesAPresentEmptyMemberOnlyAgainstABlankRow()
+    void perRowBoundMembershipMatchesAPresentEmptyMemberOnlyAgainstABlankRow()
     {
         IDataTable t = MissingCellTables.of("DS").str("X", "", "A", MissingValue.MIS)
                 .str("G", "g1", "g1", "g1").build();
-        GroupedResult grouped = new GroupedResult(List.of("G"),
-                Map.<String, Object> of("g1", List.of("", "B")));
-        EvaluationContext c = EvaluationContext.builder().table(t)
-                .variables(Map.of("$grp", grouped)).build();
-        assertEquals(bits(0), eval("X in $grp", c),
+        List<Object> members = List.of("", "B");
+        Vector perRow = new ComputedVector(3, DataValueType.STRING, _ -> members);
+        assertEquals(bits(0),
+                ExprCompiler.boundMembership(col(t, "X"), perRow, 3, false, false, false),
                 "the present \"\" member is matched by the present blank of row 0 and NOT by the"
                         + " missing of row 2 (D12)");
     }

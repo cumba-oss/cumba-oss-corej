@@ -4,10 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.List;
 import java.util.Map;
+import net.cumba.corej.core.exec.BindingValue;
 import net.cumba.corej.core.exec.DatasetLookup;
 import net.cumba.corej.core.exec.EvaluationContext;
-import net.cumba.corej.core.exec.GroupedResult;
+import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.eval.BroadcastFold.BindColumnLevel;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.testkit.SyntheticDataTable;
@@ -58,9 +60,12 @@ class BindColumnLevelTest
     @Test
     void aNonScalarContextValueDoesNotCount()
     {
-        // A per-row GroupedResult is not a scalar fact; the name then classifies by presence.
-        assertEquals(BindColumnLevel.DATASET_ABSENT, BroadcastFold.bindColumnLevel("ZZFOO",
-                ctx(Map.of("ZZFOO", new GroupedResult(List.of("USUBJID"), Map.of())))));
+        // A per-row compiled binding (its hand-over a Vector; until runbook W8 a GroupedResult) is
+        // not a scalar fact; the name then classifies by presence.
+        BindingValue perRow = new BindingValue(new CompiledBinding("ZZFOO",
+                CheckExpressionParser.parse("upper(AETERM)"), List.of(), Domain.ROW));
+        assertEquals(BindColumnLevel.DATASET_ABSENT,
+                BroadcastFold.bindColumnLevel("ZZFOO", ctx(Map.of("ZZFOO", perRow))));
     }
 
 

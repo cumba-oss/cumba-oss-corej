@@ -189,7 +189,7 @@ class RuleRunnerRequirementsDatasetsTest
      * </p>
      */
     @Test
-    @DisplayName("⛔ an Operations[].domain-only entry uses the EXACT-name predicate")
+    @DisplayName("a registry call's domain=-only entry gates on the widened fact and reads the union")
     void operationsDomainOnlyEntryUsesExactName() throws IOException
     {
         String pkg = "{\"rules\":{\"R1\":{\"Core\":{\"Id\":\"TEST-RD-TA\"},"
@@ -213,11 +213,12 @@ class RuleRunnerRequirementsDatasetsTest
                 "control: the widened predicate DOES see the split TA");
 
         RuleExecutionResult r = run(rule, ae(), resolver);
-        assertEquals(RuleExecutionStatus.SKIPPED, r.getStatus(),
-                "the distinct operation still resolves TA exactly, so gating on the widened fact"
-                        + " would un-skip the rule into the W34-C1 flood");
-        assertEquals("Rule skipped — Requirements.Datasets dataset TA not available",
-                r.getStatusMessage());
+        // Runbook W7 (PLAN-distinct-function D-W7-7): distinct is a registry function whose
+        // domain= resolves through SplitDomainResolution — the split TA is the UNION ta1 ∪ ta2 —
+        // so the requirement may gate on the widened fact without the W34-C1 flood: the rule runs
+        // and reads both members' ARMCD. (The retired operation resolved TA by exact name and
+        // answered the empty set, which is why this entry fell back to the exact-name predicate.)
+        assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(), r.getStatusMessage());
     }
 
 

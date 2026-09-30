@@ -19,15 +19,14 @@ import net.cumba.datatable.metadata.ICodelistEntry;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Test-only {@link MetadataProvider} backed by in-memory maps. Supports every operator the rule
- * engine routes through {@code OperationExecutor.evalLibrary} and its specialised relatives
- * (dataset-filtered variables, model-filtered variables, valid codelist dates). Every lookup
- * returns a safe empty default when the builder hasn't been told about the domain or codelist, so
- * tests only declare the fragments of the Library their rule actually reads.
+ * Test-only {@link MetadataProvider} backed by in-memory maps. Supports every Library read the
+ * registry functions make ({@code LibraryLists}, {@code ScalarMetadataFunctions}, the codelist
+ * functions — dataset-filtered variables, model-filtered variables, valid codelist dates). Every
+ * lookup returns a safe empty default when the builder hasn't been told about the domain or
+ * codelist, so tests only declare the fragments of the Library their rule actually reads.
  *
  * <p>
- * Domain / codelist keys are normalised to upper case, matching the engine's own case-folding in
- * {@code OperationExecutor}.
+ * Domain / codelist keys are normalised to upper case, matching the engine's own case-folding.
  * </p>
  *
  * <p>
@@ -149,6 +148,15 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
      */
     private final @Nullable List<String> standardDatasetNames;
 
+    /**
+     * W4 ({@code PLAN-list-functions} D-W4-15) — the {@code #library standard-variable-names}
+     * channel behind {@link #getStandardVariableNames()}, the source of the
+     * {@code variable_names()} function (EC-13). {@code null} when the scenario declares none: the
+     * function then answers "no standard variable names" and the rule SKIPs, exactly as a
+     * production Library with no product loaded does.
+     */
+    private final @Nullable List<String> standardVariableNames;
+
     private MapBackedLibraryMetadataProvider(Builder b)
     {
         this.standard = b.standard;
@@ -181,6 +189,8 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         this.publishedCtPackages = List.copyOf(b.publishedCtPackages);
         this.standardDatasetNames = b.standardDatasetNames == null ? null
                 : List.copyOf(b.standardDatasetNames);
+        this.standardVariableNames = b.standardVariableNames == null ? null
+                : List.copyOf(b.standardVariableNames);
     }
 
 
@@ -292,7 +302,7 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
      * Serves the engine's class-aware {@code GET_MODEL_COLUMN_ORDER} resolution
      * ({@code getStandardModelVariables}) from the synthetic {@code #library model-column-order}
      * map. Returns {@code null} when the scenario declared no model order for the table's domain,
-     * preserving the production LIBRARY_NOT_AVAILABLE skip semantics.
+     * preserving the production library-not-available SKIP.
      */
     @Override
     public @Nullable List<String> getStandardModelVariables(IDataTable aTable,
@@ -402,7 +412,7 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
      * {@code getStandardModelVariablesForClass} at its interface default ({@code null}) so the
      * executor takes the same legacy fallback — and the same {@code --} substitution — as
      * {@code model-variables}. An undeclared class yields an empty list, which the executor turns
-     * into LIBRARY_NOT_AVAILABLE (the rule SKIPs), never a vacuous empty set.
+     * into an unusable answer (the rule SKIPs), never a vacuous empty set.
      */
     @Override
     public List<Map<String, String>> getModelVariablesForClass(String aModelClass)
@@ -434,6 +444,14 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
     }
 
 
+    /** W4 — see {@link #standardVariableNames}. */
+    @Override
+    public @Nullable List<String> getStandardVariableNames()
+    {
+        return standardVariableNames;
+    }
+
+
     @Override
     public Map<String, String> getDatasetMetadata(String aDomain)
     {
@@ -455,8 +473,8 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
      * ({@code codelist-terms} / {@code codelist-term-mappings} / {@code codelist-term-ccodes} /
      * {@code codelist-meta}, plus {@code codelist-extensible}). Present only when the scenario
      * declares the codelist on at least one of them — an undeclared codelist stays
-     * {@link java.util.Optional#empty()} so the engine's honest-degradation contract
-     * ({@code LIBRARY_NOT_AVAILABLE} ⇒ SKIP) is exercised rather than masked.
+     * {@link java.util.Optional#empty()} so the engine's honest-degradation contract (an unusable
+     * answer ⇒ SKIP) is exercised rather than masked.
      *
      * <p>
      * Mirrors {@code CdiscLibraryMetadataLibrary.buildCodelist}: entries come from the
@@ -730,7 +748,7 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
                 && codelistExtensible.isEmpty() && codelistTermMappings.isEmpty()
                 && codelistTermCcodes.isEmpty() && codelistMeta.isEmpty()
                 && codelistAttributes.isEmpty() && publishedCtPackages.isEmpty()
-                && standardDatasetNames == null;
+                && standardDatasetNames == null && standardVariableNames == null;
     }
 
     // ---- Helpers --------------------------------------------------------------
@@ -835,6 +853,8 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         private final List<String> publishedCtPackages = new ArrayList<>();
 
         private @Nullable List<String> standardDatasetNames;
+
+        private @Nullable List<String> standardVariableNames;
 
         public Builder standard(String aStandard)
         {
@@ -1106,6 +1126,23 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         public Builder standardDatasetNames(String... aNames)
         {
             standardDatasetNames = new ArrayList<>(List.of(aNames));
+            return this;
+        }
+
+
+        /**
+         * W4 — the union of variable names the IG standard defines, served through
+         * {@link MapBackedLibraryMetadataProvider#getStandardVariableNames()} to the
+         * {@code variable_names()} function. Declaring it at all (even empty) is what makes the
+         * function answer; an undeclared list answers {@code null} and the rule SKIPs.
+         *
+         * @param aNames
+         *            the variable names
+         * @return this builder
+         */
+        public Builder standardVariableNames(String... aNames)
+        {
+            standardVariableNames = new ArrayList<>(List.of(aNames));
             return this;
         }
 

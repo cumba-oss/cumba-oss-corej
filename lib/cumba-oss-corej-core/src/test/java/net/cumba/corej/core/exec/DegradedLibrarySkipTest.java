@@ -55,7 +55,7 @@ import org.junit.jupiter.api.Test;
 class DegradedLibrarySkipTest
 {
 
-    private static final String FALLBACK_PROPERTY = OperationExecutor.DEGRADED_DEFINE_FALLBACK_PROPERTY;
+    private static final String FALLBACK_PROPERTY = LibraryAnswerability.DEGRADED_DEFINE_FALLBACK_PROPERTY;
 
     /**
      * ⚠ The opt-in is a process-wide system property. Clear it after every test, or the first test
@@ -322,7 +322,7 @@ class DegradedLibrarySkipTest
                 new Arm("get_dataset_filtered_variables(key_name=\\\"role\\\", key_value=\\\"Timing\\\")",
                         "non_empty($v)"),
                 new Arm("natural_key_variables()", "non_empty($v)"),
-                new Arm("get_parent_model_column_order()", "non_empty($v)"),
+                new Arm("get_parent_model_column_order(RDOMAIN)", "non_empty($v)"),
                 new Arm("valid_codelist_dates()", "non_empty($v)")
         })
         {
@@ -352,9 +352,10 @@ class DegradedLibrarySkipTest
     {
         // ⚠⚠ THE CENSUS WAS THE WRONG POPULATION. Everything above gates library *operations*.
         // 30 corpus rules read the Library through *operands* and carry no Operations block at
-        // all — CDISC-CG0010's entire Check is this shape — so nothing in OperationExecutor could
-        // ever see them. Those operands resolve through ExprCompiler.readProviderLevel, gated only
-        // by `libraryProvider == null`, and a DEGRADED provider is non-null: the rule silently
+        // all — CDISC-CG0010's entire Check is this shape — so nothing in the (since retired)
+        // OperationExecutor could ever see them. Those operands resolve through
+        // ExprCompiler.readProviderLevel, gated only by `libraryProvider == null`, and a DEGRADED
+        // provider is non-null: the rule silently
         // read the STUDY library and, for CG0010, compared the define against itself.
         String pkg = """
                 {"rules":{"x":{
@@ -425,18 +426,19 @@ class DegradedLibrarySkipTest
     @Test
     void libraryAnswerable_coversEveryBranch()
     {
-        assertFalse(OperationExecutor.libraryAnswerable(null), "no provider");
+        assertFalse(LibraryAnswerability.libraryAnswerable(null), "no provider");
         assertTrue(
-                OperationExecutor
+                LibraryAnswerability
                         .libraryAnswerable(MetadataLibraryProvider.forDefine(defineBackedStudy())),
                 "a healthy provider is always answerable");
 
         MetadataProvider deg = degraded(defineBackedStudy());
-        assertFalse(OperationExecutor.libraryAnswerable(deg), "degraded, opt-in off");
+        assertFalse(LibraryAnswerability.libraryAnswerable(deg), "degraded, opt-in off");
 
         System.setProperty(FALLBACK_PROPERTY, "true");
-        assertTrue(OperationExecutor.libraryAnswerable(deg), "degraded, opted in, define present");
-        assertFalse(OperationExecutor.libraryAnswerable(degraded(dataDerivedStudy())),
+        assertTrue(LibraryAnswerability.libraryAnswerable(deg),
+                "degraded, opted in, define present");
+        assertFalse(LibraryAnswerability.libraryAnswerable(degraded(dataDerivedStudy())),
                 "degraded, opted in, but nothing to fall back TO");
     }
 
@@ -444,12 +446,12 @@ class DegradedLibrarySkipTest
     @Test
     void defineFallbackPreference_defaultsOff()
     {
-        assertFalse(OperationExecutor.defineFallbackPreference(),
+        assertFalse(LibraryAnswerability.defineFallbackPreference(),
                 "the substitution must never be an accident of an expired subscription key");
         System.setProperty(FALLBACK_PROPERTY, "TRUE");
-        assertTrue(OperationExecutor.defineFallbackPreference(), "case-insensitive true");
+        assertTrue(LibraryAnswerability.defineFallbackPreference(), "case-insensitive true");
         System.setProperty(FALLBACK_PROPERTY, "yes");
-        assertFalse(OperationExecutor.defineFallbackPreference(),
+        assertFalse(LibraryAnswerability.defineFallbackPreference(),
                 "anything but an explicit true leaves it off");
     }
 
@@ -524,7 +526,7 @@ class DegradedLibrarySkipTest
 
 
     @Test
-    @DisplayName("⚑ Fix #371 — isLibraryDependent is the ONE predicate again")
+    @DisplayName("⚑ Fix #371 — one predicate again, and since wave 4b it is the capability")
     void libraryDependentIsTheSolePredicate()
     {
         // `isLibraryBacked` existed only because `domain_label()` read the Library while sitting
@@ -532,11 +534,20 @@ class DegradedLibrarySkipTest
         // materialised into the shipped corpus as Requirements.Library and drives precondition
         // injection, so widening it MOVED the corpus (measured during Fix #369: CDISC-CG0336
         // gained "Requirements": {"Library": true} and NativeCorpusRoundTripTest went red).
-        // With `domain_label()` retired there is no such operation left and the second predicate
-        // dissolved with it. This pins that the remaining one still classifies the library arms.
-        assertTrue(OperationExecutor
-                .isLibraryDependent(net.cumba.corej.core.model.OperationType.REQUIRED_VARIABLES));
-        assertFalse(OperationExecutor
-                .isLibraryDependent(net.cumba.corej.core.model.OperationType.DISTINCT));
+        // With `domain_label()` retired the second predicate dissolved; with wave 4b
+        // (PLAN-scalar-metadata-functions) `isLibraryDependent` went too — its last two members,
+        // dataset_class_from_library and domain_is_custom, are registry functions whose LIBRARY
+        // dependence is the descriptor's capability, the ONE thing ProviderNeeds reads.
+        for (String name : java.util.List.of("dataset_class_from_library", "domain_is_custom"))
+        {
+            assertTrue(ProviderNeeds.ofCall(new net.cumba.corej.core.expr.ast.Expr.Call(name,
+                    java.util.List.of(), java.util.Map.of())).library(), name);
+        }
+        assertFalse(ProviderNeeds
+                .ofCall(new net.cumba.corej.core.expr.ast.Expr.Call("distinct",
+                        java.util.List.of(new net.cumba.corej.core.expr.ast.Expr.Ref("X",
+                                net.cumba.corej.core.expr.OperandKind.COLUMN)),
+                        java.util.Map.of()))
+                .library());
     }
 }

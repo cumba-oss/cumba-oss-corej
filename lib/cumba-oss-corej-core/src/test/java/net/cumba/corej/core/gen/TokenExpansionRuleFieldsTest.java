@@ -17,11 +17,11 @@ import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.ScopeVariableSource;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.ExpansionDirective;
 import net.cumba.corej.core.model.ExpansionSource;
 import net.cumba.corej.core.model.GroupingSpec;
 import net.cumba.corej.core.model.MatchDataset;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Requirements;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -147,12 +147,9 @@ class TokenExpansionRuleFieldsTest
         rule.setMatchDatasets(List.of(bareKeyedAdsl()));
         rule.setExpansion(List.of(sharedWith("&VAR", "ADSL")));
 
-        Operation op = new Operation();
-        op.setId("$peak");
-        op.setOperator("max");
-        op.setName("&VAR");
-        op.setCaseSensitive(Boolean.TRUE);
-        rule.setOperations(List.of(op));
+        rule.setCompiledBindings(
+                List.of(new CompiledBinding("$peak", net.cumba.corej.core.expr.CheckExpressionParser
+                        .parse("max(`&VAR`, group=[USUBJID])"), List.of(), null)));
 
         GroupingSpec grouping = new GroupingSpec();
         grouping.setVariables(List.of("&VAR"));
@@ -251,26 +248,25 @@ class TokenExpansionRuleFieldsTest
 
 
     /**
-     * The operations are rewritten through the JSON tree, so a token in a column position is bound
-     * and every non-textual field survives the round trip. {@code case_sensitive} is the canary: it
-     * is a boolean, so it exercises the scalar leg of the tree rewrite that a string field does
-     * not.
+     * The compiled bindings get the Check's substitution, so a token in a column position is bound
+     * and every other position of the expression survives. (Until runbook W8 this was pinned on an
+     * operation record rewritten through the JSON tree, with its {@code delimiter} field as the
+     * non-column canary; the {@code group=} key column is that canary now.)
      */
     @Test
-    @DisplayName("operations are substituted and non-textual fields survive the tree rewrite")
-    void operationsAreSubstitutedAndScalarsSurvive()
+    @DisplayName("bindings are substituted and non-token positions survive the rewrite")
+    void bindingsAreSubstitutedAndOtherPositionsSurvive()
     {
         Rule expanded = expandOnce(richTemplate(), adae(), Map.of("ADSL", adsl()));
 
-        List<Operation> ops = expanded.getOperations();
-        assertNotNull(ops, "without the operations the $peak reference resolves to nothing");
-        assertEquals(1, ops.size());
-        assertEquals("AGE", ops.get(0).getName(),
-                "the column position is bound; leaving '&VAR' names a column that cannot exist");
-        assertEquals("$peak", ops.get(0).getId());
-        assertEquals(true, ops.get(0).getCaseSensitive(),
-                "a non-textual field must survive the JSON-tree rewrite — nulling it silently "
-                        + "flips the operation's comparison semantics");
+        List<CompiledBinding> bindings = expanded.getCompiledBindings();
+        assertNotNull(bindings, "without the bindings the $peak reference resolves to nothing");
+        assertEquals(1, bindings.size());
+        assertEquals("max(AGE, group=[USUBJID])",
+                net.cumba.corej.core.expr.ExpressionPrinter.print(bindings.get(0).expression()),
+                "the column position is bound (leaving '&VAR' names a column that cannot exist),"
+                        + " and the non-token group= key survives the rewrite untouched");
+        assertEquals("$peak", bindings.get(0).name());
     }
 
 
@@ -308,13 +304,13 @@ class TokenExpansionRuleFieldsTest
 
 
     /**
-     * A template that authored no {@code Match_Datasets} / {@code Operations} must not acquire
-     * empty ones. {@code Match_Datasets: []} is an authored statement that the rule joins nothing;
+     * A template that authored no {@code Match_Datasets} / {@code Bindings} must not acquire empty
+     * ones. {@code Match_Datasets: []} is an authored statement that the rule joins nothing;
      * absence is the absence of the block. The two round-trip differently through the writer and
      * read differently in a report.
      */
     @Test
-    @DisplayName("absent Match_Datasets and Operations stay absent on the expansion")
+    @DisplayName("absent Match_Datasets and Bindings stay absent on the expansion")
     void absentBlocksStayAbsent()
     {
         Rule template = new Rule();
@@ -333,8 +329,8 @@ class TokenExpansionRuleFieldsTest
         {
             assertNull(concrete.getMatchDatasets(),
                     concrete.effectiveId() + " must not gain an empty Match_Datasets block");
-            assertNull(concrete.getOperations(),
-                    concrete.effectiveId() + " must not gain an empty Operations block");
+            assertNull(concrete.getCompiledBindings(),
+                    concrete.effectiveId() + " must not gain an empty bindings list");
         }
     }
 

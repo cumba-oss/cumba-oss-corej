@@ -125,13 +125,12 @@ public enum MetadataAttribute
     DS_CLASS("ds_class", Scope.DATASET, "className", Normalization.RAW, DATA, DEFINE, LIBRARY),
     /**
      * The dataset's CDISC domain <em>as {@code Scope.Domains} resolves it</em> — the base leg
-     * {@code OperationExecutor.unsplitNameFromData}: the row-0 {@code DOMAIN} cell
-     * <em>verbatim</em> when present and non-empty, else {@code SUPP}/{@code SQ} + the row-0
-     * {@code RDOMAIN} for a split supplemental dataset, else the raw dataset name. So
-     * {@code AE}&rarr;{@code AE}, {@code LBXY(DOMAIN=LB)}&rarr;{@code LB},
-     * {@code SUPPLBHM(RDOMAIN=LB)}&rarr;{@code SUPPLB}, a 0-row {@code AE}&rarr;{@code AE}. An
-     * author who writes {@code Scope.Domains.Include: [X]} and {@code dataset_domain == "X"} gets
-     * the same answer from both, by construction.
+     * {@code DatasetIdentity.unsplitNameFromData}: the row-0 {@code DOMAIN} cell <em>verbatim</em>
+     * when present and non-empty, else {@code SUPP}/{@code SQ} + the row-0 {@code RDOMAIN} for a
+     * split supplemental dataset, else the raw dataset name. So {@code AE}&rarr;{@code AE},
+     * {@code LBXY(DOMAIN=LB)}&rarr;{@code LB}, {@code SUPPLBHM(RDOMAIN=LB)}&rarr;{@code SUPPLB}, a
+     * 0-row {@code AE}&rarr;{@code AE}. An author who writes {@code Scope.Domains.Include: [X]} and
+     * {@code dataset_domain == "X"} gets the same answer from both, by construction.
      *
      * <p>
      * ⚠ Because the {@code DOMAIN} cell is returned verbatim, a <em>malformed</em> domain stays

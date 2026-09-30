@@ -8,9 +8,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import net.cumba.corej.core.expr.CheckExpressionParser;
+import net.cumba.corej.core.expr.ExpressionPrinter;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.GroupingSpec;
 import net.cumba.corej.core.model.MatchDataset;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Requirements;
 import net.cumba.corej.core.model.Rule;
@@ -34,7 +36,7 @@ import org.junit.jupiter.api.Test;
  * This test pins the carried fields whose loss changes what the engine <em>runs</em> rather than
  * how it reports: the identity ({@code Id}, {@code Status}, {@code Version}), the evaluation
  * universe ({@code Variable_Universe}), the authored {@code Sensitivity} and its derivation, the
- * join keys ({@code Match_Datasets}), the grouping keys, the operation column names (Fix #152) and
+ * join keys ({@code Match_Datasets}), the grouping keys, the binding column names (Fix #152) and
  * the requirement gate. Each assertion is an exact value; a "not null" would pass on a rule the
  * expander silently emptied.
  * </p>
@@ -45,7 +47,7 @@ class WildcardExpansionRuleFieldsTest
     private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
     {
         return new net.cumba.corej.core.model.CheckConditionExpression(
-                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+                CheckExpressionParser.parse(source), source);
     }
 
     private static final String TEMPLATE_ID = "WCF-1";
@@ -70,16 +72,13 @@ class WildcardExpansionRuleFieldsTest
     }
 
 
-    private static Operation maxOverTheSiblingColumn()
+    private static CompiledBinding maxOverTheSiblingColumn()
     {
-        // Fix #152 shape: the Operation names a DIFFERENT wildcard template from the Check
+        // Fix #152 shape: the binding names a DIFFERENT wildcard template from the Check
         // (`TRTxxPN` vs `TRTxxP`), which is exactly how five shipped rules came to read a column
-        // named literally "AyIND".
-        Operation op = new Operation();
-        op.setId("$peak");
-        op.setOperator("max");
-        op.setName("TRTxxPN");
-        return op;
+        // named literally "AyIND" (then through an operation, retired in runbook W8).
+        return new CompiledBinding("$peak",
+                CheckExpressionParser.parse("max(TRTxxPN, group=[USUBJID])"), List.of(), null);
     }
 
 
@@ -101,7 +100,7 @@ class WildcardExpansionRuleFieldsTest
         rule.setVariableUniverse(VariableUniverse.DATA);
         rule.setMatchDatasets(List.of(adslOnUsubjid()));
         rule.setGroupingVariables(List.of("USUBJID"));
-        rule.setOperations(List.of(maxOverTheSiblingColumn()));
+        rule.setCompiledBindings(List.of(maxOverTheSiblingColumn()));
 
         VariableRequirement vars = new VariableRequirement();
         vars.setAll(List.of("ADSL.TRTxxPN"));
@@ -240,27 +239,28 @@ class WildcardExpansionRuleFieldsTest
 
 
     /**
-     * Fix #152 — an {@code Operations[]} entry naming a column template the Check does NOT name is
-     * still bound from this expansion's tuple. Handing the template's operations across verbatim is
-     * how five shipped rules came to read a column named literally {@code AyIND}: absent column ⇒
-     * {@code max} yields nothing ⇒ the comparison fired on every populated row.
+     * Fix #152 — a binding naming a column template the Check does NOT name is still bound from
+     * this expansion's tuple. Handing the template's bindings across verbatim is how five shipped
+     * rules (then through {@code Operations[]} entries) came to read a column named literally
+     * {@code AyIND}: absent column ⇒ {@code max} yields nothing ⇒ the comparison fired on every
+     * populated row.
      */
     @Test
-    @DisplayName("an Operation naming a different wildcard template is bound from the same tuple")
-    void operationColumnNamesAreBoundFromTheTuple()
+    @DisplayName("a binding naming a different wildcard template is bound from the same tuple")
+    void bindingColumnNamesAreBoundFromTheTuple()
     {
         Rule expanded = expandOnce(authoredTemplate());
 
-        List<Operation> ops = expanded.getOperations();
-        assertNotNull(ops, "the operations must ride onto the expansion");
-        assertEquals(1, ops.size(),
-                "the expansion must keep its operation — without it the $peak reference resolves "
+        List<CompiledBinding> bindings = expanded.getCompiledBindings();
+        assertNotNull(bindings, "the bindings must ride onto the expansion");
+        assertEquals(1, bindings.size(),
+                "the expansion must keep its binding — without it the $peak reference resolves "
                         + "to nothing");
-        assertEquals("TRT01PN", ops.get(0).getName(),
-                "the operation's column is bound from THIS tuple (xx=01), not left as the "
-                        + "template token");
-        assertEquals("$peak", ops.get(0).getId(), "non-column positions are copied verbatim");
-        assertEquals("max", ops.get(0).getOperator());
+        assertEquals("max(TRT01PN, group=[USUBJID])",
+                ExpressionPrinter.print(bindings.get(0).expression()),
+                "the binding's column is bound from THIS tuple (xx=01), not left as the "
+                        + "template token; the call and its group= key are copied verbatim");
+        assertEquals("$peak", bindings.get(0).name(), "the binding name is copied verbatim");
     }
 
 
@@ -308,7 +308,7 @@ class WildcardExpansionRuleFieldsTest
                         + "expansion reports a different variable set from the same rule loaded "
                         + "concretely");
         assertEquals(List.of("TRT01P", "$peak", "TRT01PN"), expanded.getEffectiveOutputVariables(),
-                "the derivation reads the POST-expansion Check and operations, so the operation "
+                "the derivation reads the POST-expansion Check and bindings, so the binding "
                         + "result and its bound column join the authored column");
     }
 

@@ -8,13 +8,13 @@ import org.jspecify.annotations.Nullable;
  * pre-go review M2): which run-level provider the function needs before it can answer.
  *
  * <p>
- * Before wave 0 every provider gate keyed on {@code OperationType} — the no-provider SKIP, the
- * eager "answered but unusable" SKIP, the run forecast ({@code ProviderRequirements}) and the
- * injected inline gate — so a <em>registry function</em> could not be library-dependent at all: a
- * ported {@code get_codelist_attributes} with no library would have answered {@code []} and the
- * rule would have PASSED instead of SKIPPING. The capability is declared on the descriptor
+ * Before wave 0 every provider gate keyed on the operation type — the no-provider SKIP, the eager
+ * "answered but unusable" SKIP, the run forecast ({@code ProviderRequirements}) and the injected
+ * inline gate — so a <em>registry function</em> could not be library-dependent at all: a ported
+ * {@code get_codelist_attributes} with no library would have answered {@code []} and the rule would
+ * have PASSED instead of SKIPPING. The capability is declared on the descriptor
  * ({@link FunctionDescriptor#provider()}) and read by exactly one helper,
- * {@code net.cumba.corej.core.exec.ProviderNeeds}, which also reads the {@code OperationType}
+ * {@code net.cumba.corej.core.exec.ProviderNeeds}, which (until W8) also read the operation type
  * predicates — so the gates see both keys and a call in a binding and the same call inline in the
  * Check are gated alike.
  * </p>

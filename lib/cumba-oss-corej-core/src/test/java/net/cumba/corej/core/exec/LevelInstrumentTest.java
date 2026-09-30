@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
@@ -16,8 +17,9 @@ import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.BroadcastFold;
+import net.cumba.corej.core.expr.eval.Domain;
 import net.cumba.corej.core.expr.typed.Granularity;
-import net.cumba.corej.core.model.Operation;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
@@ -168,15 +170,16 @@ class LevelInstrumentTest
 
 
     @Test
-    void aRuntimePerRowOperationResultIsItsOwnDeclineClass()
+    void aRuntimePerRowBindingValueIsItsOwnDeclineClass()
     {
         // The static binding level says scalar (no declaration to say otherwise); the runtime
-        // value materialised per-row. The materialised-kind probe is the one thing the static
-        // level cannot subsume.
+        // value is per-row. The runtime-kind probe is the one thing the static level cannot
+        // subsume. (The per-row value was an operation's grouped result until runbook W8; a
+        // per-row compiled binding hands over its Vector.)
         Expr expr = new Expr.Binary(Expr.BinOp.EQ, new Expr.Ref("$g", OperandKind.OPERATION_REF),
                 new Expr.Lit(Expr.LitKind.STRING, "a"));
-        EvaluationContext ctx = ctx(ae(),
-                Map.of("$g", new GroupedResult(List.of("USUBJID"), Map.of("S1", "a"))));
+        EvaluationContext ctx = ctx(ae(), Map.of("$g", new BindingValue(new CompiledBinding("$g",
+                CheckExpressionParser.parse("upper(AETERM)"), List.of(), Domain.ROW))));
         LevelInstrument.FoldObservation obs = observe(new Rule(), ctx, expr);
         assertEquals(LevelInstrument.FoldAgreement.FOLD_DECLINED, obs.agreement());
         assertEquals(LevelInstrument.DeclineReason.OPERATION_RUNTIME_KIND.name(), obs.reason());
@@ -256,14 +259,10 @@ class LevelInstrumentTest
     {
         // D39d: every operand group-level on one key — the rule reports per group with the key
         // derived from the expressions, never invented.
-        Rule rule = new Rule();
-        rule.setSensitivity(Sensitivity.RECORD);
-        Operation op = new Operation();
-        op.setId("$m");
-        op.setOperator("max");
-        op.setName("AESEQ");
-        op.setGroup(List.of("USUBJID"));
-        rule.setOperations(List.of(op));
+        // (max is a registry function since runbook W5: the grouped binding is a compiled one.)
+        Rule rule = loadedRule("{\"Core\":{\"Id\":\"L-G\"},\"Sensitivity\":\"Record\","
+                + "\"Bindings\":[{\"name\":\"$m\",\"expression\":\"max(AESEQ, group=[USUBJID])\"}],"
+                + "\"Check\":{\"expression\":\"$m > 5\"}}");
         AtomicReference<LevelInstrument.GranularityObservation> seen = new AtomicReference<>();
         LevelInstrument.setGranularityObserver(seen::set);
         LevelInstrument.onEffectiveGranularity(rule, ctx(ae(), Map.of()),
@@ -293,75 +292,29 @@ class LevelInstrumentTest
     }
 
 
-    @Test
-    void anAbsentForeignDomainRefinesTheBindingLevelToDataset()
+    /** A one-rule package through the production loader. */
+    private static Rule loadedRule(String ruleJson)
     {
-        // Phase 6, D106d: the same shape as the MODEL_GAP test below, but the operation is
-        // cross-dataset and its foreign domain does not resolve — the run's operation degenerates
-        // to a scalar, the refined static level is dataset, and a decided fold AGREES instead of
-        // exceeding. This was the whole harness MODEL_GAP population (96 cases, all cross-dataset
-        // $-bindings over absent domains).
-        Rule rule = crossDatasetGroupedRule();
-        AtomicReference<LevelInstrument.FoldObservation> seen = new AtomicReference<>();
-        LevelInstrument.setFoldObserver(seen::set);
-        LevelInstrument.onFold(rule, ctx(ae(), Map.of()), CheckExpressionParser.parse("$n == 0"),
-                "check", BroadcastFold.Verdict.TRUE);
-        assertNotNull(seen.get());
-        assertEquals(LevelInstrument.FoldAgreement.AGREE_DECIDED, seen.get().agreement());
+        try
+        {
+            Rule rule = net.cumba.corej.core.RulePackageLoader
+                    .loadFromString("{\"rules\":{\"L-1\":" + ruleJson + "}}").getRules().values()
+                    .iterator().next();
+            assertNull(rule.getLoadError(), rule.getLoadError());
+            return rule;
+        }
+        catch (Exception e)
+        {
+            throw new IllegalArgumentException("bad test fixture: " + ruleJson, e);
+        }
     }
 
-
-    @Test
-    void aResolvableForeignDomainKeepsTheDeclarationDerivedLevel()
-    {
-        // The counter-case: DS resolves, the grouped binding keeps group(K), and a decided fold
-        // over it is still the (fabricated) MODEL_GAP — the refinement must not over-reach.
-        Rule rule = crossDatasetGroupedRule();
-        IDataTable ds = MockTable.of().name("DS").col("USUBJID", "S1").col("DSSTDTC", "2024")
-                .build();
-        EvaluationContext withDs = EvaluationContext.builder().table(ae())
-                .datasetResolver(name -> "DS".equals(name) ? ds : null).build();
-        AtomicReference<LevelInstrument.FoldObservation> seen = new AtomicReference<>();
-        LevelInstrument.setFoldObserver(seen::set);
-        LevelInstrument.onFold(rule, withDs, CheckExpressionParser.parse("$n == 0"), "check",
-                BroadcastFold.Verdict.TRUE);
-        assertNotNull(seen.get());
-        assertEquals(LevelInstrument.FoldAgreement.FOLD_EXCEEDED, seen.get().agreement());
-        assertEquals(LevelInstrument.ExceedReason.MODEL_GAP.name(), seen.get().reason());
-    }
-
-
-    @Test
-    void theSplitSuppSelfReferenceDoesNotDegenerate()
-    {
-        // J7: a SUPP-family operation domain that collapsed to the unsplit family name runs
-        // against the current (split-member) table — the executor redirects, so the instrument's
-        // inventory reports it resolvable and the binding keeps its declared level.
-        Rule rule = crossDatasetGroupedRule();
-        rule.getOperations().getFirst().setDomain("SUPPLB");
-        IDataTable supplbch = MockTable.of().name("SUPPLBCH").col("USUBJID", "S1").build();
-        EvaluationContext ctx = EvaluationContext.builder().table(supplbch).build();
-        AtomicReference<LevelInstrument.FoldObservation> seen = new AtomicReference<>();
-        LevelInstrument.setFoldObserver(seen::set);
-        LevelInstrument.onFold(rule, ctx, CheckExpressionParser.parse("$n == 0"), "check",
-                BroadcastFold.Verdict.TRUE);
-        assertNotNull(seen.get());
-        assertEquals(LevelInstrument.FoldAgreement.FOLD_EXCEEDED, seen.get().agreement());
-    }
-
-
-    private static Rule crossDatasetGroupedRule()
-    {
-        Rule rule = new Rule();
-        rule.setSensitivity(Sensitivity.RECORD);
-        Operation op = new Operation();
-        op.setId("$n");
-        op.setOperator("record_count");
-        op.setDomain("DS");
-        op.setGroup(List.of("USUBJID"));
-        rule.setOperations(List.of(op));
-        return rule;
-    }
+    // (The three D106d tests — a cross-dataset grouped OPERATION whose absent foreign domain
+    // refines the binding level to dataset, the resolvable counter-case and the split-SUPP
+    // self-reference — went with the last grouped operation in runbook W7: the refinement,
+    // StageAChecker.degeneratesToScalar, reads declared operations only, and record_count /
+    // distinct are compiled bindings since W6 / W7. Recorded for the combined review in
+    // PLAN-distinct-function §8.)
 
 
     @Test

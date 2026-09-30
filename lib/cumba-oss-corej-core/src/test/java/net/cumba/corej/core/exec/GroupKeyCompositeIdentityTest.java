@@ -40,7 +40,7 @@ import org.junit.jupiter.api.Test;
  * {@code Missing(MIS_UNKNOWN)}, {@code Missing(MIS_ERROR)} and {@code Present(".")} are <b>five
  * distinct group identities</b>; {@code keep_missings: false} still drops every blank (part 1
  * unchanged); and the reporting key distinguishes exactly what the grouping distinguishes, with
- * {@code IndexHelper.buildGroupKey} and {@code GroupedResult.identityKey} (one derivation since
+ * {@code IndexHelper.buildGroupKey} and {@code GroupKeyIdentity.identityKey} (one derivation since
  * {@code PLAN-grouping-key-identity}).
  * </p>
  *
@@ -390,9 +390,10 @@ class GroupKeyCompositeIdentityTest
     @Test
     void groupKeyIsOneDerivationOnBothSides()
     {
-        // Block side (IndexHelper.buildGroupKey) and per-row lookup side (GroupedResult.getForRow's
-        // identityKey) derive the same key for the same blank-keyed row — they are one function
-        // since PLAN-grouping-key-identity — and different keys for the different blank kinds.
+        // Block side (IndexHelper.buildGroupKey) and per-row lookup side
+        // (GroupKeyIdentity.identityKey — GroupedResult.getForRow's until runbook W8) derive the
+        // same key for the same blank-keyed row — they are one function since
+        // PLAN-grouping-key-identity — and different keys for the different blank kinds.
         IDataTable t = fiveKinds();
         DataTableMeta meta = t.getMetaData();
         Set<Object> keys = new HashSet<>();
@@ -402,7 +403,7 @@ class GroupKeyCompositeIdentityTest
             long row = r;
             lenient().when(block.getRealRow(t, 0)).thenReturn(row);
             Object blockKey = IndexHelper.buildGroupKey(block, t, meta, List.of("K"));
-            Object rowKey = GroupedResult.identityKey(meta, t, List.of("K"), r);
+            Object rowKey = GroupKeyIdentity.identityKey(meta, t, List.of("K"), r);
             assertEquals(blockKey, rowKey, "one derivation at row " + r);
             keys.add(rowKey);
         }
@@ -418,10 +419,10 @@ class GroupKeyCompositeIdentityTest
         IDataTable t = table("G", mis(MissingValue.MIS), str("v"));
         DataTableMeta meta = t.getMetaData();
         Map<Object, Object> results = new LinkedHashMap<>();
-        results.put(GroupedResult.identityKey(meta, t, List.of("G"), 0), "missing-group");
-        results.put(GroupedResult.identityKey(meta, t, List.of("G"), 1), "v-group");
+        results.put(GroupKeyIdentity.identityKey(meta, t, List.of("G"), 0), "missing-group");
+        results.put(GroupKeyIdentity.identityKey(meta, t, List.of("G"), 1), "v-group");
         assertEquals("missing-group",
-                results.get(GroupedResult.identityKey(meta, t, List.of("G"), 0)),
+                results.get(GroupKeyIdentity.identityKey(meta, t, List.of("G"), 0)),
                 "a blank-keyed row's lookup lands on its own group");
         assertFalse(results.containsKey(""),
                 "the Missing group is not filed under the \"\" key any more");

@@ -113,8 +113,7 @@ class NativeGroupOperandResolutionTest
         IDataTable t = MockTable.of().col("AESEQ", "2", "1", "1")
                 .col("AESTDTC", "2024-01-01", "2024-02-01", "2024-01-01")
                 .col("USUBJID", "S1", "S1", "S2").build();
-        assertPrefixedParity("not is_sorted_by(--SEQ, by=[asc(\"--STDTC\")], within=USUBJID)", t,
-                "AE");
+        assertPrefixedParity("not is_sorted_by(--SEQ, by=[asc(--STDTC)], within=USUBJID)", t, "AE");
     }
 
 

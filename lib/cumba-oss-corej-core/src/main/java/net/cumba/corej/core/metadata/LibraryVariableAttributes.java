@@ -61,7 +61,7 @@ import java.util.TreeSet;
  * {@code SUPPQUAL} dataset variables and whose tier C is the hard-coded RELATIONSHIP fallback
  * above), and by every ADaM dataset. So {@code get_model_filtered_variables(key_name="core")} is
  * inert on a standard SDTM domain and correct on a SUPP domain — which is why it is a runtime
- * diagnostic ({@code OperationExecutor.warnUnservedKeyName}) and not a load error.</li>
+ * diagnostic (the retired executor's {@code warnUnservedKeyName}) and not a load error.</li>
  * <li>{@code role} is symmetrically absent from every ADaM row.</li>
  * </ul>
  *
@@ -96,7 +96,8 @@ import java.util.TreeSet;
  * <p>
  * What <b>is</b> decidable at load is the complement: a key outside this set — the three
  * list-valued fields above, or a typo — is published by <em>no</em> level, so the filter provably
- * matches nothing on every dataset. That is {@code OperationExpressionParser.validateKeyName}.
+ * matches nothing on every dataset. That was the retired operation parser's
+ * {@code validateKeyName}.
  * </p>
  */
 public final class LibraryVariableAttributes

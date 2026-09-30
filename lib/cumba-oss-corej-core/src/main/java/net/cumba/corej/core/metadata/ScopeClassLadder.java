@@ -4,9 +4,9 @@ import java.lang.System.Logger.Level;
 import java.util.Locale;
 import java.util.Set;
 import lombok.CustomLog;
+import net.cumba.corej.core.exec.DatasetIdentity;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
-import net.cumba.corej.core.exec.OperationExecutor;
 import net.cumba.datatable.IDataTable;
 import org.jspecify.annotations.Nullable;
 
@@ -80,7 +80,7 @@ public final class ScopeClassLadder
             @Nullable String aMemberName, String aCdiscDomain, IDataTable aTable,
             DatasetResolver aResolver, boolean aApRecursed)
     {
-        Set<String> columns = OperationExecutor.datasetColumnNames(aTable);
+        Set<String> columns = DatasetIdentity.datasetColumnNames(aTable);
         String className = aProvider.getDatasetClass(aMemberName, aCdiscDomain, columns);
         if (className != null)
         {
@@ -95,7 +95,7 @@ public final class ScopeClassLadder
         // on the column also guarantees aCdiscDomain here is the DOMAIN value, not a member-name
         // fallback, so substring(2) is the true AP suffix.
         //
-        // Sibling predicate: OperationExecutor.apSuffixOf (EC-36) computes the same Python
+        // Sibling predicate: DatasetIdentity.apSuffixOf (EC-36) computes the same Python
         // ap_suffix for `--` variable-name resolution. The two are deliberately NOT shared: this
         // one gates on the DOMAIN *column* and reads the already-resolved aCdiscDomain, while
         // apSuffixOf gates on a non-empty row-0 DOMAIN *value*. Unifying them would change which

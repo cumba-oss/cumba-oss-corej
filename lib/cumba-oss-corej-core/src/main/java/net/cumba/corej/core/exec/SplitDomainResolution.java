@@ -75,6 +75,15 @@ public final class SplitDomainResolution
     private static final Map<DatasetResolver, ConcurrentHashMap<String, DomainResolution>> MEMO = Collections
             .synchronizedMap(new WeakHashMap<>());
 
+    /**
+     * Per-resolver memo of {@link #membersOf}: the same weak-outer / concurrent-inner shape as
+     * {@link #MEMO}, keyed by the upper-cased domain, valued by the sorted, unmodifiable member
+     * list (not a {@link UnionDataTable}: a caller that reads each member separately — the
+     * parent-model walk — must not pay for, or fail on, a union it never joins).
+     */
+    private static final Map<DatasetResolver, ConcurrentHashMap<String, List<IDataTable>>> MEMBERS = Collections
+            .synchronizedMap(new WeakHashMap<>());
+
     private SplitDomainResolution()
     {
     }
@@ -147,7 +156,72 @@ public final class SplitDomainResolution
     }
 
 
+    /**
+     * Every inventory member whose data-driven domain ({@code CdiscDomainResolver.cdiscDomainOf})
+     * equals {@code domain} (case-insensitive), in deterministic order (upper-cased member name —
+     * never the inventory's iteration order, which for the production resolver is a
+     * {@code Map.copyOf} key set and differs per JVM). The walk is fault-tolerant per entry, as
+     * {@link #unionOf}'s: a dataset whose supplier throws cannot be a member and never turns the
+     * walk into a rule ERROR. Memoised per (resolver, upper-cased domain) — the walk resolves every
+     * inventory entry, so it runs once per run and domain, not once per rule. Unlike
+     * {@link #resolve} there is no two-character bound: the caller decides when to walk.
+     *
+     * @param inv
+     *            the run's inventory resolver.
+     * @param domain
+     *            the data-driven domain to collect members for.
+     * @param ruleId
+     *            CORE id for the log prefix; {@code null} renders as {@code [?]}.
+     * @return the members, sorted, unmodifiable; empty when none.
+     */
+    static List<IDataTable> membersOf(DatasetResolver.WithInventory inv, String domain,
+            @Nullable String ruleId)
+    {
+        String key = domain.toUpperCase(Locale.ROOT);
+        return MEMBERS.computeIfAbsent(inv, _ -> new ConcurrentHashMap<>()).computeIfAbsent(key,
+                _ -> List.copyOf(walkMembers(inv, key, ruleId)));
+    }
+
+
     private static DomainResolution unionOf(DatasetResolver.WithInventory inv, String domain,
+            @Nullable String ruleId)
+    {
+        List<IDataTable> members = walkMembers(inv, domain, ruleId);
+        if (members.isEmpty())
+        {
+            return ABSENT;
+        }
+        if (members.size() == 1)
+        {
+            return new DomainResolution.Table(members.get(0));
+        }
+        LOGGER.log(Level.DEBUG,
+                "[{0}] domain {1} is split into {2} members ({3}) — joining the union",
+                ruleIdOr(ruleId), domain, members.size(), names(members));
+        try
+        {
+            return new DomainResolution.Table(
+                    new UnionDataTable(domain, members.toArray(IDataTable[]::new)));
+        }
+        catch (IllegalArgumentException e)
+        {
+            // Ruling 1 — a malformed split (e.g. a column type clash across members) is a
+            // submission defect the sponsor must see: the rule reports ERROR, never a coerced
+            // union. Cached like every other result, so the diagnosis is produced once per
+            // domain, not once per rule. ⚠ The message names no resolution surface: the memo
+            // means the FIRST caller's message serves every later one, and the domain can be
+            // reached as a Match_Datasets name, an RDOMAIN value, or a dotted Check reference
+            // alike (review F4).
+            String message = "'" + domain + "' resolves to a split domain whose " + e.getMessage()
+                    + "; the domain cannot be joined";
+            LOGGER.log(Level.WARNING, "[{0}] {1}", ruleIdOr(ruleId), message);
+            return new DomainResolution.Invalid(domain, message);
+        }
+    }
+
+
+    /** The fault-tolerant, sorted member walk shared by {@link #unionOf} and {@link #membersOf}. */
+    private static List<IDataTable> walkMembers(DatasetResolver.WithInventory inv, String domain,
             @Nullable String ruleId)
     {
         // Same walk as DatasetResolver.WithInventory.tablesForDomain, but fault-tolerant per
@@ -175,37 +249,8 @@ public final class SplitDomainResolution
                         ruleIdOr(ruleId), dsName, domain, e.toString());
             }
         }
-        if (members.isEmpty())
-        {
-            return ABSENT;
-        }
         members.sort(Comparator.comparing(SplitDomainResolution::upperNameOf));
-        if (members.size() == 1)
-        {
-            return new DomainResolution.Table(members.get(0));
-        }
-        LOGGER.log(Level.DEBUG,
-                "[{0}] domain {1} is split into {2} members ({3}) — joining the union",
-                ruleIdOr(ruleId), domain, members.size(), names(members));
-        try
-        {
-            return new DomainResolution.Table(
-                    new UnionDataTable(domain, members.toArray(IDataTable[]::new)));
-        }
-        catch (IllegalArgumentException e)
-        {
-            // Ruling 1 — a malformed split (e.g. a column type clash across members) is a
-            // submission defect the sponsor must see: the rule reports ERROR, never a coerced
-            // union. Cached like every other result, so the diagnosis is produced once per
-            // domain, not once per rule. ⚠ The message names no resolution surface: the memo
-            // means the FIRST caller's message serves every later one, and the domain can be
-            // reached as a Match_Datasets name, an RDOMAIN value, or a dotted Check reference
-            // alike (review F4).
-            String message = "'" + domain + "' resolves to a split domain whose " + e.getMessage()
-                    + "; the domain cannot be joined";
-            LOGGER.log(Level.WARNING, "[{0}] {1}", ruleIdOr(ruleId), message);
-            return new DomainResolution.Invalid(domain, message);
-        }
+        return members;
     }
 
 

@@ -12,7 +12,6 @@ import java.util.Set;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.LevelCheck;
 import net.cumba.corej.core.model.MatchDataset;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.OutputVariableToken;
 import net.cumba.corej.core.model.Rule;
@@ -28,19 +27,17 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * <b>One prefix policy (D77c), computed once per (rule &times; dataset):</b>
- * {@link OperationExecutor#variableWildcardPrefix} for every <em>variable-name</em> position
- * (EC-36: {@code ""} for SUPP/SQ, the 2-character parent suffix for AP), and the full CDISC
- * <em>domain code</em> for dataset-name positions ({@code SUPP--.QVAL}, an Operation's
- * {@code domain:} — Fix #59/#33). This is the single authority; the former competing
- * {@code DatasetRuleResolver} policy ({@code domain.substring(0, 2)}) is deleted — that deletion
- * <em>is</em> the F1 fix (D77f).
+ * {@link DatasetIdentity#variableWildcardPrefix} for every <em>variable-name</em> position (EC-36:
+ * {@code ""} for SUPP/SQ, the 2-character parent suffix for AP), and the full CDISC <em>domain
+ * code</em> for dataset-name positions ({@code SUPP--.QVAL}, a registry call's {@code domain=} —
+ * Fix #59/#33). This is the single authority; the former competing {@code DatasetRuleResolver}
+ * policy ({@code domain.substring(0, 2)}) is deleted — that deletion <em>is</em> the F1 fix (D77f).
  * </p>
  *
  * <p>
  * <b>Coverage (D77b):</b> the Check tree, every declared level's Check, the Precondition, the
  * native expressions ({@code checkExpr}, per-level exprs, {@code preconditionExpr} — via
- * {@link ExprPrefixResolver}), Operations (via {@link OperationExecutor#resolvePrefixes}, which
- * stashes {@code originalName} so the D92a inventory folds keep their template), non-{@code Child}
+ * {@link ExprPrefixResolver}), the compiled bindings (R11), non-{@code Child}
  * {@code Match_Datasets} names, {@code Grouping} / {@code Grouping_Variables}, and the authored,
  * effective and excluded {@code Output_Variables}.
  * </p>
@@ -105,7 +102,7 @@ public final class RuleSpecialiser
         {
             return rule;
         }
-        String variablePrefix = OperationExecutor.variableWildcardPrefix(table, domainCode);
+        String variablePrefix = DatasetIdentity.variableWildcardPrefix(table, domainCode);
         if (variablePrefix == null)
         {
             return rule;
@@ -177,25 +174,6 @@ public final class RuleSpecialiser
         net.cumba.corej.core.expr.ast.Expr preExpr = rule.getPreconditionExpr();
         net.cumba.corej.core.expr.ast.Expr newPreExpr = preExpr == null ? null
                 : ExprPrefixResolver.resolve(preExpr, variablePrefix, datasetPrefix);
-
-        List<Operation> operations = rule.getOperations();
-        List<Operation> newOperations = operations;
-        if (operations != null)
-        {
-            List<Operation> resolved = new ArrayList<>(operations.size());
-            boolean changed = false;
-            for (Operation op : operations)
-            {
-                Operation r = op == null ? null
-                        : OperationExecutor.resolvePrefixes(op, datasetPrefix, variablePrefix);
-                changed |= r != op;
-                resolved.add(r);
-            }
-            if (changed)
-            {
-                newOperations = resolved;
-            }
-        }
 
         // PLAN-binding-expressions R11: a compiled binding's expression is resolved exactly as the
         // Check's is — through ExprPrefixResolver — and SET on the copy below: shallowCopy copies
@@ -290,10 +268,10 @@ public final class RuleSpecialiser
 
         boolean changed = newCheck != check || levelsChanged[0] || newPrecondition != precondition
                 || newCheckExpr != checkExpr || newLevelExprs != levelExprs || newPreExpr != preExpr
-                || newOperations != operations || newCompiledBindings != compiledBindings
-                || newMatchDatasets != matchDatasets || newGroupingVariables != groupingVariables
-                || newGrouping != grouping || newOutcome != outcome
-                || newEffectiveOut != effectiveOut || newExcludedOut != excludedOut;
+                || newCompiledBindings != compiledBindings || newMatchDatasets != matchDatasets
+                || newGroupingVariables != groupingVariables || newGrouping != grouping
+                || newOutcome != outcome || newEffectiveOut != effectiveOut
+                || newExcludedOut != excludedOut;
         if (!changed)
         {
             return rule;
@@ -315,7 +293,6 @@ public final class RuleSpecialiser
         copy.setCheckExpr(newCheckExpr);
         copy.setCheckLevelExprs(newLevelExprs);
         copy.setPreconditionExpr(newPreExpr);
-        copy.setOperations(newOperations);
         copy.setCompiledBindings(newCompiledBindings);
         copy.setMatchDatasets(newMatchDatasets);
         copy.setGroupingVariables(newGroupingVariables);
@@ -387,7 +364,7 @@ public final class RuleSpecialiser
 
     /**
      * Resolves a non-{@code Child} {@code Match_Datasets} name through the same data-driven
-     * substitution the join builder applies ({@code OperationExecutor.resolveWildcard} — Fix #33
+     * substitution the join builder applies ({@code DatasetIdentity.resolveWildcard} — Fix #33
      * SUPP/SQAP parent-stripping included), so the two can never disagree. {@code Child: true}
      * entries are primary-name <em>patterns</em> and stay verbatim (see the class javadoc).
      */
@@ -402,7 +379,7 @@ public final class RuleSpecialiser
         {
             return md;
         }
-        String resolved = OperationExecutor.resolveWildcard(name, table);
+        String resolved = DatasetIdentity.resolveWildcard(name, table);
         if (java.util.Objects.equals(resolved, name))
         {
             return md;

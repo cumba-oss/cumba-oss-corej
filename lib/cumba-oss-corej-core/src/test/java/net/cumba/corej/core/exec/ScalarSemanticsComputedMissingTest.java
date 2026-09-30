@@ -487,8 +487,38 @@ class ScalarSemanticsComputedMissingTest
      * scalar and multi-value populations into one figure would hide which of two different
      * contracts moved. Bump it only after reading the new producer against both halves of the
      * contract.
+     *
+     * <p>
+     * ⚑ <b>0 → 3 on 2026-09-29, READ:</b> {@code SuppPivot.SuppQnamColumn.materialise}, its builder
+     * {@code resolve} and the publication holder's accessor {@code Materialised.values} return the
+     * merged column's {@code IDataValue[]} ({@code PLAN-operation-replacements} §2.3). Both halves
+     * hold: the array is allocated and returned on every path (never {@code null}), and every
+     * element is {@code SuppPivot.BLANK} unless a stored SUPP cell replaces it, so no element is
+     * {@code null}. It is a per-column materialisation cache, not a lookup channel — nothing
+     * outside the column reads it.
+     * </p>
+     *
+     * <p>
+     * ⚑ <b>3 → 4 on 2026-09-29, READ:</b> {@code GroupedAggregate.Grouped.byKey} — the memoised
+     * per-execution block map of a grouped aggregate function ({@code PLAN-grouped-aggregate-
+     * functions} §2.2: one {@code IDataValue} per group key). Both halves hold: the map is built
+     * and wrapped unmodifiable on every path (never {@code null}; an absent dataset or target
+     * column stores an empty map), and every value is what the block's aggregator answered — a
+     * winning cell, a carried missing or {@code ScalarSemantics.computedMissing()} — so no element
+     * is {@code null}; every block claims its key with a value, never a placeholder.
+     * </p>
+     *
+     * <p>
+     * ⚑ <b>5 → 6 in the combined review of runbook W2–W8 (XCUT PERF 1), READ:</b>
+     * {@code JoinCache.SharedIndexCache.getOrBuildSuppQnamColumn} hands the SAME
+     * {@code IDataValue[]} that {@code SuppQnamColumn.resolve} builds through the run's shared
+     * cache, so one parent's qualifier column is materialised once per run instead of once per
+     * rule. Both halves hold for the same reason as the 0 → 3 entry: the array is the builder's
+     * (allocated on every path, every element {@code SuppPivot.BLANK} or a stored SUPP cell), and
+     * the cache stores it as-is — {@code IdentityWeakCache.getOrBuild} never stores {@code null}.
+     * </p>
      */
-    private static final int EXPECTED_MULTI_VALUE_PRODUCERS = 0;
+    private static final int EXPECTED_MULTI_VALUE_PRODUCERS = 6;
 
     /**
      * ⛔ The permanent positive control for the element detector — a declaration carrying a
@@ -626,8 +656,56 @@ class ScalarSemanticsComputedMissingTest
      * {@code Object}-returning helpers that hand a cell or {@code computedMissing()} through the
      * untyped {@code ComputedVector} channel and declare no {@code IDataValue} of their own.
      * </p>
+     *
+     * <p>
+     * ⚑ <b>18 → 20 on 2026-09-29, READ:</b> the declared SUPP merge ({@code SuppPivot},
+     * {@code PLAN-operation-replacements} §2.3). {@code SuppQnamIndex.Entry.qval} is the record
+     * accessor of the parsed SUPP row's {@code QVAL} cell — the table's own cell (a missing
+     * {@code QVAL} keeps its identity) or {@code SuppPivot.BLANK} when the table has no
+     * {@code QVAL} column; never {@code null}. {@code SuppPivot.SuppQnamColumn.getDataValue} reads
+     * the materialised column: every slot is pre-filled with {@code BLANK} (the present blank a
+     * record no qualifier row reaches owes, D34 #3) and overwritten only with a stored cell; never
+     * {@code null}.
+     * </p>
+     *
+     * <p>
+     * ⚑ <b>20 → 23 on 2026-09-29, READ:</b> {@code row_max} as a registry function
+     * ({@code PLAN-per-row-functions}, {@code RowMax}). {@code RowMax.rowMax} answers the winning
+     * candidate cell, the carried missing of an all-missing row or
+     * {@code ScalarSemantics.computedMissing()}; {@code RowMax.carrierOf} the first matched cell
+     * carrying the combined missing identity or {@code computedMissing()};
+     * {@code RowMax.numericMax} one of its (non-empty) candidate cells. None is {@code null}. The
+     * retired {@code OperationExecutor.evalRowExtreme} answered a {@code GroupedResult} of strings
+     * and was not in this population.
+     * </p>
+     *
+     * <p>
+     * ⚑ <b>23 → 28 on 2026-09-29, READ:</b> the grouped aggregate functions
+     * ({@code PLAN-grouped-aggregate-functions}, {@code GroupedAggregate}).
+     * {@code GroupedAggregate.maxOf} answers the winning candidate cell (numeric or text), the
+     * carried missing of an all-missing block or {@code ScalarSemantics.computedMissing()};
+     * {@code GroupedAggregate.dateExtremeOf} the cell whose raw text the EC-46 accumulator
+     * selected, else the same two missings; {@code MissingScan.noCandidate} the first read cell
+     * carrying the block's combined missing identity or {@code computedMissing()};
+     * {@code Aggregator.aggregate} is the interface those two implement (declared non-null);
+     * {@code ReadValue.Spec.selectWithin} the selected row's cell or X's type default
+     * ({@code DataValueSupport.defaultForType}, D13) for a group the filter empties;
+     * {@code GroupedAggregate.RowAnswers.at} the primary row's own block answer, every slot
+     * pre-filled with the no-group answer. None is {@code null}. The retired
+     * {@code OperationExecutor.evalMaxGrouped} / {@code evalDateExtremeGrouped} answered a
+     * {@code GroupedResult} of boxed doubles and strings and were not in this population.
+     * </p>
      */
-    private static final int EXPECTED_VALUE_PRODUCERS = 18;
+    // Runbook W7 (PLAN-distinct-function) added no producer: an absent distinct target reads
+    // ScalarSemantics.computedMissing() through an inline lambda (a named helper was 28 -> 29 for
+    // one gate run, then folded away for PMD's unused-parameter rule).
+    // 28 → 27 in runbook W8 (PLAN-retire-operation-surface): the computed-target materialiser's
+    // synthetic column (`TargetExpressionMaterializer.VectorColumn.getDataValue`) went with the
+    // operation surface — a deleted producer, read and accounted for, not a new one.
+    // 27 → 28 in the combined review of runbook W2–W8 (XCUT PERF 3):
+    // GroupedAggregate.RowAnswers.at,
+    // the per-row answer slots of a grouping over the PRIMARY table (no key derived per row).
+    private static final int EXPECTED_VALUE_PRODUCERS = 28;
 
     private static Method declared(Class<?> owner, String name)
     {

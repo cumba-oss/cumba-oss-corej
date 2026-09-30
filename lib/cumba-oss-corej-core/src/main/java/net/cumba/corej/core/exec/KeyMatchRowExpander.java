@@ -178,7 +178,7 @@ final class KeyMatchRowExpander
             // skipped at probe time, so the shared index never depends on it. ⚠ Evaluated before
             // keySpec, as it always was: a rule whose filter and key check both throw keeps
             // reporting the filter's error.
-            BitSet keep = MatchFilter.mask(md, child, ruleId);
+            BitSet keep = MatchFilter.mask(md, child, ruleId, resolver, null);
             resolvedChildren[ei] = child;
             List<String> keys = Objects.requireNonNull(md.getKeys());
             // The join type is the loader's: RulePackageLoader.normalizeJoinTypes stamps `inner`

@@ -5,15 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
-import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.corej.core.expr.ast.Expr;
-import net.cumba.corej.core.expr.convert.OperationExpressionParser;
 import net.cumba.corej.core.model.CheckConditionExpression;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.datatable.values.GroupKeyPolicy;
@@ -135,65 +131,6 @@ class KeepMissingsDeclarationTest
 
 
     @Test
-    void aGroupedOperationAcceptsTheDeclaredDisposition()
-    {
-        Operation op = OperationExpressionParser.fromCall(
-                (Expr.Call) parse("record_count(group=[USUBJID], keep_missings=true)"), "op1");
-        assertEquals(true, op.getKeepMissings());
-    }
-
-
-    @Test
-    void theInlineOperationSurfaceRejectsANonBooleanDisposition()
-    {
-        RuleDefinitionException ex = assertThrows(RuleDefinitionException.class,
-                () -> OperationExpressionParser.fromCall(
-                        (Expr.Call) parse("record_count(group=[USUBJID], keep_missings=\"yes\")"),
-                        "op1"));
-        assertTrue(ex.getMessage().contains("keep_missings must be a boolean literal"),
-                "expected the boolean-literal rejection, got: " + ex.getMessage());
-    }
-
-
-    @Test
-    void aDispositionOnANonGroupingOperationIsRejected()
-    {
-        Operation op = new Operation();
-        op.setOperator("variable_count");
-        op.setKeepMissings(Boolean.TRUE);
-        RuleDefinitionException ex = assertThrows(RuleDefinitionException.class,
-                () -> OperationExpressionParser.validateKeepMissings(op));
-        assertTrue(ex.getMessage().contains("not supported by operation"),
-                "expected the operator rejection, got: " + ex.getMessage());
-    }
-
-
-    @Test
-    void aDispositionWithNoGroupKeyIsRejected()
-    {
-        // ⚠ Fixture shaped so ONLY the empty-group check can reject it: record_count IS a consuming
-        // operator, so the operator allowlist above cannot be what fires here.
-        Operation op = new Operation();
-        op.setOperator("record_count");
-        op.setKeepMissings(Boolean.TRUE);
-        RuleDefinitionException ex = assertThrows(RuleDefinitionException.class,
-                () -> OperationExpressionParser.validateKeepMissings(op));
-        assertTrue(ex.getMessage().contains("requires a non-empty"),
-                "expected the empty-group rejection, got: " + ex.getMessage());
-    }
-
-
-    @Test
-    void aSilentOperationValidatesAndKeepsTheEngineDefault()
-    {
-        Operation op = new Operation();
-        op.setOperator("variable_count");
-        OperationExpressionParser.validateKeepMissings(op);
-        assertNull(op.getKeepMissings());
-    }
-
-
-    @Test
     void theFieldFormOperationSurfaceIsGatedToo()
     {
         // A FIELD-FORM operation never passes through fromCall, so Jackson would bind the parameter
@@ -246,12 +183,14 @@ class KeepMissingsDeclarationTest
 
 
     /**
-     * ⚠⚠ The regression this parameter's shape made possible. {@code keep_missings} is the first
+     * ⚠⚠ The regression this parameter's shape made possible. {@code keep_missings} was the first
      * parameter to appear on <b>both</b> the operation surface and the Check-operator surface, so
-     * it cannot be routed through {@code OperationExpressionParser.fromCall} the way
-     * {@code missing_values} is — {@code fromCall} rejects any name that is not an
-     * {@code OperationType}, and an inline {@code has_multiple_values_for(...)} would become a
-     * bogus "unknown operation function" load error on a perfectly valid rule.
+     * it could not be routed through {@code OperationExpressionParser.fromCall} the way
+     * {@code missing_values} was — {@code fromCall} rejected any name that was not an
+     * {@code OperationType}, and an inline {@code has_multiple_values_for(...)} would have become a
+     * bogus "unknown operation function" load error on a perfectly valid rule. (Both classes were
+     * retired in runbook W8; the pin stays, since the misrouting it guards is a load error either
+     * way.)
      */
     @Test
     void aValidInlineCheckOperatorDispositionIsNotMistakenForAnOperation()
@@ -294,11 +233,5 @@ class KeepMissingsDeclarationTest
     // ------------------------------------------------------------------
     // helpers
     // ------------------------------------------------------------------
-
-
-    private static Expr parse(String expression)
-    {
-        return net.cumba.corej.core.expr.CheckExpressionParser.parse(expression);
-    }
 
 }

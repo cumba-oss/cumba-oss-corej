@@ -16,9 +16,9 @@ import org.junit.jupiter.api.Test;
 /**
  * Native-compiler tests for the {@code var_is_null(X)} cursor predicate (T5a — per-variable
  * all-null). The verdict is TRUE when the named column is absent from the dataset, or present but
- * empty ("" / missing) for every record — mirroring the {@code variable_is_null} operation and the
- * Python reference engine's {@code (series.isnull() | (series == "")).all()}. Exercises both the
- * plain-column form (a fixed name) and the {@code varname()} cursor form used per variable in a
+ * empty ("" / missing) for every record — the retired {@code variable_is_null} operation's fact and
+ * the Python reference engine's {@code (series.isnull() | (series == "")).all()}. Exercises both
+ * the plain-column form (a fixed name) and the {@code varname()} cursor form used per variable in a
  * Variable Metadata Check (FDA-SD1078 / FDA-SD1149).
  */
 class NativeVarIsNullTest

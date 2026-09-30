@@ -18,7 +18,7 @@ import org.jspecify.annotations.Nullable;
  * the one shared text policy this class still owns, also read by {@link RuleSpecialiser} for name
  * lists. ⚑ Its bare-name sibling {@code resolveWildcard} went with 7d as well (terminal review L2):
  * it lost both production callers there and survived only on its own unit tests, while this javadoc
- * still named an {@code OperationExecutor} caller it did not have.
+ * still named an operation-executor caller it did not have.
  * </p>
  */
 public final class CheckConditionTransformer

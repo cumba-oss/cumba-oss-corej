@@ -31,7 +31,7 @@ public interface DatasetResolver
 
         /**
          * J7: the data-driven SDTM <em>domains</em> across all datasets — the {@code DOMAIN} cell
-         * (via {@link OperationExecutor#domainOfDataset}), not the member names. So split members
+         * (via {@link DatasetIdentity#domainOfDataset}), not the member names. So split members
          * ({@code lbch}/{@code lbhe}/{@code lbur}) collapse to their domain ({@code LB}), and
          * {@code study_domains()} matches an {@code RDOMAIN} value. A dataset with no domain
          * (SUPP/SQ/RELREC) contributes {@code ""} (Python includes the empty domain). Default so
@@ -45,7 +45,7 @@ public interface DatasetResolver
             boolean anyNoDomain = false;
             for (String name : availableDatasets())
             {
-                String domain = OperationExecutor.domainOfDataset(name, this);
+                String domain = DatasetIdentity.domainOfDataset(name, this);
                 if (domain != null && !domain.isEmpty())
                 {
                     domains.add(domain);

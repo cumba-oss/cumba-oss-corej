@@ -344,7 +344,8 @@ class MetadataLibraryProviderSubclassGovernanceTest
         // adam-nca-1-0 publishes BASIC DATA STRUCTURE only as NON-COMPARTMENTAL ANALYSIS. For a
         // plain BDS dataset the chain is empty — and an empty LIST would say "this structure
         // requires nothing", passing the rule vacuously. null says "no such structure here", which
-        // lets OperationExecutor try the next token and then SKIP loudly.
+        // lets the core-variables walk (LibraryLists; OperationExecutor until runbook W8) try the
+        // next token and then SKIP loudly.
         MetadataLibraryProvider p = provider(
                 ApiModelLibraries.declared("standards/adam/adam-nca-1-0", ncaOnly()));
 

@@ -2,11 +2,8 @@ package net.cumba.corej.core.gen;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.expr.ExpressionPrinter;
@@ -15,7 +12,6 @@ import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionExpression;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.datatable.DataTableMeta;
@@ -240,56 +236,6 @@ class WildcardExpanderSubstitutionEdgeTest
         assertEquals("STUDYID == AEFL", rendered(expanded),
                 "the right operand is a template too — an unwalked right side leaves '*FL' as a "
                         + "literal column name");
-    }
-
-
-    /**
-     * An operation's row-filter <b>keys</b> are column positions and are rewritten; an operation
-     * that declares no filter must keep {@code null} rather than gaining an empty filter, because
-     * "no filter" and "a filter that excludes nothing" are different inputs to the executor.
-     */
-    @Test
-    @DisplayName("operation filter keys are rewritten; an absent filter stays absent")
-    void operationFilterKeysAreRewrittenAndAbsenceIsPreserved()
-    {
-        DataTableMeta meta = MockTable.of().name("ADAE").col("TRT01P", "A").build().getMetaData();
-
-        Operation filtered = new Operation();
-        filtered.setId("$peak");
-        filtered.setOperator("max");
-        filtered.setName("TRTxxP");
-        Map<String, Object> filter = new LinkedHashMap<>();
-        filter.put("TRTxxP", "PLACEBO");
-        filtered.setFilter(filter);
-
-        Operation unfiltered = new Operation();
-        unfiltered.setId("$all");
-        unfiltered.setOperator("max");
-        unfiltered.setName("TRTxxP");
-
-        Rule template = template("WC-SUB-7",
-                new CheckConditionAll(List.of(leaf("TRTxxP", "non_empty"))));
-        template.setOperations(List.of(filtered, unfiltered));
-
-        Rule expanded = expandOnce(template, meta);
-
-        List<Operation> ops = expanded.getOperations();
-        assertNotNull(ops);
-        assertEquals(2, ops.size());
-        assertEquals(Map.of("TRT01P", "PLACEBO"), ops.get(0).getFilter(),
-                "the filter KEY is a column position and is bound to the tuple; the VALUE is data "
-                        + "and is not");
-        assertNull(ops.get(1).getFilter(),
-                "an operation with no filter must not acquire an empty one");
-
-        // …and a template that declares no Operations at all must not acquire an empty list:
-        // "no operations" and "an empty operations block" are different inputs to the executor
-        // and round-trip differently through the writer.
-        Rule noOps = expandOnce(
-                template("WC-SUB-8", new CheckConditionAll(List.of(leaf("TRTxxP", "non_empty")))),
-                meta);
-        assertNull(noOps.getOperations(),
-                "an expansion of a template with no Operations must keep the field absent");
     }
 
 }

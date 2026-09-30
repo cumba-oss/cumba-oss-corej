@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import net.cumba.corej.core.expr.RuleDefinitionException;
-import net.cumba.corej.core.expr.convert.OperationExpressionParser;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -16,17 +15,14 @@ import org.jspecify.annotations.Nullable;
  * <pre>{@code
  * Bindings:
  * - name: "$disposition_event_count"
- *   expression: "record_count(DSCAT, domain=\"DS\", filter=filter(DSCAT=\"DISPOSITION EVENT\"))"
+ *   expression: "record_count(domain=\"DS\", filter=(DSCAT == \"DISPOSITION EVENT\"))"
  * }</pre>
  *
  * <p>
- * {@code RulePackageLoader.normalizeOperations} routes each binding ({@code BindingRouting},
- * {@code PLAN-binding-expressions} wave 0): a <b>single top-level operation call</b> is
- * materialised into the executor's internal bound-argument record ({@link Operation}) via
- * {@link net.cumba.corej.core.expr.convert.OperationExpressionParser}; <b>any other expression</b>
- * becomes a {@link CompiledBinding}, compiled like the Check. The {@link Operation} class is
- * <em>not</em> an authoring surface any more — {@code Rule.operations} is {@code @JsonIgnore} — so
- * nothing field-shaped binds from YAML/JSON.
+ * {@code RulePackageLoader.materialiseBindings} parses each binding once into a
+ * {@link CompiledBinding}, compiled like the Check ({@code PLAN-binding-expressions} wave 0; since
+ * runbook W8 the one kind of binding — the operation record a single top-level operation call used
+ * to become went with the retired carrier). Nothing field-shaped binds from YAML/JSON.
  * </p>
  *
  * <p>
@@ -55,7 +51,7 @@ public class Binding
     private @Nullable String name;
 
     /**
-     * The expression computing the binding's value — a single operation call such as
+     * The expression computing the binding's value — a function call such as
      * {@code "record_count(group=[USUBJID])"}, or since wave 0 any expression the Check could
      * contain ({@code "upper(AETERM)"}, {@code "$n - 1"}, {@code "[\"A\", \"B\"]"}). Required — the
      * loader files a rule whose binding has none on the {@code loadError} channel.
@@ -85,16 +81,9 @@ public class Binding
         if ("operator".equals(key))
         {
             throw new RuleDefinitionException("the field form of a binding"
-                    + " (`operator:` + parameter fields) is retired — author the operation as a"
-                    + " single `expression:` function call (found operator '"
+                    + " (`operator:` + parameter fields) is retired — author the binding as a"
+                    + " single `expression:` (a function call) (found operator '"
                     + (value == null ? "" : value.asText()) + "')");
-        }
-        if (OperationExpressionParser.parameterKeys().contains(key))
-        {
-            throw new RuleDefinitionException("the field form of a binding is retired — `" + key
-                    + ":` is an operation parameter and belongs inside the `expression:` as a"
-                    + " keyword argument (`" + key + "=…`); a `Bindings:` entry carries only"
-                    + " `name:` and `expression:`");
         }
         throw new RuleDefinitionException(
                 "a `Bindings:` entry carries only `name:` and `expression:` — found `" + key

@@ -94,4 +94,21 @@ public record ConstVector(@Nullable Object value, DataValueType declaredType,
         return typed;
     }
 
+
+    /**
+     * The value a list / membership reader folds: the broadcast value, except that a numeric one
+     * carried from a data cell reads as that cell's text — exactly what the per-row
+     * {@code resolved()} of the same cell answers. A dataset-level answer built from a cell
+     * ({@code GroupedAggregate.constantCell}: an ungrouped {@code read_value}, {@code max}) keeps
+     * the cell's number as its hand-over payload, and folded as that payload a DOUBLE {@code 42}
+     * read {@code "42.0"} where the cell's text is {@code "42"} (combined review of runbook W2–W8,
+     * round 2 L3). A literal number carries no cell and is its own value.
+     *
+     * @return the value to fold into a list or a member set
+     */
+    public @Nullable Object memberValue()
+    {
+        return value instanceof Number ? typed.resolved() : value;
+    }
+
 }

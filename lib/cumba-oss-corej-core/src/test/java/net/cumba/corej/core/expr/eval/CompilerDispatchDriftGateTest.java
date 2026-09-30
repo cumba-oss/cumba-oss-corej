@@ -2,7 +2,6 @@ package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,7 +15,6 @@ import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.eval.spi.CompilerDispatchedCalls;
 import net.cumba.corej.core.expr.typed.ExprType.Unknown;
-import net.cumba.corej.core.model.OperationType;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -57,7 +55,7 @@ class CompilerDispatchDriftGateTest
     private static final Map<String, String> NEGATION_PROBES = Map.of(
             "has_next_corresponding_record",
             "not has_next_corresponding_record(AESEQ, AEDECOD, within=USUBJID, ordering=AESEQ)",
-            "is_sorted_by", "not is_sorted_by(TSSEQ, by=[asc(\"TSGRPID\")], within=USUBJID)");
+            "is_sorted_by", "not is_sorted_by(TSSEQ, by=[asc(TSGRPID)], within=USUBJID)");
 
     private static Map<String, String> boolCallProbes()
     {
@@ -113,13 +111,16 @@ class CompilerDispatchDriftGateTest
                 "compileBoolCall-dispatched boolean calls");
         assertEquals(2, CompilerDispatchedCalls.negationDispatchedBooleanCallNames().size(),
                 "negation-dispatched boolean calls (compileNot's Q1 arms)");
-        assertEquals(13, CompilerDispatchedCalls.valueCallNames().size(),
+        assertEquals(19, CompilerDispatchedCalls.valueCallNames().size(),
                 "compiler-dispatched value calls (vlm_* family, max_value_length, the decode"
-                        + " accessors)");
+                        + " accessors, read_value, W5's max / max_date / min_date, W6's"
+                        + " record_count, W7's distinct)");
         int parameters = new CompilerDispatchedCalls().functions().stream()
                 .mapToInt(d -> d.parameters().size()).sum();
-        assertEquals(91, parameters, "declared parameter surfaces across the 41 descriptors —"
-                + " update deliberately when a signature legitimately changes");
+        assertEquals(124, parameters, "declared parameter surfaces across the 47 descriptors —"
+                + " update deliberately when a signature legitimately changes (W2a: read_value's"
+                + " four; W5: read_value's group / keep_missings, max's five, the two date"
+                + " extremes' six each; W6: record_count's five; W7: distinct's five)");
     }
 
 
@@ -144,24 +145,6 @@ class CompilerDispatchDriftGateTest
                 "fn == null BOOLEAN descriptors in the registry == the declared boolean calls");
         assertEquals(new TreeSet<>(CompilerDispatchedCalls.valueCallNames()), valueFnNull,
                 "fn == null VALUE descriptors in the registry == the declared value calls");
-    }
-
-
-    @Test
-    void compilerDispatchedNamesCollideWithNoOperation()
-    {
-        // Protects RecordCountSingleDescriptorTest's namespace pin: the registry/operation
-        // overlap must stay exactly {record_count, dictionary_available}, so none of the 41 may
-        // be an OperationType json name.
-        List<String> all = new ArrayList<>();
-        all.addAll(CompilerDispatchedCalls.booleanCallNames());
-        all.addAll(CompilerDispatchedCalls.negationDispatchedBooleanCallNames());
-        all.addAll(CompilerDispatchedCalls.valueCallNames());
-        for (String name : all)
-        {
-            assertNull(OperationType.fromJson(name),
-                    "'" + name + "' collides with an operation json name");
-        }
     }
 
     // ------------------------------------------------------------------

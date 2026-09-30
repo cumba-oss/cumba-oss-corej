@@ -33,6 +33,9 @@ import org.jspecify.annotations.Nullable;
 final class MatchFilter
 {
 
+    /** No study: the sub-context of a caller that has no run resolver to hand over. */
+    private static final DatasetResolver NO_STUDY = name -> null;
+
     private MatchFilter()
     {
     }
@@ -54,11 +57,37 @@ final class MatchFilter
     static @Nullable IDataTable apply(MatchDataset md, @Nullable IDataTable right,
             @Nullable String ruleId)
     {
+        return apply(md, right, ruleId, NO_STUDY, null);
+    }
+
+
+    /**
+     * {@link #apply(MatchDataset, IDataTable, String)} with the run's study: the filter's inventory
+     * functions ({@code dataset_names()}, {@code study_domains()}) read the study's datasets
+     * through {@code study}, and its CDISC Library functions read {@code library} — the sub-context
+     * carried neither, so such a filter hit the loud no-inventory arm (D-W4-5) or an
+     * unusable-provider throw (combined review of runbook W2–W8, W4 L3).
+     *
+     * @param md
+     *            the {@code Match_Datasets} entry
+     * @param right
+     *            the resolved joined dataset, or {@code null} when unavailable
+     * @param ruleId
+     *            rule id for diagnostics
+     * @param study
+     *            the run's dataset resolver
+     * @param library
+     *            the run's CDISC Library provider, or {@code null}
+     * @return the effective joined table for index building
+     */
+    static @Nullable IDataTable apply(MatchDataset md, @Nullable IDataTable right,
+            @Nullable String ruleId, DatasetResolver study, @Nullable MetadataProvider library)
+    {
         if (right == null)
         {
             return null;
         }
-        BitSet keep = mask(md, right, ruleId);
+        BitSet keep = mask(md, right, ruleId, study, library);
         if (keep == null)
         {
             return right; // no filter, or nothing dropped — byte-identical to no filter
@@ -98,6 +127,29 @@ final class MatchFilter
      */
     static @Nullable BitSet mask(MatchDataset md, IDataTable right, @Nullable String ruleId)
     {
+        return mask(md, right, ruleId, NO_STUDY, null);
+    }
+
+
+    /**
+     * {@link #mask(MatchDataset, IDataTable, String)} with the run's study (see
+     * {@link #apply(MatchDataset, IDataTable, String, DatasetResolver, MetadataProvider)}).
+     *
+     * @param md
+     *            the {@code Match_Datasets} entry
+     * @param right
+     *            the resolved joined dataset
+     * @param ruleId
+     *            rule id for diagnostics
+     * @param study
+     *            the run's dataset resolver
+     * @param library
+     *            the run's CDISC Library provider, or {@code null}
+     * @return the kept rows, or {@code null} when none is dropped
+     */
+    static @Nullable BitSet mask(MatchDataset md, IDataTable right, @Nullable String ruleId,
+            DatasetResolver study, @Nullable MetadataProvider library)
+    {
         Expr filter = md.filterExpr();
         if (filter == null)
         {
@@ -105,7 +157,11 @@ final class MatchFilter
         }
         // D76: the filter is its own expression, so its own type expectations decide the
         // absent-column default (numeric-expected ⇒ MissingValue.MIS, otherwise "").
+        // suppMerge(false): the declared SUPP merge serves the PRIMARY table only
+        // (PLAN-operation-replacements §2.3 / §7); with the study's resolver in hand the pivot
+        // would otherwise read the JOINED dataset's own SUPP-- for a bare filter name.
         EvaluationContext ctx = EvaluationContext.builder().table(right).ruleId(ruleId)
+                .suppMerge(false).datasetResolver(study).libraryProvider(library)
                 .domainName(right.getMetaData().getName())
                 .numericExpectedColumns(net.cumba.corej.core.expr.typed.TypeExpectations
                         .of(java.util.List.of(filter)).numericDefaultColumns())

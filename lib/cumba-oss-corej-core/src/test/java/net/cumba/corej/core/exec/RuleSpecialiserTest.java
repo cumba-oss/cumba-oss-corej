@@ -14,8 +14,8 @@ import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.model.CheckConditionExpression;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.MatchDataset;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -208,17 +208,22 @@ class RuleSpecialiserTest
      * carry the column, so a violation here means the template was lost.
      */
     @Test
-    void variableCountKeepsItsTemplateAcrossTheInventory_operationsForm()
+    void variableCountKeepsItsTemplateAcrossTheInventory_bindingForm() throws Exception
     {
         IDataTable ae = ae();
         IDataTable cm = MockTable.of().name("CM").col("CMLNKGRP", "G1").build();
 
-        Operation op = new Operation();
-        op.setId("$variable_count");
-        op.setOperator("variable_count");
-        op.setName("--LNKGRP");
-        Rule rule = exprRule("TEST-D92A", "var_exists(\"--LNKGRP\") and $variable_count < 2");
-        rule.setOperations(List.of(op));
+        // A compiled binding since wave 4b (PLAN-scalar-metadata-functions): the template is the
+        // string literal "--LNKGRP", which the specialiser must leave as written (D92a).
+        Rule rule = net.cumba.corej.core.RulePackageLoader
+                .loadFromString("{\"rules\":{\"x\":{"
+                        + "\"Core\":{\"Id\":\"TEST-D92A\"},\"Sensitivity\":\"Record\","
+                        + "\"Bindings\":[{\"name\":\"$variable_count\","
+                        + "\"expression\":\"variable_count(\\\"--LNKGRP\\\")\"}],"
+                        + "\"Check\":{\"expression\":\"var_exists(\\\"--LNKGRP\\\") and"
+                        + " $variable_count < 2\"},\"Outcome\":{\"Message\":\"m\"}}}}")
+                .getRules().get("x");
+        assertNull(Objects.requireNonNull(rule).getLoadError(), rule.getLoadError());
 
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae, inventory(ae, cm), "AE",
                 null, null);
@@ -243,7 +248,7 @@ class RuleSpecialiserTest
         IDataTable cm = MockTable.of().name("CM").col("CMLNKGRP", "G1").build();
 
         Rule rule = exprRule("TEST-D92A-INLINE",
-                "var_exists(\"--LNKGRP\") and variable_count(--LNKGRP) < 2");
+                "var_exists(\"--LNKGRP\") and variable_count(\"--LNKGRP\") < 2");
 
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae, inventory(ae, cm), "AE",
                 null, null);
@@ -253,28 +258,30 @@ class RuleSpecialiserTest
                 "a violation here means the inline --LNKGRP operand was specialised away (D92a)");
     }
 
-    // ---- Operations / Match_Datasets / Grouping coverage ----
+    // ---- Bindings / Match_Datasets / Grouping coverage ----
 
 
+    /**
+     * A binding's {@code --} target is resolved on the copy, the source left untouched. (The
+     * vehicle was a declared {@code distinct} operation until runbook W8; the compiled binding
+     * {@code distinct(--STDTC)} makes the same claim.)
+     */
     @Test
-    void operationsAreSpecialisedWithTheOriginalNameStashed()
+    void bindingsAreSpecialised()
     {
-        Operation op = new Operation();
-        op.setId("$distinct");
-        op.setOperator("distinct");
-        op.setName("--STDTC");
         Rule rule = exprRule("TEST-OPS", "AESTDTC in $distinct");
-        rule.setOperations(List.of(op));
+        rule.setCompiledBindings(List.of(new CompiledBinding("$distinct",
+                CheckExpressionParser.parse("distinct(--STDTC)"), List.of(), null)));
 
         Rule specialised = Objects.requireNonNull(RuleSpecialiser.specialise(rule, ae(), "AE"));
 
         assertNotSame(rule, specialised);
-        Operation resolved = Objects.requireNonNull(specialised.getOperations()).getFirst();
-        assertEquals("AESTDTC", resolved.getName());
-        assertEquals("--STDTC", resolved.getOriginalName(),
-                "the pre-resolution template must ride along (Fix #1 / D92a)");
-        assertEquals("--STDTC", Objects.requireNonNull(rule.getOperations()).getFirst().getName(),
-                "the SOURCE operation must stay untouched — the list is shared across datasets");
+        assertEquals("distinct(AESTDTC)", ExpressionPrinter.print(
+                Objects.requireNonNull(specialised.compiledBinding("$distinct")).expression()));
+        assertEquals("distinct(--STDTC)",
+                ExpressionPrinter.print(
+                        Objects.requireNonNull(rule.compiledBinding("$distinct")).expression()),
+                "the SOURCE binding must stay untouched — the list is shared across datasets");
     }
 
 

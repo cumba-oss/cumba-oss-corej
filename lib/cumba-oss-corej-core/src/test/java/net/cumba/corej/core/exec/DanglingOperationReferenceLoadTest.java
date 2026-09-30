@@ -33,7 +33,7 @@ import org.junit.jupiter.api.Test;
 class DanglingOperationReferenceLoadTest
 {
 
-    private static final String DANGLES = "which no Operations entry defines";
+    private static final String DANGLES = "which no binding defines";
 
     private static Rule load(String ruleJson) throws IOException
     {
@@ -489,7 +489,7 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-15"},
-                  "Check": {"expression": "AESTDTC == min_date(AESTDTC)"}
+                  "Check": {"expression": "AESTDTC == min_date(AESTDTC, group=[USUBJID])"}
                 }
                 """);
         assertNull(rule.getLoadError());
@@ -554,32 +554,27 @@ class DanglingOperationReferenceLoadTest
     }
 
     // -----------------------------------------------------------------------
-    // The invariant this pass leans on: an inliner drops the operation and rewrites the Check
+    // A compiled boolean binding is no dangling reference (runbook W2a: var_exists("X") is what
+    // every former variable_exists site is now)
     // -----------------------------------------------------------------------
 
 
     @Test
-    void inlinedOperationsAreDroppedInLockstepWithTheCheck() throws IOException
+    void aCompiledBooleanBindingIsNotADanglingReference() throws IOException
     {
-        // installNativeExpr rewrites `$op == true/false` into var_exists(<col>), DROPS the inlined
-        // operation from getOperations() — and rewrites rule.getCheck() to the inlined expression
-        // in the same step (RulePackageLoader, the setCheck in inlineVariableExistsOps). That
-        // lockstep is why this pass reads correctly on either side of retainNativeExpr. An inliner
-        // that dropped the operation WITHOUT rewriting the tree would leave a `$`-ref this pass is
-        // right to report — so if this assertion ever breaks, the inliner is the thing to fix.
+        // Before runbook W2a a `$ae_present == false` Check was rewritten by the variable_exists
+        // inliner (the operation dropped, the tree replaced with `not var_exists("AETERM")`) —
+        // that lockstep was pinned here. The inliner is gone with the operation: `$ae_present` is
+        // a compiled binding, the Check keeps its authored tree, and this pass has nothing to
+        // report because the name IS defined.
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-18"},
-                  "Bindings": [{"name": "$ae_present", "expression": "variable_exists(AETERM)"}],
+                  "Bindings": [{"name": "$ae_present", "expression": "var_exists(\\"AETERM\\")"}],
                   "Check": {"all": [{"expression": "$ae_present == false"}]}
                 }
                 """);
-        assertNull(rule.getOperations(), "the inlined operation is dropped");
-        assertTrue(rule.getCheck() instanceof CheckConditionExpression,
-                "and the Check is rewritten with it, got " + rule.getCheck().getClass());
-        assertEquals("not var_exists(\"AETERM\")",
-                ((CheckConditionExpression) rule.getCheck()).source(),
-                "no `$ae_present` survives in the tree");
+        assertNotNull(rule.compiledBinding("$ae_present"), "the binding compiled");
         assertNull(rule.getLoadError());
         assertNull(rule.getLoadWarning());
     }

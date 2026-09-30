@@ -14,7 +14,6 @@ import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.NativeExprEvaluator;
 import net.cumba.corej.core.gen.DefineXMLProvider;
 import net.cumba.corej.core.metadata.DefineXmlMetadataProvider;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.testkit.SyntheticDataTable;
 import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
@@ -22,13 +21,13 @@ import org.junit.jupiter.api.Test;
 /**
  * Register {@code NNL §1} ({@code PLAN-no-null-list-elements} §3, row 14): a {@code null} element
  * in a list value is a producer defect that throws <b>where the list is born</b>, naming the
- * producer — at {@link OperationExecutor#executeOne} for an operation result and at
- * {@link ConstVector#of} for a constant list — and nowhere per row.
+ * producer — at {@link ConstVector#of} for a constant list and at each function's own birth site
+ * (an operation result's was {@code OperationExecutor.executeOne}, retired in runbook W8) — and
+ * nowhere per row.
  *
  * <p>
- * Mockito-free: a five-method {@link DefineXMLProvider} fake, real {@link SyntheticDataTable}, real
- * {@link GroupedResult}. Red-before on HEAD: (1) returned the list with its {@code null} intact,
- * (2) built the vector.
+ * Mockito-free: a five-method {@link DefineXMLProvider} fake, real {@link SyntheticDataTable}.
+ * Red-before on HEAD: (1) returned the list with its {@code null} intact, (2) built the vector.
  * </p>
  */
 class ListValueGuardTest
@@ -74,25 +73,24 @@ class ListValueGuardTest
     }
 
     @Test
-    void executeOneRejectsAnOperationResultWithANullElementNamingTheOperation()
+    void aDefineWalkRejectsANullElementNamingTheFunction()
     {
-        Operation op = new Operation();
-        op.setId("$dsn");
-        op.setOperator("define_dataset_names");
+        // define_dataset_names() is a registry function since wave 4; its list is born at
+        // ConstVector.of, the guard site, which names the function.
         SyntheticDataTable dm = new SyntheticDataTable("DM", List.of("STUDYID"), new String[]
         {
                 "S1"
         }, 1);
         DefineXmlMetadataProvider define = new DefineXmlMetadataProvider(new DefectiveDefine(),
                 null);
+        EvaluationContext ctx = EvaluationContext.builder().table(dm).defineProvider(define)
+                .ruleId("T-NNL").build();
 
-        IllegalStateException e = assertThrows(IllegalStateException.class, () -> OperationExecutor
-                .executeOne(op, dm, _ -> null, null, Map.of(), "T-NNL", null, define));
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> DefineLists.defineDatasetNames(EvalRun.fullRange(ctx), List.of()));
 
-        assertEquals(
-                "operation define_dataset_names (id=$dsn) of rule T-NNL produced a list with"
-                        + " a null element at index 1 — nothing is ever null (register NNL §1)",
-                e.getMessage());
+        assertEquals("define_dataset_names() produced a list with a null element at index 1"
+                + " — nothing is ever null (register NNL §1)", e.getMessage());
     }
 
 
@@ -114,24 +112,11 @@ class ListValueGuardTest
 
 
     @Test
-    void groupedResultListValuesAreScannedScalarNullsAreNot()
+    void aScalarNullIsNotAListValue()
     {
-        GroupedResult withNullInList = new GroupedResult(List.of("G"),
-                Map.<String, Object> of("g1", List.of("A"), "g2", Arrays.asList("B", null)));
-        IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> ListValueGuard.requireNoNullElement(withNullInList, () -> "grouped op"));
-        assertEquals("grouped op produced a list with a null element at index 1 — nothing is"
-                + " ever null (register NNL §1)", e.getMessage());
-
-        // A scalar null value of a group is the untyped scalar channel (NF §1, still target) —
-        // out of this guard's scope, so not throwing is the contract here.
-        Map<String, Object> scalars = new java.util.HashMap<>();
-        scalars.put("g1", "A");
-        scalars.put("g2", null);
-        GroupedResult withScalarNull = new GroupedResult(List.of("G"), scalars);
-        assertDoesNotThrow(
-                () -> ListValueGuard.requireNoNullElement(withScalarNull, () -> "grouped op"));
-        assertDoesNotThrow(() -> ListValueGuard.requireNoNullElement(null, () -> "scalar op"),
+        // A scalar null is the untyped scalar channel (NF §1, still target) — out of this guard's
+        // scope, so not throwing is the contract here.
+        assertDoesNotThrow(() -> ListValueGuard.requireNoNullElement(null, () -> "scalar"),
                 "a scalar null result is not a list value");
     }
 
@@ -154,59 +139,34 @@ class ListValueGuardTest
                 + " at index 1 — nothing is ever null (register NNL §1)", e.getMessage());
     }
 
-    // ---- review round 1, L-2: the GroupedResult and nested scans pinned THROUGH executeOne ------
+    // ---- review round 1, L-2: the per-row list scan pinned THROUGH its producer --------------
 
 
     /**
-     * {@code get_parent_model_column_order} answers a {@link GroupedResult} keyed by
-     * {@code RDOMAIN} whose values are the library's lists — so a library provider that emits a
-     * {@code null} variable name is a {@code GroupedResult} producer defect, and it must throw at
-     * {@link OperationExecutor#executeOne}. Pinned here, not only through
-     * {@link ListValueGuard#requireNoNullElement}: narrowing the guard call in {@code executeOne}
-     * to a {@code Collection}-only check reds this test.
+     * {@code get_parent_model_column_order} answers a per-row list keyed by {@code RDOMAIN} whose
+     * values are the library's lists — so a library provider that emits a {@code null} variable
+     * name is a producer defect, and it must throw where the list is born. Pinned here, not only
+     * through {@link ListValueGuard#requireNoNullElement}. (Review round 1 pinned it through the
+     * operation executor's grouped result, both retired in runbook W8.)
      */
     @Test
-    void executeOneScansTheListValuesOfAGroupedResult()
+    void theParentWalkScansEachParentsListNamingTheParent()
     {
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> parentModelColumnOrder(Arrays.asList("STUDYID", null)));
-        assertEquals("operation get_parent_model_column_order (id=$model) of rule T-NNL produced"
-                + " a list with a null element at index 1 — nothing is ever null (register NNL §1)",
-                e.getMessage());
+        assertEquals("get_parent_model_column_order(AE) produced a list with a null element at"
+                + " index 1 — nothing is ever null (register NNL §1)", e.getMessage());
 
-        // Baseline must pass: the same operation over a clean list IS a grouped result.
-        assertTrue(parentModelColumnOrder(List.of("STUDYID", "DOMAIN")) instanceof GroupedResult,
-                "the clean answer is a GroupedResult, so the throw above came from its scan");
+        assertTrue(
+                parentModelColumnOrder(List.of("STUDYID",
+                        "DOMAIN")) instanceof net.cumba.corej.core.expr.eval.ComputedVector,
+                "the clean answer is a per-row list, so the throw above came from its scan");
     }
 
 
-    /**
-     * The nested scan through {@link OperationExecutor#executeOne}: a grouped list value whose
-     * element is itself a list holding a {@code null}. ⚠ The shape is heap-polluted on purpose — no
-     * real producer builds a nested list with a {@code null} (the {@code distinct([A, B])} tuples
-     * are null-free by construction), so this pins the <b>scan's reach</b> at the birth site, not a
-     * producer.
-     */
-    @Test
-    void executeOneScansOneNestingLevel()
-    {
-        @SuppressWarnings("unchecked")
-        List<String> polluted = (List<String>) (List<?>) List.of(List.of("A"),
-                Arrays.asList("B", null));
-        IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> parentModelColumnOrder(polluted));
-        assertEquals("operation get_parent_model_column_order (id=$model) of rule T-NNL produced"
-                + " a list with a null element at index 1 of the nested list at index 1 — nothing"
-                + " is ever null (register NNL §1)", e.getMessage());
-    }
-
-
-    private static @org.jspecify.annotations.Nullable Object parentModelColumnOrder(
+    private static net.cumba.corej.core.expr.eval.Vector parentModelColumnOrder(
             List<String> modelVariables)
     {
-        Operation op = new Operation();
-        op.setId("$model");
-        op.setOperator("get_parent_model_column_order");
         SyntheticDataTable suppae = new SyntheticDataTable("SUPPAE", List.of("RDOMAIN"),
                 new String[]
                 {
@@ -216,8 +176,14 @@ class ListValueGuardTest
         {
                 "x"
         }, 1);
-        return OperationExecutor.executeOne(op, suppae, n -> "AE".equals(n) ? ae : null,
-                new Library(modelVariables, List.of()), Map.of(), "T-NNL", null, null);
+        EvaluationContext ctx = EvaluationContext.builder().table(suppae)
+                .datasetResolver(n -> "AE".equals(n) ? ae : null)
+                .libraryProvider(new Library(modelVariables, List.of())).ruleId("T-NNL").build();
+        int rdomain = suppae.getMetaData().getColumnIndex("RDOMAIN");
+        return ParentModelColumnOrder.evaluate(EvalRun.fullRange(ctx),
+                List.of(new net.cumba.corej.core.expr.eval.ColumnVector("RDOMAIN",
+                        suppae.getColumn(rdomain),
+                        suppae.getMetaData().getColumn(rdomain).getType())));
     }
 
     // ---- review round 1, LOW-1: ConstVector.of names the producer at each list birth site ------

@@ -11,8 +11,6 @@ import java.util.Map;
 import java.util.Objects;
 import net.cumba.cdisc.define.DefineXmlParser;
 import net.cumba.cdisc.define.ODM;
-import net.cumba.corej.core.exec.OperationExecutor;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.testkit.SyntheticDataTable;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -72,16 +70,16 @@ class NamelessDefineEntriesTest
     @Test
     void defineDatasetNamesOperationIsExactlyTheNamedGroups()
     {
-        Operation op = new Operation();
-        op.setId("$define_datasets");
-        op.setOperator("define_dataset_names");
         SyntheticDataTable dm = new SyntheticDataTable("DM", List.of("STUDYID"), new String[]
         {
                 "S1"
         }, 1);
-
-        Object result = OperationExecutor.executeOne(op, dm, _ -> null, null, Map.of(), "T-NNL",
-                null, define);
+        Object result = net.cumba.corej.core.exec.DefineLists
+                .defineDatasetNames(net.cumba.corej.core.expr.eval.EvalRun
+                        .fullRange(net.cumba.corej.core.exec.EvaluationContext.builder().table(dm)
+                                .defineProvider(define).ruleId("T-NNL").build()),
+                        List.of())
+                .value(0).resolved();
 
         assertEquals(List.of("AE", "DM"), result,
                 "define_dataset_names() is exactly the named groups — the nameless entry neither"
@@ -118,16 +116,16 @@ class NamelessDefineEntriesTest
     @Test
     void defineVariableNamesOperationIsExactlyTheNamedItemDefs()
     {
-        Operation op = new Operation();
-        op.setId("$define_variables");
-        op.setOperator("define_variable_names");
         SyntheticDataTable dm = new SyntheticDataTable("DM", List.of("STUDYID"), new String[]
         {
                 "S1"
         }, 1);
-
-        Object result = OperationExecutor.executeOne(op, dm, _ -> null, null, Map.of(), "T-NNL",
-                null, define);
+        Object result = net.cumba.corej.core.exec.DefineLists
+                .defineVariableNames(net.cumba.corej.core.expr.eval.EvalRun
+                        .fullRange(net.cumba.corej.core.exec.EvaluationContext.builder().table(dm)
+                                .defineProvider(define).ruleId("T-NNL").build()),
+                        List.of())
+                .value(0).resolved();
 
         assertEquals(List.of("USUBJID", "SEX"), result,
                 "define_variable_names() — what FDA/PMDA-SD0054 compares against the dataset's"

@@ -1,7 +1,6 @@
 package net.cumba.corej.core.exec;
 
 import java.util.Map;
-import java.util.function.Supplier;
 import net.cumba.corej.core.expr.eval.BindingProgram;
 import net.cumba.corej.core.expr.eval.ConstVector;
 import net.cumba.corej.core.expr.eval.EvalRun;
@@ -14,16 +13,16 @@ import org.jspecify.annotations.Nullable;
 /**
  * The runtime value of one <b>compiled binding</b> in one (rule × dataset) execution
  * ({@code PLAN-binding-expressions}, wave 0) — what the rule's variable map holds under the
- * binding's {@code $}-name, where an operation binding holds a {@link LazyValue}.
+ * binding's {@code $}-name.
  *
  * <p>
  * ⭐ <b>Evaluated lazily, in the reading context</b> (ruling D-W0-3: <i>"a never-read binding never
- * runs"</i>). Not a {@link LazyValue}: an operation is dataset-level and computed once, but a
- * compiled binding may read the row cursor, the variable cursor or the synthetic broadcast row, so
- * its value is a function of the {@link EvalRun} that reads it. {@link #vector(EvalRun)} evaluates
- * the binding's {@link BindingProgram} over that run, memoised in one slot keyed by the run's
- * variables map, table and range — the Check's contexts share one variables map (a hit), while a
- * per-variable context carries its own (a recomputation, which is the point).
+ * runs"</i>). Not a memoised scalar: a compiled binding may read the row cursor, the variable
+ * cursor or the synthetic broadcast row, so its value is a function of the {@link EvalRun} that
+ * reads it. {@link #vector(EvalRun)} evaluates the binding's {@link BindingProgram} over that run,
+ * memoised in one slot keyed by the run's variables map, table and range — the Check's contexts
+ * share one variables map (a hit), while a per-variable context carries its own (a recomputation,
+ * which is the point).
  * </p>
  *
  * <p>
@@ -42,22 +41,19 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * <b>Three readers, three forms</b> (§5.0's hand-over contract):
+ * <b>Two readers, two forms</b> (§5.0's hand-over contract; the third row — an operation reading
+ * the raw dataset-level value — went with the operation surface in runbook W8):
  * </p>
  * <ul>
  * <li>the compiler ({@code $}-value, name and membership plans) reads the {@link Vector}
  * itself;</li>
  * <li>every other reader goes through {@link EvaluationContext#resolveVariable}, which answers
- * {@link #handOver}: a dataset-level binding as its raw value (the {@code List} / scalar an
- * operation would have produced), a per-row binding as its {@link Vector};</li>
- * <li>an <b>operation</b> reads {@link #forOperation}: the raw dataset-level value, and an
- * {@link IllegalStateException} for a binding that needs a cursor — a stage-A load error rejects
- * that shape first, so the throw is a backstop, never a {@code vector.toString()} member.</li>
+ * {@link #handOver}: a dataset-level binding as its raw value (the {@code List} / scalar), a
+ * per-row binding as its {@link Vector}.</li>
  * </ul>
  *
  * <p>
- * Not thread-safe; one instance belongs to one (rule × dataset) execution, as its
- * {@link LazyValue}s do.
+ * Not thread-safe; one instance belongs to one (rule × dataset) execution.
  * </p>
  */
 public final class BindingValue
@@ -138,6 +134,10 @@ public final class BindingValue
         try
         {
             Vector v = program.evaluate(evaluated);
+            if (datasetLevel)
+            {
+                requireUniform(v, evaluated.to() - evaluated.from());
+            }
             memo = v;
             memoVariables = ctx.getVariables();
             memoTable = ctx.getTable();
@@ -164,8 +164,19 @@ public final class BindingValue
      */
     public @Nullable Object handOver(EvaluationContext ctx)
     {
+        if (binding.domain() == null)
+        {
+            // Every binding a rule executes has its derived domain installed
+            // (RulePackageLoader.installNativeExpr: BindingDomains.forRule); a binding without one
+            // never came through the loader, and reading it as per-row here would let a
+            // dataset-level list reach `contains_all` / `in` as an empty set — a silent
+            // every-row verdict (combined review of runbook W2–W8, W7 L3).
+            throw new IllegalStateException("binding " + binding.name()
+                    + " has no derived domain — a rule's bindings are installed by"
+                    + " RulePackageLoader.installNativeExpr before they are evaluated");
+        }
         Vector v = vector(EvalRun.fullRange(ctx));
-        if (binding.domain() == null || binding.domain().rowCursor())
+        if (binding.domain().rowCursor())
         {
             return v;
         }
@@ -174,34 +185,43 @@ public final class BindingValue
 
 
     /**
-     * The value an <b>operation</b> reads (§5.0): the raw dataset-level value.
-     *
-     * @param ctx
-     *            the rule's context
-     * @return the raw value; {@code null} for a missing value
-     * @throws IllegalStateException
-     *             for a binding that needs a cursor — an operation's fields are dataset-level, and
-     *             stage A rejects the shape at load, so reaching here is an engine defect
+     * ⛔ <b>A dataset-level binding is one value for the table, and this proves it</b> (combined
+     * review of runbook W2–W8, XCUT H1). A non-constant vector whose rows disagree is a per-row
+     * value the level calculus mis-classified as {@code {}}: every dataset-level reader — the
+     * broadcast fold's synthetic row, {@link #handOver}'s first value, the report — then reads row
+     * 0 for the whole table, which is exactly how a {@code row_max} binding decided
+     * CDISC-/PMDA-AD0084 from row 0. It fails loud instead, naming the binding. The pass is one
+     * read per row, once per (rule × dataset) (the memo above); a function answering one value for
+     * the table should broadcast a {@link ConstVector} and pay nothing here.
      */
-    public @Nullable Object forOperation(EvaluationContext ctx)
+    private void requireUniform(Vector v, int rowCount)
     {
-        if (binding.needsCursor())
+        if (v instanceof ConstVector || rowCount <= 1)
         {
-            throw new IllegalStateException("an operation cannot read the per-row or per-variable"
-                    + " binding " + binding.name() + " — stage A should have rejected this rule at"
-                    + " load");
+            return;
         }
-        return firstValue(vector(EvalRun.fullRange(ctx)), ctx.rowCount());
+        Object first = v.value(0).resolved();
+        for (int r = 1; r < rowCount; r++)
+        {
+            if (!java.util.Objects.equals(v.value(r).resolved(), first))
+            {
+                throw new IllegalStateException("binding " + binding.name()
+                        + " is classified dataset-level but answers a different value at row " + r
+                        + " than at row 0 — a per-row function must declare itself"
+                        + " (FunctionDescriptor.readingRows) or take a column operand");
+            }
+        }
     }
 
 
     /**
      * The raw value of a dataset-level Vector, in the vocabulary an operation result uses: a
      * broadcast constant's own value (a {@code List}, a {@code Long}, a {@code String}, …),
-     * otherwise row 0's value — its payload, or for a typed numeric cell (arithmetic, a numeric
-     * column) the cell's number rather than its text, so {@code record_count() + 0} hands over
-     * {@code 3.0} as {@code record_count()} hands over {@code 3}. {@code null} for a missing value
-     * and over an empty table (a computed vector has no row 0 there).
+     * otherwise the one value every row carries ({@link #requireUniform}) — its payload, or for a
+     * typed numeric cell (arithmetic, a numeric column) the cell's number rather than its text, so
+     * {@code record_count() + 0} hands over {@code 3.0} as {@code record_count()} hands over
+     * {@code 3}. {@code null} for a missing value and over an empty table (a computed vector has no
+     * row 0 there).
      */
     private static @Nullable Object firstValue(Vector v, int rowCount)
     {
@@ -220,35 +240,6 @@ public final class BindingValue
             return number;
         }
         return resolved;
-    }
-
-
-    /**
-     * ⭐ The <b>one</b> hand-over helper for an operation reading a prior {@code $}-entry of the
-     * variable map (§5.0 / I5): a {@link LazyValue} is forced, a {@link BindingValue} answers
-     * {@link #forOperation}, anything else passes through. Every place an operation's priors are
-     * gathered — {@code RuleRunner}'s supplier and unknown-type branch, {@code ExprCompiler}'s
-     * inline operations — calls this, never a local unwrap.
-     *
-     * @param entry
-     *            the variable-map entry, may be {@code null}
-     * @param ctx
-     *            supplies the context a compiled binding evaluates in; consulted only for a
-     *            {@link BindingValue}
-     * @return the value the operation reads
-     */
-    public static @Nullable Object forOperation(@Nullable Object entry,
-            Supplier<EvaluationContext> ctx)
-    {
-        if (entry instanceof LazyValue<?> lazy)
-        {
-            return lazy.get();
-        }
-        if (entry instanceof BindingValue compiled)
-        {
-            return compiled.forOperation(ctx.get());
-        }
-        return entry;
     }
 
 }

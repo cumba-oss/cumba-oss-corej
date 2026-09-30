@@ -3,10 +3,7 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.BitSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.testkit.SyntheticDataTable;
 import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
@@ -24,10 +21,10 @@ import org.junit.jupiter.api.Test;
  * One test per consumer that §E named, besides {@code Primitives.containsElement} (pinned in
  * {@code SubstringMissingLimbTest} / {@code PrimitivesTest}): {@code GroupSemantics.toStringSet} /
  * {@code toStringList} — now {@code toKeySet} / {@code toKeyList} ({@code shares_no_elements_with},
- * {@code is_not_ordered_subset_of}) — and {@code OperationExecutor.normalizeToList}
- * ({@code minus}). Each pairs the collision (red before the fix) with the same-missing control
- * (green before and after), so the test cannot pass by the consumer ignoring missing elements
- * altogether. Mockito-free.
+ * {@code is_not_ordered_subset_of}) — and {@code OperationExecutor.normalizeToList}, now
+ * {@code Minus.normalizeToList} ({@code minus}). Each pairs the collision (red before the fix) with
+ * the same-missing control (green before and after), so the test cannot pass by the consumer
+ * ignoring missing elements altogether. Mockito-free.
  * </p>
  */
 class MissingListElementIdentityTest
@@ -94,19 +91,19 @@ class MissingListElementIdentityTest
 
     private static Object minus(List<Object> minuend, List<Object> subtrahend)
     {
-        Operation op = new Operation();
-        op.setId("$gap");
-        op.setOperator("minus");
-        op.setName("$a");
-        op.setSubtract("$b");
-        Map<String, Object> priors = new LinkedHashMap<>();
-        priors.put("$a", minuend);
-        priors.put("$b", subtrahend);
+        // minus is a registry function since wave 4 (PLAN-list-functions D-W4-4); the claim is
+        // the same: an element is removed iff it EQUALS a subtrahend element.
         SyntheticDataTable dm = new SyntheticDataTable("DM", List.of("STUDYID"), new String[]
         {
                 "S1"
         }, 1);
-        return OperationExecutor.executeOne(op, dm, _ -> null, null, priors, "T-E", null, null);
+        return Minus
+                .evaluate(
+                        net.cumba.corej.core.expr.eval.EvalRun
+                                .fullRange(EvaluationContext.builder().table(dm).build()),
+                        List.of(net.cumba.corej.core.expr.eval.ConstVector.of(minuend),
+                                net.cumba.corej.core.expr.eval.ConstVector.of(subtrahend)))
+                .value(0).resolved();
     }
 
 }

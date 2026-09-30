@@ -18,9 +18,10 @@ import net.cumba.corej.core.expr.typed.ExprType.Unknown;
  * {@code HARDCODED_BOOLEAN_CALLS} name set, the two negation-dispatched group operators
  * ({@code ExprCompiler.compileNot}'s Q1 arms), and the per-record metadata value calls
  * {@code operandPlan} routes to dedicated plans ({@code vlm_*}, {@code max_value_length}, the two
- * decode/code-pair accessors). Each gets a real {@link FunctionDescriptor} on the same shape as
- * {@code OperationDescriptors}: a typed, named parameter list with {@code fn == null} — "compiles
- * through a dedicated {@code ExprCompiler} plan instead of the registry's implementation".
+ * decode/code-pair accessors). Each gets a real {@link FunctionDescriptor} on the same shape as the
+ * retired operation descriptors had: a typed, named parameter list with {@code fn == null} —
+ * "compiles through a dedicated {@code ExprCompiler} plan instead of the registry's
+ * implementation".
  *
  * <p>
  * <b>What this buys</b>: {@code ExprCompiler.isBooleanCall} answers from the registry alone (a set
@@ -253,6 +254,67 @@ public final class CompilerDispatchedCalls implements FunctionProvider
         value(fns, "vlm_decode_matches");
         value(fns, "library_variable_code_pair_matches");
         value(fns, "define_variable_decode_matches");
+        // Runbook W2a (PLAN-operation-replacements §2.2): the generic filtered cross-dataset read
+        // that replaced ts_parameter_value. Its arguments name columns of `domain`, never of the
+        // dataset under evaluation, so ExprCompiler.compileReadValue reads them from the call
+        // (ReadValue.spec) instead of compiling them as vectors of the primary: `name` and
+        // `filter` are unknown here on purpose, `domain` carries D10's dataset-reference type.
+        // W5 (PLAN-grouped-aggregate-functions §2.2): read_value gains group= / keep_missings=
+        // (D14) through the same mechanism as the three grouped aggregates below.
+        value(fns, "read_value", req("name"),
+                Parameter.required("domain",
+                        net.cumba.corej.core.expr.typed.ExprType.Primitive.DATASET_REFERENCE),
+                opt("filter"),
+                Parameter.required("mode",
+                        net.cumba.corej.core.expr.typed.ExprType.Primitive.STRING),
+                Parameter.optional("group", new ListOf(Primitive.COLUMN_REFERENCE)),
+                keepMissings());
+        // Runbook W5 (PLAN-grouped-aggregate-functions): the grouped aggregates ported from the
+        // MAX / MAX_DATE / MIN_DATE operations. Their column arguments name columns of `domain`
+        // (or of the primary) and are read by GroupedAggregate.spec, never compiled as vectors of
+        // the primary: `name` (any VALUE expression over the target table) and `filter` (a
+        // boolean expression over it) are unknown here on purpose; `group` is REQUIRED (D-W5-1);
+        // `domain` carries D10's dataset-reference type.
+        value(fns, "max", req("name"),
+                Parameter.optional("domain",
+                        net.cumba.corej.core.expr.typed.ExprType.Primitive.DATASET_REFERENCE),
+                opt("filter"), Parameter.required("group", new ListOf(Primitive.COLUMN_REFERENCE)),
+                keepMissings());
+        for (String extreme : List.of("max_date", "min_date"))
+        {
+            value(fns, extreme, req("name"),
+                    Parameter.optional("domain",
+                            net.cumba.corej.core.expr.typed.ExprType.Primitive.DATASET_REFERENCE),
+                    opt("filter"),
+                    Parameter.required("group", new ListOf(Primitive.COLUMN_REFERENCE)),
+                    keepMissings(), Parameter.optional("missing_values", Primitive.STRING));
+        }
+        // Runbook W6 (PLAN-record-count-function): record_count ported from the RECORD_COUNT
+        // operation onto the same mechanism (RecordCount.spec reads the call). No target (R6:
+        // the operation never read one); `group` is OPTIONAL (an ungrouped call counts the whole
+        // target table, dataset-level) and admits a `$` member the plan splices at evaluation
+        // (`[USUBJID, --TESTCD, $TIMING_VARIABLES]`); `regex` is the is_unique_set key
+        // normalisation the operation declared and never read (D1). The bare record_count() the
+        // registry used to hold as a separate zero-arg entry is this descriptor's ungrouped,
+        // unfiltered branch.
+        value(fns, net.cumba.corej.core.exec.RecordCount.NAME,
+                Parameter.optional("domain",
+                        net.cumba.corej.core.expr.typed.ExprType.Primitive.DATASET_REFERENCE),
+                opt("filter"), Parameter.optional("group", new ListOf(Primitive.COLUMN_REFERENCE)),
+                keepMissings(), Parameter.optional(
+                        net.cumba.corej.core.exec.RecordCount.REGEX_PARAMETER, Primitive.REGEX));
+        // Runbook W7 (PLAN-distinct-function): distinct ported from the DISTINCT operation onto
+        // the same mechanism (Distinct.spec reads the call). ONE positional target of TWO shapes
+        // (R6, the one KEEP-both callable): a column ⇒ the set of its distinct values, a list of
+        // columns ⇒ the set of distinct row tuples — so the slot is typed Unknown and the strict
+        // reader decides the shape (and carries R1's refusal of a quoted name itself). `group`
+        // is optional and takes a column target only (a per-row list per group); `filter` is
+        // the boolean form; `keep_missings` needs a `group`.
+        value(fns, net.cumba.corej.core.exec.Distinct.NAME, req("name"),
+                Parameter.optional("domain",
+                        net.cumba.corej.core.expr.typed.ExprType.Primitive.DATASET_REFERENCE),
+                opt("filter"), Parameter.optional("group", new ListOf(Primitive.COLUMN_REFERENCE)),
+                keepMissings());
         return List.copyOf(fns);
     }
 
@@ -267,6 +329,12 @@ public final class CompilerDispatchedCalls implements FunctionProvider
     {
         fns.add(new FunctionDescriptor(name, List.of(Parameter.optional("name", Unknown.UNKNOWN)),
                 FunctionKind.VALUE, null));
+    }
+
+
+    private static void value(List<FunctionDescriptor> fns, String name, Parameter... params)
+    {
+        fns.add(new FunctionDescriptor(name, List.of(params), FunctionKind.VALUE, null));
     }
 
 

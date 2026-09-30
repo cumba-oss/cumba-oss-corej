@@ -8,9 +8,12 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Per-variable metadata result from a {@code cross_dataset_variable_metadata} Operation.
+ * Per-variable metadata result of the {@code cross_dataset_variable_metadata(name, domain=)}
+ * function ({@link ScalarMetadataFunctions}; an operation until wave 4b), which carries it as its
+ * one dataset-level value (D-W4b-1), and the builder behind the {@code var_*(…, dataset=)}
+ * accessors.
  * <p>
- * Similar to {@link GroupedResult} (which resolves per-row), this resolves per-variable. A
+ * Where a per-row compiled binding resolves per row, this resolves per-variable. A
  * {@code $variable} holding a {@code VariableMetadataResult} is variable-level: constant across
  * rows but varying per column.
  * {@link net.cumba.corej.core.expr.eval.BroadcastFold#operationRefsSafe

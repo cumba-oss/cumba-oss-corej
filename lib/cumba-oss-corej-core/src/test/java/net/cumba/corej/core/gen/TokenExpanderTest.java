@@ -1,6 +1,7 @@
 package net.cumba.corej.core.gen;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -248,6 +249,7 @@ class TokenExpanderTest
      * token unresolved while the Check resolved; the {@code deriveOutputVariables} call at the end
      * of the expansion then rejects it (E-3.1) and the rule reports ENGINE_ERROR.
      */
+
     @Test
     void sharedVariablesRenamesTheNameInsideAnExclusionToken()
     {
@@ -270,6 +272,33 @@ class TokenExpanderTest
         // … and the expansion's own load validation accepts it (an unresolved `!&VAR` would not).
         assertNull(concrete.getLoadError(), concrete.getLoadError());
         assertEquals(List.of("ADSL.AGE"), concrete.getEffectiveOutputVariables());
+    }
+
+
+    /**
+     * Combined review W2 M2: {@code Supp_Merge} is carried onto every expanded child; before the
+     * fix the fresh {@code new Rule()} dropped a template's {@code Supp_Merge: false} and each
+     * child read the default {@code true}.
+     */
+    @Test
+    void sharedVariablesCarriesSuppMergeOntoEveryExpandedChild()
+    {
+        IDataTable adae = MockTable.of().name("ADAE").col("STUDYID", "S").col("USUBJID", "U")
+                .col("AGE", "50").col("TRT01P", "A").build();
+        IDataTable adsl = MockTable.of().name("ADSL").col("STUDYID", "S").col("USUBJID", "U")
+                .col("AGE", "51").col("TRT01P", "A").build();
+        Rule template = ad0591Template();
+        template.setSuppMerge(Boolean.FALSE);
+
+        List<Rule> rules = expanded(TokenExpander.tryExpand(template, adae.getMetaData(),
+                ctx(adae, map("ADSL", adsl), List.of())));
+
+        assertEquals(2, rules.size(), "AGE and TRT01P");
+        for (Rule child : rules)
+        {
+            assertEquals(false, child.getSuppMerge(), child.effectiveId());
+            assertFalse(child.isSuppMergeEnabled(), child.effectiveId());
+        }
     }
 
 

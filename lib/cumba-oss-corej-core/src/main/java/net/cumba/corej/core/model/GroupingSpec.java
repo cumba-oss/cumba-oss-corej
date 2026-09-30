@@ -64,9 +64,9 @@ public class GroupingSpec
      * </p>
      *
      * <p>
-     * ⚠ Not to be confused with {@code missing_values} on an {@link Operation}, which governs a
-     * different axis: how a missing <em>input</em> affects an <em>operation's result</em>. This one
-     * governs whether a row <em>participates in a group</em>.
+     * ⚠ Not to be confused with {@code missing_values=} on {@code min_date} / {@code max_date},
+     * which governs a different axis: how a missing <em>input</em> affects the function's result.
+     * This one governs whether a row <em>participates in a group</em>.
      * </p>
      */
     @JsonProperty("keep_missings")

@@ -984,6 +984,19 @@ public final class RuleTestCdt
             }
             aOut.write('\n');
         }
+        // W4 (PLAN-list-functions D-W4-15): the same null-vs-empty discipline for the standard
+        // variable names behind variable_names().
+        List<String> standardVariables = aLib.getStandardVariableNames();
+        if (standardVariables != null)
+        {
+            aOut.write("#library standard-variable-names");
+            for (String v : standardVariables)
+            {
+                aOut.write(' ');
+                aOut.write(quoteIfNeeded(v));
+            }
+            aOut.write('\n');
+        }
     }
 
 
@@ -1296,6 +1309,7 @@ public final class RuleTestCdt
      * #library published-ct-packages PKG [PKG ...]
      * #library codelist-attributes   PKG "ATTRIBUTE" VALUE VALUE ...
      * #library standard-domains      DOMAIN [DOMAIN ...]
+     * #library standard-variable-names NAME [NAME ...]
      * #library dataset-class         DOMAIN CLASSNAME
      * #library domain-variables      DOMAIN NAME:ROLE NAME:ROLE ...
      * #library model-variables       DOMAIN NAME:ROLE NAME:ROLE ...
@@ -1381,6 +1395,9 @@ public final class RuleTestCdt
         // Fix #147: the canonical dataset names an `Expansion: known_domain_only` filter reads.
         // Declaring the kind at all — even with no names — makes the filter decidable.
         case "standard-domains" -> aBuilder.standardDatasetNames(rest.toArray(new String[0]));
+        // W4: the IG's variable-name union behind variable_names() (D-W4-15).
+        case "standard-variable-names" -> aBuilder
+                .standardVariableNames(rest.toArray(new String[0]));
         case "dataset-class" ->
         {
             if (rest.size() != 2)

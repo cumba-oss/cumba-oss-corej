@@ -3,8 +3,8 @@ package net.cumba.corej.core.expr.eval;
 import java.util.List;
 import java.util.Set;
 
+import net.cumba.corej.core.exec.BindingValue;
 import net.cumba.corej.core.exec.EvaluationContext;
-import net.cumba.corej.core.exec.GroupedResult;
 import net.cumba.corej.core.exec.VariableMetadataResult;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
@@ -20,7 +20,7 @@ import org.jspecify.annotations.Nullable;
  * <b>dataset-constant</b> — an {@code exists}/{@code not_exists} presence fact, a comparison of
  * dataset facts ({@code ds_*} accessors, {@code record_count()}, literals, {@code $}-operation
  * results that are runtime-scalar), or a bare {@code $}-boolean verdict. A leaf carrying a runtime
- * {@link GroupedResult} (per-row values) or — unless {@code allowVariableMetadata} — a
+ * per-row {@link Vector} (a per-row binding) or — unless {@code allowVariableMetadata} — a
  * {@link VariableMetadataResult} (per-variable values) is {@link Verdict#UNKNOWN}, exactly where
  * the removed legacy leaf classifier classified the leaf ROW / VARIABLE and the legacy fold left it
  * undecided.
@@ -291,9 +291,13 @@ public final class BroadcastFold
             yield AbsentLeafLevel.ROW;
         }
         // Mirrors operationRefsSafe's materialised-kind probe: only a runtime scalar is a
-        // dataset fact; GroupedResult / VariableMetadataResult refs decline.
+        // dataset fact; per-row / VariableMetadataResult refs decline.
         case OPERATION_REF ->
         {
+            if (readsVariableCursor(ctx, r.name()))
+            {
+                yield AbsentLeafLevel.ROW; // one value per VARIABLE: never a dataset fact
+            }
             Object v = ctx.resolveVariable(r.name());
             yield v instanceof String || v instanceof Number || v instanceof Boolean
                     ? AbsentLeafLevel.DATASET
@@ -313,8 +317,11 @@ public final class BroadcastFold
                 || isWholeColumnVerdictCall(c) || isLibraryGateCall(c)
                 || MetadataAttribute.fromFunction(name) != null || name.startsWith("vlm_")
                 || DomainScan.VARNAME_ANCHORED_CALLS.contains(name)
-                || ExprCompiler.isInlineOperation(c))
+                || net.cumba.corej.core.exec.RecordCount.NAME.equals(name)
+                || net.cumba.corej.core.exec.Distinct.NAME.equals(name))
         {
+            // (record_count and distinct keep the level their inline operations had — runbook
+            // W6 D-W6-9 / W7 D-W7-12: their arguments are parameters, not reads.)
             return AbsentLeafLevel.ROW;
         }
         AbsentLeafLevel level = AbsentLeafLevel.DATASET;
@@ -345,7 +352,7 @@ public final class BroadcastFold
     /**
      * Whether a non-combinator {@code leaf} is dataset-constant against the RUNTIME context: its
      * shape reads no per-row data AND every {@code $}-operation reference resolves to a
-     * row-independent scalar (no {@link GroupedResult}; {@link VariableMetadataResult} only when
+     * row-independent scalar (no per-row Vector; {@link VariableMetadataResult} only when
      * {@code allowVariableMetadata}).
      */
     static boolean isDatasetConstantLeaf(Expr e, EvaluationContext ctx,
@@ -635,41 +642,43 @@ public final class BroadcastFold
      * dataset-fact operand equivalent of a {@code $}-operation reference, so an inlined
      * {@code op(...) == lit} comparison stays a broadcast-verdict exactly as the pre-inline
      * {@code $op == lit} form did. Grouped operations (a {@code group} keyword) resolve per row and
-     * are excluded. ({@code dy} and {@code has_mixed_emptiness_within_group} are registry functions
-     * since wave 1, so they are not inline operations at all.)
+     * are excluded. ({@code dy} and {@code has_mixed_emptiness_within_group} since wave 1, and the
+     * per-row {@code valid_external_dictionary_*} / {@code dictionary_has_decode} /
+     * {@code interval_uncertainty_precision_mismatch} / {@code referenced_domain_class} /
+     * {@code row_max} since wave 3, are registry functions, so they are not inline operations at
+     * all — the name-keyed exclusion set wave 3 retired is gone with them.)
      */
     private static boolean isRowIndependentOperation(Expr.Call c)
     {
-        return ExprCompiler.isInlineOperation(c) && !c.kwargs().containsKey("group")
-        // The valid_external_dictionary_* operations (T1) validate each record's own value
-        // against the dictionary, so they resolve to a per-row GroupedResult despite
-        // carrying no `group` keyword — they must NOT fold to a single dataset verdict.
-                && !PER_ROW_INLINE_OPERATIONS.contains(c.name())
-                // distinct(VAR, value_is_reference=true) also yields a per-row GroupedResult
-                // (evalDistinctVariableNames) despite carrying no `group` keyword.
-                && !("distinct".equals(c.name())
-                        && isTrueLiteral(c.kwargs().get("value_is_reference")));
-    }
-
-    /**
-     * Inline operations (Form A) that resolve to a per-row {@link GroupedResult} despite carrying
-     * no {@code group} keyword, so they are NOT row-independent dataset facts.
-     */
-    private static final Set<String> PER_ROW_INLINE_OPERATIONS = Set.of(
-            "valid_external_dictionary_value", "valid_external_dictionary_code",
-            // E8: dictionary_has_decode keys its GroupedResult by the code column exactly like its
-            // four siblings — omitted here since Fix #92; surfaced by the D-TA-3 / Fix #266 flag
-            // tests (the shipped corpus was unaffected: CG0096 keeps its $-operation form).
-            "dictionary_has_decode");
-
-    /**
-     * Whether {@code e} is the boolean literal {@code true} (a {@code value_is_reference=true}
-     * kwarg).
-     */
-    private static boolean isTrueLiteral(@Nullable Expr e)
-    {
-        return e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.BOOL
-                && Boolean.TRUE.equals(lit.value());
+        // Runbook W6 (PLAN-record-count-function D-W6-9) / W7 (PLAN-distinct-function D-W7-12): an
+        // ungrouped record_count / distinct is the dataset-fact operand its inline operation was
+        // (distinct's value_is_reference form is the per-row referenced_dataset_variables now).
+        String name = c.name();
+        if (net.cumba.corej.core.exec.RecordCount.NAME.equals(name))
+        {
+            return !net.cumba.corej.core.exec.RecordCount.isGrouped(c);
+        }
+        if (net.cumba.corej.core.exec.Distinct.NAME.equals(name))
+        {
+            return !net.cumba.corej.core.exec.Distinct.isGrouped(c);
+        }
+        // Combined review of runbook W2–W8, XCUT L1: every other dataset-level VALUE function is
+        // read from its DESCRIPTOR, not a name list — an aggregate (the W4 lists, the W4b scalars:
+        // one value for the table, SPEC §1.4) whose own operands are dataset facts, and an
+        // ungrouped read_value carrying domain= (one value for the run, D10). A declared row
+        // reader is never one.
+        FunctionDescriptor descriptor = FunctionRegistry.descriptor(name);
+        if (descriptor == null || descriptor.kind() != FunctionKind.VALUE || descriptor.perRow())
+        {
+            return false;
+        }
+        if (net.cumba.corej.core.exec.ReadValue.NAME.equals(name))
+        {
+            return !c.kwargs().containsKey("group") && c.kwargs().containsKey("domain");
+        }
+        return descriptor.aggregate()
+                && c.args().stream().allMatch(BroadcastFold::isDatasetFactOperand)
+                && c.kwargs().values().stream().allMatch(BroadcastFold::isDatasetFactOperand);
     }
 
 
@@ -794,11 +803,11 @@ public final class BroadcastFold
 
     /**
      * Walks every {@code $}-operation reference of {@code expr} and checks its RUNTIME value type:
-     * a {@link GroupedResult} (per-row values) is never broadcast-safe; a
+     * a per-row {@link Vector} (a per-row binding) is never broadcast-safe; a
      * {@link VariableMetadataResult} (per-variable values) is safe only when
-     * {@code allowVariableMetadata} (the per-variable loop projects it onto the column cursor).
-     * LazyValue entries are unwrapped by {@link EvaluationContext#resolveVariable} (Fix #36),
-     * exactly like the removed legacy leaf classifier's type check.
+     * {@code allowVariableMetadata} (the per-variable loop projects it onto the column cursor). a
+     * binding is handed over by {@link EvaluationContext#resolveVariable}, exactly like the removed
+     * legacy leaf classifier's type check.
      */
     public static boolean operationRefsSafe(Expr expr, EvaluationContext ctx,
             boolean allowVariableMetadata)
@@ -822,10 +831,22 @@ public final class BroadcastFold
             {
                 yield true;
             }
+            if (readsVariableCursor(ctx, r.name()))
+            {
+                // ⛔ A compiled binding whose derived domain carries the VARIABLE cursor is one
+                // value PER VARIABLE, whatever its hand-over against this (cursor-less) context
+                // looks like — `$adsl_label: var_label("DATA", dataset="ADSL")` handed over a
+                // scalar (null, in fact) here, folded as a dataset fact and passed silently
+                // (combined review of runbook W2–W8, W3+W4b H1). Round 2 L6: the per-variable
+                // map arm (`allowVariableMetadata && … instanceof VariableMetadataResult`) was
+                // dead — every production caller folds with allowVariableMetadata=false — and is
+                // gone; such a binding never folds.
+                yield false;
+            }
             Object val = ctx.resolveVariable(r.name());
             // A per-row COMPILED binding (PLAN-binding-expressions §5.0) hands over its Vector:
-            // per-row values, exactly as a GroupedResult — never broadcast-safe.
-            if (val instanceof GroupedResult || val instanceof Vector)
+            // per-row values — never broadcast-safe.
+            if (val instanceof Vector)
             {
                 yield false;
             }
@@ -837,67 +858,15 @@ public final class BroadcastFold
 
 
     /**
-     * Whether any {@code $}-operation reference of {@code e} resolves to a per-variable
-     * {@link VariableMetadataResult} at runtime — the trigger for per-variable native routing.
+     * Whether {@code name} is bound to a compiled binding whose derived domain carries the VARIABLE
+     * cursor ({@code CompiledBinding.domain().varCursor()}) — read from the binding itself, before
+     * any hand-over, because the hand-over against a cursor-less context is exactly what misled the
+     * fold.
      */
-    public static boolean hasVariableMetadataRef(Expr e, EvaluationContext ctx)
+    private static boolean readsVariableCursor(EvaluationContext ctx, String name)
     {
-        return hasOperationRefOfType(e, ctx, VariableMetadataResult.class);
-    }
-
-
-    private static boolean hasOperationRefOfType(Expr e, EvaluationContext ctx, Class<?> type)
-    {
-        return switch (e)
-        {
-        case Expr.And a -> a.parts().stream().anyMatch(p -> hasOperationRefOfType(p, ctx, type));
-        case Expr.Or o -> o.parts().stream().anyMatch(p -> hasOperationRefOfType(p, ctx, type));
-        case Expr.Not n -> hasOperationRefOfType(n.inner(), ctx, type);
-        case Expr.Binary b -> hasOperationRefOfType(b.left(), ctx, type)
-                || hasOperationRefOfType(b.right(), ctx, type);
-        case Expr.Call c -> c.args().stream().anyMatch(p -> hasOperationRefOfType(p, ctx, type))
-                || c.kwargs().values().stream().anyMatch(p -> hasOperationRefOfType(p, ctx, type));
-        case Expr.Ref r -> r.kind() == OperandKind.OPERATION_REF
-                && type.isInstance(ctx.resolveVariable(r.name()));
-        case Expr.Lit _ -> false;
-        };
-    }
-
-
-    /**
-     * Whether every {@link VariableMetadataResult}-valued {@code $}-reference of {@code e} sits in
-     * GUARD position (anywhere except the right-hand side of a comparison). Legacy is
-     * position-dependent: a {@code $}-NAME-side VMR leaf is folded at Step 3 against the per-column
-     * projection, while a textual {@code "$vmr"} in a row-leaf VALUE position reaches Step 4's
-     * {@code ValueResolver}, which has no VMR branch and yields the raw object. The per-(variable,
-     * row) native path projects VMR entries per column only when this holds.
-     */
-    public static boolean vmrRefsOnlyInGuardPosition(Expr e, EvaluationContext ctx)
-    {
-        return noVmrInValuePosition(e, ctx, false);
-    }
-
-
-    private static boolean noVmrInValuePosition(Expr e, EvaluationContext ctx,
-            boolean valuePosition)
-    {
-        return switch (e)
-        {
-        case Expr.And a -> a.parts().stream()
-                .allMatch(p -> noVmrInValuePosition(p, ctx, valuePosition));
-        case Expr.Or o -> o.parts().stream()
-                .allMatch(p -> noVmrInValuePosition(p, ctx, valuePosition));
-        case Expr.Not n -> noVmrInValuePosition(n.inner(), ctx, valuePosition);
-        case Expr.Binary b -> noVmrInValuePosition(b.left(), ctx, valuePosition)
-                && noVmrInValuePosition(b.right(), ctx, true);
-        case Expr.Call c -> c.args().stream()
-                .allMatch(p -> noVmrInValuePosition(p, ctx, valuePosition))
-                && c.kwargs().values().stream()
-                        .allMatch(p -> noVmrInValuePosition(p, ctx, valuePosition));
-        case Expr.Ref r -> !(valuePosition && r.kind() == OperandKind.OPERATION_REF
-                && ctx.resolveVariable(r.name()) instanceof VariableMetadataResult);
-        case Expr.Lit _ -> true;
-        };
+        return ctx.getVariables().get(name) instanceof BindingValue compiled
+                && compiled.binding().domain() != null && compiled.binding().domain().varCursor();
     }
 
     // ------------------------------------------------------------------
@@ -997,6 +966,15 @@ public final class BroadcastFold
             return BindColumnLevel.ROW;
         }
         if (ctx.getTable().getMetaData().getColumnIndex(name) >= 0)
+        {
+            return BindColumnLevel.ROW;
+        }
+        // Runbook W2a (PLAN-operation-replacements §2.3, C1 ruled (a)): a bare name the primary
+        // lacks but SUPP<domain> delivers as a qualifier is READ PER RECORD through the pivot, so
+        // it binds at row level like a present column — never as the dataset-level absent
+        // constant, which would evaluate the leaf once (row 0) and broadcast it. The table's
+        // column set is untouched: this is a binding-scope answer, not a metadata one.
+        if (net.cumba.corej.core.exec.SuppPivot.qualifierColumn(ctx, name) != null)
         {
             return BindColumnLevel.ROW;
         }

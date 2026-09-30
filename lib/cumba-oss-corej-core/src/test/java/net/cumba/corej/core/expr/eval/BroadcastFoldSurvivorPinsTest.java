@@ -6,12 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
+import net.cumba.corej.core.exec.BindingValue;
 import net.cumba.corej.core.exec.EvaluationContext;
-import net.cumba.corej.core.exec.GroupedResult;
 import net.cumba.corej.core.exec.VariableMetadataResult;
+import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.BroadcastFold.Verdict;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.datatable.testkit.SyntheticDataTable;
 import org.junit.jupiter.api.Test;
 
@@ -51,6 +53,17 @@ class BroadcastFoldSurvivorPinsTest
     private static EvaluationContext ctx()
     {
         return ctx(Map.of());
+    }
+
+
+    /**
+     * A per-row compiled binding's holder — its hand-over is a {@link Vector}, one value per row.
+     * (Until runbook W8 these pins used a runtime {@code GroupedResult} for the per-row $-value.)
+     */
+    private static BindingValue perRowBinding()
+    {
+        return new BindingValue(new CompiledBinding("$g",
+                CheckExpressionParser.parse("upper(AETERM)"), List.of(), Domain.ROW));
     }
 
 
@@ -172,7 +185,7 @@ class BroadcastFoldSurvivorPinsTest
         assertEquals(Verdict.UNKNOWN,
                 BroadcastFold.fold(
                         call("is_missing", new Expr.Ref("$op", OperandKind.OPERATION_REF)),
-                        ctx(Map.of("$op", new GroupedResult(List.of("USUBJID"), Map.of()))), false),
+                        ctx(Map.of("$op", perRowBinding())), false),
                 "a $-ref name side is not a column-presence question");
     }
 
@@ -372,24 +385,18 @@ class BroadcastFoldSurvivorPinsTest
                 BroadcastFold.isDatasetFactOperand(new Expr.Call("distinct",
                         List.of(col("AEDECOD")), Map.of("group", col("USUBJID")))),
                 "a `group` keyword resolves per row");
-        // Negative — value_is_reference=true yields a per-row GroupedResult with no group kwarg.
+        // Negative — the retired value_is_reference form is the per-row registry function
+        // referenced_dataset_variables(RDOMAIN) since runbook W7 (a column read, never a fact).
         assertFalse(
-                BroadcastFold.isDatasetFactOperand(new Expr.Call("distinct",
-                        List.of(col("AEDECOD")), Map.of("value_is_reference", TRUE_LIT))),
-                "distinct(VAR, value_is_reference=true) is per row");
-        // ... and the same kwarg set to FALSE leaves it row-independent — the literal's VALUE is
-        // what matters, not merely the kwarg's presence.
-        assertTrue(
-                BroadcastFold.isDatasetFactOperand(new Expr.Call("distinct",
-                        List.of(col("AEDECOD")), Map.of("value_is_reference", FALSE_LIT))),
-                "value_is_reference=false leaves distinct row-independent");
-        // ... and a non-BOOL literal is not the `true` marker either.
+                BroadcastFold
+                        .isDatasetFactOperand(call("referenced_dataset_variables", col("RDOMAIN"))),
+                "referenced_dataset_variables(RDOMAIN) is per row");
+        // ... and a distinct under domain= is still one whole-dataset set.
         assertTrue(
                 BroadcastFold
                         .isDatasetFactOperand(new Expr.Call("distinct", List.of(col("AEDECOD")),
-                                Map.of("value_is_reference",
-                                        new Expr.Lit(Expr.LitKind.STRING, "true")))),
-                "a STRING \"true\" is not the boolean marker");
+                                Map.of("domain", new Expr.Lit(Expr.LitKind.STRING, "AE")))),
+                "distinct(VAR, domain=\"AE\") yields one whole-dataset set");
         // Negative — a registry function (dy since wave 1) and the always-grouped operations.
         assertFalse(BroadcastFold.isDatasetFactOperand(call("dy", col("AESTDTC"))),
                 "dy is a per-row registry function, not an inline operation");
@@ -408,7 +415,7 @@ class BroadcastFoldSurvivorPinsTest
 
     // ------------------------------------------------------------------
     // operationRefsSafe — the runtime $-operand safety walk. It must reach EVERY
-    // position of the tree: a grouped $-ref hidden in an OR branch or in a call's
+    // position of the tree: a per-row $-ref hidden in an OR branch or in a call's
     // KEYWORD argument is just as unsafe as one in the obvious place.
     // ------------------------------------------------------------------
 
@@ -416,23 +423,22 @@ class BroadcastFoldSurvivorPinsTest
     @Test
     void operationRefSafetyWalkReachesCombinatorsAndKeywordArguments()
     {
-        EvaluationContext c = ctx(
-                Map.of("$g", new GroupedResult(List.of("USUBJID"), Map.of()), "$s", "scalar"));
-        Expr grouped = new Expr.Ref("$g", OperandKind.OPERATION_REF);
+        EvaluationContext c = ctx(Map.of("$g", perRowBinding(), "$s", "scalar"));
+        Expr perRow = new Expr.Ref("$g", OperandKind.OPERATION_REF);
         Expr scalar = new Expr.Ref("$s", OperandKind.OPERATION_REF);
         Expr safeBinary = new Expr.Binary(Expr.BinOp.EQ, scalar, LIT_A);
-        Expr unsafeBinary = new Expr.Binary(Expr.BinOp.EQ, grouped, LIT_A);
+        Expr unsafeBinary = new Expr.Binary(Expr.BinOp.EQ, perRow, LIT_A);
 
         assertTrue(BroadcastFold.operationRefsSafe(new Expr.And(List.of(safeBinary, safeBinary)), c,
                 false), "an all-scalar AND is safe");
         assertFalse(BroadcastFold.operationRefsSafe(new Expr.And(List.of(safeBinary, unsafeBinary)),
-                c, false), "one grouped ref anywhere in an AND makes it unsafe");
+                c, false), "one per-row ref anywhere in an AND makes it unsafe");
         assertTrue(BroadcastFold.operationRefsSafe(new Expr.Or(List.of(safeBinary, safeBinary)), c,
                 false), "an all-scalar OR is safe");
         assertFalse(BroadcastFold.operationRefsSafe(new Expr.Or(List.of(safeBinary, unsafeBinary)),
-                c, false), "one grouped ref anywhere in an OR makes it unsafe");
+                c, false), "one per-row ref anywhere in an OR makes it unsafe");
         assertFalse(BroadcastFold.operationRefsSafe(new Expr.Not(unsafeBinary), c, false),
-                "negation does not launder a grouped ref");
+                "negation does not launder a per-row ref");
         // Keyword-argument position — the arm a walk that only visits positional args misses.
         assertTrue(
                 BroadcastFold.operationRefsSafe(
@@ -440,144 +446,14 @@ class BroadcastFoldSurvivorPinsTest
                 "scalar refs in both positions are safe");
         assertFalse(
                 BroadcastFold.operationRefsSafe(
-                        new Expr.Call("f", List.of(scalar), Map.of("k", grouped)), c, false),
-                "a grouped ref in a KEYWORD argument is unsafe");
+                        new Expr.Call("f", List.of(scalar), Map.of("k", perRow)), c, false),
+                "a per-row ref in a KEYWORD argument is unsafe");
         // VariableMetadataResult is safe only on the per-variable arm.
         EvaluationContext vmrCtx = ctx(
                 Map.of("$v", new VariableMetadataResult(Map.of("AETERM", "Term"))));
         Expr vmr = new Expr.Ref("$v", OperandKind.OPERATION_REF);
         assertFalse(BroadcastFold.operationRefsSafe(vmr, vmrCtx, false));
         assertTrue(BroadcastFold.operationRefsSafe(vmr, vmrCtx, true));
-    }
-
-    // ------------------------------------------------------------------
-    // hasVariableMetadataRef (through hasOperationRefOfType) — the question "does this
-    // tree touch a per-variable metadata result anywhere?".
-    //
-    // ⚠ Round 3: this header claimed RuleRunner reads it "to choose per-variable native
-    // routing, so a missed arm routes a per-variable rule down the whole-dataset path". It
-    // does NOT. The single live consumer is RuleRunner's `projectVmr`:
-    // hasVariableMetadataRef(checkExpr, ctx) && vmrRefsOnlyInGuardPosition(checkExpr, ctx)
-    // which decides VMR PROJECTION — project the VMR entries per column, or keep the raw
-    // (unprojected) Step-4 view — and selects no routing path at all. A missed arm therefore
-    // makes projectVmr FALSE, i.e. the unprojected Step-4 contract, not a whole-dataset route.
-    //
-    // These pins deliberately stop at the walker arms and do not pin that consumer: the
-    // projection decision lives in the `&& vmrRefsOnlyInGuardPosition` conjunct, so pinning it
-    // here would be pinning the wrong half of the conjunction.
-    //
-    // ⚠ R2-6: this method lost its ONLY direct assertions as deletion collateral —
-    // BroadcastFoldTest.operationRefTypeHelpers asserted the deleted hasGroupedOperationRef
-    // AND this surviving one, and went whole. Restored here, widened to the walker arms the
-    // deleted test did not reach.
-    // ------------------------------------------------------------------
-
-
-    @Test
-    void variableMetadataRefDetection_discriminatesByResolvedType()
-    {
-        EvaluationContext c = ctx(
-                Map.of("$g", new GroupedResult(List.of("USUBJID"), Map.of("S1", "a")), "$vmr",
-                        new VariableMetadataResult(Map.of("AETERM", "Term")), "$s", "scalar"));
-        assertTrue(BroadcastFold.hasVariableMetadataRef(opEq("$vmr"), c),
-                "a $-ref resolving to a VariableMetadataResult is what per-variable routing keys on");
-        assertFalse(BroadcastFold.hasVariableMetadataRef(opEq("$s"), c),
-                "a scalar $-result is not per-variable");
-        assertFalse(BroadcastFold.hasVariableMetadataRef(opEq("$g"), c),
-                "a GroupedResult is per-ROW, not per-variable — the two helpers must not agree");
-        assertFalse(BroadcastFold.hasVariableMetadataRef(opEq("$unbound"), c),
-                "an unresolvable $-ref resolves to null, which is no instance of anything");
-        assertFalse(
-                BroadcastFold.hasVariableMetadataRef(
-                        new Expr.Binary(Expr.BinOp.EQ, col("AETERM"), LIT_A), c),
-                "a COLUMN ref is not an OPERATION_REF, whatever its name resolves to");
-        assertFalse(BroadcastFold.hasVariableMetadataRef(LIT_A, c), "a literal holds no ref");
-    }
-
-
-    @Test
-    void variableMetadataRefDetection_coversCombinatorsAndKeywordArguments()
-    {
-        EvaluationContext c = ctx(Map.of("$vmr",
-                new VariableMetadataResult(Map.of("AETERM", "Term")), "$s", "scalar"));
-        Expr vmr = opEq("$vmr");
-        Expr plain = opEq("$s");
-
-        assertTrue(BroadcastFold.hasVariableMetadataRef(new Expr.And(List.of(plain, vmr)), c),
-                "an AND branch carrying the ref makes the tree per-variable");
-        assertFalse(BroadcastFold.hasVariableMetadataRef(new Expr.And(List.of(plain, plain)), c));
-        assertTrue(BroadcastFold.hasVariableMetadataRef(new Expr.Or(List.of(plain, vmr)), c),
-                "an OR branch carrying the ref makes the tree per-variable");
-        assertFalse(BroadcastFold.hasVariableMetadataRef(new Expr.Or(List.of(plain, plain)), c));
-        assertTrue(BroadcastFold.hasVariableMetadataRef(new Expr.Not(vmr), c),
-                "negation does not hide the ref");
-        assertTrue(
-                BroadcastFold.hasVariableMetadataRef(new Expr.Binary(Expr.BinOp.EQ, LIT_A,
-                        new Expr.Ref("$vmr", OperandKind.OPERATION_REF)), c),
-                "the RIGHT operand of a comparison is walked too");
-        assertTrue(
-                BroadcastFold.hasVariableMetadataRef(
-                        call("f", new Expr.Ref("$vmr", OperandKind.OPERATION_REF)), c),
-                "a positional call argument is walked");
-        assertTrue(
-                BroadcastFold
-                        .hasVariableMetadataRef(
-                                new Expr.Call("f",
-                                        List.of(new Expr.Ref("$s", OperandKind.OPERATION_REF)),
-                                        Map.of("k",
-                                                new Expr.Ref("$vmr", OperandKind.OPERATION_REF))),
-                                c),
-                "a ref in a KEYWORD argument is walked — the arm operationRefsSafe needed too");
-        assertFalse(BroadcastFold.hasVariableMetadataRef(call("f", LIT_A), c));
-    }
-
-
-    /** {@code $name == "a"} — the shape every per-variable routing question arrives in. */
-    private static Expr opEq(String name)
-    {
-        return new Expr.Binary(Expr.BinOp.EQ, new Expr.Ref(name, OperandKind.OPERATION_REF), LIT_A);
-    }
-
-    // ------------------------------------------------------------------
-    // vmrRefsOnlyInGuardPosition — position-dependent legacy behaviour. A VMR ref on
-    // the RIGHT of a comparison reaches a resolver with no VMR branch, so projecting it
-    // per column there would silently disagree with the legacy engine.
-    // ------------------------------------------------------------------
-
-
-    @Test
-    void vmrValuePositionDetectionReachesOrBranchesAndCallArguments()
-    {
-        EvaluationContext c = ctx(
-                Map.of("$v", new VariableMetadataResult(Map.of("AETERM", "Term"))));
-        Expr vmr = new Expr.Ref("$v", OperandKind.OPERATION_REF);
-        Expr guard = new Expr.Binary(Expr.BinOp.NEQ, vmr,
-                new Expr.Ref("variable_label", OperandKind.BUILTIN));
-        Expr valuePos = new Expr.Binary(Expr.BinOp.EQ, col("AETERM"), vmr);
-
-        assertTrue(BroadcastFold.vmrRefsOnlyInGuardPosition(new Expr.Or(List.of(guard, guard)), c),
-                "an OR of guard-position leaves projects");
-        assertFalse(
-                BroadcastFold.vmrRefsOnlyInGuardPosition(new Expr.Or(List.of(guard, valuePos)), c),
-                "one value-position VMR inside an OR blocks projection");
-        // Wrapped on the value side: the walk must descend into the call's arguments.
-        assertFalse(
-                BroadcastFold.vmrRefsOnlyInGuardPosition(
-                        new Expr.Binary(Expr.BinOp.EQ, col("AETERM"), call("upper", vmr)), c),
-                "a VMR wrapped in upper() on the value side is still value position");
-        assertTrue(
-                BroadcastFold.vmrRefsOnlyInGuardPosition(
-                        new Expr.Binary(Expr.BinOp.EQ, call("upper", vmr), col("AETERM")), c),
-                "the same wrapper on the NAME side stays guard position");
-        // ... and into the call's keyword arguments.
-        assertFalse(
-                BroadcastFold.vmrRefsOnlyInGuardPosition(new Expr.Binary(Expr.BinOp.EQ,
-                        col("AETERM"), new Expr.Call("f", List.of(LIT_A), Map.of("k", vmr))), c),
-                "a VMR in a KEYWORD argument on the value side blocks projection");
-        assertTrue(
-                BroadcastFold.vmrRefsOnlyInGuardPosition(new Expr.Binary(Expr.BinOp.EQ,
-                        col("AETERM"), new Expr.Call("f", List.of(LIT_A), Map.of("k", LIT_A))), c),
-                "a call with no VMR anywhere projects");
     }
 
 }

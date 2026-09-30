@@ -13,7 +13,6 @@ import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.ColumnTypeGate;
 import net.cumba.corej.core.model.MatchDataset;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.VariableRequirement;
 import net.cumba.datatable.DataTableMeta;
@@ -322,8 +321,8 @@ public final class StageBChecker
      * remains in the expression surfaces, the {@code resolvePrefixes}-owned Operation name fields,
      * non-{@code Child} {@code Match_Datasets} names, {@code Grouping} or {@code Output_Variables}.
      * Exempt by ruling: {@code name_pattern=} contents (D92b — a regex, not a wildcard), the
-     * {@code variable_count} family's name operand (D92a — the template is stashed in
-     * {@code originalName}, which is not scanned), {@code Child: true} match names (D93b —
+     * {@code variable_count} function's template (D92a — its first argument, a string literal kept
+     * as written for the per-dataset re-resolution), {@code Child: true} match names (D93b —
      * patterns, not references) and {@code minuend_match} tokens (resolved per side at evaluation).
      * Free-text surfaces (data literals outside name positions, operation {@code expression} text)
      * are deliberately not scanned — the EC-36/D2' review measured that text-level {@code --} scans
@@ -336,26 +335,6 @@ public final class StageBChecker
         for (Expr root : roots)
         {
             collectExprWildcards(root, hits);
-        }
-        List<Operation> operations = rule.getOperations();
-        if (operations != null)
-        {
-            for (Operation op : operations)
-            {
-                if (op == null)
-                {
-                    continue;
-                }
-                addWildcard(hits, op.getName());
-                addWildcard(hits, op.getDomain());
-                addWildcards(hits, op.getGroup());
-                addWildcards(hits, op.getNames());
-                Map<String, Object> filter = op.getFilter();
-                if (filter != null)
-                {
-                    filter.keySet().forEach(k -> addWildcard(hits, k));
-                }
-            }
         }
         List<MatchDataset> matches = rule.getMatchDatasets();
         if (matches != null)
@@ -442,20 +421,20 @@ public final class StageBChecker
     }
 
 
-    private static void addWildcard(Set<String> hits, @Nullable String candidate)
-    {
-        if (candidate != null && candidate.contains("--"))
-        {
-            hits.add(candidate);
-        }
-    }
-
-
     private static void addWildcards(Set<String> hits, @Nullable List<String> candidates)
     {
         if (candidates != null)
         {
             candidates.forEach(c -> addWildcard(hits, c));
+        }
+    }
+
+
+    private static void addWildcard(Set<String> hits, @Nullable String candidate)
+    {
+        if (candidate != null && candidate.contains("--"))
+        {
+            hits.add(candidate);
         }
     }
 

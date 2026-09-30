@@ -19,10 +19,11 @@ import java.util.Map;
  * the caller registers no attributes for (a variable-level-only overlay is exactly that shape), and
  * deriving the name list from the attribute map would return an empty list for it. That is not a
  * harmless emptiness: {@code define_dataset_names} has no
- * empty&nbsp;&rArr;&nbsp;{@code LIBRARY_NOT_AVAILABLE} demotion in {@code OperationExecutor}
- * (unlike its neighbour {@code define_key_variables}), so an empty list is reported as a successful
- * execution with {@code $define_datasets = []} and rules such as {@code FDA-SD1063} then fire on
- * <em>every</em> dataset — a silently wrong verdict rather than a skip.
+ * empty&nbsp;&rArr;&nbsp;{@code LIBRARY_NOT_AVAILABLE} demotion in {@code DefineLists} (the retired
+ * {@code OperationExecutor}'s arm when this was written; unlike its neighbour
+ * {@code define_key_variables}), so an empty list is reported as a successful execution with
+ * {@code $define_datasets = []} and rules such as {@code FDA-SD1063} then fire on <em>every</em>
+ * dataset — a silently wrong verdict rather than a skip.
  */
 public final class StubMetadataProvider implements MetadataProvider
 {

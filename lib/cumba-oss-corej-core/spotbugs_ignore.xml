@@ -63,11 +63,6 @@
          CDISC SDTMIG / ADaMIG / CT spec; locale-insensitive folding is
          intentional. -->
     <Match>
-        <Class name="net.cumba.corej.core.exec.OperationExecutor" />
-        <Method name="applicableCtPackageTypes" />
-        <Bug pattern="DM_CONVERT_CASE" />
-    </Match>
-    <Match>
         <Class name="net.cumba.corej.core.report.ReportAssembler" />
         <Method name="buildConformanceDetails" />
         <Bug pattern="DM_CONVERT_CASE" />
@@ -83,7 +78,7 @@
         <Bug pattern="DM_CONVERT_CASE" />
     </Match>
 
-    <!-- SharedJoinedIndex / GroupedResult / immutable rule records: the
+    <!-- SharedJoinedIndex / immutable rule records: the
          engine intentionally shares internal arrays / collections between
          records to keep the hot rule path allocation-free; consumers
          treat them as read-only. -->
@@ -96,24 +91,6 @@
         <Class name="net.cumba.corej.core.exec.DatasetLookup$SharedJoinedIndex" />
         <Field name="lookup" />
         <Bug pattern="EI_EXPOSE_REP" />
-    </Match>
-    <Match>
-        <Class name="net.cumba.corej.core.exec.GroupedResult" />
-        <Field name="groupColumns" />
-        <Bug pattern="EI_EXPOSE_REP" />
-    </Match>
-    <Match>
-        <Class name="net.cumba.corej.core.exec.GroupedResult" />
-        <Field name="results" />
-        <Bug pattern="EI_EXPOSE_REP" />
-    </Match>
-    <!-- BoundBinding$OfOperation (PLAN-binding-expressions §5.0): a VIEW over the rule's own
-         Operation record, by design — Rule.bindingOrder() hands readers the very instance
-         Rule.getOperations() holds (the executor reads it; a copy would let the two views of one
-         binding drift). Exposing and storing the mutable record IS the contract. -->
-    <Match>
-        <Class name="net.cumba.corej.core.model.BoundBinding$OfOperation" />
-        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2" />
     </Match>
     <!-- Violation$Unit$Group: the compact constructor stores an unmodifiable
          null-tolerant copy of the grouping-key tuple, so the record accessor
@@ -243,16 +220,6 @@
     <Match>
         <Class name="net.cumba.corej.core.exec.DatasetLookup$SharedJoinedIndex" />
         <Field name="lookup" />
-        <Bug pattern="EI_EXPOSE_REP2" />
-    </Match>
-    <Match>
-        <Class name="net.cumba.corej.core.exec.GroupedResult" />
-        <Field name="groupColumns" />
-        <Bug pattern="EI_EXPOSE_REP2" />
-    </Match>
-    <Match>
-        <Class name="net.cumba.corej.core.exec.GroupedResult" />
-        <Field name="results" />
         <Bug pattern="EI_EXPOSE_REP2" />
     </Match>
     <Match>

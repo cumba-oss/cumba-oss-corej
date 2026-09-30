@@ -7,17 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
-import net.cumba.corej.core.expr.CheckExpressionParser;
-import net.cumba.corej.core.expr.CheckToExpr;
-import net.cumba.corej.core.expr.eval.ColumnTypeGate;
-import net.cumba.corej.core.model.CheckConditionExpression;
-import net.cumba.corej.core.model.Operation;
-import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
-import net.cumba.corej.core.model.RuleCore;
-import net.cumba.corej.core.model.Scope;
-import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
@@ -32,47 +22,62 @@ import org.junit.jupiter.api.Test;
  * out."</i>; register {@code D4-R1/R2}: <i>"I do not want a silent mismatch."</i>).
  *
  * <p>
- * A grouped operation's result is looked up by the typed key identity, so a group column that is
- * Char where the operation grouped and Num where the result is read would match no row — silently.
- * The rule ERRORs instead, naming both columns and kinds; asserted at {@link RuleRunner} level (the
- * rule's status and message), not only as a unit exception. Never an error: {@code LONG} against
- * {@code DOUBLE} (both numeric), a kind the gate does not classify ({@code D4-R6a}: the all-NA
- * {@code .rds} column arrives as {@code BOOLEAN}), and the text-carried family ({@code SUPP--},
- * {@code D4-R5}).
+ * A grouped function's result (an operation's until runbook W8) is looked up by the typed key
+ * identity, so a group column that is Char where the function grouped and Num where the result is
+ * read would match no row — silently. The rule ERRORs instead, naming both columns and kinds;
+ * asserted at {@link RuleRunner} level (the rule's status and message), not only as a unit
+ * exception. Never an error: {@code LONG} against {@code DOUBLE} (both numeric), a kind the gate
+ * does not classify ({@code D4-R6a}: the all-NA {@code .rds} column arrives as {@code BOOLEAN}),
+ * and the text-carried family ({@code SUPP--}, {@code D4-R5}).
  * </p>
  */
 class GroupedLookupKeyTypeTest
 {
 
-    private static Rule rule(String aCheck, List<String> aOutputs, Operation... aOps)
+    /**
+     * A record-sensitivity rule whose {@code $n} is {@code record_count(domain=…, group=[…])} — the
+     * registry function since runbook W6 ({@code RecordCount}); the key-type check runs where the
+     * broadcast binds the counted table to the evaluated one.
+     */
+    private static Rule rule(String aCheck, List<String> aOutputs)
     {
-        Rule rule = new Rule();
-        RuleCore core = new RuleCore();
-        core.setId("TEST-P16-Q2");
-        rule.setCore(core);
-        rule.setScope(new Scope());
-        rule.setSensitivity(Sensitivity.RECORD);
-        Outcome outcome = new Outcome();
-        outcome.setMessage("grouped lookup");
-        outcome.setOutputVariables(aOutputs);
-        rule.setOutcome(outcome);
-        rule.setOperations(List.of(aOps));
-        CheckConditionExpression check = new CheckConditionExpression(
-                CheckExpressionParser.parse(aCheck), aCheck);
-        rule.setCheck(check);
-        rule.setCheckExpr(CheckToExpr.toExpr(check));
-        return rule;
+        return rule(aCheck, aOutputs, null);
     }
 
 
-    private static Operation countIn(String aDomain, String aGroup)
+    private static Rule rule(String aCheck, List<String> aOutputs,
+            @org.jspecify.annotations.Nullable String aBinding)
     {
-        Operation op = new Operation();
-        op.setId("$n");
-        op.setOperator("record_count");
-        op.setDomain(aDomain);
-        op.setGroup(List.of(aGroup));
-        return op;
+        try
+        {
+            net.cumba.corej.core.model.RulePackage pkg = net.cumba.corej.core.RulePackageLoader
+                    .loadFromString("{\"rules\":{\"TEST-P16-Q2\":{"
+                            + "\"Core\":{\"Id\":\"TEST-P16-Q2\"},\"Sensitivity\":\"Record\","
+                            + (aBinding == null ? ""
+                                    : "\"Bindings\":[{\"name\":\"$n\",\"expression\":\"" + aBinding
+                                            + "\"}],")
+                            + "\"Check\":{\"expression\":\"" + aCheck.replace("\"", "\\\"") + "\"},"
+                            + "\"Outcome\":{\"Message\":\"grouped lookup\",\"Output_Variables\":["
+                            + aOutputs.stream().map(o -> "\"" + o + "\"")
+                                    .collect(java.util.stream.Collectors.joining(","))
+                            + "]}}}}");
+            Rule rule = pkg.getRules().get("TEST-P16-Q2");
+            if (rule.getLoadError() != null)
+            {
+                throw new IllegalArgumentException(rule.getLoadError());
+            }
+            return rule;
+        }
+        catch (java.io.IOException e)
+        {
+            throw new IllegalArgumentException(e);
+        }
+    }
+
+
+    private static String countIn(String aDomain, String aGroup)
+    {
+        return "record_count(domain=" + aDomain + ", group=[" + aGroup + "])";
     }
 
 
@@ -138,39 +143,21 @@ class GroupedLookupKeyTypeTest
     /**
      * The check runs where a result is READ, against the table the lookup reads (review round 1,
      * L3). A grouped result nothing reads is never checked — it used to be checked eagerly, against
-     * the rule's table, wherever the operation was materialised.
+     * the rule's table, wherever the (since retired) operation was materialised.
      */
     @Test
     void anUnreadGroupedResultIsNeverChecked()
     {
         IDataTable aeTable = RealTables.of("AE").str("USUBJID", "1", "2").build();
         IDataTable dm = RealTables.of("DM").dbl("USUBJID", 1.0, 2.0).build();
+        // (Since runbook W6 the count is a compiled binding, which the loader's D4a derivation
+        // would report on every finding — a read; "!$n" keeps it out of the reported set so
+        // genuinely nothing reads it.)
         RuleExecutionResult res = run(
-                rule("not empty(USUBJID)", List.of("USUBJID"), countIn("DM", "USUBJID")), aeTable,
-                dm);
+                rule("not empty(USUBJID)", List.of("USUBJID", "!$n"), countIn("DM", "USUBJID")),
+                aeTable, dm);
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(), res.getStatusMessage());
         assertEquals(2, res.getViolations().size());
-    }
-
-
-    /**
-     * The binding is memoised per (result, TABLE): one context table passing binds nothing else.
-     */
-    @Test
-    void theBindingIsPerTable()
-    {
-        IDataTable numTable = RealTables.of("DM").dbl("USUBJID", 1.0).build();
-        IDataTable charTable = RealTables.of("AE").str("USUBJID", "1").build();
-        GroupedResult grouped = new GroupedResult(List.of("USUBJID"), Map.of(), null,
-                GroupedResult.KeyMode.IDENTITY,
-                GroupedResult.KeyTypes.of(numTable, List.of("USUBJID")));
-        EvaluationContext onNum = EvaluationContext.builder().table(numTable).build();
-        onNum.requireCompatibleGroupedKeys(grouped);
-        onNum.requireCompatibleGroupedKeys(grouped);
-        assertEquals(numTable, onNum.getKeyCheckedGroupedResults().get(grouped));
-        EvaluationContext onChar = onNum.toBuilder().table(charTable).build();
-        assertThrows(JoinKeyTypeMismatchException.class,
-                () -> onChar.requireCompatibleGroupedKeys(grouped));
     }
 
 
@@ -206,14 +193,9 @@ class GroupedLookupKeyTypeTest
         IDataTable supp = RealTables.of("SUPPAE").str("USUBJID", "S1").str("RDOMAIN", "AE")
                 .str("IDVAR", "AESEQ").str("IDVARVAL", "1").str("QNAM", "AETRTEM").str("QVAL", "Y")
                 .build();
-        Operation op = new Operation();
-        op.setId("$v");
-        // supp_qnam_present since wave 1 deleted supp_qnam_value (zero sites): same join, same
-        // text-keyed IDVARVAL match, a boolean verdict instead of the joined QVAL.
-        op.setOperator("supp_qnam_present");
-        op.setDomain("SUPPAE");
-        op.setKeyValue("AETRTEM");
-        RuleExecutionResult res = run(rule("$v == true", List.of("AESEQ"), op), aeTable, supp);
+        // Runbook W2a retired the supp_qnam_present operation: the qualifier is read per record
+        // through SuppPivot (Supp_Merge, default true) — the same text-keyed IDVARVAL match.
+        RuleExecutionResult res = run(rule("AETRTEM == \"Y\"", List.of("AESEQ")), aeTable, supp);
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(), res.getStatusMessage());
         // IDVARVAL "1" (text) found AESEQ 1 (a number): row 1 fires
         assertEquals(1, res.getViolations().size());
@@ -222,29 +204,38 @@ class GroupedLookupKeyTypeTest
     // ---------------------------------------------------------------- the unit contract
 
 
+    /**
+     * The static the grouped functions share: the key columns are compared position-wise, and a
+     * column absent on either side has no kind to disagree with. (Until runbook W8 the same claim
+     * was made through a {@code GroupedResult} instance, whose {@code TEXT} key mode and unknown
+     * key types were never checked; both went with the record.)
+     */
     @Test
-    void requireCompatibleKeysComparesPositionallyAndSkipsWhatItCannotJudge()
+    void requireCompatibleKeyColumnsComparesPositionallyAndSkipsWhatItCannotJudge()
     {
         IDataTable charTable = RealTables.of("AE").str("USUBJID", "1").str("X", "a").build();
         IDataTable numTable = RealTables.of("DM").dbl("USUBJID", 1.0).lng("X", 2L).build();
-        GroupedResult grouped = new GroupedResult(List.of("USUBJID"), Map.of(), null,
-                GroupedResult.KeyMode.IDENTITY,
-                GroupedResult.KeyTypes.of(numTable, List.of("USUBJID")));
+        List<String> usubjid = List.of("USUBJID");
         JoinKeyTypeMismatchException ex = assertThrows(JoinKeyTypeMismatchException.class,
-                () -> grouped.requireCompatibleKeys(charTable));
+                () -> GroupKeyIdentity.requireCompatibleKeyColumns(numTable, usubjid, charTable,
+                        usubjid));
         assertTrue(ex.getMessage().contains("USUBJID is Numeric in DM"), ex.getMessage());
-        assertDoesNotThrow(() -> grouped.requireCompatibleKeys(numTable));
+        assertDoesNotThrow(() -> GroupKeyIdentity.requireCompatibleKeyColumns(numTable, usubjid,
+                numTable, usubjid));
+        // position-wise: the second pair (Num X against Char X) is judged too
+        JoinKeyTypeMismatchException second = assertThrows(JoinKeyTypeMismatchException.class,
+                () -> GroupKeyIdentity.requireCompatibleKeyColumns(numTable,
+                        List.of("USUBJID", "X"),
+                        RealTables.of("AE").dbl("USUBJID", 1.0).str("X", "a").build(),
+                        List.of("USUBJID", "X")));
+        assertTrue(second.getMessage().contains("key column X is Numeric in DM"),
+                second.getMessage());
         // a column the evaluated table lacks has no kind to disagree with
-        assertDoesNotThrow(() -> grouped
-                .requireCompatibleKeys(RealTables.of("TS").str("TSPARMCD", "A").build()));
-        // TEXT mode, or unknown key types: never checked
-        assertDoesNotThrow(() -> new GroupedResult(List.of("USUBJID"), Map.of(), null,
-                GroupedResult.KeyMode.TEXT, GroupedResult.KeyTypes.of(numTable, List.of("USUBJID")))
-                        .requireCompatibleKeys(charTable));
-        assertDoesNotThrow(() -> new GroupedResult(List.of("USUBJID"), Map.of())
-                .requireCompatibleKeys(charTable));
-        assertEquals(Arrays.asList(ColumnTypeGate.Kind.NUMERIC, null),
-                GroupedResult.KeyTypes.of(numTable, List.of("USUBJID", "ABSENT")).kinds());
+        assertDoesNotThrow(() -> GroupKeyIdentity.requireCompatibleKeyColumns(numTable, usubjid,
+                RealTables.of("TS").str("TSPARMCD", "A").build(), usubjid));
+        // nor one the grouped table lacks
+        assertDoesNotThrow(() -> GroupKeyIdentity.requireCompatibleKeyColumns(numTable,
+                List.of("ABSENT"), charTable, List.of("X")));
     }
 
 
@@ -254,13 +245,13 @@ class GroupedLookupKeyTypeTest
         IDataTable foreign = RealTables.of("PM").dbl("PMSPID", 1.0).build();
         IDataTable eval = RealTables.of("TF").str("TFSPID", "1").build();
         JoinKeyTypeMismatchException ex = assertThrows(JoinKeyTypeMismatchException.class,
-                () -> GroupedResult.requireCompatibleKeyColumns(foreign, List.of("PMSPID"), eval,
+                () -> GroupKeyIdentity.requireCompatibleKeyColumns(foreign, List.of("PMSPID"), eval,
                         List.of("TFSPID")));
         assertTrue(ex.getMessage()
-                .contains("key column PMSPID is Numeric in PM, where the operation grouped, and its"
+                .contains("key column PMSPID is Numeric in PM, where the function grouped, and its"
                         + " counterpart TFSPID is Character in TF"),
                 ex.getMessage());
-        assertDoesNotThrow(() -> GroupedResult.requireCompatibleKeyColumns(foreign,
+        assertDoesNotThrow(() -> GroupKeyIdentity.requireCompatibleKeyColumns(foreign,
                 List.of("PMSPID"), foreign, List.of("PMSPID")));
     }
 }

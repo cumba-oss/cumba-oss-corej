@@ -217,6 +217,25 @@ class ExistenceProbeTest
         assertFalse(OperatorRegistry.existsInSuppQnam(withBlanks, "NOSUCH"));
     }
 
+
+    /**
+     * Combined review of runbook W2–W8, round 2 L2: the existence probe reads the SUPP table
+     * through the run's shared index — one parse for every probe and for the pivot — instead of a
+     * fresh full parse per call. And existence is the QNAM set, even for a QNAM whose rows can
+     * qualify no record (here: no IDVAR, no subject key).
+     */
+    @Test
+    void existsInSuppQnamParsesTheSuppTableOncePerRun()
+    {
+        IDataTable supp = RealTables.of("SUPPAE").str("QNAM", "AETRTEM", "AESOSP")
+                .str("QVAL", "Y", "x").build();
+        JoinCache.SharedIndexCache cache = new JoinCache.SharedIndexCache();
+        assertTrue(OperatorRegistry.existsInSuppQnam(supp, "AETRTEM", cache));
+        assertTrue(OperatorRegistry.existsInSuppQnam(supp, "AESOSP", cache));
+        assertFalse(OperatorRegistry.existsInSuppQnam(supp, "NOSUCH", cache));
+        assertEquals(1, cache.suppQnamIndexBuildCount(), "one parse for three probes");
+    }
+
     // ---- variableIsNull / maxValueLength ----
 
 

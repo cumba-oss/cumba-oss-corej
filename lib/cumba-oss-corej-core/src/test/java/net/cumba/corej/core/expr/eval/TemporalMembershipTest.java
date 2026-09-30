@@ -235,14 +235,15 @@ class TemporalMembershipTest
      * {@code buildSet} cannot serve: a {@code ${*}} wildcard set (it would have thrown
      * {@code unsupported} where {@code wildcardMembershipPlan} answered) and a {@code $}-ref
      * resolving to a per-row {@code GroupedResult} (it would have substituted an EMPTY set for a
-     * per-row one).
+     * per-row one; that runtime shape went in runbook W8).
      *
      * <p>
      * This pins the {@code $}-ref half: a temporal probe against a {@code $}-bound list keeps its
      * <b>textual</b> behaviour, so the datetime does <em>not</em> match the date. ⚠ That is a
-     * stated GAP, not an accident — closing it needs a temporal counterpart to
-     * {@code groupedMembership}, not a wider condition on this branch. The test exists so the gap
-     * is visible and so widening the branch without that counterpart reds here.
+     * stated GAP, not an accident — closing it needs a temporal counterpart to the per-row set
+     * builder ({@code groupedMembership} until runbook W8, {@code boundMembership}'s per-row arm
+     * since), not a wider condition on this branch. The test exists so the gap is visible and so
+     * widening the branch without that counterpart reds here.
      * </p>
      */
     @Test

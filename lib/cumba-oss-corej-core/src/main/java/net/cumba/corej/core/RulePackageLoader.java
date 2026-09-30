@@ -31,7 +31,6 @@ import net.cumba.corej.core.model.DomainScope;
 import net.cumba.corej.core.model.Executability;
 import net.cumba.corej.core.model.ExecutabilityHint;
 import net.cumba.corej.core.model.LevelCheck;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Requirements;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
@@ -195,33 +194,26 @@ public class RulePackageLoader
             });
         }
         removeParkedRules(pkg);
-        // normalizeOperations FIRST: it is the only pass that fills in operator/group/filter/domain
-        // for an expression-form (Form B) operation, and the derivation reads exactly those four
-        // fields. Deriving before it leaves 947 Form-B operations looking operator-less, which
-        // silently collapses 80 rules to Record Data / Record.
-        normalizeOperations(pkg);
+        // materialiseBindings FIRST: the derivation and every later gate read the compiled
+        // bindings, and a rule whose bindings were never parsed reads as if it had none.
+        materialiseBindings(pkg);
         // Derivation (Sensitivity) runs BEFORE the field gates, whose Group-consistency check
         // reads the derived value; the shipped rules/ corpus does not author it.
         deriveOmittedFields(pkg);
         validateOperandSubstitution(pkg);
         validateEnumFields(pkg);
         // Sequenced with its sibling load gates, and deliberately BEFORE retainNativeExpr, so it
-        // judges the AUTHORED Check — the shape rules-legacy/ carries and the shape the rule's
-        // author wrote. It would also read correctly afterwards, but only because
-        // inlineVariableExistsOps / inlineSplitByOps rewrite `Check` (and `Precondition`) in
-        // lockstep with dropping the operations they inlined (see the setCheck calls in each): an
-        // inliner that dropped an operation WITHOUT rewriting the tree would make its own operand
-        // look undefined here. That lockstep is pinned by
-        // DanglingOperationReferenceLoadTest.inlinedOperationsAreDroppedInLockstepWithTheCheck.
+        // judges the AUTHORED Check — the shape the rule's author wrote. Since runbook W8 no load
+        // pass inlines or drops a binding (the operation inliners went with the Operation
+        // carrier), so every `$`-reference it judges is one the author wrote against the
+        // author's own Bindings.
         validateOperationReferences(pkg);
-        // Fix #156 — same silence class, one field-position over: a `--` parked in an Operation's
-        // reference / ordering / offset is copied verbatim by OperationExecutor.resolvePrefixes,
-        // reaches getColumnIndex as the literal "--…", misses, and the operation yields nothing.
-        // Runs after normalizeOperations (so a Form-B expression operation has its fields bound)
-        // and after retainNativeExpr is still pending, so the AUTHORED Check is what gets walked —
-        // the same surface validateOperationReferences judges.
-        validateUnresolvedOperationWildcards(pkg);
-        // D13 item 3 — a dictionary operation naming no external_dictionary_type is unanswerable
+        // (Fix #156's `--`-in-reference/ordering/offset gate retired with its last guarded field:
+        // `ordering` went with is_last_in_group (wave 1), `reference` / `offset` with the
+        // date_diff_days operation (runbook W2b). On the function surface `--` is resolved by the
+        // typed column parameter, a quoted name is a load error (R1), and a `--` under a grouped
+        // aggregate's domain= is a load error of GroupedAggregate's reader.)
+        // D13 item 3 — a dictionary call naming no external_dictionary_type is unanswerable
         // by ANY install, so it is an authoring defect on the loadError channel, exactly like the
         // dangling $ above. Deliberately BEFORE injectInlineOperationGates: the injector only
         // gates a TYPED inline dictionary call, so a typeless one would otherwise evaluate with
@@ -231,12 +223,8 @@ public class RulePackageLoader
         normalizeJoinTypes(pkg);
         injectInlineOperationGates(pkg);
         retainNativeExpr(pkg);
-        // AFTER retainNativeExpr: the OV derivation reads checkExpr and must see the
-        // post-inlining state — inlineVariableExistsOps / inlineSplitByOps have already dropped the
-        // OV entries of the operations they inlined away. ⚠ Not all of them: a variable_exists
-        // operation whose $-id the rule REPORTS is now retained (VariableExistsInliner.reported),
-        // so the derivation sees a live operation plus its authored OV entry — which is exactly the
-        // state it is meant to read, and why this ordering still holds.
+        // AFTER retainNativeExpr: the OV derivation reads the installed checkExpr and compiled
+        // bindings, so it runs once retainNativeExpr has put them in place.
         deriveOutputVariables(pkg);
         return pkg;
     }
@@ -306,8 +294,8 @@ public class RulePackageLoader
      *
      * <p>
      * <b>The field now means what its name says.</b> Until {@code Fix #159} it was purely a
-     * load-guard <em>severity switch</em>: {@link #validateOperationReferences(Rule)} and
-     * {@link #validateUnresolvedOperationWildcards(Rule)} consulted it to downgrade their
+     * load-guard <em>severity switch</em>: {@link #validateOperationReferences(Rule)} and the
+     * retired {@code validateUnresolvedOperationWildcards} consulted it to downgrade their
      * {@code loadError} to a {@code loadWarning}, so a rule could declare itself not executable and
      * then execute, report findings and be counted. The justification recorded for that — two
      * shipped ADaM rules authored ahead of engine capability, {@code CDISC-AD0591} and
@@ -330,12 +318,13 @@ public class RulePackageLoader
      * <p>
      * ⚠⚠ <b>A caller that bypasses {@link #finishLoad} must invoke this method itself.</b>
      * {@code LibraryRuleMapper.mapRulePackage} (retired with the CDISC-Library rules ingestion,
-     * cache P4) was exactly that case — it hand-picked the passes that made sense without
-     * {@code normalizeOperations} rather than running the whole pipeline — so it called this
-     * explicitly. No caller outside this class remains; the method is left package-private rather
-     * than private only so that a future same-package path can meet the obligation. Any such path
-     * that assembles a {@link RulePackage} outside {@code finishLoad} inherits it, or a rule
-     * sourced through it will declare itself not executable and run anyway.
+     * cache P4) was exactly that case — it hand-picked the passes that made sense without the
+     * operation-normalisation pass (itself retired with the Operation carrier in runbook W8) rather
+     * than running the whole pipeline — so it called this explicitly. No caller outside this class
+     * remains; the method is left package-private rather than private only so that a future
+     * same-package path can meet the obligation. Any such path that assembles a {@link RulePackage}
+     * outside {@code finishLoad} inherits it, or a rule sourced through it will declare itself not
+     * executable and run anyway.
      * </p>
      *
      * <p>
@@ -535,15 +524,10 @@ public class RulePackageLoader
 
 
     /**
-     * Rewrites every {@code Operation} authored in function-call form (Form B,
-     * {@code Operation.expression}) to its equivalent field form via
-     * {@link net.cumba.corej.core.expr.convert.OperationExpressionParser}, so the
-     * {@code OperationExecutor} only ever sees field-form operations. A field-form operation passes
-     * through unchanged. A malformed operation expression is filed on the rule's {@code loadError}
-     * channel (so the rule reports ERROR and never evaluates), mirroring the native-install path.
-     * Runs before {@link #retainNativeExpr}, which does not inspect operations.
+     * Materialises every rule's authored {@code Bindings:} entries into its compiled bindings
+     * ({@link #materialiseBindings(Rule)}). Runs before {@link #retainNativeExpr}.
      */
-    private static void normalizeOperations(RulePackage pkg)
+    private static void materialiseBindings(RulePackage pkg)
     {
         if (pkg == null || pkg.getRules() == null)
         {
@@ -551,86 +535,51 @@ public class RulePackageLoader
         }
         for (Rule rule : pkg.getRules().values())
         {
-            normalizeOperations(rule);
+            materialiseBindings(rule);
         }
     }
 
 
     /**
-     * Per-rule variant of {@link #normalizeOperations(RulePackage)}: materialises the authored
-     * {@code Bindings:} entries ({@code name:} + {@code expression:}, phase 7b) — a single
-     * top-level operation call into the field-form {@link Operation} record the
-     * {@code OperationExecutor} consumes, any other expression into a
-     * {@link net.cumba.corej.core.model.CompiledBinding} ({@code PLAN-binding-expressions} wave 0;
-     * the one routing predicate is {@code BindingRouting}). Public for the same reason as
-     * {@link #deriveOmittedFields(Rule)}: anything that binds a {@link Rule} outside this loader —
-     * the {@code rulespec} harness ({@code RuleScaffold}), a tool, an editor preview — must apply
-     * the same pass, or a shipped rule's declared bindings never reach {@code getOperations()} and
-     * silently resolve {@code null}. Idempotent; a malformed expression lands on the rule's
-     * {@code loadError} channel, preserving any earlier cause.
+     * Per-rule variant of {@link #materialiseBindings(RulePackage)}: parses each authored
+     * {@code Bindings:} entry ({@code name:} + {@code expression:}, phase 7b) <b>once</b> into a
+     * {@link net.cumba.corej.core.model.CompiledBinding}, compiled like the {@code Check}
+     * ({@code PLAN-binding-expressions} wave 0). Since runbook W8
+     * ({@code PLAN-retire-operation-surface}) this is the ONE kind of binding: the operation record
+     * a single top-level operation call used to become went with the retired carrier, and the
+     * unparseable-expression load error that path filed is filed here. Public for the same reason
+     * as {@link #deriveOmittedFields(Rule)}: anything that binds a {@link Rule} outside this loader
+     * — the {@code rulespec} harness ({@code RuleScaffold}), a tool, an editor preview — must apply
+     * the same pass, or a shipped rule's declared bindings never reach {@code bindingOrder()} and
+     * silently resolve {@code null}. Idempotent (guarded on the compiled list); a malformed entry
+     * lands on the rule's {@code loadError} channel, preserving any earlier cause.
+     *
+     * <p>
+     * ⛔ <b>One name per binding.</b> A name declared twice is a load error: the stage-A order check
+     * records the <em>first</em> declaration and the runtime map the <em>last</em>, and that
+     * disagreement would decide which declaration a {@code $}-reference reads. Every binding is
+     * named (nothing could reference an anonymous one).
+     * </p>
      *
      * @param rule
-     *            the rule to normalise in place, may be {@code null}
+     *            the rule to materialise in place, may be {@code null}
      */
-    public static void normalizeOperations(@Nullable Rule rule)
+    public static void materialiseBindings(@Nullable Rule rule)
     {
         if (rule == null)
         {
             return;
         }
-        List<Operation> ops = rule.getOperations();
         try
         {
-            // ⭐ Phase 7b (owner rulings 2026-09-17): materialise the authored `Bindings:` entries
-            // into the executor-internal bound-argument records. The `name:`/`expression:` pair is
-            // the ONLY authoring surface — Binding's deserializer rejects every retired spelling
-            // (`Operations:` is rejected on Rule itself) — and `operations` is @JsonIgnore, so
-            // this is the sole producer on the load path. Guarded on `operations == null` for
-            // idempotence: this method is public and re-run by every external binder.
             List<net.cumba.corej.core.model.Binding> bindings = rule.getBindings();
-            if (ops == null && rule.getCompiledBindings() == null && bindings != null
-                    && !bindings.isEmpty())
+            if (rule.getCompiledBindings() == null && bindings != null && !bindings.isEmpty())
             {
-                ops = materialiseBindings(rule, bindings);
+                rule.setCompiledBindings(compileAuthoredBindings(bindings));
             }
-            if (ops != null && !ops.isEmpty())
-            {
-                ops.replaceAll(
-                        net.cumba.corej.core.expr.convert.OperationExpressionParser::normalize);
-                // EC-51 Half B — re-run the per-operation guard over the normalised list so a
-                // FIELD-FORM operation gets the identical treatment: it never passes through
-                // `fromCall`, and Jackson binds `missing_values` on an operator that cannot
-                // consume it without complaint. Idempotent for the operations just normalised.
-                for (Operation op : ops)
-                {
-                    // ⭐ Phase 6b (D16): the operation's own descriptor decides which parameters
-                    // exist — the field-form twin of the fromCall kwarg gate, generalising the
-                    // four hand-kept operator allowlists below to the whole parameter surface.
-                    // The specific validators still own their VALUE and cross-parameter checks.
-                    net.cumba.corej.core.expr.convert.OperationExpressionParser
-                            .validateAgainstDescriptor(op);
-                    net.cumba.corej.core.expr.convert.OperationExpressionParser
-                            .validateMissingValues(op);
-                    // Same three-surface reasoning as missing_values: a FIELD-FORM operation never
-                    // passes through `fromCall`, so Jackson binds `keep_missings` on an operator
-                    // that cannot consume it without complaint.
-                    net.cumba.corej.core.expr.convert.OperationExpressionParser
-                            .validateKeepMissings(op);
-                    // EC-85: same again for `model_class` — and this one also NORMALISES the
-                    // field-form value, so the executor only ever sees the canonical spelling.
-                    net.cumba.corej.core.expr.convert.OperationExpressionParser
-                            .validateModelClass(op);
-                    // Same again for `key_name`: a FIELD-FORM operation never passes through
-                    // `fromCall`, and a key the library variable rows never carry (or an operator
-                    // that never reads the field) would otherwise be bound by Jackson and dropped
-                    // in silence — the FDA-SD1078 shape.
-                    net.cumba.corej.core.expr.convert.OperationExpressionParser.validateKeyName(op);
-                }
-            }
-            // ⚠ NOT inside the `ops` guard: an operation authored INLINE in the Check expression
-            // never appears in `Operations` at all, so a rule with no `Operations` list can still
-            // declare `missing_values` — and would otherwise skip all three rejections.
-            validateMissingValuesPolarity(rule, ops);
+            // ⚠ NOT inside the bindings guard: `missing_values` is declared on an inline call
+            // (min_date / max_date), which need not be a binding at all.
+            validateMissingValuesPolarity(rule);
         }
         catch (net.cumba.corej.core.expr.RuleDefinitionException ex)
         {
@@ -643,28 +592,15 @@ public class RulePackageLoader
 
 
     /**
-     * Wave 0 ({@code PLAN-binding-expressions} §5.1 R1): parses each authored binding <b>once</b>
-     * and routes it — a single top-level {@code OperationType} call keeps today's {@link Operation}
-     * record (ruling D-W0-1; its expression is normalised by the caller exactly as before), any
-     * other expression becomes a {@link net.cumba.corej.core.model.CompiledBinding} compiled like
-     * the {@code Check}. The routing predicate is {@code BindingRouting.isOperationCall}, the one
-     * spelling the corpus tests share.
+     * Wave 0 ({@code PLAN-binding-expressions} §5.1 R1), W8: parses each authored binding once.
      *
-     * <p>
-     * ⛔ <b>One name per binding.</b> A name declared twice — of either kind, in any mix — is a load
-     * error: the stage-A order check records the <em>first</em> declaration and the runtime map the
-     * <em>last</em>, and with two kinds interleaving that disagreement would decide which kind a
-     * {@code $}-reference reads. A compiled binding must also be named (nothing could reference an
-     * anonymous one; an anonymous operation keeps its historical eager-run behaviour).
-     * </p>
-     *
-     * @return the operation bindings, or {@code null} when every binding compiled
+     * @return the compiled bindings in authored order, or {@code null} when there are none
      */
-    private static @Nullable List<Operation> materialiseBindings(Rule rule,
+    private static @Nullable List<net.cumba.corej.core.model.CompiledBinding> compileAuthoredBindings(
             List<net.cumba.corej.core.model.Binding> bindings)
     {
-        List<Operation> ops = new ArrayList<>(bindings.size());
-        List<net.cumba.corej.core.model.CompiledBinding> compiled = new ArrayList<>();
+        List<net.cumba.corej.core.model.CompiledBinding> compiled = new ArrayList<>(
+                bindings.size());
         java.util.Set<String> seen = new java.util.HashSet<>();
         List<String> authoredBefore = new ArrayList<>();
         for (net.cumba.corej.core.model.Binding binding : bindings)
@@ -677,48 +613,40 @@ public class RulePackageLoader
                         + "` declares no `expression:` — a `Bindings:` entry is `name:` +"
                         + " `expression:`");
             }
-            if (name != null && !seen.add(name))
+            if (name == null || name.isBlank())
+            {
+                throw new net.cumba.corej.core.expr.RuleDefinitionException("the binding `"
+                        + expression + "` declares no `name:` — a binding is read only through its"
+                        + " `$`-name");
+            }
+            if (!seen.add(name))
             {
                 throw new net.cumba.corej.core.expr.RuleDefinitionException("binding name `" + name
                         + "` is declared twice — a `Bindings:` name must be unique within the rule");
             }
-            net.cumba.corej.core.expr.ast.Expr parsed = net.cumba.corej.core.expr.convert.BindingRouting
-                    .tryParse(expression);
-            if (parsed == null
-                    || net.cumba.corej.core.expr.convert.BindingRouting.isOperationCall(parsed))
+            net.cumba.corej.core.expr.ast.Expr parsed;
+            try
             {
-                Operation op = new Operation();
-                op.setId(name);
-                op.setExpression(expression);
-                ops.add(op);
+                parsed = net.cumba.corej.core.expr.CheckExpressionParser.parse(expression);
             }
-            else
+            catch (net.cumba.corej.core.expr.ExpressionException ex)
             {
-                if (name == null || name.isBlank())
-                {
-                    throw new net.cumba.corej.core.expr.RuleDefinitionException("the binding `"
-                            + expression + "` declares no `name:` — a binding that is not a single"
-                            + " operation call is read only through its `$`-name");
-                }
-                compiled.add(new net.cumba.corej.core.model.CompiledBinding(name, parsed,
-                        authoredBefore, null));
+                throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                        "invalid binding expression `" + expression + "`: " + ex.getMessage(), ex);
             }
-            if (name != null)
-            {
-                authoredBefore.add(name);
-            }
+            compiled.add(new net.cumba.corej.core.model.CompiledBinding(name, parsed,
+                    authoredBefore, null));
+            authoredBefore.add(name);
         }
-        List<Operation> result = ops.isEmpty() ? null : ops;
-        rule.setOperations(result);
-        rule.setCompiledBindings(compiled.isEmpty() ? null : compiled);
-        return result;
+        return compiled.isEmpty() ? null : compiled;
     }
 
 
     /**
-     * EC-51 Half B / OQ3 — rejects {@code missing_values: "indeterminate"} on an operation whose
-     * result is consumed by a <b>positive-polarity</b> leaf, because there the declaration does the
-     * exact opposite of what its author intends.
+     * EC-51 Half B / OQ3 — rejects {@code missing_values: "indeterminate"} on a call
+     * ({@code min_date} / {@code max_date}, read directly or through a compiled binding or another
+     * function's argument) whose result is consumed by a <b>positive-polarity</b> leaf, because
+     * there the declaration does the exact opposite of what its author intends.
      *
      * <p>
      * {@code indeterminate} makes the operation yield <em>no value</em> for a group holding a
@@ -750,8 +678,7 @@ public class RulePackageLoader
      * <p>
      * Nothing downstream would catch it — the rule would simply stop reporting — and a silent kill
      * runs against the house {@code absent ⇒ report} default. So it is a load error, on the same
-     * channel as the per-operator guard in
-     * {@link net.cumba.corej.core.expr.convert.OperationExpressionParser#validateMissingValues}.
+     * channel as the value / operator guard of {@code GroupedAggregate}'s reader.
      * </p>
      *
      * <p>
@@ -766,29 +693,15 @@ public class RulePackageLoader
      * </p>
      *
      * <p>
-     * Costs nothing on a corpus that declares the field nowhere: the walk is entered only when some
-     * operation actually carries {@code indeterminate}.
+     * The declaring call is matched structurally ({@code inlineIndeterminate}); since runbook W2b
+     * no operation carries {@code missing_values} any more, so there is no {@code $}-id arm.
      * </p>
      *
      * @throws net.cumba.corej.core.expr.RuleDefinitionException
-     *             if a declared operation is consumed by a silencing leaf
+     *             if a declaring call is consumed by a silencing leaf
      */
-    private static void validateMissingValuesPolarity(Rule rule, @Nullable List<Operation> ops)
+    private static void validateMissingValuesPolarity(Rule rule)
     {
-        List<String> declared = new ArrayList<>();
-        if (ops != null)
-        {
-            for (Operation op : ops)
-            {
-                String id = op == null ? null : op.getId();
-                if (op != null
-                        && Operation.MISSING_VALUES_INDETERMINATE.equals(op.getMissingValues())
-                        && id != null && !id.isEmpty())
-                {
-                    declared.add(id);
-                }
-            }
-        }
         // ⚠ An INLINE operation call carries its own declaration and has no `$`-id to collect, so
         // the two surfaces are validated together: `validateInlineMissingValues` applies the value
         // and operator rejections to every inline call in the tree, and the polarity walk below
@@ -808,17 +721,29 @@ public class RulePackageLoader
         {
             compiled.forEach(binding -> validateInlineMissingValues(binding.expression()));
         }
+        // Wave 4b (PLAN-scalar-metadata-functions D-W4b-1): the per-variable function is read only
+        // through a binding — its value is the per-variable map the per-variable loop projects
+        // onto the variable cursor, and only a `$`-binding is projected. The operation surface
+        // refused an inline use the same way ("cannot be inlined").
+        for (CheckCondition level : rule.checkConditions())
+        {
+            rejectInlinePerVariableCalls(level);
+        }
+        rejectInlinePerVariableCalls(rule.getPrecondition());
+        if (compiled != null)
+        {
+            compiled.forEach(binding -> rejectInlinePerVariableCalls(binding.expression(), true));
+        }
         validateTupleCorrespondence(rule);
         Map<String, String> silencing = new LinkedHashMap<>();
         for (CheckCondition level : rule.checkConditions())
         {
-            collectSilencingConsumers(throughCompiledBindings(level, rule), declared, false,
-                    silencing);
+            collectSilencingConsumers(throughCompiledBindings(level, rule), false, silencing);
         }
         // The Precondition (Fix #13) gates whether the Check runs at all, so a positive-polarity
         // consumer there silences the rule just as effectively as one in the Check itself.
-        collectSilencingConsumers(throughCompiledBindings(rule.getPrecondition(), rule), declared,
-                false, silencing);
+        collectSilencingConsumers(throughCompiledBindings(rule.getPrecondition(), rule), false,
+                silencing);
         // R2: a comparison INSIDE a compiled binding is a consumer wherever the binding is read (a
         // condition binding `$b: $ind > X`), so each binding expression is walked on its own too.
         // A compiled binding read by the Check is ALSO judged at its point of use, through
@@ -827,15 +752,16 @@ public class RulePackageLoader
         // the silent death this guard exists to prevent.
         if (compiled != null)
         {
-            compiled.forEach(binding -> collectSilencingExpr(binding.expression(), declared, false,
-                    silencing));
+            compiled.forEach(
+                    binding -> collectSilencingExpr(binding.expression(), false, silencing));
         }
         if (!silencing.isEmpty())
         {
             Map.Entry<String, String> first = silencing.entrySet().iterator().next();
             throw new net.cumba.corej.core.expr.RuleDefinitionException("`missing_values: "
-                    + Operation.MISSING_VALUES_INDETERMINATE + "` on operation `" + first.getKey()
-                    + "` is consumed by the positive-polarity leaf `" + first.getValue()
+                    + net.cumba.corej.core.exec.GroupedAggregate.MISSING_VALUES_INDETERMINATE
+                    + "` on `" + first.getKey() + "` is consumed by the positive-polarity leaf `"
+                    + first.getValue()
                     + "`, which reads an undeterminable extreme as \"no violation\" and would"
                     + " silence the check instead of reporting it");
         }
@@ -883,17 +809,20 @@ public class RulePackageLoader
 
 
     /**
-     * EC-51 Half B — applies the value and operator rejections of
-     * {@link net.cumba.corej.core.expr.convert.OperationExpressionParser#validateMissingValues} to
-     * every operation authored <b>inline</b> in a native Check expression.
+     * Applies the kwarg rejections the retired operation parser used to own ({@code fromCall}:
+     * {@code keep_missings} on a non-grouping operation or without a {@code group}, and — since
+     * runbook W2b, when its last consuming operation became a registry function —
+     * {@code missing_values} as an unknown argument) to every operation authored <b>inline</b> in a
+     * native Check expression.
      *
      * <p>
-     * ⚠ <b>The inline surface is a genuinely separate load path.</b> An inline call never reaches
-     * the rule's {@code Operations} list, so nothing in {@code normalizeOperations} sees it.
-     * Validating here gives the inline surface the same {@code loadError} channel, and the same
-     * message, as the other two paths. (Before the legacy evaluator was retired, the compiler's own
-     * {@code fromCall} rejection silently degraded the rule to legacy evaluation; that is why this
-     * gate exists.)
+     * ⚠ <b>The inline surface is a genuinely separate load path.</b> Only a binding's expression is
+     * compiled at load ({@code installNativeExpr}); an inline call in a Check level or the
+     * Precondition is compiled lazily, so without this walk its argument errors would surface only
+     * at its first evaluation. Validating here gives the inline surface the same {@code loadError}
+     * channel, and the same message, as a binding. (Before the legacy evaluator was retired, the
+     * compiler's own {@code fromCall} rejection silently degraded the rule to legacy evaluation;
+     * that is why this gate exists.)
      * </p>
      */
     private static void validateInlineMissingValues(@Nullable CheckCondition condition)
@@ -922,47 +851,274 @@ public class RulePackageLoader
     }
 
 
+    /**
+     * {@link #rejectInlinePerVariableCalls(net.cumba.corej.core.expr.ast.Expr, boolean)} per level.
+     */
+    private static void rejectInlinePerVariableCalls(@Nullable CheckCondition condition)
+    {
+        if (condition == null)
+        {
+            return;
+        }
+        switch (condition)
+        {
+        case net.cumba.corej.core.model.CheckConditionExpression expression -> rejectInlinePerVariableCalls(
+                expression.expr(), false);
+        case CheckConditionAll all -> all.getConditions()
+                .forEach(RulePackageLoader::rejectInlinePerVariableCalls);
+        case CheckConditionAny any -> any.getConditions()
+                .forEach(RulePackageLoader::rejectInlinePerVariableCalls);
+        case CheckConditionNot not -> rejectInlinePerVariableCalls(not.getCondition());
+        }
+    }
+
+
+    /**
+     * Wave 4b (D-W4b-1): a {@code cross_dataset_variable_metadata(…)} call anywhere but as the
+     * whole expression of a binding ({@code rootAllowed}) is a load error.
+     */
+    private static void rejectInlinePerVariableCalls(net.cumba.corej.core.expr.ast.Expr expr,
+            boolean rootAllowed)
+    {
+        if (!rootAllowed && expr instanceof net.cumba.corej.core.expr.ast.Expr.Call call
+                && answersPerVariable(call.name()))
+        {
+            throw new net.cumba.corej.core.expr.RuleDefinitionException(call.name()
+                    + " answers one value per variable and is read only through a binding: make it"
+                    + " a binding's whole expression and read the binding ($x)");
+        }
+        childrenOf(expr).forEach(child -> rejectInlinePerVariableCalls(child, false));
+    }
+
+
+    /**
+     * Whether {@code name} is registered as answering a per-variable map
+     * ({@code FunctionDescriptor.perVariableMap} — declared once on the descriptor, combined review
+     * of runbook W2–W8, W3+W4b L5).
+     */
+    private static boolean answersPerVariable(String name)
+    {
+        net.cumba.corej.core.expr.eval.FunctionDescriptor d = net.cumba.corej.core.expr.eval.FunctionRegistry
+                .descriptor(name);
+        return d != null && d.perVariableMap();
+    }
+
+
     private static void validateInlineMissingValues(net.cumba.corej.core.expr.ast.Expr expr)
+    {
+        validateInlineCallShapes(expr);
+        // Wave 4 (PLAN-list-functions D-W4-3), inverted by the combined review of runbook W2–W8
+        // (W4 M4): every REGISTRY call in the expression — inline in a Check level or the
+        // Precondition, nested at any depth — meets the compiler's argument seams at load. After
+        // the tailored validators above, so their messages keep precedence; ONCE per root (W4 L1:
+        // this ran at every level of the walk, re-walking each subtree — quadratic in the depth).
+        validateRegistryCallSeams(expr);
+    }
+
+
+    /** The per-call tailored Check-operator validators of {@link #validateInlineMissingValues}. */
+    private static void validateInlineCallShapes(net.cumba.corej.core.expr.ast.Expr expr)
     {
         if (expr instanceof net.cumba.corej.core.expr.ast.Expr.Call call)
         {
-            boolean isOperationCall = net.cumba.corej.core.model.OperationType
-                    .fromJson(call.name()) != null;
-            if (isOperationCall && (call.kwargs().containsKey("missing_values")
-                    || call.kwargs().containsKey("keep_missings")
-                    || call.kwargs().containsKey("model_class")
-                    || call.kwargs().containsKey("key_name")))
+            if (call.kwargs().containsKey("keep_missings")
+                    && !net.cumba.corej.core.exec.GroupedAggregate.isFunction(call.name())
+                    && !net.cumba.corej.core.exec.ReadValue.NAME.equals(call.name())
+                    && !net.cumba.corej.core.exec.RecordCount.NAME.equals(call.name())
+                    && !net.cumba.corej.core.exec.Distinct.NAME.equals(call.name()))
             {
-                // Rebuilding the Operation is what applies BOTH rejections: fromCall runs the kwarg
-                // loop (so a list/number value is rejected by the same code as Form B) and then
-                // validateMissingValues (value enum + consuming operator + date_diff_days Mode 2),
-                // validateKeepMissings (consuming operator + non-empty group), EC-85's
-                // validateModelClass (consuming operator + known class spelling) and
-                // validateKeyName (consuming operator + library-variable attribute vocabulary).
-                net.cumba.corej.core.expr.convert.OperationExpressionParser.fromCall(call, null);
-            }
-            else if (!isOperationCall && call.kwargs().containsKey("keep_missings"))
-            {
+                // (W5: max / max_date / min_date and read_value read keep_missings= from their
+                // bound slot in their own strict reader — GroupedAggregate.readPolicy — so the
+                // Check-operator gate below does not judge them.)
                 // ⚠⚠ `keep_missings` is the FIRST parameter to appear on BOTH the operation surface
                 // and the Check-operator surface, so it cannot be routed through `fromCall` the way
-                // `missing_values` is: `fromCall` rejects any name that is not an OperationType,
+                // `missing_values` was: the retired parser rejected any name that was not an
+                // operation,
                 // and
                 // an inline `has_multiple_values_for(..., keep_missings=false)` would become a
                 // bogus
                 // "unknown operation function" load error on a perfectly valid rule.
                 validateInlineCheckKeepMissings(call);
             }
-            if (!isOperationCall && call.kwargs().containsKey("relation"))
+            if (call.kwargs().containsKey("relation"))
             {
                 // EC-87: the next-record comparison relation is a Check-operator kwarg only.
                 validateInlineCheckRelation(call);
             }
-            if (!isOperationCall)
+            validateInlineUniqueSetShape(call);
+        }
+        childrenOf(expr).forEach(RulePackageLoader::validateInlineCallShapes);
+    }
+
+    /**
+     * The compiler-dispatched calls whose load-time seam is a <b>tailored strict reader</b> —
+     * {@code max} / {@code max_date} / {@code min_date}, {@code read_value}, {@code record_count},
+     * {@code distinct}: an inline call meets the same reader a binding meets when it is compiled at
+     * load (the missing_values vocabulary, the filter spelling, the required {@code group=}, the
+     * target shapes), so the inline surface is loud at load, not at the first evaluation.
+     */
+    private static final Map<String, java.util.function.Consumer<net.cumba.corej.core.expr.ast.Expr.Call>> TAILORED_CALL_READERS = Map
+            .of(net.cumba.corej.core.exec.GroupedAggregate.MAX,
+                    net.cumba.corej.core.exec.GroupedAggregate::spec,
+                    net.cumba.corej.core.exec.GroupedAggregate.MAX_DATE,
+                    net.cumba.corej.core.exec.GroupedAggregate::spec,
+                    net.cumba.corej.core.exec.GroupedAggregate.MIN_DATE,
+                    net.cumba.corej.core.exec.GroupedAggregate::spec,
+                    net.cumba.corej.core.exec.ReadValue.NAME,
+                    net.cumba.corej.core.exec.ReadValue::spec,
+                    net.cumba.corej.core.exec.RecordCount.NAME,
+                    net.cumba.corej.core.exec.RecordCount::spec,
+                    net.cumba.corej.core.exec.Distinct.NAME,
+                    net.cumba.corej.core.exec.Distinct::spec);
+
+    /**
+     * The registry names {@link #validateRegistryCallSeams} does NOT hand to the generic binder
+     * seam ({@code ExprCompiler.validateRegistryCall}), checked once on first use by
+     * {@link #registryCallSeamExemptions()}.
+     */
+    private static final class SeamExemptions
+    {
+
+        static final java.util.Set<String> NAMES = checkedRegistryCallSeamExemptions();
+    }
+
+    /**
+     * The registry names exempt from the generic load-time argument seam: exactly the
+     * <b>compiler-dispatched</b> calls ({@code CompilerDispatchedCalls} — {@code fn == null}
+     * descriptors the compiler compiles through its own dedicated arms, never through the generic
+     * binder tail). They keep their tailored seams: the strict readers of
+     * {@link #TAILORED_CALL_READERS} and the Check-operator validators of
+     * {@link #validateInlineCallShapes} ({@code keep_missings=}, {@code relation=}, the unique-set
+     * shape), which a generic binder pass would pre-empt. EVERY other registry function — the
+     * functions the registry evaluates — meets the generic seam at load (combined review of runbook
+     * W2–W8, W4 M4: the seam used to be an allowlist of the wave-4 / wave-4b names, so an inline
+     * {@code row_max(name_pattern=TRTEDT)} or a dictionary call with a non-literal level loaded and
+     * failed only at its first evaluation).
+     *
+     * <p>
+     * The set is self-checked on first use so the exemption cannot pass vacuously or widen by
+     * accident: it must be non-empty, every member must be a registered name whose descriptor
+     * carries no {@code EvalFunction} (a registry-evaluated function can never hide in it), and
+     * every tailored reader must be a member.
+     * </p>
+     *
+     * @return the exempt names (unmodifiable)
+     * @throws IllegalStateException
+     *             if the exemption set violates one of its invariants
+     */
+    public static java.util.Set<String> registryCallSeamExemptions()
+    {
+        return SeamExemptions.NAMES;
+    }
+
+
+    private static java.util.Set<String> checkedRegistryCallSeamExemptions()
+    {
+        java.util.Set<String> names = new java.util.TreeSet<>();
+        names.addAll(net.cumba.corej.core.expr.eval.spi.CompilerDispatchedCalls.booleanCallNames());
+        names.addAll(net.cumba.corej.core.expr.eval.spi.CompilerDispatchedCalls
+                .negationDispatchedBooleanCallNames());
+        names.addAll(net.cumba.corej.core.expr.eval.spi.CompilerDispatchedCalls.valueCallNames());
+        if (names.isEmpty())
+        {
+            throw new IllegalStateException(
+                    "the registry-call seam exemption set is empty — the compiler-dispatched"
+                            + " names were not found, so every tailored call would meet the"
+                            + " generic binder seam");
+        }
+        for (String name : names)
+        {
+            net.cumba.corej.core.expr.eval.FunctionDescriptor d = net.cumba.corej.core.expr.eval.FunctionRegistry
+                    .descriptor(name);
+            if (d == null)
             {
-                validateInlineUniqueSetShape(call);
+                throw new IllegalStateException("registry-call seam exemption '" + name
+                        + "' is not a registered function name");
+            }
+            if (d.fn() != null)
+            {
+                throw new IllegalStateException("registry-call seam exemption '" + name
+                        + "' is a registry-evaluated function (it carries an EvalFunction), so"
+                        + " it must meet the generic load-time seam");
             }
         }
-        childrenOf(expr).forEach(RulePackageLoader::validateInlineMissingValues);
+        for (String tailored : TAILORED_CALL_READERS.keySet())
+        {
+            if (!names.contains(tailored))
+            {
+                throw new IllegalStateException("tailored call reader '" + tailored
+                        + "' is not a compiler-dispatched registry name");
+            }
+        }
+        return java.util.Collections.unmodifiableSet(names);
+    }
+
+
+    /**
+     * Applies the load-time argument seams to every registry call in {@code expr}, nested calls and
+     * list-literal members included; a seam's refusal is the rule's load error. A
+     * compiler-dispatched call ({@link #registryCallSeamExemptions()}) meets its tailored strict
+     * reader when it has one ({@link #TAILORED_CALL_READERS}) and otherwise its compiler arm; every
+     * other registered name meets {@code ExprCompiler.validateRegistryCall} (the binder's arity /
+     * unknown-parameter errors, the R1 column-vs-literal seam, the static-string, static-list and
+     * vocabulary seams); an unknown name is left to the compiler's own error.
+     */
+    private static void validateRegistryCallSeams(net.cumba.corej.core.expr.ast.Expr expr)
+    {
+        switch (expr)
+        {
+        case net.cumba.corej.core.expr.ast.Expr.And and -> and.parts()
+                .forEach(RulePackageLoader::validateRegistryCallSeams);
+        case net.cumba.corej.core.expr.ast.Expr.Or or -> or.parts()
+                .forEach(RulePackageLoader::validateRegistryCallSeams);
+        case net.cumba.corej.core.expr.ast.Expr.Not not -> validateRegistryCallSeams(not.inner());
+        case net.cumba.corej.core.expr.ast.Expr.Binary b ->
+        {
+            validateRegistryCallSeams(b.left());
+            validateRegistryCallSeams(b.right());
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Call call ->
+        {
+            try
+            {
+                java.util.function.Consumer<net.cumba.corej.core.expr.ast.Expr.Call> tailored = TAILORED_CALL_READERS
+                        .get(call.name());
+                if (tailored != null)
+                {
+                    tailored.accept(call);
+                }
+                else if (!registryCallSeamExemptions().contains(call.name()))
+                {
+                    net.cumba.corej.core.expr.eval.ExprCompiler.validateRegistryCall(call);
+                }
+            }
+            catch (net.cumba.corej.core.expr.ExpressionException ex)
+            {
+                // (ExpressionException always carries a message; the valueOf is NullAway's due.)
+                throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                        String.valueOf(ex.getMessage()), ex);
+            }
+            call.args().forEach(RulePackageLoader::validateRegistryCallSeams);
+            call.kwargs().values().forEach(RulePackageLoader::validateRegistryCallSeams);
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Lit lit ->
+        {
+            if (lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST
+                    && lit.value() instanceof List<?> items)
+            {
+                for (Object item : items)
+                {
+                    if (item instanceof net.cumba.corej.core.expr.ast.Expr e)
+                    {
+                        validateRegistryCallSeams(e);
+                    }
+                }
+            }
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Ref _ ->
+                {
+                }
+        }
     }
 
     /** The uniqueness pair whose canonical authored form is {@code f([A, B, …])} (2026-08-23). */
@@ -1438,11 +1594,11 @@ public class RulePackageLoader
             "date_part_not_equal_to", "time_part_not_equal_to");
 
     /**
-     * Walks the Check tree collecting {@code declared id ⇒ silencing operator} pairs.
+     * Walks the Check tree collecting {@code declaring call ⇒ silencing operator} pairs.
      * {@code negated} carries the parity of the enclosing {@code not:} nesting.
      */
     private static void collectSilencingConsumers(@Nullable CheckCondition condition,
-            List<String> declared, boolean negated, Map<String, String> out)
+            boolean negated, Map<String, String> out)
     {
         // Handled before the switch rather than as a `case null` arm: an empty arm in a pattern
         // switch reads to SpotBugs as SF_SWITCH_FALLTHROUGH.
@@ -1453,13 +1609,12 @@ public class RulePackageLoader
         switch (condition)
         {
         case CheckConditionAll all -> all.getConditions()
-                .forEach(c -> collectSilencingConsumers(c, declared, negated, out));
+                .forEach(c -> collectSilencingConsumers(c, negated, out));
         case CheckConditionAny any -> any.getConditions()
-                .forEach(c -> collectSilencingConsumers(c, declared, negated, out));
-        case CheckConditionNot not -> collectSilencingConsumers(not.getCondition(), declared,
-                !negated, out);
+                .forEach(c -> collectSilencingConsumers(c, negated, out));
+        case CheckConditionNot not -> collectSilencingConsumers(not.getCondition(), !negated, out);
         case net.cumba.corej.core.model.CheckConditionExpression expr -> collectSilencingExpr(
-                expr.expr(), declared, negated, out);
+                expr.expr(), negated, out);
         }
     }
 
@@ -1470,16 +1625,16 @@ public class RulePackageLoader
      * treatment of unenumerated operators.
      */
     private static void collectSilencingExpr(net.cumba.corej.core.expr.ast.Expr expr,
-            List<String> declared, boolean negated, Map<String, String> out)
+            boolean negated, Map<String, String> out)
     {
         switch (expr)
         {
         case net.cumba.corej.core.expr.ast.Expr.And and -> and.parts()
-                .forEach(p -> collectSilencingExpr(p, declared, negated, out));
+                .forEach(p -> collectSilencingExpr(p, negated, out));
         case net.cumba.corej.core.expr.ast.Expr.Or or -> or.parts()
-                .forEach(p -> collectSilencingExpr(p, declared, negated, out));
+                .forEach(p -> collectSilencingExpr(p, negated, out));
         case net.cumba.corej.core.expr.ast.Expr.Not not -> collectSilencingExpr(not.inner(),
-                declared, !negated, out);
+                !negated, out);
         case net.cumba.corej.core.expr.ast.Expr.Binary binary ->
         {
             String operator = switch (binary.op())
@@ -1494,14 +1649,7 @@ public class RulePackageLoader
             };
             if (operator != null && isSilencing(operator, negated))
             {
-                for (String id : declared)
-                {
-                    if (referencesId(binary.left(), id) || referencesId(binary.right(), id))
-                    {
-                        out.putIfAbsent(id, operator);
-                    }
-                }
-                // An INLINE declaring call is its own consumer: it has no `$`-id, so it is matched
+                // A declaring call is its own consumer: it has no `$`-id, so it is matched
                 // structurally rather than by name.
                 String inline = inlineIndeterminate(binary.left());
                 if (inline == null)
@@ -1515,57 +1663,27 @@ public class RulePackageLoader
             }
             // The operands themselves may hold further comparisons (an arithmetic sub-tree, a
             // call argument), so the walk continues rather than stopping at the Binary.
-            childrenOf(binary).forEach(p -> collectSilencingExpr(p, declared, negated, out));
+            childrenOf(binary).forEach(p -> collectSilencingExpr(p, negated, out));
         }
-        default -> childrenOf(expr).forEach(p -> collectSilencingExpr(p, declared, negated, out));
+        default -> childrenOf(expr).forEach(p -> collectSilencingExpr(p, negated, out));
         }
     }
 
 
     /**
-     * Whether {@code operand} reads the declared operation {@code id}.
-     *
-     * <p>
-     * ⚠ <b>Recursive, and deliberately over-matching.</b> The comparison operand is not always a
-     * bare {@code $}-ref: a conversion wrapper is transparent to operand identity, so a rule
-     * written {@code date($min_ds) == DSSTDTC} means exactly what {@code $min_ds == DSSTDTC} means
-     * (the retired lowering stripped {@code date(…)} / {@code num(…)} / {@code lowcase(…)} before
-     * naming the operand, and the engine's semantics kept that equivalence). A literal
-     * {@code instanceof Expr.Ref} test would judge the first and miss the second. Descending into
-     * every sub-expression keeps the guard on its stated policy that over-rejection is the safe
-     * direction.
-     * </p>
-     */
-    private static boolean referencesId(net.cumba.corej.core.expr.ast.Expr operand, String id)
-    {
-        if (operand instanceof net.cumba.corej.core.expr.ast.Expr.Ref ref && id.equals(ref.name()))
-        {
-            return true;
-        }
-        for (net.cumba.corej.core.expr.ast.Expr child : childrenOf(operand))
-        {
-            if (referencesId(child, id))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-
-    /**
-     * The inline twin of {@link #referencesId}: returns a display name for an operation call
-     * declaring {@code missing_values: indeterminate} anywhere inside {@code operand}, or
-     * {@code null}. Such a call <em>is</em> the operation — there is no {@code $}-id to look up —
-     * so the polarity gate has to recognise it structurally or the whole inline authoring surface
-     * escapes the third rejection.
+     * Returns a display name for a call declaring {@code missing_values: indeterminate} anywhere
+     * inside {@code operand} (recursively, so a {@code min_date(…)} nested in
+     * {@code date_diff_days(…)}'s argument is found — a conversion wrapper or an enclosing function
+     * is transparent to it, and over-matching is the safe direction), or {@code null}. Such a call
+     * has no {@code $}-id to look up, so the polarity gate recognises it structurally.
      */
     private static @Nullable String inlineIndeterminate(net.cumba.corej.core.expr.ast.Expr operand)
     {
         if (operand instanceof net.cumba.corej.core.expr.ast.Expr.Call call
                 && call.kwargs()
                         .get("missing_values") instanceof net.cumba.corej.core.expr.ast.Expr.Lit lit
-                && Operation.MISSING_VALUES_INDETERMINATE.equals(lit.value()))
+                && net.cumba.corej.core.exec.GroupedAggregate.MISSING_VALUES_INDETERMINATE
+                        .equals(lit.value()))
         {
             return call.name() + "(…) inline";
         }
@@ -1716,14 +1834,13 @@ public class RulePackageLoader
 
     /**
      * The gate terms one inline call demands, read through {@code ProviderNeeds} — the one reader
-     * of provider needs ({@code PLAN-binding-expressions} §5.2 / I1): an inline
-     * {@code OperationType} call by its predicates <b>and</b> a registry function by its provider
-     * capability, so a ported provider-backed function inline in the Check gets exactly the
+     * of provider needs ({@code PLAN-binding-expressions} §5.2 / I1): a registry function by its
+     * provider capability, so a provider-backed function inline in the Check gets exactly the
      * {@code library_available()} / {@code available(<call>)} / {@code dictionary_available("…")}
-     * terms the operation it replaces got. ({@code available(<call>)} reads the capability's
+     * terms the operation it replaced got. ({@code available(<call>)} reads the capability's
      * "answered but unusable" signal as "not available" — {@code ExprCompiler}'s availability-gate
-     * arm.) The {@code dictionary_available} operation is never gated on itself: it IS the gate, as
-     * the eager declared-form arm has always treated it.
+     * arm.) The {@code dictionary_available} call is never gated on itself: it IS the gate, as the
+     * eager binding arm has always treated it.
      */
     private static void gateTermsForCall(net.cumba.corej.core.expr.ast.Expr.Call call,
             net.cumba.corej.core.expr.ast.Expr check,
@@ -1896,36 +2013,9 @@ public class RulePackageLoader
                     level.getValue().condition());
             levels.put(level.getKey(), raised);
         }
-        // Element B: lower a `variable_exists` operation consumed as `$X == true/false` into the
-        // Check as the var_exists(<col>) function, via VariableExistsInliner, so a rule that still
-        // declares the operation form evaluates `var_exists()` exactly as one authored with the
-        // function does. (The offline converter that once applied the same mapping to the corpus,
-        // OperationInliner, was deleted 2026-08-26.)
-        inlineVariableExistsOps(rule, levels);
-        // T9: lower a `split_by` operation into the per-row split_by(<col>, "<delim>") value
-        // function, via SplitByInliner. ⚠ No authored rule can DECLARE that operation form any
-        // more — the Operations: key is rejected at deserialisation
-        // (Rule.rejectRetiredOperationsKey) and a Bindings: call has no split_by descriptor
-        // (OperationExpressionParser.fromCall). The one way an Operation whose operator is
-        // "split_by" still arises is TokenExpander's token substitution, which rewrites every text
-        // value of a bound Operation, the operator included; that is why the seam is kept
-        // (PLAN-retire-dead-multi-match-lookup §1.2 E-1). (The offline converter that once applied
-        // the same mapping to the corpus, OperationInliner, was deleted 2026-08-26.)
-        inlineSplitByOps(rule, levels);
-        // ⚠ The two seams above stayed no-ops for production rules/ across
-        // plans/done/PLAN-operations-no-inline.md (D31, 2026-08-08), which stopped OperationInliner
-        // inlining OPERATIONS but deliberately kept it lowering these two RETIRED operators —
-        // neither has an OperationType, so a rule still declaring one fails to load once the
-        // corpus renders it in Form B ("unknown operation function"). Measured with the corpus
-        // lowerings gated off: 21 rules gained exactly that loadError.
-        //
-        // ⚑ variable_exists is no longer retired: OperationType.VARIABLE_EXISTS exists again, as
-        // the REPORTING carriage of the var_exists(X) function (not a second verdict surface). The
-        // lowering therefore stays — the Check keeps saying var_exists(X), so no verdict moves —
-        // but it now RETAINS an operation whose $-id the rule declares in Outcome.Output_Variables
-        // (VariableExistsInliner.reported), so that output variable has a value again. split_by is
-        // still genuinely retired: see SplitByInliner for why a per-row token list has no
-        // operation shape today.
+        // (Element B — the `variable_exists` lowering — is gone with the operation: runbook W2a
+        // re-spelled every site as the compiled binding `var_exists("X")`, PLAN-operation-
+        // replacements §2.4.)
         // ⚑ The Plan J3/J4 absent-column guard injection that stood here is DELETED
         // (2026-08-26, owner-ruled). Every guard the corpus needs is now AUTHORED — as
         // Requirements.Variables.All where absence means there is nothing to check, or as a
@@ -1989,7 +2079,7 @@ public class RulePackageLoader
      * bindings for stage A and the runner — each expression is metadata-canonicalised exactly as
      * the Check's levels are (the uniformity ruling: a name means the same in a binding as in the
      * Check), its derived evaluation domain is installed in authored order
-     * ({@link net.cumba.corej.core.expr.eval.OperationKinds#forRule} — a binding sees the domains
+     * ({@link net.cumba.corej.core.expr.eval.BindingDomains#forRule} — a binding sees the domains
      * of the bindings authored before it), and its plan is compiled once. A binding the native
      * backend cannot compile is a load error naming the binding, never a silent absent value.
      *
@@ -2015,7 +2105,7 @@ public class RulePackageLoader
                     binding.predecessors(), null));
         }
         rule.setCompiledBindings(canonical);
-        net.cumba.corej.core.expr.eval.OperationKinds kinds = net.cumba.corej.core.expr.eval.OperationKinds
+        net.cumba.corej.core.expr.eval.BindingDomains kinds = net.cumba.corej.core.expr.eval.BindingDomains
                 .forRule(rule);
         List<net.cumba.corej.core.model.CompiledBinding> installed = new ArrayList<>(
                 canonical.size());
@@ -2079,7 +2169,7 @@ public class RulePackageLoader
             // FindingScope from). A memoised result of the inference, never an input to it.
             net.cumba.corej.core.expr.eval.Domain domain = net.cumba.corej.core.expr.eval.DomainScan
                     .infer(level.getValue(),
-                            net.cumba.corej.core.expr.eval.OperationKinds.forRule(rule));
+                            net.cumba.corej.core.expr.eval.BindingDomains.forRule(rule));
             join = join == null ? domain : join.join(domain);
         }
         Map.Entry<Severity, net.cumba.corej.core.expr.ast.Expr> strictest = levels.firstEntry();
@@ -2103,42 +2193,6 @@ public class RulePackageLoader
 
 
     /**
-     * Writes the (possibly rewritten) level expressions back onto the rule as {@code Check}
-     * conditions, in expression form.
-     *
-     * <p>
-     * The single-level branch is the {@code rule.setCheck(new CheckConditionExpression(…))} the two
-     * operation-inlining seams have always done; the level branch does the same for every level,
-     * preserving each level's own {@code Message}.
-     * </p>
-     */
-    private static void writeBackLevelChecks(Rule rule,
-            SequencedMap<Severity, net.cumba.corej.core.expr.ast.Expr> levels)
-    {
-        SequencedMap<Severity, LevelCheck> declared = rule.getCheckLevels();
-        if (declared == null)
-        {
-            net.cumba.corej.core.expr.ast.Expr only = levels.firstEntry().getValue();
-            rule.setCheck(new net.cumba.corej.core.model.CheckConditionExpression(only,
-                    net.cumba.corej.core.expr.ExpressionPrinter.print(only)));
-            return;
-        }
-        SequencedMap<Severity, LevelCheck> out = new LinkedHashMap<>();
-        for (Map.Entry<Severity, LevelCheck> level : declared.entrySet())
-        {
-            net.cumba.corej.core.expr.ast.Expr rewritten = java.util.Objects
-                    .requireNonNull(levels.get(level.getKey()), "every declared level was raised");
-            out.put(level.getKey(),
-                    new LevelCheck(
-                            new net.cumba.corej.core.model.CheckConditionExpression(rewritten,
-                                    net.cumba.corej.core.expr.ExpressionPrinter.print(rewritten)),
-                            level.getValue().message()));
-        }
-        rule.setCheckLevels(out);
-    }
-
-
-    /**
      * P6b: raises a fold-equivalent {@code Precondition} so the skip-on-false decision evaluates
      * natively. Non-broadcast preconditions stay {@code null} ("not fully resolvable ⇒ continue"),
      * exactly as the retired legacy fold left them.
@@ -2152,10 +2206,27 @@ public class RulePackageLoader
         net.cumba.corej.core.expr.ast.Expr pre = tryRaiseToExpr(rule.getPrecondition());
         try
         {
-            if (net.cumba.corej.core.expr.eval.NativeExprEvaluator.isSupported(pre)
-                    && isBroadcastVerdictExpr(pre))
+            boolean broadcast = isBroadcastVerdictExpr(pre);
+            if (net.cumba.corej.core.expr.eval.NativeExprEvaluator.isSupported(pre))
             {
-                rule.setPreconditionExpr(pre);
+                if (broadcast)
+                {
+                    rule.setPreconditionExpr(pre);
+                }
+            }
+            else if (broadcast)
+            {
+                // Combined review of runbook W2–W8 (W8, filed pre-existing): a broadcast-shaped
+                // gate the compiler REFUSES used to leave getPreconditionExpr() null, and a null
+                // one means "not fully resolvable ⇒ continue" — the gate was silently ignored and
+                // the rule ran ungated. Since R8 every Precondition is engine-written, so a refused
+                // gate is an engine defect: loud, at load, naming the compiler's reason.
+                String error = "[" + ruleId(rule) + "] the Precondition gate `"
+                        + net.cumba.corej.core.expr.ExpressionPrinter.print(pre)
+                        + "` has no native expression form (" + nativeRefusal(pre)
+                        + ") — a refused gate would be silently ignored";
+                rule.setLoadError(
+                        rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
             }
         }
         catch (net.cumba.corej.core.expr.RuleDefinitionException ex)
@@ -2164,6 +2235,21 @@ public class RulePackageLoader
             // retired generic exists) is a rule load error, never a propagating throw.
             rule.setLoadError(rule.getLoadError() == null ? ex.getMessage()
                     : rule.getLoadError() + "; " + ex.getMessage());
+        }
+    }
+
+
+    /** The compiler's refusal of {@code expr} (only called once {@code isSupported} said no). */
+    private static String nativeRefusal(net.cumba.corej.core.expr.ast.Expr expr)
+    {
+        try
+        {
+            net.cumba.corej.core.expr.eval.ExprCompiler.compile(expr);
+            return "the compiler gave no reason";
+        }
+        catch (net.cumba.corej.core.expr.ExpressionException ex)
+        {
+            return String.valueOf(ex.getMessage());
         }
     }
 
@@ -2204,227 +2290,6 @@ public class RulePackageLoader
         rule.setPrecondition(precondition);
         rule.setPreconditionExpr(null);
         raisePrecondition(rule);
-    }
-
-
-    /**
-     * Element B: lowers a {@code variable_exists} operation consumed in {@code check} as
-     * {@code $X == true} / {@code $X == false} into the {@code var_exists(<col>)} /
-     * {@code not var_exists(<col>)} check function, dropping the inlined operation from the rule —
-     * <b>except</b> one whose {@code $}-id the rule declares in {@code Outcome.Output_Variables},
-     * which is retained so its value can still be reported (see
-     * {@link net.cumba.corej.core.expr.convert.VariableExistsInliner#reported}). Leaves the rule
-     * unchanged when it has no eligible {@code variable_exists} operation.
-     *
-     * <p>
-     * The mapping itself is {@link net.cumba.corej.core.expr.convert.VariableExistsInliner}, the
-     * one place it is defined. Eligibility spans every declared Check level and the Precondition:
-     * an operation is inlined only when every reference to its {@code $}-id is a
-     * {@code $X == true/false} operand, the Precondition's references included (every Precondition
-     * raises — {@code tryRaiseToExpr} cannot fail).
-     * </p>
-     */
-    private static void inlineVariableExistsOps(Rule rule,
-            SequencedMap<Severity, net.cumba.corej.core.expr.ast.Expr> levels)
-    {
-        Map<String, String> candidates = new LinkedHashMap<>(
-                net.cumba.corej.core.expr.convert.VariableExistsInliner
-                        .candidateColumns(rule.getOperations()));
-        // PLAN-binding-expressions R4: an operation a COMPILED binding reads is not inlinable —
-        // the inliner rewrites only the Check / Precondition, so dropping it would leave the
-        // binding's $-reference dangling at run time.
-        candidates.keySet().removeAll(compiledBindingReferences(rule));
-        if (candidates.isEmpty())
-        {
-            return;
-        }
-        // Eligibility (and the rewrite) span the Check AND the Precondition — an operation may only
-        // be inlined when *every* reference to its $-id (in either tree) is a `$X == true/false`
-        // operand. The Precondition always raises (tryRaiseToExpr cannot fail since K7), so its
-        // references are counted like the Check's.
-        net.cumba.corej.core.expr.ast.Expr pre = null;
-        if (rule.getPrecondition() != null)
-        {
-            pre = tryRaiseToExpr(rule.getPrecondition());
-        }
-        // Plan C §3.3: eligibility spans EVERY declared level, not just the strictest. An
-        // operation referenced from a weaker level is still referenced; dropping it because the
-        // strictest level happens not to mention it would leave that level with a dangling $-ref.
-        List<net.cumba.corej.core.expr.ast.Expr> scope = new ArrayList<>(levels.values());
-        if (pre != null)
-        {
-            scope.add(pre);
-        }
-        Map<String, String> eligible = net.cumba.corej.core.expr.convert.VariableExistsInliner
-                .eligible(scope, candidates);
-        if (eligible.isEmpty())
-        {
-            return;
-        }
-        // Drop the inlined operations so RuleRunner does not re-execute the verdict the Check now
-        // carries as var_exists(...) — EXCEPT the ones the rule reports. A reported id keeps its
-        // operation (and its Output_Variables entry) so its $-result still materialises for the
-        // finding: variable_exists has an OperationType again, and executing it costs one column
-        // lookup. See VariableExistsInliner.reported — the verdict stays on the function either
-        // way, so this cannot move a violation count.
-        java.util.Set<String> reported = net.cumba.corej.core.expr.convert.VariableExistsInliner
-                .reported(eligible.keySet(),
-                        rule.getOutcome() == null ? null : rule.getOutcome().getOutputVariables());
-        List<Operation> ops = rule.getOperations();
-        if (ops != null)
-        {
-            List<Operation> kept = new ArrayList<>(ops.size());
-            for (Operation op : ops)
-            {
-                if (op.getId() == null || !eligible.containsKey(op.getId())
-                        || reported.contains(op.getId()))
-                {
-                    kept.add(op);
-                }
-            }
-            rule.setOperations(kept.isEmpty() ? null : kept);
-        }
-        // A dropped operation no longer materialises a $-result, so its now-dangling
-        // Output_Variable reference goes with it: the rule reports no Output_Variable for a
-        // $-result that no longer exists. A RETAINED operation keeps both.
-        if (rule.getOutcome() != null && rule.getOutcome().getOutputVariables() != null)
-        {
-            List<String> keptVars = new ArrayList<>();
-            for (String ov : rule.getOutcome().getOutputVariables())
-            {
-                // Compare the bare id: an exclusion token `!$X` follows its `$X` (E-2) — dropped
-                // with the operation it names, never left dangling.
-                String id = net.cumba.corej.core.model.OutputVariableToken.name(ov);
-                if (!eligible.containsKey(id) || reported.contains(id))
-                {
-                    keptVars.add(ov);
-                }
-            }
-            rule.getOutcome().setOutputVariables(keptVars);
-        }
-        // Rewrite the Precondition the same way (an eligible $X may appear in it), so the
-        // dropped operation leaves no dangling $-ref. Its expression form is raised again by
-        // installNativeExpr's Precondition pass below.
-        if (pre != null)
-        {
-            net.cumba.corej.core.expr.ast.Expr preRewritten = net.cumba.corej.core.expr.convert.VariableExistsInliner
-                    .rewrite(pre, eligible);
-            rule.setPrecondition(new net.cumba.corej.core.model.CheckConditionExpression(
-                    preRewritten, net.cumba.corej.core.expr.ExpressionPrinter.print(preRewritten)));
-        }
-        for (Map.Entry<Severity, net.cumba.corej.core.expr.ast.Expr> level : levels.entrySet())
-        {
-            level.setValue(net.cumba.corej.core.expr.convert.VariableExistsInliner
-                    .rewrite(level.getValue(), eligible));
-        }
-        // Replace the org-form Check tree with the inlined expression form. RuleRunner's Fix #15
-        // output-variable inference reads rule.getCheck() (the tree) and would otherwise re-collect
-        // the now-dropped $X operand from the `$X == true` leaf; an expression-form Check yields no
-        // inferred columns, exactly as the shipped rules/ load. Native evaluation uses the
-        // checkExpr installNativeExpr sets from the rewritten expressions.
-        writeBackLevelChecks(rule, levels);
-    }
-
-
-    /**
-     * Every {@code $}-name the rule's compiled bindings reference ({@code PLAN-binding-expressions}
-     * R4 / R5): the operations the two load-time inliners must not drop.
-     */
-    private static java.util.Set<String> compiledBindingReferences(Rule rule)
-    {
-        java.util.Set<String> refs = new java.util.LinkedHashSet<>();
-        List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
-        if (compiled != null)
-        {
-            compiled.forEach(binding -> collectOperandRefs(binding.expression(), refs));
-        }
-        return refs;
-    }
-
-
-    /**
-     * T9: lowers a {@code split_by} operation into the per-row {@code split_by(<col>, "<delim>")}
-     * value function within {@code check}, dropping the inlined operation from the rule. Leaves the
-     * rule unchanged when it has no referenced {@code split_by} operation.
-     *
-     * <p>
-     * The mapping itself is {@link net.cumba.corej.core.expr.convert.SplitByInliner}, the one place
-     * it is defined. Eligibility spans the Check and the Precondition (an eligible {@code $}-id may
-     * appear in either); every Precondition raises ({@code tryRaiseToExpr} cannot fail), so its
-     * references are always counted.
-     * </p>
-     */
-    private static void inlineSplitByOps(Rule rule,
-            SequencedMap<Severity, net.cumba.corej.core.expr.ast.Expr> levels)
-    {
-        Map<String, net.cumba.corej.core.expr.ast.Expr> candidates = new LinkedHashMap<>(
-                net.cumba.corej.core.expr.convert.SplitByInliner
-                        .candidateCalls(rule.getOperations()));
-        // PLAN-binding-expressions R5: as for variable_exists (R4) — never drop an operation a
-        // compiled binding reads.
-        candidates.keySet().removeAll(compiledBindingReferences(rule));
-        if (candidates.isEmpty())
-        {
-            return;
-        }
-        net.cumba.corej.core.expr.ast.Expr pre = null;
-        if (rule.getPrecondition() != null)
-        {
-            pre = tryRaiseToExpr(rule.getPrecondition());
-        }
-        // Plan C §3.3: the reference scope is every declared level — see inlineVariableExistsOps.
-        List<net.cumba.corej.core.expr.ast.Expr> scope = new ArrayList<>(levels.values());
-        if (pre != null)
-        {
-            scope.add(pre);
-        }
-        Map<String, net.cumba.corej.core.expr.ast.Expr> eligible = net.cumba.corej.core.expr.convert.SplitByInliner
-                .referenced(scope, candidates);
-        if (eligible.isEmpty())
-        {
-            return;
-        }
-        // Drop the inlined operations so RuleRunner does not try to execute the split_by operator
-        // (which has no OperationType and would resolve to null).
-        List<Operation> ops = rule.getOperations();
-        if (ops != null)
-        {
-            List<Operation> kept = new ArrayList<>(ops.size());
-            for (Operation op : ops)
-            {
-                if (op.getId() == null || !eligible.containsKey(op.getId()))
-                {
-                    kept.add(op);
-                }
-            }
-            rule.setOperations(kept.isEmpty() ? null : kept);
-        }
-        if (rule.getOutcome() != null && rule.getOutcome().getOutputVariables() != null)
-        {
-            List<String> keptVars = new ArrayList<>();
-            for (String ov : rule.getOutcome().getOutputVariables())
-            {
-                // Bare id, so `!$X` follows `$X` (E-2) — see inlineVariableExistsOps.
-                if (!eligible.containsKey(net.cumba.corej.core.model.OutputVariableToken.name(ov)))
-                {
-                    keptVars.add(ov);
-                }
-            }
-            rule.getOutcome().setOutputVariables(keptVars);
-        }
-        if (pre != null)
-        {
-            net.cumba.corej.core.expr.ast.Expr preRewritten = net.cumba.corej.core.expr.convert.SplitByInliner
-                    .rewrite(pre, eligible);
-            rule.setPrecondition(new net.cumba.corej.core.model.CheckConditionExpression(
-                    preRewritten, net.cumba.corej.core.expr.ExpressionPrinter.print(preRewritten)));
-        }
-        for (Map.Entry<Severity, net.cumba.corej.core.expr.ast.Expr> level : levels.entrySet())
-        {
-            level.setValue(net.cumba.corej.core.expr.convert.SplitByInliner
-                    .rewrite(level.getValue(), eligible));
-        }
-        writeBackLevelChecks(rule, levels);
     }
 
     /**
@@ -2599,7 +2464,7 @@ public class RulePackageLoader
         {
             net.cumba.corej.core.expr.ast.Expr pre = tryRaiseToExpr(rule.getPrecondition());
             return net.cumba.corej.core.expr.eval.DomainScan
-                    .infer(pre, net.cumba.corej.core.expr.eval.OperationKinds.forRule(rule))
+                    .infer(pre, net.cumba.corej.core.expr.eval.BindingDomains.forRule(rule))
                     .varCursor();
         }
         catch (net.cumba.corej.core.expr.RuleDefinitionException
@@ -2966,8 +2831,8 @@ public class RulePackageLoader
             // PLAN-rule-unknown-keys-gate — owner, 2026-09-25: "unknown keys in a rule should
             // always result in a load error". Every other block's collector, walked once, in R2's
             // shape with the key's path. Runs here, on the AUTHORED objects: nothing before this
-            // point replaces a bound object (normalizeOperations / deriveOmittedFields mutate
-            // fields), and the JSON round-trip clones (TokenExpander, RuleSpecialiser) happen at
+            // point replaces a bound object (deriveOmittedFields mutates fields), and the JSON
+            // round-trip clones (TokenExpander, RuleSpecialiser) happen at
             // generation time, after every load gate.
             validateUnknownKeys(rule, errors);
             // PLAN-rule-unknown-keys-gate §5.7 — the join-key authoring gate the owner ruled for
@@ -2992,8 +2857,9 @@ public class RulePackageLoader
             {
                 // ⚠ APPEND, never overwrite. Every sibling writer of this field appends; this one
                 // used to assign, which was latent only because no rule reached here already
-                // carrying an error from an EARLIER finishLoad pass (normalizeOperations' EC-51
-                // polarity rejection, :556; checkVariableUniverse, :1750/:1763). Gate R8 made that
+                // carrying an error from an EARLIER finishLoad pass (the missing_values polarity
+                // rejection, validateMissingValuesPolarity; checkVariableUniverse). Gate R8 made
+                // that
                 // reachable — a rule with an authored Precondition AND a silencing consumer lost
                 // the first diagnosis entirely and reported only R8's.
                 String joined = String.join("; ", errors);
@@ -3194,11 +3060,8 @@ public class RulePackageLoader
 
     /**
      * Whether every AND-term of {@code precondition} is one of the machine-emitted availability
-     * gates — the exact shape {@code injectInlineOperationGates} writes (the two inliners,
-     * {@code inlineVariableExistsOps} and {@code inlineSplitByOps}, rewrite the Check <em>and</em>
-     * the Precondition — {@code setPrecondition} with the rewritten tree — but add no gate term),
-     * and the shape the retired {@code OperationInliner}'s {@code addLibraryPreconditionGate}
-     * wrote.
+     * gates — the exact shape {@code injectInlineOperationGates} writes, and the shape the retired
+     * {@code OperationInliner}'s {@code addLibraryPreconditionGate} wrote.
      *
      * <p>
      * ⚠⚠ This is what keeps gate R8 an <b>authoring</b> gate rather than a corpus gate. The
@@ -4664,7 +4527,7 @@ public class RulePackageLoader
         // `warnings`: see Rule.getRequirementsGapWarning().
         checkMatchDatasetRequirements(rule);
         // Gate 3c (grouped operation ⇒ Rule_Type Record Data) is gone — phase 6 of
-        // PLAN-leaf-scope-domain-inference.md: a grouped operation is a per-row GroupedResult,
+        // PLAN-leaf-scope-domain-inference.md: a grouped function answers per row,
         // which DomainScan reads as the row cursor; the domain forces the row path by construction.
         if (!warnings.isEmpty())
         {
@@ -4710,9 +4573,9 @@ public class RulePackageLoader
         }
         ProviderRequirements derived = ProviderRequirements.of(rule);
         checkProviderFlag(rule, "Library", req.getLibrary(), derived.library(),
-                "a library_* operand or a library-dependent Operation", errors);
+                "a library_* operand or a library-dependent function", errors);
         checkProviderFlag(rule, "Define", req.getDefine(), derived.define(),
-                "a define_* operand or a define-dependent Operation", errors);
+                "a define_* operand or a define-dependent function", errors);
         checkProviderFlag(rule, "Dictionary", req.getDictionary(), derived.dictionary(),
                 "a valid_external_dictionary_* / dictionary_has_decode call", errors);
     }
@@ -4906,10 +4769,7 @@ public class RulePackageLoader
         {
             return;
         }
-        // ⛔ Resolved against BOTH binding kinds: a compiled binding defines its $-name exactly as
-        // an operation binding does, or `Bindings: [{name: $x, expression: upper(AETERM)}]` +
-        // `Check: $x == "FOO"` would be a "dangling $" load ERROR.
-        for (net.cumba.corej.core.model.BoundBinding binding : rule.bindingOrder())
+        for (net.cumba.corej.core.model.CompiledBinding binding : rule.bindingOrder())
         {
             if (binding.name() != null)
             {
@@ -4918,7 +4778,7 @@ public class RulePackageLoader
         }
         // Review round 1, L4: a name AUTHORED in `Bindings:` is not dangling even when its binding
         // did not materialise (a duplicate name, an unnamed or malformed entry) — that failure
-        // carries its own load error, and a second "no Operations entry defines it" message
+        // carries its own load error, and a second "no binding defines it" message
         // misdiagnoses the rule.
         List<net.cumba.corej.core.model.Binding> authored = rule.getBindings();
         if (authored != null)
@@ -4946,262 +4806,22 @@ public class RulePackageLoader
         }
         String message = "[" + ruleId(rule) + "] " + surface + " references the operand"
                 + (undefined.size() == 1 ? " " : "s ") + String.join(", ", undefined)
-                + " which no Operations entry defines: the name never enters the evaluation"
+                + " which no binding defines: the name never enters the evaluation"
                 + " context, so the leaf yields no rows and the rule silently checks nothing";
         rule.setLoadError(
                 rule.getLoadError() == null ? message : rule.getLoadError() + "; " + message);
     }
 
     // ---------------------------------------------------------------------
-    // Fix #156 — a `--` parked in an Operation field resolvePrefixes never resolves
-    // ---------------------------------------------------------------------
-
-    /** The literal domain-prefix wildcard token, as authored. */
-    private static final String WILDCARD_TOKEN = "--";
-
-    /**
-     * The load-finding fragment {@link #validateUnresolvedOperationWildcards(Rule)} emits; the
-     * corpus ratchet greps for it.
-     */
-    private static final String UNRESOLVED_WILDCARD_MARKER = "is not `--`-resolved";
-
-    /**
-     * Tags a rule whose {@code Operations} carry the {@code --} wildcard in {@code reference},
-     * {@code ordering} or {@code offset} — the three <b>column-naming</b> Operation fields that
-     * {@code OperationExecutor.resolvePrefixes} copies <b>verbatim</b>.
-     *
-     * <p>
-     * All three reach {@code DataTableMeta.getColumnIndex} unchanged, so a literal {@code "--SEQ"}
-     * misses every column and the operation quietly produces nothing: {@code evalDateDiffDays}
-     * silently treats an unparseable, unresolvable {@code offset} as {@code 0} (a wrong answer, not
-     * a skip) and reads a missing {@code reference} column as "no reference date". (Wave 1 ported
-     * {@code is_last_in_group} and {@code dy}, the other two readers this used to name; on the
-     * function surface {@code --} is resolved by the typed column parameter and a quoted name is a
-     * load error, so the silence is unrepresentable there.) Nothing downstream distinguishes that
-     * from clean data — the same silence class as {@link #validateOperationReferences(Rule)}, so it
-     * gets the same load channel.
-     * </p>
-     *
-     * <p>
-     * <b>Why a guard and not resolution.</b> The three fields have no single well-defined prefix to
-     * substitute. {@code reference} names a column of the <em>evaluation</em> record in
-     * {@code date_diff_days} Mode 1 and of the <em>foreign {@code domain}</em> dataset in Mode 2 —
-     * two different datasets, one field (until wave 1 ported {@code dy}, whose reference was a
-     * column of {@code DM}, it was three). Substituting the evaluation domain's variable prefix
-     * would therefore be wrong in one of the two modes, and wrong silently. {@code ordering} and
-     * {@code offset} are unambiguous (both are read off the evaluation table), but they are guarded
-     * alongside {@code reference} so the rule an author learns is one rule and not a per-field
-     * table.
-     * </p>
-     *
-     * <p>
-     * ⚠ <b>{@code minuend_match} is deliberately NOT in this set.</b> Its {@code --} tokens are
-     * resolved <em>per side</em> at evaluation time by
-     * {@code OperationExecutor.buildForeignMinuendResolver} — {@code "--SPID"} becomes
-     * {@code TFSPID} on the evaluation row and {@code PMSPID} on the matched {@code minuend_domain}
-     * record (SENDIG §6.3.15.1 Assumption 5). {@code resolvePrefixes} leaves it alone <em>because
-     * that is the design</em>, as {@code Operation#minuendMatch}'s javadoc and
-     * {@code OperationExecutor}'s copy comment both state, and as
-     * {@code OperationExecutorDateDiffLastInGroupTest} pins. Guarding it would reject the one shape
-     * the field exists for.
-     * </p>
-     *
-     * <p>
-     * <b>Always a {@code loadError}</b>, exactly as {@link #validateOperationReferences(Rule)}: a
-     * rule declaring {@code Executability: "Not Executable"} is parked by {@code removeParkedRules}
-     * before this gate runs ({@code Fix #159}), so there is no self-declared severity downgrade
-     * left to apply.
-     * </p>
-     *
-     * <p>
-     * ⚠ <b>Both operation surfaces are walked.</b> An operation authored <b>inline</b> in a native
-     * Check expression never reaches {@code rule.getOperations()}, so the declared-list walk alone
-     * would miss it — the same separate-load-path hazard {@code validateInlineMissingValues}
-     * documents. This is <em>not</em> a sentinel-prefix collision risk: the walk keys off
-     * {@code ExprCompiler.isInlineOperation}, which requires a real {@code OperationType} name, so
-     * a native leaf function that merely shares a kwarg name is never mistaken for an operation.
-     * Three functions carry an {@code ordering=} kwarg in {@code rules/} and since wave 1 none of
-     * them is an {@code OperationType}: {@code has_next_corresponding_record},
-     * {@code empty_within_except_last_row} and the ported {@code is_last_in_group} are all registry
-     * / compiler-dispatched functions (the {@code ordering} Operation field is gone, D-W1-6), so
-     * this walk no longer meets the kwarg on an operation at all.
-     * </p>
-     *
-     * @param pkg
-     *            the package to judge in place, may be {@code null}
-     */
-    static void validateUnresolvedOperationWildcards(@Nullable RulePackage pkg)
-    {
-        if (pkg == null || pkg.getRules() == null)
-        {
-            return;
-        }
-        for (Rule rule : pkg.getRules().values())
-        {
-            validateUnresolvedOperationWildcards(rule);
-        }
-    }
-
-
-    /**
-     * Per-rule variant of {@link #validateUnresolvedOperationWildcards(RulePackage)}. Appends to a
-     * pre-existing {@code loadError} / {@code loadWarning} rather than clobbering it, so an earlier
-     * cause keeps its first diagnosis.
-     *
-     * <p>
-     * ⚠ History: while the CDISC-Library ingestion existed this was deliberately <b>not</b> wired
-     * into {@code LibraryRuleMapper} (retired by cache P4), unlike its two neighbours: its
-     * {@code mapOperation} bound neither {@code reference} nor {@code ordering} nor {@code offset}
-     * (the CDISC-Library operation model had no such members), so every library-sourced operation
-     * carried {@code null} in all three and the call would have been unconditionally vacuous.
-     * </p>
-     *
-     * @param rule
-     *            the rule to judge in place, may be {@code null}
-     */
-    static void validateUnresolvedOperationWildcards(@Nullable Rule rule)
-    {
-        if (rule == null)
-        {
-            return;
-        }
-        List<String> findings = new ArrayList<>();
-        List<Operation> ops = rule.getOperations();
-        if (ops != null)
-        {
-            for (Operation op : ops)
-            {
-                String id = op == null || op.getId() == null || op.getId().isEmpty() ? "<unnamed>"
-                        : op.getId();
-                collectUnresolvedWildcardFields(op, "operation " + id, findings);
-            }
-        }
-        // ⚑ Plan C §3.3: every declared level.
-        for (CheckCondition level : rule.checkConditions())
-        {
-            collectInlineUnresolvedWildcards(level, findings);
-        }
-        collectInlineUnresolvedWildcards(rule.getPrecondition(), findings);
-        // PLAN-binding-expressions R7: an operation call nested in a COMPILED binding is an inline
-        // call too — `$x: date_diff_days(…, offset="--SEQ") …` is the same silence. (The example
-        // this used to give, is_last_in_group(…, ordering="--SEQ"), is a registry function since
-        // wave 1: there a quoted ordering is a load error of its own, R1.)
-        List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
-        if (compiled != null)
-        {
-            compiled.forEach(
-                    binding -> collectInlineUnresolvedWildcards(binding.expression(), findings));
-        }
-        if (findings.isEmpty())
-        {
-            return;
-        }
-        String message = "[" + ruleId(rule) + "] " + String.join(", ", findings)
-                + ": that position " + UNRESOLVED_WILDCARD_MARKER
-                + " (OperationExecutor.resolvePrefixes copies"
-                + " reference/ordering/offset verbatim, because the column they name is not always"
-                + " in the evaluation dataset), so the literal `--` reaches the column lookup,"
-                + " misses, and the operation yields nothing — the rule silently checks nothing."
-                + " Author the resolved column name";
-        rule.setLoadError(
-                rule.getLoadError() == null ? message : rule.getLoadError() + "; " + message);
-    }
-
-
-    /**
-     * Appends a finding for each of {@code reference} / {@code ordering} / {@code offset} that
-     * carries a {@code --}. {@code minuend_match} is excluded by design — see
-     * {@link #validateUnresolvedOperationWildcards(RulePackage)}.
-     */
-    private static void collectUnresolvedWildcardFields(@Nullable Operation op, String where,
-            List<String> findings)
-    {
-        if (op == null)
-        {
-            return;
-        }
-        addUnresolvedWildcardField(op.getReference(), "reference", where, findings);
-        addUnresolvedWildcardField(op.getOffset(), "offset", where, findings);
-    }
-
-
-    private static void addUnresolvedWildcardField(@Nullable String value, String field,
-            String where, List<String> findings)
-    {
-        if (value != null && value.contains(WILDCARD_TOKEN))
-        {
-            findings.add(where + " declares " + field + "=\"" + value + "\"");
-        }
-    }
-
-
-    /** Walks a Check/Precondition tree for operations authored inline in a native expression. */
-    private static void collectInlineUnresolvedWildcards(@Nullable CheckCondition condition,
-            List<String> findings)
-    {
-        if (condition == null)
-        {
-            return;
-        }
-        switch (condition)
-        {
-        case CheckConditionAll all -> all.getConditions()
-                .forEach(c -> collectInlineUnresolvedWildcards(c, findings));
-        case CheckConditionAny any -> any.getConditions()
-                .forEach(c -> collectInlineUnresolvedWildcards(c, findings));
-        case CheckConditionNot not -> collectInlineUnresolvedWildcards(not.getCondition(),
-                findings);
-        case net.cumba.corej.core.model.CheckConditionExpression expression -> collectInlineUnresolvedWildcards(
-                expression.expr(), findings);
-        }
-    }
-
-
-    private static void collectInlineUnresolvedWildcards(net.cumba.corej.core.expr.ast.Expr expr,
-            List<String> findings)
-    {
-        if (expr instanceof net.cumba.corej.core.expr.ast.Expr.Call call
-                && net.cumba.corej.core.expr.eval.ExprCompiler.isInlineOperation(call))
-        {
-            collectUnresolvedWildcardFields(inlineOperationOrNull(call),
-                    "inline operation " + call.name() + "(…)", findings);
-        }
-        childrenOf(expr).forEach(child -> collectInlineUnresolvedWildcards(child, findings));
-    }
-
-
-    /**
-     * Rebuilds the {@link Operation} an inline call declares, or {@code null} when the call is not
-     * a well-formed one — the compiler rejects that on its own terms, and a malformed call is not
-     * this pass's finding to report. Mirrors the bail-out of {@code gateTermsForCall}.
-     */
-    private static @Nullable Operation inlineOperationOrNull(
-            net.cumba.corej.core.expr.ast.Expr.Call call)
-    {
-        try
-        {
-            return net.cumba.corej.core.expr.convert.OperationExpressionParser.fromCall(call, null);
-        }
-        catch (RuntimeException _)
-        {
-            return null;
-        }
-    }
-
-    // ---------------------------------------------------------------------
     // PLAN-dictionary-seeder Phase 6a (D13 item 3) — a dictionary operation naming no type
     // ---------------------------------------------------------------------
 
-    /**
-     * The load-finding fragment {@link #validateDictionaryOperationTypes(Rule)} emits; tests and
-     * any corpus ratchet grep for it.
-     */
-    private static final String TYPELESS_DICTIONARY_MARKER = "declares no external_dictionary_type";
 
     /**
-     * Tags a rule that carries a dictionary-dependent operation
-     * ({@code valid_external_dictionary_*} / {@code dictionary_has_decode}) with a null or blank
-     * {@code external_dictionary_type}.
+     * Tags a rule that carries a dictionary-dependent call (the registry functions
+     * {@code valid_external_dictionary_*} / {@code dictionary_has_decode}, every one a function
+     * since wave 3 — no operation needs a dictionary any more) whose
+     * {@code external_dictionary_type} is absent, blank or not a static string literal.
      *
      * <p>
      * <b>Why load, why error</b> (owner-ruled, D13 item 3). Such an operation can never be
@@ -5267,16 +4887,6 @@ public class RulePackageLoader
             return;
         }
         List<String> findings = new ArrayList<>();
-        List<Operation> ops = rule.getOperations();
-        if (ops != null)
-        {
-            for (Operation op : ops)
-            {
-                String id = op == null || op.getId() == null || op.getId().isEmpty() ? "<unnamed>"
-                        : op.getId();
-                collectTypelessDictionaryOperation(op, "operation " + id, findings);
-            }
-        }
         // ⚑ Every declared level, plus the Precondition — the same surfaces the wildcard guard
         // walks, for the same reason: an inline operation never reaches rule.getOperations().
         for (CheckCondition level : rule.checkConditions())
@@ -5303,28 +4913,6 @@ public class RulePackageLoader
                 + " dictionaries cannot help";
         rule.setLoadError(
                 rule.getLoadError() == null ? message : rule.getLoadError() + "; " + message);
-    }
-
-
-    /**
-     * Appends a finding when {@code op} is a dictionary-dependent operation (other than the
-     * {@code dictionary_available} gate) whose {@code external_dictionary_type} is null or blank.
-     */
-    private static void collectTypelessDictionaryOperation(@Nullable Operation op, String where,
-            List<String> findings)
-    {
-        if (op == null)
-        {
-            return;
-        }
-        // Wave 1 (D-W1-3): read through ProviderNeeds, the one reader of provider needs — a
-        // dictionary need with no statically named type is the finding, whichever key declares it.
-        net.cumba.corej.core.exec.ProviderNeeds needs = net.cumba.corej.core.exec.ProviderNeeds
-                .ofOperation(op);
-        if (needs.dictionary() && needs.dictionaryTypes().isEmpty())
-        {
-            findings.add(where + " (" + op.getOperationType() + ") " + TYPELESS_DICTIONARY_MARKER);
-        }
     }
 
 
@@ -5360,25 +4948,23 @@ public class RulePackageLoader
     private static void collectInlineTypelessDictionaryOps(net.cumba.corej.core.expr.ast.Expr expr,
             String where, List<String> findings)
     {
-        // Wave 1 (D-W1-3 (iv)/(v)): ProviderNeeds' typeless view sees BOTH keys — an inline
-        // OperationType call with a blank type and a registry function (the ported
-        // valid_external_dictionary_code_term_pair / _hierarchy) whose external_dictionary_type is
-        // absent, unbindable or not a static string literal. The gate is decided before any row is
-        // read, so a type that is not a literal cannot be gated and is a load error.
+        // Wave 1 (D-W1-3 (iv)/(v)): ProviderNeeds' typeless view — a registry dictionary function
+        // whose external_dictionary_type is absent, unbindable or not a static string literal (no
+        // operation needs a dictionary since wave 3). The gate is decided before any row is read,
+        // so a type that is not a literal cannot be gated and is a load error.
         for (net.cumba.corej.core.expr.ast.Expr.Call call : net.cumba.corej.core.exec.ProviderNeeds
                 .typelessDictionaryCalls(expr))
         {
-            boolean operation = net.cumba.corej.core.expr.eval.ExprCompiler.isInlineOperation(call);
-            String kind = operation ? "inline operation " : "inline function ";
-            net.cumba.corej.core.expr.ast.Expr type = operation ? null
-                    : boundArgument(call,
-                            net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER);
+            String kind = "inline function ";
+            // The type is a REQUIRED parameter since wave 1, so a call that binds carries it (the
+            // "declares no external_dictionary_type" arm that stood here was unreachable — W3 §8,
+            // deleted in runbook W8).
+            net.cumba.corej.core.expr.ast.Expr type = java.util.Objects.requireNonNull(
+                    boundArgument(call,
+                            net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER),
+                    "a bound dictionary call carries its required external_dictionary_type");
             String defect;
-            if (type == null)
-            {
-                defect = TYPELESS_DICTIONARY_MARKER;
-            }
-            else if (type instanceof net.cumba.corej.core.expr.ast.Expr.Lit lit
+            if (type instanceof net.cumba.corej.core.expr.ast.Expr.Lit lit
                     && lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.STRING
                     && String.valueOf(lit.value()).isBlank())
             {
@@ -6055,8 +5641,8 @@ public class RulePackageLoader
             return present;
         }
         PRESENT_KEYS_INTROSPECTIONS.increment();
-        // ⚠ The gate runs after normalizeOperations / deriveOmittedFields and the composite after
-        // normalizeJoinTypes too: a value those passes STAMP is not one the author wrote, so it
+        // ⚠ The gate runs after deriveOmittedFields and the composite after normalizeJoinTypes
+        // too: a value those passes STAMP is not one the author wrote, so it
         // must not hide the hint for a misspelt Sensitivity / Join_Type. Exactly the two stamped
         // keys are excluded (deriveOmittedFields → Rule.setSensitivity; normalizeJoinTypes →
         // MatchDataset.setJoinType); every other bound value is authored.
@@ -7135,7 +6721,7 @@ public class RulePackageLoader
      * <p>
      * The {@code --} contract is strict: {@code FA--} matches a name of exactly four characters. It
      * therefore catches {@code FALB} but <b>misses</b> the split {@code FALBHM}, whose data-derived
-     * base ({@code OperationExecutor.unsplitNameFromData}, from the {@code DOMAIN} column) is the
+     * base ({@code DatasetIdentity.unsplitNameFromData}, from the {@code DOMAIN} column) is the
      * <em>2-character</em> {@code FA} — a length no {@code FA--} token can match. The result is a
      * false negative: the rule quietly stops covering the split forms. The correct scope is the
      * plain domain code, {@code Include: ["FA"]}, which the split re-test matches for every member

@@ -207,8 +207,9 @@ public class DatasetRuleResolver
         // in Scope.Variables entries (first-row DOMAIN value, falling back to the unsplit table
         // name) — derived once per dataset, mirroring execution-time resolution.
         // EC-36: Scope.Variables entries are variable names -> variable prefix.
-        String scopeDomainPrefix = Objects.requireNonNullElse(OperationExecutor
-                .variableWildcardPrefix(table, OperationExecutor.domainPrefix(table)), "");
+        String scopeDomainPrefix = Objects.requireNonNullElse(
+                DatasetIdentity.variableWildcardPrefix(table, DatasetIdentity.domainPrefix(table)),
+                "");
 
         // Data-driven canonical base name for split detection in domain scope matching (mirrors
         // Python SDTMDatasetMetadata.unsplit_name): reads the DOMAIN/RDOMAIN columns so a dataset
@@ -216,7 +217,7 @@ public class DatasetRuleResolver
         // heuristic misses. Passed into ScopeMatcher.describeDomainMismatch below as the BASE,
         // against the MEMBER name — see the D125 note in describeScopeSkip for why that pairing is
         // load-bearing and what it cost while the member name never reached the matcher.
-        String scopeUnsplitName = OperationExecutor.unsplitNameFromData(table);
+        String scopeUnsplitName = DatasetIdentity.unsplitNameFromData(table);
 
         // Fix #117/#118/#119: per-dataset ADaM data-structure + subclass determination for the
         // Scope.Data_Structures / Scope.Subclasses gates. Computed once per dataset; the
@@ -710,7 +711,7 @@ public class DatasetRuleResolver
         // `LB`) — the matcher derives `isSplit = !domainName.equals(unsplitName)` from exactly that
         // pair. This site used to pass `domName`, which on the production path is
         // LibraryValidator's `CdiscDomainResolver.cdiscDomainOf(table)` (:1080 `setDomainName`).
-        // ⛔ BOTH that resolver and `OperationExecutor.unsplitNameFromData` read the row-0 `DOMAIN`
+        // ⛔ BOTH that resolver and `DatasetIdentity.unsplitNameFromData` read the row-0 `DOMAIN`
         // cell FIRST and return it, so for every dataset carrying a DOMAIN column the two arguments
         // were equal BY CONSTRUCTION and `isSplit` was permanently FALSE: `Include_Split_Datasets`
         // could never match on either leg, and the member-name leg of Include/Exclude

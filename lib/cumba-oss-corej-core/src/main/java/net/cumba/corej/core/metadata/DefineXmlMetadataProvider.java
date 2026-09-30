@@ -327,7 +327,7 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
 
     /**
      * Fix #369 — the only capability method this decorator did not delegate. It is load-bearing:
-     * {@code OperationExecutor.libraryAnswerable} uses {@code getDefineVersion() != null} as the
+     * {@code LibraryAnswerability.libraryAnswerable} uses {@code getDefineVersion() != null} as the
      * exact test for <em>"the fallback is a Define-XML library"</em>, so a wrapper inheriting the
      * {@code null} default would report "not define-backed" for a provider that is, and the
      * degraded define opt-in would silently never engage — the Fix #368 shape exactly.
@@ -376,8 +376,8 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
     public boolean isDomainCustom(String domain)
     {
         // The define level alone cannot decide custom-vs-standard; CDISC-CG0001's
-        // $domain_is_custom
-        // resolves against the LIBRARY provider, so this is never the deciding source here.
+        // domain_is_custom() resolves against the LIBRARY provider, so this is never the deciding
+        // source here.
         return fallback != null && fallback.isDomainCustom(domain);
     }
 

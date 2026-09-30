@@ -7,7 +7,6 @@ import static net.cumba.datatable.testkit.TestMetadataFixtures.lib;
 import static net.cumba.datatable.testkit.TestMetadataFixtures.table;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -18,12 +17,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import net.cumba.cdisc.library.api.model.adam.AdamProduct;
 import net.cumba.corej.core.exec.DatasetResolver;
-import net.cumba.corej.core.exec.GroupedResult;
 import net.cumba.corej.core.exec.MetadataProvider;
-import net.cumba.corej.core.exec.OperationExecutorCalls;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.IMetadataLibrary;
@@ -352,25 +349,50 @@ class CustomDomainWalkTest
     // ------------------------------------------------------------------
 
 
-    private static Operation op(String aId, String aOperator, @Nullable String aKeyName,
-            @Nullable String aKeyValue)
+    /** The walk-backed list functions (wave 4) evaluated over {@code aTable} on the IG view. */
+    private static Map<String, Object> walks(IDataTable aTable, DatasetResolver aResolver)
     {
-        Operation op = new Operation();
-        op.setId(aId);
-        op.setOperator(aOperator);
-        if (aKeyName != null)
-        {
-            op.setKeyName(aKeyName);
-            op.setKeyValue(aKeyValue);
-        }
-        return op;
+        net.cumba.corej.core.expr.eval.EvalRun run = net.cumba.corej.core.expr.eval.EvalRun
+                .fullRange(net.cumba.corej.core.exec.EvaluationContext.builder().table(aTable)
+                        .libraryProvider(igViewProvider()).datasetResolver(aResolver).build());
+        Map<String, Object> vars = new LinkedHashMap<>();
+        vars.put("$model", answer(
+                () -> net.cumba.corej.core.exec.LibraryLists.modelColumnOrder(run, List.of())));
+        vars.put("$timing_model", answer(() -> net.cumba.corej.core.exec.LibraryLists
+                .modelFilteredVariables(run, timing(3))));
+        vars.put("$timing_dataset", answer(() -> net.cumba.corej.core.exec.LibraryLists
+                .datasetFilteredVariables(run, timing(2))));
+        vars.put("$natural", answer(
+                () -> net.cumba.corej.core.exec.LibraryLists.naturalKeyVariables(run, List.of())));
+        return vars;
     }
 
 
-    private static Map<String, Object> run(IDataTable aTable, DatasetResolver aResolver,
-            Operation... aOps)
+    private static List<net.cumba.corej.core.expr.eval.@Nullable Vector> timing(int arity)
     {
-        return OperationExecutorCalls.execute(List.of(aOps), aTable, aResolver, igViewProvider());
+        List<net.cumba.corej.core.expr.eval.@Nullable Vector> args = new ArrayList<>();
+        args.add(net.cumba.corej.core.expr.eval.ConstVector.of("role"));
+        args.add(net.cumba.corej.core.expr.eval.ConstVector.of("Timing"));
+        while (args.size() < arity)
+        {
+            args.add(null);
+        }
+        return args;
+    }
+
+
+    /** The function's list, or the SKIP signal rendered as the retired sentinel did. */
+    private static Object answer(
+            java.util.function.Supplier<net.cumba.corej.core.expr.eval.Vector> body)
+    {
+        try
+        {
+            return Objects.requireNonNull(body.get().value(0).resolved());
+        }
+        catch (net.cumba.corej.core.expr.eval.UnusableProviderAnswerException unusable)
+        {
+            return "<library not available>";
+        }
     }
 
 
@@ -379,11 +401,7 @@ class CustomDomainWalkTest
     {
         IDataTable xx = dataset("XX", "XX", "STUDYID", "USUBJID", "XXSEQ", "XXTESTCD", "XXCAT",
                 "XXORRES", "VISITNUM", "XXDTC");
-        Map<String, Object> vars = run(xx, NO_RESOLVER,
-                op("$model", "get_model_column_order", null, null),
-                op("$timing_model", "get_model_filtered_variables", "role", "Timing"),
-                op("$timing_dataset", "get_dataset_filtered_variables", "role", "Timing"),
-                op("$natural", "natural_key_variables", null, null));
+        Map<String, Object> vars = walks(xx, NO_RESOLVER);
         assertEquals(igViewProvider().getStandardModelVariables(xx, NO_RESOLVER),
                 vars.get("$model"));
         // The model-filtered selection does not intersect the dataset; the dataset-filtered one
@@ -404,12 +422,19 @@ class CustomDomainWalkTest
         IDataTable suppxx = MockTable.of().name("SUPPXX").col("STUDYID", "S").col("RDOMAIN", "XX")
                 .col("USUBJID", "U1").col("IDVAR", "XXSEQ").col("IDVARVAL", "1")
                 .col("QNAM", "XXSTRESC").col("QVAL", "v").build();
-        Map<String, Object> vars = run(suppxx, name -> "XX".equals(name) ? xx : null,
-                op("$parent", "get_parent_model_column_order", null, null));
-        GroupedResult grouped = assertInstanceOf(GroupedResult.class, vars.get("$parent"),
-                "the parent's walk resolves: " + vars.get("$parent"));
-        assertEquals(List.of(igViewProvider().getStandardModelVariables(xx, NO_RESOLVER)),
-                new ArrayList<>(grouped.results().values()));
+        // get_parent_model_column_order(RDOMAIN) is a per-row list function since wave 4: the
+        // row's parent XX resolves through the resolver, and its walk is the answer.
+        DatasetResolver toXx = name -> "XX".equals(name) ? xx : null;
+        int rdomain = suppxx.getMetaData().getColumnIndex("RDOMAIN");
+        net.cumba.corej.core.expr.eval.Vector parent = net.cumba.corej.core.exec.ParentModelColumnOrder
+                .evaluate(net.cumba.corej.core.expr.eval.EvalRun.fullRange(
+                        net.cumba.corej.core.exec.EvaluationContext.builder().table(suppxx)
+                                .libraryProvider(igViewProvider()).datasetResolver(toXx).build()),
+                        List.of(new net.cumba.corej.core.expr.eval.ColumnVector("RDOMAIN",
+                                suppxx.getColumn(rdomain),
+                                suppxx.getMetaData().getColumn(rdomain).getType())));
+        assertEquals(igViewProvider().getStandardModelVariables(xx, NO_RESOLVER),
+                parent.value(0).resolved(), "the parent's walk resolves");
     }
 
 
@@ -419,11 +444,7 @@ class CustomDomainWalkTest
         // CDW-D3 (b), unchanged: the order lookup maps [] to library-not-available (SKIP); the
         // total operations answer [].
         IDataTable xx = dataset("XX", "XX", "STUDYID", "USUBJID", "XXSEQ", "XXVAL", "VISITNUM");
-        Map<String, Object> vars = run(xx, NO_RESOLVER,
-                op("$model", "get_model_column_order", null, null),
-                op("$timing_model", "get_model_filtered_variables", "role", "Timing"),
-                op("$timing_dataset", "get_dataset_filtered_variables", "role", "Timing"),
-                op("$natural", "natural_key_variables", null, null));
+        Map<String, Object> vars = walks(xx, NO_RESOLVER);
         assertEquals("<library not available>", String.valueOf(vars.get("$model")));
         assertEquals(List.of(), vars.get("$timing_model"));
         assertEquals(List.of(), vars.get("$timing_dataset"));

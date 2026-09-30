@@ -13,6 +13,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import lombok.CustomLog;
+import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.expr.eval.Domain;
 import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.MetadataNormalizer;
 import net.cumba.corej.core.expr.eval.MetadataNormalizer.Normalization;
@@ -29,6 +31,7 @@ import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.report.Severity;
 import net.cumba.datatable.values.GroupKeyPolicy;
 import net.cumba.datatable.values.IDataValue;
@@ -89,10 +92,10 @@ public final class RuleRunner
      * <strong>Thread-safety contract:</strong> {@code rule}, {@code table}, {@code resolver},
      * {@code libraryProvider}, {@code joinCache} and the other carriers are all read-only during
      * execution and may be shared across concurrent invocations on different threads. The
-     * {@link Rule} model objects (and nested {@link net.cumba.corej.core.model.Operation},
-     * {@link net.cumba.corej.core.model.CheckCondition}, …) are Lombok {@code @Data} beans with
-     * setters for deserialisation; do <em>not</em> mutate any field on a {@code Rule} after it has
-     * been handed to {@code execute}, or thread safety is lost.
+     * {@link Rule} model objects (and nested {@link net.cumba.corej.core.model.CheckCondition},
+     * {@link net.cumba.corej.core.model.Binding}, …) are Lombok {@code @Data} beans with setters
+     * for deserialisation; do <em>not</em> mutate any field on a {@code Rule} after it has been
+     * handed to {@code execute}, or thread safety is lost.
      * </p>
      *
      * <p>
@@ -285,6 +288,23 @@ public final class RuleRunner
                     .totalRows(table != null ? table.getRowCount() : 0L)
                     .status(RuleExecutionStatus.ERROR).statusMessage(errorMsg).build());
         }
+        catch (net.cumba.corej.core.expr.eval.ReadValueAmbiguityException e)
+        {
+            // Runbook W2a (PLAN-operation-replacements §2.2), ERROR site 9: read_value(…,
+            // mode="ONLY") matched more than one row of its dataset — the rule asserted a single
+            // row and the data says otherwise (owner D13, 2026-09-22). Its own catch, so the rules
+            // repository's ViolationNormaliser classifies it by the exception's fixed message tail
+            // (READ_VALUE_AMBIGUOUS) rather than folding it into another reason's catch.
+            String errorMsg = String.valueOf(e.getMessage());
+            LOGGER.log(System.Logger.Level.WARNING, "[{0}] {1}",
+                    rule.effectiveId() != null ? rule.effectiveId() : "?", errorMsg);
+            Violation sentinel = new Violation(0, Map.of("__error__", errorMsg));
+            return stampSeverity(rule, RuleExecutionResult.builder().ruleId(rule.effectiveId())
+                    .message(rule.getOutcome() != null ? rule.getOutcome().getMessage() : null)
+                    .violations(List.of(sentinel))
+                    .totalRows(table != null ? table.getRowCount() : 0L)
+                    .status(RuleExecutionStatus.ERROR).statusMessage(errorMsg).build());
+        }
         catch (net.cumba.corej.core.expr.eval.ColumnTypeMismatchException e)
         {
             // Phase 3 of PLAN-column-type-conformance (R4/R5/R9): the rule read a resolved column
@@ -396,9 +416,13 @@ public final class RuleRunner
         // unqualified variable scope pay nothing. It is null when the resolver cannot enumerate
         // datasets (see ScopeVariableSource.of), in which case qualified entries are ignored.
         ScopeVariableSource scopeForeign = null;
-        if (ScopeMatcher.hasQualifiedVariableScope(rule))
+        // W2a (C1 ruled (a)): also for a bare variable requirement under Supp_Merge, so a
+        // required column SUPP<domain> delivers is met by the pivot (ScopeMatcher's bare arm).
+        if (ScopeMatcher.hasQualifiedVariableScope(rule)
+                || (rule.isSuppMergeEnabled() && rule.effectiveVariableRequirement() != null))
         {
-            scopeForeign = ScopeVariableSource.of(resolver, table);
+            scopeForeign = ScopeVariableSource.of(resolver, table, rule.isSuppMergeEnabled(),
+                    joinCache != null ? joinCache.getSharedIndexCache() : null);
             if (scopeForeign == null)
             {
                 // ⚠ Text corrected 2026-09-10 with the SKIP policy below: the entry is no longer
@@ -414,11 +438,11 @@ public final class RuleRunner
         }
         // EC-36: the prefix that substitutes `--` in a VARIABLE name — Python's
         // wildcard_replacement. Distinct from `domainPrefix`, which is the dataset's CDISC domain
-        // code and stays the substitution for `--` in an Operation's `domain:` (Fix #59/#33) and
-        // for the ds_domain("DATA") fact (formerly the injected DOMAIN value, Fix #10). They
-        // differ only for AP datasets (APMH holds
-        // MHTERM, not APMHTERM) and SUPP/SQ (--QNAM is QNAM).
-        String varWildcardPrefix = OperationExecutor.variableWildcardPrefix(table, domainPrefix);
+        // code and stays the substitution for `--` in a `domain=` literal of a compiled binding
+        // (Fix #59/#33, DatasetIdentity.resolveWildcard) and for the ds_domain("DATA") fact
+        // (formerly the injected DOMAIN value, Fix #10). They differ only for AP datasets (APMH
+        // holds MHTERM, not APMHTERM) and SUPP/SQ (--QNAM is QNAM).
+        String varWildcardPrefix = DatasetIdentity.variableWildcardPrefix(table, domainPrefix);
 
         // EC-36 / D2' — REMOVED after the 2026-07-29 code review. The gate skipped a rule when
         // the prefix was unresolvable, but its predicate (RuleWildcardUsage) was hand-written
@@ -487,7 +511,7 @@ public final class RuleRunner
             // Fix #179: the structure is a SET, most-specific first — [MEDICAL DEVICE BASIC DATA
             // STRUCTURE, BASIC DATA STRUCTURE] for a declared device BDS dataset. Include/Exclude
             // both match on any member, so a base-scoped rule keeps covering the specialisation.
-            // ⚠ Derived through AdamStructureContext, NOT inline: OperationExecutor keys the ADaM
+            // ⚠ Derived through AdamStructureContext, NOT inline: the Library walks key the ADaM
             // required/expected operations by the same set, and the gate and the operation must
             // not be able to disagree about what this dataset is.
             List<String> structures = AdamStructureContext.detectAll(meta, defineProvider,
@@ -633,8 +657,8 @@ public final class RuleRunner
             // library instead: `var_role("DEFINE") != var_role("LIBRARY")` then compares the define
             // against itself and reports SUCCESS. ⚠⚠ This surface is DISJOINT from the operation
             // surface the rest of Fix #369 gates — 30 corpus rules read library_* operands and
-            // carry no library Operation at all, so nothing in OperationExecutor can see them.
-            if (!OperationExecutor.libraryAnswerable(libraryProvider)
+            // carry no library-backed call at all, so no registry function can see them.
+            if (!LibraryAnswerability.libraryAnswerable(libraryProvider)
                     && referencesOperandPrefix(operandCheck, "library_"))
             {
                 return RuleExecutionResult.builder().ruleId(ruleId).message(message)
@@ -679,10 +703,9 @@ public final class RuleRunner
             return stageBOutcome;
         }
 
-        // Phase 2a.5–2a.7: dataset merges / row expansions run BEFORE Operations, mirroring Python
-        // (DatasetPreprocessor.preprocess precedes perform_rule_operations —
-        // rules_engine.py:377-378)
-        // so an Operation that aggregates over the primary sees the merged/expanded row set.
+        // Phase 2a.5–2a.7: dataset merges / row expansions run BEFORE the compiled bindings are
+        // read (they are lazy — BindingValue evaluates on first read, after this block), so a
+        // binding that aggregates over the primary sees the merged/expanded row set.
 
         // Phase 2a.5: Pre-merge Child:true parent columns (Fix #6 — CDISC-CG0371 and siblings).
         // Every later phase uses the augmented evalTable so plain-name references in the Check can
@@ -750,116 +773,34 @@ public final class RuleRunner
             joinMatchDatasets = remaining;
         }
 
-        // Phase 2a (Fix #36): wrap every Operation result in a LazyValue<Object> so the supplier
-        // only runs on first read. When the Check tree folds to a dataset-level constant via an
-        // unrelated leaf (e.g. an APHASEN guard), Operation suppliers tied to never-read
-        // $variables stay cold. Memoisation lifetime is the EvaluationContext (one rule
-        // execution); cross-rule caching is out of scope.
-        //
-        // Library-dependent Operations preserve the eager early-skip semantic: if any op in the
-        // rule needs a MetadataProvider and none is configured, the rule reports SKIPPED
-        // before any supplier fires. Detected via OperationExecutor.isLibraryDependent without
-        // running the dispatch.
-        //
-        // ⭐ Wave 0 (PLAN-binding-expressions R10): a COMPILED binding sits in the same map, in
+        // ⭐ Wave 0 (PLAN-binding-expressions R10): every binding sits in the variables map, in
         // authored order (Rule.bindingOrder), as a BindingValue — evaluated lazily in the reading
-        // context, never before it is read (D-W0-3). The no-provider arms read ProviderNeeds, the
-        // one helper that sees both an operation's OperationType and a registry function's
-        // provider capability, over both binding kinds.
+        // context, never before it is read (D-W0-3). The no-provider arms read ProviderNeeds over
+        // the bindings' calls' capabilities. (Until runbook W8 an operation binding sat beside it
+        // as a memoised supplier over the executor; the operation kind is gone with the carrier.)
         Map<String, Object> variables = Map.of();
-        List<net.cumba.corej.core.model.Operation> resolvedOps = rule.getOperations() == null
-                ? List.of()
-                : rule.getOperations();
-        List<net.cumba.corej.core.model.CompiledBinding> compiledBindings = rule
-                .getCompiledBindings() == null ? List.of() : rule.getCompiledBindings();
-        // The context every operation supplier hands a compiled binding to (§5.0 / I5). Set once
-        // the context is built; see `contextFirst` below for why that is always before any
-        // supplier can read a compiled binding.
-        java.util.concurrent.atomic.AtomicReference<@Nullable EvaluationContext> rootContext = new java.util.concurrent.atomic.AtomicReference<>();
-        java.util.function.Supplier<EvaluationContext> rootContextSupplier = () -> Objects
-                .requireNonNull(rootContext.get(), "a compiled binding was read by an operation"
-                        + " before the rule's evaluation context was built");
-        if (!resolvedOps.isEmpty() || !compiledBindings.isEmpty())
+        List<net.cumba.corej.core.model.CompiledBinding> compiledBindings = rule.bindingOrder();
+        if (!compiledBindings.isEmpty())
         {
-            // D77: the `--` prefixes were resolved by the specialisation stage at the top of this
-            // method (RuleSpecialiser, which stashes each Operation's originalName so the D92a
-            // inventory folds keep their template) — the operations arrive concrete.
             RuleExecutionResult noProvider = noProviderSkip(ProviderNeeds.ofBindings(rule), ruleId,
                     message, evalTable, libraryProvider, defineProvider, dictionaryProvider);
             if (noProvider != null)
             {
                 return noProvider;
             }
-            // Build the lazy variables map. The supplier closes over the variables map itself so
-            // an op's supplier can read prior op results — forcing only the LazyValues it
-            // actually depends on (via expandGroupRefs's $variable refs in op.group). Maintain
-            // insertion order so prior-op references resolve consistently.
             Map<String, Object> lazyVars = new LinkedHashMap<>();
-            // The composite distinct([A, B]) folds an absent reference column to its type default,
-            // read off the rule's numeric expectation — the same rule the tuple(…) probe applies
-            // (PLAN-member-set-identity-hardening review round 2, L3).
-            Set<String> opNumericExpected = numericExpectedColumns(rule);
-            final IDataTable lazyTable = evalTable;
-            final DatasetResolver lazyResolver = resolver;
-            final MetadataProvider lazyLibrary = libraryProvider;
-            final RuntimeDictionaryProvider lazyDict = dictionaryProvider;
-            final MetadataProvider lazyDefine = defineProvider;
-            for (net.cumba.corej.core.model.BoundBinding binding : rule.bindingOrder())
+            for (net.cumba.corej.core.model.CompiledBinding compiled : compiledBindings)
             {
-                if (binding instanceof net.cumba.corej.core.model.CompiledBinding compiled)
-                {
-                    lazyVars.put(compiled.name(), new BindingValue(compiled));
-                    continue;
-                }
-                net.cumba.corej.core.model.Operation op = ((net.cumba.corej.core.model.BoundBinding.OfOperation) binding)
-                        .operation();
-                String opId = op.getId();
-                if (opId == null || op.getOperationType() == null)
-                {
-                    // Unidentified or unknown-type op — eager-run for its side effects
-                    // (typed-null type logs a WARN; null id has nowhere to land its result).
-                    // Materialise only the prior entries it references (§0.2 c: routed through the
-                    // same hand-over helper as the lazy supplier below, never a local copy).
-                    OperationExecutor.executeOne(op, lazyTable, lazyResolver, lazyLibrary,
-                            gatherPriors(op, opId, lazyVars, rootContextSupplier), ruleId, lazyDict,
-                            lazyDefine, opNumericExpected);
-                    continue;
-                }
-                final net.cumba.corej.core.model.Operation finalOp = op;
-                // Materialise only the prior entries this op actually depends on — its group
-                // $-refs, its name / subtract operands and its computed target's $-refs — so
-                // independent ops don't fan out and create cycles among each other. Each is
-                // handed over through BindingValue.forOperation (§5.0 / I5): a LazyValue is
-                // forced, a compiled binding answers its raw dataset-level value.
-                LazyValue<Object> lazy = new LazyValue<>(() -> OperationExecutor.executeOne(finalOp,
-                        lazyTable, lazyResolver, lazyLibrary,
-                        gatherPriors(finalOp, opId, lazyVars, rootContextSupplier), ruleId,
-                        lazyDict, lazyDefine, opNumericExpected));
-                lazyVars.put(opId, lazy);
+                lazyVars.put(compiled.name(), new BindingValue(compiled));
             }
             variables = lazyVars;
-        }
-        // ⭐ `contextFirst`: a rule that carries a compiled binding builds its joins and its
-        // context BEFORE the eager "answered but unusable" arms force anything, so an operation
-        // supplier that reads a compiled binding always has the context the binding evaluates in.
-        // A rule without one keeps today's order byte for byte — its eager arms run first, exactly
-        // where they always ran — so none of the 892 shipped operation bindings can move.
-        boolean contextFirst = !compiledBindings.isEmpty();
-        if (!contextFirst)
-        {
-            RuleExecutionResult unusable = eagerProviderSkip(resolvedOps, variables, ruleId,
-                    message, evalTable, libraryProvider, defineProvider);
-            if (unusable != null)
-            {
-                return unusable;
-            }
         }
 
         // (Phase 2a2 — the Dataset-Metadata-Check variable injection of dataset_name /
         // dataset_label / record_count / dataset_domain / define_dataset_* / library_dataset_* /
         // DOMAIN — is gone: phase 6 of PLAN-leaf-scope-domain-inference.md. Every bareword
         // canonicalises to its ds_* accessor for every rule, the output-value projection reads the
-        // same accessors (ExprCompiler.datasetScopeOperandValue), and OperationExecutor never read
+        // same accessors (ExprCompiler.datasetScopeOperandValue), and no binding ever read
         // the injected entries. Measured 2026-08-22: no shipped rule reads any of those names as a
         // context variable, and the SD0004 DOMAIN-column shape evaluates identically with and
         // without the injection.)
@@ -887,6 +828,8 @@ public final class RuleRunner
                 .numericExpectedColumns(numericExpectedColumns(rule)).defineProvider(defineProvider)
                 .vlmResolver(vlmResolver).ruleId(ruleId).datasetResolver(resolver)
                 .domainPrefix(domainPrefix).variableWildcardPrefix(varWildcardPrefix)
+                .suppMerge(rule.isSuppMergeEnabled())
+                .sharedIndexCache(joinCache != null ? joinCache.getSharedIndexCache() : null)
                 .domainName(evalTable.getMetaData().getName()).joinedDatasets(joinedDatasets)
                 .evaluationDomain(rule.getEvaluationDomain()).maxErrorsPerRule(maxErrorsPerRule)
                 .libraryProvider(libraryProvider).dictionaryProvider(dictionaryProvider)
@@ -896,18 +839,14 @@ public final class RuleRunner
                 // of a validation run shares it; without a run cache the context's own default is
                 // used (per-execute scope, still cached).
                 .wildcardColumns(runWildcardColumns(joinCache)).build();
-        rootContext.set(ctx);
         try
         {
-            if (contextFirst)
+            // The rule's joins and its context are built BEFORE the eager "answered but unusable"
+            // arms force anything, so every binding has the context it evaluates in.
+            if (!compiledBindings.isEmpty())
             {
-                RuleExecutionResult unusable = eagerProviderSkip(resolvedOps, variables, ruleId,
-                        message, evalTable, libraryProvider, defineProvider);
-                if (unusable == null)
-                {
-                    unusable = eagerCompiledBindingSkip(compiledBindings, ctx, ruleId, message,
-                            libraryProvider);
-                }
+                RuleExecutionResult unusable = eagerCompiledBindingSkip(compiledBindings, ctx,
+                        ruleId, message, libraryProvider);
                 if (unusable != null)
                 {
                     return unusable;
@@ -932,10 +871,9 @@ public final class RuleRunner
      * The no-provider SKIP arms ({@code Fix #36} library, T2-residual define, {@code KDICT-F1} /
      * {@code Fix #268} dictionary): a rule whose <b>bindings</b> need a provider the run does not
      * have reports {@code SKIPPED} before any supplier fires. Read through {@link ProviderNeeds},
-     * which sees an operation binding's {@code OperationType} and a compiled binding's
-     * provider-capable calls alike ({@code PLAN-binding-expressions} R10); for an operation-only
-     * rule it answers exactly what the three per-operation loops it replaced answered, with the
-     * same messages in the same order.
+     * which sees a compiled binding's provider-capable calls alike
+     * ({@code PLAN-binding-expressions} R10); for an operation-only rule it answers exactly what
+     * the three per-operation loops it replaced answered, with the same messages in the same order.
      *
      * <p>
      * The dictionary arm (KDICT-F1 / Fix #268): an external-dictionary operation can only answer
@@ -1017,86 +955,6 @@ public final class RuleRunner
 
 
     /**
-     * Phase 2a.1 (Fix #42 phase 1 — defensive) and its define analog (M4): force every library- /
-     * define-dependent <b>operation</b> eagerly and SKIP the rule when one answered
-     * {@link OperationExecutor#LIBRARY_NOT_AVAILABLE} — the provider was configured but returned no
-     * usable data for this domain, so a rule like FDA-SD0058 does not fan out one violation per
-     * column, and an empty Define key set does not collapse an {@code is_not_unique_set} to the
-     * constant STUDYID anchor (PMDA-SD1152). Extracted unchanged from {@code execute} so the
-     * context-first path of a rule with compiled bindings can run it after the context exists.
-     *
-     * <p>
-     * Fix #371 — plain {@code isLibraryDependent}; Fix #369 — the CDISC Library is named explicitly
-     * when it could not be consulted at all ("returned no data" would read as "asked and had
-     * nothing").
-     * </p>
-     *
-     * @return the SKIPPED result, or {@code null} when every forced operation answered
-     */
-    private static @Nullable RuleExecutionResult eagerProviderSkip(
-            List<net.cumba.corej.core.model.Operation> resolvedOps, Map<String, Object> lazyVars,
-            @Nullable String ruleId, @Nullable String message, IDataTable evalTable,
-            @Nullable MetadataProvider libraryProvider, @Nullable MetadataProvider defineProvider)
-    {
-        if (libraryProvider != null)
-        {
-            for (net.cumba.corej.core.model.Operation op : resolvedOps)
-            {
-                String opId = op.getId();
-                if (opId == null || !OperationExecutor.isLibraryDependent(op.getOperationType()))
-                {
-                    continue;
-                }
-                Object value = lazyVars.get(opId);
-                if (value instanceof LazyValue<?> lv)
-                {
-                    value = lv.get();
-                }
-                if (value == OperationExecutor.LIBRARY_NOT_AVAILABLE)
-                {
-                    return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                            .violations(List.of()).totalRows(evalTable.getRowCount())
-                            .status(RuleExecutionStatus.SKIPPED)
-                            .statusMessage(libraryProvider.isLibraryUnavailable()
-                                    ? "Rule skipped — the CDISC Library could not be consulted"
-                                            + " for this run, and " + op.getOperationType()
-                                            + " may not be answered from a non-library source"
-                                    : "Rule skipped — library returned no data for "
-                                            + op.getOperationType())
-                            .build();
-                }
-            }
-        }
-        if (defineProvider != null)
-        {
-            for (net.cumba.corej.core.model.Operation op : resolvedOps)
-            {
-                String opId = op.getId();
-                if (opId == null || !OperationExecutor.isDefineDependent(op.getOperationType()))
-                {
-                    continue;
-                }
-                Object value = lazyVars.get(opId);
-                if (value instanceof LazyValue<?> lv)
-                {
-                    value = lv.get();
-                }
-                if (value == OperationExecutor.LIBRARY_NOT_AVAILABLE)
-                {
-                    return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                            .violations(List.of()).totalRows(evalTable.getRowCount())
-                            .status(RuleExecutionStatus.SKIPPED)
-                            .statusMessage("Rule skipped — Define-XML declares no key "
-                                    + "variables for " + op.getOperationType())
-                            .build();
-                }
-            }
-        }
-        return null;
-    }
-
-
-    /**
      * ⭐ The compiled-binding half of the eager "answered but unusable" arm
      * ({@code PLAN-binding-expressions} R10 / §5.2 (c)): every compiled binding that needs a
      * provider ({@link ProviderNeeds#ofExpr}) and no variable cursor is forced here, before the
@@ -1150,36 +1008,6 @@ public final class RuleRunner
 
 
     /**
-     * The prior {@code $}-entries an operation reads ({@link OperationExecutor#priorReferences} —
-     * its group, its {@code name} / {@code subtract} operands, its computed target), each handed
-     * over through {@link BindingValue#forOperation(Object, java.util.function.Supplier)}: a
-     * {@link LazyValue} is forced, a compiled binding answers its raw dataset-level value
-     * ({@code PLAN-binding-expressions} §5.0 / I5). A self-reference ({@code opId}) is skipped so
-     * the in-flight {@link LazyValue} is never forced; an entry that resolves to {@code null} is
-     * left out, exactly as before.
-     */
-    private static Map<String, Object> gatherPriors(net.cumba.corej.core.model.Operation op,
-            @Nullable String opId, Map<String, Object> lazyVars,
-            java.util.function.Supplier<EvaluationContext> rootContext)
-    {
-        Map<String, Object> resolved = new LinkedHashMap<>();
-        for (String ref : OperationExecutor.priorReferences(op))
-        {
-            if (ref.equals(opId))
-            {
-                continue;
-            }
-            Object v = BindingValue.forOperation(lazyVars.get(ref), rootContext);
-            if (v != null)
-            {
-                resolved.put(ref, v);
-            }
-        }
-        return resolved;
-    }
-
-
-    /**
      * The Check-evaluation tail of {@link #execute}: everything from the built
      * {@link EvaluationContext} onwards. Split out so the caller can drain the context's EC-43
      * absent-column record in a {@code finally} — every path out of this method is the end of one
@@ -1200,7 +1028,7 @@ public final class RuleRunner
         // P6b + guard-residual D3: native precondition evaluation. The loader raises a
         // fold-equivalent (broadcast-verdict) Precondition to a transient preconditionExpr; the
         // tri-state BroadcastFold decides the skip: FALSE ⇒ skip; TRUE ⇒ continue; UNKNOWN (a
-        // runtime GroupedResult/VariableMetadataResult $-ref the fold short-circuits around but
+        // runtime per-row / VariableMetadataResult $-ref the fold short-circuits around but
         // cannot decide) ⇒ continue with the main Check — mirroring Python's approach of always
         // attempting the check. A null preconditionExpr means the loader classified the
         // precondition as non-broadcast (row-level): the retired legacy fold could never decide
@@ -1227,7 +1055,7 @@ public final class RuleRunner
         // Still observation-only HERE. The D39 fold itself landed in phase 7 (D111): the
         // absent-column leaf folds inside BroadcastFold (bindColumnLevel), so the all-absent
         // check reports one dataset-level finding without this observation routing anything.
-        net.cumba.corej.core.expr.ast.Expr granularityExpr = checkExprOf(rule, ctx);
+        Expr granularityExpr = checkExprOf(rule, ctx);
         if (granularityExpr != null)
         {
             LevelInstrument.onEffectiveGranularity(rule, ctx, granularityExpr);
@@ -1478,7 +1306,7 @@ public final class RuleRunner
      * The compiled expression of one declared check level; only ever called on a rule that declared
      * a level map ({@link Rule#getCheckLevelExprs()} non-null — a one-entry map included).
      */
-    private static net.cumba.corej.core.expr.ast.Expr levelExprOf(Rule rule, Severity level)
+    private static Expr levelExprOf(Rule rule, Severity level)
     {
         return Objects.requireNonNull(
                 Objects.requireNonNull(rule.getCheckLevelExprs(), "multi-level rule").get(level),
@@ -1542,7 +1370,7 @@ public final class RuleRunner
     {
         Severity strictest = declared.firstEntry().getKey();
         Map<Severity, CheckCondition> conditions = new LinkedHashMap<>();
-        Map<Severity, net.cumba.corej.core.expr.ast.Expr> effective = new LinkedHashMap<>();
+        Map<Severity, Expr> effective = new LinkedHashMap<>();
         for (Severity level : runnable)
         {
             // D77: every level's condition was resolved by the specialisation stage, so the
@@ -1552,7 +1380,7 @@ public final class RuleRunner
                     : levelOf(declared, level).condition();
             conditions.put(level, condition);
             AbsentDatasetSkip.Decision decision = decisionOf(skips, level);
-            net.cumba.corej.core.expr.ast.Expr override = decision.effectiveCheckExpr();
+            Expr override = decision.effectiveCheckExpr();
             effective.put(level, override != null ? override : levelExprOf(rule, level));
         }
 
@@ -1569,11 +1397,11 @@ public final class RuleRunner
             outputVars = List.copyOf(projected);
         }
 
-        net.cumba.corej.core.expr.eval.Domain domain = null;
-        for (net.cumba.corej.core.expr.ast.Expr levelExpr : effective.values())
+        Domain domain = null;
+        for (Expr levelExpr : effective.values())
         {
-            net.cumba.corej.core.expr.eval.Domain levelDomain = net.cumba.corej.core.expr.eval.DomainScan
-                    .infer(levelExpr, net.cumba.corej.core.expr.eval.OperationKinds.forRule(rule));
+            Domain levelDomain = net.cumba.corej.core.expr.eval.DomainScan.infer(levelExpr,
+                    net.cumba.corej.core.expr.eval.BindingDomains.forRule(rule));
             domain = domain == null ? levelDomain : domain.join(levelDomain);
         }
 
@@ -1619,10 +1447,9 @@ public final class RuleRunner
      * instance is shared across datasets and across the parallel dataset fan-out.
      * </p>
      */
-    private static net.cumba.corej.core.expr.ast.@Nullable Expr checkExprOf(Rule rule,
-            EvaluationContext ctx)
+    private static @Nullable Expr checkExprOf(Rule rule, EvaluationContext ctx)
     {
-        net.cumba.corej.core.expr.ast.Expr override = ctx.getCheckExprOverride();
+        Expr override = ctx.getCheckExprOverride();
         return override != null ? override : rule.getCheckExpr();
     }
 
@@ -1647,8 +1474,7 @@ public final class RuleRunner
      * {@link Rule#getEvaluationDomain()} for its own {@code checkExpr}, re-inferred for a
      * {@code Fix #222} override (the suppressed tree may have lost a cursor with its folded leaf).
      */
-    private static net.cumba.corej.core.expr.eval.Domain domainOf(Rule rule, EvaluationContext ctx,
-            net.cumba.corej.core.expr.ast.Expr checkExpr)
+    private static Domain domainOf(Rule rule, EvaluationContext ctx, Expr checkExpr)
     {
         CheckLevelPlan plan = ctx.getLevelPlan();
         if (plan != null)
@@ -1658,13 +1484,13 @@ public final class RuleRunner
             // instead of a row against a cell.
             return plan.domain();
         }
-        net.cumba.corej.core.expr.eval.Domain cached = rule.getEvaluationDomain();
+        Domain cached = rule.getEvaluationDomain();
         if (cached != null && checkExpr == rule.getCheckExpr())
         {
             return cached;
         }
         return net.cumba.corej.core.expr.eval.DomainScan.infer(checkExpr,
-                net.cumba.corej.core.expr.eval.OperationKinds.forRule(rule));
+                net.cumba.corej.core.expr.eval.BindingDomains.forRule(rule));
     }
 
 
@@ -1698,9 +1524,9 @@ public final class RuleRunner
         // BroadcastFold evaluates dataset-constant leaves (presence facts, dataset facts,
         // runtime-scalar $-comparisons, and — since D111 — leaves dataset-level by ABSENCE) and
         // short-circuits with exact Kleene logic (one dataset-level violation on TRUE, none on
-        // FALSE), even around a runtime GroupedResult/VariableMetadataResult $-ref it cannot
+        // FALSE), even around a runtime per-row / VariableMetadataResult $-ref it cannot
         // evaluate (UNKNOWN). On UNKNOWN the regular dispatch continues: the row / per-variable
-        // native paths evaluate the same full checkExpr (per-row GroupedResult resolution
+        // native paths evaluate the same full checkExpr (per-row binding resolution
         // included).
         //
         // ⭐⭐ THE FOLD IS UNCONDITIONAL (owner, 2026-09-16, phase 7). It used to be gated on
@@ -1715,8 +1541,7 @@ public final class RuleRunner
         // that was always doing the real work.
         if (checkExprOf(rule, ctx) != null)
         {
-            net.cumba.corej.core.expr.ast.Expr foldExpr = Objects
-                    .requireNonNull(checkExprOf(rule, ctx));
+            Expr foldExpr = Objects.requireNonNull(checkExprOf(rule, ctx));
             net.cumba.corej.core.expr.eval.BroadcastFold.Verdict v = net.cumba.corej.core.expr.eval.BroadcastFold
                     .fold(foldExpr, ctx, false);
             // Phase 5 (typed-expression plan): compare the static level against the runtime fold
@@ -1738,13 +1563,12 @@ public final class RuleRunner
         // (isVariableValueCheckType / isMetadataCheckType) and the D4/S4 runtime-kind re-routing
         // were all restatements of exactly this: value() is the cell cursor, a var_* accessor /
         // varname() / the variable_name anchor / a VariableMetadataResult $-ref is the variable
-        // cursor, a column / dotted / GroupedResult read is the row cursor (DomainScan, with
-        // OperationKinds mirroring BroadcastFold's runtime instanceof tests). This is the SOLE
+        // cursor, a column / dotted / per-row binding read is the row cursor (DomainScan, with
+        // BindingDomains mirroring BroadcastFold's runtime instanceof tests). This is the SOLE
         // dispatch; BindingScope.of holds the derivation, and its ROW_PATH case falls through to
         // the row evaluation below.
-        net.cumba.corej.core.expr.ast.Expr checkExpr = checkExprOf(rule, ctx);
-        net.cumba.corej.core.expr.eval.Domain domain = checkExpr == null ? null
-                : domainOf(rule, ctx, checkExpr);
+        Expr checkExpr = checkExprOf(rule, ctx);
+        Domain domain = checkExpr == null ? null : domainOf(rule, ctx, checkExpr);
         if (checkExpr != null && domain != null)
         {
             switch (BindingScope.of(domain, checkExpr))
@@ -2056,8 +1880,8 @@ public final class RuleRunner
      * </ul>
      *
      * <p>
-     * Entries accept the {@code --} wildcard, resolved against the primary exactly as an
-     * {@code Operation}'s {@code domain:} is, so {@code SUPP--} is expressible.
+     * Entries accept the {@code --} wildcard, resolved against the primary exactly as a
+     * {@code domain=} literal of a compiled binding is, so {@code SUPP--} is expressible.
      * </p>
      */
     private static @Nullable String describeMissingRequiredDataset(Rule rule, IDataTable table,
@@ -2078,7 +1902,7 @@ public final class RuleRunner
             // and when the primary's name cannot supply a prefix, so it is null only for a null
             // argument — which the guard above has already excluded. The fallback keeps that
             // contract local rather than assumed.
-            String resolved = OperationExecutor.resolveWildcard(entry, table);
+            String resolved = DatasetIdentity.resolveWildcard(entry, table);
             String name = resolved != null ? resolved : entry;
             boolean present = AbsentDatasetSkip.resolvesExactOnly(rule,
                     name.toUpperCase(java.util.Locale.ROOT)) ? resolver.resolve(name) != null
@@ -2139,39 +1963,33 @@ public final class RuleRunner
 
 
     /** The expression twin of the retired leaf scan: a bare {@code Expr.Ref} with the prefix. */
-    private static boolean exprReferencesPrefix(net.cumba.corej.core.expr.ast.Expr expr,
-            String prefix)
+    private static boolean exprReferencesPrefix(Expr expr, String prefix)
     {
         return switch (expr)
         {
-        case net.cumba.corej.core.expr.ast.Expr.Ref ref -> ref.name().startsWith(prefix);
-        case net.cumba.corej.core.expr.ast.Expr.And and -> and.parts().stream()
+        case Expr.Ref ref -> ref.name().startsWith(prefix);
+        case Expr.And and -> and.parts().stream()
                 .anyMatch(part -> exprReferencesPrefix(part, prefix));
-        case net.cumba.corej.core.expr.ast.Expr.Or or -> or.parts().stream()
-                .anyMatch(part -> exprReferencesPrefix(part, prefix));
-        case net.cumba.corej.core.expr.ast.Expr.Not not -> exprReferencesPrefix(not.inner(),
-                prefix);
-        case net.cumba.corej.core.expr.ast.Expr.Binary binary -> exprReferencesPrefix(binary.left(),
-                prefix) || exprReferencesPrefix(binary.right(), prefix);
-        case net.cumba.corej.core.expr.ast.Expr.Call call -> call.args().stream()
+        case Expr.Or or -> or.parts().stream().anyMatch(part -> exprReferencesPrefix(part, prefix));
+        case Expr.Not not -> exprReferencesPrefix(not.inner(), prefix);
+        case Expr.Binary binary -> exprReferencesPrefix(binary.left(), prefix)
+                || exprReferencesPrefix(binary.right(), prefix);
+        case Expr.Call call -> call.args().stream()
                 .anyMatch(arg -> exprReferencesPrefix(arg, prefix))
                 || call.kwargs().values().stream()
                         .anyMatch(value -> exprReferencesPrefix(value, prefix));
-        case net.cumba.corej.core.expr.ast.Expr.Lit lit -> lit
-                .kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST
-                && listElements(lit).stream()
-                        .anyMatch(element -> exprReferencesPrefix(element, prefix));
+        case Expr.Lit lit -> lit.kind() == Expr.LitKind.LIST && listElements(lit).stream()
+                .anyMatch(element -> exprReferencesPrefix(element, prefix));
         };
     }
 
 
-    private static List<net.cumba.corej.core.expr.ast.Expr> listElements(
-            net.cumba.corej.core.expr.ast.Expr.Lit lit)
+    private static List<Expr> listElements(Expr.Lit lit)
     {
-        List<net.cumba.corej.core.expr.ast.Expr> out = new ArrayList<>();
+        List<Expr> out = new ArrayList<>();
         for (Object element : (List<?>) lit.value())
         {
-            if (element instanceof net.cumba.corej.core.expr.ast.Expr child)
+            if (element instanceof Expr child)
             {
                 out.add(child);
             }
@@ -2193,8 +2011,7 @@ public final class RuleRunner
             @Nullable String message, List<String> outputVars, EvaluationContext ctx,
             DataTableMeta meta, boolean perVariable)
     {
-        net.cumba.corej.core.expr.ast.Expr checkExpr = Objects
-                .requireNonNull(checkExprOf(rule, ctx));
+        Expr checkExpr = Objects.requireNonNull(checkExprOf(rule, ctx));
         // PLAN-binding-expressions I2: a var_*("LIBRARY") / define_* read inside a COMPILED binding
         // the Check reads requests its provider exactly as one in the Check does.
         var needed = net.cumba.corej.core.expr.eval.MetadataExprScan
@@ -2214,7 +2031,7 @@ public final class RuleRunner
         // otherwise serve var_*("LIBRARY") / ds_*("LIBRARY") from the STUDY library. See the
         // library_* operand gate above for why this surface needs its own check.
         if (needed.contains(net.cumba.corej.core.expr.eval.MetadataLevel.LIBRARY)
-                && !OperationExecutor.libraryAnswerable(ctx.getLibraryProvider()))
+                && !LibraryAnswerability.libraryAnswerable(ctx.getLibraryProvider()))
         {
             return metadataSkipped(ruleId, message, ctx,
                     ctx.getLibraryProvider() != null
@@ -2275,17 +2092,15 @@ public final class RuleRunner
                         continue;
                     }
                     bindings.visited();
-                    Map<String, Object> perColVars = projectVariablesForColumn(ctx.getVariables(),
-                            varName);
+                    Map<String, Object> perColVars = projectVariablesForColumn(ctx, varName);
                     EvaluationContext colCtx = ctx.toBuilder().variables(perColVars).build();
                     if (net.cumba.corej.core.expr.eval.NativeExprEvaluator
                             .evaluateBroadcast(checkExpr, colCtx))
                     {
                         bindings.note(BindingOutcome.fired(varName, 1));
                         violations.add(buildDefineVariableViolation(defineIndex, varName,
-                                outputVars, libProvider, defProvider, domainName,
-                                ctx.getVariables(), datasetSensitivity, ctx, derivedOutputVars,
-                                excludedOutputVars));
+                                outputVars, libProvider, defProvider, domainName, perColVars,
+                                datasetSensitivity, ctx, derivedOutputVars, excludedOutputVars));
                         if (datasetSensitivity)
                         {
                             break;
@@ -2307,7 +2122,7 @@ public final class RuleRunner
                 {
                     DataTableColumnMeta colMeta = meta.getColumn(c);
                     bindings.visited();
-                    Map<String, Object> perColVars = projectVariablesForColumn(ctx.getVariables(),
+                    Map<String, Object> perColVars = projectVariablesForColumn(ctx,
                             colMeta.getName());
                     if (carryOver && libProvider != null && domainName != null)
                     {
@@ -2323,9 +2138,8 @@ public final class RuleRunner
                                 isMetadataCheck, libProvider, defProvider, domainName,
                                 ctx.getTable(), ctx.getDatasetResolver());
                         violations.add(buildVariableViolation(c, colMeta, varMeta, outputVars,
-                                isMetadataCheck, libProvider, defProvider, domainName,
-                                ctx.getVariables(), datasetSensitivity, ctx, derivedOutputVars,
-                                excludedOutputVars));
+                                isMetadataCheck, libProvider, defProvider, domainName, perColVars,
+                                datasetSensitivity, ctx, derivedOutputVars, excludedOutputVars));
                         if (datasetSensitivity)
                         {
                             break;
@@ -2377,20 +2191,73 @@ public final class RuleRunner
      * The per-column variable view for the native per-variable paths (P4): a copy of the context
      * variables with every {@link VariableMetadataResult} entry projected to its value FOR the
      * current column ({@code vmr.getForVariable(colName)}) and the {@code variable_name} cursor set
-     * — mirroring the legacy Step-3 loop ({@code executeUnified}, Fix #36/#64: LazyValue entries
-     * are unwrapped first so the projection sees the materialised type, exactly like the legacy
-     * per-variable copy).
+     * — a compiled binding hands over its dataset-level value first so the projection sees the
+     * materialised type.
+     *
+     * <p>
+     * ⭐ <b>A binding that reads the variable cursor is handed over AGAINST THE COLUMN</b> (combined
+     * review of runbook W2–W8, W3+W4b H1 / F-W4b-1). {@code $adsl_label: var_label("DATA",
+     * dataset="ADSL")} reads {@code variable_name}; handed over against the outer context (no
+     * cursor) it answered {@code null} for every column and a Check such as
+     * {@code not empty($adsl_label) and …} passed silently. Every binding whose derived domain
+     * carries the VAR cursor is therefore evaluated in a context that carries the column's
+     * {@code variable_name} — except the per-variable MAP builder
+     * ({@code cross_dataset_variable_metadata}), whose one value is projected below and is built
+     * once for the loop against the outer context (its memo is keyed by the variables map, so a
+     * per-column hand-over would rebuild the map per column). A binding without the cursor keeps
+     * the outer hand-over and its memo across the loop.
+     * </p>
+     *
+     * <p>
+     * ⛔ <b>Only dataset-level and VAR-only bindings are handed over</b> (round 2 H1). A binding
+     * whose derived domain carries the ROW cursor is copied into the view as the
+     * {@link BindingValue} itself: its hand-over is a per-row Vector, which the compiler reads only
+     * through the binding ({@code ExprCompiler.boundVector}) — stored as a plain value it read as
+     * one constant, the Vector's text, and {@code $flag == "Y"} beside {@code var_type("DATA")}
+     * never fired.
+     * </p>
      */
-    private static Map<String, Object> projectVariablesForColumn(Map<String, Object> variables,
+    private static Map<String, Object> projectVariablesForColumn(EvaluationContext ctx,
             String colName)
     {
+        Map<String, Object> variables = ctx.getVariables();
         Map<String, Object> perColVars = LinkedHashMap.newLinkedHashMap(variables.size() + 1);
+        EvaluationContext cursorCtx = null;
         for (Map.Entry<String, Object> ve : variables.entrySet())
         {
             Object entryVal = ve.getValue();
-            if (entryVal instanceof LazyValue<?> lv)
+            if (entryVal instanceof BindingValue compiled)
             {
-                entryVal = lv.get();
+                if (compiled.binding().domain() != null && compiled.binding().domain().rowCursor())
+                {
+                    // ⛔ A binding that reads the ROW cursor stays the binding (combined review of
+                    // runbook W2–W8, round 2 H1): its hand-over is a Vector, and a Vector stored
+                    // as a plain value is no compiled binding to the compiler — it read as ONE
+                    // constant, the Vector's toString, on every row. Kept as the binding, the
+                    // compiler evaluates it in the column's context (its variables carry the
+                    // column's variable_name, so a ROW+VAR binding reads the column too) and every
+                    // other reader goes through resolveVariable's hand-over, as on the row path.
+                    perColVars.put(ve.getKey(), compiled);
+                    continue;
+                }
+                // Runbook W2a: a COMPILED binding (var_exists("X") where a variable_exists
+                // operation used to stand) hands over its dataset-level value here exactly as
+                // resolveVariable does for the row path — otherwise the per-variable projection
+                // reported the BindingValue object's toString.
+                if (readsVariableCursor(compiled))
+                {
+                    if (cursorCtx == null)
+                    {
+                        Map<String, Object> cursorVars = new LinkedHashMap<>(variables);
+                        cursorVars.put(VARIABLE_NAME, colName);
+                        cursorCtx = ctx.toBuilder().variables(cursorVars).build();
+                    }
+                    entryVal = compiled.handOver(cursorCtx);
+                }
+                else
+                {
+                    entryVal = compiled.handOver(ctx);
+                }
             }
             if (entryVal instanceof VariableMetadataResult vmr)
             {
@@ -2403,6 +2270,47 @@ public final class RuleRunner
         }
         perColVars.put(VARIABLE_NAME, colName);
         return perColVars;
+    }
+
+
+    /**
+     * Whether {@code compiled} must be handed over against the column: its derived domain carries
+     * the VAR cursor and it is not a per-variable map builder
+     * ({@code FunctionDescriptor.perVariableMap}; see {@link #projectVariablesForColumn}).
+     */
+    private static boolean readsVariableCursor(BindingValue compiled)
+    {
+        Domain domain = compiled.binding().domain();
+        return domain != null && domain.varCursor()
+                && !containsPerVariableMapCall(compiled.binding().expression());
+    }
+
+
+    /** Whether {@code e} contains, at any depth, a call declared to answer a per-variable map. */
+    private static boolean containsPerVariableMapCall(Expr e)
+    {
+        return switch (e)
+        {
+        case Expr.Call c -> answersPerVariable(c.name())
+                || c.args().stream().anyMatch(RuleRunner::containsPerVariableMapCall)
+                || c.kwargs().values().stream().anyMatch(RuleRunner::containsPerVariableMapCall);
+        case Expr.And a -> a.parts().stream().anyMatch(RuleRunner::containsPerVariableMapCall);
+        case Expr.Or o -> o.parts().stream().anyMatch(RuleRunner::containsPerVariableMapCall);
+        case Expr.Not n -> containsPerVariableMapCall(n.inner());
+        case Expr.Binary b -> containsPerVariableMapCall(b.left())
+                || containsPerVariableMapCall(b.right());
+        case Expr.Lit lit -> lit.kind() == Expr.LitKind.LIST && ((List<?>) lit.value()).stream()
+                .anyMatch(i -> i instanceof Expr x && containsPerVariableMapCall(x));
+        case Expr.Ref _ -> false;
+        };
+    }
+
+
+    private static boolean answersPerVariable(String name)
+    {
+        net.cumba.corej.core.expr.eval.FunctionDescriptor d = net.cumba.corej.core.expr.eval.FunctionRegistry
+                .descriptor(name);
+        return d != null && d.perVariableMap();
     }
 
 
@@ -2555,9 +2463,9 @@ public final class RuleRunner
 
     /**
      * The bare operands {@link #putCarryOverCandidates} publishes. They are plain
-     * {@link net.cumba.corej.core.expr.ast.Expr.Ref}s, not {@code var_*} accessor calls, so they
-     * resolve at evaluation time through {@code EvaluationContext.resolveVariable} — which is why
-     * they have to be in the per-column variable map before the verdict is taken.
+     * {@link Expr.Ref}s, not {@code var_*} accessor calls, so they resolve at evaluation time
+     * through {@code EvaluationContext.resolveVariable} — which is why they have to be in the
+     * per-column variable map before the verdict is taken.
      */
     private static final Set<String> CARRY_OVER_OPERANDS = Set.of("library_variable_label_values",
             "library_variable_data_type_values");
@@ -2592,28 +2500,22 @@ public final class RuleRunner
      * Whether {@code e} names one of {@link #CARRY_OVER_OPERANDS} anywhere in its tree. Used to
      * keep the per-column candidate lookup off every other metadata rule's hot path.
      */
-    static boolean referencesCarryOverOperand(net.cumba.corej.core.expr.ast.Expr e)
+    static boolean referencesCarryOverOperand(Expr e)
     {
         return switch (e)
         {
-        case net.cumba.corej.core.expr.ast.Expr.Ref r -> CARRY_OVER_OPERANDS.contains(r.name());
-        case net.cumba.corej.core.expr.ast.Expr.Binary b -> referencesCarryOverOperand(b.left())
+        case Expr.Ref r -> CARRY_OVER_OPERANDS.contains(r.name());
+        case Expr.Binary b -> referencesCarryOverOperand(b.left())
                 || referencesCarryOverOperand(b.right());
-        case net.cumba.corej.core.expr.ast.Expr.And a -> a.parts().stream()
-                .anyMatch(RuleRunner::referencesCarryOverOperand);
-        case net.cumba.corej.core.expr.ast.Expr.Or o -> o.parts().stream()
-                .anyMatch(RuleRunner::referencesCarryOverOperand);
-        case net.cumba.corej.core.expr.ast.Expr.Not n -> referencesCarryOverOperand(n.inner());
-        case net.cumba.corej.core.expr.ast.Expr.Call c -> c.args().stream()
-                .anyMatch(RuleRunner::referencesCarryOverOperand)
+        case Expr.And a -> a.parts().stream().anyMatch(RuleRunner::referencesCarryOverOperand);
+        case Expr.Or o -> o.parts().stream().anyMatch(RuleRunner::referencesCarryOverOperand);
+        case Expr.Not n -> referencesCarryOverOperand(n.inner());
+        case Expr.Call c -> c.args().stream().anyMatch(RuleRunner::referencesCarryOverOperand)
                 || c.kwargs().values().stream().anyMatch(RuleRunner::referencesCarryOverOperand);
         // A list literal holds Exprs, so `x in [library_variable_label_values]` is reachable in
         // principle; every other literal kind holds a scalar and has no nested reference.
-        case net.cumba.corej.core.expr.ast.Expr.Lit lit -> lit
-                .kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST
-                && ((List<?>) lit.value()).stream()
-                        .anyMatch(m -> m instanceof net.cumba.corej.core.expr.ast.Expr member
-                                && referencesCarryOverOperand(member));
+        case Expr.Lit lit -> lit.kind() == Expr.LitKind.LIST && ((List<?>) lit.value()).stream()
+                .anyMatch(m -> m instanceof Expr member && referencesCarryOverOperand(member));
         };
     }
 
@@ -2796,9 +2698,16 @@ public final class RuleRunner
                         && contextVariables.containsKey(ov))
                 {
                     Object val = contextVariables.get(ov);
-                    if (val instanceof LazyValue<?> lv)
+                    if (val instanceof BindingValue compiled)
                     {
-                        val = lv.get();
+                        val = compiled.handOver(ctx); // W2a: as projectVariablesForColumn
+                    }
+                    // W4b (D-W4b-12): the per-variable map reports THIS variable's value, as the
+                    // verdict read it (projectVariablesForColumn) — it rendered the map's
+                    // toString ("VariableMetadataResult[3 variables]") before.
+                    if (val instanceof VariableMetadataResult vmr)
+                    {
+                        val = vmr.getForVariable(colMeta.getName());
                     }
                     putUnlessDerivedNull(filtered, ov, val != null ? scalarToString(val) : null,
                             derivedOutputVars);
@@ -2946,9 +2855,13 @@ public final class RuleRunner
             if (ov.startsWith("$") && contextVariables != null && contextVariables.containsKey(ov))
             {
                 Object val = contextVariables.get(ov);
-                if (val instanceof LazyValue<?> lv)
+                if (val instanceof BindingValue compiled)
                 {
-                    val = lv.get();
+                    val = compiled.handOver(ctx); // W2a: as projectVariablesForColumn
+                }
+                if (val instanceof VariableMetadataResult vmr) // W4b (D-W4b-12), as above
+                {
+                    val = vmr.getForVariable(varName);
                 }
                 putUnlessDerivedNull(filtered, ov, val != null ? scalarToString(val) : null,
                         derivedOutputVars);
@@ -3074,8 +2987,7 @@ public final class RuleRunner
             @Nullable String ruleId, @Nullable String message, List<String> outputVars,
             EvaluationContext ctx, DataTableMeta meta)
     {
-        net.cumba.corej.core.expr.ast.Expr checkExpr = Objects
-                .requireNonNull(checkExprOf(rule, ctx));
+        Expr checkExpr = Objects.requireNonNull(checkExprOf(rule, ctx));
         // PLAN-binding-expressions I2: a var_*("LIBRARY") / define_* read inside a COMPILED binding
         // the Check reads requests its provider exactly as one in the Check does.
         var needed = net.cumba.corej.core.expr.eval.MetadataExprScan
@@ -3090,7 +3002,7 @@ public final class RuleRunner
         // otherwise serve var_*("LIBRARY") / ds_*("LIBRARY") from the STUDY library. See the
         // library_* operand gate above for why this surface needs its own check.
         if (needed.contains(net.cumba.corej.core.expr.eval.MetadataLevel.LIBRARY)
-                && !OperationExecutor.libraryAnswerable(ctx.getLibraryProvider()))
+                && !LibraryAnswerability.libraryAnswerable(ctx.getLibraryProvider()))
         {
             return metadataSkipped(ruleId, message, ctx,
                     ctx.getLibraryProvider() != null
@@ -3109,16 +3021,6 @@ public final class RuleRunner
                         : null;
         String domainName = ctx.getDomainName();
         ViolationSink violations = new ViolationSink(ctx.getMaxErrorsPerRule());
-        // Guard-residual D4 projection rule: legacy is position-dependent for a per-variable
-        // VariableMetadataResult $-ref. A $-NAME-side VMR leaf is folded at Step 3 against the
-        // PER-COLUMN PROJECTION, while a textual "$vmr" in a row-leaf VALUE position reaches
-        // Step 4's ValueResolver, which has no VMR branch and yields the raw object (P9 review
-        // finding 6). So: project the VMR entries per column iff every VMR ref sits in guard
-        // position; otherwise keep the raw (unprojected) view, matching the Step-4 contract.
-        boolean projectVmr = net.cumba.corej.core.expr.eval.BroadcastFold
-                .hasVariableMetadataRef(checkExpr, ctx)
-                && net.cumba.corej.core.expr.eval.BroadcastFold
-                        .vmrRefsOnlyInGuardPosition(checkExpr, ctx);
         Set<String> derivedOutputVars = derivedOnlyOutputVars(rule);
         Set<String> excludedOutputVars = rule.excludedOutputVariablesOrAuthored();
         boolean datasetSensitivity = rule.getSensitivity() == Sensitivity.DATASET;
@@ -3135,16 +3037,13 @@ public final class RuleRunner
         {
             DataTableColumnMeta colMeta = meta.getColumn(c);
             bindings.visited();
-            Map<String, Object> perColVars;
-            if (projectVmr)
-            {
-                perColVars = projectVariablesForColumn(ctx.getVariables(), colMeta.getName());
-            }
-            else
-            {
-                perColVars = new LinkedHashMap<>(ctx.getVariables());
-                perColVars.put(VARIABLE_NAME, colMeta.getName());
-            }
+            // Every binding is projected per column, whatever position its $-ref sits in
+            // (combined review of runbook W2–W8, W3+W4b M1): the retired legacy path projected a
+            // VariableMetadataResult only when every ref sat in guard position, and a VMR on a
+            // comparison's right-hand side compared against the whole map — firing on every
+            // (variable, row). The per-column view is what the Check reads AND what the finding
+            // reports (colCtx below is handed to addVariableRowViolations, M2).
+            Map<String, Object> perColVars = projectVariablesForColumn(ctx, colMeta.getName());
             EvaluationContext colCtx = loopCtx.toBuilder().variables(perColVars).build();
             BitSet rowBits = net.cumba.corej.core.expr.eval.NativeExprEvaluator.evaluate(checkExpr,
                     colCtx);
@@ -3165,8 +3064,8 @@ public final class RuleRunner
                     libProvider, defProvider, domainName, ctx.getTable(), ctx.getDatasetResolver());
             int colIdx = meta.getColumnIndex(colMeta.getName());
             bindings.note(BindingOutcome.fired(colMeta.getName(), rowBits.cardinality()));
-            addVariableRowViolations(violations, rowBits, colMeta, colIdx, varMeta, outputVars, ctx,
-                    derivedOutputVars, excludedOutputVars);
+            addVariableRowViolations(violations, rowBits, colMeta, colIdx, varMeta, outputVars,
+                    colCtx, derivedOutputVars, excludedOutputVars);
             if (datasetSensitivity)
             {
                 break;
@@ -3180,8 +3079,8 @@ public final class RuleRunner
 
     /**
      * Executes a rule with Group sensitivity. Iterates unique groups defined by Grouping_Variables,
-     * evaluates the Check once per group using aggregated $-variables (via GroupedResult), and
-     * produces one violation per failing group.
+     * evaluates the Check once per group using aggregated $-variables, and produces one violation
+     * per failing group.
      */
     private static RuleExecutionResult executeGrouped(Rule rule, @Nullable String ruleId,
             @Nullable String message, CheckCondition check, EvaluationContext ctx)
@@ -3480,7 +3379,13 @@ public final class RuleRunner
                 continue;
             }
             int col = meta.getColumnIndex(name);
-            if (col < 0)
+            // A bare name the primary does not carry may be a supplemental qualifier delivered
+            // by the declared SUPP merge (SuppPivot) — the Check read it that way, so the group
+            // finding reports its distinct set that way too (combined review of runbook W2–W8,
+            // W2 L3: it used to keep the anchor row's value).
+            IDataTableColumn column = col >= 0 ? table.getColumn(col)
+                    : SuppPivot.qualifierColumn(ctx, name);
+            if (column == null)
             {
                 continue;
             }
@@ -3493,7 +3398,7 @@ public final class RuleRunner
             for (java.util.PrimitiveIterator.OfLong it = flagged.iterator(); it.hasNext();)
             {
                 long row = it.nextLong();
-                IDataValue dv = table.getColumn(col).getDataValue(row);
+                IDataValue dv = column.getDataValue(row);
                 MissingValue missing = net.cumba.corej.core.expr.eval.TypedValue
                         .missingIdentityOf(dv);
                 distinctByIdentity.putIfAbsent(missing != null
@@ -3655,7 +3560,7 @@ public final class RuleRunner
             // Resolve -- wildcard in dataset name (e.g., SUPP-- → SUPPAE). resolveWildcard only
             // returns null for a null input; originalName is non-null here (guarded above).
             String dsName = Objects.requireNonNull(
-                    OperationExecutor.resolveWildcard(originalName, primaryTable),
+                    DatasetIdentity.resolveWildcard(originalName, primaryTable),
                     "resolved dataset name");
             String resultKey = originalName.contains("--") ? dsName : originalName;
 
@@ -3677,9 +3582,12 @@ public final class RuleRunner
             // a different filter) would silently cross-contaminate their partner sets.
             if (md.getFilter() != null && !md.getFilter().isBlank())
             {
+                // Combined review of runbook W2–W8, W4 L3: the Filter's sub-context carries the
+                // run's resolver, so a study-inventory read (dataset_names()) answers instead of
+                // hitting the loud D-W4-5 arm; the library is not in scope here (LEFT).
                 IDataTable joined = MatchFilter.apply(md,
-                        SplitDomainResolution.resolveTableOrThrow(resolver, dsName, ruleId),
-                        ruleId);
+                        SplitDomainResolution.resolveTableOrThrow(resolver, dsName, ruleId), ruleId,
+                        resolver, null);
                 if (joined == null)
                 {
                     LOGGER.log(System.Logger.Level.DEBUG,
@@ -3851,9 +3759,8 @@ public final class RuleRunner
 
 
     /**
-     * The Fix #15 per-leaf projection rule read off an {@link net.cumba.corej.core.expr.ast.Expr}
-     * instead of the retired {@code CheckConditionLeaf} — phase 7 of
-     * {@code PLAN-typed-expression-engine}.
+     * The Fix #15 per-leaf projection rule read off an {@link Expr} instead of the retired
+     * {@code CheckConditionLeaf} — phase 7 of {@code PLAN-typed-expression-engine}.
      *
      * <p>
      * ⚠⚠ <b>Why this exists at all.</b> Before phase 7 an expression Check was lowered to the v1
@@ -3881,8 +3788,8 @@ public final class RuleRunner
      * which is the whole reason EC-37 left this inference at runtime.
      * </p>
      */
-    private static void collectExprLeafTargets(net.cumba.corej.core.expr.ast.@Nullable Expr expr,
-            DataTableMeta meta, java.util.SequencedSet<String> out)
+    private static void collectExprLeafTargets(@Nullable Expr expr, DataTableMeta meta,
+            java.util.SequencedSet<String> out)
     {
         switch (expr)
         {
@@ -3890,25 +3797,23 @@ public final class RuleRunner
         {
             // no expression surface
         }
-        case net.cumba.corej.core.expr.ast.Expr.And and ->
+        case Expr.And and ->
         {
             for (var part : and.parts())
             {
                 collectExprLeafTargets(part, meta, out);
             }
         }
-        case net.cumba.corej.core.expr.ast.Expr.Or or ->
+        case Expr.Or or ->
         {
             for (var part : or.parts())
             {
                 collectExprLeafTargets(part, meta, out);
             }
         }
-        case net.cumba.corej.core.expr.ast.Expr.Not not -> collectExprLeafTargets(not.inner(), meta,
-                out);
-        case net.cumba.corej.core.expr.ast.Expr.Binary binary -> addExprTarget(binary.left(), meta,
-                null, out);
-        case net.cumba.corej.core.expr.ast.Expr.Call call ->
+        case Expr.Not not -> collectExprLeafTargets(not.inner(), meta, out);
+        case Expr.Binary binary -> addExprTarget(binary.left(), meta, null, out);
+        case Expr.Call call ->
         {
             if (!call.args().isEmpty())
             {
@@ -3934,8 +3839,8 @@ public final class RuleRunner
      * @param out
      *            the accumulating projection
      */
-    private static void addExprTarget(net.cumba.corej.core.expr.ast.Expr operand,
-            DataTableMeta meta, @Nullable String operator, java.util.SequencedSet<String> out)
+    private static void addExprTarget(Expr operand, DataTableMeta meta, @Nullable String operator,
+            java.util.SequencedSet<String> out)
     {
         if ("var_not_exists".equals(operator) || "ds_not_exists".equals(operator)
                 || "ds_exists".equals(operator))
@@ -3944,13 +3849,13 @@ public final class RuleRunner
         }
         // The target may sit under a conversion or affix wrapper (date(X), num(X), len(X)); the
         // leaf form carried the bare name, so unwrap to the same place.
-        net.cumba.corej.core.expr.ast.Expr inner = operand;
-        while (inner instanceof net.cumba.corej.core.expr.ast.Expr.Call wrapper
-                && wrapper.args().size() == 1 && wrapper.kwargs().isEmpty())
+        Expr inner = operand;
+        while (inner instanceof Expr.Call wrapper && wrapper.args().size() == 1
+                && wrapper.kwargs().isEmpty())
         {
             inner = wrapper.args().get(0);
         }
-        if (!(inner instanceof net.cumba.corej.core.expr.ast.Expr.Ref ref))
+        if (!(inner instanceof Expr.Ref ref))
         {
             return;
         }
@@ -4203,22 +4108,11 @@ public final class RuleRunner
         Map<String, String> values = new LinkedHashMap<>();
         for (String varName : outputVars)
         {
-            // Handle $-prefixed variables from Operations
+            // A $-binding's reported value
             if (varName.startsWith("$"))
             {
                 Object val = ctx.resolveVariable(varName);
-                if (val instanceof GroupedResult grouped)
-                {
-                    // Q2 of PLAN-grouping-key-identity: bound to the table this row is read from
-                    // -- once per (result, table), memoised on the context, never per row.
-                    ctx.requireCompatibleGroupedKeys(grouped);
-                    // Report the same absent-key default the firing logic used (0 for
-                    // record_count, null otherwise) so the rendered $var matches the evaluated
-                    // value instead of showing empty for a count that fired as 0.
-                    Object groupVal = grouped.getForRowOrDefault(ctx, row);
-                    values.put(varName, scalarToString(groupVal));
-                }
-                else if (val instanceof net.cumba.corej.core.expr.eval.Vector perRow)
+                if (val instanceof net.cumba.corej.core.expr.eval.Vector perRow)
                 {
                     // Wave 0 (PLAN-binding-expressions §5.2): a per-row COMPILED binding reports
                     // its value AT THE FINDING'S ROW. A collection renders like an operation's
@@ -4314,10 +4208,9 @@ public final class RuleRunner
                 // carries the levels' join), else the rule-level context domain — reading the
                 // context alone on a per-level execution would consult the rule's own cached
                 // domain instead of the plan the rung actually evaluated under.
-                net.cumba.corej.core.expr.eval.Domain evalDomain = ctx.getLevelPlan() != null
-                        ? ctx.getLevelPlan().domain()
+                Domain evalDomain = ctx.getLevelPlan() != null ? ctx.getLevelPlan().domain()
                         : ctx.getEvaluationDomain();
-                if (net.cumba.corej.core.expr.eval.Domain.VARIABLE.equals(evalDomain))
+                if (Domain.VARIABLE.equals(evalDomain))
                 {
                     values.put(varName, varName);
                 }
@@ -4340,6 +4233,16 @@ public final class RuleRunner
                 // ⚠ No `continue` here any more, and Error Prone is what noticed: with the join
                 // fallback below removed there is nothing left to skip, so the statement became
                 // [RedundantControlFlow]. Left as a note because the removal is what made it so.
+            }
+            else
+            {
+                // W2a (C1 ruled (a)): a SUPP-delivered qualifier reports the record's value —
+                // the same pivot the Check read it through.
+                IDataTableColumn qualifier = SuppPivot.qualifierColumn(ctx, varName);
+                if (qualifier != null && row < table.getRowCount())
+                {
+                    values.put(varName, reportedValue(qualifier.getDataValue(row)));
+                }
             }
             // ⭐⭐ UVC unqualified + the UNIFORMITY ruling (owner, 2026-09-21). A join fallback for
             // an unqualified Output_Variables entry stood here -- "try joined datasets for
@@ -4448,7 +4351,7 @@ public final class RuleRunner
 
 
     /**
-     * Safely render an Operation-resolved $-variable value as a short String suitable for a
+     * Safely render a binding's handed-over $-variable value as a short String suitable for a
      * finding's output column.
      *
      * <p>

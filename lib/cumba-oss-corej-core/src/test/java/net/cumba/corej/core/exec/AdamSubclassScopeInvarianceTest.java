@@ -101,7 +101,8 @@ class AdamSubclassScopeInvarianceTest
     @Test
     void detectSubclassesAgreesWithTheDetectorTheScopeGateUses()
     {
-        // The gate (RuleRunner) and the operation (OperationExecutor) now share ONE derivation.
+        // The gate (RuleRunner) and the variable-list reader (OperationExecutor's, retired in
+        // runbook W8) were made to share ONE derivation.
         // If this ever diverges, a rule admitted as ADVERSE EVENT would resolve its variable list
         // from some other structure and nothing would say so.
         var meta = adae().getMetaData();

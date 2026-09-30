@@ -112,6 +112,7 @@ class BoundKeysRosterTest
                     Map.entry("Expansion", r(TOKEN_EXPANDER, "getExpansion")),
                     Map.entry("skipIfLibraryDefined",
                             r(P + "exec.DatasetRuleResolver", "getSkipIfLibraryDefined")),
+                    Map.entry("Supp_Merge", r(RUNNER, "isSuppMergeEnabled")),
                     Map.entry("wildcards", r(WILDCARD_EXPANDER, "getWildcards")),
                     Map.entry("wildcardExclude", r(WILDCARD_EXPANDER, "getWildcardExclude")),
                     Map.entry("wildcardPairCatalogue",

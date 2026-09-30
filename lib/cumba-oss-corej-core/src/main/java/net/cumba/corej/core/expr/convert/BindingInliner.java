@@ -20,11 +20,12 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * ⭐ This is what "resolve a compiled binding by walking its expression like a Check leaf" means for
- * the readers that used to resolve a {@code $}-reference against {@code getOperations()} alone and
- * degrade to their worst case on a miss (R19 {@code RuleClassifier}, R27
- * {@code StudyRuleClassifier}, the corpus test tree's C2–C5): a compiled binding IS a named
- * sub-expression, so reading it inline is exact, not an approximation. An operation binding's
- * {@code $}-reference is left alone — those readers keep their operation arm.
+ * the static readers ({@code RuleClassifier}, {@code StudyRuleClassifier}, the corpus test tree's
+ * C2–C5): a compiled binding IS a named sub-expression, so reading it inline is exact, not an
+ * approximation. Since runbook W8 ({@code PLAN-retire-operation-surface}) every binding is a
+ * compiled binding ({@code Rule.bindingOrder()} is the one view), so every {@code $}-reference to a
+ * binding of the rule is inlined; a {@code $}-reference naming no binding of the rule is left in
+ * place.
  * </p>
  *
  * <p>

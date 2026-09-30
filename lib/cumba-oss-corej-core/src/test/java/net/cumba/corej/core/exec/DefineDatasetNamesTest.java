@@ -1,19 +1,17 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
-import java.util.Map;
 import net.cumba.cdisc.define.DefineXmlParser;
 import net.cumba.cdisc.define.ODM;
 import net.cumba.corej.core.metadata.DefineXmlMetadataProvider;
 import net.cumba.corej.core.metadata.OdmDefineXMLProvider;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -25,8 +23,6 @@ import org.junit.jupiter.api.Test;
 class DefineDatasetNamesTest
 {
 
-    private static final DatasetResolver NO_RESOLVER = _ -> null;
-
     private static ODM parse(String resource) throws IOException
     {
         try (InputStream in = DefineDatasetNamesTest.class.getResourceAsStream(resource))
@@ -36,12 +32,13 @@ class DefineDatasetNamesTest
     }
 
 
-    private static Operation makeOp()
+    /** {@code define_dataset_names()} — a registry function since wave 4 — over {@code table}. */
+    private static Object run(IDataTable table, @Nullable MetadataProvider define)
     {
-        Operation op = new Operation();
-        op.setId("$define_dataset_names");
-        op.setOperator("define_dataset_names");
-        return op;
+        return DefineLists.defineDatasetNames(
+                net.cumba.corej.core.expr.eval.EvalRun.fullRange(
+                        EvaluationContext.builder().table(table).defineProvider(define).build()),
+                List.of()).value(0).resolved();
     }
 
 
@@ -53,9 +50,7 @@ class DefineDatasetNamesTest
                 new OdmDefineXMLProvider(parse("/define/define-itemmeta-e2e.xml")), null);
         IDataTable table = MockTable.of().name("DM").col("AGE", "56").build();
 
-        Object result = OperationExecutorCalls.executeOne(makeOp(), table, NO_RESOLVER, null,
-                Map.of(), null, null, define);
-        assertEquals(List.of("DM"), result);
+        assertEquals(List.of("DM"), run(table, define));
     }
 
 
@@ -67,20 +62,18 @@ class DefineDatasetNamesTest
                 new OdmDefineXMLProvider(parse("/define/define-keys-e2e.xml")), null);
         IDataTable table = MockTable.of().name("LB").col("LBORRES", "40").build();
 
-        Object result = OperationExecutorCalls.executeOne(makeOp(), table, NO_RESOLVER, null,
-                Map.of(), null, null, define);
-        assertEquals(List.of("LB"), result);
+        assertEquals(List.of("LB"), run(table, define));
     }
 
 
     /** No Define provider ⇒ null (unresolvable), so the caller SKIPs the rule (never PASS/FAIL). */
     @Test
-    void nullWhenNoDefineProvider()
+    void unusableWhenNoDefineProvider()
     {
         IDataTable table = MockTable.of().name("DM").col("AGE", "56").build();
-
-        Object result = OperationExecutorCalls.executeOne(makeOp(), table, NO_RESOLVER, null,
-                Map.of(), null, null, null);
-        assertNull(result);
+        // The signal RuleRunner turns into SKIPPED (the second layer under its no-provider arm).
+        org.junit.jupiter.api.Assertions.assertThrows(
+                net.cumba.corej.core.expr.eval.UnusableProviderAnswerException.class,
+                () -> run(table, null));
     }
 }

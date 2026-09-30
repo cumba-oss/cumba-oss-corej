@@ -184,58 +184,24 @@ public class Rule
 
 
     /**
-     * Every binding of the rule — operation bindings ({@code getOperations()}) and compiled
-     * bindings ({@code getCompiledBindings()}) — in <b>authored order</b>
-     * ({@code PLAN-binding-expressions} §5.0).
-     *
-     * <p>
-     * The operations keep their list order; each compiled binding is placed directly after the last
-     * of its {@link CompiledBinding#predecessors()} still present, or first when none is. Compiled
-     * bindings are placed in their own list order, which is their authored order, so two compiled
-     * bindings never swap. An {@code operations} entry that is {@code null} (a hand-built test
-     * rule) is skipped, exactly as every operation reader skips it.
-     * </p>
+     * Every binding of the rule — its compiled bindings ({@code getCompiledBindings()}) — in
+     * <b>authored order</b> ({@code PLAN-binding-expressions} §5.0). Never {@code null}; empty when
+     * the rule declares none. Since runbook W8 ({@code PLAN-retire-operation-surface}) a binding
+     * has exactly one kind: the loader materialises every {@code Bindings:} entry as a
+     * {@link CompiledBinding} (the operation kind went with the carrier), so this is the one view
+     * every reader that resolves a {@code $}-name, orders bindings or walks them reads.
      *
      * @return the ordered bindings; empty when the rule has none
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
-    public List<BoundBinding> bindingOrder()
+    public List<CompiledBinding> bindingOrder()
     {
-        List<BoundBinding> order = new java.util.ArrayList<>();
-        if (operations != null)
-        {
-            for (Operation op : operations)
-            {
-                if (op != null)
-                {
-                    order.add(new BoundBinding.OfOperation(op));
-                }
-            }
-        }
-        if (compiledBindings == null || compiledBindings.isEmpty())
-        {
-            return order;
-        }
-        for (CompiledBinding compiled : compiledBindings)
-        {
-            int insertAt = 0;
-            for (int i = 0; i < order.size(); i++)
-            {
-                String present = order.get(i).name();
-                if (present != null && compiled.predecessors().contains(present))
-                {
-                    insertAt = i + 1;
-                }
-            }
-            order.add(insertAt, compiled);
-        }
-        return order;
+        return compiledBindings == null ? List.of() : List.copyOf(compiledBindings);
     }
 
 
     /**
-     * The compiled binding named {@code name}, or {@code null} when the rule has none by that name
-     * (it may still name an operation binding).
+     * The compiled binding named {@code name}, or {@code null} when the rule has none by that name.
      *
      * @param name
      *            the {@code $}-name
@@ -292,9 +258,9 @@ public class Rule
      * <p>
      * Hand-written (winning over the Lombok {@code @Data} setter) because {@link #check}
      * <em>is</em> the first entry of {@link #checkLevels} when a level map is present: the loader's
-     * inlining seams ({@code inlineVariableExistsOps}, {@code inlineSplitByOps}) and the generators
-     * rewrite the Check through this setter, and a level map left holding the pre-rewrite condition
-     * would evaluate the un-inlined tree at its own level.
+     * raising and canonicalisation seams ({@code RulePackageLoader.installNativeExpr}) and the
+     * generators rewrite the Check through this setter, and a level map left holding the
+     * pre-rewrite condition would evaluate the un-inlined tree at its own level.
      * </p>
      *
      * @param check
@@ -718,30 +684,21 @@ public class Rule
     /**
      * The authored {@code Bindings:} block — each entry {@code name:} + {@code expression:}
      * ({@link Binding}). The 7b authoring surface (owner rulings 2026-09-17) replacing the retired
-     * {@code Operations:} block; {@code RulePackageLoader.normalizeOperations} materialises it into
-     * {@link #operations}, the executor-internal bound-argument records.
+     * {@code Operations:} block; {@code RulePackageLoader.materialiseBindings} parses it into
+     * {@link #compiledBindings}.
      */
     @JsonProperty("Bindings")
     private @Nullable List<Binding> bindings;
 
     /**
-     * The executor's bound-argument records, materialised from {@link #bindings} at load
-     * ({@code RulePackageLoader.normalizeOperations}). <b>Runtime-only since phase 7b</b> — never
-     * part of the JSON rule contract: the field form of an operation is retired as an authoring
-     * surface, so nothing binds or serialises this list.
-     */
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    private @Nullable List<Operation> operations;
-
-    /**
-     * The rule's <b>compiled</b> bindings — every {@code Bindings:} entry whose expression is not a
-     * single top-level {@link OperationType} call ({@code PLAN-binding-expressions}, wave 0 of
-     * {@code RUNBOOK-operations-to-functions}). Materialised beside {@link #operations} by
-     * {@code RulePackageLoader.normalizeOperations}; runtime-only, never serialised.
+     * The rule's <b>compiled</b> bindings — every {@code Bindings:} entry, parsed once and compiled
+     * like the {@code Check} ({@code PLAN-binding-expressions}, wave 0 of
+     * {@code RUNBOOK-operations-to-functions}; since runbook W8 the ONLY kind of binding — the
+     * operation record that used to sit beside it went with the retired carrier). Materialised by
+     * {@code RulePackageLoader.materialiseBindings}; runtime-only, never serialised.
      *
      * <p>
-     * ⛔ A reader that must see every binding reads {@link #bindingOrder()}, never this list or
-     * {@link #operations} alone.
+     * ⛔ A reader that must see every binding reads {@link #bindingOrder()}, never this list alone.
      * </p>
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
@@ -765,8 +722,8 @@ public class Rule
     void rejectRetiredOperationsKey(com.fasterxml.jackson.databind.@Nullable JsonNode ignored)
     {
         throw new net.cumba.corej.core.expr.RuleDefinitionException(
-                "the `Operations:` block is retired — declare the operation bindings under"
-                        + " `Bindings:` (each entry `name:` + `expression:`)");
+                "the `Operations:` block is retired — declare the bindings under `Bindings:`"
+                        + " (each entry `name:` + `expression:`)");
     }
 
     @JsonProperty("Match_Datasets")
@@ -872,6 +829,31 @@ public class Rule
      */
     @JsonProperty("skipIfLibraryDefined")
     private @Nullable Boolean skipIfLibraryDefined;
+
+    /**
+     * The declared SUPP merge (owner P-Q1, 2026-09-28; {@code PLAN-operation-replacements} §2.3):
+     * {@code true} (the default when absent) lets a bare name the parent dataset does not carry
+     * resolve to its {@code SUPP<domain>} qualifier per record — the SDTM supplemental-qualifier
+     * merge every validator performs, here a pivot by reference,
+     * {@link net.cumba.corej.core.exec.SuppPivot}: readable by value and by existence, never a
+     * variable of the parent for the variable-metadata surface (C1 ruled (a), 2026-09-29) — and
+     * keeps the dotted existence pivot ({@code var_exists("AE.AETRTEM")} true when SUPPAE carries
+     * the QNAM). {@code false} evaluates the raw dataset and answers both pivots false. JSON key
+     * {@code "Supp_Merge"}.
+     */
+    @JsonProperty("Supp_Merge")
+    private @Nullable Boolean suppMerge;
+
+    /**
+     * Whether the SUPP merge applies to this rule: {@code Supp_Merge} absent or {@code true}.
+     *
+     * @return {@code true} unless the rule declares {@code Supp_Merge: false}
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public boolean isSuppMergeEnabled()
+    {
+        return !Boolean.FALSE.equals(suppMerge);
+    }
 
     /**
      * Fix #24: numeric range filters applied to wildcard capture groups during expansion. Map key
@@ -1078,8 +1060,8 @@ public class Rule
     /**
      * The effective Output_Variables — the authored {@code Outcome.Output_Variables} plus every
      * entry {@link net.cumba.corej.core.exec.OutputVariableDeriver} could derive from the Check,
-     * the Operations and the rule type (EC-37, {@code PLAN-auto-output-variables}). Populated only
-     * at runtime by {@code RulePackageLoader#deriveOutputVariables}; never serialised, so
+     * the bindings and the rule type (EC-37, {@code PLAN-auto-output-variables}). Populated only at
+     * runtime by {@code RulePackageLoader#deriveOutputVariables}; never serialised, so
      * {@code /api/rules/full}, the XLSX export and every offline tool keep showing exactly what the
      * author wrote. {@code null} when the derivation is disabled
      * ({@code -Dcorej.autoOutputVariables=false}), so consumers fall back to the authored list via

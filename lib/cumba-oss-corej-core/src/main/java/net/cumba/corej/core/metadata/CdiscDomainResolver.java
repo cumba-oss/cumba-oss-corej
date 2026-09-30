@@ -37,9 +37,9 @@ import net.cumba.datatable.values.IDataValue;
  *
  * <p>
  * This class is the public-API replacement for the legacy package-private
- * {@code OperationExecutor.domainPrefix(IDataTable)}. The legacy helper is retained as a forwarder
- * for the per-row substitution sites in {@code OperationExecutor} that already use it; new call
- * sites should consume {@link #cdiscDomainOf(IDataTable)} directly.
+ * {@code DatasetIdentity.domainPrefix(IDataTable)}. The legacy helper is retained as a forwarder
+ * for the per-row substitution sites ({@code DatasetIdentity}) that already use it; new call sites
+ * should consume {@link #cdiscDomainOf(IDataTable)} directly.
  * </p>
  *
  * <p>

@@ -321,9 +321,9 @@ class ExprCompilerGroupAggregateVerdictTest
                 .col("S", "1", "2", "3").build();
         IDataTable unsorted = MockTable.of().name("DS").col("T", "10", "5", "20")
                 .col("S", "1", "2", "3").build();
-        assertEquals(bits(), eval("not is_sorted_by(T, by=[asc(\"S\")])", ctxOf(sorted)),
+        assertEquals(bits(), eval("not is_sorted_by(T, by=[asc(S)])", ctxOf(sorted)),
                 "a numerically non-decreasing target (5,10,20 — numeric, not textual) passes");
-        assertEquals(bits(0, 1, 2), eval("not is_sorted_by(T, by=[asc(\"S\")])", ctxOf(unsorted)),
+        assertEquals(bits(0, 1, 2), eval("not is_sorted_by(T, by=[asc(S)])", ctxOf(unsorted)),
                 "a decreasing step flags the whole group");
     }
 

@@ -10,13 +10,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * EC-36: {@code OperationExecutor.variableWildcardPrefix} and {@code OperationExecutor.apSuffixOf}
- * — the {@code --} replacement for a <em>variable name</em>, mirroring Python's
+ * EC-36: {@code DatasetIdentity.variableWildcardPrefix} and {@code DatasetIdentity.apSuffixOf} —
+ * the {@code --} replacement for a <em>variable name</em>, mirroring Python's
  * {@code SDTMDatasetMetadata.wildcard_replacement}.
  *
  * <p>
- * Each case also states what {@link OperationExecutor#domainPrefix(IDataTable)} returns, because
- * the whole point of EC-36 is that the two answer different questions. Where they differ, the
+ * Each case also states what {@link DatasetIdentity#domainPrefix(IDataTable)} returns, because the
+ * whole point of EC-36 is that the two answer different questions. Where they differ, the
  * {@code domainPrefix} value is the one the engine used before EC-36 — so these tests double as
  * regression pins against reverting to it.
  * </p>
@@ -35,8 +35,8 @@ class VariableWildcardPrefixTest
         IDataTable lb = MockTable.of().col("DOMAIN", "LB").col("LBTESTCD", "ALB").name("LB")
                 .build();
 
-        assertEquals("LB", OperationExecutor.variableWildcardPrefix(lb, "LB"));
-        assertEquals("LB", OperationExecutor.domainPrefix(lb), "unchanged for ordinary domains");
+        assertEquals("LB", DatasetIdentity.variableWildcardPrefix(lb, "LB"));
+        assertEquals("LB", DatasetIdentity.domainPrefix(lb), "unchanged for ordinary domains");
     }
 
 
@@ -46,7 +46,7 @@ class VariableWildcardPrefixTest
         IDataTable lb1 = MockTable.of().col("DOMAIN", "LB").col("LBTESTCD", "ALB").name("LB1")
                 .build();
 
-        assertEquals("LB", OperationExecutor.variableWildcardPrefix(lb1, "LB"));
+        assertEquals("LB", DatasetIdentity.variableWildcardPrefix(lb1, "LB"));
     }
 
     // -----------------------------------------------------------------------
@@ -63,9 +63,9 @@ class VariableWildcardPrefixTest
         IDataTable apmh = MockTable.of().col("DOMAIN", "APMH").col("APID", "A1")
                 .col("MHTERM", "HEADACHE").name("APMH").build();
 
-        assertEquals("MH", OperationExecutor.apSuffixOf(apmh, "APMH"));
-        assertEquals("MH", OperationExecutor.variableWildcardPrefix(apmh, "APMH"));
-        assertEquals("APMH", OperationExecutor.domainPrefix(apmh), "domainPrefix is unchanged");
+        assertEquals("MH", DatasetIdentity.apSuffixOf(apmh, "APMH"));
+        assertEquals("MH", DatasetIdentity.variableWildcardPrefix(apmh, "APMH"));
+        assertEquals("APMH", DatasetIdentity.domainPrefix(apmh), "domainPrefix is unchanged");
     }
 
 
@@ -77,8 +77,8 @@ class VariableWildcardPrefixTest
         IDataTable apmh = MockTable.of().col("DOMAIN", "APMH").col("MHTERM", "X").name("APMH")
                 .build();
 
-        assertEquals("", OperationExecutor.apSuffixOf(apmh, "APMH"));
-        assertEquals("APMH", OperationExecutor.variableWildcardPrefix(apmh, "APMH"));
+        assertEquals("", DatasetIdentity.apSuffixOf(apmh, "APMH"));
+        assertEquals("APMH", DatasetIdentity.variableWildcardPrefix(apmh, "APMH"));
     }
 
 
@@ -88,8 +88,8 @@ class VariableWildcardPrefixTest
         // Python's `len(domain) >= 4` gate: substring(2) of a 3-char domain is not a domain code.
         IDataTable apm = MockTable.of().col("DOMAIN", "APM").col("APID", "A1").name("APM").build();
 
-        assertEquals("", OperationExecutor.apSuffixOf(apm, "APM"));
-        assertEquals("APM", OperationExecutor.variableWildcardPrefix(apm, "APM"));
+        assertEquals("", DatasetIdentity.apSuffixOf(apm, "APM"));
+        assertEquals("APM", DatasetIdentity.variableWildcardPrefix(apm, "APM"));
     }
 
 
@@ -101,8 +101,8 @@ class VariableWildcardPrefixTest
         // does not disable AP handling; only a missing APID column does.
         IDataTable ap = MockTable.of().col("APID", "A1").col("MHTERM", "X").name("APMH").build();
 
-        assertEquals("MH", OperationExecutor.apSuffixOf(ap, "APMH"));
-        assertEquals("MH", OperationExecutor.variableWildcardPrefix(ap, "APMH"));
+        assertEquals("MH", DatasetIdentity.apSuffixOf(ap, "APMH"));
+        assertEquals("MH", DatasetIdentity.variableWildcardPrefix(ap, "APMH"));
     }
 
     // -----------------------------------------------------------------------
@@ -118,9 +118,9 @@ class VariableWildcardPrefixTest
         IDataTable suppae = MockTable.of().col("RDOMAIN", "AE").col("QNAM", "X").name("SUPPAE")
                 .build();
 
-        assertEquals("", OperationExecutor.apSuffixOf(suppae, "SUPPAE"));
-        assertEquals("", OperationExecutor.variableWildcardPrefix(suppae, "SUPPAE"));
-        assertEquals("SUPPAE", OperationExecutor.domainPrefix(suppae), "domainPrefix is unchanged");
+        assertEquals("", DatasetIdentity.apSuffixOf(suppae, "SUPPAE"));
+        assertEquals("", DatasetIdentity.variableWildcardPrefix(suppae, "SUPPAE"));
+        assertEquals("SUPPAE", DatasetIdentity.domainPrefix(suppae), "domainPrefix is unchanged");
     }
 
 
@@ -130,7 +130,7 @@ class VariableWildcardPrefixTest
         IDataTable sqapae = MockTable.of().col("RDOMAIN", "APAE").col("QNAM", "X").name("SQAPAE")
                 .build();
 
-        assertEquals("", OperationExecutor.variableWildcardPrefix(sqapae, "SQAPAE"));
+        assertEquals("", DatasetIdentity.variableWildcardPrefix(sqapae, "SQAPAE"));
     }
 
 
@@ -141,8 +141,8 @@ class VariableWildcardPrefixTest
         IDataTable suppap = MockTable.of().col("RDOMAIN", "APAE").col("APID", "A1").col("QNAM", "X")
                 .name("SUPPAPAE").build();
 
-        assertEquals("", OperationExecutor.apSuffixOf(suppap, "SUPPAPAE"));
-        assertEquals("", OperationExecutor.variableWildcardPrefix(suppap, "SUPPAPAE"));
+        assertEquals("", DatasetIdentity.apSuffixOf(suppap, "SUPPAPAE"));
+        assertEquals("", DatasetIdentity.variableWildcardPrefix(suppap, "SUPPAPAE"));
     }
 
     // -----------------------------------------------------------------------
@@ -159,7 +159,7 @@ class VariableWildcardPrefixTest
         IDataTable emptyLb = MockTable.of().col("DOMAIN").col("LBTESTCD").name("LB").build();
 
         assertEquals(0L, emptyLb.getRowCount());
-        assertEquals("LB", OperationExecutor.variableWildcardPrefix(emptyLb, "LB"));
+        assertEquals("LB", DatasetIdentity.variableWildcardPrefix(emptyLb, "LB"));
     }
 
 
@@ -169,7 +169,7 @@ class VariableWildcardPrefixTest
         // A split member is no different: the caller passes the family's domain code.
         IDataTable emptyLb1 = MockTable.of().col("DOMAIN").col("LBTESTCD").name("LB1").build();
 
-        assertEquals("LB", OperationExecutor.variableWildcardPrefix(emptyLb1, "LB"));
+        assertEquals("LB", DatasetIdentity.variableWildcardPrefix(emptyLb1, "LB"));
     }
 
 
@@ -179,7 +179,7 @@ class VariableWildcardPrefixTest
         // A blank row-0 DOMAIN cell is irrelevant — the helper never reads it.
         IDataTable lb = MockTable.of().col("DOMAIN", "").col("LBTESTCD", "ALB").name("LB").build();
 
-        assertEquals("LB", OperationExecutor.variableWildcardPrefix(lb, "LB"));
+        assertEquals("LB", DatasetIdentity.variableWildcardPrefix(lb, "LB"));
     }
 
 
@@ -192,8 +192,8 @@ class VariableWildcardPrefixTest
         IDataTable relrec = MockTable.of().col("RDOMAIN", "AE").col("RELID", "1").name("RELREC")
                 .build();
 
-        assertEquals("RELREC", OperationExecutor.variableWildcardPrefix(relrec, "RELREC"));
-        assertEquals("RELREC", OperationExecutor.domainPrefix(relrec), "domainPrefix is unchanged");
+        assertEquals("RELREC", DatasetIdentity.variableWildcardPrefix(relrec, "RELREC"));
+        assertEquals("RELREC", DatasetIdentity.domainPrefix(relrec), "domainPrefix is unchanged");
     }
 
 
@@ -205,7 +205,7 @@ class VariableWildcardPrefixTest
         // convention — measured as 0 scenarios in Phase 0.)
         IDataTable adsl = MockTable.of().col("USUBJID", "S1").col("AGE", "42").name("ADSL").build();
 
-        assertEquals("ADSL", OperationExecutor.variableWildcardPrefix(adsl, "ADSL"));
+        assertEquals("ADSL", DatasetIdentity.variableWildcardPrefix(adsl, "ADSL"));
     }
 
 
@@ -214,7 +214,7 @@ class VariableWildcardPrefixTest
     {
         IDataTable anon = MockTable.of().col("X", "a").build();
 
-        assertNull(OperationExecutor.variableWildcardPrefix(anon, null));
+        assertNull(DatasetIdentity.variableWildcardPrefix(anon, null));
     }
 
 
@@ -225,7 +225,7 @@ class VariableWildcardPrefixTest
         // code is the source, so a lowercase or unusual table name changes nothing.
         IDataTable lb = MockTable.of().col("X", "a").name("lb").build();
 
-        assertEquals("LB", OperationExecutor.variableWildcardPrefix(lb, "LB"));
+        assertEquals("LB", DatasetIdentity.variableWildcardPrefix(lb, "LB"));
     }
 
 
@@ -237,7 +237,7 @@ class VariableWildcardPrefixTest
         IDataTable lb = MockTable.of().col("DOMAIN", "LB").col("LBTESTCD", "ALB").name("LB")
                 .build();
 
-        assertNull(OperationExecutor.variableWildcardPrefix(lb, null));
+        assertNull(DatasetIdentity.variableWildcardPrefix(lb, null));
     }
 
 
@@ -250,13 +250,13 @@ class VariableWildcardPrefixTest
         IDataTable ae = MockTable.of().col("DOMAIN", "GRP1", "GRP1").col("AESEQ", "1", "2")
                 .name("AE").build();
 
-        assertEquals("AE", OperationExecutor.variableWildcardPrefix(ae, "AE"));
+        assertEquals("AE", DatasetIdentity.variableWildcardPrefix(ae, "AE"));
     }
 
 
     @Test
     void nullTable_isUnresolvable()
     {
-        assertNull(OperationExecutor.variableWildcardPrefix(null, null));
+        assertNull(DatasetIdentity.variableWildcardPrefix(null, null));
     }
 }

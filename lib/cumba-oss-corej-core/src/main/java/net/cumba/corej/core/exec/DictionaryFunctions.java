@@ -10,10 +10,18 @@ import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The two per-record external-dictionary registry functions of wave 1
- * ({@code PLAN-function-surface-wave1} phase 3), ported from the retired
- * {@code VALID_EXTERNAL_DICTIONARY_CODE_TERM_PAIR} / {@code _HIERARCHY} operations:
+ * The per-record external-dictionary registry functions. Wave 1
+ * ({@code PLAN-function-surface-wave1} phase 3) ported the pair and the hierarchy from the retired
+ * {@code VALID_EXTERNAL_DICTIONARY_CODE_TERM_PAIR} / {@code _HIERARCHY} operations; wave 3
+ * ({@code PLAN-per-row-functions}) ported the membership pair and the decode-presence test from
+ * {@code VALID_EXTERNAL_DICTIONARY_VALUE} / {@code _CODE} / {@code DICTIONARY_HAS_DECODE}:
  * <ul>
+ * <li>{@code valid_external_dictionary_value(name, external_dictionary_type=, dictionary_term_type=,
+ * case_sensitive=)} and {@code valid_external_dictionary_code(…)} — one implementation under two
+ * names (runbook R6: both authored names are kept), {@code true} on a row whose value is a term (or
+ * code) of the dictionary at the {@code dictionary_term_type} level, a blank being valid;</li>
+ * <li>{@code dictionary_has_decode(name, external_dictionary_type=, case_sensitive=)} —
+ * {@code true} on a row whose code has any decode in the dictionary, a blank having none;</li>
  * <li>{@code valid_external_dictionary_code_term_pair(name, external_dictionary_term_variable,
  * external_dictionary_type=, case_sensitive=)} — {@code true} on a row whose code (the target
  * column) decodes to the term column's value in the named dictionary;</li>
@@ -50,8 +58,20 @@ public final class DictionaryFunctions
     /** The hierarchy-path function, as authored. */
     public static final String HIERARCHY = "valid_external_dictionary_hierarchy";
 
-    /** The parameter naming the dictionary type on both functions. */
+    /** The term-membership function, as authored. */
+    public static final String VALUE = "valid_external_dictionary_value";
+
+    /** The code-membership function, as authored — the same implementation as {@link #VALUE}. */
+    public static final String CODE = "valid_external_dictionary_code";
+
+    /** The decode-presence function, as authored. */
+    public static final String HAS_DECODE = "dictionary_has_decode";
+
+    /** The parameter naming the dictionary type on every dictionary function. */
     public static final String TYPE_PARAMETER = "external_dictionary_type";
+
+    /** The parameter naming the dictionary level on the membership functions. */
+    public static final String LEVEL_PARAMETER = "dictionary_term_type";
 
     private DictionaryFunctions()
     {
@@ -120,6 +140,81 @@ public final class DictionaryFunctions
             // H1: a blank child OR blank parent is on-path (no fire).
             if (childText.isEmpty() || parentText.isEmpty()
                     || provider.onHierarchyPath(type, childText, parentText, caseSensitive))
+            {
+                out.set(row);
+            }
+        }
+        return out;
+    }
+
+
+    /**
+     * {@code valid_external_dictionary_value} and {@code valid_external_dictionary_code} — one
+     * implementation, told apart only by the level the rule names: {@code args} are the bound value
+     * column, dictionary type, {@code dictionary_term_type} and (optional, may be {@code null})
+     * {@code case_sensitive}. The retired {@code evalValidExternalDictionaryValue} verbatim, per
+     * row: a blank (or missing) value is valid — completeness is another rule's concern, and a
+     * failed lookup on {@code ""} would false-fire the {@code == false} consequent; otherwise the
+     * value must match the dictionary's preferred case at that level ({@code caseMatches}, the
+     * D-TA-3 / Fix #266 default) or, with {@code case_sensitive=false}, be a member in any case
+     * ({@code isValidTerm}).
+     *
+     * @param run
+     *            the evaluation run
+     * @param args
+     *            the bound argument vectors
+     * @param function
+     *            the name the call was authored under ({@link #VALUE} or {@link #CODE}), for the
+     *            tripwire's message
+     * @return the rows whose value is valid at the level, or blank
+     */
+    public static BitSet termMembership(EvalRun run, List<Vector> args, String function)
+    {
+        String type = typeOf(args.get(1));
+        RuntimeDictionaryProvider provider = availableProvider(run, function, type);
+        String level = typeOf(args.get(2));
+        boolean caseSensitive = caseSensitive(args.get(3));
+        Vector value = args.get(0);
+        int rowCount = run.rowCount();
+        BitSet out = new BitSet(rowCount);
+        for (int row = 0; row < rowCount; row++)
+        {
+            String term = text(value.value(row).cell());
+            if (term.isEmpty() || (caseSensitive ? provider.caseMatches(type, level, term)
+                    : provider.isValidTerm(type, level, term)))
+            {
+                out.set(row);
+            }
+        }
+        return out;
+    }
+
+
+    /**
+     * {@code dictionary_has_decode}: {@code args} are the bound code column, dictionary type and
+     * (optional, may be {@code null}) {@code case_sensitive}. {@code true} on a row whose code has
+     * any decode in the dictionary (a {@code containsKey} over its {@code pairs} / {@code
+     * attributes} registries, the registry defaulting to the type); a blank (or missing) code holds
+     * no decode ({@code false}). The retired {@code evalDictionaryHasDecode} verbatim.
+     *
+     * @param run
+     *            the evaluation run
+     * @param args
+     *            the bound argument vectors
+     * @return the rows whose code has a decode
+     */
+    public static BitSet hasDecode(EvalRun run, List<Vector> args)
+    {
+        String type = typeOf(args.get(1));
+        RuntimeDictionaryProvider provider = availableProvider(run, HAS_DECODE, type);
+        boolean caseSensitive = caseSensitive(args.get(2));
+        Vector code = args.get(0);
+        int rowCount = run.rowCount();
+        BitSet out = new BitSet(rowCount);
+        for (int row = 0; row < rowCount; row++)
+        {
+            String codeText = text(code.value(row).cell());
+            if (!codeText.isEmpty() && provider.hasDecode(type, type, codeText, caseSensitive))
             {
                 out.set(row);
             }

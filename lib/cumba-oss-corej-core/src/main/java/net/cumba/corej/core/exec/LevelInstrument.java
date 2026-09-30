@@ -86,8 +86,9 @@ public final class LevelInstrument
     public enum DeclineReason
     {
         /**
-         * A {@code $}-operation reference materialised as a per-row / per-variable result where the
-         * static binding level said scalar.
+         * A {@code $}-binding reference materialised as a per-row Vector / per-variable result
+         * where the static binding level said scalar. (Named for the operation results that were
+         * its first population; a per-row compiled binding's Vector is what trips it now.)
          */
         OPERATION_RUNTIME_KIND,
         /** A DEFINE/LIBRARY read with the provider absent — the D7 SKIPPED contract. */
@@ -234,8 +235,7 @@ public final class LevelInstrument
         try
         {
             RecordingResolver resolver = new RecordingResolver(ctx);
-            TypedExpr typed = StageAChecker.deriveTyped(rule, expr, resolver,
-                    operationInventory(ctx));
+            TypedExpr typed = StageAChecker.deriveTyped(rule, expr, resolver);
             FoldObservation obs = classify(ctx, expr, site, verdict, typed, resolver);
             emit(formatFold(obs));
             Consumer<FoldObservation> observer = FOLD_OBSERVER.get();
@@ -270,8 +270,8 @@ public final class LevelInstrument
             {
                 return;
             }
-            TypedExpr typed = StageAChecker.deriveTyped(rule, checkExpr, new RecordingResolver(ctx),
-                    operationInventory(ctx));
+            TypedExpr typed = StageAChecker.deriveTyped(rule, checkExpr,
+                    new RecordingResolver(ctx));
             if (typed == null)
             {
                 return;
@@ -417,53 +417,6 @@ public final class LevelInstrument
             }
         }
         return false;
-    }
-
-
-    /**
-     * Phase 6, D106d — the instrument's dataset inventory for the {@code $}-binding-level
-     * refinement: mirrors the <b>operation</b> resolution semantics, which are EXACT
-     * ({@code DatasetResolver.resolve} — operations deliberately do not take the split-domain
-     * union, a Fix #358 non-goal), plus the one executor exemption the exactness would misread: the
-     * J7 split-SUPP self-reference redirect, where {@code resolveTargetTable} runs the operation
-     * against the current table and the binding therefore does <b>not</b> degenerate. Deliberately
-     * not {@code RuleRunner.foreignInventory}, whose split-union semantics are the <em>join</em>'s,
-     * not the operation's.
-     */
-    private static net.cumba.corej.core.expr.typed.ForeignDatasetInventory operationInventory(
-            EvaluationContext ctx)
-    {
-        return name ->
-        {
-            net.cumba.datatable.IDataTable resolved = ctx.getDatasetResolver().resolve(name);
-            if (resolved == null)
-            {
-                String current = ctx.getTable().getMetaData().getName();
-                if (current != null)
-                {
-                    String upper = current.toUpperCase(java.util.Locale.ROOT);
-                    if ((upper.startsWith("SUPP") || upper.startsWith("SQAP"))
-                            && upper.startsWith(name.toUpperCase(java.util.Locale.ROOT)))
-                    {
-                        return columnsOf(ctx.getTable());
-                    }
-                }
-                return null;
-            }
-            return columnsOf(resolved);
-        };
-    }
-
-
-    private static Set<String> columnsOf(net.cumba.datatable.IDataTable table)
-    {
-        var meta = table.getMetaData();
-        Set<String> columns = new LinkedHashSet<>();
-        for (int i = 0; i < meta.getColumnCount(); i++)
-        {
-            columns.add(meta.getColumn(i).getName());
-        }
-        return columns;
     }
 
     // ------------------------------------------------------------------

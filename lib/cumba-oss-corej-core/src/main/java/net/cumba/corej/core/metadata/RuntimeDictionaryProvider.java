@@ -13,8 +13,8 @@ import org.jspecify.annotations.Nullable;
  * T1 — runtime provider of external medical-dictionary lookups, backed by a bundle of
  * {@link ValueMapDictionary} value-maps keyed by dictionary type ({@code meddra}, {@code whodrug},
  * {@code loinc}, {@code unii}, {@code snomed}, {@code neoplasm}, …). It is the SPI the dictionary
- * {@code OperationExecutor} arms delegate to; the same interface later fronts real licensed
- * dictionary data.
+ * the dictionary functions delegate to; the same interface later fronts real licensed dictionary
+ * data.
  *
  * <p>
  * A dictionary type that is not loaded is <b>not available</b>: {@link #isAvailable(String)}
@@ -333,7 +333,7 @@ public final class RuntimeDictionaryProvider
 
     /**
      * E8 — decode-presence: whether the {@code type} dictionary holds any decode for {@code code}
-     * (the {@code dictionary_has_decode} precondition). {@code false} when the type is not loaded.
+     * (the {@code dictionary_has_decode} function). {@code false} when the type is not loaded.
      * {@code caseSensitive} selects the verbatim (D-TA-3 default) or case-folded code lookup.
      */
     public boolean hasDecode(@Nullable String type, @Nullable String reg, @Nullable String code,

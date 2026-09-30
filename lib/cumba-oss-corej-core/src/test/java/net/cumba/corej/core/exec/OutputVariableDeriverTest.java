@@ -10,8 +10,8 @@ import java.util.Map;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.model.CheckConditionAll;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.DomainScope;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.Scope;
@@ -100,12 +100,9 @@ class OutputVariableDeriverTest
     }
 
 
-    private static Operation operation(String id, String operator)
+    private static CompiledBinding binding(String name, Expr expression)
     {
-        Operation op = new Operation();
-        op.setId(id);
-        op.setOperator(operator);
-        return op;
+        return new CompiledBinding(name, expression, List.of(), null);
     }
 
 
@@ -256,7 +253,7 @@ class OutputVariableDeriverTest
     void operationRefInValueListStillContributes()
     {
         // contains_all(TSPARMCD, keys=[$required_params, ADDON]) — a $-ref names a
-        // materialised operation result, not a literal; the bare token stays a literal.
+        // binding's value, not a literal; the bare token stays a literal.
         Expr check = callKw("contains_all", List.of(col("TSPARMCD")), "keys",
                 list(opRef("$required_params"), col("ADDON")));
         List<String> effective = OutputVariableDeriver.derive(rule(check));
@@ -307,26 +304,46 @@ class OutputVariableDeriverTest
 
 
     @Test
-    void suppressionExtendsToOperationInputs()
+    void aVarExistsBindingDerivesItsQuotedTarget()
     {
-        // The check asserts TSGRPID absent; an operation input naming it must not re-add it.
+        // Runbook W2a: `$exvamt_exists: var_exists("EXVAMT")` stands where the operation
+        // `variable_exists(EXVAMT)` stood, whose target EXVAMT was derived (D4b). The quoted
+        // name is that same target, so the finding keeps reporting EXVAMT (CDISC-CG0105's
+        // rulespec pins the reported set).
+        Rule r = rule(List.of("$exvamt_exists"), eq(opRef("$exvamt_exists"), str("true")));
+        r.setCompiledBindings(List.of(new CompiledBinding("$exvamt_exists",
+                call("var_exists", str("EXVAMT")), List.of(), null)));
+        assertEquals(List.of("$exvamt_exists", "EXVAMT"), OutputVariableDeriver.derive(r));
+        // The control: a quoted argument of any other call is a string, never a column.
+        Rule other = rule(List.of("$n"), eq(opRef("$n"), str("x")));
+        other.setCompiledBindings(
+                List.of(new CompiledBinding("$n", call("upper", str("EXVAMT")), List.of(), null)));
+        assertEquals(List.of("$n"), OutputVariableDeriver.derive(other));
+    }
+
+
+    @Test
+    void suppressionExtendsToBindingInputs()
+    {
+        // The check asserts TSGRPID absent; a binding's target naming it must not re-add it.
+        // (An operation input made this claim until runbook W8.)
         Rule r = rule(new Expr.Not(call("var_exists", col("TSGRPID"))));
-        Operation op = operation("$grp", "distinct");
-        op.setName("TSGRPID");
-        r.setOperations(List.of(op));
-        assertFalse(OutputVariableDeriver.derive(r).contains("TSGRPID"));
+        r.setCompiledBindings(List.of(binding("$grp", call("upper", col("TSGRPID")))));
+        List<String> effective = OutputVariableDeriver.derive(r);
+        assertTrue(effective.contains("$grp"), effective.toString());
+        assertFalse(effective.contains("TSGRPID"), effective.toString());
     }
 
     // ------------------------------------------------------------- D4
 
 
     @Test
-    void everyOperationIdIsDerived()
+    void everyBindingIdIsDerived()
     {
+        // D4a: referenced by the check or not, every binding's name is derived.
         Rule r = rule(eq(col("AESTDY"), opRef("$dy")));
-        Operation referenced = operation("$dy", "max");
-        Operation unreferenced = operation("$count", "record_count");
-        r.setOperations(List.of(referenced, unreferenced));
+        r.setCompiledBindings(List.of(binding("$dy", call(GroupedAggregate.MAX, col("AESTDY"))),
+                binding("$count", call("record_count"))));
         List<String> effective = OutputVariableDeriver.derive(r);
         assertTrue(effective.contains("$dy"));
         assertTrue(effective.contains("$count"));
@@ -338,7 +355,11 @@ class OutputVariableDeriverTest
     {
         // §4.1 as a GLOBAL post-filter: $terms enters via the Check walk, not D4a.
         Rule r = rule(new Expr.Binary(Expr.BinOp.NOT_IN, col("AEDECOD"), opRef("$terms")));
-        r.setOperations(List.of(operation("$terms", "codelist_terms")));
+        // (codelist_terms, the vehicle until wave 4, and distinct, the vehicle until runbook W7,
+        // are registry functions whose bindings are bulk through the list-typed compiled arm —
+        // R15; the operation-era BULK_RESULT_OPERATIONS set went with its last member.)
+        r.setCompiledBindings(List.of(
+                new CompiledBinding("$terms", call("distinct", col("AEDECOD")), List.of(), null)));
         List<String> effective = OutputVariableDeriver.derive(r);
         assertTrue(effective.contains("AEDECOD"));
         assertFalse(effective.contains("$terms"));
@@ -351,8 +372,14 @@ class OutputVariableDeriverTest
         // §4.1's one list-valued DERIVE: the minus result IS the finding.
         Rule r = rule(new Expr.Binary(Expr.BinOp.GT, call("record_count"),
                 new Expr.Lit(Expr.LitKind.NUMBER, 0)));
-        r.setOperations(List.of(operation("$missing", "minus")));
+        r.setCompiledBindings(List.of(
+                binding("$missing", call(Minus.NAME, list(str("A"), str("B")), list(str("A"))))));
         assertTrue(OutputVariableDeriver.derive(r).contains("$missing"));
+        // the control: another list-valued root is bulk and not derived
+        Rule other = rule(new Expr.Binary(Expr.BinOp.GT, call("record_count"),
+                new Expr.Lit(Expr.LitKind.NUMBER, 0)));
+        other.setCompiledBindings(List.of(binding("$list", list(str("A")))));
+        assertFalse(OutputVariableDeriver.derive(other).contains("$list"));
     }
 
 
@@ -361,41 +388,30 @@ class OutputVariableDeriverTest
     {
         Rule r = rule(List.of("$terms"),
                 new Expr.Binary(Expr.BinOp.NOT_IN, col("AEDECOD"), opRef("$terms")));
-        r.setOperations(List.of(operation("$terms", "codelist_terms")));
+        r.setCompiledBindings(List.of(
+                new CompiledBinding("$terms", call("distinct", col("AEDECOD")), List.of(), null)));
         assertTrue(OutputVariableDeriver.derive(r).contains("$terms"));
     }
 
 
     @Test
-    void localOperationInputsAreDerivedForeignOnesAreNot()
+    void localBindingInputsAreDerivedForeignOnesAreNot()
     {
         Rule r = rule(eq(opRef("$local_max"), opRef("$ti_codes")));
         r.setScope(domains("AE"));
-        Operation local = operation("$local_max", "max");
-        local.setName("AESEV");
-        Operation foreign = operation("$ti_codes", "distinct");
-        foreign.setDomain("TI");
-        foreign.setName("IETESTCD");
-        r.setOperations(List.of(local, foreign));
+        // (The local vehicle was an operation until runbook W8, distinct, the foreign one, until
+        // W7: a compiled binding under domain= derives no column of the evaluated dataset —
+        // contributeTarget.)
+        r.setCompiledBindings(
+                List.of(binding("$local_max", call(GroupedAggregate.MAX, col("AESEV"))),
+                        binding("$ti_codes", new Expr.Call("distinct", List.of(col("IETESTCD")),
+                                Map.of("domain", str("TI"))))));
         List<String> effective = OutputVariableDeriver.derive(r);
         assertTrue(effective.contains("$local_max"));
         assertTrue(effective.contains("AESEV"));
         assertFalse(effective.contains("IETESTCD"));
-        // $ti_codes is distinct → §4.1-ignored on top of being foreign
+        // $ti_codes is a list-valued binding → §4.1-ignored on top of being foreign
         assertFalse(effective.contains("$ti_codes"));
-    }
-
-
-    @Test
-    void filterKeysDeriveFilterValuesDoNot()
-    {
-        Rule r = rule(eq(col("QVAL"), opRef("$qlabel")));
-        Operation op = operation("$qlabel", "max");
-        op.setFilter(Map.of("QNAM", "SDTMVER"));
-        r.setOperations(List.of(op));
-        List<String> effective = OutputVariableDeriver.derive(r);
-        assertTrue(effective.contains("QNAM"));
-        assertFalse(effective.contains("SDTMVER"));
     }
 
     // ------------------------------------------------------------- D5
@@ -669,5 +685,82 @@ class OutputVariableDeriverTest
         // null rule ⇒ the verbatim test alone, never an NPE
         assertFalse(OutputVariableDeriver.isLocationVariable(null, "LBSEQ"));
         assertTrue(OutputVariableDeriver.isLocationVariable(null, "--SEQ"));
+    }
+
+    // ------------------------------------------------------------- inline aggregates (W5W6 M3)
+
+
+    /**
+     * Combined review W5W6 M3: an INLINE Check call of a dataset-reading aggregate derives what the
+     * binding form derives ({@code contributeTarget}) — its target alone, nothing under
+     * {@code domain=}. The walk used to visit every keyword, deriving the {@code filter=} and
+     * {@code group=} columns and the bare {@code domain=DS} reference as output variables.
+     */
+    @Test
+    void anInlineForeignAggregateDerivesNoneOfItsArguments()
+    {
+        Expr maxDate = new Expr.Call(GroupedAggregate.MAX_DATE, List.of(col("DSSTDTC")),
+                Map.of("domain", col("DS"), "filter", eq(col("DSDECOD"), str("X")), "group",
+                        list(col("STUDYID"))));
+        Rule r = rule(new Expr.Binary(Expr.BinOp.NEQ, maxDate, col("DMDTC")));
+        assertEquals(List.of("DMDTC"), OutputVariableDeriver.derive(r));
+
+        Expr distinct = new Expr.Call(Distinct.NAME, List.of(col("MHDECOD")),
+                Map.of("domain", col("MH")));
+        Rule d = rule(new Expr.Binary(Expr.BinOp.IN, col("AEDECOD"), distinct));
+        assertEquals(List.of("AEDECOD"), OutputVariableDeriver.derive(d));
+
+        Expr count = new Expr.Call(RecordCount.NAME, List.of(),
+                Map.of("domain", col("DM"), "group", list(col("STUDYID"))));
+        Rule c = rule(new Expr.Binary(Expr.BinOp.NEQ, count, col("AECOUNT")));
+        assertEquals(List.of("AECOUNT"), OutputVariableDeriver.derive(c));
+
+        // Round 2 M1: read_value reads another dataset too (domain= is required) — an inline call
+        // derived TSVAL, the bare TS and the filter's TSPARMCD as reported variables.
+        Expr read = new Expr.Call(ReadValue.NAME, List.of(col("TSVAL")),
+                Map.of("domain", col("TS"), "filter", eq(col("TSPARMCD"), str("SSTDTC"))));
+        Rule v = rule(new Expr.Binary(Expr.BinOp.NEQ, read, col("RFSTDTC")));
+        assertEquals(List.of("RFSTDTC"), OutputVariableDeriver.derive(v));
+    }
+
+
+    @Test
+    void anInlineLocalAggregateDerivesItsTargetButNotItsParameters()
+    {
+        // No domain=: the target is a primary column (as the binding form's D4b), the filter=
+        // and group= columns are parameters, never reported.
+        Expr maxDate = new Expr.Call(GroupedAggregate.MAX_DATE, List.of(col("AESTDTC")),
+                Map.of("filter", eq(col("AESER"), str("Y")), "group", list(col("STUDYID"))));
+        Rule r = rule(new Expr.Binary(Expr.BinOp.NEQ, maxDate, col("AEENDTC")));
+        assertEquals(List.of("AESTDTC", "AEENDTC"), OutputVariableDeriver.derive(r));
+        // ... and the binding form agrees
+        Rule b = rule(List.of("$max"), eq(opRef("$max"), col("AEENDTC")));
+        b.setCompiledBindings(List.of(binding("$max", maxDate)));
+        assertEquals(List.of("$max", "AEENDTC", "AESTDTC"), OutputVariableDeriver.derive(b));
+    }
+
+    // ------------------------------------------------------------- var_exists literal (W2 L4)
+
+
+    /**
+     * Combined review W2 L4: D-W2-12 derives a quoted {@code var_exists} literal as a reported name
+     * only when it is a plain column name — a dotted {@code "DM.ARMCD"} is a foreign column and a
+     * {@code "${VAR}"} template is not a name.
+     */
+    @Test
+    void aVarExistsBindingDerivesOnlyAPlainQuotedName()
+    {
+        for (String literal : List.of("DM.ARMCD", "${VAR}"))
+        {
+            Rule r = rule(List.of("$probe"), eq(opRef("$probe"), str("true")));
+            r.setCompiledBindings(List.of(new CompiledBinding("$probe",
+                    call("var_exists", str(literal)), List.of(), null)));
+            assertEquals(List.of("$probe"), OutputVariableDeriver.derive(r), literal);
+        }
+        // the control: a --prefixed plain name is still derived (resolved per domain later)
+        Rule wildcard = rule(List.of("$probe"), eq(opRef("$probe"), str("true")));
+        wildcard.setCompiledBindings(List.of(new CompiledBinding("$probe",
+                call("var_exists", str("--TRTEM")), List.of(), null)));
+        assertEquals(List.of("$probe", "--TRTEM"), OutputVariableDeriver.derive(wildcard));
     }
 }

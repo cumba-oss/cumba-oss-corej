@@ -61,7 +61,7 @@ class RuleRunnerMetadataFindingProjectionTest
     void outputVariablesProjectEveryMetadataSourceExactly() throws Exception
     {
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Record\","
-                + "\"Bindings\":[{\"name\": \"$flag\", \"expression\": \"variable_exists(STUDYID)\"}],"
+                + "\"Bindings\":[{\"name\": \"$flag\", \"expression\": \"var_exists(\\\"STUDYID\\\")\"}],"
                 + "\"Check\":" + roleMismatchCheck() + ","
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_name\","
                 + "\"variable_label\",\"variable_data_type\",\"variable_length\","

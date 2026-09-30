@@ -665,6 +665,36 @@ class WildcardExpanderTest
         assertFalse(expandedIds.stream().anyMatch(id -> id.contains("TRT02P")));
     }
 
+
+    /**
+     * Combined review W2 M2: {@code Supp_Merge} is carried onto every expanded child. The child is
+     * built from a fresh {@code new Rule()}, so before the fix a template's
+     * {@code Supp_Merge: false} was dropped and each child read the default {@code true}.
+     */
+    @Test
+    void expand_carriesSuppMergeOntoEveryExpandedChild()
+    {
+        Rule template = buildTemplateRule("SUPPMERGE-WC", expr("not empty(TRTxxP)"),
+                List.of("TRTxxP"));
+        template.setSuppMerge(Boolean.FALSE);
+        IDataTable table = MockTable.withColumns("TRT01P", "TRT02P");
+
+        List<Rule> expanded = WildcardExpander.expand(template, table.getMetaData());
+
+        assertEquals(2, expanded.size(), "one child per matched TRTxxP column");
+        for (Rule child : expanded)
+        {
+            assertEquals(false, child.getSuppMerge(), child.effectiveId());
+            assertFalse(child.isSuppMergeEnabled(), child.effectiveId());
+        }
+        template.setSuppMerge(null);
+        for (Rule child : WildcardExpander.expand(template, table.getMetaData()))
+        {
+            assertNull(child.getSuppMerge(), "an absent Supp_Merge stays absent");
+            assertTrue(child.isSuppMergeEnabled(), child.effectiveId());
+        }
+    }
+
     // ---- Helpers ----
 
 

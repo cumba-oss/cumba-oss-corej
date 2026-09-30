@@ -1,116 +1,100 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import net.cumba.corej.core.expr.CheckToExpr;
-import net.cumba.corej.core.model.CheckConditionAll;
+import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.MatchDataset;
-import net.cumba.corej.core.model.Operation;
-import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
-import net.cumba.corej.core.model.RuleCore;
-import net.cumba.corej.core.model.Scope;
-import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
- * EC-45 — {@code date_diff_days} Mode 2, measured <b>end to end through {@link RuleRunner}</b> on
- * the shipped {@code CDISC-SEND-0202} shape: its {@code Match_Datasets} entry, its {@code
- * Operations} block and its three-leaf {@code Check}, with the {@code Sensitivity} and the native
- * {@code checkExpr} the package loader derives.
+ * EC-45 — {@code date_diff_days} with a grouped foreign reference, measured <b>end to end through
+ * {@link RuleRunner}</b> on the shipped {@code CDISC-SEND-0202} shape: its {@code Match_Datasets}
+ * entry, its binding and its three-conjunct {@code Check}, loaded through {@link RulePackageLoader}
+ * (so the {@code Sensitivity} is the loader's; the join is attached afterwards, below). Since
+ * runbook W2b ({@code PLAN-operation-replacements} §8) the binding is the composed form
+ * {@code date_diff_days(--DTC, min_date(EXSTDTC, domain=EX, group=[…])) + 1} — the retired
+ * operation's Mode 2 is a named {@code min_date} argument ({@code GroupedAggregate}), its
+ * {@code offset} plain arithmetic — and every claim below is the operation's, re-measured on the
+ * function.
  *
  * <p>
- * ⚠ <b>Deliberately WITHOUT the rule's {@code Scope} block</b>, including the
- * {@code Scope.Variables.Include: [EX.EXSTDTC]} gate EC-45 itself added. That gate makes the
- * shipped rule SKIP on exactly the B4/B5 studies below — which is the point of it — so keeping it
- * here would make the engine path these tests exist to measure unreachable. What is pinned is the
- * <em>engine</em> contract that the scope gate then sits in front of: without a gate, an
- * unresolvable operation fires rather than skipping. Read the two together.
- * </p>
- *
- * <p>
- * ⚠ The measurement level is the whole point of this class. Mode 2 sits behind a
- * {@code Match_Datasets} entry that the package loader normalises to an {@code inner} join, and
- * {@link KeyMatchRowExpander} replaces the evaluation table <em>before</em> Operations run. A probe
- * that calls {@link OperationExecutor} directly therefore sees causes the shipped pipeline cannot
- * reach — an earlier revision of this plan built a whole three-cause taxonomy on exactly that
- * mistake, and two of the three causes turned out to be structurally unreachable. Every scenario
- * below goes through {@code RuleRunner.execute}.
+ * ⚠ <b>Deliberately WITHOUT the rule's {@code Requirements} block</b> ({@code EX.EXSTDTC} and the
+ * {@code USUBJID} / {@code EX.USUBJID} pair). Those gates make the shipped rule SKIP on exactly the
+ * B4/B5 studies below — which is the point of them — so keeping them here would make the engine
+ * path these tests exist to measure unreachable. What is pinned is the <em>engine</em> contract
+ * that the gates then sit in front of: without a gate, an unresolvable reference fires rather than
+ * skipping.
  * </p>
  *
  * <p>
  * The failure direction is <b>over-firing</b>, not silence: an unusable reference date makes the
- * {@code $}-ref resolve to "no value", the comparison folds that to {@code ""}, and
- * {@code TFDETECT not_equal_to ""} fires on every populated row. EC-45's ruling is that this is
- * <em>correct</em> — a populated derived value whose inputs cannot support it is unverifiable and
- * worth reporting — so these tests pin the firing rather than trying to suppress it. Applicability
- * (the reference dataset or column not being submitted at all) belongs to {@code Scope.Variables},
- * where it is a visible and countable SKIP.
+ * day count a missing, and {@code TFDETECT != $days} fires on every populated row. EC-45's ruling
+ * is that this is <em>correct</em> — a populated derived value whose inputs cannot support it is
+ * unverifiable and worth reporting. Applicability (the reference dataset or column not being
+ * submitted at all) belongs to {@code Requirements}, where it is a visible and countable SKIP.
  * </p>
  *
  * <p>
- * ⚠ {@code KeyMatchRowExpander} row-multiplies the evaluation table before Operations run and
- * {@code ViolationSink} does no dedup, so raw finding counts are inflated by the child cardinality.
- * Every fixture here therefore carries exactly one {@code EX} row per subject unless the scenario
- * is about the extreme itself.
+ * ⚠ The {@code Match_Datasets} join row-multiplies the evaluation table and {@code ViolationSink}
+ * does no dedup, so raw finding counts are inflated by the child cardinality. Every fixture here
+ * therefore carries exactly one {@code EX} row per subject unless the scenario is about the extreme
+ * itself.
  * </p>
  */
 class RuleRunnerDateDiffKeyAbsenceTest
 {
 
-    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    /**
+     * The shipped CDISC-SEND-0202 shape, parameterised by the group key list and whether the
+     * {@code Match_Datasets} EX join is declared. The join is attached AFTER loading, with the
+     * {@code inner} type the loader would stamp: through the loader a keyed join needs its key in
+     * {@code Requirements} (the join-key authoring gate), which is exactly the gate this class
+     * stands in front of.
+     */
+    private static Rule send0202(List<String> group, boolean join)
     {
-        return new net.cumba.corej.core.model.CheckConditionExpression(
-                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+        String json = "{\"rules\":{\"TEST-SEND-0202\":{" + "\"Core\":{\"Id\":\"TEST-SEND-0202\"},"
+                + "\"Bindings\":[{\"name\":\"$days_from_first_dose\",\"expression\":"
+                + "\"date_diff_days(--DTC, min_date(EXSTDTC, domain=EX, group=["
+                + String.join(", ", group) + "])) + 1\"}],"
+                + "\"Check\":{\"expression\":\"is_complete_date(--DTC) and not empty(TFDETECT)"
+                + " and TFDETECT != $days_from_first_dose\"},"
+                + "\"Outcome\":{\"Message\":\"TFDETECT does not equal the computed interval.\","
+                + "\"Output_Variables\":[\"USUBJID\",\"$days_from_first_dose\",\"TFDETECT\"]}}}}";
+        try
+        {
+            Rule rule = RulePackageLoader.loadFromString(json).getRules().get("TEST-SEND-0202");
+            assertNull(rule.getLoadError(), rule.getLoadError());
+            if (join)
+            {
+                MatchDataset md = new MatchDataset();
+                md.setName("EX");
+                md.setKeys(List.of("USUBJID"));
+                md.setJoinType("inner"); // RulePackageLoader.normalizeJoinTypes stamps this at load
+                rule.setMatchDatasets(List.of(md));
+            }
+            return rule;
+        }
+        catch (java.io.IOException e)
+        {
+            throw new IllegalArgumentException("bad test fixture", e);
+        }
     }
 
 
-    /** The shipped CDISC-SEND-0202 shape, parameterised only by the group key list. */
     private static Rule send0202(List<String> group)
     {
-        Rule rule = new Rule();
-        RuleCore core = new RuleCore();
-        core.setId("TEST-SEND-0202");
-        rule.setCore(core);
-        rule.setScope(new Scope());
-        // The shipped rule derives Sensitivity=Record (RuleClassifier does it at load time), so
-        // each unmatched row is its own finding. A hand-built Rule has to say so.
-        rule.setSensitivity(Sensitivity.RECORD);
-        Outcome outcome = new Outcome();
-        outcome.setMessage("TFDETECT does not equal the computed interval.");
-        outcome.setOutputVariables(List.of("USUBJID", "$days_from_first_dose", "TFDETECT"));
-        rule.setOutcome(outcome);
-
-        MatchDataset md = new MatchDataset();
-        md.setName("EX");
-        md.setKeys(List.of("USUBJID"));
-        md.setJoinType("inner"); // RulePackageLoader.normalizeJoinTypes injects this at load
-        rule.setMatchDatasets(List.of(md));
-
-        Operation op = new Operation();
-        op.setId("$days_from_first_dose");
-        op.setOperator("date_diff_days");
-        op.setDomain("EX");
-        op.setGroup(group);
-        op.setName("--DTC");
-        op.setOffset("1");
-        op.setReference("EXSTDTC");
-        rule.setOperations(List.of(op));
-
-        rule.setCheck(new CheckConditionAll(List.of(expr("is_complete_date(--DTC)"),
-                expr("not empty(TFDETECT)"), expr("TFDETECT != $days_from_first_dose"))));
-        // The legacy evaluator is retired; the native path is the only path. RulePackageLoader
-        // installs this at load time — a hand-built Rule has to do it explicitly.
-        rule.setCheckExpr(CheckToExpr.toExpr(rule.getCheck()));
-        return rule;
+        return send0202(group, true);
     }
 
 
@@ -205,9 +189,9 @@ class RuleRunnerDateDiffKeyAbsenceTest
 
     /**
      * B1 — {@code EXSTDTC} blank for S1. The subject <em>has</em> its partner row, so the inner
-     * join keeps it; the producer simply has no candidate, publishes no key, and S1 reads "no
-     * value". EC-45: the check fires, because a populated TFDETECT the inputs cannot support is
-     * unverifiable. S2 is unaffected — B1 is a per-row cause, not a whole-operation one.
+     * join keeps it; the aggregate simply has no candidate, S1's reference is a missing and so is
+     * its day count. EC-45: the check fires, because a populated TFDETECT the inputs cannot support
+     * is unverifiable. S2 is unaffected — B1 is a per-row cause, not a whole-operation one.
      */
     @Test
     void b1_blankReferenceDateOnThePartnerRow_firesForThatSubjectOnly()
@@ -257,10 +241,10 @@ class RuleRunnerDateDiffKeyAbsenceTest
 
 
     /**
-     * B4 — {@code EX} carries no {@code EXSTDTC} column at all. The operation is unresolvable, so
-     * every populated row reads "no value" and fires. ⚠ This is NOT a SKIP: only
-     * {@code LIBRARY_NOT_AVAILABLE} skips a rule, and a null operation result is not that.
-     * Suppressing it belongs in {@code Scope.Variables} ({@code EX.EXSTDTC}), never in the algebra.
+     * B4 — {@code EX} carries no {@code EXSTDTC} column at all. The reference is unresolvable, so
+     * every populated row reads a missing day count and fires. ⚠ This is NOT a SKIP: a missing
+     * answer is not an unavailable provider. Suppressing it belongs in {@code Requirements}
+     * ({@code EX.EXSTDTC}), never in the algebra.
      */
     @Test
     void b4_referenceColumnAbsentFromTheForeignDataset_firesEveryPopulatedRow()
@@ -274,9 +258,9 @@ class RuleRunnerDateDiffKeyAbsenceTest
 
     /**
      * B5 — no {@code EX} dataset in the study at all. With nothing to join to there is no
-     * expansion, the rows survive, and the same "no value" fires. Same remedy as B4: one
-     * {@code Scope.Variables.Include: EX.EXSTDTC} entry covers both, because the qualified form
-     * SKIPs for dataset-absent and column-absent alike.
+     * expansion, the rows survive, and the same missing fires. Same remedy as B4: one
+     * {@code Requirements} entry {@code EX.EXSTDTC} covers both, because the qualified form SKIPs
+     * for dataset-absent and column-absent alike.
      */
     @Test
     void b5_foreignDatasetAbsentEntirely_firesEveryPopulatedRow()
@@ -332,42 +316,43 @@ class RuleRunnerDateDiffKeyAbsenceTest
 
 
     /**
-     * §4.2's carve-out: when no declared group column is present on the <b>foreign</b> dataset
-     * there is no key basis at all, and one foreign extreme would broadcast onto every evaluation
-     * row — a plausible wrong number in place of "no value", which is strictly worse than the
-     * defect. The operation yields nothing instead, and the rows fire.
+     * §4.2's carve-out — <b>RETIRED by runbook W2b</b> (D-W2b-8). The operation refused to key a
+     * foreign extreme when <em>no</em> declared group column existed on the foreign dataset, so a
+     * blank-keyed evaluation row read "no value" instead of the one whole-dataset extreme. The
+     * composed form's reference is a {@code min_date} call, and a named aggregation answers alike
+     * at every call site (D5 / D7): with every group column absent from its dataset it forms one
+     * whole-table group (EC-44 / {@code Fix #134}, {@code GroupedAggregate} since W5), whose key
+     * ({@code ""} for each absent column) a row matches only when its own key is blank too.
+     * Unreachable through the shipped rules, whose {@code Requirements} demand the foreign
+     * {@code USUBJID} ({@code All_Or_None} with the primary's, which is in {@code All}).
      *
      * <p>
-     * ⚠ The test is deliberately one-sided. An earlier draft also accepted a column present only on
-     * the <em>evaluation</em> side, which defeats the carve-out: the producer would still collapse
-     * to a single all-{@code ""} bucket and hand it to every blank-keyed row. A key basis the
-     * foreign dataset cannot express is no key basis, whatever the evaluation table carries.
+     * Here both TF rows carry a BLANK {@code USUBJID}, so they meet the whole-table group and
+     * receive the study-wide earliest {@code EXSTDTC}; their TFDETECT values are the correct day
+     * counts against it, so nothing fires — where the operation's carve-out fired both.
      * </p>
      */
     @Test
-    void noGroupColumnOnTheForeignDatasetDoesNotBroadcastOneExtreme()
+    void noGroupColumnOnTheForeignDatasetFormsOneWholeTableGroup()
     {
-        // Both TF rows carry a BLANK USUBJID, so they key "" — the same key the keyless producer
-        // would build for every EX row. This is the fixture that discriminates: accept a group
-        // column present only on the EVALUATION side and these two rows join the collapsed bucket
-        // and silently pass on a study-wide dose date.
         IDataTable tf = MockTable.of().name("TF").col("USUBJID", "", "")
                 .col("TFDTC", "2020-01-11", "2020-01-06").col("TFDETECT", "11", "6").build();
         IDataTable ex = MockTable.of().name("EX").col("SPARE", "x", "y")
                 .col("EXSTDTC", "2020-01-01", "2020-01-01").build();
-        Rule rule = send0202(List.of("USUBJID"));
-        rule.setMatchDatasets(null); // the inner join would otherwise empty the evaluation table
-        RuleExecutionResult res = run(rule, study(tf, ex));
-        assertEquals(2, res.getViolations().size(),
-                "both rows must read 'no value' rather than a broadcast extreme");
+        // no Match_Datasets: the inner join would otherwise empty the evaluation table
+        RuleExecutionResult res = run(send0202(List.of("USUBJID"), false), study(tf, ex));
+        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
+        assertEquals(0, res.getViolations().size(),
+                "both blank-keyed rows meet the one whole-table group and match");
     }
 
 
     /**
      * ⚠ <b>The conflation the coupling rests on, pinned as a decision rather than left as an
-     * accident.</b> {@code GroupedResult.buildKey} renders an <em>absent column</em> and a
-     * <em>literal-{@code ""} value</em> identically as {@code ""}, so when a group column is absent
-     * from the foreign dataset only, an evaluation row whose own value for it is {@code ""}
+     * accident.</b> The group key ({@code GroupedResult.buildKey} then,
+     * {@code GroupKeyIdentity.identityKey} since runbook W8) renders an <em>absent column</em> and
+     * a <em>literal-{@code ""} value</em> identically as {@code ""}, so when a group column is
+     * absent from the foreign dataset only, an evaluation row whose own value for it is {@code ""}
      * <b>does</b> match the collapsed foreign bucket and receives the aggregate over the whole
      * foreign column.
      *
@@ -392,5 +377,28 @@ class RuleRunnerDateDiffKeyAbsenceTest
                 .col("EXSTDTC", "2020-01-01", "2020-01-01").build();
         assertEquals(List.of("S1"),
                 firedSubjects(run(send0202(List.of("USUBJID", "RPHASE")), study(tf, ex))));
+    }
+
+
+    /**
+     * Combined review of runbook W2–W8, W2 M5: the one whole-table group of the test above is
+     * reached ONLY by a blank-keyed primary row (IndexHelper.groupByPresent keys it {@code ""}). A
+     * TF row whose {@code USUBJID} is populated meets no group, its {@code $days_from_first_dose}
+     * is the computed missing, and EC-45's {@code TFDETECT != missing} FIRES — the retired
+     * operation's carve-out answer, kept. So "the foreign dataset without the group column forms
+     * one whole-table group" is a statement about blank-keyed rows, not about every row.
+     */
+    @Test
+    void aPopulatedKeyMeetsNoGroupWhenTheForeignDatasetLacksTheGroupColumn()
+    {
+        IDataTable tf = MockTable.of().name("TF").col("USUBJID", "S1", "")
+                .col("TFDTC", "2020-01-11", "2020-01-06").col("TFDETECT", "11", "6").build();
+        IDataTable ex = MockTable.of().name("EX").col("SPARE", "x", "y")
+                .col("EXSTDTC", "2020-01-01", "2020-01-01").build();
+        RuleExecutionResult res = run(send0202(List.of("USUBJID"), false), study(tf, ex));
+        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
+        assertEquals(List.of("S1"), firedSubjects(res),
+                "S1's populated key meets no group (fires on the missing); the blank key meets"
+                        + " the whole-table group and matches");
     }
 }

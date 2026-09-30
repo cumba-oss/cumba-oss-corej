@@ -504,71 +504,60 @@ class SyntheticExprCorpusRoundTripTest
 
 
     /**
-     * ⚠ <b>Boundary pin, not an endorsement:</b> a <em>comparison</em> or a boolean composite
-     * placed in an operand position (a {@link Expr.Binary} operand, a {@link Expr.Call} argument, a
-     * list item) prints — parenthesised by {@code ExpressionPrinter.value} — but the printed text
-     * does <b>not</b> parse back: operand-level {@code (...)} admits only arithmetic
-     * ({@code CheckExpressionParser.parseAtom} calls {@code parseSum}, not {@code parseOr}). These
-     * trees are constructible in the IR yet outside the printable/parseable language, so
-     * {@code parse(print(x)) == x} CANNOT hold for them. If one of these ever starts parsing, the
-     * grammar grew — re-derive the plan §4 inventory before relying on it.
+     * ⭐ <b>Grammar grew (runbook W2a, {@code PLAN-operation-replacements} row P — owner D9 /
+     * D12):</b> a <em>comparison</em> or a boolean composite in an operand position (a
+     * {@link Expr.Binary} operand, a {@link Expr.Call} argument, a list item) prints parenthesised
+     * and now <b>parses back</b>: operand-level {@code (...)} admits a whole expression
+     * ({@code CheckExpressionParser.parseAtom} calls {@code parseOr}), which is what lets a rule
+     * hand a boolean filter to a function — {@code read_value(X, domain=D, filter=(K == "v"))}.
+     * Until 2026-09-29 this method pinned the opposite boundary (these texts were rejected); the
+     * shapes are now inside the printable/parseable language and {@code parse(print(x)) == x} holds
+     * for them.
      */
     @Test
-    void booleanNodesInOperandPositionsPrintButDoNotParseBack()
+    void booleanNodesInOperandPositionsRoundTrip()
     {
-        // Each pin asserts BOTH halves separately: the tree PRINTS (outside the lambda, so a
-        // printer throw cannot masquerade as the parse rejection), and the printed text is then
-        // rejected by the parser (review finding, wave 41 lane C).
-
         // A comparison as a Binary operand.
         Expr cmpAsOperand = bin(Expr.BinOp.EQ, bin(Expr.BinOp.EQ, col("AESTDY"), num(1)),
                 bool(true));
-        String cmpText = ExpressionPrinter.print(cmpAsOperand);
-        assertEquals("(AESTDY == 1) == true", cmpText);
-        assertThrows(ExpressionException.class, () -> CheckExpressionParser.parse(cmpText));
+        assertEquals("(AESTDY == 1) == true", ExpressionPrinter.print(cmpAsOperand));
+        assertEquals(cmpAsOperand, reparse(cmpAsOperand));
 
-        // A composite as a Call argument.
+        // A composite as a Call argument — read_value's filter= shape.
         Expr andAsArg = call("f",
                 new Expr.And(List.of(call("empty", col("AETERM")), call("empty", col("AESEV")))));
-        String andText = ExpressionPrinter.print(andAsArg);
-        assertEquals("f((empty(AETERM) and empty(AESEV)))", andText);
-        assertThrows(ExpressionException.class, () -> CheckExpressionParser.parse(andText));
+        assertEquals("f((empty(AETERM) and empty(AESEV)))", ExpressionPrinter.print(andAsArg));
+        assertEquals(andAsArg, reparse(andAsArg));
 
         // A Not as a Binary operand.
         Expr notAsOperand = bin(Expr.BinOp.EQ, new Expr.Not(call("empty", col("AETERM"))),
                 bool(true));
-        String notText = ExpressionPrinter.print(notAsOperand);
-        assertEquals("(not empty(AETERM)) == true", notText);
-        assertThrows(ExpressionException.class, () -> CheckExpressionParser.parse(notText));
+        assertEquals("(not empty(AETERM)) == true", ExpressionPrinter.print(notAsOperand));
+        assertEquals(notAsOperand, reparse(notAsOperand));
 
         // A composite as a list item.
         Expr orInList = bin(Expr.BinOp.IN, col("AESEV"), new Expr.Lit(Expr.LitKind.LIST, List.of(
                 new Expr.Or(List.of(call("empty", col("AETERM")), call("empty", col("AESEV")))))));
-        String listText = ExpressionPrinter.print(orInList);
-        assertEquals("AESEV in [(empty(AETERM) or empty(AESEV))]", listText);
-        assertThrows(ExpressionException.class, () -> CheckExpressionParser.parse(listText));
+        assertEquals("AESEV in [(empty(AETERM) or empty(AESEV))]",
+                ExpressionPrinter.print(orInList));
+        assertEquals(orInList, reparse(orInList));
     }
 
 
     /**
-     * ⚠ <b>Boundary pin (found by this corpus, 2026-08-13):</b> arithmetic as the <em>left</em>
-     * operand of a comparison prints — {@code ExpressionPrinter.value} parenthesises it — but the
-     * printed text does not parse back at boolean position: {@code parsePrimary} commits to the
-     * boolean-group branch on a leading {@code (}, parses the arithmetic as a complete expression
-     * and then rejects the trailing comparison operator. The same tree in <em>value</em> position
-     * (a comparison's right side, a call argument) round-trips fine — see the SUB / DIV / ADD
-     * corpus cases. No authored rule produces the left-side shape ({@code CheckToExpr} always
-     * raises the leaf's name reference on the left), so this is a language boundary, not a corpus
-     * defect.
+     * ⭐ <b>Boundary lifted (runbook W2a):</b> arithmetic as the <em>left</em> operand of a
+     * comparison prints parenthesised and now parses back at boolean position too —
+     * {@code parsePrimary} no longer has a parenthesis arm of its own that committed to a boolean
+     * group on a leading {@code (}; the one arm ({@code parseAtom}) parses the group and lets the
+     * comparison continue after it. Found as a boundary by this corpus on 2026-08-13.
      */
     @Test
-    void parenthesisedArithmeticOnTheComparisonLeftDoesNotParseBack()
+    void parenthesisedArithmeticOnTheComparisonLeftRoundTrips()
     {
         Expr leftArithmetic = bin(Expr.BinOp.GE, bin(Expr.BinOp.SUB, col("AENDY"), col("ASTDY")),
                 num(0));
-        String text = ExpressionPrinter.print(leftArithmetic);
-        assertEquals("(AENDY - ASTDY) >= 0", text);
-        assertThrows(ExpressionException.class, () -> CheckExpressionParser.parse(text));
+        assertEquals("(AENDY - ASTDY) >= 0", ExpressionPrinter.print(leftArithmetic));
+        assertEquals(leftArithmetic, reparse(leftArithmetic));
     }
 
 

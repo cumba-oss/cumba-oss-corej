@@ -49,8 +49,9 @@ class NativeGuardFallthroughParityTest
     }
 
     /**
-     * S2 shape — a mixed Check whose decidable guard short-circuits AROUND a runtime GroupedResult
-     * {@code $}-ref: {@code any[AESTDY not_exists, VISITNUM not in $grouped]}.
+     * S2 shape — a mixed Check whose decidable guard short-circuits AROUND a runtime per-row
+     * {@code $}-ref (a {@code GroupedResult} until runbook W8):
+     * {@code any[AESTDY not_exists, VISITNUM not in $grouped]}.
      */
     private static final String S2_RULE = "{\"Core\":{\"Id\":\"R1\"},"
             + "\"Sensitivity\":\"Record\","

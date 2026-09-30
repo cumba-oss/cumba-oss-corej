@@ -144,36 +144,46 @@ class RulePackageLoaderTest
 
 
     @Test
-    void testRuleWithOperations()
+    void testRuleWithAFunctionBinding()
     {
+        // CDISC-CG0022: an operation binding until wave 4b (PLAN-scalar-metadata-functions) made
+        // variable_count a registry function — the binding is compiled, its template a string.
         Rule rule = rulePackage.getRules().get("062da4b3-0c48-4ed3-a97b-c1e92d7bcf95");
-        assertNotNull(rule, "Rule with operations should exist");
-        assertNotNull(rule.getOperations());
-        assertFalse(rule.getOperations().isEmpty());
-
-        Operation op = rule.getOperations().get(0);
-        assertEquals("$VARIABLE_COUNT", op.getId());
-        assertEquals("--LNKGRP", op.getName());
-        assertEquals("variable_count", op.getOperator());
-        assertEquals(OperationType.VARIABLE_COUNT, op.getOperationType());
+        assertNotNull(rule, "the rule should exist");
+        assertNull(rule.getLoadError(), rule.getLoadError());
+        assertEquals(rule.getCompiledBindings(), rule.bindingOrder(),
+                "every binding is a compiled one");
+        CompiledBinding binding = rule.getCompiledBindings().get(0);
+        assertEquals("$VARIABLE_COUNT", binding.name());
+        net.cumba.corej.core.expr.ast.Expr.Call call = (net.cumba.corej.core.expr.ast.Expr.Call) binding
+                .expression();
+        assertEquals("variable_count", call.name());
+        assertEquals(
+                new net.cumba.corej.core.expr.ast.Expr.Lit(
+                        net.cumba.corej.core.expr.ast.Expr.LitKind.STRING, "--LNKGRP"),
+                call.args().get(0));
     }
 
 
     @Test
-    void testRuleWithOperationDomain()
+    void testRuleWithBindingDomain()
     {
-        // CDISC-CG0148 has an operation with domain "EX"
+        // CDISC-CG0148 has a binding with domain "EX"
         Rule rule = rulePackage.getRules().get("4162b46f-9e19-41ff-ab42-9a26ee5b37f9");
         assertNotNull(rule, "CDISC-CG0148 should exist");
         assertEquals("CDISC-CG0148", rule.getCore().getId());
-        assertNotNull(rule.getOperations());
-        assertEquals(1, rule.getOperations().size());
-
-        Operation op = rule.getOperations().get(0);
-        assertEquals("$usubjids_in_ex", op.getId());
-        assertEquals("USUBJID", op.getName());
-        assertEquals("distinct", op.getOperator());
-        assertEquals("EX", op.getDomain());
+        // (distinct is a registry function since runbook W7: the binding is a COMPILED one, and
+        // its domain= is a keyword of the call.)
+        assertEquals(rule.getCompiledBindings(), rule.bindingOrder());
+        CompiledBinding binding = rule.getCompiledBindings().stream()
+                .filter(b -> "$usubjids_in_ex".equals(b.name())).findFirst().orElseThrow();
+        net.cumba.corej.core.expr.ast.Expr.Call call = (net.cumba.corej.core.expr.ast.Expr.Call) binding
+                .expression();
+        assertEquals("distinct", call.name());
+        assertEquals("USUBJID",
+                ((net.cumba.corej.core.expr.ast.Expr.Ref) call.args().get(0)).name());
+        assertEquals("EX",
+                ((net.cumba.corej.core.expr.ast.Expr.Lit) call.kwargs().get("domain")).value());
     }
 
 
@@ -312,6 +322,52 @@ class RulePackageLoaderTest
     {
         assertThrows(java.io.IOException.class, () -> RulePackageLoader.loadFromString(""));
         assertThrows(java.io.IOException.class, () -> RulePackageLoader.loadFromString("null"));
+    }
+
+
+    /**
+     * Combined review of runbook W2–W8 (W8, filed pre-existing): a broadcast-shaped Precondition
+     * gate the compiler REFUSES used to leave {@code getPreconditionExpr()} null — "not fully
+     * resolvable ⇒ continue" — so the gate was silently ignored and the rule ran ungated. It is a
+     * load error now, naming the compiler's reason. Pre-fix: loadError null. A supported gate is
+     * the control.
+     */
+    @Test
+    void aRefusedBroadcastPreconditionGateIsALoadErrorNotSilentlyIgnored() throws Exception
+    {
+        Rule refused = loadOne("PRE-REFUSED");
+        RulePackageLoader.installEngineInternalPrecondition(refused,
+                precondition("available(__no_such_function__())"));
+        assertNull(refused.getPreconditionExpr(), "the refused gate is not installed");
+        String error = refused.getLoadError();
+        assertNotNull(error, "a refused gate must be loud, never silently ignored");
+        assertTrue(error.contains("Precondition gate") && error.contains("no native function"),
+                error);
+
+        Rule supported = loadOne("PRE-OK");
+        RulePackageLoader.installEngineInternalPrecondition(supported,
+                precondition("var_exists(\"DOMAIN\")"));
+        assertNotNull(supported.getPreconditionExpr(), "a supported broadcast gate is installed");
+        assertNull(supported.getLoadError(), supported.getLoadError());
+    }
+
+
+    private static Rule loadOne(String id) throws java.io.IOException
+    {
+        Rule rule = RulePackageLoader.loadFromString("{\"rules\":{\"x\":{\"Core\":{\"Id\":\"" + id
+                + "\"},\"Check\":{\"expression\":\"AETERM == \\\"X\\\"\"},"
+                + "\"Outcome\":{\"Message\":\"m\"}}}}").getRules().get("x");
+        assertNotNull(rule, "the rule parses");
+        assertNull(rule.getLoadError(), rule.getLoadError());
+        return rule;
+    }
+
+
+    private static CheckCondition precondition(String expression) throws java.io.IOException
+    {
+        return new com.fasterxml.jackson.databind.ObjectMapper().readValue(
+                "{\"expression\":\"" + expression.replace("\"", "\\\"") + "\"}",
+                CheckCondition.class);
     }
 
 }

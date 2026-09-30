@@ -2,6 +2,7 @@ package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -137,21 +138,34 @@ class WildcardPrefixResolutionTest
 
 
     @Test
-    void suppDataset_operationDomainKeepsFullCodeWhileVariableGoesBare() throws Exception
+    void suppDataset_variableWildcardGoesBareOnACompiledBinding() throws Exception
     {
-        // The two jobs in one pass: `domain: "SUPP--"` is a DATASET-NAME wildcard and must stay
-        // SUPPLB (Fix #59/#33), while `--QNAM` is a VARIABLE name and must become QNAM.
-        net.cumba.corej.core.model.Operation op = new net.cumba.corej.core.model.Operation();
-        op.setId("$x");
-        op.setOperator("distinct");
-        op.setDomain("SUPP--");
-        op.setName("--QNAM");
-
-        net.cumba.corej.core.model.Operation resolved = OperationExecutorCalls.resolvePrefixes(op,
-                "SUPPLB", "");
-
-        assertEquals("SUPPLB", resolved.getDomain(), "dataset-name wildcard keeps the domain code");
-        assertEquals("QNAM", resolved.getName(), "variable wildcard uses the empty SUPP prefix");
+        // The variable half of the retired executor's two-prefix pass, on a compiled binding
+        // (runbook W8 — until then the vehicle was the operation record): a bare `--QNAM` is a
+        // VARIABLE name and must become QNAM on a SUPP primary (EC-36: the empty SUPP prefix).
+        // ⚠ The dataset-name half — `domain="SUPP--"` staying SUPPLB (Fix #59/#33) — has NO
+        // twin on the function surface: a `--` column under domain= is a load error, and a
+        // `SUPP--` dataset name is left unresolved by the specialiser (measured in W8, 0 corpus
+        // sites; PLAN-retire-operation-surface §8 F-W8-2), so it is not pinned here.
+        Rule template = rule("""
+                Core:
+                  Id: PREFIX-SUPP-BINDING
+                Bindings:
+                - name: "$local"
+                  expression: 'distinct(--QNAM)'
+                Check:
+                  expression: 'QNAM in $local'
+                """);
+        net.cumba.corej.core.RulePackageLoader.materialiseBindings(template);
+        assertNull(template.getLoadError(), template.getLoadError());
+        IDataTable supplb = MockTable.of().col("RDOMAIN", "LB").col("QNAM", "LBX").name("SUPPLB")
+                .build();
+        Rule resolved = RuleSpecialiser.specialise(template, supplb, "SUPPLB");
+        assertTrue(resolved != null && resolved != template, "the binding needed resolving");
+        assertEquals("distinct(QNAM)",
+                net.cumba.corej.core.expr.ExpressionPrinter
+                        .print(resolved.bindingOrder().get(0).expression()),
+                "variable wildcard uses the empty SUPP prefix");
     }
 
 
@@ -325,25 +339,6 @@ class WildcardPrefixResolutionTest
     {
         // Regression guard for Fix #5 proper.
         assertEquals("RELREC.**DECOD", resolveValue("RELREC.**DECOD", "MH", "APMH"));
-    }
-
-
-    @Test
-    void singleArgResolvePrefixesStillAppliesFix33Stripping()
-    {
-        // The 1-arg overload delegated (prefix, prefix), which silently disabled Fix #33's
-        // SUPP/SQAP parent-stripping for variable fields: name became SUPPAEQNAM, not AEQNAM.
-        net.cumba.corej.core.model.Operation op = new net.cumba.corej.core.model.Operation();
-        op.setId("$x");
-        op.setOperator("distinct");
-        op.setName("--QNAM");
-        op.setDomain("SUPP--");
-
-        net.cumba.corej.core.model.Operation resolved = OperationExecutorCalls.resolvePrefixes(op,
-                "SUPPAE");
-
-        assertEquals("AEQNAM", resolved.getName(), "Fix #33 parent-stripping must still apply");
-        assertEquals("SUPPAE", resolved.getDomain());
     }
 
     // -----------------------------------------------------------------------

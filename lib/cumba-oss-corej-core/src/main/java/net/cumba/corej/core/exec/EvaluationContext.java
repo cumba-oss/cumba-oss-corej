@@ -1,7 +1,5 @@
 package net.cumba.corej.core.exec;
 
-import java.util.Collections;
-import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,6 +47,29 @@ public class EvaluationContext
     String ruleId;
 
     /**
+     * The rule's declared SUPP merge ({@code Rule#isSuppMergeEnabled()}, default {@code true}):
+     * read by the dotted existence pivot ({@code OperatorRegistry.existsAsDottedDatasetColumn}, Fix
+     * #39) so that {@code Supp_Merge: false} turns the merge off on the existence path as well as
+     * on the value path ({@link SuppPivot}). {@code PLAN-operation-replacements} §2.3.
+     */
+    @Builder.Default
+    boolean suppMerge = true;
+
+    /**
+     * The per-context memo of the SUPP pivot ({@link SuppPivot}): the parsed {@code SUPP<domain>}
+     * of the table and the qualifier columns read so far, one materialisation each.
+     */
+    @Builder.Default
+    SuppPivot.Memo suppPivot = new SuppPivot.Memo();
+
+    /**
+     * The run's shared join-index cache, when the caller has one ({@code RuleRunner} passes it from
+     * {@code JoinCache}); the SUPP pivot parses each {@code SUPP<domain>} table once per run
+     * through it. {@code null} outside a study run: the pivot then parses once per context.
+     */
+    JoinCache.@Nullable SharedIndexCache sharedIndexCache;
+
+    /**
      * The dataset's CDISC domain code (e.g. {@code "AE"}, {@code "SUPPDM"}, {@code "APMH"}), used
      * to substitute {@code --} in an Operation's {@code domain:} — a <em>dataset-name</em> wildcard
      * (Fix #59, Fix #33). <b>Not</b> the variable-name replacement: see
@@ -59,7 +80,7 @@ public class EvaluationContext
 
     /**
      * The prefix that substitutes {@code --} in a <em>variable name</em>, from
-     * {@code OperationExecutor.variableWildcardPrefix} — Python's {@code wildcard_replacement}.
+     * {@code DatasetIdentity.variableWildcardPrefix} — Python's {@code wildcard_replacement}.
      * Differs from {@link #domainPrefix} only for AP datasets (the 2-character parent suffix,
      * because {@code APMH} holds {@code MHTERM}) and SUPP/SQ datasets ({@code ""}, because
      * {@code --QNAM} is {@code QNAM}).
@@ -280,40 +301,6 @@ public class EvaluationContext
     @Builder.Default
     Set<String> numericExpectedColumns = Set.of();
 
-    /**
-     * Q2 of {@code PLAN-grouping-key-identity}: the grouped results already bound to a table
-     * through {@link #requireCompatibleGroupedKeys}, each mapped (by identity) to the table it was
-     * checked against — so the check runs once per (result, table), never per row, on the table the
-     * lookup actually reads. Synchronised for the same reason as {@link #absentColumnFolds}.
-     */
-    @Builder.Default
-    Map<GroupedResult, IDataTable> keyCheckedGroupedResults = Collections
-            .synchronizedMap(new IdentityHashMap<>());
-
-    /**
-     * Binds {@code aResult} to this context's {@link #table}: the cross-table key-type check
-     * ({@link GroupedResult#requireCompatibleKeys}) against the table the per-row lookup reads,
-     * once per (result, table). Every reader of a grouped result calls this before its row loop —
-     * the Check's value vectors and membership tests, and the report's {@code Output_Variables}
-     * (review round 1 of {@code PLAN-grouping-key-identity}, L3: the check used to run eagerly
-     * where the operation was materialised, against the rule's table, which is not the table a
-     * computed-target operation reads a prior result against).
-     *
-     * @param aResult
-     *            the grouped result about to be read row by row
-     * @throws JoinKeyTypeMismatchException
-     *             when a group column's kind differs between the two tables
-     */
-    public void requireCompatibleGroupedKeys(GroupedResult aResult)
-    {
-        if (keyCheckedGroupedResults.get(aResult) != table)
-        {
-            aResult.requireCompatibleKeys(table);
-            keyCheckedGroupedResults.put(aResult, table);
-        }
-    }
-
-
     /** Records that {@code column} was absent and evaluated as all-missing (EC-43). */
     public void noteAbsentColumnFold(String column)
     {
@@ -322,12 +309,11 @@ public class EvaluationContext
 
 
     /**
-     * Resolves a single variable by id, transparently unwrapping {@link LazyValue} wrappers and
-     * answering a compiled binding's {@link BindingValue#handOver hand-over form}. Operation
-     * results live in the variables map as {@code LazyValue<Object>} instances (Fix #36) so a
-     * never-read Operation never runs. Use this method for single-key reads; enumeration loops
-     * should keep using {@code getVariables()} directly and unwrap per entry only when the entry's
-     * type is actually examined, otherwise iterating the map forces every Operation prematurely.
+     * Resolves a single variable by id, answering a compiled binding's {@link BindingValue#handOver
+     * hand-over form} (a binding is evaluated lazily, on first read). Use this method for
+     * single-key reads; enumeration loops should keep using {@code getVariables()} directly and
+     * unwrap per entry only when the entry's type is actually examined, otherwise iterating the map
+     * evaluates every binding prematurely.
      */
     public @Nullable Object resolveVariable(@Nullable String id)
     {
@@ -340,15 +326,11 @@ public class EvaluationContext
             return null;
         }
         Object raw = getVariables().get(id);
-        if (raw instanceof LazyValue<?> lv)
-        {
-            return lv.get();
-        }
         if (raw instanceof BindingValue compiled)
         {
             // Wave 0 (PLAN-binding-expressions §5.0): a compiled binding answers its HAND-OVER
             // form — the raw dataset-level value, or the Vector of a per-row binding — so every
-            // reader outside the compiler keeps the vocabulary an operation result gives it.
+            // reader outside the compiler keeps the raw-value vocabulary.
             return compiled.handOver(this);
         }
         return raw;

@@ -5,9 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
+import java.util.Map;
 import net.cumba.corej.core.RulePackageLoader;
+import net.cumba.corej.core.expr.OperandKind;
+import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
+import net.cumba.corej.core.model.Sensitivity;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -221,8 +226,9 @@ class StudyRuleClassifierTest
 
 
     /**
-     * A grouped aggregate is resolved per primary row ({@code GroupedResult.getForRow} reads the
-     * evaluation table's group columns), so a pinned {@code domain} does not make it study-safe.
+     * A grouped aggregate is resolved per primary row (the broadcast reads the evaluation table's
+     * group columns — {@code GroupedResult.getForRow} until runbook W8), so a pinned {@code domain}
+     * does not make it study-safe.
      */
     @Test
     void aGroupedOperationIsRejectedEvenWithAPinnedDomain() throws Exception
@@ -233,11 +239,22 @@ class StudyRuleClassifierTest
     }
 
 
-    /** An operator outside the allowlist must be assumed to read the record under evaluation. */
+    /**
+     * An operator outside the allowlist must be assumed to read the record under evaluation.
+     *
+     * <p>
+     * ⚠ Combined review W7 MEDIUM-1: the fixture used to be
+     * {@code cross_dataset_variable_metadata(domain="TS")} — a load error (its {@code name}
+     * parameter is required, and its map result cannot be compared with {@code > 0}), so the rule
+     * reached the classifier with no compiled Check and was rejected at the conservative null
+     * guard, never by the allowlist. {@code variable_count()} loads cleanly and is outside the
+     * allowlist.
+     * </p>
+     */
     @Test
     void anOperatorOutsideTheAllowlistIsRejected() throws Exception
     {
-        Rule r = ruleWithOperation("supp_qnam_present(domain=\\\"TS\\\")");
+        Rule r = ruleWithOperation("variable_count()");
         assertFalse(StudyRuleClassifier.isAnchorEligible(r),
                 "the operation gate is an allowlist, not a denylist");
     }
@@ -261,9 +278,98 @@ class StudyRuleClassifierTest
     @Test
     void anOperationWithAWildcardOutsideDomainIsRejected() throws Exception
     {
-        Rule r = ruleWithOperation("distinct(--TESTCD, domain=\\\"TS\\\")");
-        assertFalse(StudyRuleClassifier.isAnchorEligible(r),
+        // ⚠ Combined review W7 MEDIUM-1: this test used to classify the loaded rule and pass
+        // VACUOUSLY — the fixture is a load error (a `--` name under domain= is refused by the
+        // reader), so the rule reached the classifier with no compiled Check. The load error IS
+        // the real behaviour, so it is asserted as such ...
+        Rule loaded = rule("\"Sensitivity\": \"Study\","
+                + " \"Scope\": {\"Domains\": {\"Include\": [\"ALL\"]}},"
+                + " \"Bindings\": [{\"name\": \"$op\", \"expression\":"
+                + " \"distinct(--TESTCD, domain=\\\"TS\\\")\"}],"
+                + " \"Check\": {\"expression\": \"\\\"X\\\" in $op\"},"
+                + " \"Outcome\": {\"Message\": \"m\"}");
+        assertNotNull(loaded.getLoadError(), "a `--` name under domain= is refused at load");
+        assertTrue(loaded.getLoadError().contains("--TESTCD"), loaded.getLoadError());
+        // ... and the classifier refuses the same shape on its own (defence in depth): `--`
+        // resolves against the dataset under evaluation, so it is a primary read even under a
+        // pinned domain.
+        Expr.Call distinct = new Expr.Call(Distinct.NAME,
+                List.of(new Expr.Ref("--TESTCD", OperandKind.WILDCARD_COLUMN)),
+                Map.of("domain", new Expr.Lit(Expr.LitKind.STRING, "TS")));
+        Rule r = new Rule();
+        r.setSensitivity(Sensitivity.STUDY);
+        r.setCheckExpr(
+                new Expr.Binary(Expr.BinOp.IN, new Expr.Lit(Expr.LitKind.STRING, "X"), distinct));
+        assertTrue(StudyRuleClassifier.readsPrimaryDataset(r),
                 "an unresolved -- token in `name` still reads the primary dataset");
+        // the control: the same call over a bare column is study-safe
+        Rule bare = new Rule();
+        bare.setSensitivity(Sensitivity.STUDY);
+        bare.setCheckExpr(new Expr.Binary(Expr.BinOp.IN, new Expr.Lit(Expr.LitKind.STRING, "X"),
+                new Expr.Call(Distinct.NAME, List.of(new Expr.Ref("TSPARMCD", OperandKind.COLUMN)),
+                        Map.of("domain", new Expr.Lit(Expr.LitKind.STRING, "TS")))));
+        assertFalse(StudyRuleClassifier.readsPrimaryDataset(bare),
+                "a bare column under a pinned domain is the pinned dataset's");
+    }
+
+
+    /**
+     * Combined review W7 MEDIUM-2: {@code filter=(…)} of a domain-pinned call is a boolean over the
+     * PINNED dataset's own columns ({@code GroupedAggregate.readFilter}), so a bare column inside
+     * it is no read of the dataset under evaluation — as the retired operation's filter keys were
+     * not. It used to be walked as a primary read, keeping the rule off the anchor.
+     */
+    @Test
+    void aBareColumnInsideAPinnedFilterReadsThePinnedDataset() throws Exception
+    {
+        Rule r = ruleWithOperation(
+                "record_count(domain=\\\"DS\\\"," + " filter=(DSDECOD == \\\"DEATH\\\"))");
+        assertTrue(StudyRuleClassifier.isAnchorEligible(r),
+                "DSDECOD is DS's column, not the dataset under evaluation's");
+        // the control: a dotted reference inside the filter is a per-primary-row lookup
+        Rule dotted = new Rule();
+        dotted.setSensitivity(Sensitivity.STUDY);
+        dotted.setCheckExpr(new Expr.Binary(Expr.BinOp.GT,
+                new Expr.Call(RecordCount.NAME, List.of(),
+                        Map.of("domain", new Expr.Lit(Expr.LitKind.STRING, "DS"), "filter",
+                                new Expr.Binary(Expr.BinOp.EQ,
+                                        new Expr.Ref("DM.DTHFL", OperandKind.DOTTED_REF),
+                                        new Expr.Lit(Expr.LitKind.STRING, "Y")))),
+                new Expr.Lit(Expr.LitKind.NUMBER, 0)));
+        assertTrue(StudyRuleClassifier.readsPrimaryDataset(dotted),
+                "a dotted reference still reads the dataset under evaluation");
+    }
+
+
+    /**
+     * Combined review XCUT L2: the readers accept {@code domain=DS} and {@code domain="DS"} alike
+     * (D10), so the classifier must too — a bare {@code domain=DS} reference used to count as a
+     * primary read. And {@code read_value} is domain-pinned like the aggregates: ungrouped, its
+     * answer is one value of the pinned dataset broadcast to every row.
+     */
+    @Test
+    void bothDomainSpellingsPinAndReadValueIsDomainPinned() throws Exception
+    {
+        assertTrue(
+                StudyRuleClassifier.isAnchorEligible(ruleWithOperation("record_count(domain=DS)")),
+                "the bare dataset reference names the pinned dataset");
+        assertTrue(
+                StudyRuleClassifier
+                        .isAnchorEligible(ruleWithOperation("record_count(domain=\\\"DS\\\")")),
+                "control: the quoted spelling");
+        assertTrue(
+                StudyRuleClassifier.isAnchorEligible(ruleWithBinding(
+                        "read_value(TSVAL, domain=TS, filter=(TSPARMCD == \\\"SPECIES\\\"),"
+                                + " mode=\\\"FIRST\\\")",
+                        "$op == \\\"RAT\\\"")),
+                "an ungrouped pinned read_value is a study-level fact");
+        assertFalse(
+                StudyRuleClassifier
+                        .isAnchorEligible(ruleWithBinding(
+                                "read_value(TSVAL, domain=TS, filter=(TSPARMCD == \\\"SPECIES\\\"),"
+                                        + " mode=\\\"FIRST\\\", group=[STUDYID])",
+                                "$op == \\\"RAT\\\"")),
+                "a grouped read_value resolves per primary row");
     }
 
 
@@ -283,11 +389,30 @@ class StudyRuleClassifierTest
      */
     private static Rule ruleWithOperation(String operationExpression) throws Exception
     {
-        return rule("\"Sensitivity\": \"Study\","
+        return ruleWithBinding(operationExpression, "$op > 0");
+    }
+
+
+    /**
+     * Builds a Study rule with one {@code $op} binding and the given Check.
+     *
+     * <p>
+     * ⚠ Asserts a clean load (combined review W7 MEDIUM-1): a fixture with a load error reaches the
+     * classifier with no compiled Check and is rejected at the conservative null guard, so a test
+     * expecting "rejected" would pass for the wrong reason — the vacuity that hid two tests here.
+     * </p>
+     */
+    private static Rule ruleWithBinding(String operationExpression, String check) throws Exception
+    {
+        Rule r = rule("\"Sensitivity\": \"Study\","
                 + " \"Scope\": {\"Domains\": {\"Include\": [\"ALL\"]}},"
                 + " \"Bindings\": [{\"name\": \"$op\", \"expression\": \"" + operationExpression
-                + "\"}]," + " \"Check\": {\"expression\": \"$op > 0\"},"
+                + "\"}]," + " \"Check\": {\"expression\": \"" + check + "\"},"
                 + " \"Outcome\": {\"Message\": \"m\"}");
+        assertNull(r.getLoadError(),
+                "fixture must load cleanly: " + operationExpression + " — " + r.getLoadError());
+        assertNotNull(r.getCheckExpr(), "fixture must compile: " + operationExpression);
+        return r;
     }
 
     // ---- remaining branches of the gate ----------------------------------------------------
@@ -366,12 +491,18 @@ class StudyRuleClassifierTest
         assertTrue(StudyRuleClassifier.isAnchorEligible(safe),
                 "minus over two study-level operands stays study-level");
 
+        // Combined review of runbook W2–W8 (W4 M3): a bare column operand of minus is a LOAD
+        // error now, so the unsafe half composes a dataset-level list READ FROM THE PRIMARY
+        // (an ungrouped distinct over its column) — the fixture must load, or the assertion
+        // below would hold for the wrong reason.
         Rule unsafe = ruleWithOperations(
-                "{\"name\": \"$def\", \"expression\": \"define_dataset_names()\"},"
-                        + " {\"name\": \"$gap\", \"expression\": \"minus(USUBJID, subtract=$def)\"}",
+                "{\"name\": \"$all\", \"expression\": \"distinct(USUBJID)\"},"
+                        + " {\"name\": \"$def\", \"expression\": \"define_dataset_names()\"},"
+                        + " {\"name\": \"$gap\", \"expression\": \"minus($all, subtract=$def)\"}",
                 "$gap");
+        assertNull(unsafe.getLoadError(), unsafe.getLoadError());
         assertFalse(StudyRuleClassifier.isAnchorEligible(unsafe),
-                "a bare column operand names the dataset under evaluation");
+                "a minuend read from the dataset under evaluation names it");
     }
 
 
@@ -403,22 +534,23 @@ class StudyRuleClassifierTest
     {
         Rule r = rule("\"Sensitivity\": \"Study\","
                 + " \"Scope\": {\"Domains\": {\"Include\": [\"ALL\"]}},"
-                + " \"Bindings\": [{\"name\": \"$nosuchop\", \"expression\": \"record_count(domain=\\\"DM\\\")\"}],"
-                + " \"Check\": {\"expression\": \"$nosuchop > 0\"},"
+                + " \"Bindings\": [{\"name\": \"$nosuchop\", \"expression\": \"distinct(USUBJID, domain=\\\"DM\\\")\"}],"
+                + " \"Check\": {\"expression\": \"\\\"S1\\\" in $nosuchop\"},"
                 + " \"Outcome\": {\"Message\": \"m\", \"Output_Variables\": [\"USUBJID\"]}");
         assertNull(r.getLoadError(), "fixture must load cleanly: " + r.getLoadError());
         assertNotNull(r.getCheckExpr(),
                 "fixture must compile, else the classifier rejects it for the wrong reason");
-        // ⚠⚠ THE CONTROL IS THE WHOLE TEST. `record_count` is a DOMAIN_PINNED_OPERATOR, so an
-        // operation with NO `domain` already reads the primary dataset and the rule is rejected
-        // while its Operations block is still present — deleting the setOperations(null) below
-        // would leave the assertion green and pin nothing. Pinning `domain: DM` makes the rule
-        // genuinely eligible first, so the flip below can only come from the unresolvable ref.
+        // ⚠⚠ THE CONTROL IS THE WHOLE TEST. `distinct` is a DOMAIN_PINNED call (a registry
+        // function since runbook W7 — its bare positional names the pinned dataset's column, D13
+        // Q4), so a call with NO `domain` already reads the primary dataset and the rule is
+        // rejected while its binding is still present — deleting the setCompiledBindings(null)
+        // below would leave the assertion green and pin nothing. Pinning `domain: DM` makes the
+        // rule genuinely eligible first, so the flip below can only come from the unresolvable ref.
         assertTrue(StudyRuleClassifier.isAnchorEligible(r),
-                "control: a domain-pinned record_count is study-safe while the ref resolves");
-        r.setOperations(null);
+                "control: a domain-pinned distinct is study-safe while the ref resolves");
+        r.setCompiledBindings(null);
         assertFalse(StudyRuleClassifier.isAnchorEligible(r),
-                "a rule with no Operations block cannot be inspected");
+                "a rule whose $-reference resolves to no binding cannot be inspected");
     }
 
 
@@ -478,7 +610,7 @@ class StudyRuleClassifierTest
     void aRuleWithNoCompiledExpressionIsRejected()
     {
         Rule r = new Rule();
-        r.setSensitivity(net.cumba.corej.core.model.Sensitivity.STUDY);
+        r.setSensitivity(Sensitivity.STUDY);
         assertTrue(StudyRuleClassifier.readsPrimaryDataset(r),
                 "an uninspectable rule gets the conservative answer");
         assertFalse(StudyRuleClassifier.isAnchorEligible(r), "and is therefore not eligible");
@@ -498,8 +630,8 @@ class StudyRuleClassifierTest
     @Test
     void aRequirementsVariablesFacetRestrictsTheScope() throws Exception
     {
-        for (String facet : java.util.List.of("\"All\": [\"USUBJID\"]",
-                "\"Any\": [\"USUBJID\", \"STUDYID\"]", "\"None\": [\"POOLID\"]"))
+        for (String facet : List.of("\"All\": [\"USUBJID\"]", "\"Any\": [\"USUBJID\", \"STUDYID\"]",
+                "\"None\": [\"POOLID\"]"))
         {
             Rule r = rule("\"Sensitivity\": \"Study\","
                     + " \"Scope\": {\"Domains\": {\"Include\": [\"ALL\"]}},"

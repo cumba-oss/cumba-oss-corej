@@ -771,6 +771,50 @@ class RuleTestCdtEdgeCaseTest
         }
 
 
+        /**
+         * W4 ({@code PLAN-list-functions} D-W4-15) — {@code standard-variable-names} follows the
+         * same null-vs-empty discipline as {@code standard-domains}: the channel behind
+         * {@code variable_names()} answers {@code null} (the function SKIPs the rule) until a
+         * scenario declares it, and an empty declaration survives the round-trip as empty.
+         */
+        @Test
+        void roundTrip_standardVariableNames_preservesTheDeclarationAndItsAbsence()
+        {
+            String declared = scenario("""
+                    #test CORE-1 expect=violation domain=AE
+                    #library standard=sdtmig version=3-4
+                    #library standard-variable-names STUDYID AETERM""");
+            String out = RuleTestCdt.toString(RuleTestCdt.parse(declared, "orig", null));
+            assertTrue(out.contains("#library standard-variable-names STUDYID AETERM"), out);
+            MapBackedLibraryMetadataProvider lib = RuleTestCdt.parse(out, "rt", null).getLibrary();
+            assertNotNull(lib);
+            assertEquals(List.of("STUDYID", "AETERM"), lib.getStandardVariableNames());
+
+            String empty = scenario("""
+                    #test CORE-1 expect=violation domain=AE
+                    #library standard=sdtmig version=3-4
+                    #library standard-variable-names""");
+            MapBackedLibraryMetadataProvider emptyLib = RuleTestCdt
+                    .parse(RuleTestCdt.toString(RuleTestCdt.parse(empty, "orig", null)), "rt", null)
+                    .getLibrary();
+            assertNotNull(emptyLib);
+            assertEquals(List.of(), emptyLib.getStandardVariableNames(),
+                    "an empty declaration must survive as empty, never as null");
+
+            String undeclared = scenario("""
+                    #test CORE-1 expect=violation domain=AE
+                    #library standard=sdtmig version=3-4""");
+            String outUndeclared = RuleTestCdt
+                    .toString(RuleTestCdt.parse(undeclared, "orig", null));
+            assertFalse(outUndeclared.contains("standard-variable-names"), outUndeclared);
+            MapBackedLibraryMetadataProvider none = RuleTestCdt.parse(outUndeclared, "rt", null)
+                    .getLibrary();
+            assertNotNull(none);
+            assertNull(none.getStandardVariableNames(),
+                    "an undeclared list stays null — variable_names() then SKIPs the rule");
+        }
+
+
         @Test
         void roundTrip_libraryDirective_omitsStandardDomainsWhenNeverDeclared()
         {

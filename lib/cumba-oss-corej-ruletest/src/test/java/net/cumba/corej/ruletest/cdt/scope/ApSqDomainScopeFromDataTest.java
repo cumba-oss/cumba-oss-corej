@@ -11,8 +11,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import net.cumba.corej.core.exec.DatasetIdentity;
 import net.cumba.corej.core.exec.DatasetRuleResolver;
-import net.cumba.corej.core.exec.OperationExecutor;
 import net.cumba.corej.core.exec.ScopeMatcher;
 import net.cumba.corej.core.exec.SplitDatasetUtil;
 import net.cumba.corej.core.gen.GeneratedRulePackage;
@@ -51,7 +51,7 @@ import org.junit.jupiter.params.provider.CsvSource;
  * <p>
  * The datasets in {@code net/cumba/corej/ruletest/scope_fixtures/} close that gap. Every assertion
  * below runs the production two-step exactly as {@code DatasetRuleResolver.doGenerate} does —
- * {@link OperationExecutor#unsplitNameFromData} on the loaded table, then
+ * {@link DatasetIdentity#unsplitNameFromData} on the loaded table, then
  * {@code ScopeMatcher.describeDomainMismatch(rule, name, base)} — and
  * {@link #ruleGeneratorSelectsByFamily()} drives the whole of {@link DatasetRuleResolver} so the
  * selection path (rule emitted vs. rule skipped, with its reason) is covered too.
@@ -104,7 +104,7 @@ class ApSqDomainScopeFromDataTest
     /** The dataset's canonical base name, derived the way production derives it. */
     private static String base(String aName)
     {
-        return OperationExecutor.unsplitNameFromData(dataset(aName));
+        return DatasetIdentity.unsplitNameFromData(dataset(aName));
     }
 
 
@@ -437,7 +437,7 @@ class ApSqDomainScopeFromDataTest
     /**
      * The SUPP/SQ datasets must carry {@code RDOMAIN} and <em>no</em> {@code DOMAIN} column, and
      * the AP datasets the reverse. If that ever inverts,
-     * {@link OperationExecutor#unsplitNameFromData} takes the other branch and every expectation
+     * {@link DatasetIdentity#unsplitNameFromData} takes the other branch and every expectation
      * above silently starts measuring something else.
      */
     @Test
@@ -460,7 +460,7 @@ class ApSqDomainScopeFromDataTest
 
 
     /**
-     * Every fixture has rows. {@link OperationExecutor#unsplitNameFromData} falls back to the bare
+     * Every fixture has rows. {@link DatasetIdentity#unsplitNameFromData} falls back to the bare
      * dataset name when the table is empty, which would make the SUPP/SQ expectations pass for the
      * wrong reason.
      */

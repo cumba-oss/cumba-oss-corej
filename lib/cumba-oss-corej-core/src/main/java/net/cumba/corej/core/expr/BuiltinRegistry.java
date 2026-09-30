@@ -39,7 +39,7 @@ public final class BuiltinRegistry
     private static final Set<String> BUILTINS = Set.of(
             // dataset-level metadata: data level (dataset_*) + the define / library levels.
             // dataset_domain is the dataset's CDISC domain as Scope.Domains resolves it
-            // (MetadataAttribute.DS_DOMAIN -> OperationExecutor.unsplitNameFromData); it lowers to
+            // (MetadataAttribute.DS_DOMAIN -> DatasetIdentity.unsplitNameFromData); it lowers to
             // ds_domain("DATA") through MetadataOperandMapping's `dataset_` prefix and is
             // dataset-constant, so a Check written against it folds to ONE finding per dataset
             // instead of one per record.

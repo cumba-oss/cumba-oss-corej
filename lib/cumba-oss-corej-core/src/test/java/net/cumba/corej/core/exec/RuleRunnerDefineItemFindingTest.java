@@ -75,7 +75,7 @@ class RuleRunnerDefineItemFindingTest
     {
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},\"Variable_Universe\":\"Define\","
                 + "\"Sensitivity\":\"Record\","
-                + "\"Bindings\":[{\"name\": \"$flag\", \"expression\": \"variable_exists(STUDYID)\"}],"
+                + "\"Bindings\":[{\"name\": \"$flag\", \"expression\": \"var_exists(\\\"STUDYID\\\")\"}],"
                 + "\"Check\":" + CHECK + ","
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_name\","
                 + "\"define_variable_role\",\"library_variable_role\","

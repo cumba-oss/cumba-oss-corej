@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -100,29 +99,23 @@ class RuleRunnerTest
     }
 
     // -----------------------------------------------------------------------
-    // Integration tests: rules with operations
+    // Integration tests: rules with bindings (declared operations until runbook W8)
     // -----------------------------------------------------------------------
 
 
     @Test
     void testExecute_withOperations_variableInValue()
     {
-        // Operation: distinct USUBJID from DM → $dm_usubjid = [S01, S02]
+        // Binding: distinct USUBJID from DM → $dm_usubjid = [S01, S02]
         // Check: USUBJID is_not_contained_by $dm_usubjid
         // AE table has S01, S03 → S03 is a violation
         IDataTable aeTable = MockTable.of().col("USUBJID", "S01", "S03", "S01").build();
         IDataTable dmTable = MockTable.of().col("USUBJID", "S01", "S02", "S01").build();
 
-        Operation op = new Operation();
-        op.setId("$dm_usubjid");
-        op.setOperator("distinct");
-        op.setName("USUBJID");
-        op.setDomain("DM");
-
-        Rule rule = buildRule("CORE-OP-001", "USUBJID not in DM",
-                new CheckConditionAll(List.of(expr("USUBJID not in $dm_usubjid"))),
-                List.of("USUBJID"));
-        rule.setOperations(List.of(op));
+        // (distinct is a registry function since runbook W7: the binding is a compiled one,
+        // loaded through the production loader.)
+        Rule rule = loadedRule("CORE-OP-001", "$dm_usubjid", "distinct(USUBJID, domain=\"DM\")",
+                "USUBJID not in $dm_usubjid", List.of("USUBJID"));
 
         DatasetResolver resolver = name -> "DM".equals(name) ? dmTable : null;
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, aeTable, resolver);
@@ -136,21 +129,17 @@ class RuleRunnerTest
     @Test
     void testExecute_withOperations_variableInName()
     {
-        // Operation: variable_count → $VARIABLE_COUNT = 2
-        // Check: $VARIABLE_COUNT greater_than 3 → all rows are violations (2 > 3 is false)
+        // Binding: record_count() → $RECORD_COUNT = 2
+        // Check: $RECORD_COUNT greater_than 3 → no row is a violation (2 > 3 is false). (The
+        // vehicle was a declared variable_count operation until runbook W8.)
         IDataTable table = MockTable.of().col("A", "1", "2").col("B", "3", "4").build();
 
-        Operation op = new Operation();
-        op.setId("$VARIABLE_COUNT");
-        op.setOperator("variable_count");
-
-        // $VARIABLE_COUNT (=2) greater_than 3 → false → no violations
-        Rule rule = buildRule("CORE-OP-002", "Too many variables",
-                new CheckConditionAll(List.of(expr("$VARIABLE_COUNT > 3"))), List.of());
-        rule.setOperations(List.of(op));
+        Rule rule = loadedRule("CORE-OP-002", "$RECORD_COUNT", "record_count()",
+                "$RECORD_COUNT > 3", List.of());
 
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
         assertFalse(result.hasViolations());
     }
 
@@ -158,18 +147,15 @@ class RuleRunnerTest
     @Test
     void testExecute_withOperations_variableInName_allViolations()
     {
-        // variable_count = 5, check: $VARIABLE_COUNT greater_than 3 → true → violation
-        // Dataset sensitivity → non-row-based → reports a single dataset-level violation
+        // distinct(A) = ["1", "2"], check: "2" in $VALUES → true → violation
+        // Dataset sensitivity → non-row-based → reports a single dataset-level violation. (The
+        // vehicle was variable_count until wave 4b, then record_count until runbook W6, made each
+        // a registry function.)
         IDataTable table = MockTable.of().col("A", "1", "2").col("B", "3", "4").col("C", "5", "6")
                 .col("D", "7", "8").col("E", "9", "10").build();
 
-        Operation op = new Operation();
-        op.setId("$VARIABLE_COUNT");
-        op.setOperator("variable_count");
-
-        Rule rule = buildRule("CORE-OP-003", "Too many variables",
-                new CheckConditionAll(List.of(expr("$VARIABLE_COUNT > 3"))), List.of());
-        rule.setOperations(List.of(op));
+        Rule rule = loadedRule("CORE-OP-003", "$VALUES", "distinct(A)", "\"2\" in $VALUES",
+                List.of());
 
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
@@ -193,59 +179,40 @@ class RuleRunnerTest
     }
 
     // -----------------------------------------------------------------------
-    // Integration test: grouped operation (CDISC-CG0148 pattern)
+    // Integration test: grouped operation (CDISC-CG0148 pattern) — retired with the carrier
     // -----------------------------------------------------------------------
-
-
-    @Test
-    void testExecute_groupedOperation_perSubjectMinDate()
-    {
-        // CDISC-CG0148: RFXSTDTC should equal earliest EX.EXSTDTC per subject
-        IDataTable dmTable = MockTable.of().col("USUBJID", "S01", "S02", "S03")
-                .col("RFXSTDTC", "2024-01-15", "2024-03-01", "2024-05-01").build();
-
-        IDataTable exTable = MockTable.of().col("USUBJID", "S01", "S01", "S02", "S02", "S03")
-                .col("EXSTDTC", "2024-01-15", "2024-02-01", "2024-02-10", "2024-03-01",
-                        "2024-05-01")
-                .build();
-
-        // Operation 1: distinct USUBJID from EX
-        Operation op1 = new Operation();
-        op1.setId("$ex_usubjid");
-        op1.setOperator("distinct");
-        op1.setName("USUBJID");
-        op1.setDomain("EX");
-
-        // Operation 2: min_date of EXSTDTC grouped by USUBJID from EX
-        Operation op2 = new Operation();
-        op2.setId("$min_ex_exstdtc");
-        op2.setOperator("min_date");
-        op2.setName("EXSTDTC");
-        op2.setDomain("EX");
-        op2.setGroup(List.of("USUBJID"));
-
-        // Check: USUBJID in $ex_usubjid AND RFXSTDTC != $min_ex_exstdtc
-        CheckConditionAll check = new CheckConditionAll(
-                List.of(expr("USUBJID in $ex_usubjid"), expr("RFXSTDTC != $min_ex_exstdtc")));
-        Rule rule = buildRule("CDISC-CG0148",
-                "RFXSTDTC does not equal the earliest value of EX.EXSTDTC", check,
-                List.of("USUBJID", "RFXSTDTC"));
-        rule.setOperations(List.of(op1, op2));
-
-        DatasetResolver resolver = name -> "EX".equals(name) ? exTable : null;
-        RuleExecutionResult result = RuleRunnerCalls.execute(rule, dmTable, resolver);
-
-        // S01: RFXSTDTC=2024-01-15, min EX=2024-01-15 → match, no violation
-        // S02: RFXSTDTC=2024-03-01, min EX=2024-02-10 → mismatch! violation
-        // S03: RFXSTDTC=2024-05-01, min EX=2024-05-01 → match, no violation
-        assertEquals(1, result.getViolationCount());
-        assertEquals(1, result.getViolations().get(0).getRow()); // row 1 = S02
-        assertEquals("S02", result.getViolations().get(0).getValues().get("USUBJID"));
-    }
 
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+
+    /** A one-binding rule through the production loader (a compiled binding, since W7). */
+    private static Rule loadedRule(String coreId, String binding, String expression, String check,
+            List<String> outputVars)
+    {
+        try
+        {
+            StringBuilder vars = new StringBuilder();
+            for (String v : outputVars)
+            {
+                vars.append(vars.length() == 0 ? "" : ",").append('"').append(v).append('"');
+            }
+            String json = "{\"rules\":{\"" + coreId + "\":{\"Core\":{\"Id\":\"" + coreId + "\"},"
+                    + "\"Bindings\":[{\"name\":\"" + binding + "\",\"expression\":\""
+                    + expression.replace("\"", "\\\"") + "\"}]," + "\"Check\":{\"expression\":\""
+                    + check.replace("\"", "\\\"") + "\"},"
+                    + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[" + vars + "]}}}}";
+            Rule rule = net.cumba.corej.core.RulePackageLoader.loadFromString(json).getRules()
+                    .get(coreId);
+            assertNull(rule.getLoadError(), rule.getLoadError());
+            return rule;
+        }
+        catch (Exception e)
+        {
+            throw new IllegalArgumentException("bad test fixture: " + expression, e);
+        }
+    }
 
 
     private static Rule buildRule(String coreId, String message, CheckConditionAll check,

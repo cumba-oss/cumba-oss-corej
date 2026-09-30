@@ -10,6 +10,7 @@ import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.gen.RuleGenerationReport;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.Sensitivity;
@@ -214,16 +215,25 @@ class DatasetRuleResolverSdtmPrefixExpansionTest
     }
 
 
+    /**
+     * (The bindings were the rule's declared operations until runbook W8; the compiled bindings are
+     * what the copy carries now.)
+     */
     @Test
-    void theExpandedChildKeepsTheSourceOperationsAndMatchDatasets()
+    void theExpandedChildKeepsTheSourceBindingsAndMatchDatasets()
     {
         Rule tpl = template();
-        tpl.setOperations(List.of());
+        tpl.setCompiledBindings(List.of(new CompiledBinding("$d",
+                net.cumba.corej.core.expr.CheckExpressionParser.parse("upper(AEDTC)"), List.of(),
+                null)));
         tpl.setMatchDatasets(List.of());
 
         Rule out = expand("AE", tpl).getFirst();
 
-        assertEquals(List.of(), out.getOperations());
+        assertEquals(List.of("$d"),
+                out.bindingOrder().stream().map(CompiledBinding::name).toList());
+        assertEquals("upper(AEDTC)",
+                ExpressionPrinter.print(out.compiledBinding("$d").expression()));
         assertEquals(List.of(), out.getMatchDatasets());
     }
 

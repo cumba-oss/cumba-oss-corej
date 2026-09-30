@@ -10,7 +10,6 @@ import java.util.TreeSet;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.model.MatchDataset;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Rule;
 import org.jspecify.annotations.Nullable;
 
@@ -32,13 +31,15 @@ import org.jspecify.annotations.Nullable;
  * {@link OperatorRegistry#existsAsDataset(EvaluationContext, String)} is
  * {@code resolver.resolve(name) != null} — widened by {@code Fix #358} (D7) so a <em>split</em>
  * domain counts as present on <b>both</b> sides ({@code SplitDomainResolution.isPresentAsDomain};
- * here scoped to the candidates whose readers were widened: {@code Match_Datasets} names and dotted
- * Check references) — which is what {@link #decide} tests — so SKIP engages exactly when the
- * presence rule fires, never when it does not. <b>One stated exception:</b> a candidate referenced
- * <em>only</em> via {@code Operations[].domain} keeps the exact-name presence test (operations
- * still resolve exact — a Fix #358 non-goal), so on a split submission such a rule stays SKIPPED
- * while the presence rule no longer fires; the follow-up that widens operation domain resolution
- * must widen this predicate with it (mirror, never weaken —
+ * here scoped to the candidates whose readers were widened: {@code Match_Datasets} names, dotted
+ * references and the {@code domain=} of a registry call, in the Check and in the compiled bindings)
+ * — which is what {@link #decide} tests — so SKIP engages exactly when the presence rule fires,
+ * never when it does not. Since runbook W8 there is no exception left: the one this paragraph used
+ * to state — a candidate referenced only via an {@code Operations[].domain}, whose operation
+ * resolved by exact name — went with the operation surface, and every {@code domain=} reader
+ * resolves a split family to its union ({@code SplitDomainResolution.resolveTableOrThrow}; an
+ * un-unionable family ERRORs the rule — ruling 1, D-W7-17). A future reader that resolves exact
+ * must re-open the exception here (mirror, never weaken —
  * {@code PLAN-match-datasets-split-union.md} §9).
  *
  * <h2>⚠ SKIP is scoped to the DEPENDENCY, not to the rule (K5b)</h2> Skipping the whole rule would
@@ -423,8 +424,8 @@ public final class AbsentDatasetSkip
      * </ul>
      *
      * <p>
-     * The dataset candidates ({@code Match_Datasets} names, {@code Operations[].domain}, dotted
-     * Check references) are read from the rule <em>and</em> from {@code checkExpr}, exactly as the
+     * The dataset candidates ({@code Match_Datasets} names, dotted references and registry calls'
+     * {@code domain=}) are read from the rule <em>and</em> from {@code checkExpr}, exactly as the
      * single-expression form does — a candidate the level never dereferences is dropped from the
      * reported set by the same {@code readsAny} filter.
      * </p>
@@ -494,11 +495,10 @@ public final class AbsentDatasetSkip
             // Fix #358 (D7): a split domain (lbch/lbhe/lbur with no standalone LB) counts as
             // PRESENT — every reader whose resolution was widened to the union can genuinely run,
             // so the dependency must not be silenced. Scoped to the candidates whose readers WERE
-            // widened: Match_Datasets names (the join sites) and dotted Check references (the
-            // OperatorRegistry/ValueResolver sites). An Operations[].domain-only candidate keeps
-            // the exact-name test — OperationExecutor still resolves exact (a plan non-goal), so
-            // widening its presence would un-skip a rule whose operation then aggregates over
-            // nothing (the W34-C1 flood shape). Bounded to two-character domain codes inside
+            // widened: Match_Datasets names (the join sites), dotted references (the
+            // OperatorRegistry/ValueResolver sites) and registry calls' domain= (the grouped
+            // readers resolve through SplitDomainResolution) — since W8 that is every surface a
+            // candidate comes from. Bounded to two-character domain codes inside
             // SplitDomainResolution (an `adsl` member carrying DOMAIN=ADSL must never make "ADSL"
             // present — no inventory walk happens for names longer than a domain code).
             if (splitWidened.contains(candidate)
@@ -508,7 +508,7 @@ public final class AbsentDatasetSkip
             }
             (covered ? reportedAbsent : unsupplied).add(candidate);
         }
-        // A Match_Datasets join / an Operation domain only makes a dataset a CANDIDATE; the
+        // A Match_Datasets join / a registry call's domain= only makes a dataset a CANDIDATE; the
         // reported set must name what was actually silenced, so drop the candidates the Check
         // never dereferences before the message is built.
         reportedAbsent.removeIf(dataset -> !readsAny(check, rule, Set.of(dataset)));
@@ -632,10 +632,11 @@ public final class AbsentDatasetSkip
      * upper-cased {@code Match_Datasets} names (the join sites resolve a split domain to its union)
      * and the dotted Check references (the {@code OperatorRegistry} / {@code ValueResolver} dotted
      * forms union too — review F2), so a rule that reads {@code LB} through either surface is
-     * genuinely runnable on a split submission and must not be silenced. An
-     * {@code Operations[].domain}-only candidate is deliberately NOT here: it still resolves by
-     * exact name downstream, so its candidates keep the exact-name presence test — the one stated
-     * exception to the skip-predicate/{@code ds_exists} lockstep (see the class Javadoc).
+     * genuinely runnable on a split submission and must not be silenced — and the {@code domain=}
+     * of every registry call in the Check and in the compiled bindings (the grouped readers resolve
+     * a split family to its union too). Since runbook W8 this is every surface
+     * {@link #referencedDatasets} draws from, so for a rule with a Check the two sets coincide and
+     * the skip-predicate/{@code ds_exists} lockstep has no exception (see the class Javadoc).
      */
     private static Set<String> splitWidenedCandidates(Rule rule, Expr check)
     {
@@ -667,19 +668,20 @@ public final class AbsentDatasetSkip
      * requirement bypasses this class entirely. If the requirement gated on the <b>widened</b> fact
      * while the rule's actual reader still resolved <b>exact</b>, the rule would un-skip on a split
      * submission and then evaluate against an empty operand — the {@code W34-C1} flood shape, which
-     * is precisely what {@link #splitWidenedCandidates}' exclusion of {@code Operations[].domain}
-     * exists to prevent ({@code Fix #358} / D7's one stated exception; see the class javadoc). The
-     * shape is a rule that declares {@code Requirements.Datasets: [D]} while reaching {@code D}
-     * <em>only</em> through an {@code Operations[].domain} whose operation still resolves {@code D}
-     * exactly. ⚠ No shipped rule has that shape as of 2026-09-19 — the sole instance was retired
-     * with the CORE family — so this partition is currently empty and the guard is untested by the
-     * corpus. Keep it: it is derived, not authored (see below).
+     * is what the exact-name partition exists to prevent. Its one historical member was a rule that
+     * declared {@code Requirements.Datasets: [D]} while reaching {@code D} <em>only</em> through an
+     * {@code Operations[].domain} whose operation resolved {@code D} exactly; the operation surface
+     * is gone since runbook W8, every {@code domain=} reader resolves a split family to its union,
+     * and for a rule with a Check the two sets this method compares are the same set — so the
+     * partition is empty by construction there. It stays non-empty only for a rule with no native
+     * Check ({@link #splitWidenedCandidatesWithoutCheck} sees the joins alone, the conservative
+     * direction). Keep it: it is derived, not authored (see below).
      * </p>
      *
      * <p>
      * ⭐ The partition is <b>recomputed from this class's own two sets</b> rather than authored, so
-     * it cannot drift: the day the widening follow-up admits {@code Operations[].domain}, both move
-     * together. "Mirror, never weaken" ({@code PLAN-match-datasets-split-union.md} &#167;9).
+     * it cannot drift: a new surface enters both sets or neither. "Mirror, never weaken"
+     * ({@code PLAN-match-datasets-split-union.md} &#167;9).
      * </p>
      *
      * <p>
@@ -732,14 +734,6 @@ public final class AbsentDatasetSkip
                 addDataset(out, match.getName());
             }
         }
-        List<Operation> operations = rule.getOperations();
-        if (operations != null)
-        {
-            for (Operation operation : operations)
-            {
-                addDataset(out, operation.getDomain());
-            }
-        }
         collectCompiledBindingDatasets(rule, out);
         return out;
     }
@@ -777,11 +771,11 @@ public final class AbsentDatasetSkip
 
 
     /**
-     * Every foreign dataset this rule could read, across all three surfaces the corpus uses: a
-     * {@code Match_Datasets} join, an {@code Operations} entry's {@code domain:}, and a dotted
-     * reference in the Check. Declared surfaces are included so a Match_Datasets/Operations name is
-     * a <em>candidate</em>; whether the Check actually dereferences it is settled by
-     * {@link #suppress}.
+     * Every foreign dataset this rule could read, across the surfaces the corpus uses: a
+     * {@code Match_Datasets} join, a dotted reference and a registry call's {@code domain=} — in
+     * the Check and in the compiled bindings. Declared surfaces are included so a
+     * Match_Datasets/Operations name is a <em>candidate</em>; whether the Check actually
+     * dereferences it is settled by {@link #suppress}.
      */
     static Set<String> referencedDatasets(Rule rule, Expr check)
     {
@@ -792,14 +786,6 @@ public final class AbsentDatasetSkip
             for (MatchDataset match : matches)
             {
                 addDataset(out, match.getName());
-            }
-        }
-        List<Operation> operations = rule.getOperations();
-        if (operations != null)
-        {
-            for (Operation operation : operations)
-            {
-                addDataset(out, operation.getDomain());
             }
         }
         collectCompiledBindingDatasets(rule, out);
@@ -853,6 +839,13 @@ public final class AbsentDatasetSkip
                         && lit.kind() == Expr.LitKind.STRING)
                 {
                     addDataset(out, String.valueOf(lit.value()));
+                }
+                else if (call.kwargs().get("domain") instanceof Expr.Ref ref
+                        && ref.kind() == OperandKind.COLUMN)
+                {
+                    // D10 (runbook W2a): `domain=TS` is the bare dataset reference, the same
+                    // dataset the quoted spelling names — read_value's authored form.
+                    addDataset(out, ref.name());
                 }
                 call.args().forEach(a -> collectDotted(a, out));
                 call.kwargs().values().forEach(a -> collectDotted(a, out));
@@ -951,42 +944,10 @@ public final class AbsentDatasetSkip
         seen.add(opRef);
         // PLAN-binding-expressions R14: a COMPILED binding reads a dataset exactly when its
         // expression does — dotted refs, nested calls' domain=, and the bindings it reads in turn.
+        // Runbook W8: every binding is a compiled binding; a `$`-name no binding defines is the
+        // dangling-reference load error's and reads nothing here.
         net.cumba.corej.core.model.CompiledBinding compiled = rule.compiledBinding(opRef);
-        if (compiled != null)
-        {
-            return readsAny(compiled.expression(), rule, datasets, seen);
-        }
-        List<Operation> operations = rule.getOperations();
-        if (operations == null)
-        {
-            return false;
-        }
-        for (Operation operation : operations)
-        {
-            if (!opRef.equals(operation.getId()))
-            {
-                continue;
-            }
-            if (matches(datasets, operation.getDomain()))
-            {
-                return true;
-            }
-            // `minus` composes two other operations by name/subtract rather than by group; a
-            // set difference over a suppressed operand is itself suppressed.
-            for (String operand : List.of(nullToEmpty(operation.getName()),
-                    nullToEmpty(operation.getSubtract())))
-            {
-                if (operand.startsWith("$") && operationReads(operand, rule, datasets, seen))
-                {
-                    return true;
-                }
-                if (matches(datasets, qualifierOf(operand)))
-                {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return compiled != null && readsAny(compiled.expression(), rule, datasets, seen);
     }
 
     // --------------------------------------------------------------------------------- helpers
@@ -1030,12 +991,6 @@ public final class AbsentDatasetSkip
         case Expr.Lit lit when lit.kind() == Expr.LitKind.STRING -> String.valueOf(lit.value());
         default -> null;
         };
-    }
-
-
-    private static String nullToEmpty(@Nullable String value)
-    {
-        return value == null ? "" : value;
     }
 
 

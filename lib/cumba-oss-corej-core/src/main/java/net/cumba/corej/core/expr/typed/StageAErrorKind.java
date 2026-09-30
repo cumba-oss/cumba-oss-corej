@@ -62,15 +62,15 @@ public enum StageAErrorKind
     FORWARD_OR_CYCLIC_BINDING(true),
 
     /**
-     * An <b>operation</b> binding that reads (through {@code name}, {@code subtract},
-     * {@code group}, a computed target, …) a <b>compiled</b> binding whose derived level has a row
-     * or variable cursor ({@code PLAN-binding-expressions} §5.0, the hand-over contract's third
-     * row): an operation's fields are dataset-level, so there is no row to pick the value at, and
-     * the executor would otherwise read the per-row value as one bogus string. Since review round 1
-     * (L1) an <b>inline</b> operation — in the Check or nested in a compiled binding — is held to
-     * the same rule through the fields it reads ({@code OperationExecutor.priorReferences}). Armed:
-     * measured 0 newly parked — before wave 0 no compiled binding existed, and the one wave 0 adds
-     * ({@code CDISC-CG0288}'s {@code $VALID_TERM_CODES}) is dataset-level and read by no operation.
+     * A reader that takes a {@code $}-binding as a <b>dataset-level list</b> — since runbook W8
+     * only {@code minus($a, subtract=$b)}, in the Check or nested in a compiled binding — reading a
+     * <b>compiled</b> binding whose derived level has a row or variable cursor
+     * ({@code PLAN-binding-expressions} §5.0, the hand-over contract's third row): there is no row
+     * to pick the value at, and the reader would otherwise read the per-row value as one bogus
+     * string. (Until W8 an operation binding, declared or inline, was held to the same rule through
+     * the fields it read; the kind keeps its name.) Armed: measured 0 newly parked — before wave 0
+     * no compiled binding existed, and the one wave 0 adds ({@code CDISC-CG0288}'s
+     * {@code $VALID_TERM_CODES}) is dataset-level and read by no list function.
      */
     OPERATION_READS_CURSOR_BINDING(true),
 

@@ -15,10 +15,12 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code PLAN-dictionary-seeder} Phase 6a, D13 item 3 (owner-ruled) — a dictionary-dependent
- * operation ({@code valid_external_dictionary_*} / {@code dictionary_has_decode}) that names no
- * {@code external_dictionary_type} is a <b>load error</b>, not a SKIP: no install can ever satisfy
- * it, so it is an authoring defect on the same {@code loadError} channel as a dangling {@code $}
+ * {@code PLAN-dictionary-seeder} Phase 6a, D13 item 3 (owner-ruled) — a dictionary-dependent call
+ * ({@code valid_external_dictionary_*} / {@code dictionary_has_decode}, registry functions since
+ * waves 1 and 3) whose {@code external_dictionary_type} is not a static, non-blank string literal
+ * is a <b>load error</b>, not a SKIP (a call with no type at all is the binder's arity error,
+ * {@code PerRowFunctionsTest} / {@code DictionaryFunctionsTest}): no install can ever satisfy it,
+ * so it is an authoring defect on the same {@code loadError} channel as a dangling {@code $}
  * ({@link DanglingOperationReferenceLoadTest}), and the message must send the author to the rule —
  * never the operator to an installer.
  *
@@ -31,7 +33,7 @@ import org.junit.jupiter.api.Test;
 class TypelessDictionaryOperationLoadTest
 {
 
-    private static final String DEFECTIVE = "declares no external_dictionary_type";
+    private static final String DEFECTIVE = "binds external_dictionary_type to the column reference AETERM, not a static string literal";
 
     private static Rule load(String ruleJson) throws IOException
     {
@@ -55,7 +57,7 @@ class TypelessDictionaryOperationLoadTest
                         {
                           "Core": {"Id": "TEST-TDO-1"},
                           "Executability": "Fully Executable",
-                          "Bindings": [{"name": "$terms", "expression": "valid_external_dictionary_value(AEDECOD, dictionary_term_type=\\"PT\\")"}],
+                          "Bindings": [{"name": "$terms", "expression": "valid_external_dictionary_value(AEDECOD, external_dictionary_type=AETERM, dictionary_term_type=\\"PT\\")"}],
                           "Check": {"all": [{"expression": "not empty($terms)"}]}
                         }
                         """);
@@ -75,21 +77,23 @@ class TypelessDictionaryOperationLoadTest
     }
 
 
-    /** The expression (Form B) declared shape is judged after normalisation, identically. */
+    /** A BLANK string literal names no dictionary either — its own defect, the same load error. */
     @Test
     void anExpressionFormTypelessOperationIsCaughtTheSameWay() throws IOException
     {
-        Rule rule = load("""
-                {
-                  "Core": {"Id": "TEST-TDO-2"},
-                  "Executability": "Fully Executable",
-                  "Bindings": [{"name": "$terms", "expression":
-                      "valid_external_dictionary_value(AEDECOD, dictionary_term_type=\\"PT\\")"}],
-                  "Check": {"all": [{"expression": "not empty($terms)"}]}
-                }
-                """);
+        Rule rule = load(
+                """
+                        {
+                          "Core": {"Id": "TEST-TDO-2"},
+                          "Executability": "Fully Executable",
+                          "Bindings": [{"name": "$terms", "expression":
+                              "valid_external_dictionary_value(AEDECOD, external_dictionary_type=\\"\\", dictionary_term_type=\\"PT\\")"}],
+                          "Check": {"all": [{"expression": "not empty($terms)"}]}
+                        }
+                        """);
         assertNotNull(rule.getLoadError());
-        assertTrue(rule.getLoadError().contains(DEFECTIVE), rule.getLoadError());
+        assertTrue(rule.getLoadError().contains("declares a blank external_dictionary_type"),
+                rule.getLoadError());
     }
 
 
@@ -110,7 +114,7 @@ class TypelessDictionaryOperationLoadTest
                           "Core": {"Id": "TEST-TDO-3"},
                           "Executability": "Fully Executable",
                           "Check": {"expression":
-                              "valid_external_dictionary_value(AEDECOD, dictionary_term_type=\\"PT\\") == false"}
+                              "valid_external_dictionary_value(AEDECOD, external_dictionary_type=AETERM, dictionary_term_type=\\"PT\\") == false"}
                         }
                         """);
         assertNull(rule.getInjectedPreconditionGates(),
@@ -119,7 +123,7 @@ class TypelessDictionaryOperationLoadTest
         assertNotNull(rule.getLoadError(),
                 "the load guard must catch what the gate injector cannot");
         assertTrue(rule.getLoadError().contains(DEFECTIVE), rule.getLoadError());
-        assertTrue(rule.getLoadError().contains("inline operation"), rule.getLoadError());
+        assertTrue(rule.getLoadError().contains("inline function"), rule.getLoadError());
 
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, table());
         assertEquals(RuleExecutionStatus.ERROR, result.getStatus());

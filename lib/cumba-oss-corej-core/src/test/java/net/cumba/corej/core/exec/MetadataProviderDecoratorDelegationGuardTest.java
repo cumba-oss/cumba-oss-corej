@@ -33,11 +33,12 @@ import org.junit.jupiter.api.Test;
  * {@code default} methods whose defaults mean <em>"I cannot answer"</em> / <em>"nothing is
  * wrong"</em>. That is right for a leaf implementation and <b>silently wrong</b> for a decorator: a
  * wrapper that forgets to delegate answers on behalf of a provider it is not entitled to speak for,
- * and the engine acts on the wrong answer. For the Fix #368 trio, {@code OperationExecutor} falls
- * back to the domain-keyed lookup Fix #368 removed and every ADaM {@code required_variables()} rule
- * goes green again. For Fix #369's {@code isLibraryUnavailable()}, a wrapper reports "library fine"
- * on behalf of a provider whose Library fetch threw and the degraded SKIP simply does not happen.
- * In both cases: no exception, no SKIP, no log line anywhere.
+ * and the engine acts on the wrong answer. For the Fix #368 trio, the {@code required_variables()}
+ * reader ({@code OperationExecutor} when Fix #368 landed) falls back to the domain-keyed lookup Fix
+ * #368 removed and every ADaM {@code required_variables()} rule goes green again. For Fix #369's
+ * {@code isLibraryUnavailable()}, a wrapper reports "library fine" on behalf of a provider whose
+ * Library fetch threw and the degraded SKIP simply does not happen. In both cases: no exception, no
+ * SKIP, no log line anywhere.
  * </p>
  *
  * <p>

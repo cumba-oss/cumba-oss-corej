@@ -2,6 +2,7 @@ package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -13,7 +14,6 @@ import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.expr.eval.Primitives;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.Sensitivity;
@@ -45,11 +45,19 @@ class MissingMemberIdentityTest
     }
 
 
-    private static Operation tupleDistinct(String... aNames)
+    /**
+     * {@code distinct([…])} as the registry function it is since runbook W7 ({@code Distinct}): the
+     * dataset-level tuple list, read over {@code aTable} with the rule's numeric expectations.
+     */
+    private static List<?> tuples(IDataTable aTable, Set<String> aNumericExpected, String... aNames)
     {
-        Operation op = new Operation();
-        op.setNames(List.of(aNames));
-        return op;
+        EvaluationContext ctx = EvaluationContext.builder().table(aTable)
+                .numericExpectedColumns(aNumericExpected).build();
+        net.cumba.corej.core.expr.eval.Vector v = net.cumba.corej.core.expr.eval.ExprCompiler
+                .evaluateValueExpression(net.cumba.corej.core.expr.CheckExpressionParser
+                        .parse("distinct([" + String.join(", ", aNames) + "])"), ctx);
+        assertNotNull(v);
+        return (List<?>) v.value(0).resolved();
     }
 
 
@@ -60,8 +68,7 @@ class MissingMemberIdentityTest
     @Test
     void aTupleSetInOutputVariablesPrintsTheMarkerNeverAControlToken()
     {
-        Set<List<Object>> tuples = OperationExecutor
-                .evalDistinctTuples(tupleDistinct("VISIT", "DAY"), reference(), Set.of());
+        List<?> tuples = tuples(reference(), Set.of(), "VISIT", "DAY");
         IDataTable primary = MockTable.of().name("SV").col("USUBJID", "S1").build();
         EvaluationContext ctx = EvaluationContext.builder().table(primary)
                 .variables(Map.of("$tuples", tuples)).build();
@@ -78,8 +85,7 @@ class MissingMemberIdentityTest
     @Test
     void aMissingReferenceComponentIsTheMissingMemberIdentity()
     {
-        Set<List<Object>> tuples = OperationExecutor
-                .evalDistinctTuples(tupleDistinct("VISIT", "DAY"), reference(), Set.of());
+        List<?> tuples = tuples(reference(), Set.of(), "VISIT", "DAY");
         assertTrue(tuples.contains(List.of("W1", new Primitives.MissingMember(MissingValue.MIS))));
         assertFalse(tuples.contains(List.of("W1", ".")), "a present '.' is not the missing");
         assertFalse(tuples.contains(List.of("W1", "")), "a present blank is not the missing");
@@ -94,14 +100,12 @@ class MissingMemberIdentityTest
     @Test
     void anAbsentReferenceColumnTakesItsTypeDefault()
     {
-        Set<List<Object>> charDefault = OperationExecutor
-                .evalDistinctTuples(tupleDistinct("VISIT", "ARMCD"), reference(), Set.of());
-        assertEquals(Set.of(List.of("W1", ""), List.of("W2", "")), charDefault,
+        List<?> charDefault = tuples(reference(), Set.of(), "VISIT", "ARMCD");
+        assertEquals(List.of(List.of("W1", ""), List.of("W2", "")), charDefault,
                 "absent, no numeric expectation: the character default \"\"");
-        Set<List<Object>> numericDefault = OperationExecutor
-                .evalDistinctTuples(tupleDistinct("VISIT", "ARMCD"), reference(), Set.of("ARMCD"));
+        List<?> numericDefault = tuples(reference(), Set.of("ARMCD"), "VISIT", "ARMCD");
         Primitives.MissingMember mis = new Primitives.MissingMember(MissingValue.MIS);
-        assertEquals(Set.of(List.of("W1", mis), List.of("W2", mis)), numericDefault,
+        assertEquals(List.of(List.of("W1", mis), List.of("W2", mis)), numericDefault,
                 "absent, numeric expectation: MIS — it was \"\" on this side only until round 2");
     }
 

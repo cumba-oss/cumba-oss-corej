@@ -7,7 +7,6 @@ import java.util.Set;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.expr.MetadataOperandMapping;
 import net.cumba.corej.core.expr.ast.Expr;
-import net.cumba.corej.core.expr.convert.OperationExpressionParser;
 import net.cumba.corej.core.expr.eval.ArgumentBinder;
 import net.cumba.corej.core.expr.eval.BroadcastFold;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
@@ -17,8 +16,6 @@ import net.cumba.corej.core.expr.eval.MetadataLevel;
 import net.cumba.corej.core.expr.eval.Parameter;
 import net.cumba.corej.core.expr.typed.ExprType;
 import net.cumba.corej.core.model.CheckCondition;
-import net.cumba.corej.core.model.Operation;
-import net.cumba.corej.core.model.OperationType;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.Sensitivity;
 import org.jspecify.annotations.Nullable;
@@ -31,11 +28,11 @@ import org.jspecify.annotations.Nullable;
  * cascade, &sect;4.4 for {@code Sensitivity}, &sect;4.9 for the {@code $}-only operation table —
  * and {@code plans/done/PLAN-classifier-redesign.md} for the grounding: the classifier reads the
  * native {@link Expr} every corpus form raises to ({@link #toExprOrNull}), plus an <b>id-free
- * operation-usage view</b> collected from both declared {@code Operations} entries and inlined
- * operation-operator calls, so the same rule derives identically as a {@code rules-src} leaf, a
- * {@code rules-legacy} lowered Check and a {@code rules/} inlined expression. The derivation
- * mirrors decisions the engine already makes at run time, so a derived value cannot disagree with
- * how the rule will actually be evaluated.
+ * call-usage view</b> collected from the registry-function calls the walk meets — inline in the
+ * Check or read through a compiled binding — so the same rule derives identically as a
+ * {@code rules-src} leaf and a {@code rules/} inlined expression. The derivation mirrors decisions
+ * the engine already makes at run time, so a derived value cannot disagree with how the rule will
+ * actually be evaluated.
  * </p>
  *
  * <p>
@@ -234,7 +231,7 @@ public final class RuleClassifier
     /**
      * Columns whose value is constant within a dataset, so a check on them yields one verdict per
      * dataset rather than per record. {@code DOMAIN} is already special-cased by
-     * {@code OperationExecutor.domainPrefix}.
+     * {@code DatasetIdentity.domainPrefix}.
      */
     private static final Set<String> DATASET_CONSTANT_COLUMNS = Set.of("DOMAIN");
 
@@ -288,20 +285,25 @@ public final class RuleClassifier
             "is_not_unique_set");
 
     // ------------------------------------------------------------------
-    // Operation scope (§4.9) — GROUNDED from OperationExecutor
+    // Call scope (§4.9) — the scope a registry function's result resolves at
     // ------------------------------------------------------------------
 
-    /**
-     * Operations whose result is per-record (their {@code eval} returns a {@code GroupedResult}).
-     * Derived mechanically from {@code OperationExecutor}'s dispatch, not hand-guessed.
-     */
-    private static final Set<String> RECORD_SCOPED_OPERATIONS = Set.of("date_diff_days",
-            "dictionary_has_decode", "interval_uncertainty_precision_mismatch", "row_max",
-            "valid_external_dictionary_code", "valid_external_dictionary_value");
+    // (RECORD_SCOPED_OPERATIONS held date_diff_days, the last operation whose result was per record
+    // whatever its group; it is a registry function since runbook W2b, whose operands the walk
+    // reads
+    // as any call's: its minuend is a column of the record, so the rule stays record-scoped.)
 
-    /** Operations whose result is per-variable (returns a {@code VariableMetadataResult}). */
-    private static final Set<String> VARIABLE_SCOPED_OPERATIONS = Set
-            .of("cross_dataset_variable_metadata");
+    /**
+     * Whether {@code name} is a registered function whose result is per-variable (a
+     * {@code VariableMetadataResult}) — read from its descriptor
+     * ({@code FunctionDescriptor.perVariableMap}), not a name list (combined review of runbook
+     * W2–W8, W3+W4b L5).
+     */
+    private static boolean isVariableScopedFunction(String name)
+    {
+        FunctionDescriptor d = FunctionRegistry.descriptor(name);
+        return d != null && d.perVariableMap();
+    }
 
     // Library permissibility operations (required_variables / expected_variables /
     // permissible_variables) deliberately do NOT route to
@@ -322,13 +324,12 @@ public final class RuleClassifier
 
 
     /**
-     * One operation the Check uses — <b>id-free</b> (plan {@code PLAN-classifier-redesign} §3):
-     * only {@code (operator, group, filter, domain, args)} carry classification signal, never the
-     * authoring-artifact {@code $}-id. Usages are collected from <em>both</em> sources — a declared
-     * {@code Operations} entry referenced by {@code $}-id, and a direct operation-operator call in
-     * the expression (the shape an inlined operation takes) — through the same
-     * {@link OperationExpressionParser} coercion the engine's own inline-operation path uses, so a
-     * declared and an inlined operation are indistinguishable here by construction.
+     * One registry-function call the Check uses — <b>id-free</b> (plan
+     * {@code PLAN-classifier-redesign} §3): only {@code (operator, group, filter, domain, args)}
+     * carry classification signal, never the authoring-artifact {@code $}-name. Usages are
+     * collected from the call itself, inline in the Check or read through a compiled binding
+     * ({@code BindingInliner}), so the two spellings are indistinguishable here by construction.
+     * (Until runbook W8 a declared operation record was the second source.)
      *
      * @param operator
      *            the operation's operator name, or {@code null} for an unresolvable reference
@@ -344,7 +345,7 @@ public final class RuleClassifier
      *            carried to complete the plan's usage tuple — no vocabulary currently keys on the
      *            target operand, and it must never leak into the frame-operand view
      */
-    private record OperationUsage(@Nullable String operator, List<String> group, boolean filtered,
+    private record CallUsage(@Nullable String operator, List<String> group, boolean filtered,
             @Nullable String domain, List<String> args)
     {
 
@@ -353,99 +354,142 @@ public final class RuleClassifier
          * axis (per-record and data-bound), so the rule is not mis-classified as a broadcast
          * dataset check.
          */
-        private static final OperationUsage UNRESOLVED = new OperationUsage(null, List.of(), true,
-                null, List.of());
-
-        private static OperationUsage of(Operation op)
-        {
-            List<String> args = new ArrayList<>(2);
-            if (op.getName() != null)
-            {
-                args.add(op.getName());
-            }
-            if (op.getNames() != null)
-            {
-                args.addAll(op.getNames());
-            }
-            return new OperationUsage(op.getOperator(),
-                    op.getGroup() == null ? List.of() : List.copyOf(op.getGroup()),
-                    op.getFilter() != null && !op.getFilter().isEmpty(), op.getDomain(),
-                    List.copyOf(args));
-        }
+        private static final CallUsage UNRESOLVED = new CallUsage(null, List.of(), true, null,
+                List.of());
     }
 
     /**
-     * The usage a direct operation-operator call denotes, or {@code null} when the call is not one.
-     * Recognition mirrors the engine ({@code ExprCompiler.operationCallPlan}): the
-     * {@link OperationType} registry is the single authority for what counts as an operation, and
-     * the call is coerced through the same {@link OperationExpressionParser#fromCall} mapping the
-     * evaluator uses — including the {@code group=} / {@code filter=} / {@code domain=} keyword
-     * arguments, which carry the same classification weight as the fields of a declared operation.
-     * A call that shares an operation's name but does not parse as one (wrong shape for the
-     * operation grammar) is left to the ordinary call handling.
-     *
-     * <p>
-     * Deliberately <em>broader</em> than {@code ExprCompiler.isInlineOperation}, which routes a
-     * builtin-shadowed no-kwarg call ({@code record_count()}) to the builtin: the engine documents
-     * the two as semantically identical, and to classification a bare {@code record_count()} IS the
-     * ungrouped, unfiltered operation (the FDA-SD0001 shape). Known edges of the view, all
-     * corpus-inert and watched by the committed cross-corpus gate
-     * ({@code CrossCorpusDerivationTest}): the inliner's two non-{@code OperationType} rewrites —
-     * {@code variable_exists} → {@code var_exists(…)} and {@code split_by} → the {@code
-     * split_by(col, "sep")} value function — fall outside the usage view (their declared and
-     * inlined forms agree on every shipped rule through sibling leaves, not by construction).
-     * {@code dictionary_available(…)} is the registry gate builtin only since wave 1 deleted its
-     * operation twin, and occurs in no shipped Check.
-     * </p>
+     * The usage a registry-function call denotes — the classification weight a declared operation
+     * of the same name used to carry (its operator, group columns, filter, pinned {@code domain=},
+     * target) — or {@code null} when the call is an ordinary function whose operands are read as
+     * leaves. Runbook W8: every such call reaches the walk through an inlined compiled binding
+     * ({@code BindingInliner}, R19) or written inline in the Check; the per-wave arms below carry
+     * the usage each ported callable's operation denoted, so row K of the routing census holds by
+     * construction.
      */
-    private static @Nullable OperationUsage callUsage(Expr.Call call)
+    private static @Nullable CallUsage callUsage(Expr.Call call)
     {
-        if (OperationType.fromJson(call.name()) == null)
+        // Wave 4 (PLAN-list-functions D-W4-6): a dataset-level list FUNCTION reached through
+        // an inlined compiled binding denotes the usage its declared operation denoted —
+        // the operator name, no group, no domain, no target — so the study-level test and
+        // the operand walk read it exactly as before the port (row K holds by construction).
+        if (ListFunctionSupport.FUNCTION_NAMES.contains(call.name()))
         {
-            return null;
+            return new CallUsage(call.name(), List.of(), false, null, List.of());
         }
-        try
+        // Wave 5 (PLAN-grouped-aggregate-functions D-W5-7): a grouped aggregate call — and
+        // read_value with a group= — denotes the usage its declared operation denoted: the
+        // operator, its group columns, whether it filters, its domain and its target, so
+        // operationScope reads it RECORD (a grouped aggregate resolves per primary row) and
+        // the study-level test sees the pinned domain exactly as before the port.
+        if (GroupedAggregate.isFunction(call.name())
+                || (ReadValue.NAME.equals(call.name()) && call.kwargs().containsKey("group"))
+                || RecordCount.NAME.equals(call.name()) || Distinct.NAME.equals(call.name()))
         {
-            return OperationUsage.of(OperationExpressionParser.fromCall(call, null));
+            // (record_count since runbook W6, PLAN-record-count-function D-W6-9: the same
+            // usage its RECORD_COUNT operation denoted — the group members with a raw `$`
+            // one kept, whether it filters, its domain; no target since R6 dropped it.)
+            return groupedCallUsage(call);
         }
-        catch (RuntimeException _)
+        if (ReferencedDatasetVariables.NAME.equals(call.name()))
         {
-            // Not a well-formed operation call (wrong shape for the operation grammar, or a
-            // malformed argument): leave it to the ordinary call handling. Broad on purpose —
-            // derivation must degrade, never propagate (same stance as toExprOrNull).
-            return null;
+            // Runbook W7 (PLAN-distinct-function D-W7-6): the per-row variable-name list
+            // denotes the usage its distinct(…, value_is_reference=true) operation denoted —
+            // the operator, no group, no domain, its target column.
+            return new CallUsage(call.name(), List.of(), false, null, targetsOf(call));
         }
+        // Wave 4b (PLAN-scalar-metadata-functions D-W4b-7): the same for the dataset-level
+        // scalar functions — cross_dataset_variable_metadata keeps its per-variable scope
+        // (isVariableScopedFunction reads the descriptor's perVariableMap flag) and carries its
+        // source dataset.
+        return ScalarMetadataFunctions.FUNCTION_NAMES.contains(call.name())
+                ? new CallUsage(call.name(), List.of(), false, scalarDomainOf(call), List.of())
+                : null;
     }
 
 
     /**
-     * The usage a {@code $}-reference denotes, resolved against the rule's declared
-     * {@code Operations}. A Form-B (expression-form) declaration is normalised through the same
-     * parser the loader uses, so the classifier reads identical field values whichever pass runs
-     * first; an unresolvable or malformed declaration degrades to
-     * {@link OperationUsage#UNRESOLVED}.
+     * The usage of a W5 grouped aggregate call ({@code max(AVAL, group=[…], filter=(…))},
+     * {@code max_date(DSSTDTC, domain="DS", group=[USUBJID])}): the group column names, the
+     * {@code domain=} (bare or quoted, D10) and the target when it is a bare column.
      */
-    private static OperationUsage declaredUsage(Map<String, Operation> ops, String ref)
+    private static CallUsage groupedCallUsage(Expr.Call call)
     {
-        Operation op = ops.get(ref);
-        if (op == null)
+        List<String> group = new ArrayList<>();
+        Expr groupExpr = call.kwargs().get("group");
+        if (groupExpr instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
+                && lit.value() instanceof List<?> items)
         {
-            return OperationUsage.UNRESOLVED;
+            for (Object item : items)
+            {
+                if (item instanceof Expr.Ref ref)
+                {
+                    group.add(ref.name());
+                }
+                else if (item instanceof Expr.Lit member && member.kind() == Expr.LitKind.STRING)
+                {
+                    group.add(String.valueOf(member.value()));
+                }
+            }
         }
-        try
+        else if (groupExpr instanceof Expr.Ref ref)
         {
-            return OperationUsage.of(OperationExpressionParser.normalize(op));
+            group.add(ref.name());
         }
-        catch (RuntimeException _)
-        {
-            // Malformed declaration (bad Form-B expression, null-polluted lists, …): degrade to
-            // the worst-case usage rather than propagate out of derivation.
-            return OperationUsage.UNRESOLVED;
-        }
+        Expr domainExpr = call.kwargs().get("domain");
+        String domain = domainExpr instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
+                ? String.valueOf(lit.value())
+                : domainExpr instanceof Expr.Ref ref ? ref.name() : null;
+        return new CallUsage(call.name(), List.copyOf(group), call.kwargs().containsKey("filter"),
+                domain, targetsOf(call));
     }
 
 
-    private static OperationScope operationScope(OperationUsage usage)
+    /**
+     * The target column(s) a call's first positional names: a reference, or each reference of a
+     * list literal (a {@code distinct([A, B], …)} tuple target — the retired {@code names}, which
+     * the declared usage listed member by member; runbook W7). Empty for no positional.
+     */
+    private static List<String> targetsOf(Expr.Call call)
+    {
+        if (call.args().isEmpty())
+        {
+            return List.of();
+        }
+        Expr first = call.args().get(0);
+        if (first instanceof Expr.Ref target)
+        {
+            return List.of(target.name());
+        }
+        List<String> names = new ArrayList<>();
+        if (first instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
+                && lit.value() instanceof List<?> items)
+        {
+            for (Object item : items)
+            {
+                if (item instanceof Expr.Ref ref)
+                {
+                    names.add(ref.name());
+                }
+            }
+        }
+        return List.copyOf(names);
+    }
+
+
+    /**
+     * The {@code domain=} string literal of a wave-4b scalar call
+     * ({@code cross_dataset_variable_metadata(…, domain="ADSL")}), the field its declared operation
+     * carried; {@code null} for any other call.
+     */
+    private static @Nullable String scalarDomainOf(Expr.Call call)
+    {
+        return call.kwargs().get(ScalarMetadataFunctions.DOMAIN_PARAMETER) instanceof Expr.Lit lit
+                && lit.kind() == Expr.LitKind.STRING ? (String) lit.value() : null;
+    }
+
+
+    private static OperationScope operationScope(CallUsage usage)
     {
         if (usage.operator() == null)
         {
@@ -458,11 +502,7 @@ public final class RuleClassifier
             // result is broadcast.
             return OperationScope.RECORD;
         }
-        if (RECORD_SCOPED_OPERATIONS.contains(usage.operator()))
-        {
-            return OperationScope.RECORD;
-        }
-        if (VARIABLE_SCOPED_OPERATIONS.contains(usage.operator()))
+        if (isVariableScopedFunction(usage.operator()))
         {
             return OperationScope.VARIABLE;
         }
@@ -498,11 +538,10 @@ public final class RuleClassifier
 
     /**
      * A Check atom together with the polarity and entailment of its position in the tree, plus the
-     * {@link OperationUsage}s its operands denote — a {@code $}-reference and an inlined
+     * {@link CallUsage}s its operands denote — a {@code $}-reference and an inlined
      * operation-operator call land here identically, never as an atom operand.
      */
-    private record Positioned(Atom atom, boolean negated, boolean entailed,
-            List<OperationUsage> usages)
+    private record Positioned(Atom atom, boolean negated, boolean entailed, List<CallUsage> usages)
     {
     }
 
@@ -513,30 +552,11 @@ public final class RuleClassifier
      * single branch (the corpus's one-branch {@code any} idiom).
      *
      * @param rule
-     *            the rule whose Check to walk; its declared {@code Operations} resolve the
-     *            {@code $}-references the walk encounters
+     *            the rule whose Check to walk; its compiled bindings are read through
+     *            ({@code BindingInliner}, R19)
      * @return the leaves in document order
      */
     private static List<Positioned> leaves(Rule rule)
-    {
-        return leaves(rule, true);
-    }
-
-
-    /**
-     * The walk behind {@link #leaves(Rule)}, with the operation-usage recognition switchable.
-     *
-     * <p>
-     * The classifier walks <b>operation-aware</b> ({@code operationAware = true}): a
-     * {@code $}-reference and an inlined operation-operator call both land in
-     * {@link Positioned#usages()} and never as a leaf operand. The recognition-<b>off</b> view (an
-     * inlined call contributing its literal operand text) had exactly one consumer, the
-     * Python-frame relic {@code frameFit}, deleted by phase 2 of
-     * {@code PLAN-leaf-scope-domain-inference.md}; the switch is kept so the walk stays one
-     * function, but every production caller passes {@code true}.
-     * </p>
-     */
-    private static List<Positioned> leaves(Rule rule, boolean operationAware)
     {
         List<Positioned> out = new ArrayList<>();
         // ⚑ Plan C §3.3: every declared check level, in ladder order. Sensitivity is a property of
@@ -549,7 +569,7 @@ public final class RuleClassifier
             // classified at the reference's position, exactly as if it were written inline —
             // never resolved against the operations and degraded to UNRESOLVED (the worst case).
             collect(net.cumba.corej.core.expr.convert.BindingInliner.inline(toExprOrNull(condition),
-                    rule), false, true, operationsById(rule), operationAware, out);
+                    rule), false, true, out);
         }
         return out;
     }
@@ -589,7 +609,7 @@ public final class RuleClassifier
 
 
     private static void collect(@Nullable Expr expr, boolean negated, boolean entailed,
-            Map<String, Operation> ops, boolean operationAware, List<Positioned> out)
+            List<Positioned> out)
     {
         switch (expr)
         {
@@ -601,7 +621,7 @@ public final class RuleClassifier
         {
             for (Expr part : and.parts())
             {
-                collect(part, negated, entailed, ops, operationAware, out);
+                collect(part, negated, entailed, out);
             }
         }
         case Expr.Or or ->
@@ -609,30 +629,29 @@ public final class RuleClassifier
             boolean single = or.parts().size() == 1;
             for (Expr part : or.parts())
             {
-                collect(part, negated, entailed && single, ops, operationAware, out);
+                collect(part, negated, entailed && single, out);
             }
         }
-        case Expr.Not not -> collect(not.inner(), !negated, entailed, ops, operationAware, out);
+        case Expr.Not not -> collect(not.inner(), !negated, entailed, out);
         case Expr.Lit _ ->
         {
             // a literal carries no operand
         }
-        default -> out.add(atom(expr, negated, entailed, ops, operationAware));
+        default -> out.add(atom(expr, negated, entailed));
         }
     }
 
 
     /**
      * Classifies one {@link Expr} predicate/operand node into an {@link Atom} — operator token,
-     * operand name and value — collecting any {@link OperationUsage} its operands denote as it
-     * goes. The vocabularies apply unchanged: {@code CheckToExpr} emits the operator as the call
-     * name, so the tokens they match on ({@code is_not_unique_set}, {@code has_same_values}, …) are
-     * the same in every corpus form.
+     * operand name and value — collecting any {@link CallUsage} its operands denote as it goes. The
+     * vocabularies apply unchanged: {@code CheckToExpr} emits the operator as the call name, so the
+     * tokens they match on ({@code is_not_unique_set}, {@code has_same_values}, …) are the same in
+     * every corpus form.
      */
-    private static Positioned atom(Expr expr, boolean negated, boolean entailed,
-            Map<String, Operation> ops, boolean operationAware)
+    private static Positioned atom(Expr expr, boolean negated, boolean entailed)
     {
-        List<OperationUsage> usages = new ArrayList<>(2);
+        List<CallUsage> usages = new ArrayList<>(2);
         String operator = null;
         String name = null;
         String value = null;
@@ -641,11 +660,11 @@ public final class RuleClassifier
         {
         case Expr.Call call ->
         {
-            OperationUsage usage = operationAware ? callUsage(call) : null;
+            CallUsage usage = callUsage(call);
             if (usage != null)
             {
                 // an operation call standing alone as a predicate — a boolean operation such as
-                // supp_qnam_present(...); the usage is the whole signal, there is no atom operator
+                // domain_is_custom(...); the usage is the whole signal, there is no atom operator
                 usages.add(usage);
                 break;
             }
@@ -678,14 +697,27 @@ public final class RuleClassifier
             }
             if (!args.isEmpty())
             {
-                name = operandText(args.get(0), ops, usages, operationAware);
+                name = operandText(args.get(0), usages);
             }
             if (args.size() > 1)
             {
-                value = operandText(args.get(1), ops, usages, operationAware);
+                value = operandText(args.get(1), usages);
                 valueIsLiteral = args.get(1) instanceof Expr.Lit;
             }
-            if (name == null && (value == null || valueIsLiteral))
+            if (readsAnotherDataset(call))
+            {
+                // Runbook W2a (PLAN-operation-replacements §2.2, owner D10 / D13 Q4): a registry
+                // call carrying `domain=` reads ANOTHER dataset — its positionals and its filter
+                // name that dataset's columns, never the primary's (`read_value(TSVAL, domain=TS,
+                // …)`). It contributes no column operand, exactly as OutputVariableDeriver's D4b
+                // skips such a call's target; otherwise TSVAL would derive a Record sensitivity
+                // for a rule whose own dataset it never reads (CDISC-SEND-0105 moved Dataset →
+                // Record until this arm existed).
+                name = null;
+                value = null;
+                valueIsLiteral = false;
+            }
+            else if (name == null && (value == null || valueIsLiteral))
             {
                 // A call whose positionals yield NO column operand — none at all
                 // (`is_last_in_group(ordering=SESEQ, group=[USUBJID])`), or only non-column ones
@@ -698,7 +730,7 @@ public final class RuleClassifier
                 // positional at all" by review round 2, L-1). A call whose positionals DO yield a
                 // column operand keeps today's reading — its first two positionals — so no
                 // existing classification moves.
-                List<String> declared = declaredColumnOperands(call, ops, usages, operationAware);
+                List<String> declared = declaredColumnOperands(call, usages);
                 if (!declared.isEmpty())
                 {
                     name = declared.get(0);
@@ -713,15 +745,15 @@ public final class RuleClassifier
         case Expr.Binary binary ->
         {
             operator = BIN_OPERATORS.get(binary.op());
-            name = operandText(binary.left(), ops, usages, operationAware);
-            value = operandText(binary.right(), ops, usages, operationAware);
+            name = operandText(binary.left(), usages);
+            value = operandText(binary.right(), usages);
             valueIsLiteral = binary.right() instanceof Expr.Lit;
         }
         case Expr.Ref ref ->
         {
-            if (operationAware && isOperationRef(ref.name()))
+            if (isOperationRef(ref.name()))
             {
-                usages.add(declaredUsage(ops, ref.name()));
+                usages.add(CallUsage.UNRESOLVED);
             }
             else
             {
@@ -772,19 +804,18 @@ public final class RuleClassifier
      * a second one that could drift from it.
      * </p>
      */
-    private static @Nullable String operandText(Expr expr, Map<String, Operation> ops,
-            List<OperationUsage> usages, boolean operationAware)
+    private static @Nullable String operandText(Expr expr, List<CallUsage> usages)
     {
         return switch (expr)
         {
         case Expr.Ref ref ->
         {
-            if (operationAware && isOperationRef(ref.name()))
+            if (isOperationRef(ref.name()))
             {
                 // A $-operation reference is an operation usage, not a frame operand — the same
                 // statement about the rule as the inlined call below, and indistinguishable from
                 // it by construction.
-                usages.add(declaredUsage(ops, ref.name()));
+                usages.add(CallUsage.UNRESOLVED);
                 yield null;
             }
             yield ref.name();
@@ -792,7 +823,7 @@ public final class RuleClassifier
         case Expr.Lit lit when lit.kind() == Expr.LitKind.STRING -> String.valueOf(lit.value());
         case Expr.Call call ->
         {
-            OperationUsage usage = operationAware ? callUsage(call) : null;
+            CallUsage usage = callUsage(call);
             if (usage != null)
             {
                 // An inlined operation call in operand position (`record_count(filter=…) == 0`) —
@@ -809,10 +840,14 @@ public final class RuleClassifier
             // the operator and recursing would discard it (ds_exists("EX") is a dataset-presence
             // assertion, not a check on a column called EX).
             boolean namesItsOwnOperand = operand != null && classify(operand) != null;
+            if (readsAnotherDataset(call))
+            {
+                yield null; // W2a: a `domain=` registry call names no column of the primary
+            }
             if (operand != null && operand.equals(call.name()) && !namesItsOwnOperand)
             {
                 String positional = call.args().isEmpty() ? null
-                        : operandText(call.args().get(0), ops, usages, operationAware);
+                        : operandText(call.args().get(0), usages);
                 if (positional != null)
                 {
                     yield positional;
@@ -821,7 +856,7 @@ public final class RuleClassifier
                 // (a numeric literal, a $-operation reference): the operand it reads may be bound
                 // to a declared column parameter (the same case as the predicate-position arm in
                 // atom — `is_last_in_group(ordering=…) == true`; review round 2, L-1).
-                List<String> declared = declaredColumnOperands(call, ops, usages, operationAware);
+                List<String> declared = declaredColumnOperands(call, usages);
                 if (!declared.isEmpty())
                 {
                     yield declared.get(0);
@@ -839,6 +874,17 @@ public final class RuleClassifier
 
 
     /**
+     * Whether {@code call} is a registry call that reads another dataset — it carries a
+     * {@code domain=} keyword. Its columns are that dataset's (D10 / D13 Q4), so it names no
+     * operand of the dataset under evaluation.
+     */
+    private static boolean readsAnotherDataset(Expr.Call call)
+    {
+        return call.kwargs().containsKey("domain");
+    }
+
+
+    /**
      * The column references a registry or compiler-dispatched call reads through its
      * <em>declared</em> parameters, in declaration order: every bound slot whose parameter is typed
      * {@code COLUMN_REFERENCE} or {@code list<column-reference>} contributes its plain or
@@ -850,10 +896,9 @@ public final class RuleClassifier
      * operand.
      *
      * <p>
-     * Each bound reference is read as {@link #operandText} reads one, so the two never disagree:
-     * with {@code operationAware}, a {@code $}-operation reference is an operation <b>usage</b>
-     * (added to {@code usages} unless the positional walk already recorded it), never a column
-     * name.
+     * Each bound reference is read as {@link #operandText} reads one, so the two never disagree: a
+     * {@code $}-reference no compiled binding inlined is an unresolved <b>usage</b> (added to
+     * {@code usages} unless the positional walk already recorded it), never a column name.
      * </p>
      *
      * <p>
@@ -866,8 +911,7 @@ public final class RuleClassifier
      * wave that ports such a callable retypes the parameter, which is what makes it visible here.
      * </p>
      */
-    private static List<String> declaredColumnOperands(Expr.Call call, Map<String, Operation> ops,
-            List<OperationUsage> usages, boolean operationAware)
+    private static List<String> declaredColumnOperands(Expr.Call call, List<CallUsage> usages)
     {
         FunctionDescriptor descriptor = FunctionRegistry.descriptor(call.name());
         if (descriptor == null)
@@ -893,25 +937,24 @@ public final class RuleClassifier
                             && list.element() == ExprType.Primitive.COLUMN_REFERENCE);
             if (column)
             {
-                collectColumnRefs(bound.get(i), ops, usages, operationAware, out);
+                collectColumnRefs(bound.get(i), usages, out);
             }
         }
         return out;
     }
 
 
-    private static void collectColumnRefs(@Nullable Expr e, Map<String, Operation> ops,
-            List<OperationUsage> usages, boolean operationAware, List<String> out)
+    private static void collectColumnRefs(@Nullable Expr e, List<CallUsage> usages,
+            List<String> out)
     {
         if (e instanceof Expr.Ref ref)
         {
-            if (operationAware && isOperationRef(ref.name()))
+            if (isOperationRef(ref.name()))
             {
                 // as operandText: a usage, never a column name
-                OperationUsage usage = declaredUsage(ops, ref.name());
-                if (!usages.contains(usage))
+                if (!usages.contains(CallUsage.UNRESOLVED))
                 {
-                    usages.add(usage);
+                    usages.add(CallUsage.UNRESOLVED);
                 }
                 return;
             }
@@ -924,7 +967,7 @@ public final class RuleClassifier
             {
                 if (item instanceof Expr member)
                 {
-                    collectColumnRefs(member, ops, usages, operationAware, out);
+                    collectColumnRefs(member, usages, out);
                 }
             }
         }
@@ -1069,25 +1112,6 @@ public final class RuleClassifier
         return new Derived<>(value, Confidence.CERTAIN, why);
     }
 
-
-    private static Map<String, Operation> operationsById(Rule rule)
-    {
-        List<Operation> ops = rule.getOperations();
-        if (ops == null || ops.isEmpty())
-        {
-            return Map.of();
-        }
-        Map<String, Operation> byId = new java.util.LinkedHashMap<>();
-        for (Operation op : ops)
-        {
-            if (op.getId() != null)
-            {
-                byId.put(op.getId(), op);
-            }
-        }
-        return byId;
-    }
-
     // ------------------------------------------------------------------
     // §4.4 — Sensitivity
     // ------------------------------------------------------------------
@@ -1225,7 +1249,7 @@ public final class RuleClassifier
                 // evaluation. (A leaked $-text is an unresolvable reference: assume it reads.)
                 return true;
             }
-            for (OperationUsage usage : p.usages())
+            for (CallUsage usage : p.usages())
             {
                 // Only an ungrouped study-level operation tells us nothing about the dataset
                 // under evaluation; every other usage reads it.
@@ -1243,10 +1267,10 @@ public final class RuleClassifier
      * Whether {@code usage} is an ungrouped study-level operation — its result interrogates the
      * study inventory, so it tells us nothing about the dataset under evaluation.
      */
-    private static boolean isStudyLevelUsage(OperationUsage usage)
+    private static boolean isStudyLevelUsage(CallUsage usage)
     {
         return usage.operator() != null && usage.group().isEmpty()
-                && StudyRuleClassifier.isStudyLevelOperator(usage.operator());
+                && StudyRuleClassifier.isStudyLevelFunction(usage.operator());
     }
 
 
@@ -1306,7 +1330,7 @@ public final class RuleClassifier
                 return describe(p) + " — " + explainOperand(operand);
             }
         }
-        for (OperationUsage usage : p.usages())
+        for (CallUsage usage : p.usages())
         {
             OperationScope scope = operationScope(usage);
             if (scope != OperationScope.DATASET)
@@ -1357,7 +1381,7 @@ public final class RuleClassifier
 
 
     /** The usage's operator for a rationale, naming the unresolved case explicitly. */
-    private static String operatorName(OperationUsage usage)
+    private static String operatorName(CallUsage usage)
     {
         return usage.operator() == null ? "(unresolved)" : usage.operator();
     }

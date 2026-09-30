@@ -3,9 +3,7 @@ package net.cumba.corej.core.expr.eval;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
-import net.cumba.corej.core.exec.OperationExecutor.ResultKind;
 import net.cumba.corej.core.expr.ast.Expr;
-import net.cumba.corej.core.expr.convert.OperationExpressionParser;
 
 /**
  * Leaf-scope domain inference ({@code PLAN-leaf-scope-domain-inference.md} §3.1–§3.2): every
@@ -35,14 +33,14 @@ import net.cumba.corej.core.expr.convert.OperationExpressionParser;
  * <td>{@code varname()}; the {@code variable_name} anchor; cursor-form {@code var_*} accessors
  * ({@code var_label("DATA")}, {@code var_label(varname(), "DATA")}); {@code var_exists(varname())};
  * {@code max_value_length()} and the varname-anchored code/decode matchers; per-variable
- * {@code $}-operations ({@link ResultKind#PER_VARIABLE})</td>
+ * {@code $}-operations (per-variable)</td>
  * </tr>
  * <tr>
  * <td>ROW</td>
  * <td>{@code {ROW}}</td>
  * <td>plain, wildcard and dotted column references; per-row {@code $}-operations and per-row inline
- * operations ({@link ResultKind#PER_ROW}); an {@code exists} over a {@code ${...}} driver template;
- * every per-row value function over a column</td>
+ * operations (per row); an {@code exists} over a {@code ${...}} driver template; every per-row
+ * value function over a column</td>
  * </tr>
  * <tr>
  * <td>CELL</td>
@@ -55,7 +53,7 @@ import net.cumba.corej.core.expr.convert.OperationExpressionParser;
  * <p>
  * The scan is a statement about the raised {@link Expr} IR — the {@code checkExpr} the loader
  * installs after canonicalisation — not about authored {@code operator:} keys. {@code $}-operation
- * kinds come from {@link OperationKinds} (the load-time mirror of the {@code instanceof} tests
+ * kinds come from {@link BindingDomains} (the load-time mirror of the {@code instanceof} tests
  * {@code BroadcastFold} applies to the materialised value), so the inference agrees with the
  * runtime routing by construction rather than by a parallel vocabulary.
  * </p>
@@ -98,7 +96,7 @@ public final class DomainScan
      *            the rule's {@code $}-operation result kinds
      * @return the evaluation domain
      */
-    public static Domain infer(Expr expr, OperationKinds kinds)
+    public static Domain infer(Expr expr, BindingDomains kinds)
     {
         return switch (expr)
         {
@@ -113,7 +111,7 @@ public final class DomainScan
     }
 
 
-    private static Domain joinAll(Collection<Expr> parts, OperationKinds kinds)
+    private static Domain joinAll(Collection<Expr> parts, BindingDomains kinds)
     {
         Domain d = Domain.DATASET;
         for (Expr p : parts)
@@ -124,7 +122,7 @@ public final class DomainScan
     }
 
 
-    private static Domain literal(Expr.Lit lit, OperationKinds kinds)
+    private static Domain literal(Expr.Lit lit, BindingDomains kinds)
     {
         if (lit.kind() == Expr.LitKind.LIST)
         {
@@ -136,7 +134,7 @@ public final class DomainScan
     }
 
 
-    private static Domain ref(Expr.Ref r, OperationKinds kinds)
+    private static Domain ref(Expr.Ref r, BindingDomains kinds)
     {
         return switch (r.kind())
         {
@@ -144,17 +142,6 @@ public final class DomainScan
         case COLUMN, WILDCARD_COLUMN, DOTTED_REF, MATCHED_FLAG -> Domain.ROW;
         case OPERATION_REF -> kinds.domainOf(r.name());
         case BUILTIN -> builtin(r.name());
-        };
-    }
-
-
-    private static Domain ofKind(ResultKind kind)
-    {
-        return switch (kind)
-        {
-        case PER_ROW -> Domain.ROW;
-        case PER_VARIABLE -> Domain.VARIABLE;
-        case SCALAR -> Domain.DATASET;
         };
     }
 
@@ -185,7 +172,7 @@ public final class DomainScan
     }
 
 
-    private static Domain call(Expr.Call c, OperationKinds kinds)
+    private static Domain call(Expr.Call c, BindingDomains kinds)
     {
         String name = c.name();
         if ("value".equals(name) && c.args().isEmpty() && c.kwargs().isEmpty())
@@ -235,24 +222,67 @@ public final class DomainScan
             return c.args().isEmpty() || isCurrentVariableName(c.args().get(0)) ? Domain.VARIABLE
                     : Domain.DATASET;
         }
-        if (ExprCompiler.isInlineOperation(c))
+        FunctionDescriptor declared = FunctionRegistry.descriptor(name);
+        if (declared != null && declared.perVariableMap())
         {
-            // Form A: the call's arguments are operation parameters (names, keywords), not reads;
-            // the result kind alone decides, exactly as for the declared `$` form.
-            ResultKind kind;
-            try
-            {
-                kind = net.cumba.corej.core.exec.OperationExecutor
-                        .resultKind(OperationExpressionParser.fromCall(c, null));
-            }
-            catch (RuntimeException _)
-            {
-                kind = ResultKind.SCALAR;
-            }
-            return ofKind(kind);
+            // Wave 4b (PLAN-scalar-metadata-functions D-W4b-1): the function's one value is a
+            // per-variable map that the per-variable loop projects onto the variable cursor — the
+            // retired operation's per-variable result kind, carried over (declared on the
+            // descriptor since the combined review of runbook W2–W8, W3+W4b L5: not keyed on the
+            // name). Without this arm the `domain=` arm below reads it DATASET, and a Check whose
+            // only per-variable read is this binding (`empty($sdtm_label)`) would fold at dataset
+            // level instead of routing per variable (VariableMetadataNativeParityTest s5 / s7b).
+            return Domain.VARIABLE;
+        }
+        if (net.cumba.corej.core.exec.RecordCount.NAME.equals(name))
+        {
+            // Runbook W6 (PLAN-record-count-function D-W6-9): the retired RECORD_COUNT
+            // operation's result kind, carried over — per row when grouped, scalar otherwise. An
+            // explicit arm on both sides: without it an ungrouped record_count(filter=(TSPARMCD
+            // == "X")) would read TSPARMCD as a ROW-level read of the primary and turn a
+            // dataset-level binding into a per-row one; the filter is a parameter, as the
+            // operation's was.
+            return net.cumba.corej.core.exec.RecordCount.isGrouped(c) ? Domain.ROW : Domain.DATASET;
+        }
+        if (net.cumba.corej.core.exec.Distinct.NAME.equals(name))
+        {
+            // Runbook W7 (PLAN-distinct-function D-W7-12): the retired DISTINCT operation's
+            // result kind, carried over — per row when grouped, scalar otherwise; an explicit arm
+            // on both sides, as record_count's (the target and the filter are parameters of the
+            // target table, not reads of the primary).
+            return net.cumba.corej.core.exec.Distinct.isGrouped(c) ? Domain.ROW : Domain.DATASET;
+        }
+        if (net.cumba.corej.core.exec.GroupedAggregate.isFunction(name)
+                || (net.cumba.corej.core.exec.ReadValue.NAME.equals(name)
+                        && c.kwargs().containsKey("group")))
+        {
+            // Runbook W5 (PLAN-grouped-aggregate-functions D-W5-7): a grouped aggregate answers
+            // one value PER PRIMARY ROW (its groups are broadcast by key) — the retired
+            // operations' per-row result kind, carried over. Before the `domain=` arm below, which
+            // reads a foreign call as one dataset-level value.
+            return Domain.ROW;
+        }
+        if (c.kwargs().containsKey("domain"))
+        {
+            // Runbook W2a (PLAN-operation-replacements §2.2, owner D10 / D13 Q4): a registry call
+            // carrying `domain=` reads ANOTHER dataset — read_value(TSVAL, domain=TS, filter=(…))
+            // — and answers one value for the run. Its arguments are that dataset's columns, so
+            // they carry no ROW demand of the primary (the inline-operation arm above already
+            // reasons this way for an operation's parameters); without this arm TSVAL / TS were
+            // read as primary references and CDISC-SEND-0105's Domain moved {} → {ROW}.
+            return Domain.DATASET;
         }
         Domain operands = joinAll(c.args(), kinds).join(joinAll(c.kwargs().values(), kinds));
         FunctionDescriptor descriptor = FunctionRegistry.descriptor(name);
+        if (descriptor != null && descriptor.perRow())
+        {
+            // A declared row reader (FunctionDescriptor.readingRows: row_max selects its columns
+            // by a static regex and has no column operand) answers one value per row of the
+            // evaluated table — the ROW demand its operands cannot show (combined review of
+            // runbook W2–W8, XCUT H1: a `$trxx_max` binding classified {} handed row 0's maximum
+            // to every row of CDISC-/PMDA-AD0084).
+            return operands.join(Domain.ROW);
+        }
         if (descriptor != null && descriptor.aggregate())
         {
             // SPEC §1.4 raising (PLAN-binding-expressions §4.1): an aggregate folds the row axis

@@ -33,21 +33,19 @@ import org.jspecify.annotations.Nullable;
  * (D77d) — both derive a column name from a <em>cell value</em>, so they are per-row column
  * selection, not templates. Any operand containing a {@code ${...}} placeholder is left verbatim;
  * the {@code **} column half of a dotted reference is preserved by the shared text policy.</li>
- * <li><b>The name operand of {@code variable_count}</b> (D92a) — both deliberately fold across the
- * dataset inventory using the pre-resolution template ({@code
- * --LNKGRP} re-resolves per iterated dataset: AE&rarr;AELNKGRP, CM&rarr;CMLNKGRP, …). Expanding it
- * here would leave CDISC-CG0022 / CG0024 counting only the current domain's column — inert, with
- * every gate green. The inline evaluation path ({@code
- * ExprCompiler.inlineOperationResult}) resolves the operand per iterated dataset at run time,
- * exactly as the Operations-block path does via {@code Operation.originalName}.</li>
+ * <li><b>The template of {@code variable_count("--LNKGRP")}</b> (D92a) — it deliberately folds
+ * across the dataset inventory using the pre-resolution template ({@code --LNKGRP} re-resolves per
+ * iterated dataset: AE&rarr;AELNKGRP, CM&rarr;CMLNKGRP, …). Expanding it here would leave
+ * CDISC-CG0022 / CG0024 counting only the current domain's column — inert, with every gate green.
+ * The function ({@code ScalarMetadataFunctions.variableCount}, a registry function since wave 4b)
+ * resolves it per iterated dataset at run time.</li>
  * <li><b>{@code name_pattern=}</b> (D92b) — a string-literal variable-set selector matched by
  * regex, never a wildcard.</li>
  * <li><b>Non-STRING literals</b> (numbers, booleans, regexes) and any string literal that does not
  * match the shared text policy's name shapes — a data literal such as {@code "DOSE NOT CHANGED--SEE
  * CRF"} has no leading {@code --} and is untouched.</li>
- * <li><b>Keyword-argument <em>keys</em></b> (an inline operation's {@code filter=} column keys) —
- * they are carried into the {@link net.cumba.corej.core.model.Operation}'s filter map and resolved
- * by {@code OperationExecutor.resolvePrefixes} on the operation path.</li>
+ * <li><b>Keyword-argument <em>keys</em></b> — a keyword names a parameter, never a column; a
+ * {@code --} inside a keyword's <em>value</em> is resolved like any other operand.</li>
  * </ul>
  */
 public final class ExprPrefixResolver

@@ -275,8 +275,8 @@ public final class RecordKeyResolver
 
         // Always-append, then always-subtract. Order-preserving and de-duplicated.
         Set<String> ordered = new LinkedHashSet<>(names);
-        String prefix = Objects.requireNonNullElse(OperationExecutor.variableWildcardPrefix(aTable,
-                OperationExecutor.domainPrefix(aTable)), "");
+        String prefix = Objects.requireNonNullElse(DatasetIdentity.variableWildcardPrefix(aTable,
+                DatasetIdentity.domainPrefix(aTable)), "");
         List<String> appended = new ArrayList<>(ALWAYS_APPEND.size());
         for (String candidate : ALWAYS_APPEND)
         {

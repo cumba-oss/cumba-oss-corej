@@ -13,9 +13,9 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * Two surfaces need it and they must not disagree. {@link RuleRunner} uses it to decide whether a
- * rule's {@code Scope.Data_Structures} covers the dataset at all; {@link OperationExecutor} uses it
- * to key {@code required_variables()} / {@code expected_variables()} into an ADaM product, whose
- * variable model is structure-keyed. If the gate said <i>"this is a BASIC DATA STRUCTURE, the rule
+ * rule's {@code Scope.Data_Structures} covers the dataset at all; the Library walks use it to key
+ * {@code required_variables()} / {@code expected_variables()} into an ADaM product, whose variable
+ * model is structure-keyed. If the gate said <i>"this is a BASIC DATA STRUCTURE, the rule
  * applies"</i> and the operation then resolved its list against some other structure, the rule
  * would report against a standard it was never admitted under — and nothing would say so.
  * </p>
@@ -58,8 +58,8 @@ public final class AdamStructureContext
 
     /**
      * The dataset's resolved ADaM <b>subclass</b> tokens, most-specific first — the exact set the
-     * {@code Scope.Subclasses} gate matches against ({@link RuleRunner}), and the set
-     * {@link OperationExecutor} hands to
+     * {@code Scope.Subclasses} gate matches against ({@link RuleRunner}), and the set the Library
+     * walks hand to
      * {@link MetadataProvider#getRequiredVariablesForStructure(String, java.util.List)} so the
      * published {@code subClass} can select the governing data structure.
      *

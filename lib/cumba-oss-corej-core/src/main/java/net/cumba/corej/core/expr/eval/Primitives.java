@@ -1277,8 +1277,8 @@ public final class Primitives
      * its own text; a missing element ({@link MemberSet#missingIdentityOfMember}) never matches — a
      * present needle is not a missing ({@code D34 #5-2}: two values are equal iff the same missing
      * or the same present value; {@code D81}: membership is a disjunction of that equality). No
-     * element is {@code null}: the collection is an operation result that passed
-     * {@code OperationExecutor.executeOne}'s {@code ListValueGuard} (register {@code NNL §1}).
+     * element is {@code null}: the collection is an operation result that passed the list's
+     * birth-site {@code ListValueGuard} (register {@code NNL §1}).
      *
      * <p>
      * ⚠ Corrected by {@code PLAN-no-null-list-elements} review round 1 (M-1,
@@ -1406,9 +1406,10 @@ public final class Primitives
 
     /**
      * The composite-key component of a raw member: a missing member (see
-     * {@link MemberSet#missingIdentityOfMember}) as its {@link MissingMember}, any other member as
-     * {@code toString()}. A member is never {@code null} (register {@code NNL §1}: the list it came
-     * from passed the {@code ListValueGuard} at its birth site).
+     * {@link MemberSet#missingIdentityOfMember}) as its {@link MissingMember}, a {@link List} (a
+     * tuple) as the list of its components' key components (structural, runbook W7 — I6), any other
+     * member as {@code toString()}. A member is never {@code null} (register {@code NNL §1}: the
+     * list it came from passed the {@code ListValueGuard} at its birth site).
      *
      * @param item
      *            a raw member
@@ -1420,6 +1421,20 @@ public final class Primitives
         if (missing != null)
         {
             return new MissingMember(missing);
+        }
+        if (item instanceof List<?> tuple)
+        {
+            // Runbook W7 (PLAN-distinct-function D-W7-11, residual I6): a tuple element — a
+            // distinct([A, B]) composite, a tuple(…) value carried into a $-list — is the list of
+            // its components' key components, compared structurally by List.equals; never its
+            // rendering, under which [S1, MIS] and [S1, "."] were one member and ["A, B", "C"]
+            // met ["A", "B, C"]. Minus.setElement applies the same rule to a set operation.
+            List<Object> components = new java.util.ArrayList<>(tuple.size());
+            for (Object component : net.cumba.corej.core.exec.ListValueGuard.elements(tuple))
+            {
+                components.add(keyComponent(component));
+            }
+            return java.util.Collections.unmodifiableList(components);
         }
         return item.toString();
     }
@@ -1444,21 +1459,21 @@ public final class Primitives
      * ⭐ <b>Every membership right-hand side is built through this type</b>
      * ({@code PLAN-member-set-identity-hardening}, owner 2026-09-25: <i>"route all four"</i>): the
      * {@code ${*}} wildcard, the list-valued metadata accessor, the per-row VLM accessor, the
-     * per-row {@code GroupedResult}, and the {@code $}-reference / inline-operation result — and
-     * {@link #membership} / {@link #listMembership} accept nothing else. The four non-wildcard
-     * builders used to render {@code item.toString()} and were left so because <i>"none can receive
-     * a missing today"</i> — a reachability argument, which is the shape that hid
-     * {@code isMember}'s blanket early return for months. It is now a property of the type, pinned
-     * per builder by {@code MemberSetBuilderIdentityTest}.
+     * per-row binding, and the {@code $}-reference result — and {@link #membership} /
+     * {@link #listMembership} accept nothing else. The four non-wildcard builders used to render
+     * {@code item.toString()} and were left so because <i>"none can receive a missing today"</i> —
+     * a reachability argument, which is the shape that hid {@code isMember}'s blanket early return
+     * for months. It is now a property of the type, pinned per builder by
+     * {@code MemberSetBuilderIdentityTest}.
      * </p>
      *
      * <p>
      * ⭐ No member is ever {@code null} (register {@code NNL §1},
      * {@code PLAN-no-null-list-elements}): every list a builder classifies passed the
-     * {@code ListValueGuard} at its birth site ({@code OperationExecutor.executeOne} for an
-     * operation result, {@code ConstVector.of} for a constant list) or was built null-free per row.
-     * A member is a present value or a {@code MissingValue} — the fold of a {@code null} to
-     * {@code ""} that stood here is gone with the {@code null}s.
+     * {@code ListValueGuard} at its birth site ({@code ConstVector.of} for a operation result,
+     * {@code ConstVector.of} for a constant list) or was built null-free per row. A member is a
+     * present value or a {@code MissingValue} — the fold of a {@code null} to {@code ""} that stood
+     * here is gone with the {@code null}s.
      * </p>
      *
      * @param present

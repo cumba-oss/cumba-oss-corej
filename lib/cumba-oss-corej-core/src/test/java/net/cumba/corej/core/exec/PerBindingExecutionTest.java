@@ -269,8 +269,9 @@ class PerBindingExecutionTest
     void aBindingInvariantOperationAggregateExecutesOncePerExecution() throws Exception
     {
         // The D92e flagship shape: a cursor read compared against a binding-invariant
-        // cross-dataset aggregate. The operation is binding-invariant; the LazyValue memoisation
-        // is what hoists it, and this pin holds that fact against regression: the foreign
+        // cross-dataset aggregate. The aggregate is binding-invariant; the per-execution
+        // memoisation (a LazyValue's until runbook W8, the compiled binding's since) is what
+        // hoists it, and this pin holds that fact against regression: the foreign
         // dataset's resolution count may not grow with the number of bindings. (`distinct` rather
         // than the library-backed `variable_names`, so no provider gate interferes.)
         String extra = "\"Sensitivity\":\"Record\",\"Bindings\":[{\"name\": \"$dm_arms\", \"expression\": \"distinct(ARM, domain=\\\"DM\\\")\"}],";

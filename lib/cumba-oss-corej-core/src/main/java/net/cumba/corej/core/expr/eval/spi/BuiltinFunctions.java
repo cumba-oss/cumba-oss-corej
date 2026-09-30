@@ -9,7 +9,8 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 import net.cumba.corej.core.exec.ArithmeticSemantics;
 import net.cumba.corej.core.exec.EvaluationContext;
-import net.cumba.corej.core.exec.OperationExecutor;
+import net.cumba.corej.core.exec.LibraryAnswerability;
+import net.cumba.corej.core.exec.ScalarMetadataFunctions;
 import net.cumba.corej.core.exec.ScalarSemantics;
 import net.cumba.corej.core.expr.eval.CalendarDates;
 import net.cumba.corej.core.expr.eval.ColumnVector;
@@ -285,12 +286,9 @@ public final class BuiltinFunctions implements FunctionProvider
             Object name = run.ctx().resolveVariable("variable_name");
             return ConstVector.of(name);
         }));
-        // record_count(): the primary table's row count — the dataset-level fact the retired legacy
-        // dataset fold read (CheckConditionOptimizer.evaluateDatasetLeaf, name "record_count").
-        // Broadcast-constant and numeric. (The retired fold's compareNumeric and string-equality
-        // paths gave identical verdicts for the integral counts involved.)
-        fns.add(new FunctionDescriptor("record_count", List.of(), FunctionKind.VALUE,
-                (run, _) -> ConstVector.of(run.ctx().getTable().getRowCount())));
+        // (record_count() — the primary table's row count, the dataset-level fact the retired
+        // legacy dataset fold read — is the ungrouped, unfiltered branch of the compiler-dispatched
+        // record_count since runbook W6: CompilerDispatchedCalls / RecordCount.)
         // value(): the per-row VALUE of the "current variable" — the cells of the column named by
         // the cursor (variables["variable_name"]). Mirrors the legacy variable_value operand, which
         // the retired CheckConditionOptimizer.bindVariableValue rewrote to the current column. A
@@ -419,7 +417,8 @@ public final class BuiltinFunctions implements FunctionProvider
         // A missing x yields that missing, its own cell — a scalar, not a list (D85c; no tokens ⇒
         // no violation); a present "" the computed MIS. Populated rows are the only ones a split
         // rule targets (its non_empty Precondition gates blanks). This is the native
-        // lowering of a split_by OPERATION (SplitByInliner): coreJ has no SPLIT_BY OperationType
+        // lowering of a split_by OPERATION (the retired inliner): coreJ never had a SPLIT_BY
+        // operation
         // because a broadcast operation cannot carry a per-row-varying list.
         fns.add(new FunctionDescriptor("split_by",
                 List.of(p("x"), p("delimiter", Primitive.STRING)), FunctionKind.VALUE,
@@ -515,19 +514,19 @@ public final class BuiltinFunctions implements FunctionProvider
         // emptiness (RulePackageLoader.testsOnlyEmptiness); for an emptiness-only check
         // library_available() IS the whole gate, and a degraded provider would otherwise pass it
         // and let the rule evaluate against the empty result it exists to prevent.
-        // available(<op>): true iff the (broadcast) operation result is usable — not the
-        // LIBRARY_NOT_AVAILABLE skip sentinel nor an empty (unresolved) list. Authored into a
-        // rule's
-        // Precondition so an inlined library operation SKIPS the rule (rather than passing) when
-        // the
-        // Library cannot answer, mirroring the legacy $-ref + Operations early-skip.
+        // available(<call>): true iff the (broadcast) result is usable — not an empty (unresolved)
+        // list, and not a capability-carrying function's unusable answer (caught into the empty
+        // result, ExprCompiler.unusableAsUnavailable). Injected into a rule's Precondition so an
+        // inline provider call SKIPS the rule (rather than passing) when the provider cannot
+        // answer.
         bool(fns, "library_available", List.of(), (run, _) -> allRows(run.rowCount(),
-                OperationExecutor.libraryAnswerable(run.ctx().getLibraryProvider())));
+                LibraryAnswerability.libraryAnswerable(run.ctx().getLibraryProvider())));
         bool(fns, "available", List.of(p("x")), (run, args) -> allRows(run.rowCount(),
-                OperationExecutor.isResultAvailable(args.get(0).value(0).resolved())));
+                resultAvailable(args.get(0).value(0).resolved())));
         // T1: dictionary_available(<type>): true iff a dictionary of the named type is loaded into
-        // the runtime dictionary provider. Injected as a Precondition gate for every inlined
-        // external-dictionary operation so the rule SKIPs (rather than false-passes) when no
+        // the runtime dictionary provider. Injected as a Precondition gate for every inline
+        // dictionary-backed call (a registry function declaring the DICTIONARY capability,
+        // injectInlineOperationGates) so the rule SKIPs (rather than false-passes) when no
         // dictionary of that type is supplied.
         bool(fns, "dictionary_available", List.of(p("type", Primitive.STRING)),
                 (run, args) -> allRows(run.rowCount(),
@@ -556,6 +555,15 @@ public final class BuiltinFunctions implements FunctionProvider
                 List.of(p("name", Primitive.COLUMN_REFERENCE),
                         p("reference", Primitive.COLUMN_REFERENCE)),
                 FunctionKind.VALUE, net.cumba.corej.core.exec.StudyDay::evaluate));
+        // date_diff_days(--DTC, min_date(SJSTDTC, domain=SJ, group=[USUBJID, RPHASE])) — the days
+        // from a reference date to the record's date, ported from the retired DATE_DIFF_DAYS
+        // operation (runbook W2b). `name` is a COLUMN reference (R1: a quoted name fails to
+        // compile); `reference` is any per-row VALUE — a column, a joined DATASET.COLUMN, or a
+        // named aggregation (min_date / max_date), which replaces the operation's Mode 2
+        // (domain= / group= / reference_extreme). No offset parameter: an offset is arithmetic.
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.DateDiffDays.NAME,
+                List.of(p("name", Primitive.COLUMN_REFERENCE), p("reference")), FunctionKind.VALUE,
+                net.cumba.corej.core.exec.DateDiffDays::evaluate));
 
         // -- BOOLEAN external-dictionary functions (wave 1) -------------------
         // valid_external_dictionary_code_term_pair(TSVALCD, TSVAL, external_dictionary_type="unii")
@@ -582,6 +590,79 @@ public final class BuiltinFunctions implements FunctionProvider
                 net.cumba.corej.core.exec.DictionaryFunctions::hierarchy)
                         .withProvider(net.cumba.corej.core.expr.eval.ProviderNeed.dictionary(
                                 net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER)));
+
+        // -- BOOLEAN / VALUE per-row functions (wave 3, PLAN-per-row-functions) ---------------
+        // valid_external_dictionary_value / _code(--DECOD, external_dictionary_type="meddra",
+        // dictionary_term_type="PT", case_sensitive=false): ONE implementation under both authored
+        // names (runbook R6), the value a COLUMN reference, the type and the level required STRING
+        // literals (a non-literal level is a load error — ExprCompiler's literal seam), the
+        // DICTIONARY
+        // capability keyed on the type exactly as the wave-1 pair declares it (D-W1-3).
+        for (String membership : List.of(net.cumba.corej.core.exec.DictionaryFunctions.VALUE,
+                net.cumba.corej.core.exec.DictionaryFunctions.CODE))
+        {
+            fns.add(new FunctionDescriptor(membership,
+                    List.of(p("name", Primitive.COLUMN_REFERENCE),
+                            p(net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER,
+                                    Primitive.STRING),
+                            p(net.cumba.corej.core.exec.DictionaryFunctions.LEVEL_PARAMETER,
+                                    Primitive.STRING),
+                            opt("case_sensitive", Primitive.BOOLEAN)),
+                    FunctionKind.BOOLEAN,
+                    (run, args) -> net.cumba.corej.core.exec.DictionaryFunctions.termMembership(run,
+                            args, membership)).withProvider(
+                                    net.cumba.corej.core.expr.eval.ProviderNeed.dictionary(
+                                            net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER)));
+        }
+        // dictionary_has_decode(CMTRT, external_dictionary_type="whodrug") — decode presence.
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.DictionaryFunctions.HAS_DECODE,
+                List.of(p("name", Primitive.COLUMN_REFERENCE),
+                        p(net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER,
+                                Primitive.STRING),
+                        opt("case_sensitive", Primitive.BOOLEAN)),
+                FunctionKind.BOOLEAN, net.cumba.corej.core.exec.DictionaryFunctions::hasDecode)
+                        .withProvider(net.cumba.corej.core.expr.eval.ProviderNeed.dictionary(
+                                net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER)));
+        // interval_uncertainty_precision_mismatch(--DTC, delimiter="/") — CDISC-SEND-0070.
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.IntervalPrecision.NAME,
+                List.of(p("name", Primitive.COLUMN_REFERENCE), opt("delimiter", Primitive.STRING)),
+                FunctionKind.BOOLEAN, net.cumba.corej.core.exec.IntervalPrecision::evaluate));
+        // referenced_domain_class(RDOMAIN) — the Library class of the domain each record names; the
+        // column is REQUIRED (the operation's RDOMAIN default is not carried), LIBRARY capability.
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.ReferencedDomainClass.NAME,
+                List.of(p("name", Primitive.COLUMN_REFERENCE)), FunctionKind.VALUE,
+                net.cumba.corej.core.exec.ReferencedDomainClass::evaluate)
+                        .withProvider(net.cumba.corej.core.expr.eval.ProviderNeed.LIBRARY));
+        // referenced_dataset_variables(RDOMAIN) — the variable names of the dataset each record
+        // names, per row (runbook W7, PLAN-distinct-function D-W7-6: the retired
+        // distinct(IDVAR, value_is_reference=true), whose target was never read); the column is
+        // REQUIRED and explicit. No provider: the study's own datasets are read through the run's
+        // resolver, never the Library.
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.ReferencedDatasetVariables.NAME,
+                List.of(p("name", Primitive.COLUMN_REFERENCE)), FunctionKind.VALUE,
+                net.cumba.corej.core.exec.ReferencedDatasetVariables::evaluate));
+        // row_max(name_pattern="^TR(0[1-9]|[1-9][0-9])EDT$") — the per-row maximum over the
+        // columns the static regex names (R6: no target; a non-literal or invalid pattern is a
+        // load error — ExprCompiler's literal seam). A ROW READER: its only operand is the static
+        // pattern, so without the flag the level calculus classified it dataset-level and a
+        // `$trxx_max` binding handed row 0's maximum to every row (combined review XCUT H1).
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.RowMax.NAME,
+                List.of(p(net.cumba.corej.core.exec.RowMax.PATTERN_PARAMETER, Primitive.STRING)),
+                FunctionKind.VALUE, net.cumba.corej.core.exec.RowMax::evaluate).readingRows());
+
+        // -- VALUE lists: the dataset-level list functions (wave 4, PLAN-list-functions) ---------
+        // Each answers ONE list for the dataset in W0's list shape (a ConstVector holding the List)
+        // and is therefore an AGGREGATE; the provider-backed ones carry the LIBRARY / DEFINE
+        // capability (no provider ⇒ the rule SKIPs before any row is read). Every callable keeps
+        // its own empty / unusable arm — see each class. R6: none declares a target parameter.
+        registerListFunctions(fns);
+
+        // -- VALUE scalars: the dataset-level scalar / metadata functions (wave 4b) ------------
+        // One value for the dataset — a Boolean, a text, a count, a metadata value, or one
+        // per-variable map — and therefore each an AGGREGATE; the two Library-backed ones carry the
+        // LIBRARY capability. Every argument is a static string / integer literal (the compile seam
+        // holds it so, D-W4b-6).
+        registerScalarFunctions(fns);
 
         // -- BOOLEAN substring -----------------------------------------------
         bool(fns, "contains", List.of(p("x"), p("value")), (run, args) -> Primitives
@@ -888,9 +969,9 @@ public final class BuiltinFunctions implements FunctionProvider
      * Per-row {@code tuple(c1, c2, ...)}: the row's composite key as an immutable
      * {@code List<Object>} of key components (one per argument, never {@code null}): a present
      * cell's text, a missing cell as its {@link Primitives.MissingMember} identity (D11 / D34
-     * #5-2), a present blank as {@code ""}. The rules match
-     * {@code OperationExecutor.evalDistinctTuples} so a row tuple and a reference tuple compare
-     * {@link List#equals List-equal} in the composite membership branch (T3).
+     * #5-2), a present blank as {@code ""}. The rules match the retired executor's
+     * {@code evalDistinctTuples} so a row tuple and a reference tuple compare {@link List#equals
+     * List-equal} in the composite membership branch (T3).
      */
     private static List<Object> tupleKey(List<Vector> args, int row)
     {
@@ -1128,57 +1209,78 @@ public final class BuiltinFunctions implements FunctionProvider
     }
 
 
-    private static ComputedVector caseFold(int rowCount, Vector x, boolean toLower)
+    /**
+     * {@code upper(x)} / {@code lower(x)}: {@link #foldValue} per row — or ONCE when {@code x} is a
+     * {@link ConstVector}. A dataset-level operand ({@code upper($dataset_variables)} over a
+     * broadcast list) answers a {@code ConstVector} of its folded value, so the result stays
+     * dataset-level: a per-row {@code ComputedVector} over a constant has no row 0 on a zero-row
+     * table ({@code ComputedVector.value(0)} throws) and is not the constant hand-over form a
+     * {@code {}} binding promises (combined review of runbook W2–W8, W4 M2 — the root cause of
+     * {@code minus} reading an empty subtrahend over a zero-row dataset). A missing constant is
+     * handed through as the very same vector (identity kept, register D36).
+     */
+    private static Vector caseFold(int rowCount, Vector x, boolean toLower)
     {
-        return new ComputedVector(rowCount, DataValueType.STRING, row ->
+        if (x instanceof ConstVector constant)
         {
-            // EC-28(a) / Fix #131: a COLLECTION-valued operand is folded ELEMENT-WISE and stays a
-            // collection. The case-insensitive contains twins are spelled
-            // `contains(upper(ref), upper(lit))`, so without this the
-            // set would be flattened to its toString() here and `contains` could only ever do a
-            // substring probe on the rendered list — the very defect EC-28 fixes for the
-            // case-sensitive pair. Keeping it a collection lets the membership branch in
-            // Primitives.substring see it, giving case-insensitive EXACT membership.
-            // ⭐ Confirmed as the list form of upper / lower (owner, 2026-09-28,
-            // PLAN-case-insensitive-templates §1 / register CIT §3: "upper allows a list of
-            // strings as parameter and returns a list of these strings converted to upper case",
-            // "implement lower(...) for the same list as well"): a rule normalises the DATASET
-            // side of a name comparison — upper(get_column_order_from_dataset()),
-            // upper(varname()) — against the library's upper-case names. A MISSING element (a
-            // MissingValue) is carried through UNCHANGED, in its position (register D36: missing
-            // propagates through the string functions, upper named first); it is never folded to
-            // "" nor to its rendered marker. Only a present element is folded. The list reaching
-            // this fold passed the ListValueGuard at its birth site (an operation result at
-            // OperationExecutor.executeOne, a constant list at ConstVector.of) or was built
-            // null-free per row (split_by, tuple), so no element is null (register NNL §1).
-            TypedValue tv = x.value(row);
-            Object raw = tv.resolved();
-            if (raw instanceof Collection<?> col)
+            TypedValue tv = constant.value(0);
+            return tv.missing() != null ? constant : ConstVector.of(foldValue(tv, toLower));
+        }
+        return new ComputedVector(rowCount, DataValueType.STRING,
+                row -> foldValue(x.value(row), toLower));
+    }
+
+
+    /**
+     * One value of {@link #caseFold}: a collection element-wise, a missing kept, a string folded.
+     */
+    private static Object foldValue(TypedValue tv, boolean toLower)
+    {
+        // EC-28(a) / Fix #131: a COLLECTION-valued operand is folded ELEMENT-WISE and stays a
+        // collection. The case-insensitive contains twins are spelled
+        // `contains(upper(ref), upper(lit))`, so without this the
+        // set would be flattened to its toString() here and `contains` could only ever do a
+        // substring probe on the rendered list — the very defect EC-28 fixes for the
+        // case-sensitive pair. Keeping it a collection lets the membership branch in
+        // Primitives.substring see it, giving case-insensitive EXACT membership.
+        // ⭐ Confirmed as the list form of upper / lower (owner, 2026-09-28,
+        // PLAN-case-insensitive-templates §1 / register CIT §3: "upper allows a list of
+        // strings as parameter and returns a list of these strings converted to upper case",
+        // "implement lower(...) for the same list as well"): a rule normalises the DATASET
+        // side of a name comparison — upper(get_column_order_from_dataset()),
+        // upper(varname()) — against the library's upper-case names. A MISSING element (a
+        // MissingValue) is carried through UNCHANGED, in its position (register D36: missing
+        // propagates through the string functions, upper named first); it is never folded to
+        // "" nor to its rendered marker. Only a present element is folded. The list reaching
+        // this fold passed the ListValueGuard at its birth site (an operation result at
+        // a constant list at ConstVector.of) or was built
+        // null-free per row (split_by, tuple), so no element is null (register NNL §1).
+        Object raw = tv.resolved();
+        if (raw instanceof Collection<?> col)
+        {
+            List<Object> folded = new ArrayList<>(col.size());
+            for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(col))
             {
-                List<Object> folded = new ArrayList<>(col.size());
-                for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(col))
+                if (Primitives.MemberSet.missingIdentityOfMember(item) != null)
                 {
-                    if (Primitives.MemberSet.missingIdentityOfMember(item) != null)
-                    {
-                        folded.add(item);
-                        continue;
-                    }
-                    String s = item.toString();
-                    folded.add(toLower ? s.toLowerCase(Locale.ROOT) : s.toUpperCase(Locale.ROOT));
+                    folded.add(item);
+                    continue;
                 }
-                return folded;
+                String s = item.toString();
+                folded.add(toLower ? s.toLowerCase(Locale.ROOT) : s.toUpperCase(Locale.ROOT));
             }
-            // upper(«missing») is that missing (register D36, identity kept — D85c: the input's
-            // own cell is handed through); upper("") = "" (D34 #1, an empty string is present).
-            // The boundary is TypedValue.missing(), never Vector.isMissing — the latter is the F3
-            // fold and would make upper("") missing.
-            if (tv.missing() != null)
-            {
-                return tv.cell();
-            }
-            String s = tv.cell().getValueAsString();
-            return toLower ? s.toLowerCase(Locale.ROOT) : s.toUpperCase(Locale.ROOT);
-        });
+            return folded;
+        }
+        // upper(«missing») is that missing (register D36, identity kept — D85c: the input's
+        // own cell is handed through); upper("") = "" (D34 #1, an empty string is present).
+        // The boundary is TypedValue.missing(), never Vector.isMissing — the latter is the F3
+        // fold and would make upper("") missing.
+        if (tv.missing() != null)
+        {
+            return tv.cell();
+        }
+        String s = tv.cell().getValueAsString();
+        return toLower ? s.toLowerCase(Locale.ROOT) : s.toUpperCase(Locale.ROOT);
     }
 
 
@@ -1243,6 +1345,142 @@ public final class BuiltinFunctions implements FunctionProvider
     }
 
 
+    /**
+     * The 21 dataset-level list functions of wave 4 ({@code PLAN-list-functions} §2.2): the LIBRARY
+     * walks ({@link net.cumba.corej.core.exec.LibraryLists}), the per-row parent walk
+     * ({@link net.cumba.corej.core.exec.ParentModelColumnOrder}), the DEFINE walks
+     * ({@link net.cumba.corej.core.exec.DefineLists}), the inventory / schema walks
+     * ({@link net.cumba.corej.core.exec.InventoryLists}) and
+     * {@link net.cumba.corej.core.exec.Minus}.
+     */
+    private static void registerListFunctions(List<FunctionDescriptor> fns)
+    {
+        net.cumba.corej.core.expr.eval.ProviderNeed library = net.cumba.corej.core.expr.eval.ProviderNeed.LIBRARY;
+        net.cumba.corej.core.expr.eval.ProviderNeed define = net.cumba.corej.core.expr.eval.ProviderNeed.DEFINE;
+        // the zero-argument LIBRARY walks
+        listFn(fns, net.cumba.corej.core.exec.LibraryLists.REQUIRED_VARIABLES, List.of(),
+                net.cumba.corej.core.exec.LibraryLists::requiredVariables, library);
+        listFn(fns, net.cumba.corej.core.exec.LibraryLists.EXPECTED_VARIABLES, List.of(),
+                net.cumba.corej.core.exec.LibraryLists::expectedVariables, library);
+        listFn(fns, net.cumba.corej.core.exec.LibraryLists.GET_COLUMN_ORDER_FROM_LIBRARY, List.of(),
+                net.cumba.corej.core.exec.LibraryLists::columnOrderFromLibrary, library);
+        listFn(fns, net.cumba.corej.core.exec.LibraryLists.GET_MODEL_COLUMN_ORDER, List.of(),
+                net.cumba.corej.core.exec.LibraryLists::modelColumnOrder, library);
+        listFn(fns, net.cumba.corej.core.exec.LibraryLists.VARIABLE_NAMES, List.of(),
+                net.cumba.corej.core.exec.LibraryLists::variableNames, library);
+        listFn(fns, net.cumba.corej.core.exec.LibraryLists.STANDARD_DOMAINS, List.of(),
+                net.cumba.corej.core.exec.LibraryLists::standardDomains, library);
+        listFn(fns, net.cumba.corej.core.exec.LibraryLists.NATURAL_KEY_VARIABLES, List.of(),
+                net.cumba.corej.core.exec.LibraryLists::naturalKeyVariables, library);
+        // the LIBRARY walks with static keyword parameters (read once per call — the compile seam
+        // ExprCompiler.rejectNonLiteralStaticStrings / rejectNonLiteralListArguments holds them to
+        // literals and checks their vocabularies, D-W4-3)
+        listFn(fns, net.cumba.corej.core.exec.LibraryLists.GET_DATASET_FILTERED_VARIABLES, List.of(
+                opt(net.cumba.corej.core.exec.LibraryLists.KEY_NAME_PARAMETER, Primitive.STRING),
+                opt(net.cumba.corej.core.exec.LibraryLists.KEY_VALUE_PARAMETER, Primitive.STRING)),
+                net.cumba.corej.core.exec.LibraryLists::datasetFilteredVariables, library);
+        listFn(fns, net.cumba.corej.core.exec.LibraryLists.GET_MODEL_FILTERED_VARIABLES, List.of(
+                opt(net.cumba.corej.core.exec.LibraryLists.KEY_NAME_PARAMETER, Primitive.STRING),
+                opt(net.cumba.corej.core.exec.LibraryLists.KEY_VALUE_PARAMETER, Primitive.STRING),
+                opt(net.cumba.corej.core.exec.LibraryLists.MODEL_CLASS_PARAMETER,
+                        Primitive.STRING)),
+                net.cumba.corej.core.exec.LibraryLists::modelFilteredVariables, library);
+        listFn(fns, net.cumba.corej.core.exec.LibraryLists.VALID_CODELIST_DATES,
+                List.of(opt(net.cumba.corej.core.exec.LibraryLists.CT_PACKAGE_TYPES_PARAMETER,
+                        new ListOf(Primitive.STRING))),
+                net.cumba.corej.core.exec.LibraryLists::validCodelistDates, library);
+        listFn(fns, net.cumba.corej.core.exec.LibraryLists.CODELIST_TERMS,
+                List.of(p(net.cumba.corej.core.exec.LibraryLists.CODELISTS_PARAMETER,
+                        new ListOf(Primitive.STRING)),
+                        p(net.cumba.corej.core.exec.LibraryLists.LEVEL_PARAMETER, Primitive.STRING),
+                        opt(net.cumba.corej.core.exec.LibraryLists.RETURNTYPE_PARAMETER,
+                                Primitive.STRING)),
+                net.cumba.corej.core.exec.LibraryLists::codelistTerms, library);
+        // get_parent_model_column_order(RDOMAIN) — the one PER-ROW list: the parent column is an
+        // explicit COLUMN reference (D-W4-2), whose ROW demand is what makes the binding per-row;
+        // not an aggregate.
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.ParentModelColumnOrder.NAME,
+                List.of(p("name", Primitive.COLUMN_REFERENCE)), FunctionKind.VALUE,
+                net.cumba.corej.core.exec.ParentModelColumnOrder::evaluate).withProvider(library));
+        // the DEFINE walks
+        listFn(fns, net.cumba.corej.core.exec.DefineLists.DEFINE_VARIABLE_NAMES, List.of(),
+                net.cumba.corej.core.exec.DefineLists::defineVariableNames, define);
+        listFn(fns, net.cumba.corej.core.exec.DefineLists.DEFINE_DATASET_NAMES, List.of(),
+                net.cumba.corej.core.exec.DefineLists::defineDatasetNames, define);
+        listFn(fns, net.cumba.corej.core.exec.DefineLists.DEFINE_KEY_VARIABLES, List.of(),
+                net.cumba.corej.core.exec.DefineLists::defineKeyVariables, define);
+        // the inventory / schema walks (no provider)
+        listFn(fns, net.cumba.corej.core.exec.InventoryLists.GET_COLUMN_ORDER_FROM_DATASET,
+                List.of(), net.cumba.corej.core.exec.InventoryLists::columnOrderFromDataset, null);
+        listFn(fns, net.cumba.corej.core.exec.InventoryLists.DATASET_NAMES, List.of(),
+                net.cumba.corej.core.exec.InventoryLists::datasetNames, null);
+        listFn(fns, net.cumba.corej.core.exec.InventoryLists.STUDY_DOMAINS, List.of(),
+                net.cumba.corej.core.exec.InventoryLists::studyDomains, null);
+        listFn(fns, net.cumba.corej.core.exec.InventoryLists.SPLIT_SIBLING_LENGTH_MISMATCH,
+                List.of(), net.cumba.corej.core.exec.InventoryLists::splitSiblingLengthMismatch,
+                null);
+        listFn(fns, net.cumba.corej.core.exec.InventoryLists.DUPLICATE_LABEL_VARIABLES, List.of(),
+                net.cumba.corej.core.exec.InventoryLists::duplicateLabelVariables, null);
+        // minus(value, subtract=) — two list operands ($-bindings or static list literals),
+        // untyped so that a list-shaped binding typed STRING by ElementTable (upper($list)) binds
+        // without a stage-A parameter conflict; subtract is REQUIRED (D-W4-4).
+        listFn(fns, net.cumba.corej.core.exec.Minus.NAME,
+                List.of(p(net.cumba.corej.core.exec.Minus.VALUE_PARAMETER),
+                        p(net.cumba.corej.core.exec.Minus.SUBTRACT_PARAMETER)),
+                net.cumba.corej.core.exec.Minus::evaluate, null);
+    }
+
+
+    /**
+     * The six dataset-level scalar / metadata functions of wave 4b
+     * ({@code PLAN-scalar-metadata-functions} §2.2, {@link ScalarMetadataFunctions}). Registered
+     * through {@link #listFn} for its shape (VALUE, aggregate, optional capability) — none of them
+     * answers a list.
+     */
+    private static void registerScalarFunctions(List<FunctionDescriptor> fns)
+    {
+        net.cumba.corej.core.expr.eval.ProviderNeed library = net.cumba.corej.core.expr.eval.ProviderNeed.LIBRARY;
+        listFn(fns, ScalarMetadataFunctions.DOMAIN_IS_CUSTOM, List.of(),
+                ScalarMetadataFunctions::domainIsCustom, library);
+        listFn(fns, ScalarMetadataFunctions.DATASET_CLASS_FROM_LIBRARY, List.of(),
+                ScalarMetadataFunctions::datasetClassFromLibrary, library);
+        // extract_metadata("file_format") — the metadata KEY, a string literal (R6: KEEP-name).
+        listFn(fns, ScalarMetadataFunctions.EXTRACT_METADATA,
+                List.of(p(ScalarMetadataFunctions.NAME_PARAMETER, Primitive.STRING)),
+                ScalarMetadataFunctions::extractMetadata, null);
+        // cross_dataset_variable_metadata("label", domain="ADSL" | "*") — the attribute KEY and the
+        // source dataset (or the `*` pattern), both string literals: a DATASET_REFERENCE (D10)
+        // cannot hold `*`. The answer is the per-variable map (D-W4b-1).
+        fns.add(new FunctionDescriptor(ScalarMetadataFunctions.CROSS_DATASET_VARIABLE_METADATA,
+                List.of(p(ScalarMetadataFunctions.NAME_PARAMETER, Primitive.STRING),
+                        p(ScalarMetadataFunctions.DOMAIN_PARAMETER, Primitive.STRING)),
+                FunctionKind.VALUE, ScalarMetadataFunctions::crossDatasetVariableMetadata)
+                        .answeringPerVariable());
+        // variable_count("--LNKGRP") | variable_count(name_pattern="^.+FL$") | variable_count():
+        // the template and the pattern are mutually exclusive (a load error, D-W4b-4).
+        listFn(fns, ScalarMetadataFunctions.VARIABLE_COUNT,
+                List.of(opt(ScalarMetadataFunctions.NAME_PARAMETER, Primitive.STRING),
+                        opt(ScalarMetadataFunctions.PATTERN_PARAMETER, Primitive.STRING)),
+                ScalarMetadataFunctions::variableCount, null);
+        // column_series_metadata("COVAL", name_pattern="^COVAL\\d+$", min_length=200)
+        listFn(fns, ScalarMetadataFunctions.COLUMN_SERIES_METADATA,
+                List.of(opt(ScalarMetadataFunctions.NAME_PARAMETER, Primitive.STRING),
+                        p(ScalarMetadataFunctions.PATTERN_PARAMETER, Primitive.STRING),
+                        opt(ScalarMetadataFunctions.MIN_LENGTH_PARAMETER, Primitive.NUMBER)),
+                ScalarMetadataFunctions::columnSeriesMetadata, null);
+    }
+
+
+    /** A dataset-level list function: VALUE kind, an aggregate, with an optional capability. */
+    private static void listFn(List<FunctionDescriptor> fns, String name, List<Parameter> params,
+            EvalFunction fn, net.cumba.corej.core.expr.eval.@Nullable ProviderNeed need)
+    {
+        FunctionDescriptor d = new FunctionDescriptor(name, params, FunctionKind.VALUE, fn)
+                .aggregating();
+        fns.add(need == null ? d : d.withProvider(need));
+    }
+
+
     /** A required parameter of unspecified type (stage B / the element table decide). */
     private static Parameter p(String name)
     {
@@ -1275,6 +1513,18 @@ public final class BuiltinFunctions implements FunctionProvider
             b.set(0, rowCount);
         }
         return b;
+    }
+
+
+    /**
+     * Whether a broadcast binding {@code result} is usable — not {@code null} and not an empty list
+     * (an unresolved lookup, or a capability-carrying function's unusable answer caught into the
+     * empty result). The {@code available(<x>)} gate folds this to a Precondition verdict. (Moved
+     * from the retired operation executor in runbook W8.)
+     */
+    private static boolean resultAvailable(@Nullable Object result)
+    {
+        return result != null && !(result instanceof Collection<?> c && c.isEmpty());
     }
 
 }

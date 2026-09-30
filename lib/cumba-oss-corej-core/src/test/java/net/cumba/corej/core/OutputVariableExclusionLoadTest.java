@@ -245,7 +245,7 @@ class OutputVariableExclusionLoadTest
 
 
     @Test
-    void aWellFormedMarkerOnADerivedDottedOrOperationNameIsAccepted() throws Exception
+    void aWellFormedMarkerOnADerivedDottedOrBindingNameIsAccepted() throws Exception
     {
         Rule rule = load("""
                 {"Core":{"Id":"R1"},"Sensitivity":"Record",
@@ -329,54 +329,58 @@ class OutputVariableExclusionLoadTest
 
 
     @Test
-    void variableExistsInlinerDropsTheExclusionTokenWithItsOperation() throws Exception
+    void anExclusionTokenOnACompiledBindingIsHonoured() throws Exception
     {
-        // `$ae_present` is inlined into var_exists(AETERM) and its operation dropped; the
-        // `!$ae_present` token follows it instead of dangling — and, being an exclusion, it does
-        // NOT retain the operation the way a reported `$ae_present` would.
+        // Runbook W2a: `$ae_present` is the compiled binding var_exists("AETERM") — no operation,
+        // no inliner. An exclusion token `!$ae_present` is kept as authored and excludes the
+        // report (E-2); nothing is dropped for it. The binding's quoted target AETERM is derived
+        // (D4b, as a retained variable_exists(AETERM) operation's was) and an exclusion removes
+        // only the excluded NAME — an excluded `!$grp` over distinct(X) keeps X the same way.
         Rule rule = load("""
                 {"Core":{"Id":"R1"},"Sensitivity":"Record",
-                 "Bindings":[{"name": "$ae_present", "expression": "variable_exists(AETERM)"}],
+                 "Bindings":[{"name": "$ae_present", "expression": "var_exists(\\"AETERM\\")"}],
                  "Check":{"all":[{"expression": "$ae_present == false"},
                                  {"expression": "empty(AESEV)"}]},
                  "Outcome":{"Message":"m","Output_Variables":["AESEV","!$ae_present"]}}""");
         assertNull(rule.getLoadError(), rule.getLoadError());
-        assertNull(rule.getOperations(), "the inlined operation is dropped");
-        assertEquals(List.of("AESEV"), rule.getOutcome().getOutputVariables(),
-                "the exclusion token follows the dropped operation");
-        assertEquals(List.of("AESEV"), rule.getEffectiveOutputVariables());
+        assertNotNull(rule.compiledBinding("$ae_present"), "the binding is a compiled one");
+        assertEquals(List.of("AESEV", "!$ae_present"), rule.getOutcome().getOutputVariables());
+        assertEquals(List.of("AESEV", "AETERM"), rule.getEffectiveOutputVariables(),
+                "the exclusion removes the binding from the report, not its derived target");
     }
 
 
     @Test
-    void variableExistsInlinerStillRetainsAReportedOperation() throws Exception
+    void aReportedCompiledBindingIsKeptAsAuthored() throws Exception
     {
-        // The accepting arm of the remover change: a plain `$ae_present` entry is a report, so
-        // the operation AND the entry are kept exactly as before.
         Rule rule = load("""
                 {"Core":{"Id":"R1"},"Sensitivity":"Record",
-                 "Bindings":[{"name": "$ae_present", "expression": "variable_exists(AETERM)"}],
+                 "Bindings":[{"name": "$ae_present", "expression": "var_exists(\\"AETERM\\")"}],
                  "Check":{"all":[{"expression": "$ae_present == false"},
                                  {"expression": "empty(AESEV)"}]},
                  "Outcome":{"Message":"m","Output_Variables":["AESEV","$ae_present"]}}""");
         assertNull(rule.getLoadError(), rule.getLoadError());
-        assertNotNull(rule.getOperations(), "a reported operation is retained");
+        assertNotNull(rule.compiledBinding("$ae_present"), "the binding is a compiled one");
         assertEquals(List.of("AESEV", "$ae_present"), rule.getOutcome().getOutputVariables());
+        // AETERM: the binding's D4b target, as the retained variable_exists(AETERM) operation's
+        // was before W2a (CDISC-CG0105's rulespec pins the same on EXVAMT).
+        assertEquals(List.of("AESEV", "$ae_present", "AETERM"), rule.getEffectiveOutputVariables());
     }
 
 
     /**
      * ⭐ Phase 7b changed this test's premise, and wave 0 changed it again
-     * ({@code PLAN-binding-expressions}). {@code split_by} is not an operation
-     * ({@code OperationType} has no {@code SPLIT_BY} — a broadcast operation cannot produce a
-     * per-row list), so after 7b a binding that declared it failed LOUD as an unknown operation.
-     * Since wave 0 a {@code Bindings:} entry may hold ANY expression: the declared form is a
-     * <b>compiled binding</b> — the per-row token list, exactly what the inline value function
-     * computes — and loads. Being list-valued it is <b>bulk</b> (R15, as a list operation's result
-     * is): its id is never derived as an output variable, so an {@code !$tok} exclusion names
-     * nothing the rule derives and is the E-3.1 load error, exactly as for a bulk operation. The
-     * corpus keeps authoring the inline spelling ({@code SplitByOperationCorpusGateTest} in the
-     * corpus repo holds that line), and the inline spelling keeps loading.
+     * ({@code PLAN-binding-expressions}). {@code split_by} was never an operation (the
+     * {@code OperationType} retired in runbook W8 had no {@code SPLIT_BY} — a broadcast operation
+     * could not produce a per-row list), so after 7b a binding that declared it failed LOUD as an
+     * unknown operation. Since wave 0 a {@code Bindings:} entry may hold ANY expression: the
+     * declared form is a <b>compiled binding</b> — the per-row token list, exactly what the inline
+     * value function computes — and loads. Being list-valued it is <b>bulk</b> (R15, as a list
+     * operation's result was): its id is never derived as an output variable, so an {@code !$tok}
+     * exclusion names nothing the rule derives and is the E-3.1 load error, as it was for a bulk
+     * operation. The corpus authors the inline spelling (the corpus repo's
+     * {@code SplitByOperationCorpusGateTest} held that line until runbook W8), and the inline
+     * spelling keeps loading.
      */
     @Test
     void aDeclaredSplitByBindingIsACompiledBindingAndTheInlineSpellingLoads() throws Exception
@@ -388,7 +392,6 @@ class OutputVariableExclusionLoadTest
                                  {"expression": "empty(AESEV)"}]},
                  "Outcome":{"Message":"m","Output_Variables":["AESEV"]}}""");
         assertNull(declared.getLoadError(), declared.getLoadError());
-        assertNull(declared.getOperations(), "split_by is not an operation");
         assertNotNull(declared.compiledBinding("$tok"), "it is a compiled binding");
         assertFalse(declared.getEffectiveOutputVariables().contains("$tok"),
                 "a list-valued binding is bulk: " + declared.getEffectiveOutputVariables());

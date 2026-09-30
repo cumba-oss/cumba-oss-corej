@@ -2,19 +2,17 @@ package net.cumba.corej.core.exec;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import net.cumba.corej.core.expr.MetadataOperandMapping;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.MetadataExprScan;
-import net.cumba.corej.core.model.Operation;
-import net.cumba.corej.core.model.OperationType;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.OutputVariableToken;
 import net.cumba.corej.core.model.Rule;
@@ -55,29 +53,22 @@ public final class OutputVariableDeriver
     {
     }
 
+    // (§4.1's BULK_RESULT_OPERATIONS — the operations whose result is a bulk list, whose $id is
+    // never derived, only honoured when authored (D1, signed off 2026-07-29) — is gone with its
+    // last member, distinct, in runbook W7: a LIST-valued compiled binding is bulk through
+    // bulkOperationIds' list-typed arm (R15), which now covers every ported list callable.)
+
     /**
-     * §4.1 — operations whose result is a bulk list (codelist terms, column orders, study-wide name
-     * lists): their {@code $id} is never derived, only honoured when authored (D1). The one
-     * list-valued exception is {@code MINUS}, whose result <em>is</em> the finding (the missing
-     * members), so it derives normally. Signed off 2026-07-29. Applied as a global post-filter on
-     * every derived {@code $}-id, not merely a D4a gate — a bulk {@code $}-ref reaches the derived
-     * set through the Check walk too (plan §11.3, CDISC-CG0014). ⚑ {@code get_codelist_attributes}
-     * left this set when wave 0 ported it to a function ({@code PLAN-binding-expressions}): its
-     * binding is now bulk through {@link #bulkOperationIds}' list-typed compiled-binding arm (R15).
+     * Wave 4b ({@code PLAN-scalar-metadata-functions} §2.2): the three dataset-level scalar
+     * functions that were members of {@code BULK_RESULT_OPERATIONS} (retired in runbook W7) as
+     * operations — a metadata value, the per-variable map, the series verdict — keep their bulk
+     * classification as registry functions: a compiled binding whose root is one of them is never
+     * derived, only honoured when authored, exactly as before the port.
      */
-    private static final EnumSet<OperationType> BULK_RESULT_OPERATIONS = EnumSet.of(
-            OperationType.CODELIST_TERMS, OperationType.VALID_CODELIST_DATES,
-            OperationType.DISTINCT, OperationType.EXTRACT_METADATA, OperationType.DATASET_NAMES,
-            OperationType.STUDY_DOMAINS, OperationType.STANDARD_DOMAINS,
-            OperationType.DEFINE_DATASET_NAMES, OperationType.VARIABLE_NAMES,
-            OperationType.DEFINE_VARIABLE_NAMES, OperationType.EXPECTED_VARIABLES,
-            OperationType.REQUIRED_VARIABLES, OperationType.GET_DATASET_FILTERED_VARIABLES,
-            OperationType.GET_MODEL_FILTERED_VARIABLES, OperationType.DUPLICATE_LABEL_VARIABLES,
-            OperationType.GET_COLUMN_ORDER_FROM_DATASET,
-            OperationType.GET_COLUMN_ORDER_FROM_LIBRARY, OperationType.GET_MODEL_COLUMN_ORDER,
-            OperationType.GET_PARENT_MODEL_COLUMN_ORDER, OperationType.NATURAL_KEY_VARIABLES,
-            OperationType.DEFINE_KEY_VARIABLES, OperationType.CROSS_DATASET_VARIABLE_METADATA,
-            OperationType.COLUMN_SERIES_METADATA);
+    private static final Set<String> BULK_RESULT_FUNCTIONS = Set.of(
+            ScalarMetadataFunctions.EXTRACT_METADATA,
+            ScalarMetadataFunctions.CROSS_DATASET_VARIABLE_METADATA,
+            ScalarMetadataFunctions.COLUMN_SERIES_METADATA);
 
     /**
      * D2c — functions whose trailing positional operands / {@code keys=[…]} list are COLUMN
@@ -100,6 +91,34 @@ public final class OutputVariableDeriver
      * other {@code …SEQ}-suffixed non-identity variables must not match.
      */
     private static final Set<String> LOCATION_VARIABLES = Set.of("USUBJID", "ASEQ", "--SEQ");
+
+    /**
+     * Binding calls whose quoted first argument names a primary column — the target D4b derives
+     * (runbook W2a: {@code var_exists("X")} where {@code variable_exists(X)} stood).
+     */
+    private static final Set<String> NAME_LITERAL_TARGET_CALLS = Set.of("var_exists");
+
+    /**
+     * The only quoted literal {@link #NAME_LITERAL_TARGET_CALLS} derive: a plain column name,
+     * optionally {@code --}-prefixed (resolved per domain at run time, as a {@code --} column
+     * reference is). A dotted or template literal derives nothing (combined review W2 L4).
+     */
+    private static final Pattern PLAIN_COLUMN_NAME = Pattern
+            .compile("(?:--)?[A-Za-z_][A-Za-z0-9_]*");
+
+    /**
+     * The dataset-reading aggregates whose non-target arguments are parameters, never reported
+     * columns: {@code domain=} names a dataset, {@code filter=} / {@code group=} read columns of
+     * that dataset (or the partition keys of the primary). An inline Check call of one of them
+     * derives exactly what the binding form ({@link #contributeTarget}) derives — its target alone,
+     * and nothing at all when {@code domain=} is present (combined review W5W6 M3: the inline walk
+     * used to derive the {@code filter=} / {@code group=} columns and the bare {@code domain=DS}
+     * reference as output variables; round 2 M1 added {@code read_value}, whose {@code domain=} is
+     * required, so an inline call derives nothing).
+     */
+    private static final Set<String> TARGET_ONLY_CALLS = Set.of(GroupedAggregate.MAX,
+            GroupedAggregate.MAX_DATE, GroupedAggregate.MIN_DATE, RecordCount.NAME, Distinct.NAME,
+            ReadValue.NAME);
 
     /**
      * {@code true} for a D5 location variable — the names an {@code !X} may not exclude (E-3.4).
@@ -372,27 +391,12 @@ public final class OutputVariableDeriver
         {
             for (net.cumba.corej.core.model.CompiledBinding binding : compiled)
             {
-                if (isListValued(binding.expression()))
+                if (isListValued(binding.expression())
+                        || (binding.expression() instanceof Expr.Call call
+                                && BULK_RESULT_FUNCTIONS.contains(call.name())))
                 {
                     ids.add(binding.name());
                 }
-            }
-        }
-        List<Operation> operations = rule.getOperations();
-        if (operations == null)
-        {
-            return ids;
-        }
-        for (Operation op : operations)
-        {
-            if (op == null || op.getId() == null)
-            {
-                continue;
-            }
-            OperationType type = OperationType.fromJson(op.getOperator());
-            if (type != null && BULK_RESULT_OPERATIONS.contains(type))
-            {
-                ids.add(op.getId());
             }
         }
         return ids;
@@ -405,8 +409,11 @@ public final class OutputVariableDeriver
         {
             return lit.kind() == Expr.LitKind.LIST;
         }
-        return expression instanceof Expr.Call call && net.cumba.corej.core.expr.typed.ElementTable
-                .resultType(call.name()) instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf;
+        // The one list-valued exception is minus (wave 4, D-W4-13): its result IS the finding —
+        // the missing members — so it derives normally, exactly as the MINUS operation did.
+        return expression instanceof Expr.Call call && !Minus.NAME.equals(call.name())
+                && net.cumba.corej.core.expr.typed.ElementTable.resultType(
+                        call.name()) instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf;
     }
 
 
@@ -444,51 +451,6 @@ public final class OutputVariableDeriver
                 contributeTarget(walk, binding.expression());
             }
         }
-        List<Operation> operations = rule.getOperations();
-        if (operations == null)
-        {
-            return;
-        }
-        List<String> pinned = pinnedDomains(rule);
-        for (Operation op : operations)
-        {
-            if (op == null || op.getId() == null)
-            {
-                continue;
-            }
-            // D4a — every surviving operation result; the §4.1 post-filter prunes bulk ids.
-            walk.derived.add(op.getId());
-            // D4b — inputs only when the operation reads the evaluation dataset. A
-            // foreign-domain operation's inputs are not columns of the dataset the finding is
-            // on; they are already represented by the $id result.
-            String domain = op.getDomain();
-            boolean local = domain == null || domain.isBlank()
-                    || pinned.stream().anyMatch(d -> d.equalsIgnoreCase(domain));
-            if (!local)
-            {
-                continue;
-            }
-            addName(walk, op.getName());
-            addNames(walk, op.getNames());
-            addNames(walk, op.getGroup());
-            addName(walk, op.getReference());
-            addName(walk, op.getKeyName());
-            addNames(walk, op.getMinuendMatch());
-            String offset = op.getOffset();
-            if (offset != null && !offset.isBlank() && !offset.matches("-?\\d+"))
-            {
-                walk.derived.add(offset);
-            }
-            addName(walk, op.getSubtract());
-            if (op.getFilter() != null)
-            {
-                // filter KEYS are columns of the operation's dataset; filter VALUES are literals
-                for (String key : op.getFilter().keySet())
-                {
-                    addName(walk, key);
-                }
-            }
-        }
     }
 
 
@@ -520,7 +482,26 @@ public final class OutputVariableDeriver
             Expr target = targetArgument(call);
             if (target != null && !call.kwargs().containsKey("domain"))
             {
-                contributeTarget(walk, target);
+                if (target instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
+                        && NAME_LITERAL_TARGET_CALLS.contains(call.name()))
+                {
+                    // Runbook W2a: var_exists("X") stands where a variable_exists(X) operation
+                    // stood, and that operation's target X was derived (D4b). The quoted name IS
+                    // the target — the string names the primary column whose existence the
+                    // binding reports — so the re-spelling keeps the reported column. Only a
+                    // PLAIN column name, though (combined review W2 L4): a dotted "DM.ARMCD"
+                    // names a foreign column and a "${…}" template is not a name at all, and
+                    // neither is a column of the evaluation dataset to report.
+                    String name = (String) lit.value();
+                    if (name != null && PLAIN_COLUMN_NAME.matcher(name).matches())
+                    {
+                        addName(walk, name);
+                    }
+                }
+                else
+                {
+                    contributeTarget(walk, target);
+                }
             }
         }
         case Expr.Binary binary ->
@@ -569,18 +550,6 @@ public final class OutputVariableDeriver
         if (name != null && !name.isBlank())
         {
             walk.derived.add(name);
-        }
-    }
-
-
-    private static void addNames(Walk walk, @Nullable List<String> names)
-    {
-        if (names != null)
-        {
-            for (String name : names)
-            {
-                addName(walk, name);
-            }
         }
     }
 
@@ -675,6 +644,17 @@ public final class OutputVariableDeriver
             if (operand != null)
             {
                 contribute(operand, neg);
+            }
+            if (TARGET_ONLY_CALLS.contains(c.name()))
+            {
+                // As contributeTarget: the target argument only, and nothing when domain=
+                // points the call at another dataset (its target is not a primary column).
+                Expr target = targetArgument(c);
+                if (target != null && !c.kwargs().containsKey(GroupedAggregate.DOMAIN_PARAMETER))
+                {
+                    walk(target, neg, false);
+                }
+                return;
             }
             boolean columnKeys = COLUMN_KEYS_FUNCTIONS.contains(c.name());
             List<Expr> args = c.args();

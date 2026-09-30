@@ -30,7 +30,6 @@ import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionAny;
 import net.cumba.corej.core.model.CheckConditionNot;
 import net.cumba.corej.core.model.MatchDataset;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.ruletest.cdt.ruletest.RuleTestScenario.Verdict;
 import net.cumba.datatable.DataTableColumnMeta;
@@ -371,30 +370,12 @@ public final class ScenarioCapture
             }
         }
 
-        // 3) Operation.domain references — capture full sibling (trimmer reduces later).
+        // 3) The datasets the bindings read — capture the full sibling (trimmer reduces later):
+        // a registry call's `domain=` and an inventory call inside a compiled binding
+        // (PLAN-binding-expressions R28; until runbook W8 a declared operation's `domain:` was
+        // the first source), so the captured scenario carries what the binding reads.
         Set<String> referenceDomainsViaOps = new LinkedHashSet<>();
         boolean anyInventoryOp = false;
-        if (aRule.getOperations() != null)
-        {
-            for (Operation op : aRule.getOperations())
-            {
-                if (op == null) continue;
-                String opName = op.getOperator();
-                if (opName == null) continue;
-                if (opName.equals("dataset_names") || opName.equals("study_domains"))
-                {
-                    anyInventoryOp = true;
-                }
-                String dom = op.getDomain();
-                if (dom != null)
-                {
-                    referenceDomainsViaOps.add(dom.toUpperCase(Locale.ROOT));
-                }
-            }
-        }
-        // PLAN-binding-expressions R28: a COMPILED binding reads datasets too — a nested
-        // operation's `domain=` and an inventory call inside it are captured like a declared
-        // operation's, so the captured scenario carries what the binding reads.
         if (aRule.getCompiledBindings() != null)
         {
             for (net.cumba.corej.core.model.CompiledBinding binding : aRule.getCompiledBindings())

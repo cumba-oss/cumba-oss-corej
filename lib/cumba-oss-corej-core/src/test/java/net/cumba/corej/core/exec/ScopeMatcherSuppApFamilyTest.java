@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
  * mirrors for parity"*. java-first removed parity as a constraint. What the quirk uniquely added
  * was the cross-family reach — {@code Exclude: ["SUPP--"]} silently excluding {@code APMH} — and
  * that is the defect. The split forms it appeared to serve are served instead by the callers'
- * <em>data-derived</em> split-base re-test ({@link OperationExecutor#unsplitNameFromData}), which
+ * <em>data-derived</em> split-base re-test ({@link DatasetIdentity#unsplitNameFromData}), which
  * this class pins explicitly in {@link #dataDerivedBaseIsWhatCoversSplitForms()}.
  * </p>
  *
@@ -34,7 +34,7 @@ import org.junit.jupiter.api.Test;
  * {@code unsplitName} in as a <b>string literal</b>, so nothing here shows that a real
  * {@code SUPPLBHM} dataset actually yields {@code SUPPLB} from its own columns. That link is made
  * by {@code ApSqDomainScopeFromDataTest} in {@code corej-ruletest}, which derives the base with
- * {@link OperationExecutor#unsplitNameFromData} from ten committed {@code AP*} / {@code SQ*} /
+ * {@link DatasetIdentity#unsplitNameFromData} from ten committed {@code AP*} / {@code SQ*} /
  * {@code SUPP*} dataset fixtures and also drives the selection end-to-end through
  * {@code DatasetRuleResolver}. Keep the two in step.
  * </p>

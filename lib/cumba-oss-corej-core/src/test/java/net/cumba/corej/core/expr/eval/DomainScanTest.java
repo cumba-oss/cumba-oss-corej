@@ -2,13 +2,15 @@ package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
 import java.util.List;
-import net.cumba.corej.core.exec.OperationExecutor.ResultKind;
+import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ast.Expr;
-import net.cumba.corej.core.model.Operation;
+import net.cumba.corej.core.model.Rule;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -19,19 +21,19 @@ class DomainScanTest
 
     private static Domain infer(String source)
     {
-        return DomainScan.infer(CheckExpressionParser.parse(source), OperationKinds.NONE);
+        return DomainScan.infer(CheckExpressionParser.parse(source), BindingDomains.NONE);
     }
 
 
-    private static Domain infer(String source, OperationKinds kinds)
+    private static Domain infer(String source, BindingDomains kinds)
     {
         return DomainScan.infer(CheckExpressionParser.parse(source), kinds);
     }
 
 
-    private static OperationKinds kinds(String ref, ResultKind kind)
+    private static BindingDomains kinds(String ref, Domain domain)
     {
-        return r -> r.equals(ref) ? kind : ResultKind.SCALAR;
+        return r -> r.equals(ref) ? domain : Domain.DATASET;
     }
 
 
@@ -77,8 +79,7 @@ class DomainScanTest
         assertEquals(Domain.VARIABLE, infer("max_value_length() > var_length(\"DEFINE\")"));
         assertEquals(Domain.VARIABLE, infer("not library_variable_code_pair_matches(varname())"));
         assertEquals(Domain.VARIABLE, infer("variable_name in $model_variables"));
-        assertEquals(Domain.VARIABLE,
-                infer("$vmr == \"x\"", kinds("$vmr", ResultKind.PER_VARIABLE)));
+        assertEquals(Domain.VARIABLE, infer("$vmr == \"x\"", kinds("$vmr", Domain.VARIABLE)));
         assertEquals(Domain.VARIABLE, infer("ds_exists(\"EX\") and varname() == \"AESEV\""));
     }
 
@@ -90,8 +91,18 @@ class DomainScanTest
         assertEquals(Domain.ROW, infer("empty(AESEV)"));
         assertEquals(Domain.ROW, infer("ds_exists(\"EX\") and EXDOSE > 0"));
         assertEquals(Domain.ROW, infer("DM.RFSTDTC < EXSTDTC"));
+        // W5 (PLAN-grouped-aggregate-functions D-W5-7): a grouped aggregate function answers one
+        // value per primary row, even under domain= (before the domain= arm reads it DATASET).
+        assertEquals(Domain.ROW,
+                infer("max_date(DSSTDTC, domain=DS, group=[USUBJID]) != \"2020-01-01\""));
+        assertEquals(Domain.ROW, infer("max(AVAL, group=[USUBJID], filter=(ABLFL == \"Y\")) > 1"));
+        assertEquals(Domain.ROW,
+                infer("read_value(DSSTDTC, domain=DS, group=[USUBJID], mode=\"FIRST\") != \"x\""));
+        assertEquals(Domain.DATASET,
+                infer("read_value(DSSTDTC, domain=DS, mode=\"FIRST\") != \"x\""),
+                "ungrouped, read_value stays the W2a dataset-level read");
         assertEquals(Domain.ROW, infer("--DTC != \"\""));
-        assertEquals(Domain.ROW, infer("$grp > 1", kinds("$grp", ResultKind.PER_ROW)));
+        assertEquals(Domain.ROW, infer("$grp > 1", kinds("$grp", Domain.ROW)));
         assertEquals(Domain.ROW, infer("var_exists(\"AP${APERIOD}SDT\")"));
         assertEquals(Domain.ROW, infer("date(SEENDTC) > DS.DSSTDTC"));
         assertEquals(Domain.ROW,
@@ -110,20 +121,17 @@ class DomainScanTest
                 infer("variable_value not in var_codelist_coded_values(\"LIBRARY\")"));
         assertEquals(Domain.CELL, infer("var_label(\"DATA\") != \"\" and EXDOSE > 0"));
         assertEquals(Domain.CELL,
-                infer("varname() == \"A\" and $grp > 1", kinds("$grp", ResultKind.PER_ROW)));
+                infer("varname() == \"A\" and $grp > 1", kinds("$grp", Domain.ROW)));
     }
 
 
     @Test
     void theTwoParameterisedOperationsFollowTheirResultKind()
     {
-        // model_class= is a parameter on get_model_filtered_variables, still a scalar set ⇒ {}.
-        Operation filtered = new Operation();
-        filtered.setId("$vars");
-        filtered.setOperator("get_model_filtered_variables");
-        filtered.setModelClass("Findings");
-        assertEquals(Domain.DATASET, infer("not contains_all($dataset_vars, $vars)",
-                OperationKinds.forOperations(List.of(filtered))));
+        // model_class= is a parameter on get_model_filtered_variables — a registry aggregate
+        // since wave 4 — still one list for the dataset ⇒ {}.
+        assertEquals(Domain.DATASET, infer("not contains_all($dataset_vars,"
+                + " get_model_filtered_variables(model_class=\"Findings\"))"));
         // relation= is a parameter on the row-level has_next_corresponding_record ⇒ {ROW}.
         assertEquals(Domain.ROW, infer(
                 "not has_next_corresponding_record(SEENDTC, SESTDTC, ordering=SESTDTC, within=USUBJID, relation=\"<=\")"));
@@ -141,30 +149,70 @@ class DomainScanTest
     }
 
 
+    /**
+     * Wave 4b ({@code PLAN-scalar-metadata-functions} D-W4b-1): the per-variable function reads the
+     * variable cursor — its one value is projected per variable — although it names another dataset
+     * through {@code domain=} (which alone would read DATASET, W2a's arm) and is an aggregate; the
+     * other five scalar functions are dataset facts.
+     */
     @Test
-    void operationKindsReadTheDeclaredOperations()
+    void theScalarPerVariableFunctionReadsTheVariableCursor()
     {
-        Operation grouped = new Operation();
-        grouped.setId("$cnt");
-        grouped.setOperator("record_count");
-        grouped.setGroup(List.of("USUBJID"));
-        Operation scalar = new Operation();
-        scalar.setId("$all");
-        scalar.setOperator("record_count");
-        Operation formB = new Operation();
-        formB.setId("$vm");
-        formB.setExpression("cross_dataset_variable_metadata(AESEV, domain=\"SUPPAE\")");
-        Operation malformed = new Operation();
-        malformed.setId("$bad");
-        malformed.setExpression("this is not a call");
-        OperationKinds k = OperationKinds.forOperations(List.of(grouped, scalar, formB, malformed));
-        assertEquals(ResultKind.PER_ROW, k.kindOf("$cnt"));
-        assertEquals(ResultKind.SCALAR, k.kindOf("$all"));
-        assertEquals(ResultKind.PER_VARIABLE, k.kindOf("$vm"));
-        assertEquals(ResultKind.SCALAR, k.kindOf("$bad"));
-        assertEquals(ResultKind.SCALAR, k.kindOf("$dangling"));
-        assertEquals(ResultKind.SCALAR, OperationKinds.forOperations(null).kindOf("$x"));
-        assertEquals(ResultKind.SCALAR, OperationKinds.forOperations(List.of()).kindOf("$x"));
+        assertEquals(Domain.VARIABLE,
+                infer("cross_dataset_variable_metadata(\"label\", domain=\"ADSL\") == \"\""));
+        assertEquals(Domain.VARIABLE,
+                infer("cross_dataset_variable_metadata(\"data_type\", domain=\"*\") == \"\""));
+        for (String call : List.of("domain_is_custom()", "dataset_class_from_library()",
+                "extract_metadata(\"file_format\")", "variable_count(\"--LNKGRP\")",
+                "variable_count(name_pattern=\"^.+FL$\")",
+                "column_series_metadata(\"COVAL\", name_pattern=\"^COVAL\\\\d+$\")"))
+        {
+            assertEquals(Domain.DATASET, infer(call + " == 1"), call);
+        }
+    }
+
+
+    /**
+     * {@link BindingDomains#forRule} over a loaded rule's compiled bindings. Until runbook W8 this
+     * pinned {@code forOperations} / {@code kindOf} over declared operation records (all SCALAR
+     * since W7); the carrier is gone, so the pin is the compiled bindings' domains, and the two
+     * defaults it kept — a reference no binding defines, and a rule with no bindings, read
+     * dataset-constant.
+     */
+    @Test
+    void bindingDomainsReadTheCompiledBindings() throws IOException
+    {
+        Rule rule = RulePackageLoader.loadFromString("""
+                {"rules":{"x":{"Core":{"Id":"T-DS1"},
+                 "Check":{"expression":"AESEQ not in $vm and contains($all, \\"1\\")"},
+                 "Bindings":[{"name":"$all","expression":"distinct(AESEQ)"},
+                   {"name":"$vm","expression":"distinct(AESTDTC, group=[USUBJID])"}]}}}""")
+                .getRules().values().iterator().next();
+        assertNull(rule.getLoadError(), rule.getLoadError());
+        BindingDomains k = BindingDomains.forRule(rule);
+        assertEquals(Domain.DATASET, k.domainOf("$all"), "the ungrouped list is dataset-level");
+        assertEquals(Domain.ROW, k.domainOf("$vm"), "the grouped call answers per primary row");
+        assertEquals(Domain.DATASET, k.domainOf("$dangling"));
+        assertEquals(Domain.DATASET, BindingDomains.forRule(new Rule()).domainOf("$x"));
+    }
+
+
+    @Test
+    void distinctReadsRowWhenGroupedAndDatasetOtherwise()
+    {
+        // Runbook W7 (PLAN-distinct-function D-W7-12): the retired DISTINCT operation's
+        // ResultKind, carried over — the grouped call answers per primary row, the ungrouped one
+        // (local or under domain=) one dataset-level list; its target and filter are parameters
+        // of the target table, never ROW reads of the primary.
+        assertEquals(Domain.ROW, infer("AESEQ not in distinct(AESEQ, group=[USUBJID])"));
+        assertEquals(Domain.DATASET, infer("contains(distinct(AESEQ), \"1\")"));
+        assertEquals(Domain.DATASET,
+                infer("contains(distinct(AESEQ, domain=\"DM\", filter=(SEX == \"F\")), \"1\")"));
+        assertEquals(Domain.DATASET,
+                infer("contains(distinct([AESEQ, AETERM], domain=DM), \"1\")"));
+        // referenced_dataset_variables reads its column per row (the retired value_is_reference
+        // form's PER_ROW), through the operand join.
+        assertEquals(Domain.ROW, infer("IDVAR not in referenced_dataset_variables(RDOMAIN)"));
     }
 
 
@@ -250,6 +298,45 @@ class DomainScanTest
         }
         assertEquals("{VAR,ROW}", Domain.CELL.label());
         Expr list = CheckExpressionParser.parse("AESEV in [\"A\", \"B\"]");
-        assertEquals(Domain.ROW, DomainScan.infer(list, OperationKinds.NONE));
+        assertEquals(Domain.ROW, DomainScan.infer(list, BindingDomains.NONE));
+    }
+
+
+    /**
+     * Combined review of runbook W2–W8, XCUT H1: {@code row_max} selects its columns by a static
+     * regex and has no column operand, so the leaf table saw only a literal and classified a
+     * {@code $trxx_max} binding {@code {}} — CDISC-/PMDA-AD0084 then decided every row from row 0's
+     * maximum. A declared row reader ({@code FunctionDescriptor.readingRows}) demands the ROW
+     * cursor whatever its operands say.
+     */
+    @Test
+    void aDeclaredRowReaderDemandsTheRowCursorWithoutAColumnOperand()
+    {
+        assertEquals(Domain.ROW, infer("row_max(name_pattern=\"^TR(0[1-9]|[1-9][0-9])EDT$\")"));
+        assertEquals(Domain.ROW, infer("not empty($trxx_max) and TRTEDT != $trxx_max",
+                kinds("$trxx_max", infer("row_max(name_pattern=\"^TR..EDT$\")"))));
+        // The flag is the mechanism, not the name: the registry says so.
+        assertTrue(
+                java.util.Objects.requireNonNull(FunctionRegistry.descriptor("row_max")).perRow(),
+                "row_max is registered as a row reader");
+    }
+
+
+    /**
+     * Combined review of runbook W2–W8, W3+W4b L5: the per-variable MAP shape
+     * ({@code cross_dataset_variable_metadata}) is declared once on the descriptor and read there
+     * by every seam that used to key it on the name — the VARIABLE arm here included.
+     */
+    @Test
+    void thePerVariableMapShapeIsDeclaredOnTheDescriptorNotOnTheName()
+    {
+        FunctionDescriptor cdvm = java.util.Objects
+                .requireNonNull(FunctionRegistry.descriptor("cross_dataset_variable_metadata"));
+        assertTrue(cdvm.perVariableMap() && cdvm.aggregate(),
+                "declared a per-variable map (and so an aggregate)");
+        assertEquals(Domain.VARIABLE, infer("empty($lbl)", kinds("$lbl",
+                infer("cross_dataset_variable_metadata(\"label\", domain=\"ADSL\")"))));
+        assertEquals(Domain.DATASET, infer("variable_count() > 3"),
+                "a sibling scalar function without the flag stays a dataset fact");
     }
 }

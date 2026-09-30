@@ -52,8 +52,8 @@ public final class RulePackageExpressionJson
      * Serializes a single {@link Rule} like {@code RulePackageLoader.toJson(Rule)}, but with the
      * {@code Check} and {@code Precondition} subtrees rendered in expression notation via
      * {@link CheckToExpr} and the {@code Bindings} array rendered from the rule's runtime operation
-     * records via {@link OperationExpressionPrinter} (the loader normalises a binding's expression
-     * to the internal field form, so the display renders it back — see {@link #renderBindings}). A
+     * records via the retired operation printer (the loader normalised a binding's expression to
+     * the internal field form, so the display renders it back — see {@link #renderBindings}). A
      * subtree with no full expression surface stays old-style (byte-faithful), so the output is
      * always loadable; a subtree whose rendering fails unexpectedly is likewise kept as-is rather
      * than failing the whole rule.
@@ -99,10 +99,10 @@ public final class RulePackageExpressionJson
                     }
                 }
             }
-            // PLAN-binding-expressions R23: rendered from the ONE ordered binding view — rendering
-            // getOperations() alone would drop every compiled binding from the rule JSON and shift
-            // the order of the survivors.
-            List<net.cumba.corej.core.model.BoundBinding> bindings = rule.bindingOrder();
+            // PLAN-binding-expressions R23: rendered from the ONE ordered binding view,
+            // Rule.bindingOrder() — every Bindings: entry, compiled, in authored order (since
+            // runbook W8 there is no other binding kind to render).
+            List<net.cumba.corej.core.model.CompiledBinding> bindings = rule.bindingOrder();
             if (!bindings.isEmpty())
             {
                 try
@@ -133,35 +133,24 @@ public final class RulePackageExpressionJson
 
 
     /**
-     * Renders the rule's <b>runtime</b> bindings — operation records and compiled bindings, in
-     * authored order — back to the authored {@code Bindings:} shape ({@code {"name": …,
-     * "expression": …}} per entry). Rendering from {@link Rule#getOperations()} rather than echoing
-     * the serialized {@code Bindings} keeps the pre-7b behaviour for a rule whose records were
-     * rewritten after load — a specialised rule's display shows the <em>resolved</em> operation (a
-     * {@code --} prefix made concrete), not the authored template. A record still carrying its
-     * Form-B {@code expression} (an external binder that never ran {@code normalizeOperations}) is
-     * emitted verbatim; a normalised one is printed via {@link OperationExpressionPrinter}.
+     * Renders the rule's <b>runtime</b> bindings — the compiled bindings, in authored order — back
+     * to the authored {@code Bindings:} shape ({@code {"name": …, "expression": …}} per entry).
+     * Rendering from {@link Rule#bindingOrder()} rather than echoing the serialized
+     * {@code Bindings} keeps the pre-7b behaviour for a rule whose bindings were rewritten after
+     * load — a specialised rule's display shows the <em>resolved</em> expression (a {@code --}
+     * prefix made concrete), not the authored template.
      */
-    private static JsonNode renderBindings(List<net.cumba.corej.core.model.BoundBinding> bindings)
+    private static JsonNode renderBindings(
+            List<net.cumba.corej.core.model.CompiledBinding> bindings)
     {
         com.fasterxml.jackson.databind.node.ArrayNode out = MAPPER.createArrayNode();
-        for (net.cumba.corej.core.model.BoundBinding binding : bindings)
+        for (net.cumba.corej.core.model.CompiledBinding binding : bindings)
         {
             ObjectNode rendered = MAPPER.createObjectNode();
-            if (binding.name() != null)
-            {
-                rendered.put("name", binding.name());
-            }
-            rendered.put("expression", switch (binding)
-            {
-            case net.cumba.corej.core.model.BoundBinding.OfOperation op -> op.operation()
-                    .getExpression() != null ? op.operation().getExpression()
-                            : OperationExpressionPrinter.print(op.operation());
+            rendered.put("name", binding.name());
             // A compiled binding renders its (specialised, canonicalised) expression, as the
             // Check's expression is rendered.
-            case net.cumba.corej.core.model.CompiledBinding compiled -> ExpressionPrinter
-                    .print(compiled.expression());
-            });
+            rendered.put("expression", ExpressionPrinter.print(binding.expression()));
             out.add(rendered);
         }
         return out;

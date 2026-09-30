@@ -771,7 +771,8 @@ class ChildMatchPreMergerTest
     {
         // With no RDOMAIN column the parent domain can only come from the primary's own name
         // (E4). childEntryMatchesPrimary ("SUPP--/SQAP-- wildcard") and
-        // OperationExecutor.resolvePrefixes both treat SQAP<x> as the sibling of SUPP<x>;
+        // OperationExecutor.resolvePrefixes (retired in runbook W8) both treated SQAP<x> as the
+        // sibling of SUPP<x>;
         // resolveImplicitParent knew only SUPP, so an SQAPxx primary yielded no implicit parent
         // and preMerge returned the primary UNCHANGED -- no error, no log, the whole child
         // pre-merge silently skipped.

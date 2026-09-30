@@ -7,7 +7,6 @@ import java.util.TreeSet;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.ast.Expr;
-import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.MetadataExprScan;
 import net.cumba.corej.core.expr.eval.MetadataLevel;
 import net.cumba.corej.core.model.CheckCondition;
@@ -24,9 +23,9 @@ import org.jspecify.annotations.Nullable;
  * rules that are correct.</b> {@link #of(Rule)} unions all three:
  * </p>
  * <ol>
- * <li>a declared ({@code $}-ref) {@code Operations} entry whose {@code OperationType} is library /
- * define / dictionary dependent — {@link OperationExecutor#isLibraryDependent} and its two
- * siblings, the switches {@code RuleRunner}'s eager arms read;</li>
+ * <li>a binding — since wave 4b ({@code PLAN-scalar-metadata-functions}) only a COMPILED binding
+ * can need a provider, through a registry function's capability; no operation type is library /
+ * define / dictionary dependent any more ({@code ProviderNeeds.ofBindings});</li>
  * <li>a metadata <b>operand</b> in the {@code Check} that resolves at a provider-backed level, with
  * no {@code Operations} entry at all. Two spellings, and <b>both</b> must be read: the bare
  * {@code library_*} / {@code define_*} operand prefix on the typed condition tree
@@ -97,7 +96,7 @@ public record ProviderRequirements(boolean library, boolean define, boolean dict
         boolean def = false;
         boolean dict = false;
         // Surface 1 — the rule's BINDINGS, both kinds (PLAN-binding-expressions R20): a declared
-        // operation by its OperationType, a compiled binding by every call it holds — an inline
+        // operation by its type, a compiled binding by every call it holds — an inline
         // operation or a registry function carrying the provider capability. Read through
         // ProviderNeeds, the one reader the runtime SKIP arms share, so the forecast and the SKIP
         // cannot disagree about a ported callable.
@@ -213,7 +212,7 @@ public record ProviderRequirements(boolean library, boolean define, boolean dict
      *
      * <p>
      * ⚠ {@code libraryAnswerable} is the caller's, because "answerable" is not "non-null":
-     * {@code OperationExecutor.libraryAnswerable} treats a DEGRADED provider as unable to serve
+     * {@code LibraryAnswerability.libraryAnswerable} treats a DEGRADED provider as unable to serve
      * LIBRARY-level reads (Fix #369), and passing a bare {@code provider != null} here would
      * forecast zero skips for exactly the degraded run that produces the most.
      * </p>
@@ -289,10 +288,10 @@ public record ProviderRequirements(boolean library, boolean define, boolean dict
 
 
     /**
-     * Walks the expression for <b>surface 3</b> only — inline operation calls, mirroring
+     * Walks the expression for <b>surface 3</b> only — inline provider-backed calls, mirroring
      * {@code RulePackageLoader.collectGateTerms} — the pass that decides which availability gate an
-     * inlined call needs. Reading the same predicate ({@link ExprCompiler#isInlineOperation}) and
-     * the same parser is what keeps the derivation and the injection from disagreeing.
+     * inlined call needs. Reading the same capability ({@code ProviderNeeds.ofCall}) is what keeps
+     * the derivation and the injection from disagreeing.
      */
     private static void scanInlineCalls(Expr node, Inlined out)
     {
@@ -331,7 +330,7 @@ public record ProviderRequirements(boolean library, boolean define, boolean dict
 
     private static void classifyCall(Expr.Call call, Inlined out)
     {
-        // PLAN-binding-expressions R20: an inline OperationType call by its predicates AND a
+        // PLAN-binding-expressions R20: (until W8 an inline operation call by its predicates AND) a
         // registry function by its provider capability — through ProviderNeeds, so a ported
         // callable inline in the Check keeps its place in the forecast. A malformed operation call
         // needs nothing (the compiler rejects it on its own).

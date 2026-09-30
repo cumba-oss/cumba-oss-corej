@@ -18,7 +18,6 @@ import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionRegistry;
 import net.cumba.corej.core.expr.eval.NativeExprEvaluator;
 import net.cumba.corej.core.expr.eval.Vector;
-import net.cumba.corej.core.model.BoundBinding;
 import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
@@ -67,21 +66,11 @@ class UpperLowerListFormTest
     private static EvaluationContext ctx(Rule rule, IDataTable table, Map<String, Object> raw)
     {
         Map<String, Object> variables = new LinkedHashMap<>(raw);
-        for (BoundBinding bound : rule.bindingOrder())
+        // Every binding is compiled (runbook W8): each enters the context as a BindingValue,
+        // exactly as RuleRunner hands it over.
+        for (CompiledBinding compiled : rule.bindingOrder())
         {
-            if (bound instanceof BoundBinding.OfOperation of)
-            {
-                // A single operation call in Bindings is an Operation: executed, its raw result
-                // enters the context exactly as RuleRunner hands it over.
-                variables.put(bound.name(), OperationExecutorCalls.executeOne(of.operation(), table,
-                        NO_RESOLVER, null, variables));
-                continue;
-            }
-            CompiledBinding compiled = rule.compiledBinding(bound.name());
-            if (compiled != null)
-            {
-                variables.put(bound.name(), new BindingValue(compiled));
-            }
+            variables.put(compiled.name(), new BindingValue(compiled));
         }
         return EvaluationContext.builder().table(table).datasetResolver(NO_RESOLVER)
                 .variables(variables).build();

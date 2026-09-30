@@ -6,13 +6,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
+import net.cumba.corej.core.exec.BindingValue;
 import net.cumba.corej.core.exec.DatasetLookup;
 import net.cumba.corej.core.exec.EvaluationContext;
-import net.cumba.corej.core.exec.GroupedResult;
 import net.cumba.corej.core.exec.VariableMetadataResult;
+import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.BroadcastFold.Verdict;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.datatable.testkit.SyntheticDataTable;
 import org.junit.jupiter.api.Test;
 
@@ -35,13 +37,17 @@ class BroadcastFoldTest
     /** Decided-FALSE leaf: {@code "a" == "b"}. */
     private static final Expr F = new Expr.Binary(Expr.BinOp.EQ, LIT_A, LIT_B);
 
-    /** Undecidable leaf: a {@code $}-comparison whose ref is a runtime GroupedResult. */
+    /**
+     * Undecidable leaf: a {@code $}-comparison whose ref is a per-row compiled binding (its
+     * hand-over is a {@link Vector}; until runbook W8 this was a runtime {@code GroupedResult}).
+     */
     private static final Expr U = new Expr.Binary(Expr.BinOp.EQ,
             new Expr.Ref("$g", OperandKind.OPERATION_REF), LIT_A);
 
     private static EvaluationContext ctx()
     {
-        return ctx(Map.of("$g", new GroupedResult(List.of("USUBJID"), Map.of("S1", "a"))));
+        return ctx(Map.of("$g", new BindingValue(new CompiledBinding("$g",
+                CheckExpressionParser.parse("upper(AETERM)"), List.of(), Domain.ROW))));
     }
 
 
@@ -136,14 +142,14 @@ class BroadcastFoldTest
 
 
     @Test
-    void scalarOperationComparisonsEvaluate_groupedAndVmrStayUnknown()
+    void scalarBindingComparisonsEvaluate_perRowAndVmrStayUnknown()
     {
         EvaluationContext scalarCtx = ctx(Map.of("$x", "a"));
         Expr cmp = new Expr.Binary(Expr.BinOp.EQ, new Expr.Ref("$x", OperandKind.OPERATION_REF),
                 LIT_A);
         assertEquals(Verdict.TRUE, BroadcastFold.fold(cmp, scalarCtx, false));
 
-        assertEquals(Verdict.UNKNOWN, fold(U), "GroupedResult $-ref is never dataset-constant");
+        assertEquals(Verdict.UNKNOWN, fold(U), "a per-row $-ref is never dataset-constant");
 
         EvaluationContext vmrCtx = ctx(
                 Map.of("$vmr", new VariableMetadataResult(Map.of("AETERM", "Term"))));
@@ -306,26 +312,30 @@ class BroadcastFoldTest
                 "a bare name the primary lacks folds, regardless of what a join carries");
     }
 
-    // ------------------------------------------------------------------
-    // Runtime $-operand helpers
-    // ------------------------------------------------------------------
 
-
+    /**
+     * Combined review of runbook W2–W8, W3+W4b H1: a compiled binding whose derived domain carries
+     * the VARIABLE cursor is one value per variable and never broadcast-safe — whatever its
+     * hand-over against a cursor-less context looks like (here a plain string, which the runtime
+     * probe alone read as a dataset fact).
+     */
     @Test
-    void vmrGuardPositionDetection()
+    void aVariableCursorBindingIsNeverBroadcastSafe()
     {
-        EvaluationContext c = ctx(
-                Map.of("$vmr", new VariableMetadataResult(Map.of("AETERM", "Term"))));
-        Expr guard = new Expr.Binary(Expr.BinOp.NEQ,
-                new Expr.Ref("$vmr", OperandKind.OPERATION_REF),
-                new Expr.Ref("variable_label", OperandKind.BUILTIN));
-        Expr valuePos = new Expr.Binary(Expr.BinOp.EQ, new Expr.Ref("AETERM", OperandKind.COLUMN),
-                new Expr.Ref("$vmr", OperandKind.OPERATION_REF));
-        assertTrue(BroadcastFold.vmrRefsOnlyInGuardPosition(guard, c));
-        assertFalse(BroadcastFold.vmrRefsOnlyInGuardPosition(valuePos, c));
-        assertFalse(
-                BroadcastFold.vmrRefsOnlyInGuardPosition(new Expr.And(List.of(guard, valuePos)), c),
-                "a mixed-position tree must NOT project (the Step-4 raw-object contract wins)");
+        CompiledBinding perVariable = new CompiledBinding("$lbl",
+                CheckExpressionParser.parse("\"a\""), List.of(), Domain.VARIABLE);
+        CompiledBinding perDataset = new CompiledBinding("$one",
+                CheckExpressionParser.parse("\"a\""), List.of(), Domain.DATASET);
+        EvaluationContext c = ctx(Map.of("$lbl", new BindingValue(perVariable), "$one",
+                new BindingValue(perDataset)));
+        Expr viaVariable = new Expr.Binary(Expr.BinOp.EQ,
+                new Expr.Ref("$lbl", OperandKind.OPERATION_REF), LIT_A);
+        Expr viaDataset = new Expr.Binary(Expr.BinOp.EQ,
+                new Expr.Ref("$one", OperandKind.OPERATION_REF), LIT_A);
+        assertFalse(BroadcastFold.operationRefsSafe(viaVariable, c, false));
+        assertFalse(BroadcastFold.operationRefsSafe(viaVariable, c, true),
+                "only a per-variable MAP may fold in the per-variable loop");
+        assertTrue(BroadcastFold.operationRefsSafe(viaDataset, c, false),
+                "a dataset-level binding stays a dataset fact");
     }
-
 }

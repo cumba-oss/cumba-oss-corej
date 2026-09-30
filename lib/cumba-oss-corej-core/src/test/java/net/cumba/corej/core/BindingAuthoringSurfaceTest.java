@@ -7,9 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import org.junit.jupiter.api.Test;
@@ -102,16 +99,17 @@ class BindingAuthoringSurfaceTest
     {
         // Pre-fix this was the measured silent drop: `level` bound, then normalise() replaced the
         // whole record with the parsed expression's fields and the declaration vanished — no
-        // error, no warning, `level=null` at execution.
+        // error, no warning, `level=null` at execution. Until runbook W8 an operation-parameter
+        // key got its own "keyword argument" message; since W8 it gets the generic one.
         Exception ex = loadFails("""
                 {"Core":{"Id":"T-BS4"},
                  "Check":{"expression":"\\"X\\" in $terms"},
                  "Bindings":[{"name":"$terms",
-                    "expression":"codelist_terms(codelists=[SDOMAIN], returntype=\\"value\\")",
-                    "level":"term"}]}""");
-        assertTrue(ex.getMessage().contains("`level:`"), ex.getMessage());
-        assertTrue(ex.getMessage().contains("keyword argument"),
-                "the rejection must point into the expression: " + ex.getMessage());
+                    "expression":"distinct(USUBJID)",
+                    "delimiter":","}]}""");
+        assertTrue(ex.getMessage().contains("found `delimiter:`"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("only `name:` and `expression:`"),
+                "the rejection must name the binding's only keys: " + ex.getMessage());
     }
 
 
@@ -124,28 +122,6 @@ class BindingAuthoringSurfaceTest
                  "Bindings":[{"name":"$n","expression":"record_count()","banana":1}]}""");
         assertTrue(ex.getMessage().contains("`banana:`"), ex.getMessage());
         assertTrue(ex.getMessage().contains("only `name:` and `expression:`"), ex.getMessage());
-    }
-
-
-    /**
-     * The programmatic twin of the Jackson-surface rejection: an {@link Operation} constructed with
-     * both {@code expression} and a populated parameter field is refused by the normalise pass, on
-     * the per-rule {@code loadError} channel — {@code fromCall} builds a fresh record from the
-     * parsed expression, so the sibling would otherwise be silently overwritten.
-     */
-    @Test
-    void programmaticSiblingFieldBesideAnExpressionIsALoadError()
-    {
-        Rule rule = new Rule();
-        Operation op = new Operation();
-        op.setId("$terms");
-        op.setExpression("codelist_terms(codelists=[SDOMAIN], returntype=\"value\")");
-        op.setLevel("term");
-        rule.setOperations(new ArrayList<>(List.of(op)));
-        RulePackageLoader.normalizeOperations(rule);
-        assertNotNull(rule.getLoadError());
-        assertTrue(rule.getLoadError().contains("`level`"), rule.getLoadError());
-        assertTrue(rule.getLoadError().contains("never as a sibling field"), rule.getLoadError());
     }
 
     // -----------------------------------------------------------------------
@@ -171,16 +147,16 @@ class BindingAuthoringSurfaceTest
     {
         RulePackage pkg = load("""
                 {"Core":{"Id":"T-BS7"},
-                 "Check":{"expression":"$n > 5"},
-                 "Bindings":[{"name":"$n","expression":"record_count(group=[USUBJID])"}]}""");
+                 "Check":{"expression":"AESEQ not in $n"},
+                 "Bindings":[{"name":"$n","expression":"distinct(AESEQ, group=[USUBJID])"}]}""");
         Rule rule = pkg.getRules().values().iterator().next();
         assertNull(rule.getLoadError());
-        assertEquals(1, rule.getOperations().size());
-        Operation op = rule.getOperations().get(0);
-        assertEquals("$n", op.getId());
-        assertEquals("record_count", op.getOperator());
-        assertEquals(List.of("USUBJID"), op.getGroup());
-        assertNull(op.getExpression(), "normalised to the executor-internal field form");
+        // (since runbook W8 every binding is a compiled one; bindingOrder() is that one list.)
+        assertEquals(1, rule.bindingOrder().size());
+        assertEquals(1, rule.getCompiledBindings().size());
+        assertEquals("$n", rule.getCompiledBindings().get(0).name());
+        assertEquals("distinct(AESEQ, group=[USUBJID])", net.cumba.corej.core.expr.ExpressionPrinter
+                .print(rule.getCompiledBindings().get(0).expression()));
     }
 
 }

@@ -12,15 +12,10 @@ import java.util.SequencedMap;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
-import net.cumba.corej.core.exec.OperationExecutor;
-import net.cumba.corej.core.exec.OperationExecutor.ResultKind;
-import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.ast.Expr;
-import net.cumba.corej.core.expr.convert.OperationExpressionParser;
 import net.cumba.corej.core.expr.eval.ArgumentBinder;
 import net.cumba.corej.core.expr.eval.BroadcastFold;
-import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionKind;
 import net.cumba.corej.core.expr.eval.FunctionRegistry;
@@ -31,10 +26,8 @@ import net.cumba.corej.core.expr.eval.Parameter;
 import net.cumba.corej.core.expr.typed.ExprType.ListOf;
 import net.cumba.corej.core.expr.typed.ExprType.Primitive;
 import net.cumba.corej.core.expr.typed.ExprType.Unknown;
-import net.cumba.corej.core.model.BoundBinding;
 import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.MatchDataset;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.OutputVariableToken;
 import net.cumba.corej.core.model.Rule;
@@ -117,7 +110,7 @@ public final class StageAChecker
     /** The time-family predicates of SPEC §5.3 (D27). */
     private static final Set<String> TIME_PREDICATES = Set.of("time_contains", "time_overlaps");
 
-    /** The {@code by=[asc("col"), desc("col")]} sort-key descriptor calls of is_sorted_by. */
+    /** The {@code by=[asc(COL), desc(COL)]} sort-key descriptor calls of is_sorted_by. */
     private static final Set<String> ORDERING_DESCRIPTORS = Set.of("asc", "desc");
 
     /** Bare-operand builtin names that read the (record × cursor) cell. */
@@ -145,22 +138,10 @@ public final class StageAChecker
     private final Map<String, Level> bindingLevels;
 
     /**
-     * Phase 6, D106d: the run's dataset inventory, for the bind-time refinement of
-     * {@code $}-binding levels — a cross-dataset operation whose foreign domain is absent
-     * degenerates to a scalar at run time, so its binding's level is {@code dataset}, whatever its
-     * result kind or grouping says. {@code null} at load (stage A proper) and on the plain
-     * {@code deriveTyped} path, where no dataset is known and the declaration-derived level stands
-     * as the upper bound.
-     */
-    private final @Nullable ForeignDatasetInventory foreignDatasets;
-
-    /**
-     * The statically-known result type of each {@code $}-binding, derived from its operation —
-     * phase 3b: {@code min_date}/{@code max_date} are the corpus' two date-valued operations
-     * (verified against {@code OperationType}, which declares only an {@code EmptyResult}, never a
-     * result type) and type {@code date}; everything else stays {@link Unknown#UNKNOWN}. ⚠
-     * {@code row_max}/{@code row_min}/{@code ts_parameter_value} are date-<i>shaped</i> but
-     * string-typed by ruling and are deliberately NOT here.
+     * The statically-known result type of each {@code $}-binding — the type its compiled expression
+     * walks to with this very checker ({@code min_date}/{@code max_date} type {@code date} through
+     * {@code ElementTable}, a column read stays a column reference, …); a binding that does not
+     * walk stays {@link Unknown#UNKNOWN}.
      */
     private final Map<String, ExprType> bindingTypes;
 
@@ -177,16 +158,8 @@ public final class StageAChecker
 
     private StageAChecker(Rule rule, ColumnLevelResolver columnLevels)
     {
-        this(rule, columnLevels, null);
-    }
-
-
-    private StageAChecker(Rule rule, ColumnLevelResolver columnLevels,
-            @Nullable ForeignDatasetInventory foreignDatasets)
-    {
         this.rule = rule;
         this.columnLevels = columnLevels;
-        this.foreignDatasets = foreignDatasets;
         this.bindingLevels = new HashMap<>();
         this.bindingTypes = new HashMap<>();
         scanBindings(rule.bindingOrder());
@@ -260,7 +233,7 @@ public final class StageAChecker
                 typed.put(level.getKey(), root);
             }
             checker.checkBindingOrder();
-            checker.checkInlineOperationReads(levels.values());
+            checker.checkListFunctionReads(levels.values());
             checker.checkMatchDatasets(levels.values());
         }
         catch (RuntimeException ex)
@@ -607,13 +580,12 @@ public final class StageAChecker
 
 
     /**
-     * Phase 5 entry point, widened in phase 6 (D106d): the typed tree of one expression of
-     * {@code rule}, with the bind-time {@code columnLevels} refinement applied (D39a — an absent
-     * column is a dataset-level constant) and the {@code $}-binding levels additionally refined
-     * from the run's dataset inventory — a cross-dataset operation over an absent foreign domain is
-     * typed at {@code dataset}, matching its runtime degeneration to a scalar (see
-     * {@link #degeneratesToScalar}). {@code null} inventory means "no refinement": the
-     * declaration-derived level stands as the upper bound.
+     * Phase 5 entry point: the typed tree of one expression of {@code rule}, with the bind-time
+     * {@code columnLevels} refinement applied (D39a — an absent column is a dataset-level
+     * constant). (Phase 6's D106d refinement of a {@code $}-binding's level from the run's dataset
+     * inventory — a cross-dataset <em>operation</em> over an absent foreign domain degenerating to
+     * a scalar — went with the operation surface in runbook W8: it had no subject since W6, and an
+     * absent {@code domain=} dataset SKIPs the rule before any level is read.)
      *
      * @param rule
      *            the (specialised) rule the expression belongs to
@@ -621,16 +593,14 @@ public final class StageAChecker
      *            the expression to type
      * @param columnLevels
      *            the bind-time column-level refinement (D39a)
-     * @param foreignDatasets
-     *            the run's dataset inventory, or {@code null}
      * @return the typed root, or {@code null} when the walk failed
      */
     public static @Nullable TypedExpr deriveTyped(Rule rule, Expr expr,
-            ColumnLevelResolver columnLevels, @Nullable ForeignDatasetInventory foreignDatasets)
+            ColumnLevelResolver columnLevels)
     {
         try
         {
-            return new StageAChecker(rule, columnLevels, foreignDatasets).walk(expr);
+            return new StageAChecker(rule, columnLevels).walk(expr);
         }
         catch (RuntimeException ex)
         {
@@ -768,14 +738,55 @@ public final class StageAChecker
                     : Level.DATASET;
             return new TypedExpr(c, ElementTable.resultType(name), level, children);
         }
-        if (ExprCompiler.isInlineOperation(c))
-        {
-            return inlineOperation(c, children);
-        }
         FunctionDescriptor descriptor = FunctionRegistry.descriptor(name);
         if (descriptor != null)
         {
-            return registered(c, descriptor, children);
+            TypedExpr typed = registered(c, descriptor, children);
+            if (net.cumba.corej.core.exec.RecordCount.NAME.equals(name))
+            {
+                // Runbook W6 (PLAN-record-count-function D-W6-9): the retired inline
+                // RECORD_COUNT operation's level, carried over — group(K) when grouped (the
+                // excluded group x cursor cell, D67, is found exactly as before), DATASET
+                // otherwise (`registered` above already folds the row axis for the name).
+                return net.cumba.corej.core.exec.RecordCount.isGrouped(c)
+                        ? new TypedExpr(c, typed.type(),
+                                groupedLevel(groupKeys(c.kwargs().get("group"))), children)
+                        : typed;
+            }
+            if (net.cumba.corej.core.exec.Distinct.NAME.equals(name))
+            {
+                // Runbook W7 (PLAN-distinct-function D-W7-12): the retired inline DISTINCT
+                // operation's level, carried over — group(K) when grouped (the excluded group x
+                // cursor cell, D67, is found exactly as before), DATASET otherwise.
+                return new TypedExpr(c, typed.type(),
+                        net.cumba.corej.core.exec.Distinct.isGrouped(c)
+                                ? groupedLevel(groupKeys(c.kwargs().get("group")))
+                                : Level.DATASET,
+                        children);
+            }
+            if (net.cumba.corej.core.exec.GroupedAggregate.isFunction(name)
+                    || (net.cumba.corej.core.exec.ReadValue.NAME.equals(name)
+                            && c.kwargs().containsKey("group")))
+            {
+                // Runbook W5 (PLAN-grouped-aggregate-functions D-W5-7): a grouped aggregate
+                // answers one value per primary row, keyed by its group= — the retired inline
+                // operation's group(K) granularity, carried over (the excluded group x cursor
+                // cell, D67, is found exactly as before). The descriptor binding above keeps the
+                // arity / keyword findings.
+                return new TypedExpr(c, typed.type(),
+                        groupedLevel(groupKeys(c.kwargs().get("group"))), children);
+            }
+            if (c.kwargs().containsKey("domain"))
+            {
+                // DomainScan's `domain=` arm, mirrored (combined review of runbook W2–W8, XCUT
+                // L3): an ungrouped registry call carrying `domain=` reads ANOTHER dataset —
+                // read_value(TSVAL, domain=TS, filter=(…), mode="FIRST") — and answers one value
+                // for the run; its column arguments are that dataset's, not reads of the primary.
+                // After the grouped arm above, as in DomainScan, so a grouped foreign read keeps
+                // its group(K) granularity.
+                return new TypedExpr(c, typed.type(), Level.DATASET, children);
+            }
+            return typed;
         }
         return unregistered(c, children);
     }
@@ -999,28 +1010,6 @@ public final class StageAChecker
     }
 
 
-    /**
-     * A Form-A inline operation: the arguments are operation parameters (names, keywords), not
-     * reads, so the result kind — refined by an explicit {@code group=} onto {@code group(K)}
-     * granularity — decides the level alone, exactly as for the declared {@code $} form.
-     */
-    private TypedExpr inlineOperation(Expr.Call c, List<TypedExpr> children)
-    {
-        Set<String> groupKeys = groupKeys(c.kwargs().get("group"));
-        ResultKind kind;
-        try
-        {
-            kind = OperationExecutor.resultKind(OperationExpressionParser.fromCall(c, null));
-        }
-        catch (RuntimeException _)
-        {
-            kind = ResultKind.SCALAR;
-        }
-        return new TypedExpr(c, ElementTable.resultType(c.name()), operationLevel(kind, groupKeys),
-                children);
-    }
-
-
     private TypedExpr registered(Expr.Call c, FunctionDescriptor descriptor,
             List<TypedExpr> children)
     {
@@ -1056,6 +1045,13 @@ public final class StageAChecker
         else if (descriptor.aggregate())
         {
             level = new Level(Granularity.Simple.DATASET, joinChildren(children).cursor());
+        }
+        else if (descriptor.perRow())
+        {
+            // A declared row reader (FunctionDescriptor.readingRows: row_max, whose only operand
+            // is a static pattern) is at least RECORD level whatever its operands say — the same
+            // flag DomainScan reads, so the two calculi cannot drift (combined review XCUT H1).
+            level = join(joinChildren(children), Level.RECORD);
         }
         else
         {
@@ -1154,7 +1150,7 @@ public final class StageAChecker
         String name = c.name();
         if (ORDERING_DESCRIPTORS.contains(name) && c.args().size() == 1)
         {
-            // asc("col") / desc("col") inside an is_sorted_by by=[…] list: a sort-key
+            // asc(COL) / desc(COL) inside an is_sorted_by by=[…] list: a sort-key
             // descriptor naming a column.
             return new TypedExpr(c, Primitive.COLUMN_REFERENCE, joinChildren(children), children);
         }
@@ -1208,35 +1204,11 @@ public final class StageAChecker
 
 
     /**
-     * Phase 6, D106d — <b>the level is an upper bound on runtime decidability, and here the bound
-     * tightens</b>: a cross-dataset operation whose {@code domain=} names a dataset this run cannot
-     * resolve degenerates to a scalar at execution ({@code OperationExecutor.
-     * resolveTargetTable} yields {@code null} and the operation folds to one value), so the
-     * binding's true level is {@code dataset} whatever the declaration says. Applied only when a
-     * {@link ForeignDatasetInventory} is supplied (the bind-time {@code deriveTyped} path — the
-     * load-path checker has no dataset and keeps the declaration-derived level). Mirrors the
-     * executor's own exemptions: {@code date_diff_days} keeps the primary as its target, and a
-     * {@code *} wildcard or unspecialised {@code --} domain is not a concrete reference. The
-     * split-SUPP self-reference redirect (J7) is the inventory implementation's to answer — the
-     * instrument's inventory reports such a domain as resolvable.
+     * The level of a grouped registry call (W5–W7's {@code group=} readers): {@code group(K)} over
+     * its keys — the excluded {@code group(K) × cursor} cell (D67) is found exactly as the retired
+     * inline operations' was — or {@link Level#RECORD} when the keys are empty.
      */
-    private boolean degeneratesToScalar(Operation op)
-    {
-        if (foreignDatasets == null
-                || op.getOperationType() == net.cumba.corej.core.model.OperationType.DATE_DIFF_DAYS)
-        {
-            return false;
-        }
-        String domain = op.getDomain();
-        if (domain == null || domain.isEmpty() || "*".equals(domain) || domain.contains("--"))
-        {
-            return false;
-        }
-        return foreignDatasets.columnsOf(domain) == null;
-    }
-
-
-    private Level operationLevel(ResultKind kind, Set<String> groupKeys)
+    private Level groupedLevel(Set<String> groupKeys)
     {
         if (!groupKeys.isEmpty())
         {
@@ -1250,12 +1222,7 @@ public final class StageAChecker
                 return EXCLUDED_CELL_RECOVERY;
             }
         }
-        return switch (kind)
-        {
-        case PER_ROW -> Level.RECORD;
-        case PER_VARIABLE -> Level.VARIABLE_METADATA;
-        case SCALAR -> Level.DATASET;
-        };
+        return Level.RECORD;
     }
 
 
@@ -1292,52 +1259,20 @@ public final class StageAChecker
 
 
     /**
-     * The level and result type of each {@code $}-binding, derived from its declaration (spec §3.2
-     * — a binding's level is derived, never a source), <b>both kinds, in authored order</b>
-     * ({@code PLAN-binding-expressions} R24). An operation binding: {@code group} keys give
-     * {@code group(K)}, otherwise the operation's result kind decides, the same classification
-     * {@code DomainScan} routes on; the result type (phase 3b) comes from the operation's function
-     * name — see {@link #bindingTypes}. A <b>compiled</b> binding is walked with this very checker
-     * — the one the Check uses — so its level is the derived level of its expression and its type
-     * the expression's type, and a type error inside it is a stage-A finding like one in the Check.
-     * The walk sees every EARLIER binding's level and type, which is all a binding may read.
+     * The level and result type of each {@code $}-binding, derived from its expression (spec §3.2 —
+     * a binding's level is derived, never a source), in authored order
+     * ({@code PLAN-binding-expressions} R24). A binding is walked with this very checker — the one
+     * the Check uses — so its level is the derived level of its expression and its type the
+     * expression's type, and a type error inside it is a stage-A finding like one in the Check. The
+     * walk sees every EARLIER binding's level and type, which is all a binding may read.
      */
-    private void scanBindings(List<BoundBinding> order)
+    private void scanBindings(List<CompiledBinding> order)
     {
-        for (BoundBinding binding : order)
+        for (CompiledBinding compiled : order)
         {
-            if (binding instanceof CompiledBinding compiled)
-            {
-                TypedExpr typed = walk(compiled.expression());
-                bindingLevels.put(compiled.name(), typed.level());
-                bindingTypes.put(compiled.name(), typed.type());
-                continue;
-            }
-            Operation op = ((BoundBinding.OfOperation) binding).operation();
-            String id = op.getId();
-            if (id == null)
-            {
-                continue;
-            }
-            Operation normalized;
-            ResultKind kind;
-            try
-            {
-                normalized = OperationExpressionParser.normalize(op);
-                kind = OperationExecutor.resultKind(normalized);
-            }
-            catch (RuntimeException _)
-            {
-                // A declaration the parser rejects is reported on the loader's own channel.
-                bindingLevels.put(id, Level.DATASET);
-                continue;
-            }
-            List<String> group = normalized.getGroup();
-            Set<String> keys = group == null ? Set.of() : new LinkedHashSet<>(group);
-            bindingLevels.put(id,
-                    degeneratesToScalar(normalized) ? Level.DATASET : operationLevel(kind, keys));
-            bindingTypes.put(id, ElementTable
-                    .resultType(normalized.getOperator() == null ? "" : normalized.getOperator()));
+            TypedExpr typed = walk(compiled.expression());
+            bindingLevels.put(compiled.name(), typed.level());
+            bindingTypes.put(compiled.name(), typed.type());
         }
     }
 
@@ -1352,7 +1287,7 @@ public final class StageAChecker
         // PLAN-binding-expressions R25: over the AUTHORED order of BOTH binding kinds — a compiled
         // binding reading a later operation binding, or the reverse, is the same error. The
         // loader rejects a duplicate name (R1), so the putIfAbsent below never has to choose.
-        List<BoundBinding> order = rule.bindingOrder();
+        List<CompiledBinding> order = rule.bindingOrder();
         if (order.isEmpty())
         {
             return;
@@ -1360,42 +1295,19 @@ public final class StageAChecker
         Map<String, Integer> declaredAt = new HashMap<>();
         for (int i = 0; i < order.size(); i++)
         {
-            String id = order.get(i).name();
-            if (id != null)
-            {
-                declaredAt.putIfAbsent(id, i);
-            }
+            declaredAt.putIfAbsent(order.get(i).name(), i);
         }
         for (int i = 0; i < order.size(); i++)
         {
-            BoundBinding binding = order.get(i);
-            Set<String> refs = switch (binding)
-            {
-            case BoundBinding.OfOperation op -> referencedBindings(op.operation());
-            case CompiledBinding compiled -> compiledBindingRefs(compiled);
-            };
-            for (String ref : refs)
+            CompiledBinding binding = order.get(i);
+            for (String ref : compiledBindingRefs(binding))
             {
                 Integer target = declaredAt.get(ref);
                 if (target != null && target >= i)
                 {
                     find(StageAErrorKind.FORWARD_OR_CYCLIC_BINDING,
-                            "binding " + (binding.name() == null ? "#" + i : binding.name())
-                                    + " references " + ref
+                            "binding " + binding.name() + " references " + ref
                                     + (target == i ? " (itself)" : ", which is declared later"));
-                }
-                CompiledBinding read = rule.compiledBinding(ref);
-                if (binding instanceof BoundBinding.OfOperation && read != null
-                        && read.needsCursor())
-                {
-                    // §5.0's hand-over contract, row 3: an operation's fields are dataset-level
-                    // (name / subtract / group / a computed target), so there is no row to pick a
-                    // per-row compiled binding's value at — never a silent `vector.toString()`.
-                    find(StageAErrorKind.OPERATION_READS_CURSOR_BINDING,
-                            "the operation binding "
-                                    + (binding.name() == null ? "#" + i : binding.name())
-                                    + " cannot read the per-row or per-variable binding " + ref
-                                    + " — an operation reads only a dataset-level value");
                 }
             }
         }
@@ -1403,49 +1315,50 @@ public final class StageAChecker
 
 
     /**
-     * Review round 1, L1: §5.0's hand-over contract, row 3, for an <b>inline</b> operation — one
-     * written in the Check or nested in a compiled binding ({@code not empty(minus($a,
-     * subtract=$p))}). It reads its prior {@code $}-values through exactly the fields a declared
-     * operation does ({@link OperationExecutor#priorReferences}), so a per-row or per-variable
-     * compiled binding among them is the same load error, never a run-time backstop throw.
+     * §5.0's hand-over contract, row 3, for the one reader left that takes a {@code $}-binding as a
+     * <b>dataset-level list</b>: {@code minus} ({@code not empty(minus($a, subtract=$p))}), written
+     * in the Check or nested in a compiled binding. A per-row or per-variable compiled binding
+     * among its operands is a load error ({@link StageAErrorKind#OPERATION_READS_CURSOR_BINDING}),
+     * never a run-time backstop throw. (Until runbook W8 an inline operation was held to the same
+     * rule through the fields it read.)
      */
-    private void checkInlineOperationReads(Iterable<Expr> levels)
+    private void checkListFunctionReads(Iterable<Expr> levels)
     {
         for (Expr level : levels)
         {
-            inlineOperationReads(level, "the Check");
+            listFunctionReads(level, "the Check");
         }
         List<CompiledBinding> compiled = rule.getCompiledBindings();
         if (compiled != null)
         {
             for (CompiledBinding binding : compiled)
             {
-                inlineOperationReads(binding.expression(), "the binding " + binding.name());
+                listFunctionReads(binding.expression(), "the binding " + binding.name());
             }
         }
     }
 
 
-    private void inlineOperationReads(Expr e, String where)
+    private void listFunctionReads(Expr e, String where)
     {
         switch (e)
         {
-        case Expr.And a -> a.parts().forEach(p -> inlineOperationReads(p, where));
-        case Expr.Or o -> o.parts().forEach(p -> inlineOperationReads(p, where));
-        case Expr.Not n -> inlineOperationReads(n.inner(), where);
+        case Expr.And a -> a.parts().forEach(p -> listFunctionReads(p, where));
+        case Expr.Or o -> o.parts().forEach(p -> listFunctionReads(p, where));
+        case Expr.Not n -> listFunctionReads(n.inner(), where);
         case Expr.Binary b ->
         {
-            inlineOperationReads(b.left(), where);
-            inlineOperationReads(b.right(), where);
+            listFunctionReads(b.left(), where);
+            listFunctionReads(b.right(), where);
         }
         case Expr.Call c ->
         {
-            if (ExprCompiler.isInlineOperation(c))
+            if (net.cumba.corej.core.exec.Minus.NAME.equals(c.name()))
             {
-                checkInlineOperationCall(c, where);
+                checkListFunctionCall(c, where);
             }
-            c.args().forEach(a -> inlineOperationReads(a, where));
-            c.kwargs().values().forEach(a -> inlineOperationReads(a, where));
+            c.args().forEach(a -> listFunctionReads(a, where));
+            c.kwargs().values().forEach(a -> listFunctionReads(a, where));
         }
         case Expr.Lit lit ->
         {
@@ -1453,7 +1366,7 @@ public final class StageAChecker
             {
                 @SuppressWarnings("unchecked")
                 List<Expr> items = (List<Expr>) lit.value();
-                items.forEach(item -> inlineOperationReads(item, where));
+                items.forEach(item -> listFunctionReads(item, where));
             }
         }
         case Expr.Ref _ ->
@@ -1464,26 +1377,31 @@ public final class StageAChecker
     }
 
 
-    private void checkInlineOperationCall(Expr.Call c, String where)
+    /**
+     * Wave 4 ({@code PLAN-list-functions} D-W4-4): {@code minus} reads its two operands as
+     * dataset-level lists — exactly the hand-over form the retired MINUS operation read through
+     * {@code BindingValue.forOperation}, whose runtime guard refused a cursor binding. The guard is
+     * kept, at load: a {@code $}-reference to a per-row or per-variable binding bound to
+     * {@code minus} is the same finding as an operation reading one.
+     */
+    private void checkListFunctionCall(Expr.Call c, String where)
     {
-        Operation op;
-        try
+        List<Expr> operands = new ArrayList<>(c.args());
+        operands.addAll(c.kwargs().values());
+        for (Expr operand : operands)
         {
-            op = OperationExpressionParser.fromCall(c, null);
-        }
-        catch (RuntimeException _)
-        {
-            return; // a malformed call is the compiler's own error
-        }
-        for (String ref : OperationExecutor.priorReferences(op))
-        {
-            CompiledBinding read = rule.compiledBinding(ref);
-            if (read != null && read.needsCursor())
+            if (operand instanceof Expr.Ref ref
+                    && ref.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF)
             {
-                find(StageAErrorKind.OPERATION_READS_CURSOR_BINDING,
-                        "the inline operation " + c.name() + "(…) in " + where
-                                + " cannot read the per-row or per-variable binding " + ref
-                                + " — an operation reads only a dataset-level value");
+                CompiledBinding read = rule.compiledBinding(ref.name());
+                if (read != null && read.needsCursor())
+                {
+                    find(StageAErrorKind.OPERATION_READS_CURSOR_BINDING,
+                            "the list function " + c.name() + "(…) in " + where
+                                    + " cannot read the per-row or per-variable binding "
+                                    + ref.name() + " — a set difference reads only dataset-level"
+                                    + " lists");
+                }
             }
         }
     }
@@ -1495,58 +1413,6 @@ public final class StageAChecker
         Set<String> refs = new LinkedHashSet<>();
         collectOperationRefs(compiled.expression(), refs);
         return refs;
-    }
-
-
-    /** The {@code $}-references one binding makes, from its expression and its name fields. */
-    private static Set<String> referencedBindings(Operation op)
-    {
-        Set<String> refs = new LinkedHashSet<>();
-        String expression = op.getExpression();
-        if (expression != null)
-        {
-            try
-            {
-                collectOperationRefs(CheckExpressionParser.parse(expression), refs);
-            }
-            catch (ExpressionException ex)
-            {
-                // A malformed operation expression is reported on the loader's own channel.
-                LOGGER.log(System.Logger.Level.TRACE,
-                        "skipping unparseable binding expression: {0}", ex.getMessage());
-            }
-        }
-        addDollarRef(refs, op.getName());
-        // PLAN-binding-expressions I5: minus's subtrahend and a computed target are prior reads
-        // too (OperationExecutor.priorReferences) — the order check and the per-row-read check
-        // must see every field the executor reads a $-value through.
-        addDollarRef(refs, op.getSubtract());
-        if (op.getNameExpr() != null)
-        {
-            collectOperationRefs(op.getNameExpr(), refs);
-        }
-        addDollarRef(refs, op.getReference());
-        addDollarRef(refs, op.getKeyValue());
-        List<String> group = op.getGroup();
-        if (group != null)
-        {
-            group.forEach(g -> addDollarRef(refs, g));
-        }
-        List<String> value = op.getValue();
-        if (value != null)
-        {
-            value.forEach(v -> addDollarRef(refs, v));
-        }
-        return refs;
-    }
-
-
-    private static void addDollarRef(Set<String> refs, @Nullable String candidate)
-    {
-        if (candidate != null && candidate.startsWith("$") && !candidate.startsWith("${"))
-        {
-            refs.add(candidate);
-        }
     }
 
 
@@ -1834,7 +1700,7 @@ public final class StageAChecker
      * {@link #checkDottedRefs} — a second copy is how the two qualifier checks would drift apart.
      * The template arm exists because a {@code Child: true} entry keeps its template name through
      * specialisation ({@code RuleSpecialiser} leaves a Child name for the per-row pointer, and
-     * {@code OperationExecutor.resolveWildcard} binds it only at run time), so an exact comparison
+     * {@code DatasetIdentity.resolveWildcard} binds it only at run time), so an exact comparison
      * alone found no entry for {@code SUPPAE._matched_} at either pass, deferred it as unbound, and
      * let it read a SUPPAE self-join at run time (closed 2026-09-25,
      * {@code PLAN-hashed-join-arm-absent-columns} §3 follow-up 2). An exact match wins over a
@@ -1870,7 +1736,7 @@ public final class StageAChecker
     /**
      * Whether {@code qualifier} is an instance of the {@code --} template {@code name}: the same
      * text before and after the {@code --}, with a non-empty domain in its place — exactly the
-     * shape {@code OperationExecutor.resolveWildcard} produces ({@code SUPP--} → {@code SUPPAE}). A
+     * shape {@code DatasetIdentity.resolveWildcard} produces ({@code SUPP--} → {@code SUPPAE}). A
      * name with no {@code --} is not a template of anything.
      *
      * @param name
@@ -2131,10 +1997,9 @@ public final class StageAChecker
 
 
     /**
-     * Adds the dotted references of the rule's {@code Bindings} expressions to {@code dotted}. An
-     * unparseable expression is skipped for the same reason {@link #referencedBindings} skips one:
-     * the loader has its own channel for that, and a parser failure must not become a qualifier
-     * finding.
+     * Adds the dotted references of the rule's compiled bindings to {@code dotted}
+     * ({@code PLAN-binding-expressions} R26: a compiled binding's dotted references are qualifiers
+     * like the Check's own).
      *
      * @param dotted
      *            the accumulating set of dotted operand names
@@ -2149,29 +2014,6 @@ public final class StageAChecker
             for (CompiledBinding binding : compiled)
             {
                 collectDottedRefs(binding.expression(), dotted, qualifiedWildcards);
-            }
-        }
-        List<Operation> operations = rule.getOperations();
-        if (operations == null)
-        {
-            return;
-        }
-        for (Operation op : operations)
-        {
-            String expression = op.getExpression();
-            if (expression == null)
-            {
-                continue;
-            }
-            try
-            {
-                collectDottedRefs(CheckExpressionParser.parse(expression), dotted,
-                        qualifiedWildcards);
-            }
-            catch (ExpressionException ex)
-            {
-                LOGGER.log(System.Logger.Level.TRACE,
-                        "skipping unparseable binding expression: {0}", ex.getMessage());
             }
         }
     }

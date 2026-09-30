@@ -21,12 +21,12 @@ import org.junit.jupiter.api.Test;
  * {@code not}) and supports {@code == true/false} (and {@code <bool> == <bool>}), evaluating
  * identically to the bare / {@code not} form.
  * <p>
- * ⚠ The inline-<em>operation</em> boolean-position path admits every boolean-valued operation that
- * is not library-dependent — today {@code variable_is_null} and {@code variable_exists}.
- * {@code domain_is_custom} stays excluded because it IS library-dependent (a bare/{@code not} use
- * would mis-fire under invert without a Library). ⚠⚠ This paragraph previously said the path
- * "admits no operation"; that was wrong even then ({@code variable_is_null} qualified), so read the
- * admitted set off {@code OperationExecutor.isBooleanValued}, not off prose.
+ * ⚠ The inline-<em>operation</em> boolean-position path admitted every boolean-valued operation
+ * that was not library-dependent — none since runbook W2a retired {@code variable_is_null} and
+ * {@code variable_exists} (their sites are the {@code var_is_null(X)} / {@code var_exists(X)}
+ * functions) — and went with the operation surface in runbook W8. {@code domain_is_custom} stays
+ * excluded because it IS library-dependent (a bare/{@code not} use would mis-fire under invert
+ * without a Library).
  */
 class UnifiedBooleanSurfaceTest
 {
@@ -79,35 +79,8 @@ class UnifiedBooleanSurfaceTest
     }
 
 
-    /**
-     * The inline-operation arm of the unified surface, exercised by {@code variable_exists} — the
-     * one non-library boolean operation added since T5a's {@code variable_is_null}. ⚠ It is here to
-     * pin {@code OperationExecutor.isBooleanValued}, whose only consumer is
-     * {@code ExprCompiler.isUnifiableBooleanOperation}: without this case, dropping
-     * {@code VARIABLE_EXISTS} from that method leaves the whole build green.
-     *
-     * <p>
-     * ⚑ The equality assertion is the real point: an inline {@code variable_exists(X)} must
-     * evaluate <em>identically</em> to {@code var_exists(X)}, because the operation exists only to
-     * report the answer the function decides. A divergence here is a defect even though no shipped
-     * rule authors the inline form.
-     * </p>
-     */
     @Test
-    void inlineVariableExistsOperationCompilesAndAgreesWithTheFunction()
-    {
-        assertTrue(supported("variable_exists(\"AETERM\")"));
-        assertTrue(supported("not variable_exists(\"AETERM\")"));
-        EvaluationContext ctx = ctx();
-        assertEquals(eval("var_exists(\"AETERM\")", ctx), eval("variable_exists(\"AETERM\")", ctx));
-        assertEquals(eval("var_exists(\"NOSUCH\")", ctx), eval("variable_exists(\"NOSUCH\")", ctx));
-        assertEquals(eval("not var_exists(\"NOSUCH\")", ctx),
-                eval("not variable_exists(\"NOSUCH\")", ctx));
-    }
-
-
-    @Test
-    void nonBooleanOperationIsNotABooleanCondition()
+    void nonBooleanFunctionIsNotABooleanCondition()
     {
         // variable_count returns a number — it is not a boolean condition in boolean position.
         assertFalse(supported("variable_count(AETERM)"));

@@ -151,7 +151,8 @@ class DefineVariableAndKeyOperationsTest
         RuleExecutionResult r = RuleRunnerCalls.execute(rule(KEY_VARIABLES_RULE, "K1"), lb,
                 _ -> null, "LB", null, null, new StubMetadataProvider());
         assertTrue(r.isSkipped(), "empty Define key set -> rule SKIPPED");
-        assertTrue(String.valueOf(r.getStatusMessage()).contains("declares no key variables"),
+        // Wave 4 (D-W4-8): the function's DEFINE arm — the message names the function.
+        assertEquals("Rule skipped — Define-XML returned no data for define_key_variables",
                 r.getStatusMessage());
         assertFalse(r.hasViolations(), "a SKIPPED rule reports no violations");
     }

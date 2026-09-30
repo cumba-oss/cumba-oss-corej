@@ -11,7 +11,6 @@ import java.util.Map;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.eval.MetadataAttribute;
-import net.cumba.corej.core.model.OperationType;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
@@ -23,7 +22,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>
  * The fact is registered on two surfaces that must both resolve to the SAME value, the
- * {@code Scope.Domains} base leg {@link OperationExecutor#unsplitNameFromData} (the
+ * {@code Scope.Domains} base leg {@link DatasetIdentity#unsplitNameFromData} (the
  * {@code DATASET_DOMAIN} operation, a third carriage, was deleted by wave 1 of
  * {@code RUNBOOK-operations-to-functions}: zero corpus sites):
  * </p>
@@ -109,7 +108,6 @@ class DatasetDomainFactTest
         // and the ds_domain accessor only.
         assertTrue(net.cumba.corej.core.expr.BuiltinRegistry.isBuiltin("dataset_domain"),
                 "bareword surface");
-        assertNull(OperationType.fromJson("dataset_domain"), "no Operations surface any more");
         MetadataAttribute attr = MetadataAttribute.fromFunction("ds_domain");
         assertNotNull(attr, "accessor surface");
         assertEquals(MetadataAttribute.Scope.DATASET, attr.scope());

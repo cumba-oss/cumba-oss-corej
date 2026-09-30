@@ -21,8 +21,8 @@ import org.jspecify.annotations.Nullable;
  * <b>supersets</b>:
  * <ol>
  * <li>a {@code --} in the qualifier is resolved against the primary table
- * ({@link OperationExecutor#resolveWildcard}), so {@code SUPP--.QVAL} works — the Check side does
- * not do this;</li>
+ * ({@link DatasetIdentity#resolveWildcard}), so {@code SUPP--.QVAL} works — the Check side does not
+ * do this;</li>
  * <li>{@link DatasetResolver#resolve} by exact dataset name;</li>
  * <li>failing that, the union of {@link DatasetResolver.WithInventory#tablesForDomain}, so a split
  * domain ({@code LB} → {@code lbch}/{@code lbhe}/{@code lbur}) resolves to its members' columns —
@@ -69,6 +69,16 @@ public final class ScopeVariableSource
 
     private final IDataTable primary;
 
+    /** The rule's declared SUPP merge; {@code false} answers every SUPP-QNAM probe false. */
+    private final boolean suppMerge;
+
+    /**
+     * The run's shared index cache, or {@code null}: a SUPP-QNAM probe reads the one parsed
+     * {@link SuppQnamIndex} of the table the pivot reads (combined review of runbook W2–W8, round 2
+     * L2).
+     */
+    private final JoinCache.@Nullable SharedIndexCache sharedIndex;
+
     private final Map<String, List<DataTableMeta>> metaMemo = new ConcurrentHashMap<>();
 
     private final Map<String, Boolean> suppMemo = new ConcurrentHashMap<>();
@@ -91,10 +101,13 @@ public final class ScopeVariableSource
      */
     private final Map<String, DataValueType> qvalMemo = new ConcurrentHashMap<>();
 
-    private ScopeVariableSource(DatasetResolver.WithInventory resolver, IDataTable primary)
+    private ScopeVariableSource(DatasetResolver.WithInventory resolver, IDataTable primary,
+            boolean suppMerge, JoinCache.@Nullable SharedIndexCache sharedIndex)
     {
         this.resolver = resolver;
         this.primary = primary;
+        this.suppMerge = suppMerge;
+        this.sharedIndex = sharedIndex;
     }
 
 
@@ -112,8 +125,51 @@ public final class ScopeVariableSource
     public static @Nullable ScopeVariableSource of(@Nullable DatasetResolver resolver,
             IDataTable primary)
     {
+        return of(resolver, primary, true);
+    }
+
+
+    /**
+     * As {@link #of(DatasetResolver, IDataTable)}, with the rule's declared SUPP merge
+     * ({@code Rule#isSuppMergeEnabled()}): {@code false} makes {@link #existsViaSuppQnam} answer
+     * {@code false} for every probe ({@code PLAN-operation-replacements} §2.3 — one flag, one
+     * meaning on the existence and the value path).
+     *
+     * @param resolver
+     *            the run's resolver
+     * @param primary
+     *            the dataset under evaluation
+     * @param suppMerge
+     *            whether the rule's SUPP merge is on
+     * @return the source, or {@code null} when the resolver cannot enumerate datasets
+     */
+    public static @Nullable ScopeVariableSource of(@Nullable DatasetResolver resolver,
+            IDataTable primary, boolean suppMerge)
+    {
+        return of(resolver, primary, suppMerge, null);
+    }
+
+
+    /**
+     * As {@link #of(DatasetResolver, IDataTable, boolean)}, reading a {@code SUPP--} table's
+     * qualifiers through the run's shared index (one parse per table per run, shared with the
+     * pivot).
+     *
+     * @param resolver
+     *            the run's resolver
+     * @param primary
+     *            the dataset under evaluation
+     * @param suppMerge
+     *            whether the rule's SUPP merge is on
+     * @param sharedIndex
+     *            the run's shared index cache, or {@code null}
+     * @return the source, or {@code null} when the resolver cannot enumerate datasets
+     */
+    static @Nullable ScopeVariableSource of(@Nullable DatasetResolver resolver, IDataTable primary,
+            boolean suppMerge, JoinCache.@Nullable SharedIndexCache sharedIndex)
+    {
         return resolver instanceof DatasetResolver.WithInventory inv
-                ? new ScopeVariableSource(inv, primary)
+                ? new ScopeVariableSource(inv, primary, suppMerge, sharedIndex)
                 : null;
     }
 
@@ -155,6 +211,35 @@ public final class ScopeVariableSource
 
 
     /**
+     * W2a (C1 ruled (a)): whether {@code column} is delivered as a supplemental qualifier of the
+     * PRIMARY dataset — {@code Supp_Merge} on and {@code SUPP<domain>} of the primary carrying the
+     * {@code QNAM}. The bare-entry counterpart of {@link #existsViaSuppQnam}.
+     *
+     * @param column
+     *            the bare column name
+     * @return whether a SUPP row delivers it
+     */
+    public boolean localQualifier(String column)
+    {
+        if (!suppMerge)
+        {
+            return false;
+        }
+        String name = primary.getMetaData().getName();
+        String domain = name == null ? null : DatasetIdentity.domainOfDataset(name, resolver);
+        if (domain == null || domain.isEmpty())
+        {
+            return false;
+        }
+        return suppMemo.computeIfAbsent(KEY_SEP + domain + KEY_SEP + column, _ ->
+        {
+            IDataTable supp = resolver.resolve("SUPP" + domain);
+            return supp != null && OperatorRegistry.existsInSuppQnam(supp, column, sharedIndex);
+        });
+    }
+
+
+    /**
      * Returns {@code true} when the supplemental-qualifier dataset for {@code qualifier} delivers
      * {@code column} through a {@code QNAM} row — the Fix #39 lazy SUPP-pivot lookup, which brings
      * qualified scope entries into line with the {@code Check}-side dotted {@code exists}.
@@ -179,11 +264,12 @@ public final class ScopeVariableSource
     public boolean existsViaSuppQnam(String qualifier, String column)
     {
         String resolved = resolveQualifierName(qualifier);
-        return !resolved.toUpperCase(Locale.ROOT).startsWith("SUPP")
+        return suppMerge && !resolved.toUpperCase(Locale.ROOT).startsWith("SUPP")
                 && suppMemo.computeIfAbsent(resolved + KEY_SEP + column, _ ->
                 {
                     IDataTable supp = resolver.resolve("SUPP" + resolved);
-                    return supp != null && OperatorRegistry.existsInSuppQnam(supp, column);
+                    return supp != null
+                            && OperatorRegistry.existsInSuppQnam(supp, column, sharedIndex);
                 });
     }
 
@@ -232,7 +318,7 @@ public final class ScopeVariableSource
      * Resolves a {@code --} in the qualifier against the primary table, mirroring how
      * {@code Match_Datasets.Name} is resolved in {@code RuleRunner.buildJoinedDatasets}.
      * <p>
-     * Review M4 — note the asymmetry this inherits. {@link OperationExecutor#resolveWildcard}
+     * Review M4 — note the asymmetry this inherits. {@link DatasetIdentity#resolveWildcard}
      * substitutes the primary's <b>table name</b>, not its domain code, so on a split member
      * {@code lbch} the qualifier {@code SUPP--} becomes {@code SUPPlbch} (which does not exist)
      * rather than {@code SUPPLB}. The <em>unqualified</em> leg of the same gate resolves {@code --}
@@ -244,7 +330,7 @@ public final class ScopeVariableSource
      */
     private String resolveQualifierName(String qualifier)
     {
-        String resolved = OperationExecutor.resolveWildcard(qualifier, primary);
+        String resolved = DatasetIdentity.resolveWildcard(qualifier, primary);
         return resolved != null ? resolved : qualifier;
     }
 

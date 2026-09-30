@@ -14,11 +14,12 @@ import org.junit.jupiter.api.Test;
 
 /**
  * P9 review finding 1 (BLOCKER) regression — CDISC-CG0034's shape: a membership RHS {@code $}-ref
- * whose Operation is GROUPED ({@code distinct(SV.VISITNUM, group=[USUBJID])}) resolves to a per-row
- * {@link GroupedResult}. Pre-fix the native membership plan threw an {@code ExpressionException} at
- * RUN time (the set was assumed broadcast-constant), which under the P7 no-fallback contract
- * surfaced every such rule as ERROR. The plan now resolves the membership set PER ROW via
- * {@code GroupedResult.getForRow}, mirroring the legacy row-aware the grouped-membership contract.
+ * whose binding is GROUPED ({@code distinct(SV.VISITNUM, group=[USUBJID])}) is a per-row list.
+ * Pre-fix the native membership plan threw an {@code ExpressionException} at RUN time (the set was
+ * assumed broadcast-constant), which under the P7 no-fallback contract surfaced every such rule as
+ * ERROR. The plan resolves the membership set PER ROW — through {@code GroupedResult.getForRow}
+ * when the fix landed, through the per-row compiled binding's vector since runbook W8 retired the
+ * operation's grouped result.
  */
 class NativeGroupedMembershipParityTest
 {

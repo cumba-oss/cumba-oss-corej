@@ -33,7 +33,7 @@ import org.jspecify.annotations.Nullable;
  * no provider, with a Library that could not be consulted (Fix #369), or with nothing resolved (an
  * unknown / absent CT package, an absent target or version column — both fold to {@code ""}, so no
  * package resolves) it raises {@link UnusableProviderAnswerException}, which {@code RuleRunner}
- * turns into {@code SKIPPED} — the operation's {@code LIBRARY_NOT_AVAILABLE} ⇒ SKIP, unchanged.
+ * turns into {@code SKIPPED} — the retired operation's library-not-available SKIP, unchanged.
  * Answering {@code []} instead would let {@code not empty($VALID_TERM_CODES)} read {@code false}
  * and the rule PASS.
  * </p>
@@ -69,7 +69,7 @@ public final class CodelistAttributes
             throw new UnusableProviderAnswerException(NAME, ProviderNeed.Kind.LIBRARY,
                     "no CDISC Library provider");
         }
-        if (provider.isLibraryUnavailable() && !OperationExecutor.libraryAnswerable(provider))
+        if (provider.isLibraryUnavailable() && !LibraryAnswerability.libraryAnswerable(provider))
         {
             throw new UnusableProviderAnswerException(NAME, ProviderNeed.Kind.LIBRARY,
                     "the CDISC Library could not be consulted");

@@ -15,8 +15,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Shared utilities for using {@link IDataTableIndex} in the CDISC CORE engine. Centralizes index
- * creation, block-to-row extraction, missing-key detection, GroupedResult-compatible key building,
- * and the block-keyed result map ({@link BlockResults}) that refuses two blocks with one key.
+ * creation, block-to-row extraction, missing-key detection, lookup-compatible key building, and the
+ * block-keyed result map ({@link BlockResults}) that refuses two blocks with one key.
  */
 final class IndexHelper
 {
@@ -47,9 +47,9 @@ final class IndexHelper
 
     /**
      * One group produced by {@link #groupByPresent}: the group key — the
-     * {@link GroupedResult#identityKey identity key} over the <b>full declared</b> column list, so
-     * an absent column contributes {@code ""} exactly as it does on the per-row lookup side — and
-     * the absolute row indices of the group's members.
+     * {@link GroupKeyIdentity#identityKey identity key} over the <b>full declared</b> column list,
+     * so an absent column contributes {@code ""} exactly as it does on the per-row lookup side —
+     * and the absolute row indices of the group's members.
      *
      * <p>
      * A class rather than a record because {@code rows} is an {@code int[]}: the row-index arrays
@@ -73,8 +73,8 @@ final class IndexHelper
 
 
         /**
-         * The group key, in {@link GroupedResult}'s {@link GroupedResult.KeyMode#IDENTITY} encoding
-         * ({@link GroupedResult#identityKey}).
+         * The group key, in the identity encoding every grouped reader shares
+         * ({@link GroupKeyIdentity#identityKey}).
          */
         Object key()
         {
@@ -148,17 +148,16 @@ final class IndexHelper
      *
      * <p>
      * Keys are built over the <b>full declared</b> {@code groupCols} by the one derivation the
-     * lookup uses ({@link GroupedResult#identityKey}), so they stay compatible with
-     * {@link GroupedResult#getForRow}: both sides key an absent column as {@code ""}.
+     * lookup uses ({@link GroupKeyIdentity#identityKey}), so they stay compatible with the per-row
+     * lookups of the grouped functions: both sides key an absent column as {@code ""}.
      * </p>
      *
      * <p>
      * <b>Not every unknown name is an absent column.</b> An entry still carrying the {@code $}
-     * sigil is an operation reference that {@code OperationExecutor.expandGroupRefs} could not
-     * expand into column names — a resolution failure in the rule's operation chain, not a fact
-     * about the study's data. Silently widening the grouping there would let a broken chain produce
-     * dataset-wide aggregates, so this returns {@code null} and the caller degrades exactly as it
-     * did before EC-44.
+     * sigil is a binding reference that the group splice could not expand into column names — a
+     * resolution failure in the rule's operation chain, not a fact about the study's data. Silently
+     * widening the grouping there would let a broken chain produce dataset-wide aggregates, so this
+     * returns {@code null} and the caller degrades exactly as it did before EC-44.
      * </p>
      *
      * <p>
@@ -178,8 +177,8 @@ final class IndexHelper
      *            the dataset to partition
      * @param groupCols
      *            the declared group columns (already {@code --}-resolved and {@code $}-expanded by
-     *            {@code OperationExecutor}). May be <b>empty</b> (EC-45 §1.3(3)): an operation with
-     *            no {@code group:} at all is the dataset-wide reading, which falls into the same
+     *            the grouped functions). May be <b>empty</b> (EC-45 §1.3(3)): a grouping with no
+     *            {@code group:} at all is the dataset-wide reading, which falls into the same
      *            "nothing survives" branch as an all-absent list and yields one whole-table block
      * @param context
      *            an optional label for the INFO log emitted when columns are dropped (the operation
@@ -220,8 +219,9 @@ final class IndexHelper
             // with the lookup keyed by identity that key would miss every row once k >= 2
             // (record_count reading 0 instead of N), so it goes through the one derivation.
             List<GroupBlock> blocks = rowCountL == 0 ? List.of()
-                    : List.of(new GroupBlock(GroupedResult.identityKey(meta, table, groupCols, 0),
-                            allRows(rowCountL)));
+                    : List.of(
+                            new GroupBlock(GroupKeyIdentity.identityKey(meta, table, groupCols, 0),
+                                    allRows(rowCountL)));
             grouping = new Grouping(List.copyOf(groupCols), List.of(), blocks);
         }
         else
@@ -350,18 +350,18 @@ final class IndexHelper
 
 
     /**
-     * The {@link GroupedResult}-compatible key of a block: the {@link GroupedResult#identityKey
-     * identity key} of its representative (first) row — ⚑ the very derivation
-     * {@link GroupedResult#getForRow} applies to every probed row, so a row's lookup always lands
-     * on its own block's key ({@code PLAN-grouping-key-identity}). Until that plan the two sides
-     * rendered the key as text, in lockstep, and two blocks that rendered alike shared a key.
+     * The lookup-compatible key of a block: the {@link GroupKeyIdentity#identityKey identity key}
+     * of its representative (first) row — ⚑ the very derivation the grouped functions' per-row
+     * lookups apply to every probed row, so a row's lookup always lands on its own block's key
+     * ({@code PLAN-grouping-key-identity}). Until that plan the two sides rendered the key as text,
+     * in lockstep, and two blocks that rendered alike shared a key.
      *
      * <p>
      * A blank component keys under its own identity — {@code ""} for an empty cell, the
      * {@code MissingValue} constant for a genuine missing ({@code W38-A1} / Fix #249) — so two
      * groups the grouping distinguishes never share a key. An <em>absent</em> column contributes
-     * {@code ""} (the EC-44 contract: absent-column keys stay compatible with
-     * {@code GroupedResult.getForRow}).
+     * {@code ""} (the EC-44 contract: absent-column keys stay compatible with the grouped
+     * functions' per-row lookups).
      * </p>
      *
      * <p>
@@ -372,7 +372,7 @@ final class IndexHelper
     static Object buildGroupKey(IDataTableView block, IDataTable table, DataTableMeta meta,
             List<String> groupCols)
     {
-        return GroupedResult.identityKey(meta, table, groupCols, block.getRealRow(table, 0));
+        return GroupKeyIdentity.identityKey(meta, table, groupCols, block.getRealRow(table, 0));
     }
 
     /**

@@ -18,10 +18,10 @@ import org.junit.jupiter.api.Test;
  * casing), and the {@code dataset_size} provider channel. A hand-written rule
  * ({@link #UPPERCASE_LOCATION_RULE}) binds {@code extract_metadata("dataset_location")} and fires
  * when the basename carries an uppercase letter; it runs through {@link RuleRunner} (which
- * evaluates the {@code extract_metadata} operation via
- * {@code OperationExecutor.evalExtractMetadata} — the CX-1 engine change) against a
- * {@link MockTable} carrying a source URI. The uppercase test only makes the basename observable:
- * each assertion below pins one edge of {@code fileNameFromUri}.
+ * evaluates the {@code extract_metadata} function via {@code ScalarMetadataFunctions} — the CX-1
+ * engine change lived in {@code OperationExecutor.evalExtractMetadata} until the operation surface
+ * was retired) against a {@link MockTable} carrying a source URI. The uppercase test only makes the
+ * basename observable: each assertion below pins one edge of {@code fileNameFromUri}.
  */
 class Cx1FileMetadataRulesProbeTest
 {
