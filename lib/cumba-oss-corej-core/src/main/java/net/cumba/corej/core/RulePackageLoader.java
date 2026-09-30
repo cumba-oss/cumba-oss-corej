@@ -6101,6 +6101,20 @@ public class RulePackageLoader
                         accept(v);
                     });
                 }
+                case net.cumba.corej.core.expr.ast.Expr.Lit lit when lit
+                        .kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST
+                        && lit.value() instanceof List<?> items ->
+                {
+                    // A list literal's items are expressions too (review round 1, lane 1's C2
+                    // pointer): a grouped call inside one is judged like any other.
+                    for (Object item : items)
+                    {
+                        if (item instanceof net.cumba.corej.core.expr.ast.Expr inner)
+                        {
+                            accept(inner);
+                        }
+                    }
+                }
                 default ->
                 {
                     // a leaf: nothing below it
@@ -6108,10 +6122,11 @@ public class RulePackageLoader
                 }
             }
         };
-        if (rule.getCheck() != null)
-        {
-            walkCheckExpressions(rule.getCheck(), walk);
-        }
+        // EVERY declared level, not getCheck() (the strictest alone — Rule.effectiveCheckLevels'
+        // warning): a qualified member in a weaker level is judged as strictly (review round 1 of
+        // PLAN-rprfdy-offset-tp-join, lane 2 M1 — an undeclared qualifier there ERRORed at run
+        // time, a `left` source keyed its unmatched rows on the type default).
+        rule.checkConditions().forEach(condition -> walkCheckExpressions(condition, walk));
         if (rule.getCompiledBindings() != null)
         {
             rule.getCompiledBindings().forEach(b -> walk.accept(b.expression()));

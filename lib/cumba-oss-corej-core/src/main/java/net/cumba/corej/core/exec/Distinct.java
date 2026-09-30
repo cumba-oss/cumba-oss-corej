@@ -287,6 +287,12 @@ public final class Distinct
         @SuppressWarnings("unchecked")
         Map<Object, List<Object>> byKey = (Map<Object, List<Object>>) java.util.Objects
                 .requireNonNull(memo, "the memo never stores null");
+        // C2: a qualified member's record side is read through the join, from THIS context, never
+        // memoised — and resolved BEFORE the no-group shortcut, so D-ABSENT does not depend on
+        // whether the target formed a group (review round 1, lane 2 L2).
+        GroupedAggregate.RowKey keyer = GroupedAggregate.hasQualifiedMember(names)
+                ? GroupedAggregate.recordKeyer(ctx, NAME, names)
+                : null;
         if (byKey.isEmpty())
         {
             // One answer for every row (XCUT PERF 2): the constant, not a per-row carrier.
@@ -294,11 +300,9 @@ public final class Distinct
         }
         // The one key derivation both sides use (GroupKeyIdentity.identityKey): the block side
         // keyed the target table's groups by it, the evaluated dataset's rows read theirs by it —
-        // over the key columns resolved once, never per row (XCUT PERF 3). C2: a qualified
-        // member's record side is read through the join, from THIS context, never memoised.
-        if (GroupedAggregate.hasQualifiedMember(names))
+        // over the key columns resolved once, never per row (XCUT PERF 3).
+        if (keyer != null)
         {
-            GroupedAggregate.RowKey keyer = GroupedAggregate.recordKeyer(ctx, NAME, names);
             DataTableMeta meta = primary.getMetaData();
             return new ComputedVector(run.rowCount(), DataValueType.STRING,
                     row -> byKey.getOrDefault(keyer.of(meta, primary, row), EMPTY));

@@ -3270,6 +3270,15 @@ public final class RuleRunner
      * slab and the level plan's unit carry the qualified value, else two path groups would report
      * one key and one unit. D-ABSENT: no lookup for the qualifier, or its column absent, is
      * {@link UnresolvedQualifiedKeyException} — a rule ERROR, never a silent drop.
+     *
+     * <p>
+     * ⚠ The blocks are visited in <b>first-appearance order</b> (the first row of each key), where
+     * the plain path visits its {@code IndexHelper} index's blocks in the index's order. The SET of
+     * findings and their total are the same either way; the ORDER of the reported violations, and
+     * so which groups are stored once the {@code ViolationSink} cap is reached, may differ from a
+     * plain {@code Grouping} over the same data (review round 1 of
+     * {@code PLAN-rprfdy-offset-tp-join}, lane 2 L3).
+     * </p>
      */
     private static RuleExecutionResult executeGroupedQualified(Rule rule, @Nullable String ruleId,
             @Nullable String message, EvaluationContext ctx, List<String> groupVars,
@@ -3828,6 +3837,29 @@ public final class RuleRunner
                 continue;
             }
 
+            if (md.hasQualifiedKeys())
+            {
+                // C1 (PLAN-rprfdy-offset-tp-join): a qualified key reads its record side from an
+                // earlier entry's bound row, which only KeyMatchRowExpander can do. The loader
+                // admits one on an expandable entry only, and the expander consumes every such
+                // entry whose dataset resolves — it leaves an unresolved one unexpanded with no
+                // lookup, and so does this method. A RESOLVABLE one reaching here is a loader
+                // bypass, refused as KeyMatchRowExpander.keySpec refuses its own (review round 1,
+                // lane 1 L3), never a lookup that would read the qualified name on the primary.
+                if (SplitDomainResolution.resolveTableOrThrow(resolver, dsName, ruleId) == null)
+                {
+                    LOGGER.log(System.Logger.Level.DEBUG,
+                            "[{0}] Match_Dataset {1} not available (qualified keys)",
+                            ruleId != null ? ruleId : "?", dsName);
+                    continue;
+                }
+                throw new IllegalStateException("[" + (ruleId != null ? ruleId : "?")
+                        + "] Match_Datasets " + originalName + " carries the qualified key "
+                        + md.getKeys() + " but was not consumed by KeyMatchRowExpander — every"
+                        + " rule comes through RulePackageLoader.checkQualifiedKeys, which admits a"
+                        + " qualified key on an expandable entry only");
+            }
+
             // 5b-J: an entry carrying a pre-merge Filter (spec §3.3) resolves, FILTERS, then
             // builds a fresh lookup — before the key index, so a dropped row can never become a
             // partner, and BYPASSING the JoinCache on purpose: a filtered index is per-rule
@@ -3849,9 +3881,7 @@ public final class RuleRunner
                     continue;
                 }
                 // getRightKeys() unconditionally: equal to getKeys() for a bare unqualified key,
-                // the `right` side of a sided one, the unqualified name of a qualified one (C1 —
-                // unreachable here for a qualified key, which the loader admits on an expandable
-                // entry only, and every expandable entry is consumed by KeyMatchRowExpander).
+                // the `right` side of a sided one (a qualified key was refused above).
                 List<String> rightKeys = md.getRightKeys();
                 DatasetLookup lookup = rightKeys == null ? null
                         : DatasetLookup.build(dsName, joined, md.getKeys(), rightKeys);
@@ -3867,11 +3897,8 @@ public final class RuleRunner
             // the same-named JoinCache (whose SharedJoinedIndex is keyed on one column-name list)
             // and builds a fresh sided lookup — leaving the byte-identical same-named path below
             // untouched.
-            if (md.hasSidedKeys() || md.hasQualifiedKeys())
+            if (md.hasSidedKeys())
             {
-                // A qualified key (C1) takes the sided path likewise — unreachable for a loaded
-                // rule (see the filtered arm above), stated rather than left to the same-named
-                // cache below, which would look the qualified name up on the primary.
                 IDataTable joined = SplitDomainResolution.resolveTableOrThrow(resolver, dsName,
                         ruleId);
                 List<String> leftKeys = md.getKeys();

@@ -10,7 +10,6 @@ import java.util.List;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -47,8 +46,8 @@ class GroupedAggregateQualifiedGroupTest
             phase[i] = parts[1];
             seq[i] = String.valueOf(i + 1);
         }
-        return MockTable.of().name("BW").col("USUBJID", usubjid).col("BWSEQ", seq)
-                .col("RPHASE", phase).build();
+        return RealTables.of("BW").str("USUBJID", usubjid).str("BWSEQ", seq).str("RPHASE", phase)
+                .build();
     }
 
 
@@ -62,7 +61,7 @@ class GroupedAggregateQualifiedGroupTest
             usubjid[i] = parts[0];
             path[i] = parts[1];
         }
-        return MockTable.of().name("DM").col("USUBJID", usubjid).col("RPATHCD", path).build();
+        return RealTables.of("DM").str("USUBJID", usubjid).str("RPATHCD", path).build();
     }
 
 
@@ -83,8 +82,8 @@ class GroupedAggregateQualifiedGroupTest
             rprfdy[i] = parts[3].isEmpty() ? null : Long.valueOf(parts[3]);
             dtc[i] = parts.length > 4 ? parts[4] : "";
         }
-        return MockTable.of().name("TP").col("RPATHCD", path).col("TPSTGORD", ord)
-                .col("RPHASE", phase).colLong("RPRFDY", rprfdy).col("TPDTC", dtc).build();
+        return RealTables.of("TP").str("RPATHCD", path).str("TPSTGORD", ord).str("RPHASE", phase)
+                .lng("RPRFDY", rprfdy).str("TPDTC", dtc).build();
     }
 
     private static final String DM_ENTRY = "[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"]}]";
@@ -291,8 +290,8 @@ class GroupedAggregateQualifiedGroupTest
     void aKindMismatchBetweenTheSourceAndTheGroupedColumnErrors()
     {
         Rule rule = loadClean(READ_MAX, "$v == 1");
-        IDataTable numericTp = MockTable.of().name("TP").colLong("RPATHCD", 1L).col("RPHASE", "P1")
-                .colLong("RPRFDY", 0L).build();
+        IDataTable numericTp = RealTables.of("TP").lng("RPATHCD", 1L).str("RPHASE", "P1")
+                .lng("RPRFDY", 0L).build();
         RuleExecutionResult res = run(rule, bw("S1/P1"), dm("S1/1"), numericTp);
         assertEquals(RuleExecutionStatus.ERROR, res.getStatus(), res.getStatusMessage());
         String msg = String.valueOf(res.getStatusMessage());
@@ -335,7 +334,7 @@ class GroupedAggregateQualifiedGroupTest
     void theSourceColumnAbsentFromTheSourceDatasetErrors()
     {
         Rule rule = loadClean(READ_MAX, "$v == 1");
-        IDataTable dmWithoutPath = MockTable.of().name("DM").col("USUBJID", "S1").build();
+        IDataTable dmWithoutPath = RealTables.of("DM").str("USUBJID", "S1").build();
         String msg = errorMessage(run(rule, bw("S1/P1"), dmWithoutPath, tp("A/1/P1/0")));
         assertTrue(msg.contains("DM has no column RPATHCD"), msg);
     }
@@ -346,8 +345,8 @@ class GroupedAggregateQualifiedGroupTest
     void theUnqualifiedVariableAbsentFromTheGroupedDatasetErrors()
     {
         Rule rule = loadClean(READ_MAX, "$v == 1");
-        IDataTable tpWithoutPath = MockTable.of().name("TP").col("RPHASE", "P1")
-                .colLong("RPRFDY", 1L).build();
+        IDataTable tpWithoutPath = RealTables.of("TP").str("RPHASE", "P1").lng("RPRFDY", 1L)
+                .build();
         String msg = errorMessage(run(rule, bw("S1/P1"), dm("S1/A"), tpWithoutPath));
         assertTrue(msg.contains("TP has no column RPATHCD"), msg);
     }
@@ -411,6 +410,78 @@ class GroupedAggregateQualifiedGroupTest
                 "read_value(RPRFDY, domain=\"TP\", group=[SUPPBW.RPATHCD, RPHASE], mode=\"MAX\")");
         assertTrue(child.contains("names entry SUPPBW, which is not an ordinary keyed join"),
                 child);
+    }
+
+
+    /** A rule whose STRICTEST level is plain and whose WARNING level carries {@code check}. */
+    private static String weakerLevelError(String matchDatasets, String check)
+    {
+        String error = load("{\"rules\":{\"T\":{\"Core\":{\"Id\":\"T-QG\"},"
+                + "\"Sensitivity\":\"Record\",\"Requirements\":{\"Variables\":" + DM_REQUIREMENTS
+                + "},\"Match_Datasets\":" + matchDatasets + ",\"Check\":{\"ERROR\":{"
+                + "\"expression\":\"not empty(USUBJID)\"},\"WARNING\":{\"expression\":\""
+                + check.replace("\"", "\\\"") + "\"}},\"Outcome\":{\"Message\":\"m\","
+                + "\"Output_Variables\":[\"USUBJID\"]}}}}").getLoadError();
+        assertNotNull(error, "expected a load error for the WARNING level " + check);
+        return error;
+    }
+
+
+    /**
+     * Review round 1 (lane 2 M1): D-SRC judges EVERY declared Check level, not only the strictest
+     * ({@code Rule.effectiveCheckLevels}' warning). Before, a qualified member in a weaker level
+     * loaded clean: an undeclared qualifier ERRORed at run time, a {@code left} source keyed its
+     * unmatched rows on the type default.
+     */
+    @Test
+    void aQualifiedMemberInAWeakerCheckLevelIsJudgedToo()
+    {
+        String undeclared = weakerLevelError(DM_ENTRY,
+                "read_value(RPRFDY, domain=\"TP\", group=[EX.RPATHCD, RPHASE], mode=\"MAX\") == 1");
+        assertTrue(undeclared.contains("group= member EX.RPATHCD names no Match_Datasets entry EX"),
+                undeclared);
+        String left = weakerLevelError(
+                "[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"],\"Join_Type\":\"left\"}]",
+                READ_MAX + " == 1");
+        assertTrue(left.contains("names entry DM with Join_Type left"), left);
+        // CONTROL: the same WARNING level over an inner DM entry loads clean.
+        assertNull(load("{\"rules\":{\"T\":{\"Core\":{\"Id\":\"T-QG\"},"
+                + "\"Sensitivity\":\"Record\",\"Requirements\":{\"Variables\":" + DM_REQUIREMENTS
+                + "},\"Match_Datasets\":" + DM_ENTRY + ",\"Check\":{\"ERROR\":{"
+                + "\"expression\":\"not empty(USUBJID)\"},\"WARNING\":{\"expression\":\""
+                + (READ_MAX + " == 1").replace("\"", "\\\"") + "\"}},\"Outcome\":{"
+                + "\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}").getLoadError());
+    }
+
+
+    /**
+     * Review round 1 (lane 2 L2): D-ABSENT is not data-dependent. A grouped side that forms no
+     * group (an empty TP) used to answer its constant before the record side was resolved, so a DM
+     * lacking {@code RPATHCD} EXECUTED on an empty TP and ERRORed on a populated one. The error
+     * names the FUNCTION (lane 2 L5), not the whole call text.
+     */
+    @Test
+    void theRecordSideResolvesEvenWhenTheGroupedSideFormsNoGroup()
+    {
+        IDataTable emptyTp = RealTables.of("TP").str("RPATHCD").str("TPSTGORD").str("RPHASE")
+                .lng("RPRFDY").str("TPDTC").build();
+        IDataTable dmWithoutPath = RealTables.of("DM").str("USUBJID", "S1").build();
+        for (String call : List.of(READ_MAX,
+                "max(RPRFDY, domain=\"TP\", group=[DM.RPATHCD, RPHASE])",
+                "record_count(domain=\"TP\", group=[DM.RPATHCD, RPHASE])",
+                "distinct(RPRFDY, domain=\"TP\", group=[DM.RPATHCD, RPHASE])"))
+        {
+            String name = call.substring(0, call.indexOf('('));
+            String msg = errorMessage(run(loadClean(call, "not empty(USUBJID)"), bw("S1/P1"),
+                    dmWithoutPath, emptyTp));
+            assertTrue(msg.contains("DM has no column RPATHCD"), call + ": " + msg);
+            assertTrue(msg.contains(name + " group=: qualified key DM.RPATHCD"),
+                    call + " must name the function, not the call text: " + msg);
+        }
+        // CONTROL: the same empty TP with a DM that carries RPATHCD runs, every row the default.
+        RuleExecutionResult res = run(loadClean(READ_MAX, "not empty(USUBJID)"), bw("S1/P1"),
+                dm("S1/A"), emptyTp);
+        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(), res.getStatusMessage());
     }
 
 

@@ -36,9 +36,9 @@ import org.jspecify.annotations.Nullable;
  * {@link Extremes#extremeCandidate}: not missing, not blank or whitespace-only). ⭐ They rank <b>by
  * the matched columns' declared type</b>, decided once per dataset, never per row ({@code D-W1-2a},
  * as the ruling audit applies it to W5's {@code max}): a Num column set takes the numeric maximum
- * ({@code ±0} one value, D84); a Char set the shared string branch ({@code genericStringExtreme},
- * EC-46: the date rule when every candidate is a positionable ISO date, plain lexicographic order
- * otherwise). A matched column with no candidate in <em>any</em> row takes no part in that decision
+ * ({@code ±0} one value, D84); a Char set the shared string branch ({@code genericStringExtreme}:
+ * plain lexicographic order — owner K3, 2026-09-30, "text is text"; date-looking text gets no date
+ * rule). A matched column with no candidate in <em>any</em> row takes no part in that decision
  * (round 2 H2: a CSV / XLSX provider types an all-blank column {@code STRING}, so an all-blank
  * {@code TR02EDT} beside a numeric {@code TR01EDT} is not a mixed set). A set in which Num
  * <em>and</em> Char columns both carry values is a {@link ColumnTypeMismatchException} — the rule
@@ -54,10 +54,10 @@ import org.jspecify.annotations.Nullable;
  * <b>No answer</b>: a row whose matched cells are all missing answers their combined missing
  * identity (the first cell carrying it, {@code MIS} when identities differ — the runbook's n-ary
  * hand-through, {@link ArithmeticSemantics#combineIdentities}); a row with populated-but-blank
- * cells only, an indeterminate date extreme (EC-46) or a table with no matching column answers the
- * computed missing ({@link ScalarSemantics#computedMissing()}). The retired operation omitted those
- * rows' keys (a {@code null}), and every consuming Check guards {@code not empty($trxx_max)}, so
- * both fold alike.
+ * cells only or a table with no matching column answers the computed missing
+ * ({@link ScalarSemantics#computedMissing()}) — there is no indeterminate arm since K3. The retired
+ * operation omitted those rows' keys (a {@code null}), and every consuming Check guards
+ * {@code not empty($trxx_max)}, so both fold alike.
  * </p>
  */
 public final class RowMax
@@ -248,11 +248,10 @@ public final class RowMax
         {
             return numericMax(candidates);
         }
-        String winner = Extremes.genericStringExtreme(texts, true);
-        if (winner == null)
-        {
-            return ScalarSemantics.computedMissing(); // EC-46: indeterminate
-        }
+        // At least one candidate (checked above), and plain text order always answers (K3: no
+        // indeterminate arm).
+        String winner = java.util.Objects.requireNonNull(Extremes.genericStringExtreme(texts, true),
+                "a non-empty candidate list has a text maximum");
         return candidates.get(texts.indexOf(winner));
     }
 

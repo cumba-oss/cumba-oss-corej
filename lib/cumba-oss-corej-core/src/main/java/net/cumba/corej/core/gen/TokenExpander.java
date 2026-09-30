@@ -409,13 +409,24 @@ public final class TokenExpander
 
 
     /**
-     * The rule's own {@code Match_Datasets} join keys for {@code datasetName}, both sides.
+     * The rule's own {@code Match_Datasets} join keys for {@code datasetName} whose two sides are
+     * the SAME column name — the positions where the primary's {@code X} was merged on
+     * {@code datasetName.X}.
      *
      * <p>
      * These are excluded from a {@code shared_variables} binding, and that is a tautology filter
      * rather than a narrowing of "every shared variable": after merging on {@code USUBJID}, the
      * expansion {@code USUBJID != ADSL.USUBJID} is false by construction on every row, so it can
      * only cost execution time. The set is read off the rule itself — there is no list to maintain.
+     * </p>
+     *
+     * <p>
+     * ⛔ <b>Only a position whose left spelling equals its right spelling is a tautology</b> (review
+     * round 1 of {@code PLAN-rprfdy-offset-tp-join}, lane 1 L2). A sided key {@code {left: X,
+     * right: Y}} merges the primary's {@code X} on {@code Y}, so neither {@code X != D.X} nor
+     * {@code Y != D.Y} is decided by the merge; a qualified key {@code DM.RPATHCD} merges on the
+     * bound DM record's {@code RPATHCD}, so the primary's own {@code RPATHCD != TP.RPATHCD} is a
+     * real comparison. Collecting both sides' names wholesale dropped those bindings silently.
      * </p>
      */
     private static Set<String> mergeKeysFor(Rule rule, String datasetName)
@@ -432,13 +443,19 @@ public final class TokenExpander
             {
                 continue;
             }
-            if (md.getKeys() != null)
+            List<String> left = md.getKeys();
+            List<String> right = md.getRightKeys();
+            if (left == null || right == null)
             {
-                keys.addAll(md.getKeys());
+                continue;
             }
-            if (md.getRightKeys() != null)
+            // Index-aligned for a well-formed list (a malformed sided element is a load error).
+            for (int i = 0; i < Math.min(left.size(), right.size()); i++)
             {
-                keys.addAll(md.getRightKeys());
+                if (left.get(i).equalsIgnoreCase(right.get(i)))
+                {
+                    keys.add(left.get(i));
+                }
             }
         }
         return keys;

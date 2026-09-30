@@ -18,6 +18,7 @@ import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -49,7 +50,7 @@ class QualifiedMatchKeyTest
 
     private static IDataTable bw(String... usubjidPhase)
     {
-        MockTable mt = MockTable.of().name("BW");
+        RealTables mt = RealTables.of("BW");
         String[] usubjid = new String[usubjidPhase.length];
         String[] phase = new String[usubjidPhase.length];
         String[] seq = new String[usubjidPhase.length];
@@ -60,7 +61,7 @@ class QualifiedMatchKeyTest
             phase[i] = parts[1];
             seq[i] = String.valueOf(i + 1);
         }
-        return mt.col("USUBJID", usubjid).col("BWSEQ", seq).col("RPHASE", phase).build();
+        return mt.str("USUBJID", usubjid).str("BWSEQ", seq).str("RPHASE", phase).build();
     }
 
 
@@ -75,7 +76,7 @@ class QualifiedMatchKeyTest
             usubjid[i] = parts[0];
             path[i] = parts[1];
         }
-        return MockTable.of().name("DM").col("USUBJID", usubjid).col("RPATHCD", path).build();
+        return RealTables.of("DM").str("USUBJID", usubjid).str("RPATHCD", path).build();
     }
 
 
@@ -94,8 +95,8 @@ class QualifiedMatchKeyTest
             phase[i] = parts[2];
             rprfdy[i] = parts[3];
         }
-        return MockTable.of().name("TP").col("RPATHCD", path).col("TPSTGORD", ord)
-                .col("RPHASE", phase).col("RPRFDY", rprfdy).build();
+        return RealTables.of("TP").str("RPATHCD", path).str("TPSTGORD", ord).str("RPHASE", phase)
+                .str("RPRFDY", rprfdy).build();
     }
 
 
@@ -158,9 +159,43 @@ class QualifiedMatchKeyTest
         return out;
     }
 
+
+    @AfterEach
+    void restoreDirectReads()
+    {
+        KeyCellReader.DirectReads.setEnabledForTest(true);
+    }
+
     // -----------------------------------------------------------------------
     // The join itself
     // -----------------------------------------------------------------------
+
+
+    /**
+     * Review round 1 (lane 1 M1): the fixtures are REAL tables, so the chained record side reads
+     * {@code DM.RPATHCD} through {@link KeyCellReader}'s {@code Direct} arm — which no Mockito
+     * table can reach (the dispatcher keys on the exact class) — and it answers exactly what the
+     * old per-cell path answers.
+     */
+    @Test
+    void theChainedRecordSideReadsThroughTheDirectArmAndAgreesWithTheOldPath()
+    {
+        IDataTable dmTable = dm("S1/A", "S2/B");
+        assertTrue(
+                KeyCellReader.of(dmTable,
+                        dmTable.getMetaData()
+                                .getColumnIndex("RPATHCD")) instanceof KeyCellReader.Direct,
+                "the DM fixture must reach the Direct arm, or this test proves nothing about it");
+        List<String> direct = bindings(
+                ExecCalls.expand(bw("S1/P1", "S2/P1"), List.of(dmEntry(), tpEntry("inner")),
+                        resolver(dmTable, tp("A/1/P1/0", "A/2/P1/0", "B/1/P1/1")), "R"));
+        KeyCellReader.DirectReads.setEnabledForTest(false);
+        List<String> old = bindings(
+                ExecCalls.expand(bw("S1/P1", "S2/P1"), List.of(dmEntry(), tpEntry("inner")),
+                        resolver(dm("S1/A", "S2/B"), tp("A/1/P1/0", "A/2/P1/0", "B/1/P1/1")), "R"));
+        assertEquals(old, direct);
+        assertEquals(List.of("S1:A->A/1", "S1:A->A/2", "S2:B->B/1"), direct);
+    }
 
 
     /**
@@ -212,7 +247,7 @@ class QualifiedMatchKeyTest
     @Test
     void aRecordFannedOutBetweenTheSourceAndTheChainedEntryStillBindsRight()
     {
-        IDataTable sj = MockTable.of().name("SJ").col("USUBJID", "S1", "S1").col("SJSEQ", "1", "2")
+        IDataTable sj = RealTables.of("SJ").str("USUBJID", "S1", "S1").str("SJSEQ", "1", "2")
                 .build();
         MatchDataset sjEntry = md(
                 "{\"Name\":\"SJ\",\"Keys\":[\"USUBJID\"],\"Join_Type\":\"inner\"}");
@@ -246,8 +281,8 @@ class QualifiedMatchKeyTest
     @Test
     void aKindMismatchBetweenSourceAndJoinedColumnErrorsNamingBoth()
     {
-        IDataTable numericTp = MockTable.of().name("TP").col("RPHASE", "P1").colLong("RPATHCD", 1L)
-                .col("RPRFDY", "0").build();
+        IDataTable numericTp = RealTables.of("TP").str("RPHASE", "P1").lng("RPATHCD", 1L)
+                .str("RPRFDY", "0").build();
         DatasetResolver inv = resolver(dm("S1/1"), numericTp);
         List<MatchDataset> entries = List.of(dmEntry(), tpEntry("inner"));
         JoinKeyTypeMismatchException ex = assertThrows(JoinKeyTypeMismatchException.class,
@@ -265,8 +300,8 @@ class QualifiedMatchKeyTest
     {
         // Two paths in P1, so the R7 drop (TP on RPHASE alone) would bind both — the pre-change
         // engine passed this test with one TP row, vacuously.
-        IDataTable numericTp = MockTable.of().name("TP").col("RPHASE", "P1", "P1")
-                .colLong("RPATHCD", 1L, 2L).col("TPSTGORD", "1", "1").build();
+        IDataTable numericTp = RealTables.of("TP").str("RPHASE", "P1", "P1").lng("RPATHCD", 1L, 2L)
+                .str("TPSTGORD", "1", "1").build();
         MatchDataset asText = md("{\"Name\":\"TP\",\"Keys\":[\"DM.RPATHCD\",\"RPHASE\"],"
                 + "\"Join_Type\":\"inner\",\"Join_As_String\":true}");
         KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(bw("S1/P1"),
@@ -301,6 +336,10 @@ class QualifiedMatchKeyTest
     @Test
     void aMissingSourceValueDoesNotPairWithAnEmptyJoinedValue()
     {
+        // ⚠ The one Mockito-backed fixture left in this class, on purpose: a real STRING buffer
+        // stores a null cell as "" (DataBufferString.setValue), so no real table can hold the
+        // character MIS this test needs beside a present "" — MockTable.colSasMissing is the one
+        // fixture that carries one.
         IDataTable dmWithMissing = MockTable.of().name("DM").col("USUBJID", "S1", "S2")
                 .colSasMissing("RPATHCD", ".", "B").build();
         KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(bw("S1/P1", "S2/P1"),
@@ -322,8 +361,8 @@ class QualifiedMatchKeyTest
         IDataTable tpTable = tp("A/1/P1/0", "B/1/P1/1");
         IDataTable dmTable = dm("S1/A", "S2/B");
         // The plain rule: the primary carries RPATHCD itself.
-        IDataTable bwWithPath = MockTable.of().name("BW").col("USUBJID", "S1", "S2")
-                .col("RPATHCD", "B", "A").col("RPHASE", "P1", "P1").build();
+        IDataTable bwWithPath = RealTables.of("BW").str("USUBJID", "S1", "S2")
+                .str("RPATHCD", "B", "A").str("RPHASE", "P1", "P1").build();
         MatchDataset plain = md(
                 "{\"Name\":\"TP\",\"Keys\":[\"RPATHCD\",\"RPHASE\"]," + "\"Join_Type\":\"inner\"}");
         KeyMatchRowExpander.KeyMatchExpansion plainExp = ExecCalls.expand(bwWithPath,
@@ -371,7 +410,7 @@ class QualifiedMatchKeyTest
     @Test
     void theSourceColumnAbsentFromTheSourceDatasetErrors()
     {
-        IDataTable dmWithoutPath = MockTable.of().name("DM").col("USUBJID", "S1").build();
+        IDataTable dmWithoutPath = RealTables.of("DM").str("USUBJID", "S1").build();
         String msg = unresolvedMessage(List.of(dmEntry(), tpEntry("inner")),
                 resolver(dmWithoutPath, tp("A/1/P1/0")));
         assertTrue(msg.contains("DM has no column RPATHCD"), msg);
@@ -381,7 +420,7 @@ class QualifiedMatchKeyTest
     @Test
     void theUnqualifiedVariableAbsentFromTheJoinedDatasetErrors()
     {
-        IDataTable tpWithoutPath = MockTable.of().name("TP").col("RPHASE", "P1").col("RPRFDY", "0")
+        IDataTable tpWithoutPath = RealTables.of("TP").str("RPHASE", "P1").str("RPRFDY", "0")
                 .build();
         String msg = unresolvedMessage(List.of(dmEntry(), tpEntry("inner")),
                 resolver(dm("S1/A"), tpWithoutPath));
@@ -398,6 +437,33 @@ class QualifiedMatchKeyTest
         IllegalStateException ex = assertThrows(IllegalStateException.class,
                 () -> ExecCalls.expand(bw("S1/P1"), entries, inv, "R"));
         assertTrue(ex.getMessage().contains("DM.RPATHCD"), ex.getMessage());
+    }
+
+
+    /**
+     * Review round 1 (lane 1 L3): a qualified key never reaches {@code buildJoinedDatasets} for a
+     * loaded rule — the loader admits it on an expandable entry only, and
+     * {@code KeyMatchRowExpander} consumes every such entry first. A hand-built call is refused as
+     * {@code keySpec} refuses its own bypass, never built into a lookup that would look the
+     * qualified name up on the primary.
+     */
+    @Test
+    void aQualifiedKeyReachingTheLookupBuilderIsALoaderBypass()
+    {
+        DatasetResolver inv = resolver(dm("S1/A"), tp("A/1/P1/0"));
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> RuleRunnerCalls
+                .buildJoinedDatasets(List.of(tpEntry("inner")), bw("S1/P1"), inv, null, "R"));
+        assertTrue(ex.getMessage().contains("DM.RPATHCD") && ex.getMessage().contains("TP"),
+                ex.getMessage());
+        // The same with a pre-merge Filter, the arm that sits before the sided one.
+        MatchDataset filtered = md("{\"Name\":\"TP\",\"Keys\":[\"DM.RPATHCD\",\"RPHASE\"],"
+                + "\"Join_Type\":\"inner\",\"Filter\":\"RPRFDY == \\\"0\\\"\"}");
+        assertThrows(IllegalStateException.class, () -> RuleRunnerCalls
+                .buildJoinedDatasets(List.of(filtered), bw("S1/P1"), inv, null, "R"));
+        // CONTROL: an entry whose dataset is absent is left unexpanded by the expander and gets no
+        // lookup here either — the one way a qualified entry legitimately reaches this method.
+        assertEquals(Map.of(), RuleRunnerCalls.buildJoinedDatasets(List.of(tpEntry("inner")),
+                bw("S1/P1"), resolver(dm("S1/A")), null, "R"));
     }
 
     // -----------------------------------------------------------------------
@@ -488,14 +554,18 @@ class QualifiedMatchKeyTest
                         + "[\"RPHASE\",\"TP.RPHASE\"],[\"DM.RPATHCD\",\"TP.RPATHCD\"]]}",
                 "TP.RPRFDY == \"1\""));
         IDataTable bwTable = bw("S1/P1", "S2/P1");
-        IDataTable dmWithoutPath = MockTable.of().name("DM").col("USUBJID", "S1", "S2").build();
-        IDataTable tpWithoutPath = MockTable.of().name("TP").col("RPHASE", "P1", "P1")
-                .col("RPRFDY", "0", "1").build();
+        IDataTable dmWithoutPath = RealTables.of("DM").str("USUBJID", "S1", "S2").build();
+        IDataTable tpWithoutPath = RealTables.of("TP").str("RPHASE", "P1", "P1")
+                .str("RPRFDY", "0", "1").build();
         RuleExecutionResult res = RuleRunnerCalls.execute(rule, bwTable,
                 RealTables.inventoryOf(bwTable, dmWithoutPath, tpWithoutPath));
         assertEquals(RuleExecutionStatus.ERROR, res.getStatus(), res.getStatusMessage());
         String msg = String.valueOf(res.getStatusMessage());
         assertTrue(msg.contains("DM.RPATHCD"), msg);
+        // Review round 1 (lane 1 L1): this rule DECLARES the group, so the remedy the message
+        // names is the one that would have skipped it — All, not "declare both spellings".
+        assertTrue(msg.contains("Requirements.Variables.All")
+                && msg.contains("All_Or_None group alone"), msg);
         assertEquals(msg, res.getViolations().get(0).getValues().get("__error__"));
     }
 
@@ -507,7 +577,7 @@ class QualifiedMatchKeyTest
         Rule rule = loadClean(
                 ruleJson(CHAINED_ENTRIES, CHAINED_REQUIREMENTS, "TP.RPRFDY == \"1\""));
         IDataTable bwTable = bw("S1/P1");
-        IDataTable tpWithoutPath = MockTable.of().name("TP").col("RPHASE", "P1").col("RPRFDY", "0")
+        IDataTable tpWithoutPath = RealTables.of("TP").str("RPHASE", "P1").str("RPRFDY", "0")
                 .build();
         RuleExecutionResult res = RuleRunnerCalls.execute(rule, bwTable,
                 RealTables.inventoryOf(bwTable, dm("S1/A"), tpWithoutPath));

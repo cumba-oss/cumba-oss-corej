@@ -574,6 +574,30 @@ class RecordCountFunctionTest
     }
 
 
+    /**
+     * Review round 1 of {@code PLAN-rprfdy-offset-tp-join} (lane 2, SPECULATIVE): a qualified
+     * {@code group=} member is judged at load (D-DOMAIN / D-SRC / D-REGEX), and a spliced one never
+     * reaches those gates — so a {@code $} list that yields a qualified name ERRORs the rule, with
+     * or without {@code domain=}. RED before: the name was spliced and keyed through the join.
+     */
+    @Test
+    void aSplicedQualifiedNameErrorsTheRule()
+    {
+        DatasetResolver study = resolver(dm(), ds());
+        for (String call : List.of("record_count(domain=DS, group=[USUBJID, $K])",
+                "record_count(group=[USUBJID, $K])"))
+        {
+            EvaluationContext spliced = EvaluationContext.builder().table(dm())
+                    .datasetResolver(study).variables(Map.of("$K", List.of("DM.USUBJID")))
+                    .ruleId("X-1").build();
+            IllegalStateException ex = assertThrows(IllegalStateException.class,
+                    () -> values(call, spliced));
+            assertTrue(ex.getMessage().contains("splices the qualified name DM.USUBJID"),
+                    call + ": " + ex.getMessage());
+        }
+    }
+
+
     @Test
     void theGroupingIsFormedOncePerExecution()
     {

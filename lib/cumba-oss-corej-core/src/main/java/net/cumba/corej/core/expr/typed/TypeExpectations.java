@@ -65,6 +65,19 @@ import net.cumba.corej.core.expr.eval.BroadcastFold;
  * </p>
  *
  * <p>
+ * ⭐ <b>A {@code domain=}-pinned registry call names no primary operand</b> (W2a D10; D13 Q4 — the
+ * strict readers refuse a dotted or {@code --} reference under {@code domain=}): its positional
+ * target, its {@code filter=} operands and a bare {@code domain=DS} reference are columns of the
+ * PINNED dataset, so they join neither {@link #valueReadColumns()} nor {@link #equalityPairs()}; a
+ * plain {@code group=} member is the broadcast key, read on the dataset under evaluation (D14), and
+ * stays a primary read — the split {@code StudyRuleClassifier}'s call arm makes (combined review
+ * D-W7-16). Their expectations stay recorded under the name: a pinned {@code filter=}'s own
+ * evaluation reads them back for its absent-column default ({@code GroupedAggregate},
+ * {@code ReadValue}). Until {@code PLAN-rprfdy-offset-tp-join}'s review the target was walked as a
+ * primary read, and every run of CDISC-SEND-0401/0402/0403 logged {@code "RPRFDY absent from BW"}.
+ * </p>
+ *
+ * <p>
  * ⚠ Because plans evaluate lazily, the gate only fires on plans that are actually evaluated, while
  * this static walk sees every position — so it can over-approximate what the gate raises (never the
  * reverse for the covered positions). That is exactly why the stage-B checker's
@@ -149,6 +162,22 @@ public final class TypeExpectations
     /** Call names that route a comparison into the temporal families (no plain gate). */
     private static final Set<String> TEMPORAL_CALLS = Set.of("date", "time", "date_part",
             "time_part");
+
+    /**
+     * The registry calls that read the dataset a {@code domain=} argument pins — the set
+     * {@code StudyRuleClassifier.DOMAIN_PINNED_CALLS} names ({@code record_count},
+     * {@code distinct}, {@code max}, {@code max_date}, {@code min_date}, {@code read_value}); keep
+     * the two in step.
+     */
+    private static final Set<String> DOMAIN_PINNED_CALLS = Set.of("record_count", "distinct", "max",
+            "max_date", "min_date", "read_value");
+
+    /**
+     * How deep the walk is inside a {@code domain=}-pinned call's target / {@code filter=} /
+     * {@code domain=} operands: while positive, a bare column is the pinned dataset's and joins
+     * neither primary probe set.
+     */
+    private int pinnedDepth;
 
     private final Map<String, EnumSet<Expectation>> expectations = new LinkedHashMap<>();
 
@@ -347,7 +376,7 @@ public final class TypeExpectations
         }
         String lc = bareColumn(left);
         String rc = bareColumn(right);
-        if (lc != null && rc != null)
+        if (pinnedDepth == 0 && lc != null && rc != null)
         {
             equalityPairs.add(new EqualityPair(lc, rc));
         }
@@ -388,7 +417,8 @@ public final class TypeExpectations
 
     private void ref(Expr.Ref r)
     {
-        if (r.kind() == OperandKind.COLUMN && BroadcastFold.isFoldableColumnReference(r.name()))
+        if (pinnedDepth == 0 && r.kind() == OperandKind.COLUMN
+                && BroadcastFold.isFoldableColumnReference(r.name()))
         {
             valueReadColumns.add(r.name());
         }
@@ -419,8 +449,55 @@ public final class TypeExpectations
                 }
             }
         }
+        if (DOMAIN_PINNED_CALLS.contains(name) && isPinnedDomain(c.kwargs().get("domain")))
+        {
+            // The pinned dataset's reads (class Javadoc): the target, filter= and domain= walk
+            // with pinned semantics; group= is the broadcast key and walks as a primary read.
+            for (Map.Entry<String, Expr> kwarg : c.kwargs().entrySet())
+            {
+                if ("group".equals(kwarg.getKey()))
+                {
+                    walk(kwarg.getValue());
+                }
+            }
+            pinnedDepth++;
+            try
+            {
+                c.args().forEach(this::walk);
+                for (Map.Entry<String, Expr> kwarg : c.kwargs().entrySet())
+                {
+                    if (!"group".equals(kwarg.getKey()))
+                    {
+                        walk(kwarg.getValue());
+                    }
+                }
+            }
+            finally
+            {
+                pinnedDepth--;
+            }
+            return;
+        }
         c.args().forEach(this::walk);
         c.kwargs().values().forEach(this::walk);
+    }
+
+
+    /**
+     * Whether a {@code domain=} argument pins a concrete dataset, in either spelling the readers
+     * accept (D10: the bare {@code DS} or the quoted {@code "DS"}) — no wildcard, no blank; the
+     * mirror of {@code StudyRuleClassifier.isPinnedDomain}.
+     */
+    private static boolean isPinnedDomain(@org.jspecify.annotations.Nullable Expr domain)
+    {
+        String name = switch (domain)
+        {
+        case null -> null;
+        case Expr.Ref ref when ref.kind() == OperandKind.COLUMN -> ref.name();
+        case Expr.Lit lit when lit.kind() == Expr.LitKind.STRING -> String.valueOf(lit.value());
+        default -> null;
+        };
+        return name != null && !name.isBlank() && !name.contains("--");
     }
 
 
@@ -462,7 +539,7 @@ public final class TypeExpectations
             return;
         }
         expectations.computeIfAbsent(name, _ -> EnumSet.noneOf(Expectation.class)).add(expectation);
-        if (bareColumn(operand) != null)
+        if (pinnedDepth == 0 && bareColumn(operand) != null)
         {
             valueReadColumns.add(name);
         }

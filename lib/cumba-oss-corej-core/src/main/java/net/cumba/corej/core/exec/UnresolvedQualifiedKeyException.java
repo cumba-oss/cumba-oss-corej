@@ -24,12 +24,13 @@ import java.io.Serial;
  * ⛔ <b>Not a load error.</b> Column inventories are data, invisible at load; the loader judges only
  * the declaration (the qualifier names an earlier, ordinary, {@code inner} entry). The authored way
  * to avoid this error is a requirement, not a flag: declare both spellings in
- * {@code Requirements.Variables} ({@code DM.RPATHCD} and {@code TP.RPATHCD}, in {@code All} or one
- * {@code All_Or_None} group) and a study that lacks one <b>SKIPS</b> instead (JKM R7's authoring
- * gate, Q8). ⚠ A study lacking the column on <em>both</em> sides satisfies an {@code All_Or_None}
- * group and still reaches this error: JKM R7's both-absent drop is for one column both sides lack;
- * here the two sides are different datasets, and dropping the component would silently join on the
- * remaining ones.
+ * {@code Requirements.Variables.All} ({@code DM.RPATHCD} and {@code TP.RPATHCD}) and a study that
+ * lacks either <b>SKIPS</b> instead (JKM R7's authoring gate, Q8). ⚠ An {@code All_Or_None} group
+ * alone is not enough: a study lacking the column on <em>both</em> sides satisfies the group and
+ * still reaches this error — JKM R7's both-absent drop is for one column both sides lack; here the
+ * two sides are different datasets, and dropping the component would silently join on the remaining
+ * ones. That is the one arm a rule declaring the group reaches, so the message names {@code All}
+ * (review round 1, lane 1 L1).
  * </p>
  *
  * <p>
@@ -59,7 +60,9 @@ final class UnresolvedQualifiedKeyException extends RuntimeException
                 + " Match_Datasets entry " + qualifierOf(aQualifiedKey) + ", read at the row's"
                 + " bound " + qualifierOf(aQualifiedKey) + " record) and the same variable"
                 + " unqualified on the other side; declare both spellings in"
-                + " Requirements.Variables so a study that lacks one SKIPS the rule instead.");
+                + " Requirements.Variables.All so a study that lacks either SKIPS the rule instead"
+                + " (an All_Or_None group alone lets a study that lacks the variable on BOTH sides"
+                + " run, and ERROR).");
     }
 
 

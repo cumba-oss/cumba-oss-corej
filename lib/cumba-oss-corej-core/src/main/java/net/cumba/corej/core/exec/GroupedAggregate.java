@@ -72,12 +72,12 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * <b>{@code max} ranks candidates by their own type</b> (owner D-W1-2a, {@code D-W3-5}): a numeric
  * target numerically ({@code Long} exact, else {@code Double} with {@code ±0} one value), a textual
- * one through the shared string branch ({@link Extremes#genericStringExtreme}: EC-46's date rule
- * when every candidate is a positionable ISO date, plain text order otherwise); the winning
- * <em>cell</em> is answered, the first in row order on a tie. Measured at W5's go: the retired
- * {@code evalMaxGrouped} already ranked every real character column as text (its numeric branch
- * needed a finite {@code getValueAsDouble()}, which {@code DataValueString} never gives), so this
- * is the shipped order, not a movement.
+ * one through the shared string branch ({@link Extremes#genericStringExtreme}: plain text order —
+ * owner K3, 2026-09-30, "text is text"; date-looking text gets no date rule, which belongs to
+ * {@code max_date} / {@code min_date}); the winning <em>cell</em> is answered, the first in row
+ * order on a tie. Measured at W5's go: the retired {@code evalMaxGrouped} already ranked every real
+ * character column as text (its numeric branch needed a finite {@code getValueAsDouble()}, which
+ * {@code DataValueString} never gives), so this is the shipped order, not a movement.
  * </p>
  *
  * <p>
@@ -971,7 +971,7 @@ public final class GroupedAggregate
     {
         EvaluationContext ctx = run.ctx();
         List<String> groupNames = resolvePrefixes(group, ctx);
-        return broadcast(run, canonical, groupNames, () -> groupTarget(ctx, fn, target, dataset,
+        return broadcast(run, fn, canonical, groupNames, () -> groupTarget(ctx, fn, target, dataset,
                 filter, groupNames, policy, aggregator, noGroup), noGroup);
     }
 
@@ -982,6 +982,9 @@ public final class GroupedAggregate
      *
      * @param run
      *            the evaluation run (its context is the primary)
+     * @param fn
+     *            the function name, for a D-ABSENT message (never the call text — review round 1 of
+     *            {@code PLAN-rprfdy-offset-tp-join}, lane 2 L5)
      * @param memoKey
      *            the memo key text — the canonical call, plus whatever the grouping depends on
      *            beyond it (D-W6-8)
@@ -994,7 +997,7 @@ public final class GroupedAggregate
      *            the value of a primary row whose key has no group, by the vector's type
      * @return the broadcast vector
      */
-    static Vector broadcast(EvalRun run, String memoKey, List<String> groupNames,
+    static Vector broadcast(EvalRun run, String fn, String memoKey, List<String> groupNames,
             java.util.function.Supplier<Grouped> grouping,
             java.util.function.Function<DataValueType, IDataValue> noGroup)
     {
@@ -1007,6 +1010,22 @@ public final class GroupedAggregate
                 "the memo never stores null");
         IDataValue absent = noGroup.apply(grouped.type());
         Map<Object, IDataValue> byKey = grouped.byKey();
+        // C2: a qualified member's record side is resolved BEFORE the no-group shortcut — D-ABSENT
+        // is a fact of the study's columns, not of whether the grouped side formed a group (review
+        // round 1, lane 2 L2: an empty TP used to EXECUTE where a populated one ERRORed).
+        RowKey qualifiedKeyer = null;
+        if (hasQualifiedMember(groupNames))
+        {
+            // The record side reads a qualified member through the join, from THIS context —
+            // never a keyer the memoised grouping carries (a regex= keyer is refused with a
+            // qualified member at load, D-REGEX; stated here rather than trusted).
+            if (grouped.keyer() != null)
+            {
+                throw new IllegalStateException("a grouping with a qualified group= member must"
+                        + " not carry its own keyer (D-REGEX): " + groupNames);
+            }
+            qualifiedKeyer = recordKeyer(ctx, fn, groupNames);
+        }
         if (byKey.isEmpty())
         {
             // One answer for every row (XCUT PERF 2): a constant, not a per-row carrier.
@@ -1023,17 +1042,9 @@ public final class GroupedAggregate
         // The primary's key columns are resolved once per broadcast, never per row (XCUT PERF 3).
         int[] keyColumns = GroupKeyIdentity.columnIndices(meta, groupNames);
         RowKey keyer;
-        if (hasQualifiedMember(groupNames))
+        if (qualifiedKeyer != null)
         {
-            // C2: the record side reads a qualified member through the join, from THIS context —
-            // never a keyer the memoised grouping carries (a regex= keyer is refused with a
-            // qualified member at load, D-REGEX; stated here rather than trusted).
-            if (grouped.keyer() != null)
-            {
-                throw new IllegalStateException("a grouping with a qualified group= member must"
-                        + " not carry its own keyer (D-REGEX): " + groupNames);
-            }
-            keyer = recordKeyer(ctx, memoKey, groupNames);
+            keyer = qualifiedKeyer;
         }
         else
         {
@@ -1321,11 +1332,10 @@ public final class GroupedAggregate
         {
             return bestNumeric != null ? bestNumeric : scan.noCandidate(cellAt, rows, keep);
         }
-        String winner = Extremes.genericStringExtreme(texts, true);
-        if (winner == null)
-        {
-            return ScalarSemantics.computedMissing(); // EC-46: indeterminate
-        }
+        // A block turns textual only by admitting a textual candidate, so the text ranking holds
+        // at least that one, and plain text order always answers (K3: no indeterminate arm).
+        String winner = java.util.Objects.requireNonNull(Extremes.genericStringExtreme(texts, true),
+                "a textual block holds the candidate that made it textual");
         return candidates.get(texts.indexOf(winner));
     }
 

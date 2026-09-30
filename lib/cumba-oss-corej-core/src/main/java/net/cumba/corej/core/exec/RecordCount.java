@@ -276,7 +276,7 @@ public final class RecordCount
                     () -> countAll(ctx, spec));
             return (Vector) java.util.Objects.requireNonNull(memo, "the memo never stores null");
         }
-        return GroupedAggregate.broadcast(run, memoKey, names,
+        return GroupedAggregate.broadcast(run, NAME, memoKey, names,
                 () -> countPerGroup(ctx, spec, names), _ -> ZERO);
     }
 
@@ -290,8 +290,9 @@ public final class RecordCount
      *            table, silently partitioning nothing (combined review of runbook W2–W8, W5/W6 L6),
      *            so it ERRORs the rule as the reader refuses an authored one at load
      * @throws IllegalStateException
-     *             for a {@code $} member that does not hold a list of names, or that splices a
-     *             {@code --} name under {@code domain=} — the rule ERRORs (D-W6-7)
+     *             for a {@code $} member that does not hold a list of names, that splices a
+     *             {@code --} name under {@code domain=}, or that splices a qualified name — the
+     *             rule ERRORs (D-W6-7)
      */
     private static List<String> splice(List<String> group, EvaluationContext ctx, boolean foreign)
     {
@@ -331,6 +332,16 @@ public final class RecordCount
     private static String splicedName(String member, String name, EvaluationContext ctx,
             boolean foreign)
     {
+        if (MatchDataset.qualifierOf(name) != null)
+        {
+            // A qualified member (C2, PLAN-rprfdy-offset-tp-join) is judged at load — D-DOMAIN,
+            // D-SRC, D-REGEX — and a spliced one never reaches those gates, so it would key the
+            // record side through a join nobody checked (review round 1, lane 2 SPECULATIVE).
+            throw new IllegalStateException("[" + ctx.getRuleId() + "] " + NAME
+                    + ": the group= member " + member + " splices the qualified name " + name
+                    + " — a qualified group= member is judged at load, so author it in the group="
+                    + " list itself");
+        }
         if (foreign && name.startsWith("--") && name.indexOf('.') < 0)
         {
             throw new IllegalStateException("[" + ctx.getRuleId() + "] " + NAME

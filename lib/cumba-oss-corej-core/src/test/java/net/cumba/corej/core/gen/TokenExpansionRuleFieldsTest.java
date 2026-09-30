@@ -354,14 +354,24 @@ class TokenExpansionRuleFieldsTest
 
 
     /**
-     * EC-18 sided keys: a join whose column is named differently on each side must have <b>both</b>
-     * names excluded. Only the right-hand name is at risk — it is not in {@code getKeys()} — and
-     * missing it binds the token to the joined side's own key, i.e. a rule comparing {@code SUBJID}
-     * with {@code ADSL.SUBJID} after joining exactly those two.
+     * EC-18 sided keys: only a position whose two sides are the SAME name is a tautology.
+     * {@code {left: STUDYID, right: STUDYID}} merges {@code STUDYID} on {@code ADSL.STUDYID}, so
+     * {@code STUDYID != ADSL.STUDYID} is decided by the merge and never bound. {@code {left:
+     * USUBJID, right: SUBJID}} merges the primary's {@code USUBJID} on {@code ADSL.SUBJID}, so
+     * {@code SUBJID != ADSL.SUBJID} compares the primary's {@code SUBJID} with its own
+     * {@code USUBJID} — a real comparison, and it IS bound.
+     *
+     * <p>
+     * ⚑ Moved pin (review round 1 of {@code PLAN-rprfdy-offset-tp-join}, lane 1 L2): this test was
+     * {@code bindingExcludesBothSidesOfASidedJoinKey} and asserted {@code [TK-F1-AGE]}, on the
+     * claim that {@code SUBJID != ADSL.SUBJID} is "false on every row" after "joining exactly those
+     * two" — but the join paired {@code USUBJID} with {@code SUBJID}, not {@code SUBJID} with
+     * itself, so the exclusion dropped a live binding silently.
+     * </p>
      */
     @Test
-    @DisplayName("sided join keys are excluded on BOTH sides")
-    void bindingExcludesBothSidesOfASidedJoinKey() throws Exception
+    @DisplayName("only the same-named positions of a sided join key are excluded")
+    void bindingExcludesOnlyTheSameNamedPositionsOfASidedJoinKey() throws Exception
     {
         IDataTable primary = MockTable.of().name("ADAE").col("STUDYID", "S").col("USUBJID", "U")
                 .col("SUBJID", "1").col("AGE", "50").build();
@@ -380,9 +390,11 @@ class TokenExpansionRuleFieldsTest
 
         List<Rule> rules = expand(template, primary, Map.of("ADSL", foreign));
 
-        assertEquals(List.of("TK-F1-AGE"), rules.stream().map(Rule::effectiveId).toList(),
-                "SUBJID is shared by name and is the RIGHT half of a sided join key — binding "
-                        + "over it produces a rule that is false on every row");
+        assertEquals(List.of("TK-F1-SUBJID", "TK-F1-AGE"),
+                rules.stream().map(Rule::effectiveId).toList(),
+                "STUDYID (merged on itself) is the tautology; SUBJID is the RIGHT half of a sided"
+                        + " key whose LEFT half is USUBJID, so SUBJID != ADSL.SUBJID is a real"
+                        + " comparison of the primary's SUBJID with its USUBJID");
         List<MatchDataset> joins = rules.get(0).getMatchDatasets();
         assertNotNull(joins);
         assertEquals(List.of("STUDYID", "SUBJID"), joins.get(0).getRightKeys(),

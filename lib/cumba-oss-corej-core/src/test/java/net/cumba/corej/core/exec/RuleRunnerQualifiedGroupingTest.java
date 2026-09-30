@@ -47,8 +47,8 @@ class RuleRunnerQualifiedGroupingTest
             val[i] = parts[2];
             seq[i] = String.valueOf(i + 1);
         }
-        return MockTable.of().name("BW").col("USUBJID", usubjid).col("BWSEQ", seq)
-                .col("RPHASE", phase).col("VAL", val).build();
+        return RealTables.of("BW").str("USUBJID", usubjid).str("BWSEQ", seq).str("RPHASE", phase)
+                .str("VAL", val).build();
     }
 
 
@@ -62,7 +62,7 @@ class RuleRunnerQualifiedGroupingTest
             usubjid[i] = parts[0];
             path[i] = parts[1];
         }
-        return MockTable.of().name("DM").col("USUBJID", usubjid).col("RPATHCD", path).build();
+        return RealTables.of("DM").str("USUBJID", usubjid).str("RPATHCD", path).build();
     }
 
     private static final String BLOCK_GROUPING = "\"Grouping\":{\"Variables\":[\"DM.RPATHCD\","
@@ -206,6 +206,26 @@ class RuleRunnerQualifiedGroupingTest
     }
 
 
+    /**
+     * D-COPIES under C3 (review round 1, lane 2 L4): DM carries S1 TWICE, on paths A and B, so the
+     * DM join makes two copies of the one BW record, and each copy is grouped by ITS bound DM
+     * record — two groups, two findings, each anchored on its own copy of the same primary row.
+     */
+    @Test
+    void eachCopyOfARecordGroupsByItsOwnBoundSourceRecord()
+    {
+        RuleExecutionResult res = run(loadClean(BLOCK_GROUPING), bw("S1/P1/BAD"),
+                dm("S1/A", "S1/B"));
+        assertEquals(List.of("S1", "S1"), anchors(res));
+        assertEquals(Map.of("DM.RPATHCD", "A", "RPHASE", "P1"),
+                res.getViolations().get(0).getGroupKey());
+        assertEquals(Map.of("DM.RPATHCD", "B", "RPHASE", "P1"),
+                res.getViolations().get(1).getGroupKey());
+        assertEquals(1, res.getViolations().get(0).getRowNumber(), "the A copy is BW row 1");
+        assertEquals(1, res.getViolations().get(1).getRowNumber(), "and so is the B copy");
+    }
+
+
     @Test
     void theFlatAndTheBlockFormAgree()
     {
@@ -235,6 +255,10 @@ class RuleRunnerQualifiedGroupingTest
     {
         Rule rule = loadClean("\"Grouping\":{\"Variables\":[\"DM.RPATHCD\",\"RPHASE\"],"
                 + "\"keep_missings\":true}");
+        // ⚠ The one Mockito-backed fixture left in this class, on purpose: a real STRING buffer
+        // stores a null cell as "" (DataBufferString.setValue), so no real table can hold the
+        // character MIS this test needs beside a present "" — MockTable.colSasMissing is the one
+        // fixture that carries one.
         IDataTable dmWithMissing = MockTable.of().name("DM").col("USUBJID", "S1", "S2", "S3")
                 .colSasMissing("RPATHCD", "A", "", ".").build();
         RuleExecutionResult res = run(rule, bw("S1/P1/BAD", "S2/P1/BAD", "S3/P1/BAD"),
@@ -253,7 +277,7 @@ class RuleRunnerQualifiedGroupingTest
     @Test
     void theSourceColumnAbsentFromTheSourceDatasetErrors()
     {
-        IDataTable dmWithoutPath = MockTable.of().name("DM").col("USUBJID", "S1").build();
+        IDataTable dmWithoutPath = RealTables.of("DM").str("USUBJID", "S1").build();
         RuleExecutionResult res = run(loadClean(BLOCK_GROUPING), bw("S1/P1/BAD"), dmWithoutPath);
         assertEquals(RuleExecutionStatus.ERROR, res.getStatus(), res.getStatusMessage());
         String msg = String.valueOf(res.getStatusMessage());
