@@ -81,6 +81,14 @@ class FindVarsUnitTest
                 new ComputedVector(3, DataValueType.STRING, row -> row == 2 ? "TRT1P" : "TRTxxP"),
                 false);
         assertFalse(perRow instanceof ConstVector, "a computed entry is read per row");
+        // Review round 2 (L3): and through the COMPILER, as a rule reaches it — the compiled
+        // find_vars("TRTxxP") is one broadcast list, a column entry a per-row vector.
+        assertTrue(net.cumba.corej.core.expr.eval.ExprCompiler.evaluateValueExpression(
+                CheckExpressionParser.parse("find_vars(\"TRTxxP\")"), ctx) instanceof ConstVector,
+                "the compiled literal entry is a ConstVector");
+        assertFalse(net.cumba.corej.core.expr.eval.ExprCompiler.evaluateValueExpression(
+                CheckExpressionParser.parse("find_vars(USUBJID)"), ctx) instanceof ConstVector,
+                "the compiled column entry is read per row");
         assertEquals(List.of("TRT01P", "TRT02P"), perRow.value(0).resolved());
         assertEquals(List.of("TRT1P"), perRow.value(2).resolved());
     }
@@ -113,6 +121,10 @@ class FindVarsUnitTest
         assertTrue(FindVars.isOutputVariablePattern("ADSL.TRTxxA"));
         assertTrue(FindVars.isOutputVariablePattern("TRT*P"));
         assertTrue(FindVars.isOutputVariablePattern("ADSL./TRT0[12]N/"));
+        // Review round 2 (CIT §1, templates too): a lower-case qualifier or glob is a pattern
+        // entry as it is in Requirements.Variables — the matcher decides, not the first letter.
+        assertTrue(FindVars.isOutputVariablePattern("adsl.TRTxxA"));
+        assertTrue(FindVars.isOutputVariablePattern("trt0?p"));
         for (String kept : List.of("USUBJID", "ADSL.TRT01A", "$b", "!AESEV", "variable_name",
                 "ADSL.AP${*}SDT", "library_variable_label", "*DTM", "*GRyN", "RELREC.**TERM"))
         {

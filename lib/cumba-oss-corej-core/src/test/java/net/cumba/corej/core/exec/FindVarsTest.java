@@ -564,4 +564,103 @@ class FindVarsTest
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
         return result.getViolations().get(0).getValues().get("$fv");
     }
+
+    // ------------------------------------------------------------------ review round 2
+
+
+    /**
+     * Engine 1: an ABSENT member (and a not-supplied one — an undeclared qualifier) is the present
+     * {@code ""}, keyed by its text on both sides of {@code in}; before, only a joined cell was
+     * re-carried, so it keyed as the quoted {@code "\"\""} and matched no blank.
+     */
+    @Test
+    void anAbsentOrNotSuppliedMemberIsTheBlankOnBothSides()
+    {
+        IDataTable primary = RealTables.of("ADAE").str("USUBJID", "S1", "S2").str("TRTA", "", "X")
+                .build();
+        for (String name : List.of("ZZ", "DM.ZZ"))
+        {
+            String member = "colref([\"" + name + "\"])";
+            assertEquals(List.of(1L), firedOn(primary, "TRTA in " + member), name);
+            assertEquals(List.of(2L), firedOn(primary, "TRTA not in " + member), name);
+            assertEquals(List.of(1L, 2L), firedOn(primary, member + " in [\"\"]"), name);
+        }
+    }
+
+
+    /**
+     * Engine 2: {@code colref($x)} over a SCALAR binding is a scalar probe on every arm — a numeric
+     * list, a temporal list, a {@code ${*}} set — answering as the authored name does; only a row
+     * whose binding holds a list compares element-wise.
+     */
+    @Test
+    void aScalarBindingProbeTakesTheScalarArms()
+    {
+        IDataTable primary = RealTables.of("ADAE").str("USUBJID", "S1", "S1", "S2")
+                .dbl("N", 100.0, 200.0, 300.0).str("DTC", "2020-01-01T10:00", "2021-05", "")
+                .str("TRTA", "A", "B", "Z").build();
+        assertEquals(firedOn(primary, "N in [100.0, 300]"),
+                firedOn(primary, "colref($x) in [100.0, 300]", "$x", "\"N\""),
+                "a numeric list runs numerically (100 is 100.0)");
+        assertEquals(List.of(1L, 3L),
+                firedOn(primary, "colref($x) in [100.0, 300]", "$x", "\"N\""));
+        assertEquals(firedOn(primary, "DTC in [date(\"2020-01-01\")]"),
+                firedOn(primary, "colref($x) in [date(\"2020-01-01\")]", "$x", "\"DTC\""),
+                "a temporal list compares as dates");
+        assertEquals(firedOn(primary, "TRTA in ADSL.TRT0${*}A"),
+                firedOn(primary, "colref($x) in ADSL.TRT0${*}A", "$x", "\"TRTA\""), "a ${*} set");
+        assertEquals(List.of(1L, 3L),
+                firedOn(primary, "colref($x) in ADSL.TRT0${*}A", "$x", "\"TRTA\""));
+    }
+
+
+    /** Engine 2 / Q3: the mixed numeric/string list stays a load error behind a binding probe. */
+    @Test
+    void aMixedListIsStillALoadErrorForABindingProbe()
+    {
+        assertNotNull(load(json("not empty(USUBJID) and TRTA in [1, \"A\"]", List.of("USUBJID")))
+                .getLoadError(), "authored");
+        assertNotNull(load(json("not empty(USUBJID) and colref($x) in [1, \"A\"]",
+                List.of("USUBJID"), "$x", "\"TRTA\"")).getLoadError(), "through colref($x)");
+    }
+
+
+    /** The qualifier matches IGNORING case (owner 2026-09-28, CIT §1): colref and find_vars. */
+    @Test
+    void aLowerCaseQualifierNamesTheDeclaredDataset()
+    {
+        assertEquals("[adsl.TRT01A, adsl.TRT02A]", namesOf("adsl.TRTxxA"),
+                "the qualifier as written, the column in the dataset's case");
+        assertEquals(fired("TRTA == colref(\"ADSL.TRT01A\")"),
+                fired("TRTA == colref(\"adsl.trt01a\")"));
+        assertEquals(List.of(1L), fired("TRTA == colref(\"adsl.trt01a\")"));
+    }
+
+
+    /** A lower-case qualified template in Output_Variables expands like its upper-case twin. */
+    @Test
+    void aLowerCaseOutputVariablePatternExpands()
+    {
+        RuleExecutionResult result = run(adae(),
+                json("not empty(USUBJID)", List.of("USUBJID", "adsl.TRTxxA")), adsl());
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        assertEquals(List.of("USUBJID", "ADSL.TRT01A", "ADSL.TRT02A"),
+                List.copyOf(result.getViolations().get(0).getValues().keySet()),
+                "reported under the rule's declared spelling, which the report reads through");
+        assertEquals("A", result.getViolations().get(0).getValues().get("ADSL.TRT01A"));
+    }
+
+
+    /** The fired rows (1-based) of a row-guarded {@code check} on {@code primary}. */
+    private static List<Long> firedOn(IDataTable primary, String check, String... bindings)
+    {
+        RuleExecutionResult result = run(primary,
+                json("not empty(USUBJID) and (" + check + ")", List.of("USUBJID"), bindings),
+                adsl());
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
+                () -> check + " → " + result.getStatusMessage());
+        List<Long> rows = new ArrayList<>();
+        result.getViolations().forEach(v -> rows.add(v.getRowNumber()));
+        return rows;
+    }
 }

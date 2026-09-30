@@ -734,7 +734,10 @@ class ScalarSemanticsComputedMissingTest
     // Resolver.member answers the element's own missing cell, a Target's read, or computedMissing.
     // Never null — and no component is @Nullable (a first record draft with a @Nullable constant
     // was refused by the nullability half of this test).
-    private static final int EXPECTED_VALUE_PRODUCERS = 38;
+    // 38 -> 39 (review round 2, engine 1): Resolver.memberCell — the member re-carry moved out of
+    // Joined.read so an ABSENT member is keyed by its text too. Read: it answers its input cell,
+    // or DataValues.of(the input's text) for a present character cell; never null.
+    private static final int EXPECTED_VALUE_PRODUCERS = 39;
 
     private static Method declared(Class<?> owner, String name)
     {

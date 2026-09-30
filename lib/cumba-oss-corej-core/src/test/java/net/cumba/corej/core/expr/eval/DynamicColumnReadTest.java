@@ -99,4 +99,26 @@ class DynamicColumnReadTest
         assertEquals("", ((IDataValue) ((List<?>) row0).get(1)).getValueAsString(),
                 "an absent element takes its default");
     }
+
+
+    /**
+     * Review round 2 (engine 4): names that read no column are memoised only up to a cap, so
+     * per-row unique data values cannot grow the evaluation's memo per row — and every row still
+     * answers its absent default, before and after the cap.
+     */
+    @Test
+    void perRowUniqueAbsentNamesAnswerPastTheMemoCap()
+    {
+        EvaluationContext c = ctx(Set.of());
+        int rows = 3000;
+        Vector names = new ComputedVector(rows, DataValueType.STRING, row -> "ZZ" + row);
+        Vector out = DynamicColumnRead.vector(new EvalRun(c, 0, rows), names, false, false);
+        for (int r : new int[]
+        {
+                0, 1023, 1024, 2999
+        })
+        {
+            assertEquals("", out.value(r).cell().getValueAsString(), "row " + r);
+        }
+    }
 }

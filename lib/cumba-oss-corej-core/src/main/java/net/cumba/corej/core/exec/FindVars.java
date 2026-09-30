@@ -123,6 +123,19 @@ public final class FindVars
      */
     static List<String> names(EvaluationContext ctx, String entryText, boolean literal)
     {
+        return names(ctx, entryText, literal, false);
+    }
+
+
+    /**
+     * {@link #names(EvaluationContext, String, boolean)}, spelling a qualified name's qualifier as
+     * the rule DECLARES it when {@code declaredSpelling} — the {@code Output_Variables} step's
+     * form: the report reads each expanded name through the join, which the rule declared under its
+     * own spelling (review round 2: {@code "adsl.TRTxxA"} reports {@code ADSL.TRT01A}).
+     */
+    static List<String> names(EvaluationContext ctx, String entryText, boolean literal,
+            boolean declaredSpelling)
+    {
         if (entryText.isEmpty())
         {
             return List.of();
@@ -143,17 +156,18 @@ public final class FindVars
         if (entry.isQualified())
         {
             String qualifier = java.util.Objects.requireNonNull(entry.qualifier());
-            if (ctx.getJoinedDatasets().get(qualifier) == null)
+            String declared = declaredQualifier(ctx, qualifier);
+            if (declared == null)
             {
                 return List.of(); // undeclared or not supplied: no column colref could read
             }
-            table = SplitDomainResolution.resolveTableOrThrow(ctx.getDatasetResolver(), qualifier,
+            table = SplitDomainResolution.resolveTableOrThrow(ctx.getDatasetResolver(), declared,
                     ctx.getRuleId());
             if (table == null)
             {
                 return List.of();
             }
-            prefix = qualifier + ".";
+            prefix = (declaredSpelling ? declared : qualifier) + ".";
             variable = entry.variable();
         }
         else
@@ -210,9 +224,17 @@ public final class FindVars
      * {@code Output_Variables} entry is a {@code Requirements.Variables} PATTERN entry — a
      * template, a glob or a {@code /regex/}, bare or qualified — that the step expands into every
      * existing matching column. A {@code $}-binding, a {@code !}-exclusion, a {@code ${…}} entry
-     * (its own expansion, unchanged — Q8), an engine name (lower-case first letter), the rule
-     * expansion's own vocabulary (a leading {@code *} capture, a RELREC {@code **}) and a literal
-     * name are not.
+     * (its own expansion, unchanged — Q8), the rule expansion's own vocabulary (a leading {@code *}
+     * capture, a RELREC {@code **}) and a literal name are not; an engine name
+     * ({@code variable_name}) is none either, because the shared matcher finds no template, glob or
+     * regex in it.
+     *
+     * <p>
+     * ⚑ Review round 2: a LOWER-case first letter no longer excludes an entry. Names match ignoring
+     * case on every surface, templates included (owner 2026-09-28, CIT §1), so a lower-case
+     * qualifier ({@code "adsl.TRTxxP"}) or glob ({@code "trt0?p"}) is a pattern entry exactly as it
+     * is in {@code Requirements.Variables}; the test is the matcher's alone.
+     * </p>
      *
      * @param entry
      *            the entry
@@ -227,12 +249,12 @@ public final class FindVars
         return OUTPUT_PATTERN.computeIfAbsent(entry, e ->
         {
             char first = e.charAt(0);
-            // Not a pattern entry of this step: a $-binding, a !-exclusion, an engine name, a ${…}
-            // entry (its own unchanged expansion, Q8), and the rule-EXPANSION vocabulary — a
-            // leading `*` ADaM capture (`*DTM`, `*GRyN`) and a RELREC `**` reference, which the
-            // WildcardExpander / RelrecExpandedLookup resolve (measured: 70+ such corpus entries).
-            if (first == '$' || first == '!' || first == '*' || Character.isLowerCase(first)
-                    || e.contains("${") || e.contains("**"))
+            // Not a pattern entry of this step: a $-binding, a !-exclusion, a ${…} entry (its own
+            // unchanged expansion, Q8), and the rule-EXPANSION vocabulary — a leading `*` ADaM
+            // capture (`*DTM`, `*GRyN`) and a RELREC `**` reference, which the WildcardExpander /
+            // RelrecExpandedLookup resolve (measured: 97 such corpus entries).
+            if (first == '$' || first == '!' || first == '*' || e.contains("${")
+                    || e.contains("**"))
             {
                 return false;
             }
@@ -246,7 +268,7 @@ public final class FindVars
      * entry} replaced, in place, by the EXISTING columns it matches ({@code JVA 2c}: an absent one
      * is never reported), through {@link #names} — the very matcher {@code find_vars} uses, so the
      * report names exactly the columns {@code find_vars} would. Every other entry is kept verbatim:
-     * a {@code $}-binding, a {@code !}-exclusion, an engine name (lower-case first letter), a
+     * a {@code $}-binding, a {@code !}-exclusion, an engine name (no template, glob or regex), a
      * {@code ${…}} entry (its own unchanged expansion, Q8), a leading-{@code *} ADaM capture and a
      * RELREC {@code **} reference ({@link #isOutputVariablePattern}'s carve-outs), a literal name —
      * and a pattern-shaped entry that is ALSO the literal name of an existing column
@@ -286,7 +308,7 @@ public final class FindVars
             {
                 out = new ArrayList<>(outputVars.subList(0, i));
             }
-            out.addAll(names(ctx, v, true));
+            out.addAll(names(ctx, v, true, true));
         }
         return out == null ? outputVars : out;
     }
@@ -314,14 +336,37 @@ public final class FindVars
         {
             return ctx.getTable().getMetaData().getColumnIndex(entry) >= 0;
         }
-        String qualifier = java.util.Objects.requireNonNull(parsed.qualifier());
-        if (ctx.getJoinedDatasets().get(qualifier) == null)
+        String declared = declaredQualifier(ctx,
+                java.util.Objects.requireNonNull(parsed.qualifier()));
+        if (declared == null)
         {
             return false;
         }
         IDataTable table = SplitDomainResolution.resolveTableOrThrow(ctx.getDatasetResolver(),
-                qualifier, ctx.getRuleId());
+                declared, ctx.getRuleId());
         return table != null && table.getMetaData().getColumnIndex(parsed.variable()) >= 0;
+    }
+
+
+    /**
+     * The rule's {@code Match_Datasets} name a qualifier stands for, matched IGNORING letter case
+     * (owner 2026-09-28, CIT §1 — review round 2: {@code "adsl.TRTxxA"} enumerates the declared
+     * {@code ADSL}), or {@code null} when the rule declares no such dataset.
+     */
+    private static @Nullable String declaredQualifier(EvaluationContext ctx, String qualifier)
+    {
+        if (ctx.getJoinedDatasets().containsKey(qualifier))
+        {
+            return qualifier;
+        }
+        for (String name : ctx.getJoinedDatasets().keySet())
+        {
+            if (name.equalsIgnoreCase(qualifier))
+            {
+                return name;
+            }
+        }
+        return null;
     }
 
     /** {@link #patternOf}'s JVM-wide memo, keyed by the variable half's text. */

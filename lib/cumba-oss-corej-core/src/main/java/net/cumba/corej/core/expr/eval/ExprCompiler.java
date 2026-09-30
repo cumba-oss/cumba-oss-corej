@@ -968,6 +968,62 @@ public final class ExprCompiler
 
     private static ExprProgram.BoolPlan compileMembershipAsWritten(Expr.Binary b)
     {
+        Expr probe = isUpperCall(b.left()) ? ((Expr.Call) b.left()).args().get(0) : b.left();
+        if (!isColrefOverBinding(probe))
+        {
+            return compileMembershipAsWritten(b, false);
+        }
+        // ⭐ PLAN-dynamic-column-functions review round 2 (engine 2): `colref($x) in …` decides PER
+        // ROW. A row whose value is a list (`$x: find_vars(…)`) compares element-wise; any other
+        // row is a scalar probe and takes the scalar arms — numeric, temporal, ${*} wildcard,
+        // accessor — exactly as the same probe would without the binding. Round 1 carried EVERY
+        // row as a list, which sent a scalar binding past all of them (and past Q3's mixed-list
+        // load error). The scalar plan is compiled FIRST, so its load errors surface.
+        ExprProgram.BoolPlan scalar = compileMembershipAsWritten(b, false);
+        ExprProgram.BoolPlan list = compileMembershipAsWritten(b, true);
+        ValuePlan probeP = operandPlan(probe, true);
+        return run ->
+        {
+            Vector v = probeP.eval(run);
+            if (v == null)
+            {
+                return new BitSet();
+            }
+            BitSet listRows = new BitSet(run.rowCount());
+            for (int r = 0; r < run.rowCount(); r++)
+            {
+                if (v.value(r).resolved() instanceof Collection<?>)
+                {
+                    listRows.set(r);
+                }
+            }
+            if (listRows.isEmpty())
+            {
+                return scalar.eval(run);
+            }
+            if (listRows.cardinality() == run.rowCount())
+            {
+                return list.eval(run);
+            }
+            BitSet out = scalar.eval(run);
+            out.andNot(listRows);
+            BitSet elementWise = list.eval(run);
+            elementWise.and(listRows);
+            out.or(elementWise);
+            return out;
+        };
+    }
+
+
+    /**
+     * {@link #compileMembershipAsWritten(Expr.Binary)} for one reading of the probe.
+     *
+     * @param listProbe
+     *            read a {@code colref($x)} probe as a LIST on every row (a scalar cell a
+     *            one-element list of its text) — the element-wise half of the per-row decision
+     */
+    private static ExprProgram.BoolPlan compileMembershipAsWritten(Expr.Binary b, boolean listProbe)
+    {
         boolean negate = b.op() == Expr.BinOp.NOT_IN;
         // T3 composite membership: `tuple(c1, c2, …) [not] in distinct([c1, c2, …], domain="D")`.
         // The left operand is the per-row composite key (the `tuple` value function's List cell)
@@ -991,11 +1047,10 @@ public final class ExprCompiler
         // correctly. (The retired legacy `is_not_contained_by_case_insensitive` operator was an
         // unimplemented no-op until PLAN-regex-rule-optimization Phase 1 made it mirror this.)
         Expr nameExpr = caseInsensitive ? ((Expr.Call) b.left()).args().get(0) : b.left();
-        // PLAN-dynamic-column-functions, review round 1 (lane A L1): a colref whose argument is a
-        // $-binding may yield a list on one row and a name's cell on another, which no static
-        // test can tell apart — so its probe is carried as a list on EVERY row (a scalar cell a
-        // one-element list of its text), and membership runs element-wise below.
-        boolean dynamicLhs = isColrefOverBinding(nameExpr);
+        // PLAN-dynamic-column-functions (review round 1 lane A L1, round 2 engine 2): a colref
+        // whose argument is a $-binding may yield a list on one row and a name's cell on another;
+        // the caller decides per row, and this is its element-wise half.
+        boolean dynamicLhs = listProbe && isColrefOverBinding(nameExpr);
         // EC-43: fold the probe column. The list/accessor sources below keep their own guards.
         ValuePlan nameP = dynamicLhs ? asMemberLists(operandPlan(nameExpr, true))
                 : operandPlan(nameExpr, true);
@@ -4781,6 +4836,7 @@ public final class ExprCompiler
             throw unsupported("colref takes exactly one argument: a column name or a list of"
                     + " column names");
         }
+        rejectLiteralMatchFlag(c.args().get(0));
         ValuePlan names = argumentPlan(c.args().get(0));
         // Only a name WRITTEN in the rule (a string or a list literal) can be a D77b specialiser
         // defect when it spells `--`; a data-derived one names no column (review round 1, M1).
@@ -4795,6 +4851,37 @@ public final class ExprCompiler
             boolean numericDefault = run.ctx().getNumericExpectedDynamicSites().contains(c);
             return DynamicColumnRead.vector(run, first, numericDefault, literal);
         };
+    }
+
+
+    /**
+     * Review round 2 (engine 3): a WRITTEN {@code colref("DS._matched_")} — a string literal, or a
+     * member of a list literal — is refused when the plan is compiled, exactly as the authored
+     * {@code DS._matched_} used as a value is ({@code dottedVector}): the join-match flag is a
+     * boolean condition (spec §3.3, D88b), never a value. A data-derived name spelling it is data,
+     * not a rule defect, and takes the absent default ({@link DynamicColumnRead}).
+     */
+    private static void rejectLiteralMatchFlag(Expr arg)
+    {
+        List<Expr> written = arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
+                && lit.value() instanceof List<?> items
+                        ? items.stream().filter(Expr.class::isInstance).map(Expr.class::cast)
+                                .toList()
+                        : List.of(arg);
+        for (Expr e : written)
+        {
+            if (e instanceof Expr.Lit name && name.kind() == Expr.LitKind.STRING)
+            {
+                String text = String.valueOf(name.value());
+                int dot = text.indexOf('.');
+                if (dot > 0
+                        && DynamicColumnRead.MATCHED_FLAG.equalsIgnoreCase(text.substring(dot + 1)))
+                {
+                    throw new RuleDefinitionException(text + " is a boolean condition, not a value"
+                            + " — write it bare (e.g. `not " + text + "`), never through colref");
+                }
+            }
+        }
     }
 
 

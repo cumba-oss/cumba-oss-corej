@@ -549,29 +549,12 @@ class DynamicColumnFunctionsTest
     {
         assertSameAsAuthored("colref(\"ADSL.ZZ\") == \"Y\" or colref(\"ADSL.ZZ\") != \"\"",
                 "ADSL.ZZ == \"Y\" or ADSL.ZZ != \"\"", true, List.of());
-        IDataTable primary = adae();
-        for (String[] pair : List.of(new String[]
-        {
-                "colref(\"ADSL.AP01SDT\") < 3", "ADSL.AP01SDT < 3"
-        }, new String[]
-        {
-                "colref(\"ADSL.AP01SDT\") != \"\"", "ADSL.AP01SDT != \"\""
-        }))
-        {
-            List<String> outcomes = new ArrayList<>();
-            for (String check : pair)
-            {
-                Rule r = load(rule("not empty(USUBJID) and (" + check + ")", true));
-                assertNull(r.getLoadError(), r.getLoadError());
-                RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
-                        RealTables.inventoryOf(primary), "ADAE", null);
-                List<Long> rows = new ArrayList<>();
-                result.getViolations().forEach(v -> rows.add(v.getRowNumber()));
-                outcomes.add(result.getStatus() + " " + rows);
-            }
-            assertEquals(outcomes.get(1), outcomes.get(0),
-                    "ADSL declared, not supplied: " + pair[0] + " vs " + pair[1]);
-        }
+        // Review round 2 (M1): the not-supplied arm, NON-vacuously. A declared but unsupplied
+        // Match_Datasets entry SKIPS the whole rule (both spellings "agreed" on SKIPPED []), so the
+        // arm is reached through a qualifier the rule does not join: EXECUTED, the default of the
+        // position — MIS in a numeric one, "" in a string one (D72a-1).
+        assertEquals(List.of(1L, 2L, 3L), fired("colref(\"ADSL.AP01SDT\") < 3", false));
+        assertEquals(List.of(), fired("colref(\"ADSL.AP01SDT\") != \"\"", false));
     }
 
 
@@ -611,12 +594,18 @@ class DynamicColumnFunctionsTest
     @Test
     void theMatchFlagIsNotAColumnForColref()
     {
-        Rule r = load(rule("not empty(USUBJID) and colref(\"ADSL._matched_\") != \"\"", true));
-        assertNull(r.getLoadError(), r.getLoadError());
+        // Review round 2 (engine 3): a WRITTEN flag is refused when the plan is compiled — never
+        // per row …
         net.cumba.corej.core.expr.RuleDefinitionException error = org.junit.jupiter.api.Assertions
                 .assertThrows(net.cumba.corej.core.expr.RuleDefinitionException.class,
-                        () -> RuleRunnerCalls.execute(r, adae(),
-                                RealTables.inventoryOf(adae(), adsl()), "ADAE", null));
+                        () -> net.cumba.corej.core.expr.eval.NativeExprEvaluator.evaluate(
+                                net.cumba.corej.core.expr.CheckExpressionParser
+                                        .parse("colref(\"ADSL._matched_\") != \"\""),
+                                EvaluationContext.builder().table(adae()).build()));
         assertTrue(error.getMessage().contains("boolean condition"), error.getMessage());
+        // … and a DATA-derived one is data: no column is named _matched_, so the absent default.
+        IDataTable t = RealTables.of("ADAE").str("USUBJID", "S1").str("NAMECOL", "ADSL._matched_")
+                .build();
+        assertEquals(List.of(), firedOn(t, "colref(NAMECOL) != \"\"", true));
     }
 }

@@ -191,10 +191,13 @@ public final class TextFunctions
                         + " number from 0 to " + MAX_WIDTH + ", not " + width.value());
             }
         }
+        // Review round 2 (L4): EVERY written fill is judged by the text it pads with — a number
+        // literal (`lpad(X, 3, 0)`) by its plain text, exactly as the per-row read renders it.
         if (bound.size() > 2 && bound.get(2) instanceof Expr.Lit fill
-                && fill.kind() == Expr.LitKind.STRING)
+                && (fill.kind() == Expr.LitKind.STRING || fill.kind() == Expr.LitKind.NUMBER))
         {
-            String f = String.valueOf(fill.value());
+            String f = fill.value() instanceof Number n ? ExprCompiler.canonicalNumberText(n)
+                    : String.valueOf(fill.value());
             if (f.codePointCount(0, f.length()) != 1)
             {
                 throw new IllegalArgumentException("argument 'fill' of 'lpad' takes exactly one"

@@ -16,6 +16,7 @@ import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.IDataValue;
 import net.cumba.datatable.values.MissingValue;
+import org.jspecify.annotations.Nullable;
 
 /**
  * ⭐ The one resolver of a <b>dynamic column name</b> — {@code colref(<string>)} and
@@ -104,12 +105,8 @@ public final class DynamicColumnRead
     private sealed interface Target permits Constant, Primary, Joined
     {
 
-        /**
-         * The cell on {@code row}; {@code member} re-carries a joined character cell as its text
-         * (§2.7 point 2: a member set keys a present member by {@code toString()}, which for a
-         * joined {@code DataValueString} is the QUOTED text).
-         */
-        IDataValue read(EvaluationContext ctx, long row, boolean member);
+        /** The cell on {@code row}. */
+        IDataValue read(EvaluationContext ctx, long row);
     }
 
 
@@ -118,7 +115,7 @@ public final class DynamicColumnRead
     {
 
         @Override
-        public IDataValue read(EvaluationContext ctx, long row, boolean member)
+        public IDataValue read(EvaluationContext ctx, long row)
         {
             return value;
         }
@@ -135,7 +132,7 @@ public final class DynamicColumnRead
     {
 
         @Override
-        public IDataValue read(EvaluationContext ctx, long row, boolean member)
+        public IDataValue read(EvaluationContext ctx, long row)
         {
             String text = ScalarSemantics.resolvedString(ctx.getTable(), colIdx, row);
             if (text == null || numericColumn)
@@ -152,16 +149,14 @@ public final class DynamicColumnRead
     {
 
         @Override
-        public IDataValue read(EvaluationContext ctx, long row, boolean member)
+        public IDataValue read(EvaluationContext ctx, long row)
         {
-            IDataValue cell = lookup.lookupValue(ctx.getTable(), row, column, numeric);
-            return member && cell.getType() == DataValueType.STRING
-                    && TypedValue.missingIdentityOf(cell) == null
-                            ? DataValues.of(cell.getValueAsString())
-                            : cell;
+            return lookup.lookupValue(ctx.getTable(), row, column, numeric);
         }
     }
 
+    /** The most names reading no column that one evaluation memoises. */
+    private static final int MAX_CONSTANT_NAMES = 1024;
 
     /** One evaluation's name resolution, memoised by name. */
     private static final class Resolver
@@ -174,6 +169,9 @@ public final class DynamicColumnRead
         private final boolean literal;
 
         private final Map<String, Target> targets = new HashMap<>();
+
+        /** The constant targets memoised so far ({@link #MAX_CONSTANT_NAMES}). */
+        private int constants;
 
         Resolver(EvaluationContext ctx, boolean numericDefault, boolean literal)
         {
@@ -213,7 +211,7 @@ public final class DynamicColumnRead
                 // data problem, not a rule defect (D35), so a computed missing, never an error.
                 return ScalarSemantics.computedMissing();
             }
-            return target(String.valueOf(payload)).read(ctx, row, false);
+            return target(String.valueOf(payload)).read(ctx, row);
         }
 
 
@@ -231,7 +229,25 @@ public final class DynamicColumnRead
                     ? dv.getType() == DataValueType.STRING ? dv.getValueAsString() : null
                     : item instanceof String s ? s : null;
             return name == null ? ScalarSemantics.computedMissing()
-                    : target(name).read(ctx, row, true);
+                    : memberCell(target(name).read(ctx, row));
+        }
+
+
+        /**
+         * A list member's cell as a member set reads it (§2.7 point 2): a set keys a present member
+         * by {@code toString()}, which for a {@code DataValueString} — a joined character cell, and
+         * the present {@code ""} an ABSENT or not-supplied name answers — is the QUOTED text, so
+         * every present character cell is re-carried as its text ({@code DataValues.of}); a numeric
+         * cell keeps its type, a missing one its identity. Review round 2 (engine 1): the re-carry
+         * sat in the joined reader only, so an absent member keyed as {@code "\"\""} and
+         * {@code TRTA not in colref([…, absent])} fired on a blank probe.
+         */
+        private static IDataValue memberCell(IDataValue cell)
+        {
+            return cell.getType() == DataValueType.STRING
+                    && TypedValue.missingIdentityOf(cell) == null
+                            ? DataValues.of(cell.getValueAsString())
+                            : cell;
         }
 
 
@@ -241,7 +257,14 @@ public final class DynamicColumnRead
             if (known == null)
             {
                 known = DynamicColumnRead.target(ctx, name, numericDefault, literal);
-                targets.put(name, known);
+                // Review round 2 (engine 4): a name that reads a column is memoised always — their
+                // number is bounded by the tables' columns; a name that reads NO column (absent,
+                // not supplied, data-derived `--`) only up to MAX_CONSTANT_NAMES, so per-row
+                // unique data values (IDVAR over a large SUPP) cannot grow the map per row.
+                if (!(known instanceof Constant) || constants++ < MAX_CONSTANT_NAMES)
+                {
+                    targets.put(name, known);
+                }
             }
             return known;
         }
@@ -264,7 +287,39 @@ public final class DynamicColumnRead
      */
     static IDataValue cell(EvaluationContext ctx, String name, long row, boolean numericDefault)
     {
-        return target(ctx, name, numericDefault, true).read(ctx, row, false);
+        return target(ctx, name, numericDefault, true).read(ctx, row);
+    }
+
+    /** The join-match flag's column spelling ({@code DS._matched_}). */
+    public static final String MATCHED_FLAG = "_matched_";
+
+    /**
+     * The join a dotted name's qualifier names, matched IGNORING letter case (owner 2026-09-28,
+     * register CIT §1: every name match ignores case — review round 2): {@code colref("adsl.X")}
+     * reads the {@code ADSL} join, and {@code find_vars("adsl.TRTxxA")} enumerates it.
+     *
+     * @param ctx
+     *            the evaluation context
+     * @param qualifier
+     *            the qualifier as written
+     * @return the join, or {@code null} when the rule declares no such dataset
+     */
+    public static @Nullable JoinLookup joinedDataset(EvaluationContext ctx, String qualifier)
+    {
+        Map<String, JoinLookup> joins = ctx.getJoinedDatasets();
+        JoinLookup exact = joins.get(qualifier);
+        if (exact != null)
+        {
+            return exact;
+        }
+        for (Map.Entry<String, JoinLookup> e : joins.entrySet())
+        {
+            if (e.getKey().equalsIgnoreCase(qualifier))
+            {
+                return e.getValue();
+            }
+        }
+        return null;
     }
 
 
@@ -307,16 +362,22 @@ public final class DynamicColumnRead
         if (dot > 0)
         {
             String column = resolved.substring(dot + 1);
-            if ("_matched_".equalsIgnoreCase(column))
+            if (MATCHED_FLAG.equalsIgnoreCase(column))
             {
-                // Review round 1, lane A L6 — dottedVector's guard, mirrored: the join-match flag
-                // is
-                // a boolean CONDITION (spec §3.3, D88b), never a value; read as a column it would
-                // silently be an absent one.
-                throw new RuleDefinitionException(resolved + " is a boolean condition, not a value"
-                        + " — write it bare (e.g. `not " + resolved + "`), never through colref");
+                if (literal)
+                {
+                    // Review round 1, lane A L6 — dottedVector's guard, mirrored (a backstop:
+                    // ExprCompiler.colrefPlan refuses a literal flag statically): the join-match
+                    // flag is a boolean CONDITION (spec §3.3, D88b), never a value.
+                    throw new RuleDefinitionException(resolved + " is a boolean condition, not a"
+                            + " value — write it bare (e.g. `not " + resolved + "`), never through"
+                            + " colref");
+                }
+                // Review round 2 (engine 3): a DATA-derived name spelling the flag is data, not a
+                // rule defect — no column is named `_matched_`, so it takes the absent default.
+                return new Constant(absent);
             }
-            JoinLookup lookup = ctx.getJoinedDatasets().get(resolved.substring(0, dot));
+            JoinLookup lookup = joinedDataset(ctx, resolved.substring(0, dot));
             return lookup == null ? new Constant(ExprCompiler.dottedNotSuppliedDefault(numeric))
                     : new Joined(lookup, column, numeric);
         }

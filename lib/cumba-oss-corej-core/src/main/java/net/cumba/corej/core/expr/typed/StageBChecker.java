@@ -537,9 +537,39 @@ public final class StageBChecker
         }
         case Expr.Call c ->
         {
+            if ("colref".equals(c.name()) && c.args().size() == 1)
+            {
+                // PLAN-dynamic-column-functions review round 2 (M2, coordinator decision (a)): a
+                // WRITTEN colref("X") — a string literal, or a list literal of them — names its
+                // column as plainly as the authored X does, so an absent one is the same
+                // FILTER_UNRESOLVABLE (D89; declare ⇒ skip) rather than a silent absent default. A
+                // computed name is only known per row and stays out, as does a dotted one (a
+                // filter reads its own dataset's columns only — stage A's concern).
+                collectWrittenColrefNames(c.args().get(0), out);
+                return;
+            }
             c.args().forEach(a -> collectPlainColumns(a, out));
             c.kwargs().values().forEach(a -> collectPlainColumns(a, out));
         }
+        }
+    }
+
+
+    /** The bare names a written {@code colref} argument spells (a string or a list literal). */
+    private static void collectWrittenColrefNames(Expr arg, Set<String> out)
+    {
+        List<?> items = arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
+                && lit.value() instanceof List<?> members ? members : List.of(arg);
+        for (Object item : items)
+        {
+            if (item instanceof Expr.Lit name && name.kind() == Expr.LitKind.STRING)
+            {
+                String text = String.valueOf(name.value());
+                if (!text.isEmpty() && text.indexOf('.') < 0)
+                {
+                    out.add(text);
+                }
+            }
         }
     }
 
