@@ -89,7 +89,10 @@ public enum StageBErrorKind
      * {@code date_from_sas_datetime}) exists nowhere yet, so an armed error would name an
      * unwritable fix. The evaluation-side twin is {@code ColumnTypeGate.observeIsoConversionRead}
      * (pinned by its own test); when D55 arms — a 3c-or-later decision — exactly one of the two
-     * homes keeps it, and the arming conditions recorded on the gate hook apply.
+     * homes keeps it, and the arming conditions recorded on the gate hook apply. The gate hook has
+     * a third observation site with no stage-B twin: {@code ScalarDateExtremes}, for a numeric
+     * column passed as an {@code earliest_date} / {@code latest_date} argument
+     * ({@code PLAN-scalar-date-extremes}).
      */
     DATE_CONVERSION_OVER_NUMERIC(false),
 

@@ -866,8 +866,9 @@ class GroupedAggregateFunctionsTest
     @Test
     void aCharExPoolidBesideANumPooldefPoolidErrorsTheRule()
     {
-        // S14 / GKI Q2: in CSV / XLSX an all-blank EX.POOLID types STRING while a numeric-looking
-        // POOLDEF.POOLID types Num — the key pair differs in kind, so the rule ERRORs.
+        // S14 / GKI Q2: a CSV provider types a column blank in every row STRING (an XLSX one types
+        // it Num), so an all-blank CSV EX.POOLID beside a numeric-looking POOLDEF.POOLID is a key
+        // pair that differs in kind — the rule ERRORs.
         IDataTable ex = RealTableFixture.of("EX").str("USUBJID", "S1").str("POOLID", "")
                 .str("EXSTDTC", "2020-01-05").build();
         IDataTable pooldef = RealTableFixture.of("POOLDEF").lng("POOLID", 1L).str("USUBJID", "S1")

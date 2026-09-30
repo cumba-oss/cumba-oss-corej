@@ -155,7 +155,11 @@ public final class ColumnTypeGate
      * every one of the corpus' 119 {@code date(…)} sites today wraps an SDTM/SEND {@code *DTC} /
      * {@code *TPT} text column. Arming now would set a trap 3c walks into with every gate green.
      * The observation logs at DEBUG and notifies the measurement observer, and is pinned by a test
-     * so it cannot erode silently.
+     * so it cannot erode silently. D55 is observed at three sites: the {@code date()} /
+     * {@code time()} conversion plan in {@code ExprCompiler}, its static twin
+     * {@code StageBErrorKind.DATE_CONVERSION_OVER_NUMERIC}, and {@code ScalarDateExtremes}, which
+     * observes a numeric column passed as an {@code earliest_date} / {@code latest_date} argument
+     * ({@code PLAN-scalar-date-extremes}) by calling this hook, so arming the hook arms it too.
      */
     public static void observeIsoConversionRead(@Nullable Vector v, String context)
     {

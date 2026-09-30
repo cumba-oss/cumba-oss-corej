@@ -43,11 +43,12 @@ import org.jspecify.annotations.Nullable;
  * {@code IsoDateBounds.isDetermined} reads a calendar-complete date core, which no number's text is
  * — so the cell handed back under a {@code STRING} declaration is always a character date or a
  * missing, and the {@link RowMax} trap (a numeric cell under a {@code STRING} declaration) cannot
- * arise. A present number beside a date makes the pair undeterminable ({@code MIS}), exactly as
- * {@code min_date} over the same two cells. That is the reachable case: an XLSX / CSV EX whose
- * {@code EXSTDTC} arrives as an Excel serial types the own extreme {@code DOUBLE}, beside the
- * {@code STRING} pool part of a study without POOLDEF — refusing it would ERROR all four SEND rules
- * for a provider artefact. A numeric <b>column</b> read as a date argument is instead
+ * arise. A present number beside a date makes the pair undeterminable ({@code MIS}) unless its text
+ * reads as a year ({@code 2020}), which it then is — a partial date the other date can still beat —
+ * exactly as inside {@code min_date} over the same two cells. That is the reachable case: an XLSX /
+ * CSV EX whose {@code EXSTDTC} arrives as an Excel serial types the own extreme {@code DOUBLE},
+ * beside the {@code STRING} pool part of a study without POOLDEF — refusing it would ERROR all four
+ * SEND rules for a provider artefact. A numeric <b>column</b> read as a date argument is instead
  * <b>observed</b> ({@link ColumnTypeGate#observeIsoConversionRead}, D55, observe-only), as
  * {@code date(NUM)} is.
  * </p>

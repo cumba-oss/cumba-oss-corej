@@ -499,7 +499,8 @@ class ScalarDateExtremesTest
             // Unequal types declare STRING and are NOT refused (review A-M1): a number never wins
             // (IsoDateBounds.isDetermined needs a calendar-complete core), so the RowMax trap —
             // a numeric cell under a STRING declaration — cannot arise; the present number makes
-            // the pair undeterminable, as min_date over the same two cells. D55: observed.
+            // the pair undeterminable unless its text reads as a year (43831 does not), which it
+            // then is — exactly as inside min_date over the same two cells. D55: observed.
             Vector mixed = ScalarDateExtremes.earliest(run,
                     List.of(column(t, "A"), column(t, "D")));
             assertEquals(DataValueType.STRING, mixed.declaredType());
