@@ -48,7 +48,8 @@ public enum ExpansionSource
      * {@code with:} nor {@code pattern:}. ⚠ It is deliberately <b>not</b> spelled as a bare
      * {@code *} wildcard: the engine-owned markers are matched <em>inside</em> a name and are
      * ambiguous by design, which is why {@code WildcardExpander} refuses a name-position bare
-     * {@code *} outright (Fix #84). A declared token carries a mandatory sigil and cannot collide.
+     * {@code *} outright (Fix #84). A declared token is delimited on both sides ({@code &NAME&})
+     * and cannot collide.
      * </p>
      */
     ALL_VARIABLES("all_variables"),

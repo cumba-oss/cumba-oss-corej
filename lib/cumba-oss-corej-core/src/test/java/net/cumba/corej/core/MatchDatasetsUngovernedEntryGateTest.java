@@ -129,7 +129,7 @@ class MatchDatasetsUngovernedEntryGateTest
     {
         for (String name : new String[]
         {
-                "*", "AE*", "${DOM}", "&DOM", "--", "--SUPP", "SU--PP"
+                "*", "AE*", "${DOM}", "&DOM&", "--", "--SUPP", "SU--PP"
         })
         {
             String error = errorOf("{\"Name\":\"" + name

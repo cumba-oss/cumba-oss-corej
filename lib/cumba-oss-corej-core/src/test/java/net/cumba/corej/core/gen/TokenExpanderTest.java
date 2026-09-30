@@ -70,15 +70,16 @@ class TokenExpanderTest
     private static net.cumba.corej.core.model.CheckConditionExpression leaf(String name,
             String operator, @Nullable String value)
     {
-        // Backtick-quoted so expansion-token names (`&VAR`, `ADSL.&VAR`) lex as references —
-        // the spelling the authored rulespec templates use.
-        String ref = "`" + name + "`";
+        // Bare, as the authored corpus templates spell them: a `&NAME&` token lexes inside an
+        // identifier (PLAN-expansion-token-delimiters), so `&VAR&` / `ADSL.&VAR&` need no
+        // backticks.
+        String ref = name;
         String source = switch (operator)
         {
         case "non_empty" -> "not empty(" + ref + ")";
         case "empty" -> "empty(" + ref + ")";
         case "var_exists" -> "var_exists(" + ref + ")";
-        case "not_equal_to" -> ref + " != `" + value + "`";
+        case "not_equal_to" -> ref + " != " + value;
         default -> throw new IllegalArgumentException(operator);
         };
         return new net.cumba.corej.core.model.CheckConditionExpression(
@@ -114,13 +115,13 @@ class TokenExpanderTest
     private static Rule ad0591Template()
     {
         Rule rule = template("CDISC-AD0591",
-                new CheckConditionAll(List.of(leaf("&VAR", "non_empty", null),
-                        leaf("ADSL.&VAR", "non_empty", null),
-                        leaf("&VAR", "not_equal_to", "ADSL.&VAR"))),
-                List.of(match("ADSL", "STUDYID", "USUBJID")), sharedWith("&VAR", "ADSL"));
+                new CheckConditionAll(List.of(leaf("&VAR&", "non_empty", null),
+                        leaf("ADSL.&VAR&", "non_empty", null),
+                        leaf("&VAR&", "not_equal_to", "ADSL.&VAR&"))),
+                List.of(match("ADSL", "STUDYID", "USUBJID")), sharedWith("&VAR&", "ADSL"));
         Outcome outcome = new Outcome();
-        outcome.setMessage("&VAR does not match ADSL.&VAR");
-        outcome.setOutputVariables(List.of("&VAR", "ADSL.&VAR"));
+        outcome.setMessage("&VAR& does not match ADSL.&VAR&");
+        outcome.setOutputVariables(List.of("&VAR&", "ADSL.&VAR&"));
         rule.setOutcome(outcome);
         return rule;
     }
@@ -130,14 +131,14 @@ class TokenExpanderTest
     private static Rule ad0898Template()
     {
         Rule rule = template("CDISC-AD0898",
-                new CheckConditionAll(List.of(leaf("&DOM.&DOMSEQ", "var_exists", null),
-                        leaf("&DOM.&DOMSEQ", "empty", null))),
-                List.of(match("&DOM", "STUDYID", "USUBJID", "&DOMSEQ")),
-                domainFrom("&DOM", "&DOMSEQ", true));
+                new CheckConditionAll(List.of(leaf("&DOM&.&DOM&SEQ", "var_exists", null),
+                        leaf("&DOM&.&DOM&SEQ", "empty", null))),
+                List.of(match("&DOM&", "STUDYID", "USUBJID", "&DOM&SEQ")),
+                domainFrom("&DOM&", "&DOM&SEQ", true));
         Outcome outcome = new Outcome();
         outcome.setMessage(
                 "The ADaM --SEQ value is not present in the parent SDTM domain's --SEQ.");
-        outcome.setOutputVariables(List.of("&DOMSEQ", "&DOM.&DOMSEQ"));
+        outcome.setOutputVariables(List.of("&DOM&SEQ", "&DOM&.&DOM&SEQ"));
         rule.setOutcome(outcome);
         return rule;
     }
@@ -245,7 +246,7 @@ class TokenExpanderTest
     /**
      * {@code Fix #356} — the {@code Output_Variables} rename is a whole-name map lookup, so an
      * {@code !X} exclusion token ({@code OutputVariableToken}) must be renamed by the name INSIDE
-     * it. A raw {@code "!&VAR"} is not a key of the substitution map and would survive with its
+     * it. A raw {@code "!&VAR&"} is not a key of the substitution map and would survive with its
      * token unresolved while the Check resolved; the {@code deriveOutputVariables} call at the end
      * of the expansion then rejects it (E-3.1) and the rule reports ENGINE_ERROR.
      */
@@ -260,7 +261,7 @@ class TokenExpanderTest
 
         Rule template = ad0591Template();
         assertNotNull(template.getOutcome());
-        template.getOutcome().setOutputVariables(List.of("!&VAR", "ADSL.&VAR"));
+        template.getOutcome().setOutputVariables(List.of("!&VAR&", "ADSL.&VAR&"));
 
         List<Rule> rules = expanded(TokenExpander.tryExpand(template, adae.getMetaData(),
                 ctx(adae, map("ADSL", adsl), List.of())));
@@ -269,7 +270,7 @@ class TokenExpanderTest
         Rule concrete = rules.get(0);
         // Both arms resolved — the marker survives, the wildcard behind it does not.
         assertEquals(List.of("!AGE", "ADSL.AGE"), concrete.getOutcome().getOutputVariables());
-        // … and the expansion's own load validation accepts it (an unresolved `!&VAR` would not).
+        // … and the expansion's own load validation accepts it (an unresolved `!&VAR&` would not).
         assertNull(concrete.getLoadError(), concrete.getLoadError());
         assertEquals(List.of("ADSL.AGE"), concrete.getEffectiveOutputVariables());
     }
@@ -393,8 +394,8 @@ class TokenExpanderTest
                 .build();
 
         Rule rule = template("T",
-                new CheckConditionAll(List.of(leaf("&V", "not_equal_to", "LB.&V"))),
-                List.of(match("LB", "USUBJID")), sharedWith("&V", "LB"));
+                new CheckConditionAll(List.of(leaf("&V&", "not_equal_to", "LB.&V&"))),
+                List.of(match("LB", "USUBJID")), sharedWith("&V&", "LB"));
 
         List<Rule> rules = expanded(TokenExpander.tryExpand(rule, adlb.getMetaData(),
                 ctx(adlb, map("lbch", lbch, "lbhe", lbhe), List.of())));
@@ -437,7 +438,7 @@ class TokenExpanderTest
     @Test
     void knownDomainOnlyExcludesAdamsOwnSeqVariables()
     {
-        // ASEQ / SRCSEQ / RECSEQ all match the &DOMSEQ pattern but are NOT parent references:
+        // ASEQ / SRCSEQ / RECSEQ all match the &DOM&SEQ pattern but are NOT parent references:
         // ASEQ is ADaM's own sequence, SRCSEQ names its parent in SRCDOM, RECSEQ is neither.
         // Without the filter they would expand to ASEQ ∈ A.ASEQ, SRCSEQ ∈ SRC.SRCSEQ, …
         IDataTable adae = MockTable.of().name("ADAE").col("STUDYID", "S").col("USUBJID", "U")
@@ -513,7 +514,7 @@ class TokenExpanderTest
         String reason = reason(TokenExpander.tryExpand(ad0898Template(), adsl.getMetaData(),
                 ctx(adsl, map(), List.of("AE"))));
 
-        assertTrue(reason.contains("no column matches the pattern '&DOMSEQ'"), reason);
+        assertTrue(reason.contains("no column matches the pattern '&DOM&SEQ'"), reason);
     }
 
 
@@ -537,8 +538,8 @@ class TokenExpanderTest
         IDataTable adae = MockTable.of().name("ADAE").col("USUBJID", "U").col("ASEQ", "1").build();
         IDataTable a = MockTable.of().name("A").col("USUBJID", "U").col("ASEQ", "1").build();
         Rule rule = template("T",
-                new CheckConditionAll(List.of(leaf("&D.&DSEQ", "var_exists", null))),
-                List.of(match("&D", "USUBJID")), domainFrom("&D", "&DSEQ", false));
+                new CheckConditionAll(List.of(leaf("&D&.&D&SEQ", "var_exists", null))),
+                List.of(match("&D&", "USUBJID")), domainFrom("&D&", "&D&SEQ", false));
 
         List<Rule> rules = expanded(
                 TokenExpander.tryExpand(rule, adae.getMetaData(), ctx(adae, map("A", a), null)));
@@ -593,11 +594,11 @@ class TokenExpanderTest
         IDataTable other = MockTable.of().name("OTHER").col("AE", "y").build();
         IDataTable ae = MockTable.of().name("AE").col("USUBJID", "U").col("AESEQ", "1").build();
 
-        CheckCondition body = new CheckConditionAll(List.of(leaf("&T", "non_empty", null)));
+        CheckCondition body = new CheckConditionAll(List.of(leaf("&T&", "non_empty", null)));
         Rule viaShared = template("S", body, List.of(match("OTHER", "USUBJID")),
-                sharedWith("&T", "OTHER"));
+                sharedWith("&T&", "OTHER"));
         Rule viaDomain = template("S", body, List.of(match("OTHER", "USUBJID")),
-                domainFrom("&T", "&TSEQ", false));
+                domainFrom("&T&", "&T&SEQ", false));
 
         String fromShared = expressionOf(expanded(TokenExpander.tryExpand(viaShared,
                 ds.getMetaData(), ctx(ds, map("OTHER", other), null))).get(0));
@@ -675,9 +676,9 @@ class TokenExpanderTest
         IDataTable cm = MockTable.of().name("CM").col("CMSEQ", "2").build();
 
         Rule rule = template("X",
-                new CheckConditionAll(List.of(leaf("&V", "non_empty", null),
-                        leaf("&D.&DSEQ", "var_exists", null))),
-                null, sharedWith("&V", "ADSL"), domainFrom("&D", "&DSEQ", false));
+                new CheckConditionAll(List.of(leaf("&V&", "non_empty", null),
+                        leaf("&D&.&D&SEQ", "var_exists", null))),
+                null, sharedWith("&V&", "ADSL"), domainFrom("&D&", "&D&SEQ", false));
 
         List<Rule> rules = expanded(TokenExpander.tryExpand(rule, ds.getMetaData(),
                 ctx(ds, map("ADSL", adsl, "AE", ae, "CM", cm), null)));
@@ -697,9 +698,9 @@ class TokenExpanderTest
         IDataTable ds = MockTable.of().name("ADX").col("USUBJID", "U").col("AESEQ", "1").build();
         IDataTable ae = MockTable.of().name("AE").col("AESEQ", "1").build();
         Rule rule = template("G",
-                new CheckConditionAll(List.of(leaf("&D.&DSEQ", "var_exists", null))), null,
-                domainFrom("&D", "&DSEQ", false));
-        rule.setDescription("mentions &D and &DSEQ");
+                new CheckConditionAll(List.of(leaf("&D&.&D&SEQ", "var_exists", null))), null,
+                domainFrom("&D&", "&D&SEQ", false));
+        rule.setDescription("mentions &D& and &D&SEQ");
 
         // Control: without the unsubstituted position the expansion is produced and the free text
         // is rewritten too.
@@ -709,13 +710,75 @@ class TokenExpanderTest
 
         net.cumba.corej.core.model.Scope scope = new net.cumba.corej.core.model.Scope();
         net.cumba.corej.core.model.DomainScope domains = new net.cumba.corej.core.model.DomainScope();
-        domains.setInclude(List.of("&D"));
+        domains.setInclude(List.of("&D&"));
         scope.setDomains(domains);
         rule.setScope(scope);
 
         String reason = reason(
                 TokenExpander.tryExpand(rule, ds.getMetaData(), ctx(ds, map("AE", ae), null)));
-        assertTrue(reason.contains("no rule whose tokens were all substituted"), reason);
+        assertTrue(reason.contains("still carries the token '&D&'"), reason);
+    }
+
+
+    /**
+     * {@code PLAN-expansion-token-delimiters} S7 — the survivor check scans for ANY complete token,
+     * not only the tuple's declared ones, and its drop reason is recorded rather than only logged.
+     * Data can carry a column literally named {@code X&A&} (xlsx/csv) under {@code all_variables},
+     * and a rule built past the loader can carry an undeclared token anywhere.
+     */
+    @Test
+    void anUndeclaredCompleteTokenSurvivingSubstitutionDropsTheRuleWithAReason()
+    {
+        IDataTable ds = MockTable.of().name("ADX").col("USUBJID", "U").col("AESEQ", "1").build();
+        IDataTable ae = MockTable.of().name("AE").col("AESEQ", "1").build();
+        Rule rule = template("H",
+                new CheckConditionAll(List.of(leaf("&D&.&D&SEQ", "var_exists", null))), null,
+                domainFrom("&D&", "&D&SEQ", false));
+        rule.setDescription("mentions &D& and an undeclared &Z&");
+
+        String reason = reason(
+                TokenExpander.tryExpand(rule, ds.getMetaData(), ctx(ds, map("AE", ae), null)));
+
+        assertTrue(reason.contains("still carries the token '&Z&'"), reason);
+        assertTrue(reason.contains("H-AESEQ"), reason);
+    }
+
+
+    /**
+     * {@code PLAN-expansion-token-delimiters} D1/S8 — the bare template form and the backtick form
+     * are the same template: both expand to the identical concrete rule.
+     */
+    @Test
+    void theBareAndBacktickTemplateFormsExpandToTheSameConcreteRule()
+    {
+        IDataTable adae = MockTable.of().name("ADAE").col("STUDYID", "S").col("USUBJID", "U")
+                .col("AESEQ", "1").build();
+        IDataTable ae = MockTable.of().name("AE").col("STUDYID", "S").col("USUBJID", "U")
+                .col("AESEQ", "1").build();
+        String bare = "var_exists(&DOM&.&DOM&SEQ) and empty(&DOM&.&DOM&SEQ)";
+        String quoted = "var_exists(&DOM&.&DOM&SEQ) and empty(&DOM&.&DOM&SEQ)";
+
+        List<String> printed = new java.util.ArrayList<>();
+        for (String source : List.of(bare, quoted))
+        {
+            Rule rule = template("X",
+                    new net.cumba.corej.core.model.CheckConditionExpression(
+                            net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source),
+                    List.of(match("&DOM&", "STUDYID", "USUBJID", "&DOM&SEQ")),
+                    domainFrom("&DOM&", "&DOM&SEQ", true));
+            List<Rule> rules = expanded(TokenExpander.tryExpand(rule, adae.getMetaData(),
+                    ctx(adae, map("AE", ae), List.of("AE"))));
+            assertEquals(List.of("X-AESEQ"), rules.stream().map(Rule::effectiveId).toList());
+            printed.add(net.cumba.corej.core.expr.ExpressionPrinter.print(
+                    ((net.cumba.corej.core.model.CheckConditionExpression) rules.get(0).getCheck())
+                            .expr()));
+            assertNotNull(rules.get(0).getMatchDatasets());
+            assertEquals("AE", rules.get(0).getMatchDatasets().get(0).getName());
+            assertEquals(List.of("STUDYID", "USUBJID", "AESEQ"),
+                    rules.get(0).getMatchDatasets().get(0).getKeys());
+        }
+        assertEquals("var_exists(AE.AESEQ) and empty(AE.AESEQ)", printed.get(0));
+        assertEquals(printed.get(0), printed.get(1));
     }
 
 }

@@ -73,7 +73,7 @@ class AllVariablesExpansionSourceTest
     private static ExpansionDirective over(ExpansionSource source)
     {
         ExpansionDirective d = new ExpansionDirective();
-        d.setToken("&VAR");
+        d.setToken("&VAR&");
         d.setOverJson(source == null ? null : source.getJsonValue());
         return d;
     }
@@ -85,7 +85,7 @@ class AllVariablesExpansionSourceTest
         RuleCore core = new RuleCore();
         core.setId("CDISC-SEND-0049");
         rule.setCore(core);
-        String src = "var_label(\"&VAR\", \"DATA\") != \"\"";
+        String src = "var_label(\"&VAR&\", \"DATA\") != \"\"";
         CheckCondition check = new CheckConditionExpression(CheckExpressionParser.parse(src), src);
         rule.setCheck(check);
         rule.setExpansion(List.of(over(source)));
@@ -367,7 +367,7 @@ class AllVariablesExpansionSourceTest
     void theCapFiresOnAProjectionThatCannotEvenBeCounted()
     {
         List<ExpansionDirective> directives = new ArrayList<>();
-        for (String token : List.of("&A", "&B", "&C"))
+        for (String token : List.of("&A&", "&B&", "&C&"))
         {
             ExpansionDirective d = new ExpansionDirective();
             d.setToken(token);
@@ -379,7 +379,7 @@ class AllVariablesExpansionSourceTest
         RuleCore core = new RuleCore();
         core.setId("CDISC-SEND-0049");
         rule.setCore(core);
-        String src = "var_label(\"&A\", \"DATA\") != var_label(\"&B\", \"DATA\")";
+        String src = "var_label(\"&A&\", \"DATA\") != var_label(\"&B&\", \"DATA\")";
         rule.setCheck(new CheckConditionExpression(CheckExpressionParser.parse(src), src));
         rule.setExpansion(directives);
 

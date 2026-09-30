@@ -174,18 +174,18 @@ class CheckLevelCloneSiteTest
         tpl.setCore(core);
         // Authored Warning for the same non-vacuousness reason as template() (M1).
         tpl.setSeverity(Severity.WARNING);
-        tpl.setCheck(new CheckConditionAll(List.of(leaf("&VAR", "non_empty"))));
+        tpl.setCheck(new CheckConditionAll(List.of(leaf("&VAR&", "non_empty"))));
         SequencedMap<Severity, LevelCheck> tokenLevels = new LinkedHashMap<>();
         tokenLevels.put(Severity.WARNING, new LevelCheck(
-                new CheckConditionAll(List.of(leaf("&VAR", "non_empty"))), "definitely wrong"));
+                new CheckConditionAll(List.of(leaf("&VAR&", "non_empty"))), "definitely wrong"));
         tokenLevels.put(Severity.INFO,
-                new LevelCheck(new CheckConditionAll(List.of(leaf("&VAR", "empty"))), null));
+                new LevelCheck(new CheckConditionAll(List.of(leaf("&VAR&", "empty"))), null));
         tpl.setCheckLevels(tokenLevels);
         Outcome o = new Outcome();
         o.setMessage("m");
         tpl.setOutcome(o);
         ExpansionDirective d = new ExpansionDirective();
-        d.setToken("&VAR");
+        d.setToken("&VAR&");
         d.setOverJson(ExpansionSource.SHARED_VARIABLES.getJsonValue());
         d.setWith("ADSL");
         tpl.setExpansion(List.of(d));
@@ -273,9 +273,9 @@ class CheckLevelCloneSiteTest
 
     private static CheckCondition leaf(String aName, String aOperator)
     {
-        // Backtick-quoted so expansion-token names (`&VAR`) lex as references, exactly as the
-        // authored rulespec templates spell them.
-        String ref = "`" + aName + "`";
+        // Bare, exactly as the authored corpus templates spell a `&NAME&` token
+        // (PLAN-expansion-token-delimiters): it lexes inside an identifier, no backticks needed.
+        String ref = aName;
         return expr("empty".equals(aOperator) ? "empty(" + ref + ")" : "not empty(" + ref + ")");
     }
 

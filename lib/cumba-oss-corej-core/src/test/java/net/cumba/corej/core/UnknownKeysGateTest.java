@@ -283,10 +283,10 @@ class UnknownKeysGateTest
     {
         String error = errorOf("\"Core\":{\"Id\":\"T-UKG\"},\"Sensitivity\":\"Record\","
                 + "\"Scope\":{\"Domains\":{\"Include\":[\"ADAE\"]}},"
-                + "\"Expansion\":[{\"token\":\"&VAR\",\"over\":\"shared_variables\",\"with\":\"ADSL\"},"
-                + "{\"token\":\"&OTH\",\"over\":\"all_variables\",\"X\":1}],"
+                + "\"Expansion\":[{\"token\":\"&VAR&\",\"over\":\"shared_variables\",\"with\":\"ADSL\"},"
+                + "{\"token\":\"&OTH&\",\"over\":\"all_variables\",\"X\":1}],"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]},"
-                + "\"Check\":{\"expression\":\"not empty(`&VAR`) and not empty(`&OTH`)\"}");
+                + "\"Check\":{\"expression\":\"not empty(&VAR&) and not empty(&OTH&)\"}");
         assertUnknownAt(error, "X", "under 'Expansion[1]'");
         assertFalse(error.contains("Expansion[0]"), error);
     }
@@ -776,10 +776,10 @@ class UnknownKeysGateTest
                                "WARNING":{"all":[{"any":[{"not":{"expression":"empty(AETERM)"}}]}]}}},
                     "expansion":{"Core":{"Id":"T-EXP"},"Sensitivity":"Record",
                       "Scope":{"Domains":{"Include":["ADAE"]}},
-                      "Expansion":[{"token":"&VAR","over":"shared_variables","with":"ADSL"},
-                        {"token":"&DOM","over":"domain_from_variable","pattern":"&DOMSEQ","known_domain_only":true}],
+                      "Expansion":[{"token":"&VAR&","over":"shared_variables","with":"ADSL"},
+                        {"token":"&DOM&","over":"domain_from_variable","pattern":"&DOM&SEQ","known_domain_only":true}],
                       "Outcome":{"Message":"m","Output_Variables":["USUBJID"]},
-                      "Check":{"expression":"not empty(`&VAR`) and not empty(`&DOMSEQ`)"}},
+                      "Check":{"expression":"not empty(&VAR&) and not empty(&DOM&SEQ)"}},
                     "wild":{"Core":{"Id":"T-WILD"},"Sensitivity":"Group",
                       "Scope":{"Domains":{"Include":["ADSL"]}},
                       "wildcards":{"xx":{"min":1,"max":9}},"wildcardExclude":["TRT01P"],

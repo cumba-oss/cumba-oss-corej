@@ -1,11 +1,14 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.util.List;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.ExpansionSource;
 import net.cumba.corej.core.model.Rule;
@@ -20,9 +23,18 @@ import org.junit.jupiter.api.Test;
  * and the check tests nothing. That is precisely how {@code CDISC-AD0591} and {@code CDISC-AD0898}
  * shipped as no-ops, so the whole mechanism is built to fail loudly instead.
  * </p>
+ *
+ * <p>
+ * {@code PLAN-expansion-token-delimiters}: a token is {@code &NAME&} with
+ * {@code NAME = [A-Z][A-Z0-9]*}, written bare in a Check. Gate <b>G1</b> pins the token's form,
+ * <b>G2</b> rejects an undeclared complete token on every rule, <b>G3</b> rejects the old
+ * undelimited spelling anywhere in an Expansion rule's rewritten surfaces.
+ * </p>
  */
 class RuleLoadValidationExpansionTest
 {
+
+    private static final String G1 = "must have the form &NAME& with NAME = [A-Z][A-Z0-9]*";
 
     private static String packageOf(String ruleJson)
     {
@@ -51,33 +63,52 @@ class RuleLoadValidationExpansionTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-146-OK"},
-                  "Expansion": [{"token": "&VAR", "over": "shared_variables", "with": "ADSL"}],
-                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
+                  "Expansion": [{"token": "&VAR&", "over": "shared_variables", "with": "ADSL"}],
+                  "Check": {"all": [{"expression": "not empty(&VAR&)"}]}
                 }
                 """);
-        assertNull(rule.getLoadError());
+        assertNull(rule.getLoadError(), rule.getLoadError());
         assertNotNull(rule.getExpansion());
         assertEquals(1, rule.getExpansion().size());
         assertEquals(ExpansionSource.SHARED_VARIABLES, rule.getExpansion().get(0).getOver());
-        assertEquals("&VAR", rule.getExpansion().get(0).getToken());
+        assertEquals("&VAR&", rule.getExpansion().get(0).getToken());
+    }
+
+
+    @Test
+    void theBacktickFormOfATokenStillLoads() throws IOException
+    {
+        // S8: backticks are generally needed for names with spaces, so the form stays valid.
+        Rule rule = load("""
+                {
+                  "Core": {"Id": "TEST-146-BT"},
+                  "Expansion": [{"token": "&VAR&", "over": "shared_variables", "with": "ADSL"}],
+                  "Check": {"all": [{"expression": "not empty(`&VAR&`)"}]}
+                }
+                """);
+        assertNull(rule.getLoadError(), rule.getLoadError());
     }
 
 
     @Test
     void anUnknownOverValueIsRejected() throws IOException
     {
-        // Silently dropping the directive would leave '&VAR' unsubstituted, and the rule would
+        // Silently dropping the directive would leave '&VAR&' unsubstituted, and the rule would
         // then test a column that cannot exist.
         String error = errorOf("""
                 {
                   "Core": {"Id": "TEST-146-OVER"},
-                  "Expansion": [{"token": "&VAR", "over": "each_full_moon", "with": "ADSL"}],
-                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
+                  "Expansion": [{"token": "&VAR&", "over": "each_full_moon", "with": "ADSL"}],
+                  "Check": {"all": [{"expression": "not empty(&VAR&)"}]}
                 }
                 """);
         assertTrue(error.contains("invalid 'over' value 'each_full_moon'"), error);
         assertTrue(error.contains("shared_variables"), "the message must list the valid values");
     }
+
+    // ------------------------------------------------------------------
+    // G1 — the token's form
+    // ------------------------------------------------------------------
 
 
     @Test
@@ -92,24 +123,83 @@ class RuleLoadValidationExpansionTest
                   "Check": {"all": [{"expression": "not empty(VAR)"}]}
                 }
                 """);
-        assertTrue(error.contains("carries no sigil"), error);
+        assertTrue(error.contains("Expansion token 'VAR' " + G1), error);
+        assertTrue(error.contains("(e.g. '&DOM&')"), error);
     }
 
 
     @Test
-    void aTokenContainedInAnotherTokenIsRejected() throws IOException
+    void anUndelimitedOrMisspelledTokenIsRejected() throws IOException
     {
+        // The old spelling, a lower-case name, a missing opening '&', a '_' in the name.
+        for (String token : List.of("&DOM", "&dom&", "DOM&", "&D_M&", "&&", "&1&"))
+        {
+            String error = errorOf("""
+                    {
+                      "Core": {"Id": "TEST-146-FORM"},
+                      "Expansion": [{"token": "%s", "over": "shared_variables", "with": "ADSL"}],
+                      "Check": {"all": [{"expression": "not empty(AGE)"}]}
+                    }
+                    """.formatted(token));
+            assertTrue(error.contains("Expansion token '" + token + "' " + G1),
+                    token + ": " + error);
+        }
+    }
+
+
+    @Test
+    void aTokenContainingTheDomainPrefixWildcardIsRejectedByTheFormGate() throws IOException
+    {
+        // R-5.20 is subsumed by R-5.17: '--D' cannot match &NAME&, so the former dedicated
+        // "contains '--'" check is gone.
         String error = errorOf("""
                 {
-                  "Core": {"Id": "TEST-146-OVERLAP"},
+                  "Core": {"Id": "TEST-146-DASHDASH"},
                   "Expansion": [
-                    {"token": "&D", "over": "domain_from_variable", "pattern": "&DSEQ"},
-                    {"token": "&DS", "over": "domain_from_variable", "pattern": "&DSX"}
+                    {"token": "--D", "over": "domain_from_variable", "pattern": "--DSEQ"}
                   ],
-                  "Check": {"all": [{"expression": "not empty(`&DSEQ`)"}]}
+                  "Check": {"all": [{"expression": "not empty(--DSEQ)"}]}
                 }
                 """);
-        assertTrue(error.contains("occurs inside token"), error);
+        assertTrue(error.contains("Expansion token '--D' " + G1), error);
+    }
+
+
+    @Test
+    void aTokenDeclaredTwiceIsRejected() throws IOException
+    {
+        // Two directives with the same token: substitutions.put would keep one binding while the
+        // expanded id carries both suffixes (review E-M2).
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-146-TWICE"},
+                  "Expansion": [
+                    {"token": "&V&", "over": "shared_variables", "with": "ADSL"},
+                    {"token": "&V&", "over": "shared_variables", "with": "ADAE"}
+                  ],
+                  "Check": {"all": [{"expression": "not empty(&V&)"}]}
+                }
+                """);
+        assertTrue(error.contains("Expansion token '&V&' is declared twice"), error);
+    }
+
+
+    @Test
+    void twoDistinctTokensAreNotAnOverlap() throws IOException
+    {
+        // The retired "no token is a prefix of another" check rejected `&D` / `&DS`; delimited
+        // tokens cannot contain each other, so `&D&` beside `&DS&` is a legal pair.
+        Rule rule = load("""
+                {
+                  "Core": {"Id": "TEST-146-PAIR"},
+                  "Expansion": [
+                    {"token": "&D&", "over": "domain_from_variable", "pattern": "&D&SEQ"},
+                    {"token": "&DS&", "over": "shared_variables", "with": "ADSL"}
+                  ],
+                  "Check": {"all": [{"expression": "not empty(&D&SEQ) and not empty(&DS&)"}]}
+                }
+                """);
+        assertNull(rule.getLoadError(), rule.getLoadError());
     }
 
 
@@ -117,16 +207,17 @@ class RuleLoadValidationExpansionTest
     void aTokenInAVariableRequirementIsRejected() throws IOException
     {
         // The requirement gate runs BEFORE expansion (DatasetRuleResolver: describeScopeSkip, then
-        // tryExpand), so it would match '&VAR' literally, skip the rule for every dataset, and the
-        // template would never expand. That is how 25 CDISC-AD rules were silently always-skipped
-        // once. ⚠ The bar re-pointed onto Requirements.Variables when Scope.Variables retired
-        // (PLAN-scope-requirements-split phase 5); nothing about it was ever specific to Scope.
+        // tryExpand), so it would match '&VAR&' literally, skip the rule for every dataset, and
+        // the template would never expand. That is how 25 CDISC-AD rules were silently
+        // always-skipped once. ⚠ The bar re-pointed onto Requirements.Variables when
+        // Scope.Variables retired (PLAN-scope-requirements-split phase 5); nothing about it was
+        // ever specific to Scope.
         String error = errorOf("""
                 {
                   "Core": {"Id": "TEST-146-SCOPE"},
-                  "Requirements": {"Variables": {"All": ["&VAR"]}},
-                  "Expansion": [{"token": "&VAR", "over": "shared_variables", "with": "ADSL"}],
-                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
+                  "Requirements": {"Variables": {"All": ["&VAR&"]}},
+                  "Expansion": [{"token": "&VAR&", "over": "shared_variables", "with": "ADSL"}],
+                  "Check": {"all": [{"expression": "not empty(&VAR&)"}]}
                 }
                 """);
         assertTrue(error.contains("must not appear in Requirements.Variables.All"), error);
@@ -142,9 +233,9 @@ class RuleLoadValidationExpansionTest
         String error = errorOf("""
                 {
                   "Core": {"Id": "TEST-146-MIX"},
-                  "Expansion": [{"token": "&VAR", "over": "shared_variables", "with": "ADSL"}],
+                  "Expansion": [{"token": "&VAR&", "over": "shared_variables", "with": "ADSL"}],
                   "Check": {"all": [
-                    {"expression": "not empty(`&VAR`)"},
+                    {"expression": "not empty(&VAR&)"},
                     {"expression": "var_exists(\\"TRTxxP\\")"}
                   ]}
                 }
@@ -155,38 +246,17 @@ class RuleLoadValidationExpansionTest
 
 
     @Test
-    void aTokenContainingTheDomainPrefixWildcardIsRejected() throws IOException
-    {
-        // '--' IS sigil-bearing, so the sigil check lets it through — but it already means "the
-        // caller-supplied domain code" (EC-36 / Fix #125). A token containing it would make
-        // substitution do a blind String.replace("--", ...) across the whole rule body.
-        String error = errorOf("""
-                {
-                  "Core": {"Id": "TEST-146-DASHDASH"},
-                  "Expansion": [
-                    {"token": "--D", "over": "domain_from_variable", "pattern": "--DSEQ"}
-                  ],
-                  "Check": {"all": [{"expression": "not empty(--DSEQ)"}]}
-                }
-                """);
-        assertTrue(error.contains("contains '--'"), error);
-        assertTrue(error.contains("EC-36"), error);
-    }
-
-
-    @Test
     void mixingAnExpansionWithTheWildcardMechanismDirectivesIsRejected() throws IOException
     {
         // DatasetRuleResolver.applyTemplatePostFilters derives the "expanded column" by cutting the
-        // id
-        // after the base id, which is wrong for a multi-directive token expansion.
+        // id after the base id, which is wrong for a multi-directive token expansion.
         String error = errorOf("""
                 {
                   "Core": {"Id": "TEST-146-WCDIR"},
                   "wildcardExclude": ["TRTPN"],
                   "skipIfLibraryDefined": true,
-                  "Expansion": [{"token": "&VAR", "over": "shared_variables", "with": "ADSL"}],
-                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
+                  "Expansion": [{"token": "&VAR&", "over": "shared_variables", "with": "ADSL"}],
+                  "Check": {"all": [{"expression": "not empty(&VAR&)"}]}
                 }
                 """);
         assertTrue(error.contains("wildcard-mechanism directives"), error);
@@ -201,8 +271,8 @@ class RuleLoadValidationExpansionTest
         String error = errorOf("""
                 {
                   "Core": {"Id": "TEST-146-WITH"},
-                  "Expansion": [{"token": "&VAR", "over": "shared_variables"}],
-                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
+                  "Expansion": [{"token": "&VAR&", "over": "shared_variables"}],
+                  "Check": {"all": [{"expression": "not empty(&VAR&)"}]}
                 }
                 """);
         assertTrue(error.contains("requires a 'with' dataset name"), error);
@@ -215,8 +285,8 @@ class RuleLoadValidationExpansionTest
         String error = errorOf("""
                 {
                   "Core": {"Id": "TEST-146-PAT"},
-                  "Expansion": [{"token": "&DOM", "over": "domain_from_variable"}],
-                  "Check": {"all": [{"expression": "not empty(`&DOMSEQ`)"}]}
+                  "Expansion": [{"token": "&DOM&", "over": "domain_from_variable"}],
+                  "Check": {"all": [{"expression": "not empty(&DOM&SEQ)"}]}
                 }
                 """);
         assertTrue(error.contains("requires a 'pattern'"), error);
@@ -224,19 +294,32 @@ class RuleLoadValidationExpansionTest
 
 
     @Test
-    void aPatternNotContainingItsTokenIsRejected() throws IOException
+    void aPatternMustContainItsTokenExactlyOnce() throws IOException
     {
-        // Nothing would be captured, so every candidate would silently fail to match.
-        String error = errorOf("""
+        // Nothing would be captured with zero occurrences; with two, bindDomainFromVariable's
+        // indexOf would silently capture against the first only.
+        String none = errorOf("""
                 {
                   "Core": {"Id": "TEST-146-NOCAP"},
                   "Expansion": [
-                    {"token": "&DOM", "over": "domain_from_variable", "pattern": "SOMESEQ"}
+                    {"token": "&DOM&", "over": "domain_from_variable", "pattern": "SOMESEQ"}
                   ],
-                  "Check": {"all": [{"expression": "not empty(`&DOMSEQ`)"}]}
+                  "Check": {"all": [{"expression": "not empty(&DOM&SEQ)"}]}
                 }
                 """);
-        assertTrue(error.contains("does not contain its token"), error);
+        assertTrue(none.contains(
+                "Expansion pattern 'SOMESEQ' must contain its token '&DOM&' exactly once (found 0)"),
+                none);
+        String twice = errorOf("""
+                {
+                  "Core": {"Id": "TEST-146-TWOCAP"},
+                  "Expansion": [
+                    {"token": "&DOM&", "over": "domain_from_variable", "pattern": "&DOM&X&DOM&"}
+                  ],
+                  "Check": {"all": [{"expression": "not empty(&DOM&SEQ)"}]}
+                }
+                """);
+        assertTrue(twice.contains("exactly once (found 2)"), twice);
     }
 
 
@@ -246,7 +329,7 @@ class RuleLoadValidationExpansionTest
         String error = errorOf("""
                 {
                   "Core": {"Id": "TEST-146-NOCHECK"},
-                  "Expansion": [{"token": "&VAR", "over": "shared_variables", "with": "ADSL"}]
+                  "Expansion": [{"token": "&VAR&", "over": "shared_variables", "with": "ADSL"}]
                 }
                 """);
         assertTrue(error.contains("no Check tree"), error);
@@ -282,6 +365,218 @@ class RuleLoadValidationExpansionTest
     }
 
     // ------------------------------------------------------------------
+    // G2 — an undeclared complete token, on EVERY rule
+    // ------------------------------------------------------------------
+
+
+    @Test
+    void anUndeclaredTokenInTheCheckOfARuleWithoutExpansionIsRejected() throws IOException
+    {
+        // Without G2 the rule would reach the run as a column literally named `&X&`, which the
+        // absent-column doctrine evaluates silently.
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-G2-NOEXP"},
+                  "Check": {"all": [{"expression": "not empty(&X&)"}]}
+                }
+                """);
+        assertTrue(error.contains(
+                "undeclared expansion token '&X&' in Check (declare it in Expansion:, or remove it)"),
+                error);
+    }
+
+
+    @Test
+    void anUndeclaredTokenInAStringLiteralIsRejected() throws IOException
+    {
+        String error = errorOf(
+                """
+                        {
+                          "Core": {"Id": "TEST-G2-LIT"},
+                          "Expansion": [{"token": "&VAR&", "over": "shared_variables", "with": "ADSL"}],
+                          "Check": {"all": [
+                            {"expression": "var_label(\\"&OTH&\\", \\"DATA\\") != var_label(&VAR&, \\"LIBRARY\\")"}
+                          ]}
+                        }
+                        """);
+        assertTrue(error.contains("undeclared expansion token '&OTH&' in Check"), error);
+        assertFalse(error.contains("'&VAR&' in Check"), "the declared token is fine: " + error);
+    }
+
+
+    @Test
+    void anUndeclaredTokenInOutputVariablesIsRejected() throws IOException
+    {
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-G2-OV"},
+                  "Expansion": [{"token": "&VAR&", "over": "shared_variables", "with": "ADSL"}],
+                  "Check": {"all": [{"expression": "not empty(&VAR&)"}]},
+                  "Outcome": {"Message": "m", "Output_Variables": ["&VAR&", "ADSL.&OTH&"]}
+                }
+                """);
+        assertTrue(error.contains("undeclared expansion token '&OTH&' in Outcome.Output_Variables"),
+                error);
+    }
+
+
+    @Test
+    void anUndeclaredTokenInAMatchDatasetsFilterIsRejected() throws IOException
+    {
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-G2-MD"},
+                  "Check": {"all": [{"expression": "not empty(AGE)"}]},
+                  "Match_Datasets": [{"Name": "ADSL", "Keys": ["USUBJID"], "Join_Type": "left",
+                                      "Filter": "&Z& == \\"1\\""}]
+                }
+                """);
+        assertTrue(error.contains("undeclared expansion token '&Z&' in Match_Datasets[0]"), error);
+    }
+
+
+    @Test
+    void operatorTextIsNotAnUndeclaredToken() throws IOException
+    {
+        // `)&&not` — the operator between two calls. The scan reads `&&` as the operator and never
+        // finds a token `&not …&` inside it.
+        Rule rule = load("""
+                {
+                  "Core": {"Id": "TEST-G2-ANDAND"},
+                  "Check": {"all": [{"expression": "not empty(A)&&not empty(B)&&not empty(C)"}]}
+                }
+                """);
+        String error = rule.getLoadError();
+        assertTrue(error == null || !error.contains("expansion token"), error);
+    }
+
+
+    @Test
+    void anHtmlEntityInTheDescriptionOfAPlainRuleIsNotAnError() throws IOException
+    {
+        // The corpus carries `&lt;&gt;` in PMDA-AD0586's Description: a stray, not a complete
+        // token, and G3 is scoped to rules that declare an Expansion block.
+        Rule rule = load("""
+                {
+                  "Core": {"Id": "TEST-G2-ENTITY"},
+                  "Description": "base &lt;&gt; 0 and R&D",
+                  "Check": {"all": [{"expression": "not empty(AGE)"}]}
+                }
+                """);
+        assertNull(rule.getLoadError(), rule.getLoadError());
+    }
+
+    // ------------------------------------------------------------------
+    // G3 — the old undelimited spelling anywhere in an Expansion rule
+    // ------------------------------------------------------------------
+
+
+    @Test
+    void theOldSpellingInTheCheckIsALexerError()
+    {
+        // A malformed Check fails the package at parse time (ExpressionLoaderTest
+        // .malformedExpressionFailsLoudly), so the lexer's message is what the author reads.
+        IOException ex = assertThrows(IOException.class, () -> load("""
+                {
+                  "Core": {"Id": "TEST-G3-CHECK"},
+                  "Expansion": [{"token": "&VAR&", "over": "shared_variables", "with": "ADSL"}],
+                  "Check": {"all": [{"expression": "not empty(&VAR)"}]}
+                }
+                """));
+        assertTrue(ex.getMessage().contains("unterminated expansion token '&VAR'"),
+                ex.getMessage());
+        assertTrue(ex.getMessage().contains("or did you mean the operator '&&'?"), ex.getMessage());
+    }
+
+
+    @Test
+    void theOldSpellingInAStringLiteralIsRejected() throws IOException
+    {
+        String error = errorOf(
+                """
+                        {
+                          "Core": {"Id": "TEST-G3-LIT"},
+                          "Expansion": [{"token": "&VAR&", "over": "shared_variables", "with": "ADSL"}],
+                          "Check": {"all": [
+                            {"expression": "var_label(\\"&VAR\\", \\"DATA\\") != var_label(&VAR&, \\"LIBRARY\\")"}
+                          ]}
+                        }
+                        """);
+        assertTrue(error.contains("unterminated expansion token '&VAR' in Check"), error);
+        assertTrue(error.contains("&NAME&"), error);
+    }
+
+
+    @Test
+    void theOldSpellingInOutputVariablesAndKeysAndRequirementsIsRejected() throws IOException
+    {
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-G3-SURF"},
+                  "Requirements": {"Variables": {"All": ["&VAR"]}},
+                  "Expansion": [
+                    {"token": "&VAR&", "over": "shared_variables", "with": "ADSL"},
+                    {"token": "&DOM&", "over": "domain_from_variable", "pattern": "&DOM&SEQ"}
+                  ],
+                  "Check": {"all": [{"expression": "not empty(&VAR&) and not empty(&DOM&SEQ)"}]},
+                  "Outcome": {"Message": "m", "Output_Variables": ["&VAR", "&DOM&SEQ"]},
+                  "Match_Datasets": [{"Name": "&DOM&", "Keys": ["USUBJID", "&DOMSEQ"],
+                                      "Join_Type": "left"}]
+                }
+                """);
+        assertTrue(
+                error.contains("unterminated expansion token '&VAR' in Outcome.Output_Variables"),
+                error);
+        assertTrue(error.contains("unterminated expansion token '&DOMSEQ' in Match_Datasets[0]"),
+                error);
+        // R6 no longer sees `&VAR` (it tests contains("&VAR&")); G3 is what catches it now.
+        assertTrue(error.contains("unterminated expansion token '&VAR' in Requirements.Variables"),
+                error);
+    }
+
+
+    @Test
+    void theOldSpellingInThePatternIsRejected() throws IOException
+    {
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-G3-PATTERN"},
+                  "Expansion": [
+                    {"token": "&DOM&", "over": "domain_from_variable", "pattern": "&DOMSEQ"}
+                  ],
+                  "Check": {"all": [{"expression": "not empty(&DOM&SEQ)"}]}
+                }
+                """);
+        assertTrue(error.contains("exactly once (found 0)"), error);
+        assertTrue(error.contains("unterminated expansion token '&DOMSEQ'"), error);
+    }
+
+
+    @Test
+    void aLowerCaseOrAdjacentTokenInAnOutputVariableIsRejected() throws IOException
+    {
+        String lower = errorOf("""
+                {
+                  "Core": {"Id": "TEST-G3-LOWER"},
+                  "Expansion": [{"token": "&VAR&", "over": "shared_variables", "with": "ADSL"}],
+                  "Check": {"all": [{"expression": "not empty(&VAR&)"}]},
+                  "Outcome": {"Message": "m", "Output_Variables": ["&var&"]}
+                }
+                """);
+        assertTrue(lower.contains("upper case"), lower);
+        String adjacent = errorOf("""
+                {
+                  "Core": {"Id": "TEST-G3-ADJ"},
+                  "Expansion": [{"token": "&VAR&", "over": "shared_variables", "with": "ADSL"}],
+                  "Check": {"all": [{"expression": "not empty(&VAR&)"}]},
+                  "Outcome": {"Message": "m", "Output_Variables": ["&VAR&&VAR&"]}
+                }
+                """);
+        assertTrue(adjacent.contains("separate an expansion token from '&' / '&&' by a space"),
+                adjacent);
+    }
+
+    // ------------------------------------------------------------------
     // The all_* sources take no selector
     // ------------------------------------------------------------------
 
@@ -300,8 +595,8 @@ class RuleLoadValidationExpansionTest
         String error = errorOf("""
                 {
                   "Core": {"Id": "TEST-ALLVARS-WITH"},
-                  "Expansion": [{"token": "&VAR", "over": "all_variables", "with": "ADSL"}],
-                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
+                  "Expansion": [{"token": "&VAR&", "over": "all_variables", "with": "ADSL"}],
+                  "Check": {"all": [{"expression": "not empty(&VAR&)"}]}
                 }
                 """);
         assertTrue(error.contains("does not take a 'with'"), error);
@@ -315,9 +610,9 @@ class RuleLoadValidationExpansionTest
                 {
                   "Core": {"Id": "TEST-ALLNUM-PATTERN"},
                   "Expansion": [
-                    {"token": "&VAR", "over": "all_numeric_variables", "pattern": "&VARSEQ"}
+                    {"token": "&VAR&", "over": "all_numeric_variables", "pattern": "&VAR&SEQ"}
                   ],
-                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
+                  "Check": {"all": [{"expression": "not empty(&VAR&)"}]}
                 }
                 """);
         assertTrue(error.contains("does not take a 'pattern'"), error);
@@ -331,10 +626,10 @@ class RuleLoadValidationExpansionTest
                 {
                   "Core": {"Id": "TEST-ALLCHAR-KDO"},
                   "Expansion": [
-                    {"token": "&VAR", "over": "all_character_variables",
+                    {"token": "&VAR&", "over": "all_character_variables",
                      "known_domain_only": true}
                   ],
-                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
+                  "Check": {"all": [{"expression": "not empty(&VAR&)"}]}
                 }
                 """);
         assertTrue(error.contains("does not take 'known_domain_only'"), error);
@@ -348,8 +643,8 @@ class RuleLoadValidationExpansionTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-ALLVARS-OK"},
-                  "Expansion": [{"token": "&VAR", "over": "all_variables"}],
-                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
+                  "Expansion": [{"token": "&VAR&", "over": "all_variables"}],
+                  "Check": {"all": [{"expression": "not empty(&VAR&)"}]}
                 }
                 """);
         assertNull(rule.getLoadError(), () -> "unexpected load error: " + rule.getLoadError());
@@ -357,7 +652,7 @@ class RuleLoadValidationExpansionTest
     }
 
     // ------------------------------------------------------------------
-    // G3 — an all_* expansion and the variable cursor are mutually exclusive
+    // G3 (all_*) — an all_* expansion and the variable cursor are mutually exclusive
     // ------------------------------------------------------------------
 
 
@@ -373,7 +668,7 @@ class RuleLoadValidationExpansionTest
         String error = errorOf("""
                 {
                   "Core": {"Id": "TEST-G3-ARITY1"},
-                  "Expansion": [{"token": "&VAR", "over": "all_variables"}],
+                  "Expansion": [{"token": "&VAR&", "over": "all_variables"}],
                   "Check": {"all": [
                     {"expression": "var_label(\\"DATA\\") != var_label(\\"LIBRARY\\")"}
                   ]}
@@ -390,7 +685,7 @@ class RuleLoadValidationExpansionTest
         String error = errorOf("""
                 {
                   "Core": {"Id": "TEST-G3-VARNAME"},
-                  "Expansion": [{"token": "&VAR", "over": "all_numeric_variables"}],
+                  "Expansion": [{"token": "&VAR&", "over": "all_numeric_variables"}],
                   "Check": {"all": [{"expression": "ends_with(varname(), \\"DTC\\")"}]}
                 }
                 """);
@@ -409,9 +704,9 @@ class RuleLoadValidationExpansionTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-G3-OK"},
-                  "Expansion": [{"token": "&VAR", "over": "all_variables"}],
+                  "Expansion": [{"token": "&VAR&", "over": "all_variables"}],
                   "Check": {"all": [
-                    {"expression": "var_label(\\"&VAR\\", \\"DATA\\") != \\"\\""}
+                    {"expression": "var_label(\\"&VAR&\\", \\"DATA\\") != \\"\\""}
                   ]}
                 }
                 """);
@@ -429,7 +724,7 @@ class RuleLoadValidationExpansionTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-G3-SHARED"},
-                  "Expansion": [{"token": "&VAR", "over": "shared_variables", "with": "ADSL"}],
+                  "Expansion": [{"token": "&VAR&", "over": "shared_variables", "with": "ADSL"}],
                   "Check": {"all": [{"expression": "ends_with(varname(), \\"DTC\\")"}]}
                 }
                 """);
@@ -451,7 +746,7 @@ class RuleLoadValidationExpansionTest
         String error = errorOf("""
                 {
                   "Core": {"Id": "TEST-G3-NONNATIVE"},
-                  "Expansion": [{"token": "&VAR", "over": "all_variables"}],
+                  "Expansion": [{"token": "&VAR&", "over": "all_variables"}],
                   "Check": {"all": [{"expression": "no_such_native_function_xyz(USUBJID)"}]}
                 }
                 """);

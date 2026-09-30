@@ -1919,7 +1919,7 @@ public final class StageAChecker
      * {@code AE.**SMIE}, {@code AE.${X}} and {@code SUPP--.QVAL} / {@code SUPP--.**X} are judged
      * (the last two because a {@code --} qualifier names its own Child entry exactly, and
      * {@code ExprPrefixResolver} later rewrites it to {@code SUPPAE.QVAL} — a silent not-supplied
-     * default on a Child entry, review round 2 M1); {@code ${DS}.X} and {@code &DOM.X} are not.
+     * default on a Child entry, review round 2 M1); {@code ${DS}.X} and {@code &DOM&.X} are not.
      *
      * @param name
      *            the operand name
@@ -1936,7 +1936,7 @@ public final class StageAChecker
     /**
      * The one rule, for a Check operand, a {@code Bindings} expression and an
      * {@code Output_Variables} entry alike: a qualifier is judged unless it is itself a
-     * {@code ${...}} substitution or an {@code &TOKEN} — those are bound at run time / expansion
+     * {@code ${...}} substitution or an {@code &TOKEN&} — those are bound at run time / expansion
      * and are judged nowhere: on a Child entry the substituted read is silent (the not-supplied
      * default on every row), an accepted gap with zero carriers (review round 2, L6).
      *
@@ -1958,7 +1958,7 @@ public final class StageAChecker
      * {@code CDISC-CG0043} with {@code Output_Variables: [AE.AESMIE]} loaded clean and
      * {@code RuleRunner}'s violation builder silently dropped the column — no lookup, no value, no
      * message. The authored list is read with its {@code !X} exclusions applied, so an excluded
-     * name is not judged. A {@code ${...}} or {@code &TOKEN} <b>qualifier</b> is bound at run time
+     * name is not judged. A {@code ${...}} or {@code &TOKEN&} <b>qualifier</b> is bound at run time
      * / expansion and is judged nowhere — silent at run time (the not-supplied default), an
      * accepted gap ({@link #judgeableQualifier}); a judgeable qualifier before such a suffix
      * ({@code AE.${X}}, {@code AE.**TERM}, {@code SUPP--.QVAL}) is judged.

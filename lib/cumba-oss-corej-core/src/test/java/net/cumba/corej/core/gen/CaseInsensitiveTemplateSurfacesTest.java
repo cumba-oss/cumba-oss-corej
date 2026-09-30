@@ -35,7 +35,7 @@ import org.junit.jupiter.api.Test;
  * {@code PLAN-case-insensitive-templates}, register {@code CIT §1}), found by review round 1: the
  * {@code wildcardPairCatalogue} whitelist ({@code PMDA-AD1012A}), the post-expansion filters of
  * {@code DatasetRuleResolver}, and the classification of a bound name that is a dotted reference
- * ({@code TokenExpander}'s {@code ADSL.&VAR}, {@code CDISC-AD0591}). Every test runs on
+ * ({@code TokenExpander}'s {@code ADSL.&VAR&}, {@code CDISC-AD0591}). Every test runs on
  * <b>lowercase-named</b> columns and fails on the comparison it guards.
  *
  * <p>
@@ -213,16 +213,15 @@ class CaseInsensitiveTemplateSurfacesTest
     /** The {@code CDISC-AD0591} template: every variable ADAE shares with ADSL. */
     private static Rule ad0591Template()
     {
-        Rule template = rule("CDISC-AD0591",
-                new CheckConditionAll(List.of(expr("not empty(`&VAR`)"),
-                        expr("not empty(`ADSL.&VAR`)"), expr("`&VAR` != `ADSL.&VAR`"))));
+        Rule template = rule("CDISC-AD0591", new CheckConditionAll(List.of(expr("not empty(&VAR&)"),
+                expr("not empty(ADSL.&VAR&)"), expr("&VAR& != ADSL.&VAR&"))));
         MatchDataset adsl = new MatchDataset();
         adsl.setName("ADSL");
         adsl.setKeys(List.of("STUDYID", "USUBJID"));
         adsl.setJoinType("left");
         template.setMatchDatasets(List.of(adsl));
         ExpansionDirective shared = new ExpansionDirective();
-        shared.setToken("&VAR");
+        shared.setToken("&VAR&");
         shared.setOverJson(ExpansionSource.SHARED_VARIABLES.getJsonValue());
         shared.setWith("ADSL");
         template.setExpansion(List.of(shared));
@@ -256,10 +255,10 @@ class CaseInsensitiveTemplateSurfacesTest
 
 
     /**
-     * The declared-token reach of {@code classifyConcrete}: {@code ADSL.&VAR} bound to the
+     * The declared-token reach of {@code classifyConcrete}: {@code ADSL.&VAR&} bound to the
      * lowercase {@code trt01p} is the dotted reference {@code ADSL.trt01p} — the kind the stage-A
      * dotted-reference checks and the absent-dataset skip key on — exactly as the uppercase binding
-     * {@code ADSL.TRT01P} is. It used to fall through to {@code COLUMN}. The bare {@code &VAR}
+     * {@code ADSL.TRT01P} is. It used to fall through to {@code COLUMN}. The bare {@code &VAR&}
      * binding stays a {@code COLUMN} in either case.
      */
     @Test

@@ -27,11 +27,11 @@ import org.junit.jupiter.api.Test;
  * name operand <em>only</em> as a string literal or the {@code variable_name} operand — a
  * bareword/backtick reference is a {@link RuleDefinitionException}. The substitution walk, in turn,
  * left every scalar STRING literal alone. So the two halves missed each other by exactly one step:
- * {@code var_label(`&VAR`, "DATA")} substituted and then failed to compile, while
- * {@code var_label("&VAR", "DATA")} never substituted at all and the token survived into a resolved
- * rule. Owner ruling (2026-09-21) settles the spelling as the string form — <i>"the {@code "&VAR"}
- * makes clear that the name is used as a string"</i> — so the fix is in the substituter, and
- * {@code ExprCompiler} is deliberately untouched.
+ * {@code var_label(`&VAR&`, "DATA")} substituted and then failed to compile, while
+ * {@code var_label("&VAR&", "DATA")} never substituted at all and the token survived into a
+ * resolved rule. Owner ruling (2026-09-21) settles the spelling as the string form — <i>"the
+ * {@code "&VAR&"} makes clear that the name is used as a string"</i> — so the fix is in the
+ * substituter, and {@code ExprCompiler} is deliberately untouched.
  * </p>
  *
  * <p>
@@ -89,10 +89,11 @@ class StringLiteralSubstitutionPolicyTest
     @Test
     void declaredTokenIsSubstitutedInsideAMetadataAccessorNameLiteral()
     {
-        CheckCondition out = expandToken("var_label(\"&VAR\", \"DATA\") != \"\"", "&VAR", "AETERM");
+        CheckCondition out = expandToken("var_label(\"&VAR&\", \"DATA\") != \"\"", "&VAR&",
+                "AETERM");
 
         assertTrue(printed(out).contains("\"AETERM\""), printed(out));
-        assertTrue(!printed(out).contains("&VAR"), "token survived: " + printed(out));
+        assertTrue(!printed(out).contains("&VAR&"), "token survived: " + printed(out));
     }
 
 
@@ -100,7 +101,8 @@ class StringLiteralSubstitutionPolicyTest
     @Test
     void theSubstitutedAccessorCompiles()
     {
-        CheckCondition out = expandToken("var_label(\"&VAR\", \"DATA\") != \"\"", "&VAR", "AETERM");
+        CheckCondition out = expandToken("var_label(\"&VAR&\", \"DATA\") != \"\"", "&VAR&",
+                "AETERM");
         Expr expr = ((CheckConditionExpression) out).expr();
 
         assertTrue(NativeExprEvaluator.isSupported(expr), "expected a compilable expression");
@@ -115,17 +117,23 @@ class StringLiteralSubstitutionPolicyTest
     @Test
     void theBacktickRefSpellingStillDoesNotCompile()
     {
-        CheckCondition out = expandToken("var_label(`&VAR`, \"DATA\") != \"\"", "&VAR", "AETERM");
-        Expr expr = ((CheckConditionExpression) out).expr();
+        // PLAN-expansion-token-delimiters S9: the bare `&VAR&` is a Ref exactly like the backtick
+        // form, so both spellings stay a compile error in a name position.
+        for (String source : java.util.List.of("var_label(`&VAR&`, \"DATA\") != \"\"",
+                "var_label(&VAR&, \"DATA\") != \"\""))
+        {
+            CheckCondition out = expandToken(source, "&VAR&", "AETERM");
+            Expr expr = ((CheckConditionExpression) out).expr();
 
-        // The token IS substituted (it is a ref, and refs were always substituted) …
-        assertTrue(printed(out).contains("AETERM"), printed(out));
-        // … but a reference in a name position is not a name the compiler accepts.
-        // isSupported swallows ExpressionException; a RuleDefinitionException — the "rule is
-        // wrong" signal — propagates, which is exactly the distinction being pinned here.
-        RuleDefinitionException ex = assertThrows(RuleDefinitionException.class,
-                () -> NativeExprEvaluator.isSupported(expr));
-        assertTrue(ex.getMessage().contains("name must be a string"), ex.getMessage());
+            // The token IS substituted (it is a ref, and refs were always substituted) …
+            assertTrue(printed(out).contains("AETERM"), printed(out));
+            // … but a reference in a name position is not a name the compiler accepts.
+            // isSupported swallows ExpressionException; a RuleDefinitionException — the "rule
+            // is wrong" signal — propagates, which is exactly the distinction being pinned here.
+            RuleDefinitionException ex = assertThrows(RuleDefinitionException.class,
+                    () -> NativeExprEvaluator.isSupported(expr), source);
+            assertTrue(ex.getMessage().contains("name must be a string"), ex.getMessage());
+        }
     }
 
     // ------------------------------------------------------------------
@@ -138,7 +146,7 @@ class StringLiteralSubstitutionPolicyTest
     void aValuePositionLiteralWithoutTheTokenIsUntouched()
     {
         String source = "not contains(var_label(\"LIBRARY\"), \"Screen Failure\")";
-        CheckCondition out = expandToken(source, "&VAR", "AETERM");
+        CheckCondition out = expandToken(source, "&VAR&", "AETERM");
 
         assertEquals("not contains(var_label(\"LIBRARY\"), \"Screen Failure\")", printed(out));
     }
@@ -151,9 +159,9 @@ class StringLiteralSubstitutionPolicyTest
     @Test
     void aRegexLiteralContainingTheTokenTextIsNotRewritten()
     {
-        CheckCondition out = expandToken("varname() !~ /^&VAR[0-9]$/", "&VAR", "AETERM");
+        CheckCondition out = expandToken("varname() !~ /^&VAR&[0-9]$/", "&VAR&", "AETERM");
 
-        assertTrue(printed(out).contains("&VAR"),
+        assertTrue(printed(out).contains("&VAR&"),
                 "a REGEX literal must survive verbatim: " + printed(out));
         assertTrue(!printed(out).contains("AETERM"), printed(out));
     }
@@ -166,7 +174,7 @@ class StringLiteralSubstitutionPolicyTest
     @Test
     void nonStringScalarLiteralsAreReturnedUnchanged()
     {
-        CheckCondition out = expandToken("record_count() > 1", "&VAR", "AETERM");
+        CheckCondition out = expandToken("record_count() > 1", "&VAR&", "AETERM");
 
         assertEquals("record_count() > 1", printed(out));
     }
@@ -232,8 +240,8 @@ class StringLiteralSubstitutionPolicyTest
     @Test
     void existsFamilyNameLiteralIsRewrittenUnderBothPolicies()
     {
-        String source = "var_exists(\"&VAR\")";
-        UnaryOperator<String> rename = tokenRename(Map.of("&VAR", "AETERM"));
+        String source = "var_exists(\"&VAR&\")";
+        UnaryOperator<String> rename = tokenRename(Map.of("&VAR&", "AETERM"));
 
         assertEquals("var_exists(\"AETERM\")", printed(WildcardExpander
                 .substituteNames(check(source), rename, StringLiteralPolicy.EXISTS_NAME_ONLY)));
@@ -247,7 +255,8 @@ class StringLiteralSubstitutionPolicyTest
     @Test
     void tokenInsideAListLiteralIsSubstituted()
     {
-        CheckCondition out = expandToken("varname() in [\"&VAR\", \"USUBJID\"]", "&VAR", "AETERM");
+        CheckCondition out = expandToken("varname() in [\"&VAR&\", \"USUBJID\"]", "&VAR&",
+                "AETERM");
 
         assertTrue(printed(out).contains("\"AETERM\""), printed(out));
         assertTrue(printed(out).contains("\"USUBJID\""), printed(out));
@@ -258,9 +267,9 @@ class StringLiteralSubstitutionPolicyTest
     @Test
     void substitutionReturnsAFreshTree()
     {
-        CheckCondition in = check("var_label(\"&VAR\", \"DATA\") != \"\"");
+        CheckCondition in = check("var_label(\"&VAR&\", \"DATA\") != \"\"");
         CheckCondition out = WildcardExpander.substituteNames(in,
-                tokenRename(Map.of("&VAR", "AETERM")), StringLiteralPolicy.DECLARED_TOKEN_BEARING);
+                tokenRename(Map.of("&VAR&", "AETERM")), StringLiteralPolicy.DECLARED_TOKEN_BEARING);
 
         assertNotSame(in, out);
         assertInstanceOf(CheckConditionExpression.class, out);

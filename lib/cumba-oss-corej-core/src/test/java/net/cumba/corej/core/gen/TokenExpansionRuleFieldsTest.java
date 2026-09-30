@@ -56,7 +56,7 @@ class TokenExpansionRuleFieldsTest
     private static net.cumba.corej.core.model.CheckConditionExpression leaf(String name,
             String operator)
     {
-        String ref = "`" + name + "`";
+        String ref = name;
         String source = switch (operator)
         {
         case "non_empty" -> "not empty(" + ref + ")";
@@ -139,20 +139,20 @@ class TokenExpansionRuleFieldsTest
         core.setStatus("Published");
         core.setVersion("9");
         rule.setCore(core);
-        rule.setCheck(new CheckConditionAll(List.of(leaf("&VAR", "non_empty"))));
-        rule.setPrecondition(new CheckConditionAll(List.of(leaf("&VAR", "var_exists"))));
-        rule.setDescription("&VAR must be populated");
+        rule.setCheck(new CheckConditionAll(List.of(leaf("&VAR&", "non_empty"))));
+        rule.setPrecondition(new CheckConditionAll(List.of(leaf("&VAR&", "var_exists"))));
+        rule.setDescription("&VAR& must be populated");
         rule.setSensitivity(Sensitivity.DATASET);
         rule.setVariableUniverse(VariableUniverse.DATA);
         rule.setMatchDatasets(List.of(bareKeyedAdsl()));
-        rule.setExpansion(List.of(sharedWith("&VAR", "ADSL")));
+        rule.setExpansion(List.of(sharedWith("&VAR&", "ADSL")));
 
         rule.setCompiledBindings(
                 List.of(new CompiledBinding("$peak", net.cumba.corej.core.expr.CheckExpressionParser
-                        .parse("max(`&VAR`, group=[USUBJID])"), List.of(), null)));
+                        .parse("max(&VAR&, group=[USUBJID])"), List.of(), null)));
 
         GroupingSpec grouping = new GroupingSpec();
-        grouping.setVariables(List.of("&VAR"));
+        grouping.setVariables(List.of("&VAR&"));
         grouping.setKeepMissings(Boolean.TRUE);
         rule.setGrouping(grouping);
 
@@ -243,7 +243,7 @@ class TokenExpansionRuleFieldsTest
         assertEquals("var_exists(AGE)", net.cumba.corej.core.expr.ExpressionPrinter.print(
                 ((net.cumba.corej.core.model.CheckConditionExpression) ((CheckConditionAll) precondition)
                         .getConditions().get(0)).expr()),
-                "the Precondition is substituted too, or it tests a column named '&VAR'");
+                "the Precondition is substituted too, or it tests a column named '&VAR&'");
     }
 
 
@@ -264,7 +264,7 @@ class TokenExpansionRuleFieldsTest
         assertEquals(1, bindings.size());
         assertEquals("max(AGE, group=[USUBJID])",
                 net.cumba.corej.core.expr.ExpressionPrinter.print(bindings.get(0).expression()),
-                "the column position is bound (leaving '&VAR' names a column that cannot exist),"
+                "the column position is bound (leaving '&VAR&' names a column that cannot exist),"
                         + " and the non-token group= key survives the rewrite untouched");
         assertEquals("$peak", bindings.get(0).name());
     }
@@ -317,8 +317,8 @@ class TokenExpansionRuleFieldsTest
         RuleCore core = new RuleCore();
         core.setId("TK-F2");
         template.setCore(core);
-        template.setCheck(new CheckConditionAll(List.of(leaf("&VAR", "non_empty"))));
-        template.setExpansion(List.of(sharedWith("&VAR", "ADSL")));
+        template.setCheck(new CheckConditionAll(List.of(leaf("&VAR&", "non_empty"))));
+        template.setExpansion(List.of(sharedWith("&VAR&", "ADSL")));
 
         List<Rule> rules = expand(template, adae(), Map.of("ADSL", adsl()));
 
@@ -403,32 +403,32 @@ class TokenExpansionRuleFieldsTest
 
 
     /**
-     * A declared token that <em>contains</em> another must not make the result depend on iteration
-     * order: the substitutions run longest-token-first. Load-time validation rejects the shape
-     * outright, so this pins that the mechanism is still well defined for a rule loaded past it —
-     * without the ordering, {@code &VX} becomes {@code AGEX}, a column that cannot exist, and the
-     * rule silently checks nothing.
+     * {@code PLAN-expansion-token-delimiters} S2 — the substitution is scan-based, not a
+     * {@code String.replace} loop. Overlapping occurrences share a delimiter: in {@code &A&B&C&}
+     * the text {@code &B&} also occurs at index 2, but the scan reads {@code &A&}, {@code B},
+     * {@code &C&}, so binding only {@code &B&} leaves the text unchanged. The replace loop would
+     * give {@code &AYC&}. A loaded rule of this shape is a G2 error (the other two tokens are
+     * undeclared), so this is a unit test on the primitive itself.
      */
     @Test
-    @DisplayName("overlapping tokens substitute longest-first, whatever order they are declared in")
-    void overlappingTokensSubstituteLongestFirst()
+    @DisplayName("only a scanned occurrence is substituted, never an overlapping one")
+    void substitutionIsScanBasedNotAReplaceLoop()
     {
-        Rule template = new Rule();
-        RuleCore core = new RuleCore();
-        core.setId("TK-ORD");
-        template.setCore(core);
-        template.setCheck(new CheckConditionAll(List.of(leaf("&VX", "non_empty"))));
-        template.setMatchDatasets(List.of(bareKeyedAdsl()));
-        // Declared SHORTEST first on purpose: declaration order is the tuple order, so only an
-        // explicit longest-first sort saves the longer token from being clobbered.
-        template.setExpansion(List.of(sharedWith("&V", "ADSL"), sharedWith("&VX", "ADSL")));
-
-        Rule expanded = expandOnce(template, adae(), Map.of("ADSL", adsl()));
-
-        assertEquals("not empty(AGE)", net.cumba.corej.core.expr.ExpressionPrinter.print(
-                ((net.cumba.corej.core.model.CheckConditionExpression) ((CheckConditionAll) expanded
-                        .getCheck()).getConditions().get(0)).expr()),
-                "'&VX' must be replaced whole; substituting '&V' first leaves 'AGEX'");
+        Map<String, String> onlyB = Map.of("&B&", "Y");
+        assertEquals("&A&B&C&", TokenExpander.substitute("&A&B&C&", onlyB),
+                "'&B&' at index 2 shares its delimiters with '&A&' and '&C&' and is not read");
+        assertEquals("X.&A&B&C& and Y", TokenExpander.substitute("X.&A&B&C& and &B&", onlyB));
+        assertEquals("K1&A&B&C&", TokenExpander.substitute("K1&A&B&C&", onlyB));
+        // Operator text is not a token either.
+        assertEquals("A&&B&&C&", TokenExpander.substitute("A&&B&&C&", onlyB));
+        // Bound in insertion order, every occurrence is replaced whole; declaration order cannot
+        // change the answer because occurrences never overlap.
+        Map<String, String> all = new java.util.LinkedHashMap<>();
+        all.put("&C&", "R");
+        all.put("&A&", "P");
+        assertEquals("PBR", TokenExpander.substitute("&A&B&C&", all));
+        assertEquals("AE.AESEQ", TokenExpander.substitute("&DOM&.&DOM&SEQ", Map.of("&DOM&", "AE")));
+        assertEquals("no token", TokenExpander.substitute("no token", all));
     }
 
 

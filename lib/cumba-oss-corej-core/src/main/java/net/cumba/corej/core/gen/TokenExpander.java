@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -17,6 +16,7 @@ import lombok.CustomLog;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.exec.ScopeVariableSource;
+import net.cumba.corej.core.expr.ExpansionTokens;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.ExpansionDirective;
 import net.cumba.corej.core.model.MatchDataset;
@@ -60,7 +60,7 @@ import org.jspecify.annotations.Nullable;
  * it returns {@link WildcardExpander.ExpansionResult.NoMatch} with a stated reason, which
  * {@code DatasetRuleResolver} turns into a {@link SkippedSourceRule} audit row. The same discipline
  * applies at the far end — a token surviving into a resolved rule means substitution failed, so
- * that rule is dropped with a reason rather than evaluated against a column named {@code &VAR}.
+ * that rule is dropped with a reason rather than evaluated against a column named {@code &VAR&}.
  * </p>
  */
 @CustomLog
@@ -206,11 +206,16 @@ public final class TokenExpander
             String survivor = firstSurvivingToken(concrete, tuple);
             if (survivor != null)
             {
-                // A token that reached a RESOLVED rule means substitution missed a position.
-                // Evaluating it would test a column that cannot exist; drop it loudly instead.
-                LOGGER.log(System.Logger.Level.WARNING,
-                        "Expansion " + concrete.effectiveId() + " still carries the token '"
-                                + survivor + "' after substitution — dropped, not evaluated");
+                // A token that reached a RESOLVED rule means substitution missed a position — or
+                // the position was never bound (an undeclared token, a column literally named
+                // `X&A&`). Evaluating it would test a column that cannot exist; drop it loudly,
+                // and record the reason so a partial drop leaves an audit row and a total drop
+                // names its cause (PLAN-expansion-token-delimiters S7).
+                String message = "Expansion " + concrete.effectiveId()
+                        + " still carries the token '" + survivor
+                        + "' after substitution — dropped, not evaluated";
+                LOGGER.log(System.Logger.Level.WARNING, message);
+                reasons.add(message);
                 continue;
             }
             String unjoinable = firstAbsentMergeKey(concrete, meta);
@@ -636,12 +641,14 @@ public final class TokenExpander
     /** Builds one concrete rule from one full tuple of token bindings. */
     private static Rule buildExpansion(Rule template, List<Binding> tuple)
     {
-        // Longest token first, so a declared token that contains another cannot make the result
-        // depend on iteration order. (The load-time validation rejects that shape outright; the
-        // ordering here means the mechanism is well-defined even for a rule loaded past it.)
+        // Declaration order. A token is `&NAME&` (ExpansionTokens), so one token cannot contain
+        // another and the substitution is scan-based, not a replace loop — no ordering can change
+        // the result (PLAN-expansion-token-delimiters S2).
         Map<String, String> substitutions = new LinkedHashMap<>();
-        tuple.stream().sorted(Comparator.comparingInt((Binding b) -> b.token().length()).reversed())
-                .forEach(b -> substitutions.put(b.token(), b.value()));
+        for (Binding b : tuple)
+        {
+            substitutions.put(b.token(), b.value());
+        }
         java.util.function.UnaryOperator<String> rename = n -> substitute(n, substitutions);
 
         String origCoreId = template.effectiveId();
@@ -662,15 +669,12 @@ public final class TokenExpander
 
         CheckCondition check = Objects.requireNonNull(template.getCheck(),
                 "expansion template has no Check");
-        // A DECLARED token must carry a non-alphanumeric character (validated at load), so it is
-        // substituted wherever it appears — string literals included.
-        // ⚠ That gate is weaker than "cannot collide with a CDISC name": it rejects an
-        // all-alphanumeric token and a `--`-bearing one, so `V_1` passes and `_` IS in the
-        // SAS/CDISC name alphabet. Both shipped Expansion: rules use `&VAR` / `&DOM`, so nothing
-        // in the corpus is exposed — but do not read this as a guarantee the loader provides. That
-        // is what lets a template say `var_label("&VAR", "DATA")`:
+        // A DECLARED token is `&NAME&` (loader gate G1), delimited on both sides, so it cannot
+        // collide with a CDISC name and is substituted wherever it appears — string literals
+        // included. That is what lets a template say `var_label("&VAR&", "DATA")`:
         // ExprCompiler.metadataPlan accepts a name operand ONLY as a string literal or the
-        // variable_name operand, so a backtick ref would substitute and then fail to compile.
+        // variable_name operand, so a ref (bare `&VAR&` or backtick) would substitute and then
+        // fail to compile.
         // ⛔ The wildcard flavour must NOT get this policy — its markers match inside names, and
         // value-position "*" literals ship today (CDISC-AD0018 / AD0708 / AD0709 / PMDA-AD0018).
         rule.setCheck(WildcardExpander.substituteNames(check, rename, TOKEN_POLICY));
@@ -684,8 +688,10 @@ public final class TokenExpander
             rule.setPrecondition(WildcardExpander.substituteNames(template.getPrecondition(),
                     rename, TOKEN_POLICY));
         }
+        // Free text goes through the same scan-based primitive as every other surface (S2);
+        // WildcardExpander.substituteInText stays the wildcard mechanism's own helper.
         rule.setDescription(template.getDescription() != null
-                ? WildcardExpander.substituteInText(template.getDescription(), substitutions)
+                ? substitute(template.getDescription(), substitutions)
                 : expandedCoreId);
         rule.setVariableUniverse(template.getVariableUniverse());
         rule.setSensitivity(template.getSensitivity());
@@ -700,7 +706,7 @@ public final class TokenExpander
         Outcome outcome = new Outcome();
         String message = template.getOutcome() != null ? template.getOutcome().getMessage()
                 : origCoreId;
-        outcome.setMessage(WildcardExpander.substituteInText(message, substitutions));
+        outcome.setMessage(message != null ? substitute(message, substitutions) : null);
         List<String> outputVars = template.getOutcome() != null
                 ? template.getOutcome().getOutputVariables()
                 : null;
@@ -765,15 +771,39 @@ public final class TokenExpander
     }
 
 
-    /** The one and only substitution primitive: replace each token with its bound value. */
-    private static String substitute(String text, Map<String, String> substitutions)
+    /**
+     * The one and only substitution primitive: every scanned {@code &NAME&} occurrence
+     * ({@link ExpansionTokens#scan}) whose text is a bound token is replaced by its value; every
+     * other character is left alone.
+     *
+     * <p>
+     * Scan-based, not a {@code String.replace} loop: overlapping occurrences share a delimiter
+     * ({@code &A&B&C&} carries {@code &B&} at index 2), and a replace loop over them is
+     * order-dependent — binding only {@code &B&} would give {@code &AYC&}. The scan reads
+     * {@code &A&}, {@code B}, {@code &C&}, exactly as the lexer does, so the text is unchanged.
+     * Package-private for its unit test.
+     * </p>
+     */
+    static String substitute(String text, Map<String, String> substitutions)
     {
-        String result = text;
-        for (Map.Entry<String, String> e : substitutions.entrySet())
+        List<ExpansionTokens.Occurrence> occurrences = ExpansionTokens.scan(text).occurrences();
+        if (occurrences.isEmpty())
         {
-            result = result.replace(e.getKey(), e.getValue());
+            return text;
         }
-        return result;
+        StringBuilder out = new StringBuilder(text.length());
+        int copied = 0;
+        for (ExpansionTokens.Occurrence occurrence : occurrences)
+        {
+            String value = substitutions.get(occurrence.text());
+            if (value == null)
+            {
+                continue;
+            }
+            out.append(text, copied, occurrence.start()).append(value);
+            copied = occurrence.end();
+        }
+        return out.append(text, copied, text.length()).toString();
     }
 
 
@@ -873,8 +903,11 @@ public final class TokenExpander
 
 
     /**
-     * The post-expansion assertion: the first declared token still present anywhere in the resolved
-     * rule, or {@code null} when substitution was complete.
+     * The post-expansion assertion: the first complete {@code &NAME&} token — declared or not —
+     * still present anywhere in the resolved rule, or {@code null} when substitution was complete.
+     * Belt and braces behind loader gate G2: a rule built past the loader, or data carrying a
+     * column literally named {@code X&A&} under {@code all_variables}, would otherwise evaluate a
+     * column that cannot exist.
      */
     private static @Nullable String firstSurvivingToken(Rule concrete, List<Binding> tuple)
     {
@@ -889,14 +922,8 @@ public final class TokenExpander
             // rather than assume it is clean.
             return tuple.isEmpty() ? "?" : tuple.get(0).token();
         }
-        for (Binding b : tuple)
-        {
-            if (serialised.contains(b.token()))
-            {
-                return b.token();
-            }
-        }
-        return null;
+        List<ExpansionTokens.Occurrence> survivors = ExpansionTokens.scan(serialised).occurrences();
+        return survivors.isEmpty() ? null : survivors.get(0).text();
     }
 
     // ------------------------------------------------------------------

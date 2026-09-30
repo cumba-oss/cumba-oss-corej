@@ -2,7 +2,9 @@ package net.cumba.corej.core.expr;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -185,6 +187,104 @@ class ExpressionLexerTest
     void nullSourceThrows()
     {
         assertThrows(ExpressionException.class, () -> ExpressionLexer.tokenize(null));
+    }
+
+    // ------------------------------------------------------------------
+    // PLAN-expansion-token-delimiters — a bare `&NAME&` token inside an identifier
+    // ------------------------------------------------------------------
+
+
+    @Test
+    void aBareExpansionTokenIsOneIdentifier()
+    {
+        assertEquals("&DOM&", lex("&DOM&").get(0).text());
+        assertEquals(TokenType.IDENT, lex("&DOM&").get(0).type());
+        assertEquals("&DOM&.&DOM&SEQ", lex("&DOM&.&DOM&SEQ").get(0).text());
+        assertEquals("ADSL.&VAR&", lex("ADSL.&VAR&").get(0).text());
+        assertArrayEquals(new TokenType[]
+        {
+                TokenType.IDENT, TokenType.EOF
+        }, types("&DOM&.&DOM&SEQ"));
+        // `&A&B&C&` reads `&A&`, `B`, `&C&` — one identifier, never a token `&B&`.
+        assertEquals("&A&B&C&", lex("&A&B&C&").get(0).text());
+        assertArrayEquals(new TokenType[]
+        {
+                TokenType.IDENT, TokenType.EOF
+        }, types("&A&B&C&"));
+    }
+
+
+    @Test
+    void theBareTokenLexesLikeItsBacktickForm()
+    {
+        List<Token> bare = lex("var_exists(&DOM&.&DOM&SEQ) and empty(&DOM&.&DOM&SEQ)");
+        List<Token> quoted = lex("var_exists(`&DOM&.&DOM&SEQ`) and empty(`&DOM&.&DOM&SEQ`)");
+        assertEquals(bare.size(), quoted.size());
+        for (int i = 0; i < bare.size(); i++)
+        {
+            assertEquals(bare.get(i).type(), quoted.get(i).type(), "token " + i);
+            assertEquals(bare.get(i).text(), quoted.get(i).text(), "token " + i);
+        }
+    }
+
+
+    @Test
+    void theAndOperatorSurvivesNextToTokens()
+    {
+        assertArrayEquals(new TokenType[]
+        {
+                TokenType.IDENT, TokenType.AND, TokenType.IDENT, TokenType.EOF
+        }, types("A&&B"));
+        assertArrayEquals(new TokenType[]
+        {
+                TokenType.IDENT, TokenType.AND, TokenType.IDENT, TokenType.EOF
+        }, types("&A& && &B&"));
+        assertEquals("&A&", lex("&A& && &B&").get(0).text());
+        assertEquals("&B&", lex("&A& && &B&").get(2).text());
+    }
+
+
+    @Test
+    void anUnterminatedTokenThrowsNamingTheMissingDelimiter()
+    {
+        ExpressionException ex = assertThrows(ExpressionException.class, () -> lex("&DOM"));
+        assertTrue(ex.getMessage().contains("unterminated expansion token '&DOM'"),
+                ex.getMessage());
+        assertTrue(ex.getMessage().contains("&NAME&"), ex.getMessage());
+        ExpressionException inName = assertThrows(ExpressionException.class,
+                () -> lex("var_exists(&DOM.&DOMSEQ)"));
+        assertTrue(inName.getMessage().contains("'&DOM'"), inName.getMessage());
+    }
+
+
+    @Test
+    void aLowerCaseTokenNameThrows()
+    {
+        ExpressionException ex = assertThrows(ExpressionException.class, () -> lex("&dom&"));
+        assertTrue(ex.getMessage().contains("upper case"), ex.getMessage());
+        assertThrows(ExpressionException.class, () -> lex("&1&"));
+        assertThrows(ExpressionException.class, () -> lex("&V_1&"));
+    }
+
+
+    @Test
+    void aTokenAdjacentToAnAmpersandThrows()
+    {
+        for (String text : List.of("&A&&B&", "&A&&&COL", "COL&&&A&", ")&&&A&"))
+        {
+            ExpressionException ex = assertThrows(ExpressionException.class, () -> lex(text), text);
+            assertTrue(ex.getMessage().contains("separate an expansion token from '&' / '&&'"),
+                    text + ": " + ex.getMessage());
+        }
+        // No token behind the operators: the lexer reads two operators and the PARSER rejects
+        // them — an operator-shaped error, not an adjacency one.
+        assertArrayEquals(new TokenType[]
+        {
+                TokenType.IDENT, TokenType.AND, TokenType.AND, TokenType.IDENT, TokenType.EOF
+        }, types("X&&&&Y"));
+        ExpressionException ex = assertThrows(ExpressionException.class,
+                () -> CheckExpressionParser.parse("X&&&&Y"));
+        assertFalse(ex.getMessage().contains("separate"), ex.getMessage());
     }
 
 }

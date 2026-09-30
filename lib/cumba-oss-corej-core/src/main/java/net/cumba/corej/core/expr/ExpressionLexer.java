@@ -15,6 +15,13 @@ import org.jspecify.annotations.Nullable;
  * name or an operand, applying {@link OperandClassifier} in the latter case.
  *
  * <p>
+ * A declared expansion token {@code &NAME&} ({@link ExpansionTokens}: {@code NAME =
+ * [A-Z][A-Z0-9]*}, the closing {@code &} mandatory) is part of a bare identifier —
+ * {@code &DOM&.&DOM&SEQ}, {@code ADSL.&VAR&} — so a template rule writes it without backticks;
+ * {@code &&} stays the operator, and a token adjacent to {@code &} / {@code &&} is an error.
+ * </p>
+ *
+ * <p>
  * Malformed input — an unterminated string/regex, a stray character, a lone {@code -} — raises an
  * {@link ExpressionException} carrying the offending offset (fail loudly).
  * </p>
@@ -126,7 +133,9 @@ public final class ExpressionLexer
         case '!' -> scanBang(start);
         case '<' -> scanRelational(start, TokenType.LE, TokenType.LT);
         case '>' -> scanRelational(start, TokenType.GE, TokenType.GT);
-        case '&' -> scanDoubled(start, '&', TokenType.AND, "&&");
+        // '&&' is the operator; any other '&' starts a bare expansion token `&NAME&`, read
+        // inside scanIdentifier (PLAN-expansion-token-delimiters).
+        case '&' -> peek(1) == '&' ? scanAnd(start) : scanIdentifier();
         case '|' -> scanDoubled(start, '|', TokenType.OR, "||");
         case '`' -> scanQuotedRef();
         default -> null;
@@ -297,6 +306,23 @@ public final class ExpressionLexer
     }
 
 
+    /**
+     * The {@code &&} operator (the caller has seen both characters), rejecting an expansion token
+     * that starts right behind it ({@code COL&&&A&}, S3 of {@code PLAN-expansion-token-delimiters})
+     * — nobody can read that, and it is one space away from being clear. {@code X&&&&Y} with no
+     * token behind the pair keeps its operator-shaped error from the parser.
+     */
+    private Token scanAnd(int start)
+    {
+        if (peek(2) == '&' && ExpansionTokens.tokenEndAt(src, pos + 2) >= 0)
+        {
+            throw new ExpressionException(ExpansionTokens.ADJACENCY_MESSAGE, pos + 2);
+        }
+        pos += 2;
+        return new Token(TokenType.AND, "&&", start);
+    }
+
+
     private Token scanNumber()
     {
         int start = pos;
@@ -333,6 +359,18 @@ public final class ExpressionLexer
                 consumeSubstitution();
                 continue;
             }
+            // A bare expansion token `&NAME&` is part of the identifier (`&DOM&.&DOM&SEQ`,
+            // `ADSL.&VAR&`); a '&&' ends it, being the operator (`A&&B`). ⛔ '&' is deliberately
+            // NOT an identifier character: that would lex `A&&B` as one identifier.
+            if (c == '&')
+            {
+                if (peek(1) == '&')
+                {
+                    break;
+                }
+                consumeExpansionToken();
+                continue;
+            }
             if (!isIdentPart(c))
             {
                 break;
@@ -342,6 +380,29 @@ public final class ExpressionLexer
         String text = src.substring(start, pos);
         TokenType keyword = KEYWORDS.get(text);
         return new Token(keyword != null ? keyword : TokenType.IDENT, text, start);
+    }
+
+
+    /**
+     * Consumes one complete {@code &NAME&} token at {@code pos} (the grammar is
+     * {@link ExpansionTokens}), or fails naming what is wrong: the missing closing {@code &} (the
+     * retired undelimited spelling {@code &DOM}), a lower-case or other non-{@code [A-Z0-9]} name
+     * character, or — after the closing {@code &} — a directly following {@code &} (S3).
+     */
+    private void consumeExpansionToken()
+    {
+        int start = pos;
+        int end = ExpansionTokens.tokenEndAt(src, pos);
+        if (end < 0)
+        {
+            throw new ExpressionException(
+                    ExpansionTokens.strayMessage(ExpansionTokens.strayTextAt(src, start)), start);
+        }
+        pos = end;
+        if (peek(0) == '&')
+        {
+            throw new ExpressionException(ExpansionTokens.ADJACENCY_MESSAGE, pos);
+        }
     }
 
 

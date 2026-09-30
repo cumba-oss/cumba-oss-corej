@@ -65,11 +65,11 @@ class SharedVariablesMergeKeyTest
         RuleCore core = new RuleCore();
         core.setId("T-SV");
         rule.setCore(core);
-        String source = "`&VAR` != `TP.&VAR`";
+        String source = "&VAR& != TP.&VAR&";
         rule.setCheck(new CheckConditionExpression(CheckExpressionParser.parse(source), source));
         rule.setMatchDatasets(List.of(entries));
         ExpansionDirective d = new ExpansionDirective();
-        d.setToken("&VAR");
+        d.setToken("&VAR&");
         d.setOverJson(ExpansionSource.SHARED_VARIABLES.getJsonValue());
         d.setWith("TP");
         rule.setExpansion(List.of(d));

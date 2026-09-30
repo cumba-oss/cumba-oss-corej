@@ -49,6 +49,24 @@ class JoinKeyDeclarationGateTest
                 + "\"Check\":{\"expression\":\"not empty(USUBJID)\"}";
     }
 
+    /** The {@code CDISC-AD0898}-shaped directive for a {@code &DOM&} template entry. */
+    private static final String DOM_DIRECTIVE = "{\"token\":\"&DOM&\",\"over\":\"domain_from_variable\","
+            + "\"pattern\":\"&DOM&SEQ\"}";
+
+    /**
+     * Adds a minimal {@code Expansion:} block to a {@code rule(...)} body whose Match_Datasets
+     * carry a template entry — hygiene, so the gate under test is the only thing that can red the
+     * rule: an undeclared token is a G2 load error of its own
+     * ({@code PLAN-expansion-token-delimiters}), and {@code assertRedNaming} only tests
+     * {@code contains}.
+     */
+    private static String withExpansion(String body, String directive)
+    {
+        return body.replace("\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},",
+                "\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},\"Expansion\":[" + directive
+                        + "],");
+    }
+
 
     private static void assertClean(String members) throws IOException
     {
@@ -154,11 +172,11 @@ class JoinKeyDeclarationGateTest
                 "{\"Name\":\"SUPP--\",\"Child\":true,\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]}"),
                 "T-CHILD-DM", "USUBJID", "named by an All_Or_None group");
         // ...and an expansion template sharing the key does NOT license the group (round 3, T1).
-        assertRedNaming(rule("T-CHILD-TPL",
+        assertRedNaming(withExpansion(rule("T-CHILD-TPL",
                 "\"All\":[\"QNAM\",\"USUBJID\",\"IDVAR\",\"IDVARVAL\",\"STUDYID\"],\"All_Or_None\":[[\"USUBJID\",\"XX.USUBJID\"]]",
                 "{\"Name\":\"SUPP--\",\"Child\":true,\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]},"
-                        + "{\"Name\":\"&DOM\",\"Keys\":[\"STUDYID\",\"USUBJID\",\"&DOMSEQ\"]}"),
-                "T-CHILD-TPL", "USUBJID", "named by an All_Or_None group");
+                        + "{\"Name\":\"&DOM&\",\"Keys\":[\"STUDYID\",\"USUBJID\",\"&DOM&SEQ\"]}"),
+                DOM_DIRECTIVE), "T-CHILD-TPL", "USUBJID", "named by an All_Or_None group");
     }
 
 
@@ -177,10 +195,11 @@ class JoinKeyDeclarationGateTest
         // Round 5, F2 (the reviewer's input, agreed with the lint): an entry keyed on a token on
         // its RIGHT side is an expansion template — isExpansionTemplateEntry reads both sides —
         // so it licenses nothing either, whatever its name.
-        assertRedNaming(rule("T-CHILD-RTPL",
+        assertRedNaming(withExpansion(rule("T-CHILD-RTPL",
                 "\"All\":[\"QNAM\",\"USUBJID\",\"IDVAR\",\"IDVARVAL\"],\"All_Or_None\":[[\"USUBJID\",\"DM.USUBJID\"]]",
                 "{\"Name\":\"SUPP--\",\"Child\":true,\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]},"
-                        + "{\"Name\":\"DM\",\"Keys\":[{\"left\":\"USUBJID\",\"right\":\"&K\"}]}"),
+                        + "{\"Name\":\"DM\",\"Keys\":[{\"left\":\"USUBJID\",\"right\":\"&K&\"}]}"),
+                "{\"token\":\"&K&\",\"over\":\"shared_variables\",\"with\":\"DM\"}"),
                 "T-CHILD-RTPL", "USUBJID", "named by an All_Or_None group");
     }
 
@@ -188,20 +207,20 @@ class JoinKeyDeclarationGateTest
     @Test
     void anExpansionTemplateDeclaresOnlyItsFirstBareKey() throws IOException
     {
-        // Q5: token keys and the &DOM. half are exempt by construction (gate R6 bars them).
-        String md = "{\"Name\":\"&DOM\",\"Keys\":[\"STUDYID\",\"USUBJID\",\"&DOMSEQ\"]}";
+        // Q5: token keys and the &DOM&. half are exempt by construction (gate R6 bars them).
+        String md = "{\"Name\":\"&DOM&\",\"Keys\":[\"STUDYID\",\"USUBJID\",\"&DOM&SEQ\"]}";
         String body = rule("T-TEMPLATE", "\"All\":[\"STUDYID\"]", md).replace(
                 "\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},",
-                "\"Scope\":{\"Domains\":{\"Include\":[\"ADAE\"]}},\"Expansion\":[{\"token\":\"&DOM\","
-                        + "\"over\":\"domain_from_variable\",\"pattern\":\"&DOMSEQ\"}],");
+                "\"Scope\":{\"Domains\":{\"Include\":[\"ADAE\"]}},\"Expansion\":[{\"token\":\"&DOM&\","
+                        + "\"over\":\"domain_from_variable\",\"pattern\":\"&DOM&SEQ\"}],");
         Rule rule = load(body.replace("\"Check\":{\"expression\":\"not empty(USUBJID)\"}",
-                "\"Check\":{\"expression\":\"not empty(`&DOMSEQ`)\"}"));
+                "\"Check\":{\"expression\":\"not empty(&DOM&SEQ)\"}"));
         String error = rule.getLoadError();
-        assertTrue(error == null || !error.contains("Match_Datasets '&DOM'"),
+        assertTrue(error == null || !error.contains("Match_Datasets '&DOM&'"),
                 "the template entry declares STUDYID bare and nothing else: " + error);
         String sabotaged = body.replace("\"All\":[\"STUDYID\"]", "\"All\":[]").replace(
                 "\"Check\":{\"expression\":\"not empty(USUBJID)\"}",
-                "\"Check\":{\"expression\":\"not empty(`&DOMSEQ`)\"}");
+                "\"Check\":{\"expression\":\"not empty(&DOM&SEQ)\"}");
         assertRedNaming(sabotaged, "T-TEMPLATE", "STUDYID", "first key");
     }
 

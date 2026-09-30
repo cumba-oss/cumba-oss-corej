@@ -2805,10 +2805,14 @@ public class RulePackageLoader
             validateWildcardFilters(rule, errors);
             // Fix #147 — an Expansion: block is only usable if the engine can substitute its
             // token unambiguously. Every failure mode below is silent otherwise: an unknown
-            // `over:` drops the directive, a sigil-free token collides with a real column name,
+            // `over:` drops the directive, a malformed token collides with a real column name,
             // and a token in Scope.Variables is matched literally by a scope gate that runs
             // BEFORE expansion — the shape that left 25 CDISC-AD rules always-skipped.
             validateExpansionDirectives(rule, errors);
+            // G2 (PLAN-expansion-token-delimiters) — on EVERY rule, Expansion or not: a complete
+            // `&NAME&` token the rule does not declare would otherwise reach the run as a column
+            // literally named `&FOO&`, which the absent-column doctrine evaluates silently.
+            validateDeclaredExpansionTokens(rule, errors);
             // A library_dataset_* / define_dataset_* operand no ds_* accessor serves is
             // definitionally wrong — fail at load (the former "outside Dataset Metadata Check"
             // half of this gate died with the rule type, leaf-scope phase 6).
@@ -3724,7 +3728,7 @@ public class RulePackageLoader
     }
 
 
-    /** An entry named by an expansion token, or keyed on one ({@code &DOM}, {@code &DOMSEQ}). */
+    /** An entry named by an expansion token, or keyed on one ({@code &DOM&}, {@code &DOM&SEQ}). */
     private static boolean isExpansionTemplateEntry(net.cumba.corej.core.model.MatchDataset md)
     {
         List<String> left = md.getKeys();
@@ -6390,8 +6394,8 @@ public class RulePackageLoader
     /**
      * Tags a {@code Child: true} entry whose {@code Name} is not a concrete dataset name and not a
      * template with a <b>trailing</b> {@code --} such as {@code SUPP--} — a {@code *},
-     * {@code ${...}} or {@code &TOKEN} name, a bare {@code --}, or a {@code --} anywhere but at the
-     * end ({@code PLAN-hashed-join-arm-absent-columns} review rounds 1 L1 and 2 L4).
+     * {@code ${...}} or {@code &TOKEN&} name, a bare {@code --}, or a {@code --} anywhere but at
+     * the end ({@code PLAN-hashed-join-arm-absent-columns} review rounds 1 L1 and 2 L4).
      *
      * <p>
      * A Child entry's name is never resolved to a joined dataset — the pointer join finds the
@@ -6661,15 +6665,26 @@ public class RulePackageLoader
      * as no-ops for months.
      *
      * <ul>
-     * <li><b>token present and sigil-bearing.</b> CDISC variable names are {@code [A-Z][A-Z0-9]*};
-     * a token drawn from that alphabet would substitute inside a real column name.</li>
-     * <li><b>no token is a prefix of another.</b> Substitution is ordered longest-first so it is
-     * deterministic, but two tokens where one contains the other are an authoring slip whose result
-     * depends on that ordering — reject rather than resolve.</li>
+     * <li><b>G1 — token present and of the form {@code &NAME&}</b>, {@code NAME = [A-Z][A-Z0-9]*}
+     * ({@link net.cumba.corej.core.expr.ExpansionTokens#TOKEN}). CDISC variable names are
+     * {@code [A-Z][A-Z0-9]*}; the delimiters are what keep a token from substituting inside a real
+     * column name, and the closing {@code &} is what makes {@code &DOM&SEQ} readable as
+     * {@code &DOM&} + {@code SEQ}. This subsumes the retired {@code --} check: {@code --} cannot
+     * match the form.</li>
+     * <li><b>no token declared twice.</b> Two directives with the same token would keep one binding
+     * in the substitution map while the expanded id carries both suffixes. (The former "no token is
+     * a prefix of another" check is gone: delimited tokens cannot contain each other.)</li>
      * <li><b>{@code over:} present and recognised.</b> An unknown source would otherwise drop the
      * directive and leave the token unsubstituted.</li>
      * <li><b>the source's own operand present</b> ({@code with:} / {@code pattern:}), and the
-     * pattern actually contains the token.</li>
+     * pattern contains the token <b>exactly once</b> — {@code bindDomainFromVariable} captures at
+     * the first occurrence, so a second one would silently become literal text.</li>
+     * <li><b>G3 — no unterminated or adjacent token</b> anywhere in the rule's rewritten surfaces
+     * ({@link net.cumba.corej.core.gen.ExpansionSurfaces}): the retired spelling {@code &VAR} in a
+     * string literal, an Output_Variables entry, a Match_Datasets key, a Requirements entry or the
+     * {@code pattern:} is caught here, where the lexer cannot see it. Scoped to rules that declare
+     * {@code Expansion:}, so HTML-entity prose (an ampersand followed by {@code lt;}) elsewhere
+     * never trips it.</li>
      * <li><b>no token in {@code Scope.Variables}.</b> Scope is evaluated BEFORE expansion
      * ({@code DatasetRuleResolver} calls {@code describeScopeSkip} then {@code tryExpand}), so the
      * matcher sees the template and would test the token text literally — no such column, rule
@@ -6698,16 +6713,16 @@ public class RulePackageLoader
         }
         for (int i = 0; i < tokens.size(); i++)
         {
-            for (int j = 0; j < tokens.size(); j++)
+            for (int j = i + 1; j < tokens.size(); j++)
             {
-                if (i != j && tokens.get(i).contains(tokens.get(j)))
+                if (tokens.get(i).equals(tokens.get(j)))
                 {
-                    errors.add("Expansion token '" + tokens.get(j) + "' occurs inside token '"
-                            + tokens.get(i) + "' — substitution order would decide the result");
+                    errors.add("Expansion token '" + tokens.get(i) + "' is declared twice");
                 }
             }
         }
         validateNoExpansionTokenInScope(rule, tokens, errors);
+        validateTokenSpelling(rule, errors);
         // ⚑ Plan C §3.3: an engine-owned marker in ANY level collides with the Expansion walk.
         if (rule.checkConditions().stream()
                 .anyMatch(net.cumba.corej.core.gen.WildcardExpander::hasRealWildcards))
@@ -6754,28 +6769,21 @@ public class RulePackageLoader
             List<String> errors)
     {
         String token = directive.getToken();
+        boolean wellFormed = false;
         if (token == null || token.isBlank())
         {
             errors.add("Expansion entry has no 'token'");
         }
         else
         {
-            if (token.chars().allMatch(Character::isLetterOrDigit))
+            // G1 (PLAN-expansion-token-delimiters, R-5.17). One pattern decides the form; it
+            // rejects the sigil-free `VAR`, the retired undelimited `&VAR`, a lower-case name and
+            // a `--`-bearing token (R-5.20, now subsumed) alike.
+            wellFormed = net.cumba.corej.core.expr.ExpansionTokens.TOKEN.matcher(token).matches();
+            if (!wellFormed)
             {
-                errors.add("Expansion token '" + token + "' carries no sigil — a token drawn from"
-                        + " the CDISC name alphabet [A-Z0-9] would substitute inside a real"
-                        + " column name; use e.g. '&" + token + "'");
-            }
-            else if (token.contains("--"))
-            {
-                // R-5.20. '--' is sigil-bearing, so the check above lets it through — but it
-                // already means "the caller-supplied domain code" and was deliberately re-anchored
-                // under EC-36 / Fix #125. A token containing it would make substitute() do a blind
-                // String.replace("--", …) across the whole rule body, hitting --SEQ, SUPP-- and
-                // every anchored prefix.
-                errors.add("Expansion token '" + token + "' contains '--', which already means the"
-                        + " caller-supplied domain code (EC-36 / Fix #125); choose a token that"
-                        + " cannot collide with it");
+                errors.add("Expansion token '" + token + "' must have the form &NAME& with NAME ="
+                        + " [A-Z][A-Z0-9]* (e.g. '&DOM&')");
             }
             tokens.add(token);
         }
@@ -6802,10 +6810,18 @@ public class RulePackageLoader
             {
                 errors.add("Expansion over 'domain_from_variable' requires a 'pattern'");
             }
-            else if (token != null && !token.isBlank() && !pattern.contains(token))
+            else if (wellFormed)
             {
-                errors.add("Expansion pattern '" + pattern + "' does not contain its token '"
-                        + token + "' — nothing would be captured");
+                // Exactly one scanned occurrence: none captures nothing, two would capture at
+                // the first and read the second as literal text (bindDomainFromVariable uses
+                // indexOf). A malformed token cannot occur at all, and G1 has already said so.
+                long found = net.cumba.corej.core.expr.ExpansionTokens.scan(pattern).occurrences()
+                        .stream().filter(o -> o.text().equals(token)).count();
+                if (found != 1)
+                {
+                    errors.add("Expansion pattern '" + pattern + "' must contain its token '"
+                            + token + "' exactly once (found " + found + ")");
+                }
             }
         }
         // ⚠⚠ This is a switch STATEMENT, not an expression: it is NOT exhaustiveness-checked, so a
@@ -6847,6 +6863,126 @@ public class RulePackageLoader
         if (directive.getKnownDomainOnly() != null)
         {
             errors.add("Expansion over '" + name + "' does not take 'known_domain_only'");
+        }
+    }
+
+
+    /**
+     * Gate <b>G3</b> ({@code PLAN-expansion-token-delimiters} S6), on rules that declare
+     * {@code Expansion:}: every stray {@code &}+letter that is neither a complete {@code &NAME&}
+     * token nor part of the {@code &&} operator, and every token adjacent to {@code &} /
+     * {@code &&}, anywhere in the rule's rewritten surfaces
+     * ({@link net.cumba.corej.core.gen.ExpansionSurfaces}) plus the directives' own
+     * {@code pattern:}. This is what catches the retired spelling ({@code &VAR}) where the lexer
+     * cannot see it — a string literal, an Output_Variables entry, a Match_Datasets key, a
+     * Requirements entry (R6 tests {@code contains("&VAR&")}, which {@code &VAR} no longer
+     * satisfies) — and it is scoped to Expansion rules so HTML-entity prose (an ampersand followed
+     * by {@code lt;}) and the legacy OSS {@code filter(X="&")} marker never trip it.
+     */
+    private static void validateTokenSpelling(Rule rule, List<String> errors)
+    {
+        List<net.cumba.corej.core.gen.ExpansionSurfaces.Surface> surfaces;
+        try
+        {
+            surfaces = new ArrayList<>(net.cumba.corej.core.gen.ExpansionSurfaces.surfaces(rule));
+        }
+        catch (RuntimeException ex)
+        {
+            // Fail closed: a surface that cannot be collected is a surface that cannot be gated.
+            errors.add("[" + ruleId(rule) + "] could not collect the rule's expansion surfaces: "
+                    + ex.getMessage());
+            return;
+        }
+        List<net.cumba.corej.core.model.ExpansionDirective> directives = rule.getExpansion();
+        if (directives != null)
+        {
+            for (int i = 0; i < directives.size(); i++)
+            {
+                String pattern = directives.get(i).getPattern();
+                if (pattern != null)
+                {
+                    surfaces.add(new net.cumba.corej.core.gen.ExpansionSurfaces.Surface(
+                            "Expansion[" + i + "].pattern", pattern));
+                }
+            }
+        }
+        for (net.cumba.corej.core.gen.ExpansionSurfaces.Surface surface : surfaces)
+        {
+            net.cumba.corej.core.expr.ExpansionTokens.Scan scan = net.cumba.corej.core.expr.ExpansionTokens
+                    .scan(surface.text());
+            for (net.cumba.corej.core.expr.ExpansionTokens.Stray stray : scan.strays())
+            {
+                String message = net.cumba.corej.core.expr.ExpansionTokens
+                        .strayMessage(stray.text());
+                // The surface goes after the token name so a reader sees "… '&VAR' in
+                // Outcome.Output_Variables (a token is …)".
+                int paren = message.indexOf(" (");
+                errors.add("[" + ruleId(rule) + "] "
+                        + (paren < 0 ? message + " in " + surface.where()
+                                : message.substring(0, paren) + " in " + surface.where()
+                                        + message.substring(paren)));
+            }
+            for (net.cumba.corej.core.expr.ExpansionTokens.Adjacency adjacency : scan.adjacencies())
+            {
+                errors.add("[" + ruleId(rule) + "] "
+                        + net.cumba.corej.core.expr.ExpansionTokens.ADJACENCY_MESSAGE + " in "
+                        + surface.where() + ": '" + adjacency.text() + "'");
+            }
+        }
+    }
+
+
+    /**
+     * Gate <b>G2</b> ({@code PLAN-expansion-token-delimiters} S5), on <b>every</b> rule: each
+     * complete {@code &NAME&} token found in a rewritten surface
+     * ({@link net.cumba.corej.core.gen.ExpansionSurfaces}) must be a token the rule declares in
+     * {@code Expansion:}. A rule without an {@code Expansion:} block may carry no token at all.
+     * Without this an undeclared token reaches the run as a column literally named {@code &FOO&},
+     * which the absent-column doctrine evaluates silently.
+     */
+    private static void validateDeclaredExpansionTokens(Rule rule, List<String> errors)
+    {
+        java.util.Set<String> declared = new java.util.HashSet<>();
+        if (rule.getExpansion() != null)
+        {
+            for (net.cumba.corej.core.model.ExpansionDirective d : rule.getExpansion())
+            {
+                if (d.getToken() != null)
+                {
+                    declared.add(d.getToken());
+                }
+            }
+        }
+        List<net.cumba.corej.core.gen.ExpansionSurfaces.Surface> surfaces;
+        try
+        {
+            surfaces = net.cumba.corej.core.gen.ExpansionSurfaces.surfaces(rule);
+        }
+        catch (RuntimeException ex)
+        {
+            // Fail closed, as validateTokenSpelling does; reported once per rule from here even
+            // when that gate did not run (it runs on Expansion rules only).
+            if (rule.getExpansion() == null || rule.getExpansion().isEmpty())
+            {
+                errors.add("[" + ruleId(rule)
+                        + "] could not collect the rule's expansion surfaces: " + ex.getMessage());
+            }
+            return;
+        }
+        java.util.Set<String> reported = new java.util.HashSet<>();
+        for (net.cumba.corej.core.gen.ExpansionSurfaces.Surface surface : surfaces)
+        {
+            for (net.cumba.corej.core.expr.ExpansionTokens.Occurrence occurrence : net.cumba.corej.core.expr.ExpansionTokens
+                    .scan(surface.text()).occurrences())
+            {
+                if (!declared.contains(occurrence.text())
+                        && reported.add(surface.where() + "\u0000" + occurrence.text()))
+                {
+                    errors.add("[" + ruleId(rule) + "] undeclared expansion token '"
+                            + occurrence.text() + "' in " + surface.where()
+                            + " (declare it in Expansion:, or remove it)");
+                }
+            }
         }
     }
 

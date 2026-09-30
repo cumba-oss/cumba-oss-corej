@@ -866,10 +866,10 @@ class RequirementsLoadGateTest
         void expansionToken() throws IOException
         {
             String error = errorOf(
-                    "\"Expansion\":[{\"token\":\"&VAR\",\"over\":\"shared_variables\","
+                    "\"Expansion\":[{\"token\":\"&VAR&\",\"over\":\"shared_variables\","
                             + "\"with\":\"ADSL\"}],\"Requirements\":{\"Variables\":{\"All_Or_None\":"
-                            + "[[\"&VAR\",\"ADSL.&VAR\"]]}},"
-                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(`&VAR`)\"}]}");
+                            + "[[\"&VAR&\",\"ADSL.&VAR&\"]]}},"
+                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(&VAR&)\"}]}");
             assertNotNull(error, "the requirement gate runs BEFORE expansion");
             assertTrue(error.contains("Requirements.Variables.All_Or_None"), error);
         }
@@ -1162,7 +1162,7 @@ class RequirementsLoadGateTest
     class ExpansionTokenInRequirement
     {
 
-        private static final String EXPANSION = "\"Expansion\":[{\"token\":\"&VAR\","
+        private static final String EXPANSION = "\"Expansion\":[{\"token\":\"&VAR&\","
                 + "\"over\":\"shared_variables\",\"with\":\"ADSL\"}],";
 
         @Test
@@ -1170,7 +1170,7 @@ class RequirementsLoadGateTest
         void conforming() throws IOException
         {
             assertNull(errorOf(EXPANSION + "\"Requirements\":{\"Variables\":{\"All\":[\"AESEV\"]}},"
-                    + "\"Check\":{\"all\":[{\"expression\": \"var_exists(`&VAR`)\"}]}"));
+                    + "\"Check\":{\"all\":[{\"expression\": \"var_exists(&VAR&)\"}]}"));
         }
 
 
@@ -1179,8 +1179,8 @@ class RequirementsLoadGateTest
         void tokenInAll() throws IOException
         {
             String error = errorOf(
-                    EXPANSION + "\"Requirements\":{\"Variables\":{\"All\":[\"&VAR\"]}},"
-                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(`&VAR`)\"}]}");
+                    EXPANSION + "\"Requirements\":{\"Variables\":{\"All\":[\"&VAR&\"]}},"
+                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(&VAR&)\"}]}");
             assertNotNull(error, "the requirement gate runs BEFORE expansion, so the token would"
                     + " be matched literally and the rule would skip on every dataset");
             assertTrue(error.contains("Requirements.Variables.All"), error);
@@ -1192,14 +1192,14 @@ class RequirementsLoadGateTest
         void tokenInAnyAndNone() throws IOException
         {
             String any = errorOf(
-                    EXPANSION + "\"Requirements\":{\"Variables\":{\"Any\":[\"&VAR\",\"AESEV\"]}},"
-                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(`&VAR`)\"}]}");
+                    EXPANSION + "\"Requirements\":{\"Variables\":{\"Any\":[\"&VAR&\",\"AESEV\"]}},"
+                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(&VAR&)\"}]}");
             assertNotNull(any);
             assertTrue(any.contains("Requirements.Variables.Any"), any);
 
             String none = errorOf(
-                    EXPANSION + "\"Requirements\":{\"Variables\":{\"None\":[\"&VAR\"]}},"
-                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(`&VAR`)\"}]}");
+                    EXPANSION + "\"Requirements\":{\"Variables\":{\"None\":[\"&VAR&\"]}},"
+                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(&VAR&)\"}]}");
             assertNotNull(none);
             assertTrue(none.contains("Requirements.Variables.None"), none);
         }
@@ -1215,8 +1215,9 @@ class RequirementsLoadGateTest
         @DisplayName("a token under the RETIRED spelling is still rejected — by R1, not R6")
         void tokenUnderTheRetiredSpellingIsStillRejected() throws IOException
         {
-            String error = errorOf(EXPANSION + "\"Scope\":{\"Variables\":{\"Include\":[\"&VAR\"]}},"
-                    + "\"Check\":{\"all\":[{\"expression\": \"var_exists(`&VAR`)\"}]}");
+            String error = errorOf(
+                    EXPANSION + "\"Scope\":{\"Variables\":{\"Include\":[\"&VAR&\"]}},"
+                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(&VAR&)\"}]}");
             assertNotNull(error);
             assertTrue(error.contains("Scope.Variables"), error);
         }
@@ -1232,8 +1233,8 @@ class RequirementsLoadGateTest
         void theMessageNamesTheRule() throws IOException
         {
             String error = errorOf(
-                    EXPANSION + "\"Requirements\":{\"Variables\":{\"All\":[\"&VAR\"]}},"
-                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(`&VAR`)\"}]}");
+                    EXPANSION + "\"Requirements\":{\"Variables\":{\"All\":[\"&VAR&\"]}},"
+                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(&VAR&)\"}]}");
             assertNotNull(error);
             assertTrue(error.startsWith("[TEST-REQ]"), error);
         }

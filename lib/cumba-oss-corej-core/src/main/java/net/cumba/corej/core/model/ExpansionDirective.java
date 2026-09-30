@@ -23,18 +23,21 @@ import org.jspecify.annotations.Nullable;
  * the {@code xx} / {@code y} / {@code zz} / {@code w} markers {@link ExpansionSource} sits beside:
  * those are engine-owned and ambiguous by design (they match <em>inside</em> a name, so
  * {@code TRTxxPN} works), whereas a declared token is substituted as an exact string wherever it
- * occurs. A token must therefore carry a non-alphanumeric sigil so it can never collide with a real
- * CDISC variable name ({@code [A-Z][A-Z0-9]*}); {@code &VAR} is the house default.
+ * occurs. A token has the form {@code &NAME&} with {@code NAME = [A-Z][A-Z0-9]*}, the closing
+ * {@code &} mandatory (loader gate G1, {@code net.cumba.corej.core.expr.ExpansionTokens}), so it
+ * can never collide with a real CDISC variable name ({@code [A-Z][A-Z0-9]*}) and reads
+ * unambiguously next to literal text: {@code &DOM&SEQ} is {@code &DOM&} + {@code SEQ}. A Check
+ * writes it bare; {@code &VAR&} is the house default.
  * </p>
  *
  * <pre>{@code
  * Expansion:
- * - token: "&VAR"
+ * - token: "&VAR&"
  *   over: "shared_variables"
  *   with: "ADSL"
- * - token: "&DOM"
+ * - token: "&DOM&"
  *   over: "domain_from_variable"
- *   pattern: "&DOMSEQ"
+ *   pattern: "&DOM&SEQ"
  *   known_domain_only: true
  * }</pre>
  *
@@ -52,7 +55,8 @@ public class ExpansionDirective
 
     /**
      * The exact string the expander substitutes wherever it occurs in the rule body. Author-chosen;
-     * validated at load to carry a non-alphanumeric sigil (see {@code RulePackageLoader}).
+     * validated at load to have the form {@code &NAME&}, {@code NAME = [A-Z][A-Z0-9]*} (gate G1,
+     * {@code RulePackageLoader}).
      */
     @JsonProperty("token")
     private @Nullable String token;
@@ -80,8 +84,8 @@ public class ExpansionDirective
 
     /**
      * {@link ExpansionSource#DOMAIN_FROM_VARIABLE} only — the column-name shape the token appears
-     * in ({@code "&DOMSEQ"}). The token's position in the pattern is the capture; the rest is
-     * literal.
+     * in ({@code "&DOM&SEQ"}). The token's position in the pattern is the capture; the rest is
+     * literal. Validated at load to contain the token exactly once.
      */
     @JsonProperty("pattern")
     private @Nullable String pattern;
