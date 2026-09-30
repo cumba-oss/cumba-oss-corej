@@ -109,6 +109,22 @@ public final class StudyRuleClassifier
 
 
     /**
+     * Whether {@code function} names a registry call that reads the dataset its {@code domain=}
+     * argument pins ({@code record_count}, {@code distinct}, {@code max}, {@code max_date},
+     * {@code min_date}, {@code read_value}). The one source of that set: {@code TypeExpectations}
+     * asks here too, so the study-safety decision and the type walk cannot name different calls.
+     *
+     * @param function
+     *            the call's function name
+     * @return {@code true} when the call reads a {@code domain=}-pinned dataset
+     */
+    public static boolean isDomainPinnedCall(String function)
+    {
+        return DOMAIN_PINNED_CALLS.contains(function);
+    }
+
+
+    /**
      * Whether this rule may be executed once against the study anchor.
      *
      * @param rule

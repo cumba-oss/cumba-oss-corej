@@ -8,6 +8,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.cumba.corej.core.exec.StudyRuleClassifier;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.BroadcastFold;
@@ -162,15 +163,6 @@ public final class TypeExpectations
     /** Call names that route a comparison into the temporal families (no plain gate). */
     private static final Set<String> TEMPORAL_CALLS = Set.of("date", "time", "date_part",
             "time_part");
-
-    /**
-     * The registry calls that read the dataset a {@code domain=} argument pins — the set
-     * {@code StudyRuleClassifier.DOMAIN_PINNED_CALLS} names ({@code record_count},
-     * {@code distinct}, {@code max}, {@code max_date}, {@code min_date}, {@code read_value}); keep
-     * the two in step.
-     */
-    private static final Set<String> DOMAIN_PINNED_CALLS = Set.of("record_count", "distinct", "max",
-            "max_date", "min_date", "read_value");
 
     /**
      * How deep the walk is inside a {@code domain=}-pinned call's target / {@code filter=} /
@@ -449,7 +441,8 @@ public final class TypeExpectations
                 }
             }
         }
-        if (DOMAIN_PINNED_CALLS.contains(name) && isPinnedDomain(c.kwargs().get("domain")))
+        if (StudyRuleClassifier.isDomainPinnedCall(name)
+                && isPinnedDomain(c.kwargs().get("domain")))
         {
             // The pinned dataset's reads (class Javadoc): the target, filter= and domain= walk
             // with pinned semantics; group= is the broadcast key and walks as a primary read.
