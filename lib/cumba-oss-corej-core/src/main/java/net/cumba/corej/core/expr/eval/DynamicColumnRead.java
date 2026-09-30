@@ -155,11 +155,11 @@ public final class DynamicColumnRead
         }
     }
 
-    /** The most names reading no column that one evaluation memoises. */
-    private static final int MAX_CONSTANT_NAMES = 1024;
+    /** The most names not reading an evaluation-table column that one evaluation memoises. */
+    static final int MAX_UNBOUNDED_NAMES = 1024;
 
     /** One evaluation's name resolution, memoised by name. */
-    private static final class Resolver
+    static final class Resolver
     {
 
         private final EvaluationContext ctx;
@@ -170,8 +170,15 @@ public final class DynamicColumnRead
 
         private final Map<String, Target> targets = new HashMap<>();
 
-        /** The constant targets memoised so far ({@link #MAX_CONSTANT_NAMES}). */
-        private int constants;
+        /** The non-{@link Primary} targets memoised so far ({@link #MAX_UNBOUNDED_NAMES}). */
+        private int unbounded;
+
+        /** The memo's size — package-private for the cap test. */
+        int memoSize()
+        {
+            return targets.size();
+        }
+
 
         Resolver(EvaluationContext ctx, boolean numericDefault, boolean literal)
         {
@@ -257,11 +264,12 @@ public final class DynamicColumnRead
             if (known == null)
             {
                 known = DynamicColumnRead.target(ctx, name, numericDefault, literal);
-                // Review round 2 (engine 4): a name that reads a column is memoised always — their
-                // number is bounded by the tables' columns; a name that reads NO column (absent,
-                // not supplied, data-derived `--`) only up to MAX_CONSTANT_NAMES, so per-row
-                // unique data values (IDVAR over a large SUPP) cannot grow the map per row.
-                if (!(known instanceof Constant) || constants++ < MAX_CONSTANT_NAMES)
+                // Review rounds 2-3 (engine 4): a name that reads a column of the EVALUATION TABLE
+                // is memoised always — their number is bounded by its columns. Every other name
+                // (absent, not supplied, data-derived `--`, and a dotted name, whose column part
+                // is only checked per row by the join) only up to MAX_UNBOUNDED_NAMES, so per-row
+                // unique data values cannot grow the map per row.
+                if (known instanceof Primary || unbounded++ < MAX_UNBOUNDED_NAMES)
                 {
                     targets.put(name, known);
                 }

@@ -102,23 +102,48 @@ class DynamicColumnReadTest
 
 
     /**
-     * Review round 2 (engine 4): names that read no column are memoised only up to a cap, so
-     * per-row unique data values cannot grow the evaluation's memo per row — and every row still
-     * answers its absent default, before and after the cap.
+     * Review rounds 2-3 (engine 4): names that read no evaluation-table column are memoised only up
+     * to a cap, so per-row unique data values cannot grow the evaluation's memo per row — and every
+     * row still answers its absent default, before and after the cap. The memo's SIZE is asserted,
+     * so the test fails if the cap goes (round 3: the answer alone could not).
      */
     @Test
-    void perRowUniqueAbsentNamesAnswerPastTheMemoCap()
+    void perRowUniqueNamesStayWithinTheMemoCap()
     {
-        EvaluationContext c = ctx(Set.of());
+        // ADSL is JOINED, so a dotted name is a joined read (round 3: only evaluation-table
+        // columns are exempt from the cap — a per-row unique DS.X is not).
+        net.cumba.corej.core.exec.JoinLookup adsl = new net.cumba.corej.core.exec.JoinLookup()
+        {
+
+            @Override
+            public String lookup(IDataTable primaryTable, long row, String columnName)
+            {
+                return "";
+            }
+
+
+            @Override
+            public String getDatasetName()
+            {
+                return "ADSL";
+            }
+        };
+        EvaluationContext c = EvaluationContext.builder().table(TABLE)
+                .joinedDatasets(Map.of("ADSL", adsl)).build();
         int rows = 3000;
-        Vector names = new ComputedVector(rows, DataValueType.STRING, row -> "ZZ" + row);
-        Vector out = DynamicColumnRead.vector(new EvalRun(c, 0, rows), names, false, false);
-        for (int r : new int[]
+        DynamicColumnRead.Resolver resolver = new DynamicColumnRead.Resolver(c, false, false);
+        for (int r = 0; r < rows; r++)
         {
-                0, 1023, 1024, 2999
-        })
-        {
-            assertEquals("", out.value(r).cell().getValueAsString(), "row " + r);
+            String name = r % 2 == 0 ? "ZZ" + r : "ADSL.ZZ" + r;
+            IDataValue cell = (IDataValue) resolver.resolve(ConstVector.of(name).value(0), r);
+            assertEquals("", cell.getValueAsString(), name);
         }
+        resolver.resolve(ConstVector.of("USUBJID").value(0), 0); // a Primary: always memoised
+        org.junit.jupiter.api.Assertions.assertTrue(
+                resolver.memoSize() <= DynamicColumnRead.MAX_UNBOUNDED_NAMES + 1,
+                "memo " + resolver.memoSize() + " after " + rows + " unique names");
+        org.junit.jupiter.api.Assertions.assertTrue(
+                resolver.memoSize() >= DynamicColumnRead.MAX_UNBOUNDED_NAMES,
+                "the cap is reached, not bypassed: " + resolver.memoSize());
     }
 }

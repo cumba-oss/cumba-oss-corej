@@ -261,7 +261,10 @@ class MatchFilterExecutionTest
         // as plainly as ZZ does, so stage B holds it to the same D89 contract — an absent filter
         // column is an armed bind error (declare it in Requirements.Variables to skip instead).
         IDataTable primary = dm();
-        for (String filter : List.of("ZZ < 3", "colref(\"ZZ\") < 3", "colref([\"ZZ\"]) != \"\""))
+        // Round 3: an authored column read INSIDE a colref argument (`colref(ZZCOL)`) is still a
+        // plain filter column — the colref arm must not stop the walk.
+        for (String filter : List.of("ZZ < 3", "colref(\"ZZ\") < 3", "colref([\"ZZ\"]) != \"\"",
+                "colref(ZZCOL) == \"Y\""))
         {
             RuleExecutionResult result = RuleRunnerCalls.execute(
                     rule(aeJoin(filter), "AE._matched_"), primary, inventory(study(primary, ae())),
@@ -270,5 +273,23 @@ class MatchFilterExecutionTest
             assertTrue(String.valueOf(result.getStatusMessage()).contains("FILTER_UNRESOLVABLE"),
                     filter + " → " + result.getStatusMessage());
         }
+    }
+
+
+    @Test
+    @DisplayName("a WRITTEN dotted colref in the Filter is FILTER_LEFT_REFERENCE, like DM.SEX")
+    void aWrittenDottedColrefInTheFilterIsALeftReference() throws IOException
+    {
+        // Review round 3: the filter runs on AE's own rows before the join, so a written
+        // colref("DM.DTHFL") is the same left-side reference as the authored DM.DTHFL — a load
+        // error — never a silent absent default that filters every row out.
+        for (String filter : List.of("DM.DTHFL == \"Y\"", "colref(\"DM.DTHFL\") == \"Y\"",
+                "colref([\"AEOUT\", \"DM.DTHFL\"]) != \"\""))
+        {
+            Rule r = rule(aeJoin(filter), "AE._matched_");
+            assertNotNull(r.getLoadError(), filter);
+            assertTrue(r.getLoadError().contains("FILTER_LEFT_REFERENCE"), r.getLoadError());
+        }
+        assertNull(rule(aeJoin("colref(\"AEOUT\") == \"FATAL\""), "AE._matched_").getLoadError());
     }
 }

@@ -601,7 +601,11 @@ class DynamicColumnFunctionsTest
                         () -> net.cumba.corej.core.expr.eval.NativeExprEvaluator.evaluate(
                                 net.cumba.corej.core.expr.CheckExpressionParser
                                         .parse("colref(\"ADSL._matched_\") != \"\""),
-                                EvaluationContext.builder().table(adae()).build()));
+                                // ZERO rows (review round 3): no per-row read can happen, so only
+                                // the compile-time refusal can throw here.
+                                EvaluationContext.builder()
+                                        .table(RealTables.of("ADAE").str("USUBJID").build())
+                                        .build()));
         assertTrue(error.getMessage().contains("boolean condition"), error.getMessage());
         // … and a DATA-derived one is data: no column is named _matched_, so the absent default.
         IDataTable t = RealTables.of("ADAE").str("USUBJID", "S1").str("NAMECOL", "ADSL._matched_")

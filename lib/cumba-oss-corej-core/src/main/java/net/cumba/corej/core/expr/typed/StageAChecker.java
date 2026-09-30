@@ -1644,9 +1644,41 @@ public final class StageAChecker
         }
         case Expr.Call c ->
         {
+            if ("colref".equals(c.name()) && c.args().size() == 1)
+            {
+                checkWrittenColrefInFilter(c.args().get(0), entryName);
+            }
             c.args().forEach(a -> checkFilterRefs(a, entryName));
             c.kwargs().values().forEach(a -> checkFilterRefs(a, entryName));
         }
+        }
+    }
+
+
+    /**
+     * {@code PLAN-dynamic-column-functions} review round 3: a WRITTEN dotted {@code colref} name in
+     * a Filter ({@code colref("DM.SEX")}, or such a member of a list literal) is the same left-side
+     * reference as the authored {@code DM.SEX} — the filter runs on the entry's own rows before the
+     * join, where no other dataset is joined — so it is the same {@code FILTER_LEFT_REFERENCE} load
+     * error rather than a silent all-rows-out default. A computed name is only known per row and
+     * stays out.
+     */
+    private void checkWrittenColrefInFilter(Expr arg, String entryName)
+    {
+        List<?> items = arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
+                && lit.value() instanceof List<?> members ? members : List.of(arg);
+        for (Object item : items)
+        {
+            if (item instanceof Expr.Lit name && name.kind() == Expr.LitKind.STRING
+                    && String.valueOf(name.value()).indexOf('.') > 0)
+            {
+                find(StageAErrorKind.FILTER_LEFT_REFERENCE,
+                        "the Filter on Match_Datasets entry " + entryName + " references '"
+                                + name.value() + "' through colref — a filter is evaluated on "
+                                + entryName + "'s OWN rows before the join and may only reference"
+                                + " its plain columns (spec §3.3: a left-side reference would be a"
+                                + " correlated sub-join)");
+            }
         }
     }
 

@@ -614,14 +614,41 @@ class FindVarsTest
     }
 
 
-    /** Engine 2 / Q3: the mixed numeric/string list stays a load error behind a binding probe. */
+    /**
+     * Engine 2 / Q3: the COMPILER's mixed numeric/string list rejection holds behind a binding
+     * probe (review round 3: pinned at the compiler arm itself — through the loader, stage A's
+     * HETEROGENEOUS_LIST answers first and would hide a lost compiler check).
+     */
     @Test
-    void aMixedListIsStillALoadErrorForABindingProbe()
+    void aMixedListIsStillRejectedByTheCompilerForABindingProbe()
     {
-        assertNotNull(load(json("not empty(USUBJID) and TRTA in [1, \"A\"]", List.of("USUBJID")))
-                .getLoadError(), "authored");
-        assertNotNull(load(json("not empty(USUBJID) and colref($x) in [1, \"A\"]",
-                List.of("USUBJID"), "$x", "\"TRTA\"")).getLoadError(), "through colref($x)");
+        RuleDefinitionException thrown = assertThrows(RuleDefinitionException.class,
+                () -> net.cumba.corej.core.expr.eval.NativeExprEvaluator.evaluate(
+                        net.cumba.corej.core.expr.CheckExpressionParser
+                                .parse("colref($x) in [1, \"A\"]"),
+                        EvaluationContext.builder().table(adae()).build()));
+        assertTrue(thrown.getMessage().contains("mixes numeric and string"), thrown.getMessage());
+    }
+
+
+    /**
+     * Engine 2, the MIXED-row branch (review round 3): one binding holding a list on some rows and
+     * a single name on others ({@code coalesce(find_vars(ENTRY), ONE)}) — each row takes its own
+     * reading, on both sides of {@code in}.
+     */
+    @Test
+    void aBindingThatIsAListOnSomeRowsDecidesPerRow()
+    {
+        IDataTable primary = RealTables.of("ADAE").str("USUBJID", "S1", "S1", "S2")
+                .str("TRTA", "A", "B", "Z").str("ENTRY", "ADSL.TRT0wA", null, null)
+                .str("ONE", "", "TRTA", "USUBJID").build();
+        String binding = "coalesce(find_vars(ENTRY), ONE)";
+        assertEquals(List.of(1L, 2L), firedOn(primary, "TRTA in colref($x)", "$x", binding),
+                "row 1: A in [A, <missing>] (list); row 2: B in {B} (TRTA's cell); row 3: Z in"
+                        + " {S2} (USUBJID's cell)");
+        assertEquals(List.of(1L, 2L),
+                firedOn(primary, "colref($x) in [\"A\", \"B\"]", "$x", binding),
+                "row 1: any of [A, <missing>]; row 2: B; row 3: S2");
     }
 
 

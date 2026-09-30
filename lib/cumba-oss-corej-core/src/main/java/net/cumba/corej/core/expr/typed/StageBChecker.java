@@ -543,10 +543,12 @@ public final class StageBChecker
                 // WRITTEN colref("X") — a string literal, or a list literal of them — names its
                 // column as plainly as the authored X does, so an absent one is the same
                 // FILTER_UNRESOLVABLE (D89; declare ⇒ skip) rather than a silent absent default. A
-                // computed name is only known per row and stays out, as does a dotted one (a
-                // filter reads its own dataset's columns only — stage A's concern).
+                // computed name is only known per row and stays out. A written DOTTED name is
+                // stage A's FILTER_LEFT_REFERENCE (StageAChecker.checkWrittenColrefInFilter),
+                // as the authored DS.X is. ⚠ Review round 3: the argument is STILL walked below —
+                // an authored column read inside it (`colref(AEVAR)`) is a plain filter column
+                // like any other.
                 collectWrittenColrefNames(c.args().get(0), out);
-                return;
             }
             c.args().forEach(a -> collectPlainColumns(a, out));
             c.kwargs().values().forEach(a -> collectPlainColumns(a, out));
