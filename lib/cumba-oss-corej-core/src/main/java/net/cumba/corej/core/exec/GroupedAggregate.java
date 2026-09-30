@@ -42,14 +42,16 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * A call is read at load by {@link #spec} — its column arguments are <b>names</b> (EC-44 is defined
  * over names), never vectors of the primary, because under {@code domain=} every one of them names
- * a column of the OTHER dataset (owner D13 Q4 / D14 / D10; a reference inside a <em>nested</em>
- * grouped call in the target belongs to that call's own {@code domain=}, see {@link #readTarget}) —
- * and evaluated per execution by {@link #broadcast}: the target table is resolved ({@code domain=}
- * through {@link SplitDomainResolution}, as {@code read_value}), the target cells and the
- * {@code filter=} mask are evaluated on a table-scoped context, the groups are formed by the
- * engine's one grouper ({@link IndexHelper#groupByPresent}: absent group columns partition nothing,
- * plan 16's {@code GroupKey} identity, the {@link IndexHelper.BlockResults} tripwire, the
- * {@code keep_missings} policies), each block's value is computed by the function's
+ * a column of the OTHER dataset (owner D13 Q4 / D14 / D10; inside a <em>nested</em> grouped call in
+ * the target, that call's target and filter columns are its own {@code domain=}'s, its
+ * {@code group=} columns are read on both its {@code domain=} and the target table — the broadcast
+ * key — and a nested call without {@code domain=} reads the target table itself, see
+ * {@link #readTarget}) — and evaluated per execution by {@link #broadcast}: the target table is
+ * resolved ({@code domain=} through {@link SplitDomainResolution}, as {@code read_value}), the
+ * target cells and the {@code filter=} mask are evaluated on a table-scoped context, the groups are
+ * formed by the engine's one grouper ({@link IndexHelper#groupByPresent}: absent group columns
+ * partition nothing, plan 16's {@code GroupKey} identity, the {@link IndexHelper.BlockResults}
+ * tripwire, the {@code keep_missings} policies), each block's value is computed by the function's
  * {@link Aggregator}, and the values are returned <b>already broadcast per row of the primary</b>
  * (runbook R2): one identity key per primary row through the ONE derivation both sides use
  * ({@link GroupKeyIdentity#identityKey}), the cross-table key-type check run once per evaluation
@@ -325,10 +327,13 @@ public final class GroupedAggregate
      * prefix resolves against the primary's domain), or any VALUE expression over the target
      * table's own columns. A quoted name is a string, never a column (R1); a dotted or {@code $}
      * reference names another table or binding and is refused. ⚠ Every reference <em>outside</em> a
-     * nested grouped call is a column of the target table; a nested call's references
+     * nested grouped call is a column of the target table. Inside a nested call
      * ({@code min_date(min_date(EXSTDTC, domain="EX", group=[POOLID], …), domain="POOLDEF",
      * group=[USUBJID])} — the pool's first dose per POOLDEF row, {@code PLAN-scalar-date-extremes})
-     * belong to its own {@code domain=}, and {@link #checkRefs} checks only their shape.
+     * the call's target and filter columns are its own {@code domain=}'s; its {@code group=}
+     * columns are read on both its {@code domain=} and the target table (the broadcast key); a
+     * nested call without {@code domain=} reads the target table itself. {@link #checkRefs} checks
+     * only their shape.
      */
     static Expr readTarget(String fn, @Nullable Expr target, boolean foreign)
     {
@@ -348,8 +353,10 @@ public final class GroupedAggregate
             return target;
         }
         // D14 / D119c: an expression target — every reference outside a nested grouped call is a
-        // column of the target table (the same rule as the filter); a nested call's references are
-        // its own domain='s, so only their shape is checked here.
+        // column of the target table (the same rule as the filter). A nested call's target and
+        // filter columns are its own domain='s; its group= columns are read on both its domain=
+        // and the target table (the broadcast key); a nested call without domain= reads the
+        // target table itself. Only their shape is checked here.
         checkRefs(fn, NAME_PARAMETER, target, foreign);
         return target;
     }
@@ -451,8 +458,10 @@ public final class GroupedAggregate
 
     /**
      * Every reference inside {@code e} is a bare column — of the target table, or, inside a nested
-     * grouped call, of that call's own {@code domain=} (the shape is what is checked; the column's
-     * home is resolved when the nested call is evaluated).
+     * grouped call, a target or filter column of that call's own {@code domain=} (a nested call's
+     * {@code group=} columns are read on both its {@code domain=} and the target table, the
+     * broadcast key; a nested call without {@code domain=} reads the target table itself). The
+     * shape is what is checked; the column's home is resolved when the nested call is evaluated.
      */
     private static void checkRefs(String fn, String parameter, Expr e, boolean foreign)
     {

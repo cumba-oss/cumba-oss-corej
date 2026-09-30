@@ -3,7 +3,6 @@ package net.cumba.corej.core.exec;
 import java.util.List;
 import java.util.Objects;
 import net.cumba.corej.core.expr.eval.ColumnTypeGate;
-import net.cumba.corej.core.expr.eval.ColumnTypeMismatchException;
 import net.cumba.corej.core.expr.eval.ComputedVector;
 import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.TypedValue;
@@ -26,7 +25,7 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * <b>Arity</b> (S1): exactly two arguments, {@code a} and {@code b}, positional or by name
  * ({@code earliest_date(X, b=Y)} binds, D19a; a name already bound by position is refused, an
- * unknown keyword is an {@code ARITY} load error). No other parameter — in particular no
+ * unknown keyword is a binder load error). No other parameter — in particular no
  * {@code missing_values=} (S8): a per-part {@code indeterminate} stays on the grouped call that
  * feeds it. More than two dates nest, {@code earliest_date(a, earliest_date(b, c))}, which is exact
  * for determinate operands; for partial operands nesting is not the three-way extreme (EC-46 is not
@@ -39,13 +38,18 @@ import org.jspecify.annotations.Nullable;
  * untagged {@code RFXSTDTC != earliest_date(…)} visible to the mixed-type check; a string literal
  * argument is a {@code PARAMETER_TYPE} finding — write {@code date("…")}. The declared result type
  * is derived from the two inputs: their common declared type, else {@code STRING} (the type a
- * grouped date extreme falls back to). A Num beside a Char is refused with a
- * {@link ColumnTypeMismatchException} (the rule ERRORs, column-type doctrine) exactly as
- * {@link RowMax} refuses a mixed matched set: the winning <b>cell</b> is handed back, so a numeric
- * cell under a {@code STRING} declaration is the trap that check closes. No shipped site can reach
- * it (every one passes two extremes over the same column); a user-authored
- * {@code earliest_date(AESTDY, AESTDTC)} can, and a Num date operand is a rule defect, never a
- * provider artefact — so unlike {@code RowMax} there is no candidate-free exemption.
+ * grouped date extreme falls back to). Unequal types are <b>not</b> refused: a numeric cell can
+ * never win — {@link Extremes.DateExtreme} takes a winner only when
+ * {@code IsoDateBounds.isDetermined} reads a calendar-complete date core, which no number's text is
+ * — so the cell handed back under a {@code STRING} declaration is always a character date or a
+ * missing, and the {@link RowMax} trap (a numeric cell under a {@code STRING} declaration) cannot
+ * arise. A present number beside a date makes the pair undeterminable ({@code MIS}), exactly as
+ * {@code min_date} over the same two cells. That is the reachable case: an XLSX / CSV EX whose
+ * {@code EXSTDTC} arrives as an Excel serial types the own extreme {@code DOUBLE}, beside the
+ * {@code STRING} pool part of a study without POOLDEF — refusing it would ERROR all four SEND rules
+ * for a provider artefact. A numeric <b>column</b> read as a date argument is instead
+ * <b>observed</b> ({@link ColumnTypeGate#observeIsoConversionRead}, D55, observe-only), as
+ * {@code date(NUM)} is.
  * </p>
  *
  * <p>
@@ -136,45 +140,32 @@ public final class ScalarDateExtremes
     {
         Vector a = args.get(0);
         Vector b = args.get(1);
-        DataValueType declared = declaredType(findMax ? LATEST : EARLIEST, a, b);
+        String context = (findMax ? LATEST : EARLIEST) + "()";
+        // D55, observe-only (the class comment): a numeric column read as a date is observed,
+        // never refused — it cannot win, so the answer stays a date or a missing.
+        ColumnTypeGate.observeIsoConversionRead(a, context);
+        ColumnTypeGate.observeIsoConversionRead(b, context);
+        DataValueType declared = declaredType(a, b);
         return ComputedVector.typed(run.rowCount(), declared,
                 row -> pairExtreme(a.value(row), b.value(row), findMax));
     }
 
 
     /**
-     * The declared result type: the arguments' common declared type, else {@code STRING} — after
-     * refusing a numeric / character pair (the class comment's {@code RowMax} trap). Decided once
-     * per evaluation, never per row.
+     * The declared result type: the arguments' common declared type, else {@code STRING} — never a
+     * refusal, because a numeric cell can never be the winning cell (the class comment). Decided
+     * once per evaluation, never per row.
      *
-     * @param name
-     *            the function name, for the message
      * @param a
      *            the first argument
      * @param b
      *            the second argument
      * @return the declared type of the result vector
-     * @throws ColumnTypeMismatchException
-     *             when one argument is numeric and the other character
      */
-    static DataValueType declaredType(String name, Vector a, Vector b)
+    static DataValueType declaredType(Vector a, Vector b)
     {
         DataValueType ta = a.declaredType();
-        DataValueType tb = b.declaredType();
-        if (ta == tb)
-        {
-            return ta;
-        }
-        ColumnTypeGate.Kind ka = ColumnTypeGate.kindOf(ta);
-        ColumnTypeGate.Kind kb = ColumnTypeGate.kindOf(tb);
-        if (ka != null && kb != null && ka != kb)
-        {
-            throw new ColumnTypeMismatchException("column-type mismatch: " + name
-                    + "(a, b) reads a " + ta + " value beside a " + tb
-                    + " value; both arguments of a date extreme must be dates (a Char column"
-                    + " or a date-valued expression) — a numeric date is a rule defect");
-        }
-        return DataValueType.STRING;
+        return ta == b.declaredType() ? ta : DataValueType.STRING;
     }
 
 

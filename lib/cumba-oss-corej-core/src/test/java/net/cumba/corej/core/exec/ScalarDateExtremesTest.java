@@ -5,14 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.expr.CheckExpressionParser;
-import net.cumba.corej.core.expr.eval.ColumnTypeMismatchException;
+import net.cumba.corej.core.expr.eval.ColumnTypeGate;
 import net.cumba.corej.core.expr.eval.ColumnVector;
 import net.cumba.corej.core.expr.eval.ComputedVector;
 import net.cumba.corej.core.expr.eval.EvalRun;
@@ -481,24 +480,66 @@ class ScalarDateExtremesTest
 
 
     @Test
-    void theDeclaredResultTypeIsTheCommonInputTypeElseStringAndANumCharPairIsRefused()
+    void theDeclaredResultTypeIsTheCommonInputTypeElseStringAndANumBesideADateIsObservedNotRefused()
     {
         IDataTable t = RealTableFixture.of("T").str("A", "2020-01-05").str("B", "2020-01-01")
-                .lng("N", 5L).lng("M", 7L).build();
+                .lng("N", 5L).lng("M", 7L).dbl("D", 43_831.0).build();
         EvalRun run = EvalRun.fullRange(ctx(t));
         assertEquals(DataValueType.STRING, ScalarDateExtremes
                 .earliest(run, List.of(column(t, "A"), column(t, "B"))).declaredType());
-        Vector longs = ScalarDateExtremes.latest(run, List.of(column(t, "N"), column(t, "M")));
-        assertEquals(DataValueType.LONG, longs.declaredType(), "equal input types are kept");
-        assertEquals(MissingValue.MIS, missing(longs, 0), "a number is no date: no answer");
-        // The RowMax trap: a numeric cell must never be handed back under a STRING declaration.
-        ColumnTypeMismatchException ex = assertThrows(ColumnTypeMismatchException.class,
-                () -> ScalarDateExtremes.earliest(run, List.of(column(t, "A"), column(t, "N"))));
-        assertTrue(ex.getMessage().contains("earliest_date"), ex.getMessage());
-        RuleExecutionResult result = RuleRunnerCalls
-                .execute(loaded("", "empty(earliest_date(A, N))"), t);
-        assertEquals(RuleExecutionStatus.ERROR, result.getStatus(),
-                "column-type doctrine: the rule ERRORs, it does not match nothing");
+        List<String> seen = new ArrayList<>();
+        ColumnTypeGate.setIsoConversionObserver(seen::add);
+        try
+        {
+            Vector longs = ScalarDateExtremes.latest(run, List.of(column(t, "N"), column(t, "M")));
+            assertEquals(DataValueType.LONG, longs.declaredType(), "equal input types are kept");
+            assertEquals(MissingValue.MIS, missing(longs, 0), "a number is no date: no answer");
+            assertEquals(2, observed(seen, "latest_date()"), "both numeric columns observed");
+            seen.clear();
+            // Unequal types declare STRING and are NOT refused (review A-M1): a number never wins
+            // (IsoDateBounds.isDetermined needs a calendar-complete core), so the RowMax trap —
+            // a numeric cell under a STRING declaration — cannot arise; the present number makes
+            // the pair undeterminable, as min_date over the same two cells. D55: observed.
+            Vector mixed = ScalarDateExtremes.earliest(run,
+                    List.of(column(t, "A"), column(t, "D")));
+            assertEquals(DataValueType.STRING, mixed.declaredType());
+            assertEquals(MissingValue.MIS, missing(mixed, 0));
+            assertEquals(1, observed(seen, "earliest_date()"), String.valueOf(seen));
+            assertTrue(seen.get(0).contains("D is declared Num") && seen.get(0).contains("D55"),
+                    seen.get(0));
+            seen.clear();
+            ScalarDateExtremes.earliest(run, List.of(column(t, "A"), column(t, "B")));
+            assertEquals(0, observed(seen, "earliest_date()"), "a character pair is not observed");
+        }
+        finally
+        {
+            ColumnTypeGate.setIsoConversionObserver(null);
+        }
+    }
+
+
+    @Test
+    void aNumericOwnExtremeBesideTheStringPoolPartOfAStudyWithoutPooldefRuns()
+    {
+        // Review A-M1, the reachable shape: an XLSX EX whose EXSTDTC arrives as an Excel serial
+        // types the own extreme DOUBLE; with no POOLDEF the pool part is the STRING computed MIS.
+        // The pair must run — the rule answers MIS (a number never wins; EC-45 then reports it) —
+        // where a Num/Char refusal ERRORed all four SEND rules for a provider artefact.
+        IDataTable dm = RealTableFixture.of("DM").str("USUBJID", "S1").build();
+        IDataTable ex = RealTableFixture.of("EX").str("USUBJID", "S1").dbl("EXSTDTC", 43_831.0)
+                .str("POOLID", "").build();
+        String own = "min_date(EXSTDTC, domain=\\\"EX\\\", group=[USUBJID])";
+        String pool = "min_date(min_date(EXSTDTC, domain=\\\"EX\\\", group=[POOLID], filter=(not empty(POOLID))), domain=\\\"POOLDEF\\\", group=[USUBJID])";
+        String bindings = binding("$own", own) + "," + binding("$pool", pool) + ","
+                + binding("$first", "earliest_date($own, $pool)");
+        assertEquals(1, fires(bindings, "empty($first)", dm, ex),
+                "the rule runs and the first dose has no answer");
+    }
+
+
+    private static long observed(List<String> seen, String context)
+    {
+        return seen.stream().filter(m -> m.contains(context)).count();
     }
 
     // ============================================================ the identity claim
