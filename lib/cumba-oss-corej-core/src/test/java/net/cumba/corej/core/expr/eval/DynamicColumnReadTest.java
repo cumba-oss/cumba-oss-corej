@@ -138,12 +138,12 @@ class DynamicColumnReadTest
             IDataValue cell = (IDataValue) resolver.resolve(ConstVector.of(name).value(0), r);
             assertEquals("", cell.getValueAsString(), name);
         }
-        resolver.resolve(ConstVector.of("USUBJID").value(0), 0); // a Primary: always memoised
-        org.junit.jupiter.api.Assertions.assertTrue(
-                resolver.memoSize() <= DynamicColumnRead.MAX_UNBOUNDED_NAMES + 1,
-                "memo " + resolver.memoSize() + " after " + rows + " unique names");
-        org.junit.jupiter.api.Assertions.assertTrue(
-                resolver.memoSize() >= DynamicColumnRead.MAX_UNBOUNDED_NAMES,
-                "the cap is reached, not bypassed: " + resolver.memoSize());
+        assertEquals(DynamicColumnRead.MAX_UNBOUNDED_NAMES, resolver.memoSize(),
+                "exactly the cap after " + rows + " unique non-column names");
+        // An evaluation-table column is memoised even PAST the cap (review round 4: an exact
+        // count, so a cap that stopped exempting Primary reds here).
+        resolver.resolve(ConstVector.of("USUBJID").value(0), 0);
+        assertEquals(DynamicColumnRead.MAX_UNBOUNDED_NAMES + 1, resolver.memoSize(),
+                "the Primary target is memoised beyond the cap");
     }
 }
