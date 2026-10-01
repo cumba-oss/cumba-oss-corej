@@ -7346,19 +7346,22 @@ public final class ExprCompiler
     /**
      * The registry-evaluated functions with a {@code COLUMN_REFERENCE} parameter whose call stage A
      * classifies <em>before</em> binding the descriptor ({@code StageAChecker.call}'s
-     * short-circuits), so that the R1 seam must stay in the loader's seam pass for them. Empty:
-     * every such short-circuited call is compiler-dispatched and never reaches
-     * {@link #validateRegistryCall}. {@code StageAResidueDriftTest} re-derives this set from the
-     * providers and the checker's own routing on every run, so a new descriptor cannot widen it
-     * silently.
+     * short-circuits), so that the R1 seam must stay in the loader's seam pass for them. Empty: no
+     * column-reference-bearing descriptor is short-circuited at all today (every short-circuited
+     * arm declares its name slot unknown or dispatches through the compiler).
+     * {@code StageAResidueDriftTest} re-derives this set on every run from both providers and from
+     * BEHAVIOUR — a string literal planted at each column-reference parameter must be the armed
+     * stage A's finding — so a new descriptor cannot widen it silently.
      */
     static final Set<String> STAGE_A_SHORT_CIRCUITED_COLUMN_CALLS = Set.of();
 
     /**
      * @param stageAJudged
-     *            whether the call is one the armed stage A parameter-checks — {@code true} from the
-     *            loader's seam pass over the Check, the Precondition and the bindings;
-     *            {@code false} at the compile sites (a Filter never meets stage A)
+     *            whether the armed stage A type-walks the expression this call sits in —
+     *            {@code true} from the loader's seam pass over a rule WITH a Check (its levels,
+     *            Precondition and bindings); {@code false} at the compile sites (a Filter never
+     *            meets stage A), for a Check-less rule and for the loader's re-run after a
+     *            {@code CHECKER_FAILURE}
      */
     private static void rejectLiteralColumnArguments(FunctionDescriptor descriptor,
             List<@Nullable Expr> bound, boolean stageAJudged)
@@ -7420,9 +7423,13 @@ public final class ExprCompiler
         for (int i = 0; i < params.size() && i < bound.size(); i++)
         {
             Expr e = bound.get(i);
-            if (e != null && "case_sensitive".equals(params.get(i).name())
-                    && !(e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.BOOL)
-                    && !(stageAJudged && e instanceof Expr.Lit))
+            Parameter param = params.get(i);
+            // the literal half stands down only where stage A can see the conflict: a parameter
+            // declared BOOLEAN (review r1 seams M2 — a stub declaring it unknown keeps the seam)
+            boolean stageAs = stageAJudged && e instanceof Expr.Lit
+                    && param.type() == net.cumba.corej.core.expr.typed.ExprType.Primitive.BOOLEAN;
+            if (e != null && "case_sensitive".equals(param.name())
+                    && !(e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.BOOL) && !stageAs)
             {
                 throw unsupported("argument 'case_sensitive' of '" + descriptor.name()
                         + "' takes a boolean literal (true or false), not " + describe(e));
@@ -7481,9 +7488,10 @@ public final class ExprCompiler
             }
             if (lit.kind() != Expr.LitKind.STRING)
             {
-                if (stageAJudged)
+                if (stageAJudged && params.get(i)
+                        .type() == net.cumba.corej.core.expr.typed.ExprType.Primitive.STRING)
                 {
-                    continue; // a wrong-typed literal: the armed stage A's finding
+                    continue; // a wrong-typed literal at a STRING parameter: stage A's finding
                 }
                 throw unsupported("argument '" + name + "' of '" + descriptor.name()
                         + "' takes a static string literal, not " + describe(e));
@@ -7509,14 +7517,14 @@ public final class ExprCompiler
 
     /**
      * ⭐ {@code PLAN-dynamic-column-functions} §2.2 / §3.1 — {@code printf}'s static checks, as
-     * <b>compiler load errors</b> through this static-string seam (armed today, independent of
-     * Stage A's observe-only {@code PARAMETER_TYPE}): the format is a string literal, its
-     * conversions are the supported subset ({@code %s %d %f %e %x %%}, flags {@code 0 - + space},
-     * width, precision), the argument count equals the conversion count, a string literal never
-     * stands at a numeric conversion and a non-integral number literal never at {@code %d} /
-     * {@code %x}. A format error must fail the rule at load, never per row. {@code lpad}'s literal
-     * width and fill ({@code TextFunctions.validateLpadCall}) and {@code find_vars}' malformed
-     * literal entries ({@code FindVars.literalEntryError}) are checked here the same way.
+     * <b>compiler load errors</b> through this static-string seam (a staticness seam, independent
+     * of stage A's {@code PARAMETER_TYPE}): the format is a string literal, its conversions are the
+     * supported subset ({@code %s %d %f %e %x %%}, flags {@code 0 - + space}, width, precision),
+     * the argument count equals the conversion count, a string literal never stands at a numeric
+     * conversion and a non-integral number literal never at {@code %d} / {@code %x}. A format error
+     * must fail the rule at load, never per row. {@code lpad}'s literal width and fill
+     * ({@code TextFunctions.validateLpadCall}) and {@code find_vars}' malformed literal entries
+     * ({@code FindVars.literalEntryError}) are checked here the same way.
      */
     private static void rejectInvalidFormats(FunctionDescriptor descriptor,
             List<@Nullable Expr> bound)
@@ -7715,24 +7723,42 @@ public final class ExprCompiler
      * compiles; an inline call is compiled lazily, so the loader runs this for every inline
      * registry call except the compiler-dispatched ones ({@code RulePackageLoader}'s
      * {@code registryCallSeamExemptions}). An unknown name is left to the compiler's own error. The
-     * pass runs over exactly the expressions the armed stage A type-walks, so the seam cases stage
-     * A covers stand down here ({@code stageAJudged} — {@code PLAN-stage-a-parameter-type-
-     * arming} Q3): the R1 literal at a column slot, a wrong-typed literal {@code case_sensitive}
-     * and a wrong-typed literal static string.
+     * seam cases the armed stage A covers stand down here when the caller says stage A WILL
+     * type-walk the expression ({@code stageAJudged} — {@code PLAN-stage-a-parameter-type-arming}
+     * Q3): the R1 literal at a column slot, a wrong-typed literal at a BOOLEAN
+     * {@code case_sensitive} and a wrong-typed literal at a STRING static parameter. The loader
+     * passes {@code true} only for a rule with a Check (stage A runs on no other), {@code false}
+     * for a {@code Match_Datasets} Filter (compiled at run time, never type-walked), for a
+     * Check-less rule's bindings, and for the re-run after a {@code CHECKER_FAILURE} (review r1
+     * seams M1).
      *
      * @param c
      *            the call
+     * @param stageAJudged
+     *            whether the armed stage A type-walks the expression this call sits in
      * @throws ExpressionException
      *             when an argument does not bind or a seam refuses it
      */
-    public static void validateRegistryCall(Expr.Call c)
+    public static void validateRegistryCall(Expr.Call c, boolean stageAJudged)
     {
         FunctionDescriptor descriptor = FunctionRegistry.descriptor(c.name());
         if (descriptor == null)
         {
             return;
         }
-        rejectLiteralColumnArguments(descriptor, ArgumentBinder.bind(descriptor, c), true);
+        rejectLiteralColumnArguments(descriptor, ArgumentBinder.bind(descriptor, c), stageAJudged);
+    }
+
+
+    /**
+     * The {@code (function → parameters)} the static-string seam holds to a string literal
+     * ({@link #STATIC_STRING_PARAMETERS}) — exposed for the behavioural drift test of
+     * {@code PLAN-stage-a-parameter-type-arming}, which plants a NUMBER literal at each and expects
+     * the armed stage A to refuse it (the S3 literal case stands down in the seam pass).
+     */
+    static Map<String, Set<String>> staticStringParameters()
+    {
+        return STATIC_STRING_PARAMETERS;
     }
 
 

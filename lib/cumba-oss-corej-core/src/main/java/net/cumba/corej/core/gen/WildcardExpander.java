@@ -1251,6 +1251,15 @@ public final class WildcardExpander
         // fresh `new Rule()` would otherwise drop them silently from every expanded child.
         rule.setCompiledBindings(substituteCompiledBindings(template.getCompiledBindings(), rename,
                 StringLiteralPolicy.EXISTS_NAME_ONLY));
+        // PLAN-stage-a-parameter-type-arming review r1 (semantics M2): the Precondition rides
+        // onto the expansion like every other evaluation block — the engine-injected availability
+        // gate included — exactly as TokenExpander copies it. Without it a template with an inline
+        // library / dictionary call expanded into rules that PASSed silently when the provider was
+        // absent, where the template itself SKIPs.
+        if (template.getPrecondition() != null)
+        {
+            rule.setPrecondition(substituteNames(template.getPrecondition(), rename));
+        }
         rule.setMatchDatasets(template.getMatchDatasets());
         rule.setGroupingVariables(template.getGroupingVariables());
         // Supp_Merge is a top-level field like Severity: this method builds the child from a fresh

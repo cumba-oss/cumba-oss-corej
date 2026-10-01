@@ -709,17 +709,47 @@ public class RulePackageLoader
         // ⚑ Plan C §3.3: EVERY declared level, not just the strictest. A gate that reads
         // getCheck() alone sees nothing of a weaker level, so a rejected inline `missing_values`
         // sitting in an INFO level would load clean and mis-evaluate at runtime.
+        // PLAN-stage-a-parameter-type-arming (review r1 seams M1): the seam cases the ARMED stage
+        // A covers stand down in this pass only when stage A will actually run on the rule —
+        // installNativeExpr runs it for a rule WITH a Check and no load error; a Check-less rule's
+        // bindings meet every seam here.
+        boolean stageAJudged = rule.getCheck() != null;
         for (CheckCondition level : rule.checkConditions())
         {
-            validateInlineMissingValues(level);
+            validateInlineMissingValues(level, stageAJudged);
         }
-        validateInlineMissingValues(rule.getPrecondition());
+        validateInlineMissingValues(rule.getPrecondition(), stageAJudged);
         // PLAN-binding-expressions R2: an inline call INSIDE a compiled binding is on the inline
         // surface too, and gets the same value / operator rejections.
         List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
         if (compiled != null)
         {
-            compiled.forEach(binding -> validateInlineMissingValues(binding.expression()));
+            compiled.forEach(
+                    binding -> validateInlineMissingValues(binding.expression(), stageAJudged));
+        }
+        // Review r1 seams L2 (C6): a Match_Datasets Filter is compiled at RUN time (MatchFilter)
+        // and never type-walked by stage A, so its registry calls meet every seam here, at load —
+        // a quoted name at a column slot is a load error, never a silent constant string and never
+        // a run-time exception. An unparseable Filter is stage A's FILTER_INVALID, not this pass's.
+        List<net.cumba.corej.core.model.MatchDataset> matches = rule.getMatchDatasets();
+        if (matches != null)
+        {
+            for (net.cumba.corej.core.model.MatchDataset match : matches)
+            {
+                net.cumba.corej.core.expr.ast.Expr filter;
+                try
+                {
+                    filter = match.filterExpr();
+                }
+                catch (net.cumba.corej.core.expr.ExpressionException unparseable)
+                {
+                    continue;
+                }
+                if (filter != null)
+                {
+                    validateRegistryCallSeams(filter, false);
+                }
+            }
         }
         // Wave 4b (PLAN-scalar-metadata-functions D-W4b-1): the per-variable function is read only
         // through a binding — its value is the per-variable map the per-variable loop projects
@@ -825,7 +855,8 @@ public class RulePackageLoader
      * that is why this gate exists.)
      * </p>
      */
-    private static void validateInlineMissingValues(@Nullable CheckCondition condition)
+    private static void validateInlineMissingValues(@Nullable CheckCondition condition,
+            boolean stageAJudged)
     {
         if (condition == null)
         {
@@ -841,12 +872,12 @@ public class RulePackageLoader
         switch (condition)
         {
         case net.cumba.corej.core.model.CheckConditionExpression expression -> validateInlineMissingValues(
-                expression.expr());
+                expression.expr(), stageAJudged);
         case CheckConditionAll all -> all.getConditions()
-                .forEach(RulePackageLoader::validateInlineMissingValues);
+                .forEach(c -> validateInlineMissingValues(c, stageAJudged));
         case CheckConditionAny any -> any.getConditions()
-                .forEach(RulePackageLoader::validateInlineMissingValues);
-        case CheckConditionNot not -> validateInlineMissingValues(not.getCondition());
+                .forEach(c -> validateInlineMissingValues(c, stageAJudged));
+        case CheckConditionNot not -> validateInlineMissingValues(not.getCondition(), stageAJudged);
         }
     }
 
@@ -904,7 +935,8 @@ public class RulePackageLoader
     }
 
 
-    private static void validateInlineMissingValues(net.cumba.corej.core.expr.ast.Expr expr)
+    private static void validateInlineMissingValues(net.cumba.corej.core.expr.ast.Expr expr,
+            boolean stageAJudged)
     {
         validateInlineCallShapes(expr);
         // Wave 4 (PLAN-list-functions D-W4-3), inverted by the combined review of runbook W2–W8
@@ -912,7 +944,7 @@ public class RulePackageLoader
         // Precondition, nested at any depth — meets the compiler's argument seams at load. After
         // the tailored validators above, so their messages keep precedence; ONCE per root (W4 L1:
         // this ran at every level of the walk, re-walking each subtree — quadratic in the depth).
-        validateRegistryCallSeams(expr);
+        validateRegistryCallSeams(expr, stageAJudged);
     }
 
 
@@ -1063,19 +1095,21 @@ public class RulePackageLoader
      * unknown-parameter errors, the R1 column-vs-literal seam, the static-string, static-list and
      * vocabulary seams); an unknown name is left to the compiler's own error.
      */
-    private static void validateRegistryCallSeams(net.cumba.corej.core.expr.ast.Expr expr)
+    private static void validateRegistryCallSeams(net.cumba.corej.core.expr.ast.Expr expr,
+            boolean stageAJudged)
     {
         switch (expr)
         {
         case net.cumba.corej.core.expr.ast.Expr.And and -> and.parts()
-                .forEach(RulePackageLoader::validateRegistryCallSeams);
+                .forEach(part -> validateRegistryCallSeams(part, stageAJudged));
         case net.cumba.corej.core.expr.ast.Expr.Or or -> or.parts()
-                .forEach(RulePackageLoader::validateRegistryCallSeams);
-        case net.cumba.corej.core.expr.ast.Expr.Not not -> validateRegistryCallSeams(not.inner());
+                .forEach(part -> validateRegistryCallSeams(part, stageAJudged));
+        case net.cumba.corej.core.expr.ast.Expr.Not not -> validateRegistryCallSeams(not.inner(),
+                stageAJudged);
         case net.cumba.corej.core.expr.ast.Expr.Binary b ->
         {
-            validateRegistryCallSeams(b.left());
-            validateRegistryCallSeams(b.right());
+            validateRegistryCallSeams(b.left(), stageAJudged);
+            validateRegistryCallSeams(b.right(), stageAJudged);
         }
         case net.cumba.corej.core.expr.ast.Expr.Call call ->
         {
@@ -1089,7 +1123,8 @@ public class RulePackageLoader
                 }
                 else if (!registryCallSeamExemptions().contains(call.name()))
                 {
-                    net.cumba.corej.core.expr.eval.ExprCompiler.validateRegistryCall(call);
+                    net.cumba.corej.core.expr.eval.ExprCompiler.validateRegistryCall(call,
+                            stageAJudged);
                 }
             }
             catch (net.cumba.corej.core.expr.ExpressionException ex)
@@ -1098,8 +1133,8 @@ public class RulePackageLoader
                 throw new net.cumba.corej.core.expr.RuleDefinitionException(
                         String.valueOf(ex.getMessage()), ex);
             }
-            call.args().forEach(RulePackageLoader::validateRegistryCallSeams);
-            call.kwargs().values().forEach(RulePackageLoader::validateRegistryCallSeams);
+            call.args().forEach(arg -> validateRegistryCallSeams(arg, stageAJudged));
+            call.kwargs().values().forEach(arg -> validateRegistryCallSeams(arg, stageAJudged));
         }
         case net.cumba.corej.core.expr.ast.Expr.Lit lit ->
         {
@@ -1110,7 +1145,7 @@ public class RulePackageLoader
                 {
                     if (item instanceof net.cumba.corej.core.expr.ast.Expr e)
                     {
-                        validateRegistryCallSeams(e);
+                        validateRegistryCallSeams(e, stageAJudged);
                     }
                 }
             }
@@ -2062,10 +2097,40 @@ public class RulePackageLoader
         net.cumba.corej.core.expr.ast.Expr precondition = rule.getPrecondition() == null ? null
                 : net.cumba.corej.core.expr.MetadataOperandMapping
                         .canonicalizeMetadataOperands(tryRaiseToExpr(rule.getPrecondition()));
-        net.cumba.corej.core.expr.typed.StageAChecker.runAndApply(rule, levels, precondition);
+        net.cumba.corej.core.expr.typed.StageAReport stageA = net.cumba.corej.core.expr.typed.StageAChecker
+                .runAndApply(rule, levels, precondition);
         if (rule.getLoadError() != null)
         {
             return;
+        }
+        if (stageA.findings().stream().anyMatch(
+                f -> f.kind() == net.cumba.corej.core.expr.typed.StageAErrorKind.CHECKER_FAILURE))
+        {
+            // Review r1 seams M1: the seam pass trusted stage A with the cases it covers, and stage
+            // A could not judge this rule (CHECKER_FAILURE never parks) — so the seams are re-run
+            // unjudged over the same expressions, and a refusal is the rule's load error with the
+            // seam's own message instead of a cause-less "no native expression form" at compile.
+            try
+            {
+                for (net.cumba.corej.core.expr.ast.Expr level : levels.values())
+                {
+                    validateRegistryCallSeams(level, false);
+                }
+                if (precondition != null)
+                {
+                    validateRegistryCallSeams(precondition, false);
+                }
+                List<net.cumba.corej.core.model.CompiledBinding> reRun = rule.getCompiledBindings();
+                if (reRun != null)
+                {
+                    reRun.forEach(b -> validateRegistryCallSeams(b.expression(), false));
+                }
+            }
+            catch (net.cumba.corej.core.expr.RuleDefinitionException ex)
+            {
+                rule.setLoadError(ex.getMessage());
+                return;
+            }
         }
         try
         {

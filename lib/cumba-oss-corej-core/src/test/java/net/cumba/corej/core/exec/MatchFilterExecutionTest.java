@@ -196,29 +196,21 @@ class MatchFilterExecutionTest
 
 
     /**
-     * {@code PLAN-stage-a-parameter-type-arming} C6: a {@code Filter} is compiled at run time and
-     * never parameter-checked by stage A, so the R1 seam stays at the compile sites — a quoted name
-     * at a column-reference slot inside a Filter is still refused (the rule ERRORs) rather than
-     * compiling silently against a constant string.
+     * {@code PLAN-stage-a-parameter-type-arming} C6 / review r1 seams L2: a {@code Filter} is
+     * compiled at run time and never parameter-checked by stage A, so the R1 seam is run over it AT
+     * LOAD by the loader's seam pass — a quoted name at a column-reference slot inside a Filter is
+     * a load error, never a silent constant string and never a run-time exception.
      */
     @Test
-    @DisplayName("a quoted name at a column slot inside a Filter is still refused (C6)")
-    void aQuotedColumnNameInsideAFilterIsStillRefused() throws IOException
+    @DisplayName("a quoted name at a column slot inside a Filter is a load error (C6)")
+    void aQuotedColumnNameInsideAFilterIsALoadError() throws IOException
     {
         Rule r = rule(aeJoin("dy(\"AEOUT\", AEOUT) > 0"), "not AE._matched_");
-        assertNull(r.getLoadError(),
-                "stage A never parameter-checks a Filter: " + r.getLoadError());
-        IDataTable primary = dm();
-        // The compile-site seam refuses the Filter when it is compiled, at run time — as an
-        // ExpressionException out of the runner (the validator's catch-all makes it the rule's
-        // ERROR in production; the D89 bind error below is the status-channel sibling). What this
-        // control pins is the REFUSAL and its wording, not the channel.
-        net.cumba.corej.core.expr.ExpressionException refused = org.junit.jupiter.api.Assertions
-                .assertThrows(net.cumba.corej.core.expr.ExpressionException.class,
-                        () -> RuleRunnerCalls.execute(r, primary, inventory(study(primary, ae())),
-                                "DM", null, null, null));
-        assertTrue(String.valueOf(refused.getMessage())
-                .contains("takes a column reference, not the literal AEOUT"), refused.getMessage());
+        assertNotNull(r.getLoadError(), "the Filter's literal is judged at load");
+        assertTrue(r.getLoadError().contains("takes a column reference, not the literal AEOUT"),
+                r.getLoadError());
+        // the bare spelling loads
+        assertNull(rule(aeJoin("dy(AEOUT, AEOUT) > 0"), "not AE._matched_").getLoadError());
     }
 
 

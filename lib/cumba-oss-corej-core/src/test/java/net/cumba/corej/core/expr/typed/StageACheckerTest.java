@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.LinkedHashMap;
@@ -1134,14 +1135,15 @@ class StageACheckerTest
     void theObserverSeesEveryCheckedRule()
     {
         List<String> seen = new java.util.ArrayList<>();
-        StageAChecker.setObserver((rule, report) -> seen.add(String.valueOf(report.findings())));
+        java.util.function.BiConsumer<Rule, StageAReport> previous = StageAChecker
+                .setObserver((rule, report) -> seen.add(String.valueOf(report.findings())));
         try
         {
             check("empty(AEOUT)");
         }
         finally
         {
-            StageAChecker.setObserver(null);
+            StageAChecker.setObserver(previous);
         }
         // check() does not notify — only runAndApply does; prove the null-reset path too.
         assertTrue(seen.isEmpty());
@@ -1385,13 +1387,12 @@ class StageACheckerTest
                 // find_vars holding QUALIFIED names: the shape passes Stage A; the splice is the
                 // rule's ERROR at run time by design (GroupSplice, GroupingUniformityTest)
                 "record_count(group=[USUBJID, $fv]) > 1",
-                // colref(list) is list<unknown>: a splice shape too
-                "is_unique_set([USUBJID, $cl])",
-                // a string binding is ONE name (GroupSplice, N29) — judged by TYPE: a per-row
-                // string binding ($scalar) is the same shape here and GroupSplice's answer at run
-                // time, exactly as a qualified name is
+                // a string binding is ONE name (GroupSplice, N29)
                 "is_unique_set([USUBJID, $one])", "record_count(group=[$one]) > 1",
-                "is_unique_set([USUBJID, $scalar])"))
+                // review r1 M1: a splice-shaped $ element contributes its ELEMENT type to the
+                // list's homogeneity — one name beside a list of names is not a mixed list
+                "is_unique_set([USUBJID, $one, $nk])",
+                "record_count(group=[USUBJID, $one, $nk]) > 1"))
         {
             assertEquals(List.of(), check(rule, expression).findings(), expression);
         }
@@ -1401,6 +1402,11 @@ class StageACheckerTest
                 "empty(read_value(TSVAL, domain=TS, mode=\"FIRST\", group=[$nk]))",
                 "AETERM in distinct(AETERM, group=[USUBJID, $nk])", "is_unique_set([\"USUBJID\"])",
                 "is_unique_set([USUBJID, $num])", "empty(max(AESEQ, group=[USUBJID, $one]))",
+                // review r1 L7: a PER-ROW binding can never be spliced (GroupSplice ERRORs on the
+                // hand-over Vector) — stage A's derived level is certain for these, so they are
+                // refused at load: colref(list) reads per row, upper(AETERM) is per row
+                "is_unique_set([USUBJID, $cl])", "is_unique_set([USUBJID, $scalar])",
+                "record_count(group=$cl) > 1", "record_count(group=[USUBJID, $scalar]) > 1",
                 "record_count(group=[USUBJID, $num]) > 1", "record_count(group=$num) > 1",
                 "is_unique_relationship(AETERM, keys=[USUBJID, $nk])"))
         {
@@ -1410,6 +1416,8 @@ class StageACheckerTest
         String message = check(rule, "empty(max(AESEQ, group=[USUBJID, $nk]))").findings().get(0)
                 .message();
         assertTrue(message.contains("'group' of 'max'") && message.contains("$nk"), message);
+        String perRow = check(rule, "is_unique_set([USUBJID, $cl])").findings().get(0).message();
+        assertTrue(perRow.contains("per-row") && perRow.contains("$cl"), perRow);
     }
 
 
@@ -1494,14 +1502,14 @@ class StageACheckerTest
         // observed exactly as the kind is at the time (phase 3 of the plan arms it)
         StageAReport typeError = check2("empty(AETERM)", "dictionary_available(5)");
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(typeError));
-        assertEquals(StageAErrorKind.PARAMETER_TYPE.armed(), !typeError.armedFindings().isEmpty());
+        assertFalse(typeError.armedFindings().isEmpty(), "armed since phase 3");
         StageAReport nonBoolean = check2("empty(AETERM)", "upper(AETERM)");
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(nonBoolean));
-        assertTrue(nonBoolean.findings().get(0).message().startsWith(
+        assertTrue(nonBoolean.findings().get(0).message().contains(
                 "the Precondition root must be boolean"), nonBoolean.findings().toString());
         // the Check root keeps its own wording
         assertTrue(check("upper(AETERM)").findings().get(0).message()
-                .startsWith("the Check root must be boolean"));
+                .contains("the Check root must be boolean"));
     }
 
 
@@ -1522,7 +1530,8 @@ class StageACheckerTest
         // the entry installEngineInternalPrecondition uses on an already-loaded rule
         Rule rule = new Rule();
         List<String> seen = new java.util.ArrayList<>();
-        StageAChecker.setObserver((r, report) -> seen.add("observed"));
+        java.util.function.BiConsumer<Rule, StageAReport> previous = StageAChecker
+                .setObserver((r, report) -> seen.add("observed"));
         try
         {
             StageAReport report = StageAChecker.runAndApplyPrecondition(rule,
@@ -1533,7 +1542,7 @@ class StageACheckerTest
         }
         finally
         {
-            StageAChecker.setObserver(null);
+            StageAChecker.setObserver(previous);
         }
         assertNotNull(rule.getLoadError());
         assertTrue(rule.getLoadError().startsWith("stage A: ARITY"), rule.getLoadError());
@@ -1577,6 +1586,115 @@ class StageACheckerTest
     private static StageAReport check2(String check, String precondition)
     {
         return StageAChecker.check(new Rule(), levels(pre(check)), pre(precondition));
+    }
+
+    // ------------------------------------------------------------------
+    // Review round 1 fixes (T2-fix1)
+    // ------------------------------------------------------------------
+
+
+    @Test
+    void aCaseFoldOverAnUnknownBindingIsUnknown()
+    {
+        // sem L1: upper($u) over a binding of unknown static type is unknown, not a scalar
+        // string — `X in upper($u)` must not be refused as a scalar right operand
+        Rule rule = withBindings("$u", "read_value(TSVAL, domain=TS, mode=\"FIRST\")");
+        assertEquals(List.of(), check(rule, "IDVAR in upper($u)").findings());
+        assertEquals(List.of(), check(rule, "IDVAR in lower($u)").findings());
+        // a column keeps the string row: upper(AEOUT) is a string value
+        assertEquals(Primitive.STRING,
+                root(check("upper(AEOUT) == \"X\"")).children().get(0).type());
+    }
+
+
+    @Test
+    void aKnownNonReferenceAtACompilerDispatchedColumnParameterIsRefused()
+    {
+        // sem L6: the compiler-dispatched grouped callables read their column parameters with a
+        // STRICT reader (groupOperandName) — a computed value is never a column there, so stage
+        // A refuses the known non-reference (the registry-evaluated functions, which read value
+        // vectors, keep accepting a computed scalar: tuple(upper(ARMCD), ARM)).
+        for (String expression : List.of(
+                "has_mixed_emptiness_within_group(upper(AETERM), group=[USUBJID])",
+                "is_last_in_group(ordering=upper(AESEQ), group=[USUBJID])"))
+        {
+            StageAReport report = check(expression);
+            assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(report), expression);
+            assertTrue(report.findings().get(0).message().contains(
+                    "takes a column reference, not string"), report.findings().toString());
+        }
+        assertEquals(List.of(),
+                check("has_mixed_emptiness_within_group(AETERM, group=[USUBJID])").findings());
+        assertEquals(List.of(), check("tuple(upper(ARMCD), ARM) not in $set").findings());
+    }
+
+
+    @Test
+    void aParameterTypeFindingLocatesItsRootAndOperand()
+    {
+        // tests M2 / sem L3: the message names the root (Check level / Precondition / binding)
+        // and the operand text, so a custom-package author can find the site
+        String inCheck = check("len(AEOUT) == \"5\"").findings().get(0).message();
+        assertTrue(inCheck.startsWith("Check (ERROR): "), inCheck);
+        assertTrue(inCheck.contains("len(AEOUT) == \"5\""), inCheck);
+        String inPrecondition = check2("empty(AETERM)", "len(AEOUT) + \"a\" > 1").findings().get(0)
+                .message();
+        assertTrue(inPrecondition.startsWith("Precondition: "), inPrecondition);
+        assertTrue(inPrecondition.contains("len(AEOUT) + \"a\""), inPrecondition);
+        Rule rule = withBindings("$b", "len(AEOUT) + \"a\"");
+        String inBinding = check(rule, "$b > 1").findings().get(0).message();
+        assertTrue(inBinding.startsWith("binding $b: "), inBinding);
+        assertTrue(inBinding.contains("must be a number, not string"), inBinding);
+        // and the list-function read of a Precondition is labelled as such (sem L3)
+        Rule cursor = withBindings("$p", "upper(AETERM)");
+        StageAReport reads = StageAChecker.check(cursor, levels(pre("empty(AETERM)")),
+                pre("not empty(minus($p, subtract=$p))"));
+        assertEquals(List.of(StageAErrorKind.OPERATION_READS_CURSOR_BINDING), kinds(reads));
+        assertTrue(reads.findings().get(0).message().contains("in the Precondition"),
+                reads.findings().toString());
+    }
+
+
+    @Test
+    void theLoaderFilesALocatingMessageForABindingAndAPrecondition() throws Exception
+    {
+        // tests M2, loader level: the finding is user-visible in the rule's ERROR message
+        RulePackage pkg = RulePackageLoader.loadFromString(
+                KeyedJoinFixtures.declared("{\"rules\":{\"X-1\":{\"Core\":{\"Id\":\"X-1\"},"
+                        + "\"Bindings\":[{\"name\":\"$b\",\"expression\":\"len(AEOUT) + \\\"a\\\"\"}],"
+                        + "\"Check\":{\"expression\":\"$b > 1\"}}}}"));
+        Rule rule = pkg.getRules().get("X-1");
+        assertNotNull(rule.getLoadError());
+        assertTrue(rule.getLoadError().contains("stage A: PARAMETER_TYPE: binding $b: ")
+                && rule.getLoadError().contains("len(AEOUT) + \"a\""), rule.getLoadError());
+        Rule gated = load("empty(AEOUT)");
+        RulePackageLoader.installEngineInternalPrecondition(gated,
+                condition("len(AEOUT) == \"5\""));
+        assertNotNull(gated.getLoadError());
+        assertTrue(
+                gated.getLoadError().contains("stage A: PARAMETER_TYPE: Precondition: ")
+                        && gated.getLoadError().contains("len(AEOUT) == \"5\""),
+                gated.getLoadError());
+    }
+
+
+    @Test
+    void setObserverReturnsThePreviousObserverSoACallerCanRestoreIt()
+    {
+        // tests 5: a test that installs an observer restores what was there, never null
+        java.util.function.BiConsumer<Rule, StageAReport> mine = (r, report) ->
+        {
+        };
+        java.util.function.BiConsumer<Rule, StageAReport> previous = StageAChecker
+                .setObserver(mine);
+        try
+        {
+            assertSame(mine, StageAChecker.setObserver(previous));
+        }
+        finally
+        {
+            StageAChecker.setObserver(previous);
+        }
     }
 
 

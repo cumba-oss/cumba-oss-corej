@@ -1,5 +1,6 @@
 package net.cumba.corej.core.expr.eval;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -56,10 +57,10 @@ class RegistryCallSeamsTest
     void anInlineColumnReferenceParameterGivenALiteralIsALoadError() throws Exception
     {
         // PLAN-stage-a-parameter-type-arming Q3 / phase 4: the R1 seam stands down in the loader's
-        // seam pass, and the ARMED stage A answers — the prefix pins WHICH guard refused (the
-        // compile-site seam, kept for Filters, would answer without it; measured: with the seam
-        // case deleted and stage A disarmed the same fixture is still a load error, from
-        // installCompiledLevels).
+        // seam pass, and the ARMED stage A answers — the prefix pins WHICH guard refused. ⚠ Without
+        // stage A the fixture would NOT be a load error at all (review r1 seams L1): the compile
+        // site's refusal is an ExpressionException, which NativeExprEvaluator.isSupported swallows,
+        // so the rule would load with no native form and ERROR at its first evaluation.
         assertInlineLoadError("IDVAR not in referenced_dataset_variables(\"RDOMAIN\")",
                 "stage A: PARAMETER_TYPE", "takes a column reference, not the literal RDOMAIN");
     }
@@ -88,6 +89,82 @@ class RegistryCallSeamsTest
                 "valid_external_dictionary_value(AEDECOD,"
                         + " external_dictionary_type=\"meddra\", dictionary_term_type=5) == false",
                 "stage A: PARAMETER_TYPE", "'dictionary_term_type'", "takes string, not number");
+    }
+
+
+    /**
+     * Review r1 seams M1: the seam pass runs BEFORE stage A and stage A runs only on a rule with a
+     * Check; a Check-less rule's binding never meets stage A, so the pass must keep every seam for
+     * it ({@code stageAJudged} reflects reality).
+     */
+    @Test
+    void aCheckLessRuleKeepsTheSeamsInThePass() throws Exception
+    {
+        Map<String, Object> rule = new LinkedHashMap<>();
+        rule.put("Core", Map.of("Id", "CFX-NOCHECK"));
+        rule.put("Bindings",
+                List.of(Map.of("name", "$dy", "expression", "dy(\"AESTDTC\", RFSTDTC)")));
+        rule.put("Outcome", Map.of("Message", "m"));
+        String json = MAPPER.writeValueAsString(Map.of("rules", Map.of("x", rule)));
+        Rule loaded = RulePackageLoader.loadFromString(json).getRules().get("x");
+        assertNotNull(loaded);
+        assertNotNull(loaded.getLoadError(), "a quoted name in a Check-less rule's binding");
+        assertTrue(
+                loaded.getLoadError().contains("takes a column reference, not the literal AESTDTC"),
+                loaded.getLoadError());
+    }
+
+
+    /**
+     * Review r1 seams M1: when stage A fails on a rule (CHECKER_FAILURE, never armed) the seams it
+     * was trusted to cover are re-run with {@code stageAJudged = false}, so the literal's own
+     * message is filed instead of a cause-less "no native expression form".
+     */
+    @Test
+    void aCheckerFailureReRunsTheSeamsAndFilesTheirError() throws Exception
+    {
+        // the checker's test seam makes stage A fail on this rule (a malformed Expr would be
+        // refused by the binding compiler first — nothing loadable reaches CHECKER_FAILURE)
+        String previous = net.cumba.corej.core.expr.typed.StageAChecker
+                .setCheckerFailureInjection("CFX-FAIL");
+        try
+        {
+            Rule rule = load("IDVAR not in referenced_dataset_variables(\"RDOMAIN\")", "CFX-FAIL");
+            assertNotNull(rule.getLoadError());
+            assertTrue(
+                    rule.getLoadError()
+                            .contains("takes a column reference, not the literal RDOMAIN"),
+                    rule.getLoadError());
+            assertFalse(rule.getLoadError().contains("stage A: PARAMETER_TYPE"),
+                    "stage A did not judge it: " + rule.getLoadError());
+        }
+        finally
+        {
+            net.cumba.corej.core.expr.typed.StageAChecker.setCheckerFailureInjection(previous);
+        }
+    }
+
+
+    /**
+     * Review r1 seams M2: the S2 / S3 literal halves stand down only where stage A can see the
+     * conflict — a {@code case_sensitive} declared UNKNOWN (a stub) keeps the seam's refusal.
+     */
+    @Test
+    void theLiteralHalvesStandDownOnlyForATypedParameter() throws Exception
+    {
+        FunctionDescriptor probe = new FunctionDescriptor("__r1_m2_probe__",
+                List.of(Parameter.required("external_dictionary_type",
+                        net.cumba.corej.core.expr.typed.ExprType.Primitive.STRING),
+                        Parameter.optional("case_sensitive", Unknown.UNKNOWN)),
+                FunctionKind.BOOLEAN, (run, args) -> new java.util.BitSet())
+                        .withProvider(ProviderNeed.dictionary("external_dictionary_type"));
+        try (var _ = RegistryTestSeam.register(probe))
+        {
+            Rule rule = inline("__r1_m2_probe__(external_dictionary_type=\"meddra\","
+                    + " case_sensitive=\"false\")");
+            assertNotNull(rule.getLoadError(), "the seam must still refuse the literal");
+            assertTrue(rule.getLoadError().contains("boolean literal"), rule.getLoadError());
+        }
     }
 
     // ============================================================ controls (green on HEAD too)
@@ -150,6 +227,19 @@ class RegistryCallSeamsTest
     private static Rule inline(String check) throws Exception
     {
         return load(check, List.of());
+    }
+
+
+    private static Rule load(String check, String coreId) throws Exception
+    {
+        Map<String, Object> rule = new LinkedHashMap<>();
+        rule.put("Core", Map.of("Id", coreId));
+        rule.put("Check", Map.of("expression", check));
+        rule.put("Outcome", Map.of("Message", "m"));
+        String json = MAPPER.writeValueAsString(Map.of("rules", Map.of("x", rule)));
+        Rule loaded = RulePackageLoader.loadFromString(json).getRules().get("x");
+        assertNotNull(loaded, "the rule parses");
+        return loaded;
     }
 
 

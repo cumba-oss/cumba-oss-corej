@@ -142,6 +142,21 @@ public final class StageAChecker
 
     private final List<StageAFinding> findings = new ArrayList<>();
 
+    /**
+     * The root being walked, for the locating prefix of a {@link StageAErrorKind#PARAMETER_TYPE}
+     * finding (review r1 tests M2: the finding is the rule's user-visible ERROR message, so it
+     * names the Check level, the Precondition or the binding it was found in):
+     * {@code Check (ERROR)}, {@code Precondition}, {@code binding $x}.
+     */
+    private String where = "the expression";
+
+    /**
+     * Test seam (review r1 seams M1): the effective id of a rule on which {@link #check} throws
+     * inside its try — the only way to reach the {@link StageAErrorKind#CHECKER_FAILURE} path from
+     * a loadable rule, which the loader's re-run of the seams depends on. Never set in production.
+     */
+    private static final AtomicReference<@Nullable String> FAIL_ON = new AtomicReference<>();
+
     /** Every reference name seen while walking, for the match-dataset checks. */
     private final List<String> referencedNames = new ArrayList<>();
 
@@ -167,10 +182,28 @@ public final class StageAChecker
 
     /**
      * Sets (or clears) the measurement observer. Test / measurement use only.
+     *
+     * @return the observer that was installed before, so a caller restores it in its
+     *         {@code finally} instead of clearing to {@code null} — a reset blinds every later
+     *         observer in the same JVM (review r1 tests 5: a corpus census test did exactly that to
+     *         the plan's probe)
      */
-    public static void setObserver(@Nullable BiConsumer<Rule, StageAReport> observer)
+    public static @Nullable BiConsumer<Rule, StageAReport> setObserver(
+            @Nullable BiConsumer<Rule, StageAReport> observer)
     {
-        OBSERVER.set(observer);
+        return OBSERVER.getAndSet(observer);
+    }
+
+
+    /**
+     * Test seam: makes {@link #check} fail (a {@link StageAErrorKind#CHECKER_FAILURE} finding) on
+     * the rule whose effective id is {@code ruleId}; {@code null} clears it.
+     *
+     * @return the previous setting, to restore in a {@code finally}
+     */
+    public static @Nullable String setCheckerFailureInjection(@Nullable String ruleId)
+    {
+        return FAIL_ON.getAndSet(ruleId);
     }
 
 
@@ -275,6 +308,15 @@ public final class StageAChecker
             rule.setLoadError(
                     rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
         }
+        for (StageAFinding failure : report.findings())
+        {
+            if (failure.kind() == StageAErrorKind.CHECKER_FAILURE)
+            {
+                // review r1 sem L2: a checker defect is never armed, but it is never silent either
+                LOGGER.log(System.Logger.Level.WARNING, "stage A could not judge rule {0}: {1}",
+                        rule.effectiveId(), failure.message());
+            }
+        }
         if (!report.observedFindings().isEmpty() && LOGGER.isLoggable(System.Logger.Level.DEBUG))
         {
             LOGGER.log(System.Logger.Level.DEBUG, "stage A observations for {0}: {1}", rule.getId(),
@@ -305,20 +347,28 @@ public final class StageAChecker
         TypedExpr typedPrecondition = null;
         try
         {
+            String injected = FAIL_ON.get();
+            if (injected != null && injected.equals(rule.effectiveId()))
+            {
+                throw new IllegalStateException("injected checker failure (test seam)");
+            }
             checker.scanBindings(rule.bindingOrder());
+            List<Root> roots = new ArrayList<>();
             for (Map.Entry<Severity, Expr> level : levels.entrySet())
             {
+                checker.where = "Check (" + level.getKey() + ")";
                 typed.put(level.getKey(), checker.walkRoot(level.getValue(), "the Check root"));
+                roots.add(new Root(level.getValue(), "the Check (" + level.getKey() + ")"));
             }
-            List<Expr> roots = new ArrayList<>(levels.values());
             if (precondition != null)
             {
                 typedPrecondition = checker.walkPrecondition(precondition);
-                roots.add(precondition);
+                roots.add(new Root(precondition, "the Precondition"));
             }
+            checker.where = "the rule";
             checker.checkBindingOrder();
             checker.checkListFunctionReads(roots);
-            checker.checkMatchDatasets(roots);
+            checker.checkMatchDatasets(roots.stream().map(Root::expr).toList());
         }
         catch (RuntimeException ex)
         {
@@ -347,13 +397,40 @@ public final class StageAChecker
 
     private TypedExpr walkPrecondition(Expr precondition)
     {
+        where = "Precondition";
         return walkRoot(precondition, "the Precondition root");
     }
 
+    /** A root of the rule — a Check level or the Precondition — with its label for messages. */
+    private record Root(Expr expr, String label)
+    {
+    }
 
     private void find(StageAErrorKind kind, String message)
     {
-        findings.add(new StageAFinding(kind, message));
+        // review r1 tests M2: a PARAMETER_TYPE finding is the rule's ERROR message, so it names
+        // the root it was found in — Check (<level>), Precondition, or binding $x
+        findings.add(new StageAFinding(kind,
+                kind == StageAErrorKind.PARAMETER_TYPE ? where + ": " + message : message));
+    }
+
+
+    /**
+     * The operand text of a finding, abbreviated: {@code  (len(AEOUT) == "5")} — the second half of
+     * the locating message (review r1 tests M2).
+     */
+    private static String at(Expr node)
+    {
+        String text;
+        try
+        {
+            text = net.cumba.corej.core.expr.ExpressionPrinter.print(node);
+        }
+        catch (RuntimeException ex)
+        {
+            return "";
+        }
+        return " (" + (text.length() > 120 ? text.substring(0, 117) + "..." : text) + ")";
     }
 
 
@@ -401,7 +478,7 @@ public final class StageAChecker
         for (Expr part : parts)
         {
             TypedExpr child = walk(part);
-            requireBoolean(child, "an operand of '" + op + "'");
+            requireBoolean(child, "an operand of '" + op + "'", node);
             level = join(level, child.level());
             children.add(child);
         }
@@ -412,18 +489,18 @@ public final class StageAChecker
     private TypedExpr not(Expr.Not n)
     {
         TypedExpr inner = walk(n.inner());
-        requireBoolean(inner, "the operand of 'not'");
+        requireBoolean(inner, "the operand of 'not'", n);
         return new TypedExpr(n, Primitive.BOOLEAN, inner.level(), List.of(inner));
     }
 
 
-    private void requireBoolean(TypedExpr operand, String position)
+    private void requireBoolean(TypedExpr operand, String position, Expr context)
     {
         ExprType t = operand.type().dereference();
         if (t != Unknown.UNKNOWN && t != Primitive.BOOLEAN)
         {
             find(StageAErrorKind.PARAMETER_TYPE,
-                    position + " must be boolean, not " + t.describe());
+                    position + " must be boolean, not " + t.describe() + at(context));
         }
     }
 
@@ -438,11 +515,11 @@ public final class StageAChecker
         {
         case EQ, NEQ, LT, GT, LE, GE -> comparison(b, left, right);
         case MATCH, NMATCH -> regexMatch(b, left, right);
-        case IN, NOT_IN -> membership(left, right);
+        case IN, NOT_IN -> membership(b, left, right);
         case ADD, SUB, MUL, DIV ->
         {
-            requireNumber(left, "the left operand of arithmetic");
-            requireNumber(right, "the right operand of arithmetic");
+            requireNumber(left, "the left operand of arithmetic", b);
+            requireNumber(right, "the right operand of arithmetic", b);
             return new TypedExpr(b, Primitive.NUMBER, level, children);
         }
         }
@@ -471,7 +548,7 @@ public final class StageAChecker
         else if (!ExprType.compatible(lt, rt))
         {
             find(StageAErrorKind.PARAMETER_TYPE, "comparison operands disagree: " + lt.describe()
-                    + " " + b.op() + " " + rt.describe());
+                    + " " + b.op() + " " + rt.describe() + at(b));
         }
     }
 
@@ -511,26 +588,27 @@ public final class StageAChecker
 
     private void regexMatch(Expr.Binary b, TypedExpr left, TypedExpr right)
     {
-        requireStringish(left, "the left operand of " + b.op());
+        requireStringish(left, "the left operand of " + b.op(), b);
         // §1.1: regex is literal-only, never computed — the right-hand side must be a /…/ or
         // string literal.
         if (!(right.node() instanceof Expr.Lit lit)
                 || (lit.kind() != Expr.LitKind.REGEX && lit.kind() != Expr.LitKind.STRING))
         {
             find(StageAErrorKind.PARAMETER_TYPE,
-                    "the right-hand side of " + b.op() + " must be a regex literal");
+                    "the right-hand side of " + b.op() + " must be a regex literal" + at(b));
         }
     }
 
 
-    private void membership(TypedExpr left, TypedExpr right)
+    private void membership(Expr.Binary b, TypedExpr left, TypedExpr right)
     {
         ExprType lt = left.type().dereference();
         ExprType rt = right.type().dereference();
         if (rt != Unknown.UNKNOWN && !rt.isCollection())
         {
             find(StageAErrorKind.PARAMETER_TYPE,
-                    "the right operand of 'in' must be a list or set, not " + rt.describe());
+                    "the right operand of 'in' must be a list or set, not " + rt.describe()
+                            + at(b));
             return;
         }
         // A list element is read in VALUE position (§1.2): a list<column-reference> — tuple(A, B),
@@ -547,7 +625,7 @@ public final class StageAChecker
             if (!ExprType.compatible(leftElement, ExprType.elementOf(rt).dereference()))
             {
                 find(StageAErrorKind.PARAMETER_TYPE, "membership element type "
-                        + leftElement.describe() + " disagrees with " + rt.describe());
+                        + leftElement.describe() + " disagrees with " + rt.describe() + at(b));
             }
             return;
         }
@@ -570,29 +648,29 @@ public final class StageAChecker
         if (!ExprType.compatible(lt, element))
         {
             find(StageAErrorKind.PARAMETER_TYPE, "membership element type " + lt.describe()
-                    + " disagrees with " + rt.describe());
+                    + " disagrees with " + rt.describe() + at(b));
         }
     }
 
 
-    private void requireNumber(TypedExpr operand, String position)
+    private void requireNumber(TypedExpr operand, String position, Expr context)
     {
         ExprType t = operand.type().dereference();
         if (t != Unknown.UNKNOWN && t != Primitive.NUMBER)
         {
             find(StageAErrorKind.PARAMETER_TYPE,
-                    position + " must be a number, not " + t.describe());
+                    position + " must be a number, not " + t.describe() + at(context));
         }
     }
 
 
-    private void requireStringish(TypedExpr operand, String position)
+    private void requireStringish(TypedExpr operand, String position, Expr context)
     {
         ExprType t = operand.type().dereference();
         if (t != Unknown.UNKNOWN && t != Primitive.STRING)
         {
             find(StageAErrorKind.PARAMETER_TYPE,
-                    position + " must be a string, not " + t.describe());
+                    position + " must be a string, not " + t.describe() + at(context));
         }
     }
 
@@ -626,6 +704,13 @@ public final class StageAChecker
             // applies (§1.2): a column reference dereferences to unknown, so [A, B] and
             // ["A", "B"] are both homogeneous and only known-vs-known conflicts ([1, "a"]) fire.
             ExprType t = child.type().dereference();
+            if (isSpliceShape(child.node(), child.type()) && t instanceof ListOf spliced)
+            {
+                // review r1 sem M1: a $ binding holding a LIST OF NAMES is spliced element by
+                // element (GroupSplice), so beside a name it is not a mixed list — it
+                // contributes its ELEMENT type to the literal's homogeneity
+                t = spliced.element().dereference();
+            }
             if (t != Unknown.UNKNOWN)
             {
                 if (element == Unknown.UNKNOWN)
@@ -949,8 +1034,8 @@ public final class StageAChecker
      * columns' cells, never names, so never {@code list<string>}). ⚠ Both result types live ONLY
      * here: a name-keyed {@code ElementTable} row cannot tell the scalar form from the list form. A
      * statically known argument of any other type is {@link StageAErrorKind#PARAMETER_TYPE} (owner
-     * Q7) — observe-only until {@code PLAN-stage-a-parameter-type-arming} arms that kind; at run
-     * time such a value names no column and is a computed missing.
+     * Q7; armed since {@code PLAN-stage-a-parameter-type-arming}, so the rule fails to load); at
+     * run time a present non-string value names no column and is a computed missing.
      */
     private TypedExpr colref(Expr.Call c, List<TypedExpr> children)
     {
@@ -965,14 +1050,14 @@ public final class StageAChecker
             if (!isNameType(list.element()))
             {
                 find(StageAErrorKind.PARAMETER_TYPE, "colref takes a column name (a string) or a"
-                        + " list of column names, not " + arg.describe());
+                        + " list of column names, not " + arg.describe() + at(c));
             }
             return new TypedExpr(c, new ListOf(Unknown.UNKNOWN), Level.RECORD, children);
         }
         if (!isNameType(arg))
         {
             find(StageAErrorKind.PARAMETER_TYPE, "colref takes a column name (a string) or a list"
-                    + " of column names, not " + arg.describe());
+                    + " of column names, not " + arg.describe() + at(c));
         }
         return new TypedExpr(c, Primitive.COLUMN_REFERENCE, Level.RECORD, children);
     }
@@ -997,10 +1082,11 @@ public final class StageAChecker
      * the result base following the argument). Returns {@code null} for any other name.
      *
      * <p>
-     * Parameter findings here are {@link StageAErrorKind#PARAMETER_TYPE} (observe-only): a
-     * statically NUMBER argument to {@code date()} is D55's {@code date(NUM)} shape — the stage-B
-     * bind gate is the armed half; this is its static shadow, with the {@code date_from_sas_days} /
-     * {@code date_from_sas_datetime} rewrite named in the message.
+     * Parameter findings here are {@link StageAErrorKind#PARAMETER_TYPE} (armed since
+     * {@code PLAN-stage-a-parameter-type-arming}): a statically NUMBER argument to {@code date()}
+     * is D55's {@code date(NUM)} shape — refused at load with the {@code date_from_sas_days} /
+     * {@code date_from_sas_datetime} rewrite named in the message; a numeric COLUMN is stage B's
+     * bind gate (a column types as unknown here).
      * </p>
      */
     private @Nullable TypedExpr temporalCall(Expr.Call c, List<TypedExpr> children)
@@ -1026,14 +1112,14 @@ public final class StageAChecker
             {
                 find(StageAErrorKind.PARAMETER_TYPE, name + "() over a number is the D55 shape "
                         + "(a SAS numeric is not an ISO-8601 text) — author date_from_sas_days"
-                        + "(...) or date_from_sas_datetime(...) for a numeric date column");
+                        + "(...) or date_from_sas_datetime(...) for a numeric date column" + at(c));
             }
             else if (at != Unknown.UNKNOWN && at != Primitive.STRING && at != resultOf(name))
             {
                 // The conversion is idempotent on its own base; any other known type is not a
                 // temporal text.
                 find(StageAErrorKind.PARAMETER_TYPE,
-                        name + "() converts a string, not " + at.describe());
+                        name + "() converts a string, not " + at.describe() + at(c));
             }
             result = resultOf(name);
         }
@@ -1042,7 +1128,7 @@ public final class StageAChecker
             if (at != Unknown.UNKNOWN && at != Primitive.DATE)
             {
                 find(StageAErrorKind.PARAMETER_TYPE, name + " takes a date (D20), not "
-                        + at.describe() + " — convert with date(...) first (SPEC §1.2)");
+                        + at.describe() + " — convert with date(...) first (SPEC §1.2)" + at(c));
             }
             result = "date_part".equals(name) ? Primitive.DATE : Primitive.TIME;
         }
@@ -1051,7 +1137,7 @@ public final class StageAChecker
             if (at != Unknown.UNKNOWN && at != Primitive.DATE && at != Primitive.TIME)
             {
                 find(StageAErrorKind.PARAMETER_TYPE, name + " takes a date or time (D22), not "
-                        + at.describe() + " — convert with date(...) / time(...) first");
+                        + at.describe() + " — convert with date(...) / time(...) first" + at(c));
             }
             // D22's overload: the result base follows the argument; date is the default base.
             result = at == Primitive.TIME ? Primitive.TIME : Primitive.DATE;
@@ -1222,7 +1308,7 @@ public final class StageAChecker
                     find(StageAErrorKind.PARAMETER_TYPE,
                             c.name() + " takes " + base.describe() + " operands, not "
                                     + t.describe() + " — convert with "
-                                    + (base == Primitive.DATE ? "date(...)" : "time(...)"));
+                                    + (base == Primitive.DATE ? "date(...)" : "time(...)") + at(c));
                 }
             }
         }
@@ -1269,10 +1355,20 @@ public final class StageAChecker
      */
     private static ExprType resultType(Expr.Call c, List<TypedExpr> children)
     {
-        if (CASE_FOLDS.contains(c.name()) && !children.isEmpty()
-                && children.get(0).type().dereference() instanceof ListOf)
+        if (CASE_FOLDS.contains(c.name()) && !children.isEmpty())
         {
-            return new ListOf(Primitive.STRING);
+            ExprType argument = children.get(0).type();
+            if (argument.dereference() instanceof ListOf)
+            {
+                return new ListOf(Primitive.STRING);
+            }
+            if (argument == Unknown.UNKNOWN)
+            {
+                // review r1 sem L1: a fold over a binding of unknown static type (a list or a
+                // scalar — nobody knows at load) is unknown, so `X in upper($u)` is not refused;
+                // a column reference keeps the string row (a cell folds to a string)
+                return Unknown.UNKNOWN;
+            }
         }
         return ElementTable.resultType(c.name());
     }
@@ -1363,7 +1459,13 @@ public final class StageAChecker
             }
             if (declared == Primitive.COLUMN_REFERENCE)
             {
-                checkColumnReferenceArgument(c, param, arg, walked.type());
+                checkColumnReferenceArgument(c, descriptor, param, arg, walked.type());
+                continue;
+            }
+            if (isColumnReferenceList(declared) && splices(c, param)
+                    && isSpliceShape(arg, walked.type()) && isPerRow(walked))
+            {
+                findPerRowSplice(c, param, arg);
                 continue;
             }
             ExprType actual = actualType(c, param, declared, arg, walked.type());
@@ -1371,7 +1473,7 @@ public final class StageAChecker
             {
                 find(StageAErrorKind.PARAMETER_TYPE,
                         "argument '" + param.name() + "' of '" + c.name() + "' takes "
-                                + declared.describe() + ", not " + actual.describe());
+                                + declared.describe() + ", not " + actual.describe() + at(c));
             }
         }
     }
@@ -1419,7 +1521,8 @@ public final class StageAChecker
      * (measured at arming: both are pinned engine behaviour, and the earlier known-vs-known test
      * refused them). The cell type is stage B's (D10).
      */
-    private void checkColumnReferenceArgument(Expr.Call c, Parameter param, Expr arg, ExprType type)
+    private void checkColumnReferenceArgument(Expr.Call c, FunctionDescriptor descriptor,
+            Parameter param, Expr arg, ExprType type)
     {
         if (arg instanceof Expr.Lit lit)
         {
@@ -1428,13 +1531,48 @@ public final class StageAChecker
             find(StageAErrorKind.PARAMETER_TYPE,
                     "argument '" + param.name() + "' of '" + c.name()
                             + "' takes a column reference, not the literal " + literal
-                            + " — a quoted name is a string, never a column");
+                            + " — a quoted name is a string, never a column" + at(c));
         }
         else if (type.dereference() instanceof ListOf)
         {
             find(StageAErrorKind.PARAMETER_TYPE, "argument '" + param.name() + "' of '" + c.name()
-                    + "' takes a column reference, not " + type.describe());
+                    + "' takes a column reference, not " + type.describe() + at(c));
         }
+        else if (descriptor.fn() == null && type != Primitive.COLUMN_REFERENCE
+                && type.dereference() != Unknown.UNKNOWN)
+        {
+            // review r1 sem L6: a compiler-dispatched call reads its column parameters with a
+            // STRICT reader (ExprCompiler.groupOperandName: a column, a wildcard, nothing else),
+            // so a known non-reference is refused here with stage A's message rather than at
+            // compile time; a registry-evaluated function reads value vectors and keeps
+            // accepting a computed scalar (the branch above this one)
+            find(StageAErrorKind.PARAMETER_TYPE, "argument '" + param.name() + "' of '" + c.name()
+                    + "' takes a column reference, not " + type.describe() + at(c));
+        }
+    }
+
+
+    /**
+     * Review r1 sem L7: a {@code $} binding whose derived level is per row (a row granularity or a
+     * variable cursor) hands over a per-row vector at evaluation, which {@code GroupSplice} refuses
+     * as the rule's ERROR — so the splice is refused at load, where stage A's derived level is
+     * certain ({@code colref(list)}, {@code upper(AETERM)}, …). A dataset-level binding of names
+     * splices.
+     */
+    private static boolean isPerRow(TypedExpr e)
+    {
+        return e.level().granularity() == Granularity.Simple.RECORD
+                || e.level().cursor() == Cursor.PRESENT;
+    }
+
+
+    private void findPerRowSplice(Expr.Call c, Parameter param, Expr node)
+    {
+        String name = node instanceof Expr.Ref ref ? ref.name() : "the binding";
+        find(StageAErrorKind.PARAMETER_TYPE, "argument '" + param.name() + "' of '" + c.name()
+                + "' cannot splice the per-row binding " + name
+                + " — only a dataset-level binding of column names can be spliced (at evaluation"
+                + " a per-row binding hands over its vector, which the splice refuses)" + at(c));
     }
 
 
@@ -1459,6 +1597,10 @@ public final class StageAChecker
             boolean splice = isSpliceShape(element.node(), type);
             if (splice && splicing)
             {
+                if (isPerRow(element))
+                {
+                    findPerRowSplice(c, param, element.node());
+                }
                 continue;
             }
             String spelled = element.node() instanceof Expr.Ref ref ? " (" + ref.name() + ")"
@@ -1469,7 +1611,8 @@ public final class StageAChecker
                     + (splice
                             ? " — a spliced $ binding of names is read only by record_count's"
                                     + " group= and is_(not_)unique_set's members"
-                            : ""));
+                            : "")
+                    + at(c));
         }
     }
 
@@ -1658,6 +1801,7 @@ public final class StageAChecker
     {
         for (CompiledBinding compiled : order)
         {
+            where = "binding " + compiled.name();
             TypedExpr typed = walk(compiled.expression());
             bindingLevels.put(compiled.name(), typed.level());
             bindingTypes.put(compiled.name(), typed.type());
@@ -1710,11 +1854,11 @@ public final class StageAChecker
      * never a run-time backstop throw. (Until runbook W8 an inline operation was held to the same
      * rule through the fields it read.)
      */
-    private void checkListFunctionReads(Iterable<Expr> roots)
+    private void checkListFunctionReads(Iterable<Root> roots)
     {
-        for (Expr root : roots)
+        for (Root root : roots)
         {
-            listFunctionReads(root, "the Check");
+            listFunctionReads(root.expr(), root.label());
         }
         List<CompiledBinding> compiled = rule.getCompiledBindings();
         if (compiled != null)
