@@ -27,8 +27,9 @@ class JoinExpansionUniformityTest
     /** J carries k1 twice (S = a / a2) and k2 once; k3 has no match. */
     private static IDataTable manyJ()
     {
+        // J's G differs from P's and SPLITS the two k1 copies (T2 r2 M2): k1 → h1 / h2, k2 → h1.
         return RealTables.of("J").str("K", "k1", "k1", "k2").str("S", "a", "a2", "b")
-                .str("G", "g1", "g1", "g2").build();
+                .str("G", "h1", "h2", "h1").build();
     }
 
 
@@ -81,7 +82,8 @@ class JoinExpansionUniformityTest
     void aGroupedFunctionCountsAnExpandedRowLikeAPrimaryRow()
     {
         // record_count(group=[G]) over the EXPANDED primary vs over the hand-expanded one: the
-        // two k1 copies both carry J.G = g1 (dotted) / G = g1 (bare) and count as two.
+        // two k1 copies both carry P's G = g1 (the bare spelling reads the expanded primary) and
+        // count as two.
         RuleExecutionResult viaJoin = run("record_count(group=[G]) == 2", primaryP(), manyJ(), "K");
         RuleExecutionResult byHand = runBare("record_count(group=[G]) == 2", expandedByHand(), "K");
         assertEquals(2, byHand.getViolations().size(), "the two k1 copies");
@@ -102,7 +104,7 @@ class JoinExpansionUniformityTest
         IDataTable j = manyJ();
         // The join DUPLICATES the primary row: both k1 copies carry P's own S = a.
         IDataTable byHandInner = RealTables.of("P").str("K", "k1", "k1", "k2")
-                .str("S", "a", "a", "b").str("G", "g1", "g1", "g2").build();
+                .str("S", "a", "a", "b").str("G", "h1", "h2", "h1").build();
         String inner = "\"Match_Datasets\":[{\"Name\":\"J\",\"Keys\":[\"K\"],"
                 + "\"Join_Type\":\"inner\"}]";
         Rule dotted = loadClean(ruleJson("Group", "\"Grouping\":{\"Variables\":[\"J.G\"]}," + inner
@@ -111,7 +113,8 @@ class JoinExpansionUniformityTest
                 + check("S != \"zz\"") + "," + outcome("K")), false);
         RuleExecutionResult viaJoin = executed(dotted, p, exactInventory(p, j));
         RuleExecutionResult byHand = executed(bare, byHandInner, exactInventory(byHandInner));
-        assertEquals(2, byHand.getViolations().size(), "g1 (the two k1 copies) and g2");
+        assertEquals(2, byHand.getViolations().size(),
+                "h1 (one k1 copy and k2) and h2 (the other k1 copy)");
         assertEquals(byHand.getViolations().size(), viaJoin.getViolations().size());
         assertEquals(QualifiedNameFixture.values(byHand), QualifiedNameFixture.values(viaJoin));
     }

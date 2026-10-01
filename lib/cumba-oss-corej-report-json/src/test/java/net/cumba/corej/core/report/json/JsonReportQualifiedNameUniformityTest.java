@@ -142,11 +142,14 @@ class JsonReportQualifiedNameUniformityTest
                     .replace("\"y\"", "\"b\""));
             if (combined)
             {
-                // … EXCEPT, in v2, the finding's LOCATION: ⚠ known red N30 (T2 r1, recorded, not
-                // fixed): location.variables lists the bare S but DROPS the qualified J.S —
-                // ReportAssembler prints Location.getVariableNames(), which keeps only the
-                // primary's own column names — while "variables" and "values" carry it. Remove
-                // this pin when N30 is fixed.
+                // … EXCEPT, in v2, the finding's LOCATION: location.variables lists the bare S
+                // and NOT the qualified J.S — by the datatable report model's CONTRACT, not by
+                // an oversight (N30, T2 r2): ValidationFindingLocation.variableNames are "real
+                // data-table column names of the dataset — never cross-dataset references", and
+                // FindingLocations.isNonColumnToken drops "DM.DTHDTC and other dataset-qualified
+                // cross references" because the list drives highlighting of the dataset's own
+                // cells. The qualified name travels in "variables" and "values". Pinned so a
+                // change of that contract is seen here.
                 assertTrue(
                         dotted.contains("\"location\":{\"dataset\":\"P\",\"variables\":[\"K\"]}"),
                         "N30: " + dotted);

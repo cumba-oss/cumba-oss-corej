@@ -794,6 +794,9 @@ class QualifiedNameUniformityTest
             }
         }
         assertEquals(47, unprobed.size(), "unprobed name-bearing rows: " + unprobed);
+        // T2 r2 L5: the non-name class is pinned too — a row that flips to '-' to dodge a probe
+        // moves this count.
+        assertEquals(135, rows.stream().filter(r -> !r.name()).count(), "non-name rows");
     }
 
     // ------------------------------------------------------------------
@@ -841,9 +844,18 @@ class QualifiedNameUniformityTest
 
     /**
      * The six-row fixture; {@code except} (0 = none) drops that column, {@code dflt} defaults row 3
-     * of that column, {@code rotate} shifts that column's cells by one row (C1j).
+     * of that column, {@code alter} gives that column a DIFFERENT value set (C1j, T2 r2 L3: a
+     * rotation left order-invariant probes blind): every character cell gains a {@code zz} suffix,
+     * every present number 100, a missing keeps its identity; {@code blank} defaults EVERY cell of
+     * that column (the all-null variant {@code var_is_null} needs).
      */
-    private static List<Col> columns(char except, char dflt, char rotate)
+    private static List<Col> columns(char except, char dflt, char alter)
+    {
+        return columns(except, dflt, alter, '\0');
+    }
+
+
+    private static List<Col> columns(char except, char dflt, char alter, char blank)
     {
         List<Col> all = List.of(new Col(KEY, DataValueType.STRING, new Object[]
         {
@@ -886,15 +898,47 @@ class QualifiedNameUniformityTest
                 // DataValueSupport.defaultForType): "" for a character column, MIS for a numeric.
                 v[UNMATCHED_ROW] = DataValueSupport.defaultForType(c.type()).getValue();
             }
-            if (letter == rotate)
+            if (letter == alter)
             {
-                Object last = v[v.length - 1];
-                System.arraycopy(c.values(), 0, v, 1, v.length - 1);
-                v[0] = last;
+                for (int i = 0; i < v.length; i++)
+                {
+                    v[i] = altered(c.type(), v[i]);
+                }
+            }
+            if (letter == blank)
+            {
+                Object dflt0 = DataValueSupport.defaultForType(c.type()).getValue();
+                for (int i = 0; i < v.length; i++)
+                {
+                    v[i] = dflt0;
+                }
             }
             out.add(new Col(c.name(), c.type(), v));
         }
         return out;
+    }
+
+
+    /** A cell of a DIFFERENT value set, same shape: {@code zz}-suffixed / +100 / a missing kept. */
+    private static @Nullable Object altered(DataValueType type, @Nullable Object value)
+    {
+        if (value == null)
+        {
+            return null;
+        }
+        if (type == DataValueType.STRING)
+        {
+            return value + "zz";
+        }
+        if (value instanceof Double d)
+        {
+            return Double.isNaN(d) ? d : d + 100;
+        }
+        if (value instanceof Long l)
+        {
+            return l + 100;
+        }
+        return value;
     }
 
 
@@ -1034,7 +1078,7 @@ class QualifiedNameUniformityTest
      * ({@code LOAD}: the parse / compile step, which is what the loader turns into a rule's load
      * error) or a run-time error ({@code ERROR}).
      */
-    private record Outcome(String kind, String detail)
+    record Outcome(String kind, String detail)
     {
 
         boolean error()
@@ -1049,8 +1093,12 @@ class QualifiedNameUniformityTest
          */
         boolean refusedFor(String dotted, String bare)
         {
+            // T2 r2 M1: the remedy is the exact token "bare (<name>)" — a substring test let a
+            // one-letter name match the function's own text ("Grouping" contains G).
+            // A string-literal argument's remedy is the quoted spelling, bare ("S").
             return "LOAD".equals(kind) && detail.contains(dotted)
-                    && detail.replace(dotted, "").contains(bare);
+                    && (detail.contains("bare (" + bare + ")")
+                            || detail.contains("bare (\"" + bare + "\")"));
         }
     }
 
@@ -1204,7 +1252,8 @@ class QualifiedNameUniformityTest
         compare(red, "C4", evaluate(bare, bool, ctx(pAbsent, j, bare)),
                 evaluate(bare, bool, joinedCtx(pAbsent, j, bare)));
         // C7 — the level calculus sees both spellings alike (D32a).
-        if (!level(bare).equals(level(dotted)))
+        if (!level(bare).equals(level(dotted)) || level(bare).startsWith("ERROR")
+                || level(dotted).startsWith("ERROR"))
         {
             red.put("C7", level(bare) + " vs " + level(dotted));
         }
@@ -1239,10 +1288,12 @@ class QualifiedNameUniformityTest
                             + dottedC1.detail());
         }
         // C1j — the qualified spelling reads the JOIN, not a like-named primary column (T2 r1
-        // H1): P's probed column is rotated by one row, J is canonical, the answer must still be
-        // the canonical one.
-        IDataTable pRotated = table("P", columns('\0', '\0', letter), false);
-        compare(red, "C1j", bareC1, evaluate(dotted, bool, joinedCtx(pRotated, j, dotted)));
+        // H1, r2 L3): P's probed column carries a DIFFERENT value set (then every cell at its
+        // default), J is canonical, the answer must still be the canonical one.
+        IDataTable pAltered = table("P", columns('\0', '\0', letter), false);
+        compare(red, "C1j", bareC1, evaluate(dotted, bool, joinedCtx(pAltered, j, dotted)));
+        IDataTable pBlank = table("P", columns('\0', '\0', '\0', letter), false);
+        compare(red, "C1j", bareC1, evaluate(dotted, bool, joinedCtx(pBlank, j, dotted)));
         // C2 — the unmatched row of the join reads the column's type default (D72a-1): the
         // primary carries that default at row 3 on BOTH sides, the join lacks row 3's key.
         IDataTable pDefaulted = primary('\0', letter);
@@ -1254,9 +1305,11 @@ class QualifiedNameUniformityTest
         compare(red, "C3", evaluate(bare, bool, ctx(pAbsent, jAbsent, bare)),
                 evaluate(dotted, bool, joinedCtx(pAbsent, jAbsent, dotted)));
         // C5c — the column part matched ignoring case (CIT §1): the DATA spells its column
-        // names in lower case, both spellings are written as authored. (A lower-case spelling
-        // in the rule is refused by the parser — OperandClassifier — so the case can only come
-        // from the data side.)
+        // names in lower case, both spellings are written as authored. The RULE-side case is
+        // deliberately not part of C5c: a bare lower-case spelling (`s`) cannot be written at
+        // all (OperandClassifier reads it as a built-in), while the dotted `J.s` can since T2 r1
+        // (the classifier's column half is any-case) — an asymmetry of the language, not of a
+        // resolver, so the data side is the only comparable channel (T2 r2 L6).
         IDataTable pLower = table("P", columns('\0', '\0', '\0'), false, true);
         IDataTable jLower = table("J", columns('\0', '\0', '\0'), false, true);
         compare(red, "C5c", evaluate(bare, bool, ctx(pLower, jLower, bare)),
@@ -1413,6 +1466,8 @@ class QualifiedNameUniformityTest
 
     private static final String STRIP_STUB = "__strip_qualifier_probe__";
 
+    private static final String STRIP_LEN_STUB = "__strip_qualifier_max_len__";
+
     private static ColumnVector primaryColumn(EvalRun run, String name)
     {
         DataTableMeta meta = run.ctx().getTable().getMetaData();
@@ -1512,6 +1567,77 @@ class QualifiedNameUniformityTest
         {
             FunctionRegistry.unregister(STRIP_STUB);
         }
+    }
+
+
+    /**
+     * A function that strips the qualifier and answers an ORDER-INVARIANT fact of the primary's
+     * like-named column (its longest text) — blind to a rotation, caught by the altered value set
+     * (T2 r2 L3).
+     */
+    private static FunctionDescriptor stripQualifierMaxLenStub()
+    {
+        EvalFunction fn = (run, args) ->
+        {
+            Vector arg = args.get(0);
+            String name = arg == null ? null : arg.gatedName();
+            ColumnVector v = name == null ? null
+                    : primaryColumn(run, name.substring(name.indexOf('.') + 1));
+            long max = 0;
+            if (v != null)
+            {
+                for (int r = 0; r < run.ctx().rowCount(); r++)
+                {
+                    max = Math.max(max, v.asString(r).length());
+                }
+            }
+            return ConstVector.of(max);
+        };
+        return new FunctionDescriptor(STRIP_LEN_STUB,
+                List.of(Parameter.required("x",
+                        net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)),
+                FunctionKind.VALUE, fn);
+    }
+
+
+    @Test
+    void anOrderInvariantStripQualifierStubRedsC1j()
+    {
+        FunctionRegistry.register(stripQualifierMaxLenStub());
+        try
+        {
+            Row stub = new Row(STRIP_LEN_STUB, "x", true, "V:" + STRIP_LEN_STUB + "(@S)", null,
+                    null);
+            SequencedMap<String, String> red = new LinkedHashMap<>(redCriteria(stub));
+            red.remove("C5q");
+            assertEquals(Set.of("C1j"), red.keySet(), red.toString());
+        }
+        finally
+        {
+            FunctionRegistry.unregister(STRIP_LEN_STUB);
+        }
+    }
+
+
+    /** T2 r2 M1: the refusal detector needs the exact remedy token — stripping it reds. */
+    @Test
+    void theRefusalDetectorNeedsTheExactRemedyToken()
+    {
+        assertTrue(new Outcome("LOAD",
+                "argument 'group' of 'max' names the qualified J.G — write it bare (G)")
+                        .refusedFor("J.G", "G"));
+        assertFalse(new Outcome("LOAD",
+                "argument 'group' of 'max' names the qualified J.G requires domain= for Grouping")
+                        .refusedFor("J.G", "G"),
+                "the bare name inside the function's own text (Grouping) is not the remedy");
+        assertFalse(new Outcome("LOAD", "argument 'group' of 'max' names the qualified J.G")
+                .refusedFor("J.G", "G"), "the remedy stripped");
+        assertFalse(new Outcome("ERROR", "J.G — write it bare (G)").refusedFor("J.G", "G"),
+                "a run-time error is never a refusal");
+        assertTrue(new Outcome("LOAD",
+                "var_type: the name \"J.S\" is qualified — write it bare" + " (\"S\")")
+                        .refusedFor("J.S", "S"),
+                "a string literal's remedy is quoted");
     }
 
 
