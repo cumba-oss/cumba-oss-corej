@@ -205,19 +205,16 @@ class DictionaryFunctionsTest
 
 
     @Test
-    void aNonBooleanCaseSensitiveIsALoadError() throws Exception
+    void aNonLiteralCaseSensitiveIsALoadError() throws Exception
     {
         // Review round 1 lane 2 M1: the retired operation parsed case_sensitive as a boolean
-        // field; on the function surface Stage A's PARAMETER_TYPE is unarmed, and the function
-        // reads the flag as Boolean.FALSE.equals(value(0)) — a column or a string bound there
-        // would silently mean "case-sensitive". The compile seam refuses anything but a BOOL
-        // literal, for both functions and both argument forms.
+        // field; the function reads the flag as Boolean.FALSE.equals(value(0)) — a column bound
+        // there would silently mean "case-sensitive". The STATICNESS half of the compile seam:
+        // a column (unknown to stage A) is refused at the compile sites, for both functions and
+        // both argument forms (PLAN-stage-a-parameter-type-arming S2, the kept half).
         for (String spelling : List.of(
                 "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL,"
                         + " external_dictionary_type=\\\"unii\\\", case_sensitive=TSPARMCD)",
-                "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL,"
-                        + " external_dictionary_type=\\\"unii\\\", case_sensitive=\\\"false\\\")",
-                "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL, \\\"unii\\\", 0)",
                 "valid_external_dictionary_hierarchy(AEHLT, AESOC,"
                         + " external_dictionary_type=\\\"meddra\\\", case_sensitive=AESOC)"))
         {
@@ -227,6 +224,25 @@ class DictionaryFunctionsTest
         }
         assertNull(load("valid_external_dictionary_code_term_pair(TSVALCD, TSVAL, \\\"unii\\\","
                 + " false)").getLoadError(), "the positional boolean literal binds");
+    }
+
+
+    @Test
+    void aWrongTypedLiteralCaseSensitiveIsALoadError() throws Exception
+    {
+        // The LITERAL half (PLAN-stage-a-parameter-type-arming S2): a string or a number where a
+        // boolean literal is required. In a BINDING the compile site answers first (the bindings
+        // compile before stage A runs), so the seam's wording is pinned here; the same literal
+        // inline in a Check is the armed stage A's (RegistryCallSeamsTest).
+        for (String spelling : List.of(
+                "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL,"
+                        + " external_dictionary_type=\\\"unii\\\", case_sensitive=\\\"false\\\")",
+                "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL, \\\"unii\\\", 0)"))
+        {
+            String error = loadError(spelling);
+            assertTrue(error.contains("case_sensitive") && error.contains("boolean literal"),
+                    spelling + ": " + error);
+        }
     }
 
 

@@ -24,13 +24,36 @@ public enum StageAErrorKind
 
     /**
      * A known operand type where the parameter (or the opposite comparison side) requires a
-     * different known type (D3 — "where the actual type is unsupported the rule errors"). ⚠
-     * Observe-only in phase 2, although measured 0 over the shipped corpus (2026-09-16): the
-     * element table is still partial (D91d — 173 of 299 elements have no corpus user and are
-     * specified, not ported), and expanded/specialised rules pass through this checker per dataset
-     * where the load-time measurement cannot see them. Arming is a phase-3/4 decision.
+     * different known type (D3 — "where the actual type is unsupported the rule errors"): a
+     * parameter binding ({@code StageAChecker.checkParameterBinding}), a non-boolean Check or
+     * Precondition root, a non-boolean logical operand, a comparison whose known operand types
+     * disagree, a non-number in arithmetic, a computed regex, a scalar right operand of {@code in},
+     * a non-string regex operand, the temporal conversions and predicates, the
+     * {@code earliest_date} / {@code latest_date} DATE parameters and {@code colref}'s non-string
+     * argument ({@code PLAN-dynamic-column-functions} Q7).
+     *
+     * <p>
+     * ⭐ <b>Armed since {@code PLAN-stage-a-parameter-type-arming} (2026-10-01).</b> It could not
+     * simply be armed: at phase 0 of that plan the shipped corpus carried <b>984</b> findings over
+     * 194 rules and the rulespecs 98 — none a wrong rule, all four of them shapes the checker could
+     * not type (a quoted dataset name at a {@code DATASET_REFERENCE} parameter, a case-fold over a
+     * list, a {@code $}-list spliced into a column-reference list, a string literal at
+     * {@code record_count}'s {@code regex=}). Phase 1 taught the checker those shapes; the plan's
+     * probe then measured <b>zero</b> over both corpora (every package load), every rulespec and
+     * the run-time expanded rules of the scenario suites ({@code WildcardExpander} / {@code
+     * TokenExpander} expansions — the {@code --} specialisation copies a checked rule's
+     * {@code checkExpr} and never re-enters this checker), and the Precondition root (phase 2). So
+     * no shipped rule parks; what changes is a wrongly typed argument in a rule <em>outside</em>
+     * the corpus, which now fails to load where it used to load and fail per row, or never.
+     * </p>
+     *
+     * <p>
+     * ⚠ The javadoc that stood here said <i>"measured 0 over the shipped corpus (2026-09-16)"</i>;
+     * runbook W8 measured 192 rules / 850 findings on the same corpus a day later, and the figure
+     * above is the plan's own re-measurement. A zero that is not re-derived is a claim.
+     * </p>
      */
-    PARAMETER_TYPE(false),
+    PARAMETER_TYPE(true),
 
     /**
      * The excluded {@code group(K) × cursor} cell (D67). Armed: measured 0 newly parked (D30b

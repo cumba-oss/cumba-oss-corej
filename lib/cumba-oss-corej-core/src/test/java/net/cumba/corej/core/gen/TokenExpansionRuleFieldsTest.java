@@ -248,6 +248,32 @@ class TokenExpansionRuleFieldsTest
 
 
     /**
+     * {@code PLAN-stage-a-parameter-type-arming} Q2: the copied Precondition is a stage-A root of
+     * the expansion — the expander hands the concrete rule to {@code installNativeExpr}, which
+     * raises the Precondition beside the levels, so an armed finding in it parks the expansion
+     * exactly as one in the Check would.
+     */
+    @Test
+    @DisplayName("the copied Precondition is stage-A checked on the expansion")
+    void theCopiedPreconditionIsStageACheckedOnTheExpansion()
+    {
+        Rule template = richTemplate();
+        template.setPrecondition(new CheckConditionAll(List.of(leaf("&VAR&", "var_exists"),
+                new net.cumba.corej.core.model.CheckConditionExpression(
+                        net.cumba.corej.core.expr.CheckExpressionParser
+                                .parse("library_available(1)"),
+                        "library_available(1)"))));
+        List<Rule> rules = expand(template, adae(), Map.of("ADSL", adsl()));
+        assertEquals(1, rules.size());
+        String error = rules.get(0).getLoadError();
+        assertNotNull(error, "the wrong-arity gate in the copied Precondition parks the expansion");
+        assertTrue(error.contains("stage A: ARITY"), error);
+        // the control: richTemplate()'s own Precondition expands clean (expandOnce asserts it)
+        assertNull(expandOnce(richTemplate(), adae(), Map.of("ADSL", adsl())).getLoadError());
+    }
+
+
+    /**
      * The compiled bindings get the Check's substitution, so a token in a column position is bound
      * and every other position of the expression survives. (Until runbook W8 this was pinned on an
      * operation record rewritten through the JSON tree, with its {@code delimiter} field as the

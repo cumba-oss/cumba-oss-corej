@@ -2053,7 +2053,16 @@ public class RulePackageLoader
         // load error, rule parked, ERROR once); every armed kind is measured at ZERO newly
         // parked rules over the shipped corpora, so this changes no production verdict.
         // Observe-only findings are logged and offered to the measurement observer.
-        net.cumba.corej.core.expr.typed.StageAChecker.runAndApply(rule, levels);
+        // PLAN-stage-a-parameter-type-arming Q2 / C2: the Precondition is one more root — raised
+        // and canonicalised here exactly as the levels are, so stage A judges every Precondition
+        // (the gates injectInlineOperationGates wrote before this call included). ⚑ Two trees on
+        // purpose: raisePrecondition below keeps evaluating the tree it evaluates today, as the
+        // Check levels already do (stage A checks the canonicalised tree, installCompiledLevels
+        // compiles it).
+        net.cumba.corej.core.expr.ast.Expr precondition = rule.getPrecondition() == null ? null
+                : net.cumba.corej.core.expr.MetadataOperandMapping
+                        .canonicalizeMetadataOperands(tryRaiseToExpr(rule.getPrecondition()));
+        net.cumba.corej.core.expr.typed.StageAChecker.runAndApply(rule, levels, precondition);
         if (rule.getLoadError() != null)
         {
             return;
@@ -2289,6 +2298,20 @@ public class RulePackageLoader
     {
         rule.setPrecondition(precondition);
         rule.setPreconditionExpr(null);
+        if (precondition != null && rule.getLoadError() == null)
+        {
+            // PLAN-stage-a-parameter-type-arming Q2 / C2: an already-loaded rule has had its
+            // levels checked (installNativeExpr is a no-op here), so the Precondition alone is
+            // walked as a stage-A root — canonicalised as the levels were; an armed finding parks
+            // the rule exactly as at load. Skipped on a parked rule: nothing further to judge.
+            net.cumba.corej.core.expr.typed.StageAChecker.runAndApplyPrecondition(rule,
+                    net.cumba.corej.core.expr.MetadataOperandMapping
+                            .canonicalizeMetadataOperands(tryRaiseToExpr(precondition)));
+            if (rule.getLoadError() != null)
+            {
+                return;
+            }
+        }
         raisePrecondition(rule);
     }
 

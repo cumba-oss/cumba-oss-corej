@@ -55,8 +55,39 @@ class RegistryCallSeamsTest
     @Test
     void anInlineColumnReferenceParameterGivenALiteralIsALoadError() throws Exception
     {
+        // PLAN-stage-a-parameter-type-arming Q3 / phase 4: the R1 seam stands down in the loader's
+        // seam pass, and the ARMED stage A answers — the prefix pins WHICH guard refused (the
+        // compile-site seam, kept for Filters, would answer without it; measured: with the seam
+        // case deleted and stage A disarmed the same fixture is still a load error, from
+        // installCompiledLevels).
         assertInlineLoadError("IDVAR not in referenced_dataset_variables(\"RDOMAIN\")",
-                "takes a column reference, not the literal RDOMAIN");
+                "stage A: PARAMETER_TYPE", "takes a column reference, not the literal RDOMAIN");
+    }
+
+
+    /**
+     * The two seam halves stage A covers in the pass, each on an inline call: a wrong-typed LITERAL
+     * {@code case_sensitive} (S2) and a wrong-typed literal static string (S3) are the armed
+     * {@code PARAMETER_TYPE}; the staticness halves (a column at either) stay the compile seams'
+     * (the test above).
+     */
+    @Test
+    void theWrongTypedLiteralHalvesAreStageAsInThePass() throws Exception
+    {
+        assertInlineLoadError(
+                "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL,"
+                        + " external_dictionary_type=\"unii\", case_sensitive=\"false\") == false",
+                "stage A: PARAMETER_TYPE", "'case_sensitive'", "takes boolean, not string");
+        assertInlineLoadError(
+                "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL,"
+                        + " external_dictionary_type=\"unii\", case_sensitive=0) == false",
+                "stage A: PARAMETER_TYPE", "takes boolean, not number");
+        assertInlineLoadError("row_max(name_pattern=5) == \"\"", "stage A: PARAMETER_TYPE",
+                "'name_pattern' of 'row_max' takes string, not number");
+        assertInlineLoadError(
+                "valid_external_dictionary_value(AEDECOD,"
+                        + " external_dictionary_type=\"meddra\", dictionary_term_type=5) == false",
+                "stage A: PARAMETER_TYPE", "'dictionary_term_type'", "takes string, not number");
     }
 
     // ============================================================ controls (green on HEAD too)

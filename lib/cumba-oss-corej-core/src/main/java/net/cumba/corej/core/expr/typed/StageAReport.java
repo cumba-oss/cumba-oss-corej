@@ -4,21 +4,30 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.SequencedMap;
 import net.cumba.datatable.report.Severity;
+import org.jspecify.annotations.Nullable;
 
 /**
- * The result of one rule's stage-A check: the typed AST per declared level and the findings. Phase
- * 2 builds and reports; nothing evaluates the typed trees yet. (The {@code Precondition} tier is
- * deliberately not checked in phase 2 — R8 retired it as an authoring surface, so every live
- * precondition is engine-installed.)
+ * The result of one rule's stage-A check: the typed AST per declared level, the typed
+ * {@code Precondition} when the rule carries one ({@code PLAN-stage-a-parameter-type-arming} Q2 —
+ * since R8 every live Precondition is engine-written, and an engine-written root is checked like an
+ * authored one), and the findings. Phase 2 builds and reports; nothing evaluates the typed trees
+ * yet.
  */
 public record StageAReport(SequencedMap<Severity, TypedExpr> typedLevels,
-        List<StageAFinding> findings)
+        @Nullable TypedExpr typedPrecondition, List<StageAFinding> findings)
 {
 
     public StageAReport
     {
         typedLevels = new LinkedHashMap<>(typedLevels);
         findings = List.copyOf(findings);
+    }
+
+
+    /** A report over the levels alone (no Precondition). */
+    public StageAReport(SequencedMap<Severity, TypedExpr> typedLevels, List<StageAFinding> findings)
+    {
+        this(typedLevels, null, findings);
     }
 
 

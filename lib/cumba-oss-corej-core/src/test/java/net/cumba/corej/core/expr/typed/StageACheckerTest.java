@@ -785,22 +785,25 @@ class StageACheckerTest
     }
 
     // ------------------------------------------------------------------
-    // Observe-only checks
+    // The type checks — PARAMETER_TYPE, armed since PLAN-stage-a-parameter-type-arming
     // ------------------------------------------------------------------
 
 
     @Test
-    void knownTypeConflictsAreObservedNotParked()
+    void knownTypeConflictsAreArmedAndPark()
     {
+        // Armed 2026-10-01 after the plan's probe measured zero over both corpora, the rulespecs
+        // and the run-time expanded rules; a known-vs-known conflict now parks the rule.
+        assertTrue(StageAErrorKind.PARAMETER_TYPE.armed());
         StageAReport report = check("len(AEOUT) == \"5\"");
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(report));
-        assertTrue(report.armedFindings().isEmpty());
-        assertEquals(report.findings(), report.observedFindings());
+        assertEquals(report.findings(), report.armedFindings());
+        assertTrue(report.observedFindings().isEmpty());
     }
 
 
     @Test
-    void nonBooleanLogicalOperandsAreObserved()
+    void nonBooleanLogicalOperandsAreFindings()
     {
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
                 kinds(check("upper(AEOUT) and empty(AESEV)")));
@@ -810,7 +813,7 @@ class StageACheckerTest
 
 
     @Test
-    void arithmeticOverAKnownStringIsObserved()
+    void arithmeticOverAKnownStringIsAFinding()
     {
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(check("upper(AEOUT) + 1 > 2")));
         assertEquals(List.of(), check("AESEQ + 1 > 2").findings());
@@ -818,7 +821,7 @@ class StageACheckerTest
 
 
     @Test
-    void aComputedRegexIsObserved()
+    void aComputedRegexIsAFinding()
     {
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
                 kinds(check("AEOUT =~ upper(AESEV)")));
@@ -827,12 +830,16 @@ class StageACheckerTest
 
 
     @Test
-    void aScalarMembershipRightHandSideIsObserved()
+    void aScalarMembershipRightHandSideIsAFinding()
     {
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(check("AESEV in 5")));
         // D81d: a collection LEFT operand is a legal collection shape (10 corpus rules)
         assertEquals(List.of(), check("[AESTDTC, AEENDTC] in $set").findings());
     }
+
+    // ------------------------------------------------------------------
+    // Observe-only checks
+    // ------------------------------------------------------------------
 
 
     @Test
@@ -902,7 +909,7 @@ class StageACheckerTest
         StageAReport time = check("time_part(date(ADTM)) != time(ATM)");
         assertEquals(List.of(), time.findings());
         assertEquals(Primitive.TIME, root(time).children().get(0).type());
-        // A known non-date argument is observed (PARAMETER_TYPE, observe-only).
+        // A known non-date argument is the (armed) PARAMETER_TYPE finding.
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
                 kinds(check("date_part(5) == date(ADT)")));
     }
@@ -922,10 +929,10 @@ class StageACheckerTest
 
 
     @Test
-    void dateOverANumberIsObservedAsTheD55Shape()
+    void dateOverANumberIsRefusedAsTheD55Shape()
     {
-        // D55's static shadow: the armed half is the stage-B bind gate; here the shape is
-        // observed with the date_from_sas_* rewrite named.
+        // D55's static shadow: a statically NUMBER argument is refused at load with the
+        // date_from_sas_* rewrite named (a numeric COLUMN is stage B's bind gate).
         StageAReport report = check("date(5) == date(AEENDTC)");
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(report));
         assertTrue(report.findings().get(0).toString().contains("date_from_sas_days"));
@@ -1007,7 +1014,8 @@ class StageACheckerTest
         StageAReport report = check(rule, "date(DSSTDTC) == $min_ds_dsstdtc");
         assertEquals(List.of(), report.findings());
         assertEquals(Primitive.DATE, root(report).children().get(1).type());
-        // …and a string literal against the same binding is the armed §5.2 mixed pair.
+        // …and a string literal against the same binding is the observe-only §5.2 mixed pair (the
+        // kind is not armed; its javadoc says why).
         StageAReport mixed = check(rule, "$min_ds_dsstdtc == \"2012-06-15\"");
         assertEquals(List.of(StageAErrorKind.MIXED_DATE_STRING_COMPARISON), kinds(mixed));
     }
@@ -1031,7 +1039,7 @@ class StageACheckerTest
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
                 kinds(check("empty(earliest_date(A, \"2012-06-15\"))")));
         assertEquals(List.of(), check("empty(earliest_date(A, date(\"2012-06-15\")))").findings());
-        // and the DATE result meets a string literal as the armed §5.2 mixed pair
+        // and the DATE result meets a string literal as the observe-only §5.2 mixed pair
         assertEquals(List.of(StageAErrorKind.MIXED_DATE_STRING_COMPARISON),
                 kinds(check("latest_date(A, B) == \"2012-06-15\"")));
     }
@@ -1072,8 +1080,10 @@ class StageACheckerTest
     @Test
     void observedFindingsDoNotPark()
     {
+        // UNKNOWN_ELEMENT is observe-only (PARAMETER_TYPE, which stood here, is armed since
+        // PLAN-stage-a-parameter-type-arming)
         Rule rule = new Rule();
-        StageAChecker.runAndApply(rule, levels(CheckExpressionParser.parse("len(AEOUT) == \"5\"")));
+        StageAChecker.runAndApply(rule, levels(CheckExpressionParser.parse("frobnicate(AEOUT)")));
         assertNull(rule.getLoadError());
     }
 
@@ -1276,5 +1286,316 @@ class StageACheckerTest
                 check(ruleJoining("dm", "left", "USUBJID"), "X in DM.Q${*}V").findings());
         assertEquals(List.of(),
                 check(ruleJoining("SUPPAE", "left", "USUBJID"), "SUPP--.QVAL != \"x\"").findings());
+    }
+
+    // ------------------------------------------------------------------
+    // PLAN-stage-a-parameter-type-arming §3.1 — the four shapes the checker could not type
+    // ------------------------------------------------------------------
+
+
+    /** A rule carrying the compiled bindings {@code name → source}, in that order. */
+    private static Rule withBindings(String... nameAndSource)
+    {
+        Rule rule = new Rule();
+        List<CompiledBinding> bindings = new java.util.ArrayList<>();
+        for (int i = 0; i < nameAndSource.length; i += 2)
+        {
+            bindings.add(binding(nameAndSource[i], nameAndSource[i + 1]));
+        }
+        rule.setCompiledBindings(bindings);
+        return rule;
+    }
+
+
+    @Test
+    void g1AQuotedDatasetNameAtADatasetReferenceParameterIsNotAFinding()
+    {
+        // G1 (SPEC §1.1, D10): a dataset reference is a bare TS or a quoted "TS" in a dataset
+        // position — exactly the two spellings GroupedAggregate.readDataset accepts. The quoted
+        // form used to type as STRING against DATASET_REFERENCE (944 corpus findings).
+        for (String expression : List.of("record_count(domain=\"DM\") > 0",
+                "record_count(domain=DM) > 0",
+                "empty(read_value(TSVAL, domain=\"TS\", mode=\"FIRST\"))",
+                "empty(max(AESEQ, domain=\"AE\", group=[USUBJID]))",
+                "empty(max_date(AESTDTC, domain=\"AE\", group=[USUBJID]))",
+                "empty(min_date(AESTDTC, domain=\"AE\", group=[USUBJID]))",
+                "AETERM in distinct(AETERM, domain=\"AE\")"))
+        {
+            assertEquals(List.of(), check(expression).findings(), expression);
+        }
+        // negatives: a computed string and a number at domain= are still findings
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("record_count(domain=upper(DM)) > 0")));
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("record_count(domain=5) > 0")));
+        assertTrue(check("record_count(domain=upper(DM)) > 0").findings().get(0).message()
+                .contains("takes dataset-reference, not string"));
+    }
+
+
+    @Test
+    void g2UpperAndLowerOverAListAreTypedAsAListOfStrings()
+    {
+        // G2 (owner 2026-09-28: "upper allows a list of strings as parameter and returns a
+        // list"): the case-folds fold element-wise, so over a list-typed argument the result is
+        // list<string>, never the scalar STRING the ElementTable row says — CDISC-CG0370's
+        // `IDVAR not in $rdomain_variables_upper` used to fire "the right operand of 'in' must be
+        // a list or set, not string".
+        Rule rule = withBindings("$names", "natural_key_variables()", "$upper", "upper($names)",
+                "$lower", "lower($names)", "$upcase", "upcase($names)", "$lowcase",
+                "lowcase($names)");
+        for (String expression : List.of("IDVAR not in $upper", "IDVAR in $lower",
+                "IDVAR in $upcase", "IDVAR in $lowcase", "IDVAR in upper(natural_key_variables())",
+                "IDVAR in lower(find_vars(\"--SEQ\"))"))
+        {
+            StageAReport report = check(rule, expression);
+            assertEquals(List.of(), report.findings(), expression);
+        }
+        assertEquals(new ExprType.ListOf(Primitive.STRING),
+                root(check(rule, "IDVAR not in $upper")).children().get(1).type());
+        // the scalar form stays scalar: a known non-boolean root, a string in arithmetic
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(check("upper(AEOUT)")));
+        assertEquals(Primitive.STRING,
+                root(check("upper(AEOUT) == \"X\"")).children().get(0).type());
+        // and the list result is not silently a scalar comparison operand either (armed kind)
+        assertEquals(List.of(StageAErrorKind.COMPARISON_WITH_LIST_BINDING),
+                kinds(check(rule, "IDVAR == $upper")));
+        // the zero-argument spelling is the ARITY finding, never a checker failure
+        StageAReport empty = check("upper() == \"\"");
+        assertTrue(kinds(empty).contains(StageAErrorKind.ARITY), String.valueOf(kinds(empty)));
+        assertFalse(kinds(empty).contains(StageAErrorKind.CHECKER_FAILURE));
+    }
+
+
+    @Test
+    void g3ASplicedListBindingIsAcceptedOnlyWhereTheReaderSplices()
+    {
+        // G3: a $ binding holding a LIST OF NAMES spliced into a column-reference list — accepted
+        // exactly where the reader splices (RecordCount: allowSplice = true for group=, and
+        // is_(not_)unique_set's members through GroupSplice); every other element is still
+        // typed, and every other reader (GroupedAggregate, ReadValue, Distinct, keys=) refuses.
+        Rule rule = withBindings("$nk", "natural_key_variables()", "$fv", "find_vars(\"J.G\")",
+                "$cl", "colref([\"A\", \"B\"])", "$scalar", "upper(AETERM)", "$one", "\"S\"",
+                "$num", "len(AETERM)");
+        // J is a declared join, so the qualified find_vars entry is not an undeclared qualifier
+        rule.setMatchDatasets(ruleJoining("J", "left", "USUBJID").getMatchDatasets());
+        for (String expression : List.of("is_unique_set([USUBJID, --TESTCD, $nk])",
+                "not is_not_unique_set([USUBJID, $nk])",
+                "record_count(group=[USUBJID, --TESTCD, $nk]) > 1", "record_count(group=$nk) > 1",
+                // find_vars holding QUALIFIED names: the shape passes Stage A; the splice is the
+                // rule's ERROR at run time by design (GroupSplice, GroupingUniformityTest)
+                "record_count(group=[USUBJID, $fv]) > 1",
+                // colref(list) is list<unknown>: a splice shape too
+                "is_unique_set([USUBJID, $cl])",
+                // a string binding is ONE name (GroupSplice, N29) — judged by TYPE: a per-row
+                // string binding ($scalar) is the same shape here and GroupSplice's answer at run
+                // time, exactly as a qualified name is
+                "is_unique_set([USUBJID, $one])", "record_count(group=[$one]) > 1",
+                "is_unique_set([USUBJID, $scalar])"))
+        {
+            assertEquals(List.of(), check(rule, expression).findings(), expression);
+        }
+        // negatives
+        for (String expression : List.of("empty(max(AESEQ, group=[USUBJID, $nk]))",
+                "empty(max(AESEQ, group=$nk))", "empty(max_date(AESTDTC, group=[USUBJID, $nk]))",
+                "empty(read_value(TSVAL, domain=TS, mode=\"FIRST\", group=[$nk]))",
+                "AETERM in distinct(AETERM, group=[USUBJID, $nk])", "is_unique_set([\"USUBJID\"])",
+                "is_unique_set([USUBJID, $num])", "empty(max(AESEQ, group=[USUBJID, $one]))",
+                "record_count(group=[USUBJID, $num]) > 1", "record_count(group=$num) > 1",
+                "is_unique_relationship(AETERM, keys=[USUBJID, $nk])"))
+        {
+            assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(check(rule, expression)),
+                    expression);
+        }
+        String message = check(rule, "empty(max(AESEQ, group=[USUBJID, $nk]))").findings().get(0)
+                .message();
+        assertTrue(message.contains("'group' of 'max'") && message.contains("$nk"), message);
+    }
+
+
+    @Test
+    void g4AStringLiteralAtRecordCountsRegexParameterTypesAsRegex()
+    {
+        // G4 (C1): record_count's regex= is declared REGEX and RecordCount.readRegex accepts a
+        // STRING or REGEX literal — CDISC-CG0562's regex="^\d{4}-…" is the one corpus site. Only
+        // that parameter: the affix / imatches patterns compile from a /…/ literal alone.
+        assertEquals(List.of(),
+                check("record_count(group=[USUBJID], regex=\"^\\\\d{4}\") > 1").findings());
+        assertEquals(List.of(), check("record_count(group=[USUBJID], regex=/^x/) > 1").findings());
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("record_count(group=[USUBJID], regex=5) > 1")));
+        // (a column at regex= dereferences to unknown — stage A judges known-vs-known only;
+        // RecordCount.readRegex refuses it at compile time)
+        assertEquals(List.of(),
+                check("record_count(group=[USUBJID], regex=AETERM) > 1").findings());
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("imatches(AETERM, \"a\")")));
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("prefix_matches(AETERM, \"a\")")));
+        assertEquals(List.of(), check("imatches(AETERM, /a/)").findings());
+    }
+
+    // ------------------------------------------------------------------
+    // PLAN-stage-a-parameter-type-arming §3.2 — the Precondition as a root (Q2 / C2)
+    // ------------------------------------------------------------------
+
+
+    private static Expr pre(String expression)
+    {
+        return CheckExpressionParser.parse(expression);
+    }
+
+
+    private static net.cumba.corej.core.model.CheckCondition condition(String expression)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(pre(expression), expression);
+    }
+
+
+    @Test
+    void theEngineWrittenGateShapesPassTheCheckerClean()
+    {
+        // the three availability-gate calls injectInlineOperationGates and the inliners write
+        StageAReport report = StageAChecker.check(new Rule(), levels(pre("empty(AETERM)")),
+                pre("library_available() and dictionary_available(\"meddra\")"
+                        + " and available(var_exists(\"AESEV\"))"));
+        assertEquals(List.of(), report.findings());
+        assertNotNull(report.typedPrecondition());
+        assertEquals(Primitive.BOOLEAN, report.typedPrecondition().type());
+        // and no Precondition is no typed Precondition
+        assertNull(check("empty(AETERM)").typedPrecondition());
+    }
+
+
+    @Test
+    void aPreconditionIsHeldToTheArmedKindsLikeACheckLevel()
+    {
+        // a wrong arity in the Precondition is the armed ARITY finding, parked through loadError
+        Rule rule = new Rule();
+        StageAReport report = StageAChecker.runAndApply(rule, levels(pre("empty(AETERM)")),
+                pre("library_available(1)"));
+        assertEquals(List.of(StageAErrorKind.ARITY), kinds(report));
+        assertNotNull(rule.getLoadError());
+        assertTrue(rule.getLoadError().startsWith("stage A: ARITY"), rule.getLoadError());
+        // a heterogeneous list in the Precondition parks too
+        assertEquals(List.of(StageAErrorKind.HETEROGENEOUS_LIST),
+                kinds(check2("empty(AETERM)", "AESEV in [1, \"a\"]")));
+        // a forward binding reference seen from the Precondition
+        Rule bound = withBindings("$later", "upper(AETERM)");
+        assertEquals(List.of(), StageAChecker
+                .check(bound, levels(pre("empty(AETERM)")), pre("not empty($later)")).findings());
+    }
+
+
+    @Test
+    void aPreconditionIsHeldToTheTypeChecksLikeACheckLevel()
+    {
+        // a wrong parameter type and a non-boolean root are PARAMETER_TYPE findings — armed or
+        // observed exactly as the kind is at the time (phase 3 of the plan arms it)
+        StageAReport typeError = check2("empty(AETERM)", "dictionary_available(5)");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(typeError));
+        assertEquals(StageAErrorKind.PARAMETER_TYPE.armed(), !typeError.armedFindings().isEmpty());
+        StageAReport nonBoolean = check2("empty(AETERM)", "upper(AETERM)");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(nonBoolean));
+        assertTrue(nonBoolean.findings().get(0).message().startsWith(
+                "the Precondition root must be boolean"), nonBoolean.findings().toString());
+        // the Check root keeps its own wording
+        assertTrue(check("upper(AETERM)").findings().get(0).message()
+                .startsWith("the Check root must be boolean"));
+    }
+
+
+    @Test
+    void aPreconditionTakesPartInTheMatchDatasetsChecks()
+    {
+        // a _matched_ flag under an inner join, read only from the Precondition
+        Rule rule = ruleJoining("AE", "inner", "USUBJID");
+        StageAReport report = StageAChecker.check(rule, levels(pre("empty(X)")),
+                pre("not AE._matched_"));
+        assertEquals(List.of(StageAErrorKind.MATCHED_FLAG_INNER_JOIN), kinds(report));
+    }
+
+
+    @Test
+    void thePreconditionOnlyEntryParksAnArmedFindingAndIsSkippedOnAParkedRule()
+    {
+        // the entry installEngineInternalPrecondition uses on an already-loaded rule
+        Rule rule = new Rule();
+        List<String> seen = new java.util.ArrayList<>();
+        StageAChecker.setObserver((r, report) -> seen.add("observed"));
+        try
+        {
+            StageAReport report = StageAChecker.runAndApplyPrecondition(rule,
+                    pre("library_available(1)"));
+            assertEquals(List.of(StageAErrorKind.ARITY), kinds(report));
+            assertNull(report.typedLevels().get(Severity.ERROR));
+            assertNotNull(report.typedPrecondition());
+        }
+        finally
+        {
+            StageAChecker.setObserver(null);
+        }
+        assertNotNull(rule.getLoadError());
+        assertTrue(rule.getLoadError().startsWith("stage A: ARITY"), rule.getLoadError());
+        assertEquals(List.of(), seen, "the observer is not fired a second time for the rule");
+        // the bindings' own findings are not re-reported: a binding with a type conflict loads
+        // observed (or parked) at load, and the entry re-walks it for its TYPE only
+        Rule bound = withBindings("$l", "len(AEOUT) == \"5\"");
+        StageAReport clean = StageAChecker.runAndApplyPrecondition(bound,
+                pre("library_available()"));
+        assertEquals(List.of(), clean.findings());
+    }
+
+
+    @Test
+    void theLoaderChecksAnEngineInternalPrecondition() throws Exception
+    {
+        // through RulePackageLoader.installEngineInternalPrecondition — the documented engine
+        // seam for the tier
+        Rule rule = load("empty(AEOUT) and AESEQ > 5");
+        assertNull(rule.getLoadError());
+        RulePackageLoader.installEngineInternalPrecondition(rule,
+                condition("library_available(1)"));
+        assertNotNull(rule.getLoadError());
+        assertTrue(rule.getLoadError().contains("stage A: ARITY"), rule.getLoadError());
+        assertNull(rule.getPreconditionExpr(), "a parked Precondition is not raised");
+        // a clean gate still raises to the native broadcast form
+        Rule clean = load("empty(AEOUT) and AESEQ > 5");
+        RulePackageLoader.installEngineInternalPrecondition(clean,
+                condition("library_available()"));
+        assertNull(clean.getLoadError());
+        assertNotNull(clean.getPreconditionExpr());
+        // and a parked rule is left alone
+        Rule parked = load("empty(AEOUT)");
+        parked.setLoadError("earlier cause");
+        RulePackageLoader.installEngineInternalPrecondition(parked,
+                condition("library_available(1)"));
+        assertEquals("earlier cause", parked.getLoadError());
+    }
+
+
+    private static StageAReport check2(String check, String precondition)
+    {
+        return StageAChecker.check(new Rule(), levels(pre(check)), pre(precondition));
+    }
+
+
+    @Test
+    void aThrowingBindingWalkIsACheckerFailureNotAThrow()
+    {
+        // C4: the constructor used to scan the bindings OUTSIDE check()'s try, so a checker
+        // defect in a binding walk escaped the "never throws" contract of check / runAndApply.
+        // A LIST literal whose value is not a list: listLiteral's cast throws inside the walk —
+        // the one malformed node a parser never produces, so a throw is the only way to reach it.
+        Rule rule = new Rule();
+        rule.setCompiledBindings(List.of(new CompiledBinding("$boom",
+                new Expr.Lit(Expr.LitKind.LIST, "not a list"), List.of(), null)));
+        StageAReport report = StageAChecker.check(rule,
+                levels(CheckExpressionParser.parse("empty(AETERM)")));
+        assertEquals(List.of(StageAErrorKind.CHECKER_FAILURE), kinds(report));
+        assertTrue(report.armedFindings().isEmpty());
+        // runAndApply never parks on it either
+        StageAChecker.runAndApply(rule, levels(CheckExpressionParser.parse("empty(AETERM)")));
+        assertNull(rule.getLoadError());
     }
 }

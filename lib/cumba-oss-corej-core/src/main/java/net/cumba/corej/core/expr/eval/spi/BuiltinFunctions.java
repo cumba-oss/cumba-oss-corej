@@ -837,10 +837,12 @@ public final class BuiltinFunctions implements FunctionProvider
         // two dates with exactly min_date / max_date's semantics over a two-cell block — EC-51's
         // candidate rule (a missing or blank argument is skipped; both missing carry their
         // identity) and EC-46's determinability, one accumulator (ScalarDateExtremes). DATE in,
-        // DATE out (S3): a string literal argument is a PARAMETER_TYPE finding — write date("…").
+        // DATE out (S3): a string literal argument is a PARAMETER_TYPE finding — ARMED since
+        // PLAN-stage-a-parameter-type-arming, so the rule fails to load: write date("…").
         // The winning CELL is handed back; unequal argument types declare STRING and are NOT
         // refused (a number never wins — IsoDateBounds.isDetermined needs a calendar-complete
-        // core), and a numeric column argument is observed as D55's date(NUM) is (observe-only).
+        // core), and a numeric COLUMN argument is a stage-B fact (D10): stage A types a column
+        // as unknown, so it is observed at evaluation as D55's date(NUM) is (observe-only).
         // Two arguments exactly, positional or by name; no missing_values= (S8).
         fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.ScalarDateExtremes.EARLIEST,
                 List.of(p("a", Primitive.DATE), p("b", Primitive.DATE)), FunctionKind.VALUE,

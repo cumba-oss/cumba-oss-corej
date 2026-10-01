@@ -21,9 +21,10 @@ import org.junit.jupiter.api.Test;
 /**
  * {@code PLAN-dynamic-column-functions} phase 2 — the stage-A half: the result types of the new and
  * registered functions (§2.3's type table, {@code colref}'s only in its checker arm), owner Q7 as
- * the observe-only {@code PARAMETER_TYPE} (§3.1), the undeclared qualifier of a literal
- * {@code colref} name as the observe-only {@code DOTTED_REF_UNDECLARED} (§3.1 H2, uniform with the
- * authored {@code DS.X}), and the Q14 call-site recording of {@link TypeExpectations}.
+ * {@code PARAMETER_TYPE} (§3.1; armed since {@code PLAN-stage-a-parameter-type-arming}), the
+ * undeclared qualifier of a literal {@code colref} name as the observe-only
+ * {@code DOTTED_REF_UNDECLARED} (§3.1 H2, uniform with the authored {@code DS.X}), and the Q14
+ * call-site recording of {@link TypeExpectations}.
  */
 class DynamicColumnStageATest
 {
@@ -65,9 +66,9 @@ class DynamicColumnStageATest
     }
 
 
-    /** Q7: a statically non-string argument is PARAMETER_TYPE — observe-only until armed. */
+    /** Q7: a statically non-string argument is PARAMETER_TYPE — armed, so it parks the rule. */
     @Test
-    void aNonStringColrefArgumentIsAnObserveOnlyParameterType()
+    void aNonStringColrefArgumentIsAnArmedParameterType()
     {
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
                 kinds(check(new Rule(), "colref(3) == \"x\"")));
@@ -75,9 +76,9 @@ class DynamicColumnStageATest
                 kinds(check(new Rule(), "colref(num(AETERM)) == \"x\"")));
         assertEquals(List.of(), kinds(check(new Rule(), "colref(IDVAR) == \"x\"")));
         assertEquals(List.of(), kinds(check(new Rule(), "colref(concat(\"A\", \"B\")) == \"x\"")));
-        assertFalse(StageAErrorKind.PARAMETER_TYPE.armed(),
-                "PLAN-stage-a-parameter-type-arming arms PARAMETER_TYPE; until it lands (same"
-                        + " release) the finding parks nothing — flip this assertion there");
+        assertTrue(StageAErrorKind.PARAMETER_TYPE.armed(),
+                "PLAN-stage-a-parameter-type-arming armed PARAMETER_TYPE (2026-10-01): a"
+                        + " non-string colref argument is a load error");
     }
 
 

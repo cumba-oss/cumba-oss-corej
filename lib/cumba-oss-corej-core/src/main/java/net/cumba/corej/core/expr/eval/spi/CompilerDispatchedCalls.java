@@ -48,11 +48,14 @@ import net.cumba.corej.core.expr.typed.ExprType.Unknown;
  * known-vs-known mismatch on a legal spelling would be checker noise, not a finding. Boolean flags
  * ({@code keep_missings}, {@code include_empty}), {@code relation} (a string spelling of
  * {@code NextRecordRelation}) and the column-reference lists ({@code keys=[…]} on the group
- * operators, {@code by=[asc(…), …]}) are declared precisely. ⚠ {@code regex=} is declared
- * {@link Primitive#STRING}, not {@link Primitive#REGEX}: the compiler accepts <em>only</em> a
- * string literal there today ({@code compileStringPart}, {@code optionalRegexLiteral}), so a
- * {@code REGEX}-typed declaration would flag every legal spelling; retype when the surface takes a
- * regex literal (the D92b {@code name_pattern} precedent).
+ * operators, {@code by=[asc(…), …]}) are declared precisely. ⚠ The uniqueness operators'
+ * {@code regex=} ({@link #regex}) is declared {@link Primitive#STRING}, not
+ * {@link Primitive#REGEX}: the compiler accepts <em>only</em> a string literal there
+ * ({@code compileStringPart}, {@code optionalRegexLiteral}), so a {@code REGEX}-typed declaration
+ * would flag every legal spelling. {@code record_count}'s {@code regex=} is declared
+ * {@link Primitive#REGEX} and its reader ({@code RecordCount.readRegex}) accepts a {@code /…/} or a
+ * string literal — so stage A types a string literal at that one parameter as a regex
+ * ({@code StageAChecker.actualType}; {@code PLAN-stage-a-parameter-type-arming} C1).
  * </p>
  *
  * <p>

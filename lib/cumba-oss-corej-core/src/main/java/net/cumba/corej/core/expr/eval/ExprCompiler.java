@@ -7314,11 +7314,20 @@ public final class ExprCompiler
      * Wave 1's R1 on the function surface: a parameter declared {@link Primitive#COLUMN_REFERENCE}
      * takes a column reference and nothing else, so a bound <b>literal</b> — the quoted
      * {@code "RFSTDTC"} the retired {@code stringOf} used to read as a column name — is refused at
-     * compile time, which the loader records as the rule's load error. Stage A's
-     * {@code PARAMETER_TYPE} check sees the same mismatch but is not armed, so this is the
-     * load-time seam that makes the retired quoted spellings fail loudly instead of silently
-     * computing against a constant string. Whoever arms {@code PARAMETER_TYPE} retires this seam
-     * (runbook §7).
+     * compile time, which the loader records as the rule's load error.
+     *
+     * <p>
+     * ⭐ <b>Since {@code PLAN-stage-a-parameter-type-arming} (Q3, C6) the armed stage A judges the
+     * same literal</b> ({@code StageAChecker.checkColumnReferenceArgument}, the same wording), so
+     * this seam is <b>retired in the loader's seam pass</b> ({@link #validateRegistryCall},
+     * {@code stageAJudged}) for every descriptor stage A reaches, and <b>kept at the compile
+     * sites</b>: a {@code Match_Datasets} {@code Filter} is compiled at run time
+     * ({@code MatchFilter}) and never parameter-checked by stage A, so without the compile-site
+     * seam a quoted name there would compile silently as a constant string. The descriptors stage A
+     * short-circuits before binding their parameters keep the seam in the pass too
+     * ({@link #STAGE_A_SHORT_CIRCUITED_COLUMN_CALLS} — none today, held so by a drift test over the
+     * providers).
+     * </p>
      *
      * <p>
      * The seam reaches every registry call bound here, not only wave 1's: a trailing
@@ -7331,24 +7340,50 @@ public final class ExprCompiler
     private static void rejectLiteralColumnArguments(FunctionDescriptor descriptor,
             List<@Nullable Expr> bound)
     {
-        List<Parameter> params = descriptor.parameters();
-        for (int i = 0; i < bound.size(); i++)
+        rejectLiteralColumnArguments(descriptor, bound, false);
+    }
+
+    /**
+     * The registry-evaluated functions with a {@code COLUMN_REFERENCE} parameter whose call stage A
+     * classifies <em>before</em> binding the descriptor ({@code StageAChecker.call}'s
+     * short-circuits), so that the R1 seam must stay in the loader's seam pass for them. Empty:
+     * every such short-circuited call is compiler-dispatched and never reaches
+     * {@link #validateRegistryCall}. {@code StageAResidueDriftTest} re-derives this set from the
+     * providers and the checker's own routing on every run, so a new descriptor cannot widen it
+     * silently.
+     */
+    static final Set<String> STAGE_A_SHORT_CIRCUITED_COLUMN_CALLS = Set.of();
+
+    /**
+     * @param stageAJudged
+     *            whether the call is one the armed stage A parameter-checks — {@code true} from the
+     *            loader's seam pass over the Check, the Precondition and the bindings;
+     *            {@code false} at the compile sites (a Filter never meets stage A)
+     */
+    private static void rejectLiteralColumnArguments(FunctionDescriptor descriptor,
+            List<@Nullable Expr> bound, boolean stageAJudged)
+    {
+        if (!stageAJudged || STAGE_A_SHORT_CIRCUITED_COLUMN_CALLS.contains(descriptor.name()))
         {
-            Parameter param = params.get(Math.min(i, params.size() - 1));
-            boolean columnSlot = param
-                    .type() == net.cumba.corej.core.expr.typed.ExprType.Primitive.COLUMN_REFERENCE
-                    || (param.collector() && param
-                            .type() instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf list
-                            && list.element() == net.cumba.corej.core.expr.typed.ExprType.Primitive.COLUMN_REFERENCE);
-            if (columnSlot && bound.get(i) instanceof Expr.Lit lit)
+            List<Parameter> params = descriptor.parameters();
+            for (int i = 0; i < bound.size(); i++)
             {
-                throw unsupported("argument '" + param.name() + "' of '" + descriptor.name()
-                        + "' takes a column reference, not the literal " + lit.value()
-                        + " — a quoted name is a string, never a column");
+                Parameter param = params.get(Math.min(i, params.size() - 1));
+                boolean columnSlot = param
+                        .type() == net.cumba.corej.core.expr.typed.ExprType.Primitive.COLUMN_REFERENCE
+                        || (param.collector() && param
+                                .type() instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf list
+                                && list.element() == net.cumba.corej.core.expr.typed.ExprType.Primitive.COLUMN_REFERENCE);
+                if (columnSlot && bound.get(i) instanceof Expr.Lit lit)
+                {
+                    throw unsupported("argument '" + param.name() + "' of '" + descriptor.name()
+                            + "' takes a column reference, not the literal " + lit.value()
+                            + " — a quoted name is a string, never a column");
+                }
             }
         }
-        rejectNonLiteralDictionaryFlags(descriptor, bound);
-        rejectNonLiteralStaticStrings(descriptor, bound);
+        rejectNonLiteralDictionaryFlags(descriptor, bound, stageAJudged);
+        rejectNonLiteralStaticStrings(descriptor, bound, stageAJudged);
         rejectInvalidFormats(descriptor, bound);
         rejectNonLiteralListArguments(descriptor, bound);
         rejectScalarFunctionArguments(descriptor, bound);
@@ -7359,14 +7394,22 @@ public final class ExprCompiler
      * The companion seam for the dictionary functions' {@code case_sensitive} flag (review round 1
      * of {@code PLAN-function-surface-wave1}, lane 2 M1): the retired operation surface parsed
      * {@code case_sensitive} as a boolean field, so a non-boolean was a load error; on the function
-     * surface the same mismatch is Stage A's unarmed {@code PARAMETER_TYPE}, and the function reads
-     * the flag as {@code Boolean.FALSE.equals(value(0))} — a column or a string bound there would
-     * silently mean "case-sensitive". Anything that is not a {@code BOOL} literal at a
-     * {@code case_sensitive} parameter of a DICTIONARY-backed descriptor is a load error. Retired
-     * together with {@link #rejectLiteralColumnArguments} when {@code PARAMETER_TYPE} is armed.
+     * surface the function reads the flag as {@code Boolean.FALSE.equals(value(0))} — a column or a
+     * string bound there would silently mean "case-sensitive". Anything that is not a {@code BOOL}
+     * literal at a {@code case_sensitive} parameter of a DICTIONARY-backed descriptor is a load
+     * error.
+     *
+     * <p>
+     * {@code PLAN-stage-a-parameter-type-arming} (Q3): the <b>wrong-literal half</b> — a string, a
+     * number, any literal that is not a boolean — is a known-vs-known conflict against the
+     * {@code BOOLEAN} parameter, so the armed stage A refuses it in the loader's seam pass and the
+     * seam stands down there ({@code stageAJudged}). The <b>staticness half</b> stays everywhere: a
+     * column or a computed {@code a == b} dereferences to unknown, which stage A cannot refuse, and
+     * the flag is read once per call.
+     * </p>
      */
     private static void rejectNonLiteralDictionaryFlags(FunctionDescriptor descriptor,
-            List<@Nullable Expr> bound)
+            List<@Nullable Expr> bound, boolean stageAJudged)
     {
         ProviderNeed need = descriptor.provider();
         if (need == null || need.kind() != ProviderNeed.Kind.DICTIONARY)
@@ -7378,7 +7421,8 @@ public final class ExprCompiler
         {
             Expr e = bound.get(i);
             if (e != null && "case_sensitive".equals(params.get(i).name())
-                    && !(e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.BOOL))
+                    && !(e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.BOOL)
+                    && !(stageAJudged && e instanceof Expr.Lit))
             {
                 throw unsupported("argument 'case_sensitive' of '" + descriptor.name()
                         + "' takes a boolean literal (true or false), not " + describe(e));
@@ -7396,8 +7440,14 @@ public final class ExprCompiler
      * and silently stand for every row (the FDA-SD1078 silent shape); on the retired operation
      * surface both were string fields, so a non-string was a load error there too. A
      * {@code name_pattern} that does not compile as a regular expression is a load error as well
-     * (the operation answered {@code null} and the rule fired nothing, silently). Retired with the
-     * other seams when {@code PARAMETER_TYPE} is armed.
+     * (the operation answered {@code null} and the rule fired nothing, silently).
+     *
+     * <p>
+     * {@code PLAN-stage-a-parameter-type-arming} (Q3): only the <b>wrong-typed literal</b> case — a
+     * number or boolean literal at a parameter declared {@code STRING} — is stage A's in the
+     * loader's seam pass ({@code stageAJudged}); the staticness half (a column, a computed string)
+     * and the regular-expression check stay everywhere, because neither is a type.
+     * </p>
      *
      * <p>
      * Keyed by <b>(function, parameter)</b> ({@link #STATIC_STRING_PARAMETERS}), as wave 4's
@@ -7408,7 +7458,7 @@ public final class ExprCompiler
      * </p>
      */
     private static void rejectNonLiteralStaticStrings(FunctionDescriptor descriptor,
-            List<@Nullable Expr> bound)
+            List<@Nullable Expr> bound, boolean stageAJudged)
     {
         Set<String> statics = STATIC_STRING_PARAMETERS.getOrDefault(descriptor.name(), Set.of());
         if (statics.isEmpty())
@@ -7424,8 +7474,17 @@ public final class ExprCompiler
             {
                 continue;
             }
-            if (!(e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING))
+            if (!(e instanceof Expr.Lit lit))
             {
+                throw unsupported("argument '" + name + "' of '" + descriptor.name()
+                        + "' takes a static string literal, not " + describe(e));
+            }
+            if (lit.kind() != Expr.LitKind.STRING)
+            {
+                if (stageAJudged)
+                {
+                    continue; // a wrong-typed literal: the armed stage A's finding
+                }
                 throw unsupported("argument '" + name + "' of '" + descriptor.name()
                         + "' takes a static string literal, not " + describe(e));
             }
@@ -7597,8 +7656,9 @@ public final class ExprCompiler
      * argument rules the (function, parameter) vocabularies cannot state — {@code variable_count}'s
      * template and {@code name_pattern} are mutually exclusive (the retired operation let the
      * pattern win silently), and {@code column_series_metadata}'s {@code min_length} is a
-     * non-negative integer literal (read once per call). Retired with the other seams when
-     * {@code PARAMETER_TYPE} is armed.
+     * non-negative integer literal (read once per call). ⚑ Not retired by the arming of
+     * {@code PARAMETER_TYPE} ({@code PLAN-stage-a-parameter-type-arming} S5): these are value
+     * rules, not types — stage A sees {@code 20.5} as a number like any other.
      */
     private static void rejectScalarFunctionArguments(FunctionDescriptor descriptor,
             List<@Nullable Expr> bound)
@@ -7654,7 +7714,11 @@ public final class ExprCompiler
      * seams and their vocabularies. A binding's call meets the same seams when its program
      * compiles; an inline call is compiled lazily, so the loader runs this for every inline
      * registry call except the compiler-dispatched ones ({@code RulePackageLoader}'s
-     * {@code registryCallSeamExemptions}). An unknown name is left to the compiler's own error.
+     * {@code registryCallSeamExemptions}). An unknown name is left to the compiler's own error. The
+     * pass runs over exactly the expressions the armed stage A type-walks, so the seam cases stage
+     * A covers stand down here ({@code stageAJudged} — {@code PLAN-stage-a-parameter-type-
+     * arming} Q3): the R1 literal at a column slot, a wrong-typed literal {@code case_sensitive}
+     * and a wrong-typed literal static string.
      *
      * @param c
      *            the call
@@ -7668,7 +7732,7 @@ public final class ExprCompiler
         {
             return;
         }
-        rejectLiteralColumnArguments(descriptor, ArgumentBinder.bind(descriptor, c));
+        rejectLiteralColumnArguments(descriptor, ArgumentBinder.bind(descriptor, c), true);
     }
 
 
@@ -7678,8 +7742,10 @@ public final class ExprCompiler
      * of their vocabulary ({@code level}, {@code returntype}, {@code key_name}, {@code model_class}
      * — the retired operation parser's {@code validateKeyName} / {@code validateModelClass}, now a
      * compile seam), and their list parameters take string literals only (a bare {@code [DOMAIN]}
-     * is a load error naming the quoted spelling). Retired with the other seams when
-     * {@code PARAMETER_TYPE} is armed.
+     * is a load error naming the quoted spelling). ⚑ Not retired by the arming of
+     * {@code PARAMETER_TYPE} ({@code PLAN-stage-a-parameter-type-arming} S4): a vocabulary is a
+     * value check, and {@code [DOMAIN]} types as {@code list<unknown>}, compatible with
+     * {@code list<string>}.
      */
     private static void rejectNonLiteralListArguments(FunctionDescriptor descriptor,
             List<@Nullable Expr> bound)

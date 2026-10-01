@@ -193,8 +193,23 @@ class QualifiedNamePhase3FixesTest
                 qualified.getStatusMessage());
         assertTrue(String.valueOf(qualified.getStatusMessage())
                 .contains("splices the qualified name J.G"), qualified.getStatusMessage());
-        RuleExecutionResult scalar = QualifiedNameFixture
-                .run(withBinding("5", "is_not_unique_set([K, $b])"), p, exactInventory(p, j));
+        // A scalar binding: statically typed (`5` is a number) it is refused at LOAD — stage A's
+        // PARAMETER_TYPE, armed since PLAN-stage-a-parameter-type-arming (the splice shape is a
+        // list of names); statically unknown (coalesce has no result type) it stays the run-time
+        // ERROR of the one splice.
+        Rule typed = load(ruleJson("Record",
+                QualifiedNameFixture.matchJ("")
+                        + ",\"Bindings\":[{\"name\":\"$b\",\"expression\":\"5\"}],"
+                        + check("is_not_unique_set([K, $b])") + "," + outcome("K")),
+                true);
+        assertNotNull(typed.getLoadError(), "a statically scalar splice member parks at load");
+        assertTrue(
+                typed.getLoadError().contains("stage A: PARAMETER_TYPE") && typed.getLoadError()
+                        .contains("takes list<column-reference>, not number"),
+                typed.getLoadError());
+        RuleExecutionResult scalar = QualifiedNameFixture.run(
+                withBinding("coalesce(5, 6)", "is_not_unique_set([K, $b])"), p,
+                exactInventory(p, j));
         assertEquals(RuleExecutionStatus.ERROR, scalar.getStatus(), scalar.getStatusMessage());
         assertTrue(String.valueOf(scalar.getStatusMessage()).contains("must hold a list"),
                 scalar.getStatusMessage());

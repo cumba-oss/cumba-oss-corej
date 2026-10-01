@@ -101,6 +101,10 @@ public final class StageAChecker
     /** The time-family predicates of SPEC §5.3 (D27). */
     private static final Set<String> TIME_PREDICATES = Set.of("time_contains", "time_overlaps");
 
+    /** The temporal conversions, part accessors and hull bounds {@link #temporalCall} types. */
+    private static final Set<String> TEMPORAL_CALLS = Set.of("date", "time", "date_part",
+            "time_part", "earliest_possible", "latest_possible");
+
     /** The {@code by=[asc(COL), desc(COL)]} sort-key descriptor calls of is_sorted_by. */
     private static final Set<String> ORDERING_DESCRIPTORS = Set.of("asc", "desc");
 
@@ -147,13 +151,17 @@ public final class StageAChecker
     }
 
 
+    /**
+     * ⚠ Constructs without walking anything: {@link #scanBindings} is the first step of every entry
+     * point, INSIDE its try ({@code PLAN-stage-a-parameter-type-arming} C4 — a binding walk that
+     * threw from the constructor escaped {@link #check}'s "never throws" contract).
+     */
     private StageAChecker(Rule rule, ColumnLevelResolver columnLevels)
     {
         this.rule = rule;
         this.columnLevels = columnLevels;
         this.bindingLevels = new HashMap<>();
         this.bindingTypes = new HashMap<>();
-        scanBindings(rule.bindingOrder());
     }
 
 
@@ -180,7 +188,85 @@ public final class StageAChecker
      */
     public static StageAReport runAndApply(Rule rule, SequencedMap<Severity, Expr> levels)
     {
-        StageAReport report = check(rule, levels);
+        return runAndApply(rule, levels, null);
+    }
+
+
+    /**
+     * {@link #runAndApply(Rule, SequencedMap)} with the rule's raised, canonicalised
+     * {@code Precondition} as one more root ({@code PLAN-stage-a-parameter-type-arming} Q2 / C2:
+     * every Precondition is checked, the engine-injected ones included — an engine-written root is
+     * no less a root, and UNIFORMITY forbids a location-dependent answer).
+     *
+     * @param rule
+     *            the rule under load
+     * @param levels
+     *            the per-level expressions, as {@code installNativeExpr} raised them
+     * @param precondition
+     *            the raised, canonicalised Precondition, or {@code null} when the rule has none
+     * @return the report
+     */
+    public static StageAReport runAndApply(Rule rule, SequencedMap<Severity, Expr> levels,
+            @Nullable Expr precondition)
+    {
+        StageAReport report = check(rule, levels, precondition);
+        apply(rule, report);
+        BiConsumer<Rule, StageAReport> observer = OBSERVER.get();
+        if (observer != null)
+        {
+            observer.accept(rule, report);
+        }
+        return report;
+    }
+
+
+    /**
+     * The <b>precondition-only</b> entry for a Precondition installed on an already-loaded rule
+     * ({@code RulePackageLoader.installEngineInternalPrecondition}): the bindings are scanned for
+     * their types only — their own findings and the binding-order checks were filed when the rule
+     * loaded and are not re-reported — then the Precondition is walked as a root exactly as
+     * {@link #check(Rule, SequencedMap, Expr)} walks one, armed findings park the rule, and the
+     * measurement observer is <b>not</b> fired a second time for the rule. Never throws (a checker
+     * failure is the {@link StageAErrorKind#CHECKER_FAILURE} finding).
+     *
+     * <p>
+     * The rule-level {@code Match_Datasets} checks run over this one root plus the bindings' dotted
+     * references, as at load. Only an observe-only kind can be re-reported by that: an armed one
+     * would have parked the rule at load, and the caller skips a parked rule.
+     * </p>
+     *
+     * @param rule
+     *            the loaded rule, not parked
+     * @param precondition
+     *            the raised, canonicalised Precondition
+     * @return the report (levels empty)
+     */
+    public static StageAReport runAndApplyPrecondition(Rule rule, Expr precondition)
+    {
+        StageAChecker checker = new StageAChecker(rule);
+        TypedExpr typed = null;
+        try
+        {
+            checker.scanBindings(rule.bindingOrder());
+            checker.findings.clear();
+            typed = checker.walkPrecondition(precondition);
+            checker.listFunctionReads(precondition, "the Precondition");
+            checker.checkMatchDatasets(List.of(precondition));
+        }
+        catch (RuntimeException ex)
+        {
+            checker.findings.add(new StageAFinding(StageAErrorKind.CHECKER_FAILURE,
+                    "stage-A checker failed on rule " + rule.getId() + ": " + ex));
+        }
+        StageAReport report = new StageAReport(new LinkedHashMap<>(), typed, checker.findings);
+        apply(rule, report);
+        return report;
+    }
+
+
+    /** Files the report's armed findings as the rule's load error and logs the observed ones. */
+    private static void apply(Rule rule, StageAReport report)
+    {
         List<StageAFinding> armed = report.armedFindings();
         if (!armed.isEmpty())
         {
@@ -194,12 +280,6 @@ public final class StageAChecker
             LOGGER.log(System.Logger.Level.DEBUG, "stage A observations for {0}: {1}", rule.getId(),
                     report.observedFindings());
         }
-        BiConsumer<Rule, StageAReport> observer = OBSERVER.get();
-        if (observer != null)
-        {
-            observer.accept(rule, report);
-        }
-        return report;
     }
 
 
@@ -208,24 +288,37 @@ public final class StageAChecker
      */
     public static StageAReport check(Rule rule, SequencedMap<Severity, Expr> levels)
     {
+        return check(rule, levels, null);
+    }
+
+
+    /**
+     * Checks one rule's raised level expressions and its raised Precondition (when it carries one)
+     * without applying anything to the rule. The Precondition is held to the same boolean-root rule
+     * as a Check level and takes part in the list-function and {@code Match_Datasets} checks.
+     */
+    public static StageAReport check(Rule rule, SequencedMap<Severity, Expr> levels,
+            @Nullable Expr precondition)
+    {
         StageAChecker checker = new StageAChecker(rule);
         SequencedMap<Severity, TypedExpr> typed = new LinkedHashMap<>();
+        TypedExpr typedPrecondition = null;
         try
         {
+            checker.scanBindings(rule.bindingOrder());
             for (Map.Entry<Severity, Expr> level : levels.entrySet())
             {
-                TypedExpr root = checker.walk(level.getValue());
-                if (root.type().dereference() != Unknown.UNKNOWN
-                        && root.type().dereference() != Primitive.BOOLEAN)
-                {
-                    checker.find(StageAErrorKind.PARAMETER_TYPE,
-                            "the Check root must be boolean, " + "not " + root.type().describe());
-                }
-                typed.put(level.getKey(), root);
+                typed.put(level.getKey(), checker.walkRoot(level.getValue(), "the Check root"));
+            }
+            List<Expr> roots = new ArrayList<>(levels.values());
+            if (precondition != null)
+            {
+                typedPrecondition = checker.walkPrecondition(precondition);
+                roots.add(precondition);
             }
             checker.checkBindingOrder();
-            checker.checkListFunctionReads(levels.values());
-            checker.checkMatchDatasets(levels.values());
+            checker.checkListFunctionReads(roots);
+            checker.checkMatchDatasets(roots);
         }
         catch (RuntimeException ex)
         {
@@ -234,7 +327,27 @@ public final class StageAChecker
             checker.findings.add(new StageAFinding(StageAErrorKind.CHECKER_FAILURE,
                     "stage-A checker failed on rule " + rule.getId() + ": " + ex));
         }
-        return new StageAReport(typed, checker.findings);
+        return new StageAReport(typed, typedPrecondition, checker.findings);
+    }
+
+
+    /** Walks one root and holds it to the boolean-root rule. */
+    private TypedExpr walkRoot(Expr expr, String position)
+    {
+        TypedExpr root = walk(expr);
+        if (root.type().dereference() != Unknown.UNKNOWN
+                && root.type().dereference() != Primitive.BOOLEAN)
+        {
+            find(StageAErrorKind.PARAMETER_TYPE,
+                    position + " must be boolean, not " + root.type().describe());
+        }
+        return root;
+    }
+
+
+    private TypedExpr walkPrecondition(Expr precondition)
+    {
+        return walkRoot(precondition, "the Precondition root");
     }
 
 
@@ -348,8 +461,8 @@ public final class StageAChecker
             // §5.2: the operator applies only when BOTH sides are date (or both time); a mixed
             // temporal/string pair is the type error that forces the phase-3c corpus rewrite
             // (D71b) — never a reinterpretation of the untyped side (the plan's §1(4) defect).
-            // Phase 3b types the temporal producers, so this is no longer vacuous; it stays
-            // armed on the strength of the corpus measurement recorded on the kind.
+            // Phase 3b types the temporal producers, so this is no longer vacuous; the kind is
+            // OBSERVE-ONLY (its javadoc records the one rulespec that keeps it so).
             find(StageAErrorKind.MIXED_DATE_STRING_COMPARISON,
                     "a comparison must not mix date/time and string operands (" + lt.describe()
                             + " " + b.op() + " " + rt.describe()
@@ -420,20 +533,25 @@ public final class StageAChecker
                     "the right operand of 'in' must be a list or set, not " + rt.describe());
             return;
         }
+        // A list element is read in VALUE position (§1.2): a list<column-reference> — tuple(A, B),
+        // a column-reference list binding — holds cells, so its element type dereferences to
+        // unknown exactly as a bare column does (PLAN-stage-a-parameter-type-arming phase 3:
+        // `"x" in $t` over `$t: tuple(A, B)` used to disagree string-vs-column-reference).
         if (lt.isCollection())
         {
             // D81d: list-LHS membership is a COLLECTION shape (each left element probes the
             // right set — the corpus has 10 rules of it, e.g. [A, B] in $set), legal but never
             // absorbed by the scalar `==`-disjunction lowering. Element-wise compatibility is
             // the check.
-            if (!ExprType.compatible(ExprType.elementOf(lt), ExprType.elementOf(rt)))
+            ExprType leftElement = ExprType.elementOf(lt).dereference();
+            if (!ExprType.compatible(leftElement, ExprType.elementOf(rt).dereference()))
             {
                 find(StageAErrorKind.PARAMETER_TYPE, "membership element type "
-                        + ExprType.elementOf(lt).describe() + " disagrees with " + rt.describe());
+                        + leftElement.describe() + " disagrees with " + rt.describe());
             }
             return;
         }
-        ExprType element = ExprType.elementOf(rt);
+        ExprType element = ExprType.elementOf(rt).dereference();
         // ⭐ Phase 1a of PLAN-membership-as-equality: a temporal probe against string members is
         // the SAME defect `comparison` names, so it gets the same actionable message instead of
         // the generic disagreement. Q2 (owner, 2026-09-21): membership inherits whatever `==`
@@ -591,7 +709,9 @@ public final class StageAChecker
     {
         try
         {
-            return new StageAChecker(rule, columnLevels).walk(expr);
+            StageAChecker checker = new StageAChecker(rule, columnLevels);
+            checker.scanBindings(rule.bindingOrder());
+            return checker.walk(expr);
         }
         catch (RuntimeException ex)
         {
@@ -698,6 +818,15 @@ public final class StageAChecker
         }
         if (BroadcastFold.isLibraryGateCall(c))
         {
+            // The availability gates the engine writes into a Precondition (library_available(),
+            // dictionary_available(<type>), available(<call>)): a dataset fact — and since the
+            // Precondition is a stage-A root (PLAN-stage-a-parameter-type-arming Q2) their
+            // arguments meet the descriptor's parameter types like any registered call's.
+            FunctionDescriptor gate = FunctionRegistry.descriptor(name);
+            if (gate != null)
+            {
+                checkParameterBinding(c, gate, children);
+            }
             return new TypedExpr(c, Primitive.BOOLEAN, Level.DATASET, children);
         }
         MetadataAttribute attr = MetadataAttribute.fromFunction(name);
@@ -778,6 +907,42 @@ public final class StageAChecker
 
 
     /**
+     * Whether a call of {@code name} reaches the descriptor-driven parameter check —
+     * {@link #registered}, or the library-gate arm, which binds its descriptor since the
+     * Precondition became a root — i.e. whether stage A judges its arguments against the
+     * descriptor's parameter types. Decided on a one-column-argument call, the shape every
+     * short-circuit of {@link #call} is keyed on ({@code value()} / {@code varname()} short-circuit
+     * only nullary, and neither declares a parameter). ⭐ The loader's seam pass keeps the R1
+     * literal seam exactly for the column-reference-bearing registry-evaluated descriptors this
+     * answers {@code false} for ({@code ExprCompiler.STAGE_A_SHORT_CIRCUITED_COLUMN_CALLS});
+     * {@code StageAResidueDriftTest} re-derives that set from the providers and this predicate, so
+     * the two cannot drift apart ({@code PLAN-stage-a-parameter-type-arming} §3.3, phase 4).
+     *
+     * @param name
+     *            a registered function name
+     * @return whether stage A binds the call's arguments to the descriptor's parameters
+     */
+    public static boolean judgesParameters(String name)
+    {
+        Expr.Call probe = new Expr.Call(name,
+                List.of(new Expr.Ref("X", net.cumba.corej.core.expr.OperandKind.COLUMN)), Map.of());
+        if ("colref".equals(name) || "num".equals(name) || TEMPORAL_CALLS.contains(name))
+        {
+            return false;
+        }
+        if (BroadcastFold.isExistsCall(probe) || BroadcastFold.isBroadcastColumnPredicate(probe)
+                || BroadcastFold.isWholeColumnVerdictCall(probe))
+        {
+            return false;
+        }
+        // the library-gate arm binds its descriptor since the Precondition became a root
+        return BroadcastFold.isLibraryGateCall(probe)
+                || (MetadataAttribute.fromFunction(name) == null && !name.startsWith("vlm_")
+                        && !VARNAME_ANCHORED_CALLS.contains(name));
+    }
+
+
+    /**
      * {@code colref(x)} — §1.2's dynamic dereference ({@code PLAN-dynamic-column-functions} §2.3):
      * a string names one column ({@code column-reference} at record level, as before); a list of
      * strings names one column per element ({@code list<unknown>} — its elements are the named
@@ -841,13 +1006,12 @@ public final class StageAChecker
     private @Nullable TypedExpr temporalCall(Expr.Call c, List<TypedExpr> children)
     {
         String name = c.name();
-        boolean conversion = "date".equals(name) || "time".equals(name);
-        boolean part = "date_part".equals(name) || "time_part".equals(name);
-        boolean bound = "earliest_possible".equals(name) || "latest_possible".equals(name);
-        if (!conversion && !part && !bound)
+        if (!TEMPORAL_CALLS.contains(name))
         {
             return null;
         }
+        boolean conversion = "date".equals(name) || "time".equals(name);
+        boolean part = "date_part".equals(name) || "time_part".equals(name);
         if (c.args().size() != 1 || !c.kwargs().isEmpty())
         {
             find(StageAErrorKind.ARITY, name + " takes exactly one argument");
@@ -1064,7 +1228,7 @@ public final class StageAChecker
         }
         checkParameterBinding(c, descriptor, children);
         ExprType type = descriptor.kind() == FunctionKind.BOOLEAN ? Primitive.BOOLEAN
-                : ElementTable.resultType(c.name());
+                : resultType(c, children);
         // record_count() folds the row axis (§1.4) — by name, historically — and so does every
         // descriptor declared an aggregate (PLAN-binding-expressions §4.1: a ported list-valued
         // callable such as get_codelist_attributes); an aggregate keeps its operands' cursor.
@@ -1091,6 +1255,28 @@ public final class StageAChecker
         return new TypedExpr(c, type, level, children);
     }
 
+    /** The case-folds, which fold a list argument element-wise (G2). */
+    private static final Set<String> CASE_FOLDS = Set.of("upper", "upcase", "lower", "lowcase");
+
+    /**
+     * The result type of a registered value call: the {@link ElementTable} row, except that a
+     * case-fold over a list-typed argument answers {@code list<string>} — {@code upper} /
+     * {@code lower} fold element-wise ({@code BuiltinFunctions.foldValue}; owner 2026-09-28:
+     * <i>"upper allows a list of strings as parameter and returns a list"</i>), so
+     * {@code IDVAR not in upper($names)} is a list membership, not a scalar right operand
+     * ({@code PLAN-stage-a-parameter-type-arming} G2). A zero-argument spelling keeps its
+     * {@link StageAErrorKind#ARITY} finding and the scalar row.
+     */
+    private static ExprType resultType(Expr.Call c, List<TypedExpr> children)
+    {
+        if (CASE_FOLDS.contains(c.name()) && !children.isEmpty()
+                && children.get(0).type().dereference() instanceof ListOf)
+        {
+            return new ListOf(Primitive.STRING);
+        }
+        return ElementTable.resultType(c.name());
+    }
+
 
     /**
      * Phase 6b (D16/D19a): binds the call against the one descriptor's parameter list and checks
@@ -1098,9 +1284,20 @@ public final class StageAChecker
      * violation — wrong argument count, an unknown argument name, D19a's rebinding of a
      * positionally-bound parameter — is the {@link StageAErrorKind#ARITY} kind (armed: the pre-6b
      * {@code (name, arity)} registry expressed the same contract, so the corpus measures 0 newly
-     * parked); a known-vs-known parameter type conflict stays
-     * {@link StageAErrorKind#PARAMETER_TYPE} (observe — the declared types are still partial,
-     * D91d).
+     * parked); a known-vs-known parameter type conflict is {@link StageAErrorKind#PARAMETER_TYPE}.
+     *
+     * <p>
+     * {@code PLAN-stage-a-parameter-type-arming} §3.1 — the parameter-only types are typed by the
+     * spelling the reader accepts, nothing wider: a quoted {@code "DM"} or bare {@code DM} at a
+     * {@code DATASET_REFERENCE} parameter IS a dataset reference (SPEC §1.1 / D10,
+     * {@code GroupedAggregate.readDataset} — G1); a string literal at {@code record_count}'s
+     * {@code regex=} IS a regex ({@code RecordCount.readRegex} — G4, C1: the affix / imatches
+     * patterns compile from a {@code /…/} literal alone and keep refusing a string); and a
+     * {@code list<column-reference>} parameter is typed element by element, with a {@code $}
+     * binding holding a list of names accepted as a <b>splice</b> exactly where the reader splices
+     * ({@link #splices} — G3). Every other expression keeps its own type, so a computed string or a
+     * number at any of these slots is still a finding.
+     * </p>
      */
     private void checkParameterBinding(Expr.Call c, FunctionDescriptor descriptor,
             List<TypedExpr> children)
@@ -1125,15 +1322,15 @@ public final class StageAChecker
         // type), and Error Prone's [IdentityHashMapUsage] exists because an IdentityHashMap behind
         // a Map-typed reference silently violates the Map contract for any reader who does not
         // know. Naming the concrete type is the statement that the violation is the point.
-        IdentityHashMap<Expr, ExprType> typesByIdentity = new IdentityHashMap<>();
+        IdentityHashMap<Expr, TypedExpr> walkedByIdentity = new IdentityHashMap<>();
         int i = 0;
         for (Expr arg : c.args())
         {
-            typesByIdentity.put(arg, children.get(i++).type());
+            walkedByIdentity.put(arg, children.get(i++));
         }
         for (Expr kwarg : c.kwargs().values())
         {
-            typesByIdentity.put(kwarg, children.get(i++).type());
+            walkedByIdentity.put(kwarg, children.get(i++));
         }
         List<Parameter> params = descriptor.parameters();
         boolean collector = !params.isEmpty() && params.get(params.size() - 1).collector();
@@ -1153,15 +1350,23 @@ public final class StageAChecker
             {
                 continue;
             }
-            ExprType argType = typesByIdentity.get(arg);
-            if (argType == null)
+            TypedExpr walked = walkedByIdentity.get(arg);
+            if (walked == null)
             {
                 continue;
             }
-            // A column reference dereferences implicitly in value position (§1.2), so only a
-            // column-reference-typed parameter sees the reference itself.
-            ExprType actual = declared == Primitive.COLUMN_REFERENCE ? argType
-                    : argType.dereference();
+            if (isColumnReferenceList(declared) && arg instanceof Expr.Lit lit
+                    && lit.kind() == Expr.LitKind.LIST)
+            {
+                checkColumnReferenceList(c, param, walked);
+                continue;
+            }
+            if (declared == Primitive.COLUMN_REFERENCE)
+            {
+                checkColumnReferenceArgument(c, param, arg, walked.type());
+                continue;
+            }
+            ExprType actual = actualType(c, param, declared, arg, walked.type());
             if (actual != Unknown.UNKNOWN && !ExprType.compatible(actual, declared))
             {
                 find(StageAErrorKind.PARAMETER_TYPE,
@@ -1169,6 +1374,158 @@ public final class StageAChecker
                                 + declared.describe() + ", not " + actual.describe());
             }
         }
+    }
+
+
+    /**
+     * The type a bound argument contributes against its declared parameter type: a column reference
+     * dereferences implicitly in value position (§1.2), so only a column-reference-typed parameter
+     * sees the reference itself; the two parameter-only literal spellings of G1 / G4 and the bare
+     * {@code $}-list splice of G3 (at {@code record_count}'s {@code group=}, the one splicing
+     * reader that also takes a bare reference) are typed as what the reader reads.
+     */
+    private static ExprType actualType(Expr.Call c, Parameter param, ExprType declared, Expr arg,
+            ExprType argType)
+    {
+        if (declared == Primitive.DATASET_REFERENCE && isDatasetSpelling(arg))
+        {
+            return Primitive.DATASET_REFERENCE;
+        }
+        if (declared == Primitive.REGEX
+                && net.cumba.corej.core.exec.RecordCount.NAME.equals(c.name())
+                && net.cumba.corej.core.exec.RecordCount.REGEX_PARAMETER.equals(param.name())
+                && isStringLiteral(arg))
+        {
+            return Primitive.REGEX;
+        }
+        if (isColumnReferenceList(declared) && splices(c, param) && isSpliceShape(arg, argType)
+                && net.cumba.corej.core.exec.RecordCount.NAME.equals(c.name()))
+        {
+            return declared;
+        }
+        return argType.dereference();
+    }
+
+
+    /**
+     * A scalar {@code COLUMN_REFERENCE} parameter (or a collector element of them —
+     * {@code tuple(A, B, …)}) is R1's seam, typed as the runtime reads it: a <b>literal</b> of any
+     * kind is refused (a quoted name is a string, never a column — the retired {@code stringOf}
+     * spelling; {@code ExprCompiler.rejectLiteralColumnArguments} refuses the same literal at the
+     * compile sites), a statically list-typed argument is refused (a list of names is not a
+     * column), and a reference or a <b>computed</b> scalar passes — a registry function receives
+     * its arguments as per-row value vectors, so {@code date_diff_days(upper(TFDTC), …)} and
+     * {@code tuple(upper(ARMCD), ARM)} read the computed value exactly as a column's cells
+     * (measured at arming: both are pinned engine behaviour, and the earlier known-vs-known test
+     * refused them). The cell type is stage B's (D10).
+     */
+    private void checkColumnReferenceArgument(Expr.Call c, Parameter param, Expr arg, ExprType type)
+    {
+        if (arg instanceof Expr.Lit lit)
+        {
+            String literal = lit.kind() == Expr.LitKind.LIST ? "a list literal"
+                    : String.valueOf(lit.value());
+            find(StageAErrorKind.PARAMETER_TYPE,
+                    "argument '" + param.name() + "' of '" + c.name()
+                            + "' takes a column reference, not the literal " + literal
+                            + " — a quoted name is a string, never a column");
+        }
+        else if (type.dereference() instanceof ListOf)
+        {
+            find(StageAErrorKind.PARAMETER_TYPE, "argument '" + param.name() + "' of '" + c.name()
+                    + "' takes a column reference, not " + type.describe());
+        }
+    }
+
+
+    /**
+     * G3: a {@code list<column-reference>} parameter given a list literal is typed element by
+     * element — a column reference (bare, wildcard, dotted, {@code asc(X)}) or an unknown element
+     * passes, a {@code $} binding holding a list of names passes only where the reader
+     * {@link #splices}, and any other statically-known element is the finding, named.
+     */
+    private void checkColumnReferenceList(Expr.Call c, Parameter param, TypedExpr list)
+    {
+        boolean splicing = splices(c, param);
+        int position = 0;
+        for (TypedExpr element : list.children())
+        {
+            position++;
+            ExprType type = element.type();
+            if (type == Primitive.COLUMN_REFERENCE || type == Unknown.UNKNOWN)
+            {
+                continue;
+            }
+            boolean splice = isSpliceShape(element.node(), type);
+            if (splice && splicing)
+            {
+                continue;
+            }
+            String spelled = element.node() instanceof Expr.Ref ref ? " (" + ref.name() + ")"
+                    : element.node() instanceof Expr.Lit lit ? " (" + lit.value() + ")" : "";
+            find(StageAErrorKind.PARAMETER_TYPE, "argument '" + param.name() + "' of '" + c.name()
+                    + "' takes list<column-reference>, not " + type.describe() + " at element "
+                    + position + spelled
+                    + (splice
+                            ? " — a spliced $ binding of names is read only by record_count's"
+                                    + " group= and is_(not_)unique_set's members"
+                            : ""));
+        }
+    }
+
+
+    /**
+     * Whether the reader behind {@code (call, parameter)} splices a {@code $} binding holding a
+     * list of column names at evaluation — {@code record_count}'s {@code group=}
+     * ({@code RecordCount.spec}: {@code allowSplice = true}) and the member list of
+     * {@code is_unique_set} / {@code is_not_unique_set} ({@code ExprCompiler.compileUniqueSet}),
+     * both through the one {@code GroupSplice}. {@code GroupedAggregate} ({@code max},
+     * {@code max_date}, {@code min_date}), {@code ReadValue}, {@code Distinct} and the
+     * {@code keys=} readers pass {@code allowSplice = false}, so a splice there stays a finding.
+     */
+    private static boolean splices(Expr.Call c, Parameter param)
+    {
+        if (net.cumba.corej.core.exec.RecordCount.NAME.equals(c.name()))
+        {
+            return net.cumba.corej.core.exec.GroupedAggregate.GROUP_PARAMETER.equals(param.name());
+        }
+        return ("is_unique_set".equals(c.name()) || "is_not_unique_set".equals(c.name()))
+                && "members".equals(param.name());
+    }
+
+
+    /**
+     * A {@code $} reference whose static type is what {@code GroupSplice} splices: a list of names
+     * ({@code list<string>}), a list of unknowns ({@code colref(list)}), or one name (a
+     * {@code string} binding is one member — N29).
+     */
+    private static boolean isSpliceShape(Expr node, ExprType type)
+    {
+        return node instanceof Expr.Ref ref
+                && ref.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF
+                && (type == Primitive.STRING
+                        || (type instanceof ListOf list && (list.element() == Primitive.STRING
+                                || list.element() == Unknown.UNKNOWN)));
+    }
+
+
+    private static boolean isColumnReferenceList(ExprType declared)
+    {
+        return declared instanceof ListOf list && list.element() == Primitive.COLUMN_REFERENCE;
+    }
+
+
+    /** The two dataset-reference spellings {@code GroupedAggregate.readDataset} accepts. */
+    private static boolean isDatasetSpelling(Expr arg)
+    {
+        return isStringLiteral(arg) || (arg instanceof Expr.Ref ref
+                && ref.kind() == net.cumba.corej.core.expr.OperandKind.COLUMN);
+    }
+
+
+    private static boolean isStringLiteral(Expr arg)
+    {
+        return arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING;
     }
 
 
@@ -1353,11 +1710,11 @@ public final class StageAChecker
      * never a run-time backstop throw. (Until runbook W8 an inline operation was held to the same
      * rule through the fields it read.)
      */
-    private void checkListFunctionReads(Iterable<Expr> levels)
+    private void checkListFunctionReads(Iterable<Expr> roots)
     {
-        for (Expr level : levels)
+        for (Expr root : roots)
         {
-            listFunctionReads(level, "the Check");
+            listFunctionReads(root, "the Check");
         }
         List<CompiledBinding> compiled = rule.getCompiledBindings();
         if (compiled != null)
