@@ -1679,6 +1679,52 @@ class StageACheckerTest
 
 
     @Test
+    void aBindingAsAListLiteralElementOutsideASpliceSlotIsAnArmedFinding()
+    {
+        // review r2 F1: outside record_count's group= and is_(not_)unique_set's members the
+        // compiler reads a $ element of a list literal as its TEXT ("$codes"), a silent wrong
+        // verdict — so it is an armed load finding that says why and names the fix
+        Rule rule = withBindings("$codes", "natural_key_variables()", "$a", "\"A\"", "$b", "\"B\"",
+                "$nk", "natural_key_variables()");
+        for (String expression : List.of("AETERM in [\"A\", $codes]", "[$a, $b] in $set",
+                "AETERM in [$a]"))
+        {
+            StageAReport report = check(rule, expression);
+            assertEquals(List.of(StageAErrorKind.HETEROGENEOUS_LIST), kinds(report), expression);
+            assertEquals(1, report.armedFindings().size(), expression);
+            String message = report.findings().get(0).message();
+            assertTrue(message.contains("never a list element") && message.contains("\"$")
+                    && message.contains("bind the whole list"), message);
+        }
+        // the splice slots are the only legal homes, and a non-splicing column-reference list
+        // files its own finding exactly once (no double report)
+        assertEquals(List.of(), check(rule, "is_unique_set([USUBJID, $nk])").findings());
+        assertEquals(List.of(), check(rule, "record_count(group=[USUBJID, $nk]) > 1").findings());
+        StageAReport once = check(rule, "empty(max(AESEQ, group=[USUBJID, $nk]))");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(once));
+        assertEquals(1, once.findings().size(), once.findings().toString());
+        // the binding alone as the right operand is the fix
+        assertEquals(List.of(), check(rule, "AETERM in $codes").findings());
+    }
+
+
+    @Test
+    void aVariableCursorBindingAtDatasetGranularitySplicesAndAGroupedOneDoesNot()
+    {
+        // review r2 F2: BindingValue.handOver gives a per-row VECTOR only for a row-cursor
+        // domain; a {VAR}-cursor binding at dataset granularity hands over its first value, which
+        // GroupSplice accepts (a String is one name) — so isPerRow is granularity only
+        Rule rule = withBindings("$end", "concat(substring(varname(), 1, 4), \"ENDTC\")", "$d",
+                "distinct(AETERM, group=[USUBJID])");
+        assertEquals(List.of(), check(rule, "is_unique_set([USUBJID, $end])").findings());
+        StageAReport grouped = check(rule, "is_unique_set([USUBJID, $d])");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(grouped));
+        assertTrue(grouped.findings().get(0).message().contains("per-row binding $d"),
+                grouped.findings().toString());
+    }
+
+
+    @Test
     void setObserverReturnsThePreviousObserverSoACallerCanRestoreIt()
     {
         // tests 5: a test that installs an observer restores what was there, never null

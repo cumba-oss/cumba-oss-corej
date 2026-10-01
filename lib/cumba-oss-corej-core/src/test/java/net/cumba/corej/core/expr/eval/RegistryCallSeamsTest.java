@@ -1,6 +1,5 @@
 package net.cumba.corej.core.expr.eval;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -116,36 +115,6 @@ class RegistryCallSeamsTest
 
 
     /**
-     * Review r1 seams M1: when stage A fails on a rule (CHECKER_FAILURE, never armed) the seams it
-     * was trusted to cover are re-run with {@code stageAJudged = false}, so the literal's own
-     * message is filed instead of a cause-less "no native expression form".
-     */
-    @Test
-    void aCheckerFailureReRunsTheSeamsAndFilesTheirError() throws Exception
-    {
-        // the checker's test seam makes stage A fail on this rule (a malformed Expr would be
-        // refused by the binding compiler first — nothing loadable reaches CHECKER_FAILURE)
-        String previous = net.cumba.corej.core.expr.typed.StageAChecker
-                .setCheckerFailureInjection("CFX-FAIL");
-        try
-        {
-            Rule rule = load("IDVAR not in referenced_dataset_variables(\"RDOMAIN\")", "CFX-FAIL");
-            assertNotNull(rule.getLoadError());
-            assertTrue(
-                    rule.getLoadError()
-                            .contains("takes a column reference, not the literal RDOMAIN"),
-                    rule.getLoadError());
-            assertFalse(rule.getLoadError().contains("stage A: PARAMETER_TYPE"),
-                    "stage A did not judge it: " + rule.getLoadError());
-        }
-        finally
-        {
-            net.cumba.corej.core.expr.typed.StageAChecker.setCheckerFailureInjection(previous);
-        }
-    }
-
-
-    /**
      * Review r1 seams M2: the S2 / S3 literal halves stand down only where stage A can see the
      * conflict — a {@code case_sensitive} declared UNKNOWN (a stub) keeps the seam's refusal.
      */
@@ -227,19 +196,6 @@ class RegistryCallSeamsTest
     private static Rule inline(String check) throws Exception
     {
         return load(check, List.of());
-    }
-
-
-    private static Rule load(String check, String coreId) throws Exception
-    {
-        Map<String, Object> rule = new LinkedHashMap<>();
-        rule.put("Core", Map.of("Id", coreId));
-        rule.put("Check", Map.of("expression", check));
-        rule.put("Outcome", Map.of("Message", "m"));
-        String json = MAPPER.writeValueAsString(Map.of("rules", Map.of("x", rule)));
-        Rule loaded = RulePackageLoader.loadFromString(json).getRules().get("x");
-        assertNotNull(loaded, "the rule parses");
-        return loaded;
     }
 
 

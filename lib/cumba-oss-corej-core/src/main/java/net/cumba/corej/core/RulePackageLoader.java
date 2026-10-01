@@ -2104,33 +2104,10 @@ public class RulePackageLoader
             return;
         }
         if (stageA.findings().stream().anyMatch(
-                f -> f.kind() == net.cumba.corej.core.expr.typed.StageAErrorKind.CHECKER_FAILURE))
+                f -> f.kind() == net.cumba.corej.core.expr.typed.StageAErrorKind.CHECKER_FAILURE)
+                && rerunSeamsUnjudged(rule, levels.values(), precondition))
         {
-            // Review r1 seams M1: the seam pass trusted stage A with the cases it covers, and stage
-            // A could not judge this rule (CHECKER_FAILURE never parks) — so the seams are re-run
-            // unjudged over the same expressions, and a refusal is the rule's load error with the
-            // seam's own message instead of a cause-less "no native expression form" at compile.
-            try
-            {
-                for (net.cumba.corej.core.expr.ast.Expr level : levels.values())
-                {
-                    validateRegistryCallSeams(level, false);
-                }
-                if (precondition != null)
-                {
-                    validateRegistryCallSeams(precondition, false);
-                }
-                List<net.cumba.corej.core.model.CompiledBinding> reRun = rule.getCompiledBindings();
-                if (reRun != null)
-                {
-                    reRun.forEach(b -> validateRegistryCallSeams(b.expression(), false));
-                }
-            }
-            catch (net.cumba.corej.core.expr.RuleDefinitionException ex)
-            {
-                rule.setLoadError(ex.getMessage());
-                return;
-            }
+            return;
         }
         try
         {
@@ -2144,7 +2121,56 @@ public class RulePackageLoader
             // "rule is wrong" signal — propagates here.)
             rule.setLoadError(ex.getMessage());
         }
+
         raisePrecondition(rule);
+    }
+
+
+    /**
+     * Review r1 seams M1 (hardened in r2): the loader's seam pass stood the stage-A-covered cases
+     * down for this rule ({@code stageAJudged}), trusting stage A to judge them — and stage A could
+     * not ({@code CHECKER_FAILURE}, never armed). So the seams are re-run <b>unjudged</b> over the
+     * same expressions — the levels, the Precondition, the compiled bindings — and a refusal is the
+     * rule's load error with the seam's own message, instead of a cause-less "no native expression
+     * form" at compile time. Package-private so it is tested directly; its call site in
+     * {@link #installNativeExpr} is proven wired by a rule whose stage A walk genuinely fails.
+     *
+     * @param rule
+     *            the rule under load
+     * @param levels
+     *            its raised, canonicalised level expressions
+     * @param precondition
+     *            its raised, canonicalised Precondition, or {@code null}
+     * @return whether a seam refused and the load error was filed
+     */
+    static boolean rerunSeamsUnjudged(Rule rule,
+            java.util.Collection<net.cumba.corej.core.expr.ast.Expr> levels,
+            net.cumba.corej.core.expr.ast.@Nullable Expr precondition)
+    {
+        try
+        {
+            for (net.cumba.corej.core.expr.ast.Expr level : levels)
+            {
+                validateRegistryCallSeams(level, false);
+            }
+            if (precondition != null)
+            {
+                validateRegistryCallSeams(precondition, false);
+            }
+            List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
+            if (compiled != null)
+            {
+                compiled.forEach(b -> validateRegistryCallSeams(b.expression(), false));
+            }
+            return false;
+        }
+        catch (net.cumba.corej.core.expr.RuleDefinitionException ex)
+        {
+            String error = ex.getMessage();
+            rule.setLoadError(
+                    rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
+            return true;
+        }
     }
 
 
@@ -2736,8 +2762,15 @@ public class RulePackageLoader
         }
         case net.cumba.corej.core.expr.ast.Expr.Call c -> isExistsCall(c)
                 || net.cumba.corej.core.expr.eval.BroadcastFold.isDatasetFactBoolCall(c)
-                || net.cumba.corej.core.expr.eval.BroadcastFold.isLibraryGateCall(c);
-        // A bare boolean reference verdict is only broadcast-safe when it is a $-operation result;
+                || net.cumba.corej.core.expr.eval.BroadcastFold.isLibraryGateCall(c);// A bare
+                                                                                     // boolean
+                                                                                     // reference
+                                                                                     // verdict is
+                                                                                     // only
+                                                                                     // broadcast-safe
+                                                                                     // when it is a
+                                                                                     // $-operation
+                                                                                     // result;
         // a bare COLUMN/DOTTED/WILDCARD reference reads per-row data and declines.
         case net.cumba.corej.core.expr.ast.Expr.Ref r -> r
                 .kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF;

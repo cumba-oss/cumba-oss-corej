@@ -151,11 +151,16 @@ public final class StageAChecker
     private String where = "the expression";
 
     /**
-     * Test seam (review r1 seams M1): the effective id of a rule on which {@link #check} throws
-     * inside its try — the only way to reach the {@link StageAErrorKind#CHECKER_FAILURE} path from
-     * a loadable rule, which the loader's re-run of the seams depends on. Never set in production.
+     * Review r2 F1: every list literal holding a {@code $} (binding) element, with the root it was
+     * found in and the first such binding — keyed by node identity. Outside a splice slot
+     * ({@link #splices}) the compiler reads such an element as its TEXT ({@code "$codes"}), a
+     * silent wrong verdict, so every literal still unclaimed by {@link #checkColumnReferenceList}
+     * after the walk is an armed finding ({@link #fileUnclaimedBindingElements}).
      */
-    private static final AtomicReference<@Nullable String> FAIL_ON = new AtomicReference<>();
+    private final IdentityHashMap<Expr, String[]> bindingElementLiterals = new IdentityHashMap<>();
+
+    private final Set<Expr> judgedLiterals = java.util.Collections
+            .newSetFromMap(new IdentityHashMap<>());
 
     /** Every reference name seen while walking, for the match-dataset checks. */
     private final List<String> referencedNames = new ArrayList<>();
@@ -192,18 +197,6 @@ public final class StageAChecker
             @Nullable BiConsumer<Rule, StageAReport> observer)
     {
         return OBSERVER.getAndSet(observer);
-    }
-
-
-    /**
-     * Test seam: makes {@link #check} fail (a {@link StageAErrorKind#CHECKER_FAILURE} finding) on
-     * the rule whose effective id is {@code ruleId}; {@code null} clears it.
-     *
-     * @return the previous setting, to restore in a {@code finally}
-     */
-    public static @Nullable String setCheckerFailureInjection(@Nullable String ruleId)
-    {
-        return FAIL_ON.getAndSet(ruleId);
     }
 
 
@@ -285,6 +278,7 @@ public final class StageAChecker
             typed = checker.walkPrecondition(precondition);
             checker.listFunctionReads(precondition, "the Precondition");
             checker.checkMatchDatasets(List.of(precondition));
+            checker.fileUnclaimedBindingElements();
         }
         catch (RuntimeException ex)
         {
@@ -347,11 +341,6 @@ public final class StageAChecker
         TypedExpr typedPrecondition = null;
         try
         {
-            String injected = FAIL_ON.get();
-            if (injected != null && injected.equals(rule.effectiveId()))
-            {
-                throw new IllegalStateException("injected checker failure (test seam)");
-            }
             checker.scanBindings(rule.bindingOrder());
             List<Root> roots = new ArrayList<>();
             for (Map.Entry<Severity, Expr> level : levels.entrySet())
@@ -369,6 +358,7 @@ public final class StageAChecker
             checker.checkBindingOrder();
             checker.checkListFunctionReads(roots);
             checker.checkMatchDatasets(roots.stream().map(Root::expr).toList());
+            checker.fileUnclaimedBindingElements();
         }
         catch (RuntimeException ex)
         {
@@ -704,12 +694,19 @@ public final class StageAChecker
             // applies (§1.2): a column reference dereferences to unknown, so [A, B] and
             // ["A", "B"] are both homogeneous and only known-vs-known conflicts ([1, "a"]) fire.
             ExprType t = child.type().dereference();
-            if (isSpliceShape(child.node(), child.type()) && t instanceof ListOf spliced)
+            if (item instanceof Expr.Ref ref
+                    && ref.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF)
             {
-                // review r1 sem M1: a $ binding holding a LIST OF NAMES is spliced element by
-                // element (GroupSplice), so beside a name it is not a mixed list — it
-                // contributes its ELEMENT type to the literal's homogeneity
-                t = spliced.element().dereference();
+                // review r1 M1 / r2 F1: a $ binding is never a list ELEMENT — at a splice slot
+                // it is spliced (judged element by element there, checkColumnReferenceList),
+                // anywhere else it is the armed finding below — so it takes no part in the
+                // literal's homogeneity
+                bindingElementLiterals.putIfAbsent(lit, new String[]
+                {
+                        ref.name(), where
+                });
+                children.add(child);
+                continue;
             }
             if (t != Unknown.UNKNOWN)
             {
@@ -1553,16 +1550,19 @@ public final class StageAChecker
 
 
     /**
-     * Review r1 sem L7: a {@code $} binding whose derived level is per row (a row granularity or a
-     * variable cursor) hands over a per-row vector at evaluation, which {@code GroupSplice} refuses
-     * as the rule's ERROR — so the splice is refused at load, where stage A's derived level is
-     * certain ({@code colref(list)}, {@code upper(AETERM)}, …). A dataset-level binding of names
-     * splices.
+     * Review r1 sem L7 / r2 F2: a {@code $} binding whose derived GRANULARITY is per row — a row
+     * granularity or a {@code group(K)} — hands over a per-row vector at evaluation
+     * ({@code BindingValue.handOver}: a vector only for a row-cursor domain), which
+     * {@code GroupSplice} refuses as the rule's ERROR — so the splice is refused at load, where
+     * stage A's derived level is certain ({@code colref(list)}, {@code upper(AETERM)},
+     * {@code distinct(X, group=[…])}). The variable cursor is NOT a reason: a {@code {VAR}} binding
+     * at dataset granularity ({@code concat(substring(varname(), 1, 4), "ENDTC")}) hands over its
+     * first value, which the splice reads as one name. A dataset-level binding of names splices.
      */
     private static boolean isPerRow(TypedExpr e)
     {
-        return e.level().granularity() == Granularity.Simple.RECORD
-                || e.level().cursor() == Cursor.PRESENT;
+        Granularity granularity = e.level().granularity();
+        return granularity == Granularity.Simple.RECORD || granularity instanceof Granularity.Group;
     }
 
 
@@ -1577,6 +1577,36 @@ public final class StageAChecker
 
 
     /**
+     * Review r2 F1: a {@code $} binding as an element of a list literal anywhere but a splice slot
+     * — {@code AETERM in ["A", $codes]}, {@code [$a, $b] in $set} — is an armed load finding: the
+     * compiler reads the element as its text ({@code "$codes"}), so the condition can never match
+     * and the rule would run with a silent wrong verdict. The message says why and names the fix.
+     * Filed once per literal, after the walk, for every literal {@link #checkColumnReferenceList}
+     * did not judge (that check files its own finding for a non-splicing reader, so no literal is
+     * reported twice).
+     */
+    private void fileUnclaimedBindingElements()
+    {
+        for (Map.Entry<Expr, String[]> entry : bindingElementLiterals.entrySet())
+        {
+            if (judgedLiterals.contains(entry.getKey()))
+            {
+                continue;
+            }
+            String name = entry.getValue()[0];
+            findings.add(new StageAFinding(StageAErrorKind.HETEROGENEOUS_LIST, entry.getValue()[1]
+                    + ": the list literal holds the binding " + name + " as an element"
+                    + at(entry.getKey())
+                    + " — a $ binding is never a list element: the evaluator would read it as"
+                    + " the text \"" + name + "\", so the condition could never match — bind the"
+                    + " whole list instead (write " + name + " alone as the operand) or spell the"
+                    + " values in the literal; a $ binding of column names is spliced only in"
+                    + " record_count's group= and is_(not_)unique_set's members"));
+        }
+    }
+
+
+    /**
      * G3: a {@code list<column-reference>} parameter given a list literal is typed element by
      * element — a column reference (bare, wildcard, dotted, {@code asc(X)}) or an unknown element
      * passes, a {@code $} binding holding a list of names passes only where the reader
@@ -1584,6 +1614,7 @@ public final class StageAChecker
      */
     private void checkColumnReferenceList(Expr.Call c, Parameter param, TypedExpr list)
     {
+        judgedLiterals.add(list.node());
         boolean splicing = splices(c, param);
         int position = 0;
         for (TypedExpr element : list.children())
