@@ -936,7 +936,13 @@ class StageACheckerTest
         // date_from_sas_* rewrite named (a numeric COLUMN is stage B's bind gate).
         StageAReport report = check("date(5) == date(AEENDTC)");
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(report));
-        assertTrue(report.findings().get(0).toString().contains("date_from_sas_days"));
+        // T3-fix: the advice names what the language offers — an ISO 8601 text — and says a SAS
+        // numeric date has no conversion yet (SPEC §5.4); date_from_sas_* do not exist
+        String message = report.findings().get(0).message();
+        assertTrue(message.contains("ISO 8601 text") && message.contains("no conversion"), message);
+        assertFalse(message.contains("date_from_sas"), message);
+        assertTrue(check("time(3) == time(AESTTM)").findings().get(0).message()
+                .contains("ISO 8601 text"));
     }
 
 

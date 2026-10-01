@@ -1085,9 +1085,9 @@ public final class StageAChecker
      * <p>
      * Parameter findings here are {@link StageAErrorKind#PARAMETER_TYPE} (armed since
      * {@code PLAN-stage-a-parameter-type-arming}): a statically NUMBER argument to {@code date()}
-     * is D55's {@code date(NUM)} shape — refused at load with the {@code date_from_sas_days} /
-     * {@code date_from_sas_datetime} rewrite named in the message; a numeric COLUMN is stage B's
-     * bind gate (a column types as unknown here).
+     * is D55's {@code date(NUM)} shape — refused at load, advising the ISO 8601 text column (the
+     * ruled {@code date_from_sas_days} / {@code date_from_sas_datetime} rewrite does not exist,
+     * SPEC §5.4); a numeric COLUMN is stage B's observe-only gate (a column types as unknown here).
      * </p>
      */
     private @Nullable TypedExpr temporalCall(Expr.Call c, List<TypedExpr> children)
@@ -1111,9 +1111,14 @@ public final class StageAChecker
         {
             if (at == Primitive.NUMBER)
             {
-                find(StageAErrorKind.PARAMETER_TYPE, name + "() over a number is the D55 shape "
-                        + "(a SAS numeric is not an ISO-8601 text) — author date_from_sas_days"
-                        + "(...) or date_from_sas_datetime(...) for a numeric date column" + at(c));
+                // D55's static shape. ⚠ The advice names what the language OFFERS: a SAS numeric
+                // date has no conversion function yet (SPEC §5.4 — date_from_sas_days /
+                // date_from_sas_datetime are ruled, unbuilt), so the only readable date is the
+                // ISO 8601 text (--DTC); a numeric *DT / *DTM column is compared as a number.
+                find(StageAErrorKind.PARAMETER_TYPE, name + "() takes an ISO 8601 text, never a"
+                        + " number (D55): a SAS numeric date has no conversion in the rule"
+                        + " language yet, so read the ISO text column (--DTC) through " + name
+                        + "(), or compare a numeric *DT / *DTM column as a number" + at(c));
             }
             else if (at != Unknown.UNKNOWN && at != Primitive.STRING && at != resultOf(name))
             {
