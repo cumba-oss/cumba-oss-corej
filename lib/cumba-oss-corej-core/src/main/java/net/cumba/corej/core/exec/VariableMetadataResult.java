@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -23,24 +24,36 @@ import org.jspecify.annotations.Nullable;
  * The map keys are variable names (e.g., "ITTFL", "TRTDUR"), and values are the requested metadata
  * field (e.g., the ADSL label for that variable).
  */
-public class VariableMetadataResult
+public final class VariableMetadataResult
 {
 
+    /**
+     * Keyed IGNORING letter case ({@code PLAN-qualified-name-uniformity-review} N14, register
+     * {@code CIT §1}): a variable name matches a column name whatever its case, as every other
+     * column lookup does — the {@code var_*(…, dataset=)} read used to miss a lower-case {@code s}
+     * that the bare {@code var_type("S", "DATA")} found. The first spelling of a name wins, which
+     * keeps {@link #buildFromAllDatasets}' first-match order across case variants.
+     */
     private final Map<String, String> variableToValue;
 
     public VariableMetadataResult(Map<String, String> variableToValue)
     {
-        this.variableToValue = variableToValue != null ? variableToValue : Map.of();
+        Map<String, String> byName = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        if (variableToValue != null)
+        {
+            variableToValue.forEach(byName::putIfAbsent);
+        }
+        this.variableToValue = byName;
     }
 
 
     /**
-     * Returns the metadata value for the given variable name, or {@code null} if the variable is
-     * not present in the source dataset.
+     * Returns the metadata value for the given variable name, matched ignoring case, or
+     * {@code null} if the variable is not present in the source dataset.
      */
-    public @Nullable String getForVariable(String variableName)
+    public @Nullable String getForVariable(@Nullable String variableName)
     {
-        return variableToValue.get(variableName);
+        return variableName == null ? null : variableToValue.get(variableName);
     }
 
 
@@ -125,7 +138,7 @@ public class VariableMetadataResult
                 String varName = colMeta.getName();
                 if (result.containsKey(varName))
                 {
-                    continue; // first match wins
+                    continue; // first match wins (case variants: the constructor's putIfAbsent)
                 }
                 String value = extractMetadataField(colMeta, metadataField);
                 if (value != null)

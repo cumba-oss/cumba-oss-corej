@@ -149,15 +149,15 @@ public final class ValueResolver
             return result;
         }
         // Local-table wildcard. Same pattern: cache by (table, Pattern).
-        // ⛔⛔ The LOCAL arm is DELIBERATELY UNCHANGED, and the divergence is recorded rather than
-        // silently harmonised. It drops a blank because that is its OWN owner ruling (2026-09-18,
+        // The LOCAL arm drops a missing cell because that is its OWN owner ruling (2026-09-18,
         // quoted below): a blank char cell is MissingValue.MIS and "contributes nothing, exactly
-        // like
-        // a blank numeric cell". §2a ruled the UNMATCHED-JOIN case, which has no counterpart here —
-        // a local column is never "unmatched".
-        // ⚠ The two arms therefore still disagree on a MATCHED-but-blank cell: the joined arm
-        // contributes its value, the local arm drops it. That predates this change — do not "align"
-        // it without a ruling.
+        // like a blank numeric cell"; a genuinely stored "" contributes "".
+        // ⭐ CORRECTED (PLAN-qualified-name-uniformity-review N32): this comment used to say the two
+        // arms "still disagree on a MATCHED-but-blank cell: the joined arm contributes its value,
+        // the local arm drops it". Stale since the joined arm's terminal-review fix (HIGH-1): on
+        // every MATCHED row the arms agree — a missing cell is dropped by both, a stored ""
+        // contributes on both. They differ only on an UNMATCHED join row, which has no local
+        // counterpart (a local column is never "unmatched"; §2a rules it the type default).
         net.cumba.datatable.IDataTable localTable = ctx.getTable();
         int[] matchingColIdx = ctx.getWildcardColumns().matchingColumns(localTable, pattern);
         List<Object> result = new ArrayList<>(matchingColIdx.length);

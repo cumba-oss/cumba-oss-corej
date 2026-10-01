@@ -243,8 +243,14 @@ public final class RuleRunner
         }
         catch (InvalidJoinedDomainException | DegenerateJoinKeyException
                 | JoinKeyTypeMismatchException | MalformedSidedKeyException
-                | UnresolvedQualifiedKeyException e)
+                | UnresolvedQualifiedKeyException | GroupSplice.GroupSpliceException e)
         {
+            // ⭐ GroupSplice.GroupSpliceException joins this catch for PLAN-qualified-name-
+            // uniformity-review N15 / N29: a $-list spliced into record_count's group= or an
+            // is_(not_)unique_set member list that holds no list of names, a qualified name or a
+            // `--` name under domain= (D-W6-7). It escaped RuleRunner as a bare
+            // IllegalStateException until then. Same sentinel channel, no new ERROR site
+            // (EngineErrorMessageContractTest's count is unchanged).
             // ⭐ UnresolvedQualifiedKeyException joins this catch for D-ABSENT of
             // PLAN-rprfdy-offset-tp-join: a qualified key component (DM.RPATHCD in a join key, a
             // grouped function's group= or the rule-level Grouping) whose source dataset, source
@@ -3621,10 +3627,10 @@ public final class RuleRunner
      *
      * <p>
      * Deliberately untouched, with their anchor-row semantics: {@code $}-operation references
-     * (group-constant or wider for every corpus output — D94 (iii)), dotted joined references and ⛔
-     * REMOVED 2026-09-21: the unqualified joined fallback (per-row join reads), and the
-     * dataset-scope virtuals ({@code record_count}, {@code ds_*} facts), which are row-independent
-     * anyway.
+     * (group-constant or wider for every corpus output — D94 (iii)) and the dataset-scope virtuals
+     * ({@code record_count}, {@code ds_*} facts), which are row-independent anyway. ⛔ REMOVED
+     * 2026-09-21: the unqualified joined fallback (per-row join reads). ⭐ A dotted joined entry
+     * takes the distinct set like a primary column since QNU N18 (D72), read through the join.
      * </p>
      */
     private static Map<String, String> extractGroupOutputValues(IDataTable table,
@@ -3636,23 +3642,44 @@ public final class RuleRunner
         for (Map.Entry<String, String> entry : values.entrySet())
         {
             String name = entry.getKey();
-            // Mirror extractOutputValues' resolution order: names it resolved as $-refs,
-            // dataset-scope virtuals, or dotted joins never read the primary column here either.
-            if (name.startsWith("$") || name.indexOf('.') >= 0 || "record_count".equals(name)
+            // Mirror extractOutputValues' resolution order: names it resolved as $-refs or
+            // dataset-scope virtuals never read a column here either.
+            if (name.startsWith("$") || "record_count".equals(name)
                     || ExprCompiler.datasetScopeOperandValue(ctx, name) != null)
             {
                 continue;
             }
-            int col = meta.getColumnIndex(name);
-            // A bare name the primary does not carry may be a supplemental qualifier delivered
-            // by the declared SUPP merge (SuppPivot) — the Check read it that way, so the group
-            // finding reports its distinct set that way too (combined review of runbook W2–W8,
-            // W2 L3: it used to keep the anchor row's value).
-            IDataTableColumn column = col >= 0 ? table.getColumn(col)
-                    : SuppPivot.qualifierColumn(ctx, name);
-            if (column == null)
+            java.util.function.LongFunction<IDataValue> cellAt;
+            int dot = name.indexOf('.');
+            if (dot > 0)
             {
-                continue;
+                // ⭐ QNU N18 (D72): a dotted joined entry is a column of the augmented primary like
+                // any other, so a group finding reports ITS distinct set over the flagged rows
+                // too, read through the join exactly as extractOutputValues reads the anchor row —
+                // it used to keep the anchor row's value while the bare entry got D94c's set.
+                // A dotted entry no join serves (the Fix #18 identifier) is left as it is.
+                JoinLookup lookup = ctx.getJoinedDatasets().get(name.substring(0, dot));
+                String joinedColumn = name.substring(dot + 1);
+                if (lookup == null || !lookup.hasColumn(table, anchorRow, joinedColumn))
+                {
+                    continue;
+                }
+                cellAt = row -> lookup.lookupValue(table, row, joinedColumn, false);
+            }
+            else
+            {
+                int col = meta.getColumnIndex(name);
+                // A bare name the primary does not carry may be a supplemental qualifier
+                // delivered by the declared SUPP merge (SuppPivot) — the Check read it that way,
+                // so the group finding reports its distinct set that way too (combined review of
+                // runbook W2–W8, W2 L3: it used to keep the anchor row's value).
+                IDataTableColumn column = col >= 0 ? table.getColumn(col)
+                        : SuppPivot.qualifierColumn(ctx, name);
+                if (column == null)
+                {
+                    continue;
+                }
+                cellAt = column::getDataValue;
             }
             // First-seen (block) order — stable and matching the data. The keys of this
             // LinkedHashMap are the distinct set D94b's Shape A describes, deduplicated on VALUE
@@ -3663,7 +3690,7 @@ public final class RuleRunner
             for (java.util.PrimitiveIterator.OfLong it = flagged.iterator(); it.hasNext();)
             {
                 long row = it.nextLong();
-                IDataValue dv = column.getDataValue(row);
+                IDataValue dv = cellAt.apply(row);
                 MissingValue missing = net.cumba.corej.core.expr.eval.TypedValue
                         .missingIdentityOf(dv);
                 distinctByIdentity.putIfAbsent(missing != null
@@ -4478,6 +4505,14 @@ public final class RuleRunner
                     // noise.
                     if (!lookup.hasColumn(table, row, colName))
                     {
+                        continue;
+                    }
+                    if (row >= table.getRowCount())
+                    {
+                        // QNU N20: the bare arm's row guard, for the same reason — a dataset-level
+                        // finding on an EMPTY primary has no row to read through the join either
+                        // (it used to read row 0 anyway and print a numeric column's marker).
+                        values.put(varName, "");
                         continue;
                     }
                     // The column exists, so it HAS a value to report — and the typed channel always

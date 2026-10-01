@@ -2890,12 +2890,17 @@ public final class ExprCompiler
         // Fix #249 each blank kind is its own KeyPart identity, so an "" tuple and a
         // missing-marker tuple are no longer duplicates of one another.
         GroupKeyPolicy policy = groupKeyPolicy(c, GroupKeyPolicy.FOLD_BLANK_KEYS);
+        String fn = c.name();
         return run ->
         {
-            // $-ref members (e.g. $TIMING_VARIABLES from get_dataset_filtered_variables) resolve
-            // only against the run context, so splice them to their underlying column lists here —
-            // mirroring how record_count's group= is spliced (RecordCount.splice).
-            List<String> members = expandRefKeys(rawMembers, run.ctx());
+            // $-ref members (e.g. $natural_key from natural_key_variables()) resolve only against
+            // the run context, so splice them to their underlying column lists here — through the
+            // ONE splice record_count's group= uses (GroupSplice, QNU N29): a String binding is one
+            // name, a qualified, scalar or unresolved one ERRORs the rule (it used to pass RAW and
+            // be dropped silently as an absent member).
+            List<String> members = net.cumba.corej.core.exec.GroupSplice.splice(fn, "member",
+                    rawMembers, run.ctx(), false, "a member of " + fn
+                            + " is a column of the dataset under evaluation, written" + " bare");
             return GroupSemantics.uniqueSetViolations(run.ctx().getTable(), run.rowCount(),
                     resolveDomainPrefixes(members, run.ctx()), regex, flagDuplicates, policy);
         };
@@ -2914,7 +2919,7 @@ public final class ExprCompiler
      * {@code is_(not_)unique_set([A, B, …])} — the canonical form since 2026-08-23 (owner
      * requirement #1): ONE positional LIST literal, each member a {@link #keyMemberName} (a column,
      * a {@code --}-wildcard, a string literal, or a {@code $}-ref passed through raw for
-     * {@link #expandRefKeys}). ⚠ This legalises a {@code $}-ref in position 0, which
+     * {@code GroupSplice.splice}). ⚠ This legalises a {@code $}-ref in position 0, which
      * {@link #groupOperandName} refused on the old first operand — intended, D-4 drops an
      * unresolved member uniformly.
      * </p>
@@ -2972,38 +2977,6 @@ public final class ExprCompiler
             return (String) lit.value();
         }
         return null;
-    }
-
-
-    /**
-     * Splices any {@code $}-reference key member to the column list it resolves to in {@code ctx}
-     * (an operation result such as {@code $TIMING_VARIABLES} from
-     * {@code get_dataset_filtered_variables}); a non-{@code $} member, and a {@code $}-ref that
-     * does not resolve to a collection, passes through unchanged so the downstream column lookup
-     * reports it. Kept symmetric with {@code RecordCount.splice} so the two cannot drift.
-     */
-    private static List<String> expandRefKeys(List<String> rawKeys, EvaluationContext ctx)
-    {
-        List<String> out = new ArrayList<>(rawKeys.size());
-        for (String k : rawKeys)
-        {
-            if (k.startsWith("$"))
-            {
-                Object resolved = ctx.resolveVariable(k);
-                if (resolved instanceof Collection<?> col)
-                {
-                    // An operation result passed executeOne's ListValueGuard — no element is
-                    // null (register NNL §1).
-                    for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(col))
-                    {
-                        out.add(item.toString());
-                    }
-                    continue;
-                }
-            }
-            out.add(k);
-        }
-        return out;
     }
 
 
@@ -3822,7 +3795,9 @@ public final class ExprCompiler
      * reference engine's {@code variable_is_null}
      * ({@code (series.isnull() | (series == "")).all()}). The all-null scan reads the real dataset
      * rows via {@link OperatorRegistry#variableIsNull}, so the single verdict is well-defined even
-     * under {@code evaluateBroadcast}'s 1-row range.
+     * under {@code evaluateBroadcast}'s 1-row range. A qualified {@code J.X} (reference or string)
+     * scans the joined column as the operand {@code J.X} reads it ({@link #joinedColumnOf}, QNU
+     * N4).
      */
     private static ExprProgram.BoolPlan compileVarIsNull(Expr.Call c)
     {
@@ -3854,7 +3829,11 @@ public final class ExprCompiler
             {
                 colName = captured == null ? null : resolveDomainPrefix(captured, ctx);
             }
-            boolean isNull = OperatorRegistry.variableIsNull(ctx, colName);
+            // QNU N4 (D72): a qualified name reads the column THROUGH THE JOIN, like every other
+            // J.X — it used to look the whole dotted text up on the primary and answer true.
+            Vector joined = joinedColumnOf(ctx, colName);
+            boolean isNull = joined != null ? allNullOrEmpty(joined, ctx.rowCount())
+                    : OperatorRegistry.variableIsNull(ctx, colName);
             int rc = run.rowCount();
             BitSet result = new BitSet(rc);
             if (isNull && rc > 0)
@@ -3931,7 +3910,9 @@ public final class ExprCompiler
      * ({@code dropna().astype(str).str.len().max()}). The scan reads the real dataset rows via
      * {@link OperatorRegistry#maxValueLength}, so the single value is well-defined even under
      * {@code evaluateBroadcast}'s 1-row range. The result is rendered as its numeric string so a
-     * comparison against {@code var_length(X,"DATA")} (also a numeric string) is numeric-aware.
+     * comparison against {@code var_length(X,"DATA")} (also a numeric string) is numeric-aware. A
+     * qualified {@code J.X} (reference or string) scans the joined column as the operand
+     * {@code J.X} reads it ({@link #joinedColumnOf}, QNU N4).
      */
     private static ValuePlan compileMaxValueLength(Expr.Call c)
     {
@@ -3964,9 +3945,69 @@ public final class ExprCompiler
             {
                 colName = captured == null ? null : resolveDomainPrefix(captured, ctx);
             }
-            long max = OperatorRegistry.maxValueLength(ctx, colName);
+            // QNU N4 (D72): a qualified name reads the column THROUGH THE JOIN, like every other
+            // J.X — it used to look the whole dotted text up on the primary and answer 0.
+            Vector joined = joinedColumnOf(ctx, colName);
+            long max = joined != null ? maxCodePointLength(joined, ctx.rowCount())
+                    : OperatorRegistry.maxValueLength(ctx, colName);
             return ConstVector.of(Long.toString(max));
         };
+    }
+
+
+    /**
+     * QNU N4 ({@code D72}): the column a qualified {@code var_is_null} / {@code max_value_length}
+     * name reads — the joined column read through the {@code Match_Datasets} join exactly as the
+     * operand {@code J.X} reads it ({@link #dottedVector}: an unmatched row reads the type default,
+     * an absent column or undeclared join the authored default), over the evaluated dataset's FULL
+     * row range so the single verdict is well-defined under {@code evaluateBroadcast}'s 1-row run;
+     * {@code null} for an unqualified name, which keeps the primary-table scan.
+     */
+    private static @Nullable Vector joinedColumnOf(EvaluationContext ctx, @Nullable String name)
+    {
+        return name != null && name.indexOf('.') > 0 ? dottedVector(ctx, ctx.rowCount(), name)
+                : null;
+    }
+
+
+    /**
+     * {@link OperatorRegistry#variableIsNull}'s scan over a joined column: every row missing or
+     * {@code ""}. ⛔ Keep the two in step.
+     */
+    private static boolean allNullOrEmpty(Vector column, int rowCount)
+    {
+        for (int r = 0; r < rowCount; r++)
+        {
+            TypedValue tv = column.value(r);
+            IDataValue dv = tv.cell();
+            if (!tv.isMissing() && !dv.isMissingOrInvalid() && !dv.getValueAsString().isEmpty())
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+
+    /**
+     * {@link OperatorRegistry#maxValueLength}'s scan over a joined column: the largest codepoint
+     * count over the non-missing cells, {@code 0} when there is none. ⛔ Keep the two in step.
+     */
+    private static long maxCodePointLength(Vector column, int rowCount)
+    {
+        long max = 0L;
+        for (int r = 0; r < rowCount; r++)
+        {
+            TypedValue tv = column.value(r);
+            IDataValue dv = tv.cell();
+            if (tv.isMissing() || dv.isMissingOrInvalid())
+            {
+                continue;
+            }
+            String s = dv.getValueAsString();
+            max = Math.max(max, s.codePointCount(0, s.length()));
+        }
+        return max;
     }
 
 
@@ -3981,7 +4022,8 @@ public final class ExprCompiler
      * returned, or {@code null} when no condition matches (⇒ the enclosing predicate does not fire,
      * the native analog of Python's inner-join-drops-unmatched). A {@code null} {@code vlmResolver}
      * (no Define-XML) yields {@code null} for every row and the rule SKIPs via the
-     * {@link MetadataLevel#DEFINE} provider gate in {@code RuleRunner}.
+     * {@link MetadataLevel#DEFINE} provider gate in {@code RuleRunner}. A qualified name is a load
+     * error naming the bare spelling (QNU N4): a joined dataset's VLM is not served.
      */
     private static ValuePlan compileVlmAccessor(Expr.Call c)
     {
@@ -3998,6 +4040,18 @@ public final class ExprCompiler
             default -> throw unsupported(
                     fn + " expects a column reference, a string literal, or varname()");
             };
+            if (literalName.indexOf('.') > 0)
+            {
+                // QNU N4: the value-level metadata is the Define-XML VLM of the EVALUATED
+                // dataset's variable, and its WhereClause is evaluated against the evaluated row.
+                // A qualified name looked the whole dotted text up there and never matched — a
+                // silent never-fires. A joined column's VLM is not served, so it is refused.
+                throw new RuleDefinitionException(fn + "(" + literalName + ") reads the value-level"
+                        + " metadata of a column of the dataset under evaluation: write it bare ("
+                        + literalName.substring(literalName.indexOf('.') + 1)
+                        + "), never qualified — a joined dataset's value-level metadata is not"
+                        + " served");
+            }
         }
         boolean cursor = fromCursor;
         String captured = literalName;
@@ -5934,6 +5988,15 @@ public final class ExprCompiler
                             + "var_label / var_type / var_length / var_format");
         }
 
+        if (attr == MetadataAttribute.DS_CLASS && level == MetadataLevel.DATA && nameExpr != null)
+        {
+            // The class of a dataset at DATA level is the evaluated dataset's resolved standard
+            // class (EvaluationContext.getClassName); another dataset's is not on the context, so
+            // an argument is refused rather than answered about the wrong dataset (QNU aside).
+            throw new RuleDefinitionException("ds_class(<dataset>, \"DATA\") is not supported:"
+                    + " the DATA-level class is the dataset under evaluation's — write"
+                    + " ds_class(\"DATA\"), or read another dataset's class at DEFINE / LIBRARY");
+        }
         boolean variableNameRef = false;
         String literalName = null;
         if (nameExpr == null)
@@ -5946,6 +6009,26 @@ public final class ExprCompiler
         else if (nameExpr instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING)
         {
             literalName = (String) lit.value();
+            int dot = literalName.indexOf('.');
+            if (attr.scope() == MetadataAttribute.Scope.VARIABLE && dot > 0)
+            {
+                // QNU N13: a var_* accessor reads the metadata of a variable of the dataset under
+                // evaluation, so a qualified "J.X" was looked up verbatim there and answered a
+                // missing — silently, at every level (at LIBRARY a missing compares as "", so
+                // var_core("DM.AGE", "LIBRARY") != "Req" fired). Routing it to dataset= instead
+                // would serve 4 of the 21 accessors at one level only, and read the study
+                // inventory where J.X everywhere else means the declared join — a second meaning
+                // for one spelling. So the qualified spelling is refused at load, naming the bare
+                // one and, where it exists, the dataset= channel.
+                throw new RuleDefinitionException(attr.functionName() + "(\"" + literalName
+                        + "\") names a variable of the dataset under evaluation: write it bare (\""
+                        + literalName.substring(dot + 1) + "\"), never qualified"
+                        + (crossDatasetField(attr) != null
+                                ? " — another dataset's DATA-level " + attr.functionName()
+                                        + " is read with dataset=\"" + literalName.substring(0, dot)
+                                        + "\""
+                                : ""));
+            }
         }
         else if (attr.scope() == MetadataAttribute.Scope.VARIABLE
                 && isCurrentVariableName(nameExpr))
@@ -6118,16 +6201,31 @@ public final class ExprCompiler
         DataTableMeta meta = ctx.getTable().getMetaData();
         if (attr.scope() == MetadataAttribute.Scope.DATASET)
         {
+            // QNU (phase 2 lane 1 aside): ds_name / ds_label / ds_domain("AE", "DATA") read the
+            // NAMED dataset through the study inventory, as the DEFINE / LIBRARY levels read the
+            // named one — the DATA level ignored the argument and answered about the dataset
+            // under evaluation, silently. Absent from the study ⇒ missing (decision D4).
+            // ds_class takes no argument at DATA (refused at load, metadataPlan).
+            IDataTable table = ctx.getTable();
+            if (name != null)
+            {
+                table = net.cumba.corej.core.exec.SplitDomainResolution
+                        .resolveTableOrThrow(ctx.getDatasetResolver(), name, ctx.getRuleId());
+                if (table == null)
+                {
+                    return null;
+                }
+            }
             return switch (attr)
             {
-            case DS_NAME -> meta.getName();
-            case DS_LABEL -> meta.getLabel();
+            case DS_NAME -> table.getMetaData().getName();
+            case DS_LABEL -> table.getMetaData().getLabel();
             case DS_CLASS -> ctx.getClassName();
             // ⚠ The one member of this family that is NOT a plain getter: a domain is not a field
             // on DataTableMeta, it is derived from the data. unsplitNameFromData is the SAME leg
             // Scope.Domains matches against, so `dataset_domain == "X"` and
             // `Scope.Domains.Include: [X]` agree by construction.
-            case DS_DOMAIN -> DatasetIdentity.unsplitNameFromData(ctx.getTable());
+            case DS_DOMAIN -> DatasetIdentity.unsplitNameFromData(table);
             default -> null;
             };
         }
@@ -6747,6 +6845,16 @@ public final class ExprCompiler
         // would leave the fix silently INERT. Hoisted out of the lambda to read the set once per
         // vector rather than once per row (and to keep it effectively final).
         boolean numericExpected = ctx.getNumericExpectedColumns().contains(name);
+        if (lookup.lacksColumnOnEveryRow(col))
+        {
+            // QNU N12 (D72 / NF §3a): a column the joined dataset does not carry is the AUTHORED
+            // absent default, exactly as an absent primary column is (valueRefPlan's fold) and as
+            // the `lookup == null` arm above answers — the same constant with the same declared
+            // type. The computed vector below would carry the same cells declared MISSING, and
+            // date()/time() pass the declared type on: `date(J.X)` and `date(X)` over an absent
+            // column were one type apart.
+            return numericExpected ? ALL_MISSING : ConstVector.of("");
+        }
         return ComputedVector.typed(rowCount, lookup.declaredTypeOf(col),
                 row -> lookup.lookupValue(ctx.getTable(), row, col, numericExpected), name);
     }

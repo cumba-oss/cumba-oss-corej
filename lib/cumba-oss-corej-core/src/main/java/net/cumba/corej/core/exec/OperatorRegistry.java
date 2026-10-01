@@ -29,9 +29,17 @@ public final class OperatorRegistry
      * Plain dotted reference {@code <DOMAIN>.<col>}: pure metadata question — does column
      * {@code <col>} exist in the schema of dataset {@code <DOMAIN>}? Used by Variable Metadata
      * Check rules (Fix #18, CDISC-AD0641–0646).
+     * <p>
+     * ⭐ The COLUMN part admits any letter case ({@code PLAN-qualified-name-uniformity-review} N3,
+     * register {@code CIT §1}: a column name matches ignoring case): {@code "ADSL.trt01p"} used to
+     * fall through to a primary-schema lookup of the literal text and answer {@code false} while
+     * {@code "ADSL.TRT01P"} answered {@code true} for the same column. ⚠ The QUALIFIER part stays
+     * upper-case only on purpose — whether {@code CIT §1} covers the dataset qualifier is
+     * owner-pending (plan §2.4, N2), and a lower-case qualifier is pinned as such.
+     * </p>
      */
     private static final Pattern DOTTED_DATASET_COLUMN = Pattern
-            .compile("^[A-Z][A-Z0-9]*\\.[A-Z][A-Z0-9_]*$");
+            .compile("^[A-Z][A-Z0-9]*\\.[A-Za-z][A-Za-z0-9_]*$");
 
     /**
      * Filter form {@code <DOMAIN>.<KEY>=<VALUE>}: does the resolved foreign dataset contain at

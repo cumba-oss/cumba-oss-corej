@@ -1504,7 +1504,7 @@ public final class StageAChecker
         checkDottedRefs(roots, matches);
         // Its own call, not a tail of checkDottedRefs: that check returns early when the Check
         // has no dotted operand, and CG0043's shape (bare Check, dotted output) is exactly that.
-        checkDottedOutputVariables(matches == null ? List.of() : matches);
+        checkDottedOutputVariables(matches == null ? List.of() : matches, roots);
         if (matches == null || matches.isEmpty())
         {
             return;
@@ -1913,8 +1913,10 @@ public final class StageAChecker
         }
         collectBindingDottedRefs(dotted, qualifiedWildcards);
         // PLAN-dynamic-column-functions §2.3 / §3.1 (H2): a colref / find_vars name whose
-        // qualifier is statically known (a literal, or a literal prefix) — judged by the
-        // undeclared arm only, observe-only exactly like the authored DS.X (UNIFORMITY).
+        // qualifier is statically known (a literal, or a literal prefix) — judged exactly like the
+        // authored DS.X (UNIFORMITY): by the undeclared arm (observe-only) and, since QNU N26, by
+        // the Child arm (armed) — it used to skip the Child arm, so colref("AE.AESMIE") on a
+        // Child: true entry loaded clean and read the not-supplied default on every row.
         Set<String> dynamic = new LinkedHashSet<>();
         for (Expr root : roots)
         {
@@ -1935,9 +1937,11 @@ public final class StageAChecker
         // a Child entry EXECUTED and fired every row; `"Y" in AE.**SMIE` EXECUTED with none).
         // Only the `${*}` list-operand shape (`X in AE.AES${*}`) is loud at run time
         // (ValueResolver's SubstitutionException) — and it is judged here all the same.
+        boolean templates = anyTemplateEntryName(matches);
         for (String ref : qualifiedWildcards)
         {
-            MatchDataset entry = entryFor(ref.substring(0, ref.indexOf('.')), entries);
+            String qualifier = ref.substring(0, ref.indexOf('.'));
+            MatchDataset entry = entryFor(qualifier, entries);
             if (entry != null && Boolean.TRUE.equals(entry.getChild()))
             {
                 find(StageAErrorKind.DOTTED_REF_CHILD_ENTRY, ref + " reads a Child: true entry"
@@ -1946,16 +1950,39 @@ public final class StageAChecker
                         + " it answers the not-supplied default on every row; the parent row's"
                         + " columns are merged into the primary and are read bare");
             }
+            else if (entry == null && !templates && isConcreteQualifier(qualifier))
+            {
+                // QNU N27: a qualified TEMPLATE operand (DM.${V}, ADSL.X${*}, AE.**TERM) reads
+                // through the join of its CONCRETE qualifier exactly as DM.X does, so an
+                // undeclared one is the same authoring error — judged by the same observe-only
+                // kind. A `--` / `*` qualifier is resolved later (ExprPrefixResolver) and is not
+                // judged here: SUPP--.QVAL against an entry SUPPAE is declared.
+                find(StageAErrorKind.DOTTED_REF_UNDECLARED, ref + " references no Match_Datasets"
+                        + " entry named " + qualifier + " — a qualified template reads a column"
+                        + " of a DECLARED join only; undeclared, no join is ever built for "
+                        + qualifier + ", so the operand reads the not-supplied default on every"
+                        + " row (or a ${*} list operand fails at run time)");
+            }
         }
         if (dotted.isEmpty() && dynamic.isEmpty())
         {
             return;
         }
-        boolean templates = anyTemplateEntryName(matches);
         for (String name : dynamic)
         {
             String qualifier = name.substring(0, name.indexOf('.'));
-            if (templates || entryFor(qualifier, entries) != null)
+            MatchDataset entry = entryFor(qualifier, entries);
+            if (entry != null && Boolean.TRUE.equals(entry.getChild()))
+            {
+                find(StageAErrorKind.DOTTED_REF_CHILD_ENTRY, "the column name " + name
+                        + " (a colref / find_vars argument) reads a Child: true entry — a Child"
+                        + " entry is joined only through its pointer (RDOMAIN / IDVAR / IDVARVAL)"
+                        + " and builds no direct lookup, so the name reads the not-supplied"
+                        + " default on every row; the parent row's columns are merged into the"
+                        + " primary and are named bare, never as " + qualifier + ".<column>");
+                continue;
+            }
+            if (templates || entry != null)
             {
                 continue;
             }
@@ -2041,6 +2068,13 @@ public final class StageAChecker
     }
 
 
+    /** A qualifier that names one dataset as written — no {@code --}, {@code *}, token. */
+    private static boolean isConcreteQualifier(String qualifier)
+    {
+        return qualifier.matches("[A-Za-z][A-Za-z0-9_]*");
+    }
+
+
     /**
      * The {@code Outcome.Output_Variables} half of the Child arm ({@code
      * PLAN-hashed-join-arm-absent-columns} review round 1, M2): a dotted output naming a
@@ -2056,9 +2090,12 @@ public final class StageAChecker
      * @param entries
      *            the rule's {@code Match_Datasets}, never {@code null}
      */
-    private void checkDottedOutputVariables(List<MatchDataset> entries)
+    private void checkDottedOutputVariables(List<MatchDataset> entries,
+            java.util.Collection<Expr> roots)
     {
         Outcome outcome = rule.getOutcome();
+        boolean templates = anyTemplateEntryName(entries);
+        Boolean variableDomain = null;
         for (String name : OutputVariableToken
                 .applyExclusions(outcome == null ? null : outcome.getOutputVariables()))
         {
@@ -2081,8 +2118,56 @@ public final class StageAChecker
                         + " the column would be silently omitted from every finding; the parent"
                         + " row's columns are merged into the primary and are reported bare,"
                         + " never as " + qualifier + ".<column>");
+                continue;
+            }
+            if (entry != null || templates || !isConcreteQualifier(qualifier)
+                    || entries.stream().anyMatch(m -> qualifier.equalsIgnoreCase(m.getName())))
+            {
+                // Declared — or a qualifier whose case alone differs from an entry's, which is
+                // owner-pending N2 (a template entry matches it ignoring case at run time, a
+                // literal one exactly), and is not judged here either way.
+                continue;
+            }
+            if (variableDomain == null)
+            {
+                variableDomain = evaluatesPerVariable(roots);
+            }
+            if (!variableDomain)
+            {
+                // QNU N17: the Check side files DOTTED_REF_UNDECLARED for a dotted read of an
+                // undeclared dataset, the output side filed nothing — and at run time the entry
+                // is omitted from every finding (RuleRunner.extractOutputValues: no join, no
+                // value). Same observe-only kind, same reason. ⚠ A rule evaluated per VARIABLE is
+                // exempt: there the runner reports the dotted entry as its own identifier (Fix
+                // #18, CDISC-AD0640's SUPPAE.QNAM=AETRTEM), so nothing is omitted.
+                find(StageAErrorKind.DOTTED_REF_UNDECLARED, "Output_Variables entry " + name
+                        + " references no Match_Datasets entry named " + qualifier
+                        + " — a dotted output reads a column of a DECLARED join only; undeclared,"
+                        + " no join is ever built for " + qualifier + ", so the entry is silently"
+                        + " omitted from every finding");
             }
         }
+    }
+
+
+    /**
+     * Whether the rule's Check levels evaluate per VARIABLE ({@code DomainScan}'s cursor, joined
+     * over the levels as {@code RuleRunner.buildLevelPlans} joins them) — the domain in which
+     * {@code RuleRunner.extractOutputValues} reports an undeclared dotted output as its own
+     * identifier rather than omitting it.
+     */
+    private boolean evaluatesPerVariable(java.util.Collection<Expr> roots)
+    {
+        net.cumba.corej.core.expr.eval.Domain domain = null;
+        net.cumba.corej.core.expr.eval.BindingDomains kinds = net.cumba.corej.core.expr.eval.BindingDomains
+                .forRule(rule);
+        for (Expr root : roots)
+        {
+            net.cumba.corej.core.expr.eval.Domain level = net.cumba.corej.core.expr.eval.DomainScan
+                    .infer(root, kinds);
+            domain = domain == null ? level : domain.join(level);
+        }
+        return net.cumba.corej.core.expr.eval.Domain.VARIABLE.equals(domain);
     }
 
 

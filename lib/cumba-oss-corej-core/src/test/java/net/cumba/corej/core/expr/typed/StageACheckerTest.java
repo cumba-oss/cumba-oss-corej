@@ -661,15 +661,18 @@ class StageACheckerTest
 
 
     @Test
-    void aTemplatedDottedNameNeverReachesTheUndeclaredCheck()
+    void aTemplatedDottedNameIsJudgedAsAQualifiedWildcard()
     {
         // MEASURED, not reasoned: OperandClassifier tests isWildcard FIRST, so `ADSL.PH${*}SDT`
-        // classifies as WILDCARD_COLUMN and is not a DOTTED_REF at all. ADSL is undeclared here
-        // and the guard must still stay silent — which is why the guard needs no exclusion of its
-        // own for templated names.
+        // classifies as WILDCARD_COLUMN and is not a DOTTED_REF at all. ⭐ Since QNU N27 the
+        // undeclared arm judges a qualified wildcard with a CONCRETE qualifier too (it reads
+        // through
+        // that join exactly as ADSL.X does) — so ADSL, undeclared here, is reported, by the
+        // wildcard arm's message rather than the DOTTED_REF one. Until N27 this pinned silence.
         Rule rule = ruleJoining("AE", "left", "USUBJID");
         StageAReport report = check(rule, "PHSDTM not in ADSL.PH${*}SDT");
-        assertTrue(!kinds(report).contains(StageAErrorKind.DOTTED_REF_UNDECLARED),
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED), kinds(report));
+        assertTrue(report.findings().get(0).toString().contains("a qualified template reads"),
                 String.valueOf(report.findings()));
     }
 
@@ -1173,5 +1176,101 @@ class StageACheckerTest
                 + " mode=\"FIRST\", group=[USUBJID]) == \"RAT\"";
         assertNotEquals(Level.DATASET, root(check(grouped)).level(),
                 "a grouped read_value keeps its group(K) granularity");
+    }
+
+    // ------------------------------------------------------------------
+    // PLAN-qualified-name-uniformity-review phase 3 — N17, N26, N27: the qualified surfaces the
+    // undeclared / Child arms did not reach. Each test was RED before its arm.
+    // ------------------------------------------------------------------
+
+
+    private static Rule withOutputs(Rule rule, String... outputVariables)
+    {
+        net.cumba.corej.core.model.Outcome outcome = new net.cumba.corej.core.model.Outcome();
+        outcome.setOutputVariables(List.of(outputVariables));
+        rule.setOutcome(outcome);
+        return rule;
+    }
+
+
+    /**
+     * N17: an {@code Output_Variables} entry naming an undeclared dataset is omitted from every
+     * finding at run time; the Check side files {@code DOTTED_REF_UNDECLARED} for the same
+     * spelling, the output side filed nothing. Same observe-only kind now — never a load error.
+     */
+    @Test
+    void anUndeclaredDottedOutputVariableIsAnObserveOnlyFinding()
+    {
+        StageAReport report = check(
+                withOutputs(ruleJoining("AE", "left", "USUBJID"), "QNAM", "DM.ARM"),
+                "QNAM == \"x\"");
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED), kinds(report));
+        assertEquals(List.of(), report.armedFindings(), "observe-only, as on the Check side");
+        String message = report.findings().get(0).toString();
+        assertTrue(message.contains("Output_Variables entry DM.ARM"), message);
+        // controls: declared; a ${…} / -- qualifier (resolved later); a case-only difference
+        // (owner-pending N2); a template entry name (deferred); a per-VARIABLE rule, where the
+        // runner reports the entry as its own identifier (Fix #18)
+        assertEquals(List.of(),
+                check(withOutputs(ruleJoining("AE", "left", "USUBJID"), "AE.AETERM"),
+                        "QNAM == \"x\"").findings());
+        assertEquals(List.of(), check(
+                withOutputs(ruleJoining("AE", "left", "USUBJID"), "${IDVAR}.X", "SUPP--.QVAL"),
+                "QNAM == \"x\"").findings());
+        assertEquals(List.of(),
+                check(withOutputs(ruleJoining("AE", "left", "USUBJID"), "ae.AETERM"),
+                        "QNAM == \"x\"").findings());
+        assertEquals(List.of(),
+                check(withOutputs(ruleJoining("SUPP--", "left", "USUBJID"), "DM.ARM"),
+                        "QNAM == \"x\"").findings());
+        assertEquals(List.of(),
+                check(withOutputs(new Rule(), "AE.AETRTEM"), "varname() == \"AETRTEM\"")
+                        .findings());
+    }
+
+
+    /**
+     * N26: a {@code colref} / {@code find_vars} literal qualifier naming a {@code Child: true}
+     * entry reads the not-supplied default on every row — the authored {@code AE.AESMIE} is refused
+     * at load for exactly that (armed), the dynamic spelling was only ever judged undeclared.
+     */
+    @Test
+    void aColrefOrFindVarsNameOfAChildEntryIsAnArmedStageAError()
+    {
+        Rule rule = ruleJoining("AE", null, "USUBJID", "IDVAR", "IDVARVAL");
+        rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
+        for (String expression : List.of("colref(\"AE.AESMIE\") != \"Y\"",
+                "count(find_vars(\"AE.AES*\")) > 0"))
+        {
+            StageAReport report = check(rule, expression);
+            assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY), kinds(report),
+                    expression);
+            assertEquals(1, report.armedFindings().size(), expression);
+        }
+        // control: the same names against the same entry without Child: true are clean
+        rule.getMatchDatasets().get(0).setChild(Boolean.FALSE);
+        assertEquals(List.of(), check(rule, "colref(\"AE.AESMIE\") != \"Y\"").findings());
+    }
+
+
+    /**
+     * N27: a qualified TEMPLATE operand ({@code DM.${V}}, {@code ADSL.X${*}}, {@code AE.**TERM})
+     * reads through the join of its concrete qualifier, so an undeclared one is judged by the
+     * observe-only undeclared arm like {@code DM.X} — it was judged by the Child arm only.
+     */
+    @Test
+    void anUndeclaredQualifiedTemplateOperandIsAnObserveOnlyFinding()
+    {
+        for (String expression : List.of("DM.**TERM != \"x\"", "X in DM.Q${*}V"))
+        {
+            StageAReport report = check(ruleJoining("AE", "left", "USUBJID"), expression);
+            assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED), kinds(report), expression);
+            assertEquals(List.of(), report.armedFindings(), expression);
+        }
+        // controls: declared, and a -- qualifier resolved later against a concrete entry
+        assertEquals(List.of(),
+                check(ruleJoining("DM", "left", "USUBJID"), "DM.**TERM != \"x\"").findings());
+        assertEquals(List.of(),
+                check(ruleJoining("SUPPAE", "left", "USUBJID"), "SUPP--.QVAL != \"x\"").findings());
     }
 }

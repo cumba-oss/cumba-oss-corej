@@ -1,8 +1,6 @@
 package net.cumba.corej.core.exec;
 
-import java.util.ArrayList;
 import java.util.BitSet;
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -282,74 +280,28 @@ public final class RecordCount
 
 
     /**
-     * The splice: every {@code $} member replaced by the column names its binding holds.
+     * The splice: every {@code $} member replaced by the column names its binding holds —
+     * {@link GroupSplice}, the one implementation shared with {@code is_(not_)unique_set}'s members
+     * (QNU N15 / N29).
      *
      * @param foreign
      *            whether the call names {@code domain=} — a spliced {@code --} name would then
      *            resolve against the evaluated dataset's prefix and be looked up in the OTHER
      *            table, silently partitioning nothing (combined review of runbook W2–W8, W5/W6 L6),
      *            so it ERRORs the rule as the reader refuses an authored one at load
-     * @throws IllegalStateException
+     * @throws GroupSplice.GroupSpliceException
      *             for a {@code $} member that does not hold a list of names, that splices a
      *             {@code --} name under {@code domain=}, or that splices a qualified name — the
-     *             rule ERRORs (D-W6-7)
+     *             rule ERRORs (D-W6-7) on {@code RuleRunner}'s sentinel channel
      */
     private static List<String> splice(List<String> group, EvaluationContext ctx, boolean foreign)
     {
-        List<String> out = new ArrayList<>(group.size());
-        for (String member : group)
-        {
-            if (!member.startsWith("$"))
-            {
-                out.add(member);
-                continue;
-            }
-            Object value = ctx.resolveVariable(member);
-            switch (value)
-            {
-            case Collection<?> items ->
-            {
-                // Born at a ListValueGuard site (a compiled list binding: ConstVector.of) — no
-                // element is null (register NNL §1).
-                for (Object item : ListValueGuard.elements(items))
-                {
-                    out.add(splicedName(member, item.toString(), ctx, foreign));
-                }
-            }
-            case String name -> out.add(splicedName(member, name, ctx, foreign));
-            case null, default -> throw new IllegalStateException(
-                    "[" + ctx.getRuleId() + "] " + NAME + ": the group= member " + member
-                            + " must hold a list of column names, but "
-                            + (value == null ? "it resolves to nothing"
-                                    : "it holds " + value.getClass().getSimpleName())
-                            + " — only a dataset-level list binding can be spliced into group=");
-            }
-        }
-        return out;
-    }
-
-
-    private static String splicedName(String member, String name, EvaluationContext ctx,
-            boolean foreign)
-    {
-        if (MatchDataset.qualifierOf(name) != null)
-        {
-            // A qualified member (C2, PLAN-rprfdy-offset-tp-join) is judged at load — D-DOMAIN,
-            // D-SRC, D-REGEX — and a spliced one never reaches those gates, so it would key the
-            // record side through a join nobody checked (review round 1, lane 2 SPECULATIVE).
-            throw new IllegalStateException("[" + ctx.getRuleId() + "] " + NAME
-                    + ": the group= member " + member + " splices the qualified name " + name
-                    + " — a qualified group= member is judged at load, so author it in the group="
-                    + " list itself");
-        }
-        if (foreign && name.startsWith("--") && name.indexOf('.') < 0)
-        {
-            throw new IllegalStateException("[" + ctx.getRuleId() + "] " + NAME
-                    + ": the group= member " + member + " splices " + name
-                    + " under domain= — a `--` name resolves against the evaluated dataset, not"
-                    + " the domain; the list must name the domain's columns explicitly");
-        }
-        return name;
+        // A qualified member (C2, PLAN-rprfdy-offset-tp-join) is judged at load — D-DOMAIN, D-SRC,
+        // D-REGEX — and a spliced one never reaches those gates, so it would key the record side
+        // through a join nobody checked (review round 1, lane 2 SPECULATIVE).
+        return GroupSplice.splice(NAME, "group= member", group, ctx, foreign,
+                "a qualified group= member is judged at load, so author it in the group= list"
+                        + " itself");
     }
 
 
@@ -395,8 +347,8 @@ public final class RecordCount
         if (normalise && qualified)
         {
             // D-REGEX at load; a spliced $-list can only reach it here — the same refusal.
-            throw new IllegalStateException("[" + ctx.getRuleId() + "] " + NAME + ": regex= cannot"
-                    + " be combined with a qualified group= member " + names);
+            throw new GroupSplice.GroupSpliceException("[" + ctx.getRuleId() + "] " + NAME
+                    + ": regex= cannot" + " be combined with a qualified group= member " + names);
         }
         @Nullable
         Pattern[] patterns = regex != null ? columnPatterns(table, names, regex) : new Pattern[0];

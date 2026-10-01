@@ -391,6 +391,14 @@ public class DatasetLookup implements JoinLookup
     }
 
 
+    /** {@inheritDoc} One joined dataset, so its column set answers for every row (N12). */
+    @Override
+    public boolean lacksColumnOnEveryRow(String columnName)
+    {
+        return datasetMeta.getColumnIndex(columnName) < 0;
+    }
+
+
     /** {@inheritDoc} D1 — answered from the foreign metadata this lookup already holds. */
     @Override
     public DataValueType declaredTypeOf(String columnName)

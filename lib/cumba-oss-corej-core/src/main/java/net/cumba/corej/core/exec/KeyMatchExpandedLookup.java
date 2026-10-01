@@ -105,6 +105,14 @@ final class KeyMatchExpandedLookup implements JoinLookup
     }
 
 
+    /** {@inheritDoc} One child table, so its column set answers for every row (N12). */
+    @Override
+    public boolean lacksColumnOnEveryRow(String columnName)
+    {
+        return child.getMetaData().getColumnIndex(columnName) < 0;
+    }
+
+
     /** {@inheritDoc} Answered from the child table this lookup already holds. */
     @Override
     public net.cumba.datatable.values.DataValueType declaredTypeOf(String columnName)

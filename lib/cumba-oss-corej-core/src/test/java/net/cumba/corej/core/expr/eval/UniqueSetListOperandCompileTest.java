@@ -126,8 +126,15 @@ class UniqueSetListOperandCompileTest
         assertEquals(bits(0, 1), eval("not is_unique_set([$key, EPOCH])", t, vars));
         assertEquals(eval("not is_unique_set([EPOCH, $key])", t, vars),
                 eval("not is_unique_set([$key, EPOCH])", t, vars));
-        // Unresolved in position 0: dropped, the check regroups on EPOCH alone (rows 0/1/3).
-        assertEquals(bits(0, 1, 3), eval("not is_unique_set([$nothing, EPOCH])", t));
+        // Unresolved in position 0: the rule ERRORs (QNU N29 — the ONE splice record_count's
+        // group= uses, GroupSplice; D-W6-7). D-4's "an unresolved member is dropped" no longer
+        // applies to a $-ref: a loaded rule cannot reach it (a dangling $ is a load error), and a
+        // context that lacks the binding is an engine defect, never a partition. D-4 still drops
+        // an ABSENT column member.
+        IllegalStateException unresolved = assertThrows(IllegalStateException.class,
+                () -> eval("not is_unique_set([$nothing, EPOCH])", t));
+        assertTrue(unresolved.getMessage().contains("$nothing must hold a list of column names"),
+                unresolved.getMessage());
         // The $-ref alone, resolving to the whole tuple.
         assertEquals(bits(0, 1), eval("not is_unique_set([$key, EPOCH])", t, vars));
         assertEquals(bits(0, 1, 2), eval("not is_unique_set([$key])", t, vars));

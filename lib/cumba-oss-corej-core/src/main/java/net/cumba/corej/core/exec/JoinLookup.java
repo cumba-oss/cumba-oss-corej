@@ -156,6 +156,30 @@ public interface JoinLookup
 
 
     /**
+     * Whether the joined dataset lacks {@code columnName} for <b>every</b> row — a fact a lookup
+     * can state only when it binds ONE target table ({@code PLAN-qualified-name-uniformity-review}
+     * N12). A dotted operand over such a column is then the authored absent default exactly as an
+     * absent primary column is ({@code ExprCompiler.dottedVector}: {@code ""}, or {@code MIS} where
+     * a number is expected — the same constant, the same declared type), rather than a computed
+     * vector declared {@link DataValueType#MISSING} whose cells are that default.
+     *
+     * <p>
+     * The default is {@code false} — <em>unknown</em>: a row-expanded lookup that binds a different
+     * target table per row ({@code RelrecExpandedLookup}) cannot say, and keeps its per-row
+     * {@link #lookupValue} default.
+     * </p>
+     *
+     * @param columnName
+     *            the joined column
+     * @return {@code true} only when the column is certainly absent for every row
+     */
+    default boolean lacksColumnOnEveryRow(String columnName)
+    {
+        return false;
+    }
+
+
+    /**
      * The joined column's <b>declared</b> type, or {@link DataValueType#MISSING} — meaning
      * <em>unknown</em> — when this lookup cannot say.
      *
