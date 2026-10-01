@@ -1725,6 +1725,36 @@ class StageACheckerTest
 
 
     @Test
+    void thePreconditionOnlyEntryDoesNotRefileABindingLiteralFinding()
+    {
+        // review r3 LOW: the precondition-only entry scans the bindings for their types only and
+        // clears their findings — the binding-literal ledger (r2 F1) must be cleared with them,
+        // or a parked rule's load error carries the same finding twice
+        Rule rule = withBindings("$codes", "natural_key_variables()", "$x", "[\"A\", $codes]");
+        StageAChecker.runAndApply(rule, levels(pre("empty(AETERM)")), null);
+        assertNotNull(rule.getLoadError());
+        String marker = "holds the binding $codes";
+        assertEquals(1, occurrences(rule.getLoadError(), marker), rule.getLoadError());
+        StageAReport report = StageAChecker.runAndApplyPrecondition(rule,
+                pre("library_available()"));
+        assertEquals(List.of(), report.findings(),
+                "the binding's literal is not the Precondition's");
+        assertEquals(1, occurrences(rule.getLoadError(), marker), rule.getLoadError());
+    }
+
+
+    private static int occurrences(String text, String marker)
+    {
+        int count = 0;
+        for (int at = text.indexOf(marker); at >= 0; at = text.indexOf(marker, at + 1))
+        {
+            count++;
+        }
+        return count;
+    }
+
+
+    @Test
     void setObserverReturnsThePreviousObserverSoACallerCanRestoreIt()
     {
         // tests 5: a test that installs an observer restores what was there, never null

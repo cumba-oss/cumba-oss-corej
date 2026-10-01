@@ -274,7 +274,11 @@ public final class StageAChecker
         try
         {
             checker.scanBindings(rule.bindingOrder());
+            // the bindings were judged at load: their findings AND their binding-literal ledger
+            // (r2 F1) are dropped here, or the Precondition pass would file them a second time
             checker.findings.clear();
+            checker.bindingElementLiterals.clear();
+            checker.judgedLiterals.clear();
             typed = checker.walkPrecondition(precondition);
             checker.listFunctionReads(precondition, "the Precondition");
             checker.checkMatchDatasets(List.of(precondition));
