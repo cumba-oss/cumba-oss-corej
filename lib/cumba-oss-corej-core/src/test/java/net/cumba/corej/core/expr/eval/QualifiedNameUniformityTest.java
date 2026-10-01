@@ -2,6 +2,7 @@ package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -10,7 +11,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -149,8 +149,8 @@ class QualifiedNameUniformityTest
             distinct | keep_missings | - | static boolean
             does_not_contain | x | N | B:does_not_contain(@S, "a")
             does_not_contain | value | N | B:does_not_contain("zz", @S)
-            does_not_equal_string_part | name | N | B:does_not_equal_string_part(@S, #S, regex="^a")
-            does_not_equal_string_part | value | N | B:does_not_equal_string_part(#S, @S, regex="^a")
+            does_not_equal_string_part | name | N | B:does_not_equal_string_part(@S, "ab", regex="^(a).*$")
+            does_not_equal_string_part | value | N | B:does_not_equal_string_part("a", @S, regex="^(.).*$")
             does_not_equal_string_part | regex | - | static regex
             domain_is_custom | - | - | nullary
             ds_exists | name | - | a dataset name
@@ -211,10 +211,10 @@ class QualifiedNameUniformityTest
             imatches | x | N | B:imatches(@S, /^a/)
             imatches | pattern | - | static regex
             inconsistent_enumerated_columns | name | N | B:inconsistent_enumerated_columns(@S)
-            interval_uncertainty_precision_mismatch | name | N | B:interval_uncertainty_precision_mismatch(@D)
+            interval_uncertainty_precision_mismatch | name | N | B:interval_uncertainty_precision_mismatch(@I)
             interval_uncertainty_precision_mismatch | delimiter | - | static string
             invalid_date | x | N | B:invalid_date(@D)
-            invalid_duration | x | N | B:invalid_duration(@D)
+            invalid_duration | x | N | B:invalid_duration(@U)
             invalid_duration | negative | - | static boolean
             is_complete_date | x | N | B:is_complete_date(@D)
             is_complete_date_part | x | N | B:is_complete_date_part(@D)
@@ -257,7 +257,7 @@ class QualifiedNameUniformityTest
             is_unique_set | keep_missings | - | static boolean
             is_unique_value | name | N | B:is_unique_value(@S)
             is_valid_date | x | N | B:is_valid_date(@D)
-            is_valid_duration | x | N | B:is_valid_duration(@D)
+            is_valid_duration | x | N | B:is_valid_duration(@U)
             is_valid_name | x | N | B:is_valid_name(@S)
             is_valid_testcd | x | N | B:is_valid_testcd(@S)
             latest_date | a | N | V:latest_date(date(@D), date("2020-01-10"))
@@ -304,7 +304,7 @@ class QualifiedNameUniformityTest
             prefix | n | N | V:prefix(#S, @L)
             prefix_matches | x | N | B:prefix_matches(@S, /^a/)
             prefix_matches | pattern | - | static regex
-            prefix_matches | n | N | B:prefix_matches(#S, /^a/, @L)
+            prefix_matches | n | N | B:prefix_matches(#D, /^20/, @L)
             present | x | N | B:present(@S)
             present_on_multiple_rows_within | name | N | B:present_on_multiple_rows_within(@S, within=#G)
             present_on_multiple_rows_within | within | N | B:present_on_multiple_rows_within(#S, within=@G)
@@ -322,7 +322,7 @@ class QualifiedNameUniformityTest
             record_count | group | N | V:record_count(group=[@G])
             record_count | keep_missings | - | static boolean
             record_count | regex | - | static regex
-            referenced_dataset_variables | name | N | V:referenced_dataset_variables(@S)
+            referenced_dataset_variables | name | N | V:referenced_dataset_variables(@R)
             referenced_domain_class | name | N | X:provider — operandPlan channel; needs a LIBRARY fixture
             required_variables | - | - | nullary
             round | x | N | V:round(@N)
@@ -349,7 +349,7 @@ class QualifiedNameUniformityTest
             suffix | n | N | V:suffix(#S, @L)
             suffix_matches | x | N | B:suffix_matches(@S, /a$/)
             suffix_matches | pattern | - | static regex
-            suffix_matches | n | N | B:suffix_matches(#S, /a$/, @L)
+            suffix_matches | n | N | B:suffix_matches(#D, /1$/, @L)
             time | x | N | V:time(@T)
             time_contains | outer | N | B:time_contains(time(@T), time(#T))
             time_contains | inner | N | B:time_contains(time(#T), time(@T))
@@ -454,7 +454,7 @@ class QualifiedNameUniformityTest
             ds_structure | name | - | a dataset name
             ds_structure | level | - | static level
             date_part | x | N | B:date_part(@D) == "2020-01-01"
-            time_part | x | N | B:time_part(@T) == "10:00:00"
+            time_part | x | N | B:time_part(@D) == "10:00:00"
             op:EQ | left | N | B:@S == "a"
             op:EQ | right | N | B:"a" == @S
             op:NEQ | left | N | B:@S != "a"
@@ -563,16 +563,28 @@ class QualifiedNameUniformityTest
     static final Set<String> C5Q_INSENSITIVE_TODAY = Set.of("colref/x", "find_vars/entry");
 
     /**
-     * Probes that cannot SEE the qualifier: with the join unreachable the qualified reference reads
-     * the absent default, and on this fixture that default answers exactly as the bare spelling
-     * does (e.g. {@code is_numeric} is false of {@code ""} and of every S cell). They are neither
-     * evidence for nor against N2; listed exactly so a sharpened probe is noticed.
+     * Probes that cannot SEE the join at all on this fixture (T2 r1 M1, the sensitivity criterion
+     * SENS): the qualified reference evaluated through the join answers exactly as it does with the
+     * join unreachable (the absent default), so C1 / C1j / C5q can neither pass nor fail on them.
+     * An EXACT set — a probe that becomes sensitive reds until it is removed, a probe that goes
+     * blind reds until it is listed with its reason.
      */
-    static final Set<String> C5Q_BLIND_ON_THIS_FIXTURE = Set.of("does_not_equal_string_part/name",
-            "does_not_equal_string_part/value", "interval_uncertainty_precision_mismatch/name",
-            "invalid_duration/x", "is_valid_duration/x", "prefix_matches/n",
-            "referenced_dataset_variables/name", "suffix_matches/n", "time_part/x",
-            "var_format/dataset");
+    static final Set<String> BLIND_ON_THIS_FIXTURE = Set.of(
+            // DATA-level format: an in-memory DataTableColumnMeta carries no format, so the
+            // accessor answers blank for every column of every dataset.
+            "var_format/dataset",
+            // The existence test reads the study INVENTORY (DatasetResolver + the SUPP pivot),
+            // never the join — the ruled N7 split (plan §2.4): with or without the join the
+            // answer is the same, by design, not by fixture.
+            "var_exists/name", "var_not_exists/name");
+
+    /**
+     * Blind-to-the-join rows that are nevertheless red on C5q, because the channel they DO read —
+     * the study inventory — is exact-case in this fixture (the N7 pair). Named so the C5q
+     * expectation stays a formula over listed sets, never the measurement itself.
+     */
+    static final Set<String> C5Q_RED_THROUGH_THE_INVENTORY = Set.of("var_exists/name",
+            "var_not_exists/name");
 
     // ------------------------------------------------------------------
     // Table model
@@ -653,6 +665,26 @@ class QualifiedNameUniformityTest
     // ------------------------------------------------------------------
 
 
+    /**
+     * Whether {@code attr} takes the {@code dataset=} kwarg — DERIVED from the engine (T2 r1 L1): a
+     * call carrying the kwarg either compiles or is refused by {@code metadataPlan}.
+     */
+    private static boolean takesDatasetKwarg(MetadataAttribute attr)
+    {
+        String arg = attr.scope() == MetadataAttribute.Scope.VARIABLE ? "\"S\"" : "\"P\"";
+        try
+        {
+            NativeExprEvaluator.bindingProgram(CheckExpressionParser
+                    .parse(attr.functionName() + "(" + arg + ", \"DATA\", dataset=\"J\")"));
+            return true;
+        }
+        catch (RuntimeException _)
+        {
+            return false;
+        }
+    }
+
+
     /** The roster the table must equal: function name → declared parameter names, in order. */
     static SequencedMap<String, List<String>> roster()
     {
@@ -669,11 +701,8 @@ class QualifiedNameUniformityTest
         for (MetadataAttribute m : MetadataAttribute.values())
         {
             List<String> names = new ArrayList<>(List.of("name", "level"));
-            if (m == MetadataAttribute.VAR_LABEL || m == MetadataAttribute.VAR_TYPE
-                    || m == MetadataAttribute.VAR_LENGTH || m == MetadataAttribute.VAR_FORMAT)
+            if (takesDatasetKwarg(m))
             {
-                // ExprCompiler.metadataPlan: dataset= is accepted for exactly these four, at the
-                // DATA level (crossDatasetField).
                 names.add("dataset");
             }
             out.put(m.functionName(), names);
@@ -690,15 +719,21 @@ class QualifiedNameUniformityTest
     }
 
 
-    @Test
-    void tableEqualsTheDescriptorRoster()
+    private static SequencedMap<String, List<String>> tableRoster()
     {
-        SequencedMap<String, List<String>> expected = roster();
         SequencedMap<String, List<String>> actual = new LinkedHashMap<>();
         for (Row r : rows())
         {
             actual.computeIfAbsent(r.fn(), _ -> new ArrayList<>()).add(r.param());
         }
+        return actual;
+    }
+
+
+    private static void assertTableEqualsRoster()
+    {
+        SequencedMap<String, List<String>> expected = roster();
+        SequencedMap<String, List<String>> actual = tableRoster();
         assertEquals(new TreeSet<>(expected.keySet()), new TreeSet<>(actual.keySet()),
                 "the table's function set must equal registry ∪ MetadataAttribute ∪ markers ∪"
                         + " operators");
@@ -707,6 +742,25 @@ class QualifiedNameUniformityTest
             assertEquals(e.getValue(), actual.get(e.getKey()),
                     "declared parameters of " + e.getKey() + ", in order");
         }
+    }
+
+
+    @Test
+    void tableEqualsTheDescriptorRoster()
+    {
+        assertTableEqualsRoster();
+        // The derived dataset= set is the four DATA-level accessors
+        // (ExprCompiler.crossDatasetField)
+        // — pinned so a derivation that silently stopped compiling anything reds here.
+        List<String> withDataset = new ArrayList<>();
+        for (MetadataAttribute m : MetadataAttribute.values())
+        {
+            if (takesDatasetKwarg(m))
+            {
+                withDataset.add(m.functionName());
+            }
+        }
+        assertEquals(List.of("var_label", "var_type", "var_length", "var_format"), withDataset);
     }
 
 
@@ -727,23 +781,52 @@ class QualifiedNameUniformityTest
         long nameClass = rows.stream().filter(Row::name).count();
         assertEquals(252, nameClass, "name-bearing parameters in the hand table");
         assertEquals(205, probed, "probed parameters in the hand table");
-        assertEquals(nameClass - probed, rows.stream().filter(r -> r.name() && !r.probed()).count(),
-                "every name-bearing row is probed or carries an X: reason");
+        // T2 r1 L2: every unprobed name-bearing row states one of the three admitted reasons.
+        List<String> unprobed = new ArrayList<>();
+        for (Row r : rows)
+        {
+            if (r.name() && !r.probed())
+            {
+                String reason = String.valueOf(r.reason());
+                assertTrue(reason.startsWith("provider") || reason.startsWith("selector")
+                        || reason.startsWith("list-valued"), r.id() + ": " + reason);
+                unprobed.add(r.id());
+            }
+        }
+        assertEquals(47, unprobed.size(), "unprobed name-bearing rows: " + unprobed);
     }
 
     // ------------------------------------------------------------------
-    // Fixtures: the primary P and the join J carry the IDENTICAL column set and data.
+    // Fixtures: the primary P and the join J carry the IDENTICAL column set and data, joined
+    // 1:1 on the dedicated key ID (column 0, never probed — T2 r1 L4).
     // ------------------------------------------------------------------
 
     /** Row 3 (0-based) is the row the unmatched variant drops from J. */
     private static final int UNMATCHED_ROW = 3;
 
-    private static final Map<Character, String> COLUMN = Map.of('S', "S", 'N', "N", 'L', "L", 'D',
-            "D", 'T', "T", 'K', "K", 'G', "G");
+    private static final Map<Character, String> COLUMN = Map.ofEntries(Map.entry('S', "S"),
+            Map.entry('N', "N"), Map.entry('L', "L"), Map.entry('D', "D"), Map.entry('T', "T"),
+            Map.entry('K', "K"), Map.entry('G', "G"), Map.entry('U', "U"), Map.entry('I', "I"),
+            Map.entry('R', "R"));
 
-    private static final Map<Character, DataValueType> TYPE = Map.of('S', DataValueType.STRING, 'N',
-            DataValueType.DOUBLE, 'L', DataValueType.LONG, 'D', DataValueType.STRING, 'T',
-            DataValueType.STRING, 'K', DataValueType.STRING, 'G', DataValueType.STRING);
+    private static final Map<Character, DataValueType> TYPE = Map.ofEntries(
+            Map.entry('S', DataValueType.STRING), Map.entry('N', DataValueType.DOUBLE),
+            Map.entry('L', DataValueType.LONG), Map.entry('D', DataValueType.STRING),
+            Map.entry('T', DataValueType.STRING), Map.entry('K', DataValueType.STRING),
+            Map.entry('G', DataValueType.STRING), Map.entry('U', DataValueType.STRING),
+            Map.entry('I', DataValueType.STRING), Map.entry('R', DataValueType.STRING));
+
+    private static final String KEY = "ID";
+
+    /**
+     * The bare PARTNER of a probe ({@code #S} …) reads a twin column with the same data, never the
+     * probed column itself — else rotating the probed column for C1j rotates the partner too and
+     * the two spellings legitimately differ.
+     */
+    private static final Map<Character, String> PARTNER = Map.ofEntries(Map.entry('S', "S2"),
+            Map.entry('N', "N2"), Map.entry('L', "L2"), Map.entry('D', "D2"), Map.entry('T', "T2"),
+            Map.entry('K', "K"), Map.entry('G', "G"), Map.entry('U', "U"), Map.entry('I', "I"),
+            Map.entry('R', "R"));
 
     @SuppressWarnings("ArrayRecordComponent")
     private record Col(String name, DataValueType type, Object[] values)
@@ -757,36 +840,59 @@ class QualifiedNameUniformityTest
 
 
     /**
-     * The six-row fixture; {@code except} (0 = none) drops that column, {@code dflt} blanks row 3.
+     * The six-row fixture; {@code except} (0 = none) drops that column, {@code dflt} defaults row 3
+     * of that column, {@code rotate} shifts that column's cells by one row (C1j).
      */
-    private static List<Col> columns(char except, char dflt)
+    private static List<Col> columns(char except, char dflt, char rotate)
     {
-        List<Col> all = List.of(col('K', "k1", "k2", "k3", "k4", "k5", "k6"),
-                col('S', "a", "b", "", "A", "b", "c"),
+        List<Col> all = List.of(new Col(KEY, DataValueType.STRING, new Object[]
+        {
+                "i1", "i2", "i3", "i4", "i5", "i6"
+        }), col('K', "k1", "k2", "k3", "k4", "k5", "k6"), col('S', "a", "b", "", "A", "b", "c"),
                 col('N', 1.0, 2.5, MissingValue.MIS_UNKNOWN.asDouble(),
                         MissingValue.MIS_A.asDouble(), 1.0, 3.0),
                 col('L', 1L, 2L, null, 3L, 1L, 2L),
                 col('D', "2020-01-01", "2020-02-15", "", "2020-01", "2021-13-40",
                         "2020-01-01T10:00:00"),
                 col('T', "10:00:00", "11:30", "", "25:00", "10:00:00", "09:15:30"),
-                col('G', "g1", "g1", "g2", "g2", "g3", "g3"));
+                col('G', "g1", "g1", "g2", "g2", "g3", "g3"),
+                col('U', "P1Y", "PX", "", "P1D", "PT1H", "P3Y"),
+                col('I', "2020-01-01/2020-02-15", "2020-01/2020-02", "", "2020/2021-06",
+                        "2020-01-01/2020-01-02", "2020-01-01/2020-01"),
+                col('R', "J", "P", "", "J", "P", "J"));
         List<Col> out = new ArrayList<>();
         for (Col c : all)
         {
-            if (c.name().charAt(0) == except)
+            char letter = c.name().charAt(0);
+            if (c.name().equals(KEY))
+            {
+                out.add(c);
+                continue;
+            }
+            if (PARTNER.get(letter).length() == 2)
+            {
+                // The twin: the same data under the partner name, never dropped / defaulted /
+                // rotated.
+                out.add(new Col(PARTNER.get(letter), c.type(), c.values().clone()));
+            }
+            if (letter == except)
             {
                 continue;
             }
-            if (c.name().charAt(0) == dflt)
+            Object[] v = c.values().clone();
+            if (letter == dflt)
             {
-                Object[] v = c.values().clone();
                 // The cell an unmatched join row reads (DatasetLookup.lookupValue →
                 // DataValueSupport.defaultForType): "" for a character column, MIS for a numeric.
                 v[UNMATCHED_ROW] = DataValueSupport.defaultForType(c.type()).getValue();
-                out.add(new Col(c.name(), c.type(), v));
-                continue;
             }
-            out.add(c);
+            if (letter == rotate)
+            {
+                Object last = v[v.length - 1];
+                System.arraycopy(c.values(), 0, v, 1, v.length - 1);
+                v[0] = last;
+            }
+            out.add(new Col(c.name(), c.type(), v));
         }
         return out;
     }
@@ -830,13 +936,49 @@ class QualifiedNameUniformityTest
     /** P, or P without column {@code except}, or P with column {@code dflt} defaulted at row 3. */
     private static IDataTable primary(char except, char dflt)
     {
-        return table("P", columns(except, dflt), false);
+        return table("P", columns(except, dflt, '\0'), false);
     }
 
 
     private static IDataTable joined(char except, boolean dropUnmatchedRow)
     {
-        return table("J", columns(except, '\0'), dropUnmatchedRow);
+        return table("J", columns(except, '\0', '\0'), dropUnmatchedRow);
+    }
+
+
+    /**
+     * J with DIFFERENT metadata on the probed column (type, label, length) — the sensitivity
+     * fixture of the {@code dataset=} rows, which read the inventory's metadata, not the join.
+     */
+    private static IDataTable joinedWithOtherMetadata(String column)
+    {
+        List<Col> cols = new ArrayList<>();
+        for (Col c : columns('\0', '\0', '\0'))
+        {
+            cols.add(c.name().equals(column) ? new Col(c.name(), DataValueType.LONG, new Object[]
+            {
+                    1L, 2L, 3L, 4L, 5L, 6L
+            }) : c);
+        }
+        int rc = 6;
+        CachedDataTableColumn[] cc = new CachedDataTableColumn[cols.size()];
+        DataTableColumnMeta[] mm = new DataTableColumnMeta[cols.size()];
+        for (int i = 0; i < cols.size(); i++)
+        {
+            Col c = cols.get(i);
+            boolean probed = c.name().equals(column);
+            cc[i] = new CachedDataTableColumn(i, c.type());
+            mm[i] = DataTableColumnMeta.builder().index(i).name(c.name())
+                    .label(probed ? c.name() + " of J" : c.name()).type(c.type())
+                    .length(probed ? 9 : 8).build();
+            for (int r = 0; r < rc; r++)
+            {
+                cc[i].addElement(c.values()[r]);
+            }
+            cc[i].complete();
+        }
+        return new ColumnCachedDataTable(DataTableMeta.builder().name("J").label("J").columns(mm)
+                .rowCount(rc).totalRowCount(rc).build(), cc);
     }
 
 
@@ -850,14 +992,19 @@ class QualifiedNameUniformityTest
     }
 
 
-    /** The context of the QUALIFIED side: the inventory plus the join over K. */
+    /** The context of the QUALIFIED side: the inventory plus the join over ID. */
     private static EvaluationContext joinedCtx(IDataTable p, IDataTable j, String exprText)
     {
         return ctx(p, j, true, exprText, "J");
     }
 
 
-    /** {@code joinName}: the name the join AND the inventory register J under. */
+    /**
+     * {@code joinName}: the name the join AND the inventory register J under. ⚠ For a {@code @DS}
+     * row and for {@code domain="J"} probes the qualifier travels as a STRING through the
+     * inventory, so C5q measures the INVENTORY's case handling there (exact in this fixture), not
+     * the join map's (T2 r1 L6).
+     */
     private static EvaluationContext ctx(IDataTable p, IDataTable j, boolean joinIt,
             String exprText, String joinName)
     {
@@ -870,9 +1017,8 @@ class QualifiedNameUniformityTest
         Map<String, JoinLookup> joins = new LinkedHashMap<>();
         if (joinIt)
         {
-            DatasetLookup lk = DatasetLookup.build(joinName, j,
-                    List.of(j.getMetaData().getColumn(0).getName()));
-            assertNotNull(lk, "the J join over K");
+            DatasetLookup lk = DatasetLookup.build(joinName, j, List.of(KEY));
+            assertNotNull(lk, "the J join over " + KEY);
             joins.put(joinName, lk);
         }
         return EvaluationContext.builder().table(p).datasetResolver(resolver).joinedDatasets(joins)
@@ -883,37 +1029,55 @@ class QualifiedNameUniformityTest
     // Outcomes
     // ------------------------------------------------------------------
 
-    /** What a probe answered: the verdict bits, the rendered cells, or the error. */
+    /**
+     * What a probe answered: the verdict bits, the rendered cells, a compile-time refusal
+     * ({@code LOAD}: the parse / compile step, which is what the loader turns into a rule's load
+     * error) or a run-time error ({@code ERROR}).
+     */
     private record Outcome(String kind, String detail)
     {
 
         boolean error()
         {
-            return "ERROR".equals(kind);
+            return "ERROR".equals(kind) || "LOAD".equals(kind);
         }
 
 
-        /** The qualified spelling refused at compile time with a message naming the bare form. */
-        boolean refused()
+        /**
+         * The qualified spelling refused at COMPILE time by a message that names the qualified
+         * spelling AND, outside it, the bare one (T2 r1 M2) — a loud refusal with the remedy.
+         */
+        boolean refusedFor(String dotted, String bare)
         {
-            String d = detail.toLowerCase(Locale.ROOT);
-            return error() && (d.contains("written bare") || d.contains("plain column")
-                    || d.contains("column reference") || d.contains("write it bare")
-                    || d.contains("requires domain=") || d.contains("is not a bare column"));
+            return "LOAD".equals(kind) && detail.contains(dotted)
+                    && detail.replace(dotted, "").contains(bare);
         }
     }
 
     private static Outcome evaluate(String exprText, boolean bool, EvaluationContext c)
     {
+        Expr expr;
+        BindingProgram binding;
         try
         {
-            Expr expr = CheckExpressionParser.parse(exprText);
+            // The COMPILE step — the seam the loader turns into a rule's load error. A boolean
+            // probe compiles as a condition binding here and is evaluated through the
+            // evaluator's own program cache below; a refusal of either kind lands as LOAD.
+            expr = CheckExpressionParser.parse(exprText);
+            binding = NativeExprEvaluator.bindingProgram(expr);
+        }
+        catch (RuntimeException ex)
+        {
+            return new Outcome("LOAD", ex.getClass().getSimpleName() + ": " + ex.getMessage());
+        }
+        try
+        {
             if (bool)
             {
                 BitSet bits = NativeExprEvaluator.evaluate(expr, c);
                 return new Outcome("BITS", bits.toString());
             }
-            Vector v = NativeExprEvaluator.bindingProgram(expr).evaluate(EvalRun.fullRange(c));
+            Vector v = binding.evaluate(EvalRun.fullRange(c));
             StringBuilder sb = new StringBuilder();
             sb.append("declared=").append(v.declaredType());
             for (int r = 0; r < c.rowCount(); r++)
@@ -948,7 +1112,7 @@ class QualifiedNameUniformityTest
         String out = template.replace("@DS", datasetKwarg);
         for (Map.Entry<Character, String> e : COLUMN.entrySet())
         {
-            out = out.replace("#" + e.getKey(), e.getValue());
+            out = out.replace("#" + e.getKey(), PARTNER.get(e.getKey()));
             out = out.replace("@" + e.getKey(), probed);
         }
         return out;
@@ -960,13 +1124,13 @@ class QualifiedNameUniformityTest
         Rule rule = new Rule();
         MatchDataset md = new MatchDataset();
         md.setName(joinName);
-        md.setKeys(List.of("K"));
+        md.setKeys(List.of(KEY));
         rule.setMatchDatasets(List.of(md));
         return rule;
     }
 
 
-    private static String stageAKinds(String exprText, boolean bool)
+    private static String stageAKinds(String exprText, boolean bool, String declaredJoin)
     {
         try
         {
@@ -975,7 +1139,8 @@ class QualifiedNameUniformityTest
             SequencedMap<Severity, Expr> levels = new LinkedHashMap<>();
             levels.put(Severity.ERROR, expr);
             List<String> kinds = new ArrayList<>();
-            for (StageAFinding f : StageAChecker.check(ruleDeclaring("J"), levels).findings())
+            for (StageAFinding f : StageAChecker.check(ruleDeclaring(declaredJoin), levels)
+                    .findings())
             {
                 kinds.add(f.kind().name());
             }
@@ -1007,7 +1172,12 @@ class QualifiedNameUniformityTest
     // ------------------------------------------------------------------
 
 
-    /** The red criteria of one row, in criterion order; {@code REFUSED} alone when N5 applies. */
+    /**
+     * The red criteria of one row, in criterion order. {@code PROBE}: the unqualified spelling
+     * itself fails; {@code REFUSED}: the qualified spelling is refused at compile time naming the
+     * bare one (N5) — C4, C7 and C8 are judged BEFORE that shortcut (T2 r1 M3); {@code BLIND}: the
+     * probe cannot distinguish the join from no join on this fixture (T2 r1 M1).
+     */
     static SequencedMap<String, String> redCriteria(Row row)
     {
         SequencedMap<String, String> red = new LinkedHashMap<>();
@@ -1028,13 +1198,51 @@ class QualifiedNameUniformityTest
             red.put("PROBE", "the unqualified spelling fails: " + bareC1.detail());
             return red;
         }
+        // C4 — the bare name never reaches the join (UVC unqualified): the column absent from
+        // the primary and present in the joined J reads the same with and without the join.
+        IDataTable pAbsent = primary(letter, '\0');
+        compare(red, "C4", evaluate(bare, bool, ctx(pAbsent, j, bare)),
+                evaluate(bare, bool, joinedCtx(pAbsent, j, bare)));
+        // C7 — the level calculus sees both spellings alike (D32a).
+        if (!level(bare).equals(level(dotted)))
+        {
+            red.put("C7", level(bare) + " vs " + level(dotted));
+        }
+        // C8 — Stage A files the same finding kinds for both spellings (D97b), and neither side
+        // may be a checker failure or an error (T2 r1 M4: two failures would compare equal).
+        String kindsBare = stageAKinds(bare, bool, "J");
+        String kindsDotted = stageAKinds(dotted, bool, "J");
+        if (!kindsBare.equals(kindsDotted) || kindsBare.contains("CHECKER_FAILURE")
+                || kindsBare.startsWith("ERROR") || kindsDotted.startsWith("ERROR"))
+        {
+            red.put("C8", kindsBare + " vs " + kindsDotted);
+        }
         Outcome dottedC1 = evaluate(dotted, bool, joinedCtx(p, j, dotted));
-        if (dottedC1.refused())
+        if (dottedC1.refusedFor(dottedName, kwarg ? "dataset" : bareName))
         {
             red.put("REFUSED", dottedC1.detail());
             return red;
         }
         compare(red, "C1", bareC1, dottedC1);
+        // SENS — the probe can see the join: through the join vs with the join unreachable (the
+        // absent default) must differ, else nothing below measures anything (T2 r1 M1). A
+        // dataset= row reads the inventory's METADATA, not the join: its sensitivity is a J whose
+        // probed column carries other metadata.
+        Outcome insensitive = kwarg
+                ? evaluate(dotted, bool,
+                        joinedCtx(p, joinedWithOtherMetadata(PARTNER.get(letter)), dotted))
+                : evaluate(dotted, bool, ctx(p, j, dotted));
+        if (dottedC1.equals(insensitive))
+        {
+            red.put("BLIND",
+                    (kwarg ? "J's other metadata is invisible: " : "with and without the join: ")
+                            + dottedC1.detail());
+        }
+        // C1j — the qualified spelling reads the JOIN, not a like-named primary column (T2 r1
+        // H1): P's probed column is rotated by one row, J is canonical, the answer must still be
+        // the canonical one.
+        IDataTable pRotated = table("P", columns('\0', '\0', letter), false);
+        compare(red, "C1j", bareC1, evaluate(dotted, bool, joinedCtx(pRotated, j, dotted)));
         // C2 — the unmatched row of the join reads the column's type default (D72a-1): the
         // primary carries that default at row 3 on BOTH sides, the join lacks row 3's key.
         IDataTable pDefaulted = primary('\0', letter);
@@ -1042,37 +1250,20 @@ class QualifiedNameUniformityTest
         compare(red, "C2", evaluate(bare, bool, ctx(pDefaulted, jUnmatched, bare)),
                 evaluate(dotted, bool, joinedCtx(pDefaulted, jUnmatched, dotted)));
         // C3 — the column absent on both sides reads the authored default (D76 / NF §3a).
-        IDataTable pAbsent = primary(letter, '\0');
         IDataTable jAbsent = joined(letter, false);
         compare(red, "C3", evaluate(bare, bool, ctx(pAbsent, jAbsent, bare)),
                 evaluate(dotted, bool, joinedCtx(pAbsent, jAbsent, dotted)));
-        // C4 — the bare name never reaches the join (UVC unqualified): the column absent from
-        // the primary and present in the joined J reads the same with and without the join.
-        compare(red, "C4", evaluate(bare, bool, ctx(pAbsent, j, bare)),
-                evaluate(bare, bool, joinedCtx(pAbsent, j, bare)));
         // C5c — the column part matched ignoring case (CIT §1): the DATA spells its column
         // names in lower case, both spellings are written as authored. (A lower-case spelling
         // in the rule is refused by the parser — OperandClassifier — so the case can only come
         // from the data side.)
-        IDataTable pLower = table("P", columns('\0', '\0'), false, true);
-        IDataTable jLower = table("J", columns('\0', '\0'), false, true);
+        IDataTable pLower = table("P", columns('\0', '\0', '\0'), false, true);
+        IDataTable jLower = table("J", columns('\0', '\0', '\0'), false, true);
         compare(red, "C5c", evaluate(bare, bool, ctx(pLower, jLower, bare)),
                 evaluate(dotted, bool, joinedCtx(pLower, jLower, dotted)));
         // C5q — the QUALIFIER matched ignoring case (owner-pending N2, plan §2.4): the join is
         // declared / registered under the lower-case name "j", the probe spells "J.".
         compare(red, "C5q", bareC1, evaluate(dotted, bool, ctx(p, j, true, dotted, "j")));
-        // C7 — the level calculus sees both spellings alike (D32a).
-        if (!level(bare).equals(level(dotted)))
-        {
-            red.put("C7", level(bare) + " vs " + level(dotted));
-        }
-        // C8 — Stage A files the same finding kinds for both spellings (D97b).
-        String kindsBare = stageAKinds(bare, bool);
-        String kindsDotted = stageAKinds(dotted, bool);
-        if (!kindsBare.equals(kindsDotted))
-        {
-            red.put("C8", kindsBare + " vs " + kindsDotted);
-        }
         // C9 — the string form resolves like the reference form (UNIFORMITY).
         if (row.stringTwin() != null)
         {
@@ -1139,14 +1330,15 @@ class QualifiedNameUniformityTest
     {
         List<Row> rows = rows();
         SequencedMap<String, SequencedMap<String, String>> measured = measure(rows);
-        // The qualifier-case criterion is owner-pending as a WHOLE (N2): it is asserted
-        // separately below, so it is lifted out of the per-row comparison here.
+        // The qualifier-case criterion is owner-pending as a WHOLE (N2) and the blind rows are
+        // a fixture property: both are asserted separately below, so they are lifted out here.
         SequencedMap<String, String> actual = new TreeMap<>();
         StringBuilder details = new StringBuilder();
         for (Map.Entry<String, SequencedMap<String, String>> e : measured.entrySet())
         {
             SequencedMap<String, String> red = new LinkedHashMap<>(e.getValue());
             red.remove("C5q");
+            red.remove("BLIND");
             if (red.isEmpty())
             {
                 continue;
@@ -1168,10 +1360,11 @@ class QualifiedNameUniformityTest
 
 
     @Test
-    void theQualifierCaseRatchetIsExact()
+    void theBlindAndQualifierCaseRatchetsAreExact()
     {
         List<Row> rows = rows();
         SequencedMap<String, SequencedMap<String, String>> measured = measure(rows);
+        Set<String> blind = new TreeSet<>();
         Set<String> redC5q = new TreeSet<>();
         Set<String> expectedC5q = new TreeSet<>();
         for (Row row : rows)
@@ -1186,20 +1379,27 @@ class QualifiedNameUniformityTest
             {
                 continue;
             }
+            if (red.containsKey("BLIND"))
+            {
+                blind.add(row.id());
+            }
             if (red.containsKey("C5q"))
             {
                 redC5q.add(row.id());
             }
-            if (!C5Q_INSENSITIVE_TODAY.contains(row.id())
-                    && !C5Q_BLIND_ON_THIS_FIXTURE.contains(row.id()))
+            if (!C5Q_INSENSITIVE_TODAY.contains(row.id()) && (!red.containsKey("BLIND")
+                    || C5Q_RED_THROUGH_THE_INVENTORY.contains(row.id())))
             {
                 expectedC5q.add(row.id());
             }
         }
-        assertEquals(expectedC5q, redC5q, "C5q (qualifier case) reds on every probed row except"
-                + " C5Q_INSENSITIVE_TODAY and C5Q_BLIND_ON_THIS_FIXTURE — owner-pending N2; a"
-                + " site made case-insensitive is listed in the first, a listed site that"
-                + " stopped being insensitive is removed");
+        assertEquals(new TreeSet<>(BLIND_ON_THIS_FIXTURE), blind,
+                "the probes that cannot see the join on this fixture — exactly the listed ones");
+        assertEquals(expectedC5q, redC5q,
+                "C5q (qualifier case) reds on every probed, sensitive"
+                        + " row except C5Q_INSENSITIVE_TODAY — owner-pending N2; a site made"
+                        + " case-insensitive is listed there, a listed site that stopped being"
+                        + " insensitive is removed");
         assertTrue(expectedC5q.size() > 100, "the N2 population is not vacuous");
         assertTrue(redC5q.stream().noneMatch(C5Q_INSENSITIVE_TODAY::contains),
                 "a site listed as case-insensitive must not red C5q");
@@ -1211,8 +1411,40 @@ class QualifiedNameUniformityTest
 
     private static final String STUB = "__primary_only_probe__";
 
+    private static final String STRIP_STUB = "__strip_qualifier_probe__";
+
+    private static ColumnVector primaryColumn(EvalRun run, String name)
+    {
+        DataTableMeta meta = run.ctx().getTable().getMetaData();
+        int idx = meta.getColumnIndex(name);
+        return idx < 0 ? null
+                : new ColumnVector(name, run.ctx().getTable().getColumn(idx),
+                        meta.getColumn(idx).getType());
+    }
+
+
     /** A function that resolves its argument's AUTHORED name against the primary table. */
     private static FunctionDescriptor primaryOnlyStub()
+    {
+        EvalFunction fn = (run, args) ->
+        {
+            Vector arg = args.get(0);
+            String name = arg == null ? null : arg.gatedName();
+            ColumnVector v = name == null ? null : primaryColumn(run, name);
+            return v == null ? ConstVector.of("") : v;
+        };
+        return new FunctionDescriptor(STUB,
+                List.of(Parameter.required("x",
+                        net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)),
+                FunctionKind.VALUE, fn);
+    }
+
+
+    /**
+     * A function that STRIPS the qualifier and reads the primary's like-named column — exactly the
+     * defect H1 names: invisible to every criterion but C1j while P and J carry the same data.
+     */
+    private static FunctionDescriptor stripQualifierStub()
     {
         EvalFunction fn = (run, args) ->
         {
@@ -1222,16 +1454,11 @@ class QualifiedNameUniformityTest
             {
                 return ConstVector.of("");
             }
-            DataTableMeta meta = run.ctx().getTable().getMetaData();
-            int idx = meta.getColumnIndex(name);
-            if (idx < 0)
-            {
-                return ConstVector.of("");
-            }
-            return new ColumnVector(name, run.ctx().getTable().getColumn(idx),
-                    meta.getColumn(idx).getType());
+            String bare = name.substring(name.indexOf('.') + 1);
+            ColumnVector v = primaryColumn(run, bare);
+            return v == null ? ConstVector.of("") : v;
         };
-        return new FunctionDescriptor(STUB,
+        return new FunctionDescriptor(STRIP_STUB,
                 List.of(Parameter.required("x",
                         net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)),
                 FunctionKind.VALUE, fn);
@@ -1250,14 +1477,40 @@ class QualifiedNameUniformityTest
             assertTrue(red.containsKey("C2"), "… and C2: " + red);
             assertFalse(red.containsKey("PROBE"), red.toString());
             // The control is a REAL divergence in the detector's own terms: the measured set
-            // over the table plus the stub differs from the table alone by exactly this row.
+            // over the table plus the stub differs from the table alone by EXACTLY this row
+            // (T2 r1 L3).
             List<Row> withStub = new ArrayList<>(rows());
             withStub.add(stub);
-            assertTrue(measure(withStub).containsKey(STUB + "/x"));
+            Set<String> delta = new TreeSet<>(measure(withStub).keySet());
+            delta.removeAll(measure(rows()).keySet());
+            assertEquals(Set.of(STUB + "/x"), delta);
         }
         finally
         {
             FunctionRegistry.unregister(STUB);
+        }
+    }
+
+
+    /** H1: a qualified reference resolved against the PRIMARY is caught by C1j alone. */
+    @Test
+    void aStripQualifierStubRedsExactlyC1j()
+    {
+        FunctionRegistry.register(stripQualifierStub());
+        try
+        {
+            Row stub = new Row(STRIP_STUB, "x", true, "V:" + STRIP_STUB + "(@S)", null, null);
+            SequencedMap<String, String> red = new LinkedHashMap<>(redCriteria(stub));
+            // C5q is independent of the stub: under an unreachable join the argument vector
+            // carries no authored name at all, so the stub answers "" there as any function does.
+            red.remove("C5q");
+            assertEquals(Set.of("C1j"), red.keySet(),
+                    "with P and J identical every other criterion is satisfied by reading the"
+                            + " primary — C1j is the one that sees it: " + red);
+        }
+        finally
+        {
+            FunctionRegistry.unregister(STRIP_STUB);
         }
     }
 
@@ -1280,14 +1533,42 @@ class QualifiedNameUniformityTest
     }
 
 
-    private static void assertTableEqualsRoster()
+    /** T2 r1 L3: a parameter added to an EXISTING function reds the roster too. */
+    @Test
+    void aNewParameterOnAnExistingFunctionRedsTheRoster()
     {
-        Set<String> tableFns = new LinkedHashSet<>();
-        for (Row r : rows())
+        FunctionDescriptor abs = java.util.Objects
+                .requireNonNull(FunctionRegistry.descriptor("abs"));
+        List<Parameter> widened = new ArrayList<>(abs.parameters());
+        widened.add(Parameter.optional("extra",
+                net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN));
+        FunctionRegistry.register(new FunctionDescriptor("abs", widened, abs.kind(), abs.fn()));
+        try
         {
-            tableFns.add(r.fn());
+            AssertionError err = assertThrows(AssertionError.class,
+                    QualifiedNameUniformityTest::assertTableEqualsRoster);
+            assertTrue(err.getMessage().contains("abs"), err.getMessage());
+            assertTrue(err.getMessage().contains("extra"), err.getMessage());
         }
-        assertEquals(new TreeSet<>(roster().keySet()), new TreeSet<>(tableFns));
+        finally
+        {
+            FunctionRegistry.register(abs);
+        }
+        assertTableEqualsRoster();
+    }
+
+
+    /** T2 r1 M4: C8 and C7 can fire — they are not two failures comparing equal. */
+    @Test
+    void theStageAAndLevelCriteriaAreNotVacuous()
+    {
+        // C8: the same dotted probe against a rule declaring Q (not J) files the undeclared kind.
+        assertEquals("[]", stageAKinds("empty(J.S)", true, "J"));
+        assertEquals("[DOTTED_REF_UNDECLARED]", stageAKinds("empty(J.S)", true, "Q"));
+        assertFalse(stageAKinds("empty(S)", true, "J").startsWith("ERROR"));
+        // C7: the level calculus distinguishes a dataset-level fact from a record-level read.
+        assertNotEquals(level("record_count() > 1"), level("S != \"a\""));
+        assertEquals(level("S != \"a\""), level("J.S != \"a\""));
     }
 
 

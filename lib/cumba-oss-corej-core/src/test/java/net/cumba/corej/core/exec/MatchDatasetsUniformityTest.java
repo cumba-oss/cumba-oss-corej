@@ -41,8 +41,11 @@ class MatchDatasetsUniformityTest
     @Test
     void aSidedKeySpellingJoinsExactlyLikeThePlainOne()
     {
+        // J carries DIFFERENT S values (T2 r1 M5): a join that read the primary instead would
+        // answer nothing here, and the two spellings must agree on the rows that differ.
         IDataTable p = primary();
-        IDataTable j = joined();
+        IDataTable j = RealTables.of("J").str("K", "k1", "k2", "k3", "k4", "k5", "k6")
+                .str("S", "a", "x", "", "A", "y", "c").build();
         Rule plain = loadClean(
                 ruleJson("Record",
                         keyed("\"K\"", "") + "," + check("S != J.S") + "," + outcome("S", "J.S")),
@@ -51,7 +54,8 @@ class MatchDatasetsUniformityTest
                 + "," + check("S != J.S") + "," + outcome("S", "J.S")), true);
         RuleExecutionResult a = executed(plain, p, exactInventory(p, j));
         RuleExecutionResult b = executed(sided, p, exactInventory(p, j));
-        assertEquals(List.of(), rows(a), "identical data joins without a difference");
+        assertEquals(List.of(2L, 5L), rows(a), "rows whose J.S differs from S");
+        assertEquals("x", QualifiedNameFixture.values(a).get(0).get("J.S"));
         assertEquals(rows(a), rows(b));
         assertEquals(QualifiedNameFixture.values(a), QualifiedNameFixture.values(b));
     }

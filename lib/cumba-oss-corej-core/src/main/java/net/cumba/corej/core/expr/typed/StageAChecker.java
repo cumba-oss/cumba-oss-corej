@@ -1929,9 +1929,10 @@ public final class StageAChecker
         }
         List<MatchDataset> entries = matches == null ? List.of() : matches;
         // ⭐ A WILDCARD_COLUMN operand with a JUDGEABLE qualifier (non-empty, no `${`, no `&`:
-        // `AE.**SMIE`, `AE.${X}`, `SUPP--.QVAL`, even `*.X`) is judged
-        // by the Child arm only. It is not a DOTTED_REF, so the undeclared arm below keeps its
-        // measured population; but ExprCompiler compiles it to a per-row dotted plan that reads
+        // `AE.**SMIE`, `AE.${X}`, `SUPP--.QVAL`, even `*.X`) is judged by the Child arm, and —
+        // since QNU N27 — by the undeclared arm too when its qualifier is CONCRETE. It is not a
+        // DOTTED_REF, so the dotted-reference walk below does not see it; but ExprCompiler
+        // compiles it to a per-row dotted plan that reads
         // through the joined lookup, and with no lookup built for a Child entry that read is the
         // not-supplied default on every row — SILENT (measured 2026-09-25: `AE.**SMIE != "Y"` on
         // a Child entry EXECUTED and fired every row; `"Y" in AE.**SMIE` EXECUTED with none).
@@ -1950,9 +1951,12 @@ public final class StageAChecker
                         + " it answers the not-supplied default on every row; the parent row's"
                         + " columns are merged into the primary and are read bare");
             }
-            else if (entry == null && !templates && isConcreteQualifier(qualifier))
+            else if (entry == null && !templates && isConcreteQualifier(qualifier)
+                    && entries.stream().noneMatch(m -> qualifier.equalsIgnoreCase(m.getName())))
             {
                 // QNU N27: a qualified TEMPLATE operand (DM.${V}, ADSL.X${*}, AE.**TERM) reads
+                // (A qualifier whose case alone differs from an entry's is owner-pending N2, not
+                // judged here — the same exemption the Output_Variables arm carries.)
                 // through the join of its CONCRETE qualifier exactly as DM.X does, so an
                 // undeclared one is the same authoring error — judged by the same observe-only
                 // kind. A `--` / `*` qualifier is resolved later (ExprPrefixResolver) and is not
@@ -2139,7 +2143,8 @@ public final class StageAChecker
                 // is omitted from every finding (RuleRunner.extractOutputValues: no join, no
                 // value). Same observe-only kind, same reason. ⚠ A rule evaluated per VARIABLE is
                 // exempt: there the runner reports the dotted entry as its own identifier (Fix
-                // #18, CDISC-AD0640's SUPPAE.QNAM=AETRTEM), so nothing is omitted.
+                // #18's `<DOMAIN>.<KEY>=<VALUE>` filter form; no shipped rule carries one since
+                // CDISC-AD0640–0645 dropped their `AE.<X>` entries, T2 r1), so nothing is omitted.
                 find(StageAErrorKind.DOTTED_REF_UNDECLARED, "Output_Variables entry " + name
                         + " references no Match_Datasets entry named " + qualifier
                         + " — a dotted output reads a column of a DECLARED join only; undeclared,"

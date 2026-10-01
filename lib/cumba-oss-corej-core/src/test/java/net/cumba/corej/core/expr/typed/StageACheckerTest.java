@@ -1270,6 +1270,10 @@ class StageACheckerTest
         // controls: declared, and a -- qualifier resolved later against a concrete entry
         assertEquals(List.of(),
                 check(ruleJoining("DM", "left", "USUBJID"), "DM.**TERM != \"x\"").findings());
+        // T2 r1 (engine 4): a qualifier whose CASE alone differs from an entry's is owner-pending
+        // N2 and not judged — the exemption the Output_Variables arm (N17) already carries.
+        assertEquals(List.of(),
+                check(ruleJoining("dm", "left", "USUBJID"), "X in DM.Q${*}V").findings());
         assertEquals(List.of(),
                 check(ruleJoining("SUPPAE", "left", "USUBJID"), "SUPP--.QVAL != \"x\"").findings());
     }

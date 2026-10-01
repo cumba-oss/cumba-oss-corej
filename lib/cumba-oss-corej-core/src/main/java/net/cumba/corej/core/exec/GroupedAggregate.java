@@ -391,7 +391,8 @@ public final class GroupedAggregate
             }
             case DOTTED_REF -> throw new ExpressionException("argument '" + parameter + "' of '"
                     + fn + "' names a column of " + (foreign ? "domain" : "the dataset")
-                    + ", so it is written bare, not dotted (" + ref.name() + ")");
+                    + ", so it is written bare, not dotted (" + ref.name() + ") — write it bare ("
+                    + ref.name().substring(ref.name().indexOf('.') + 1) + ")");
             default -> throw new ExpressionException("argument '" + parameter + "' of '" + fn
                     + "' must be a plain column reference; " + ref.name() + " is not one");
             };
@@ -581,7 +582,9 @@ public final class GroupedAggregate
                         + " qualified group member keys the record side through the join and the"
                         + " grouped dataset by the unqualified name, so there must be a grouped"
                         + " dataset — group the evaluated dataset by a joined value with the"
-                        + " rule-level Grouping instead");
+                        + " rule-level Grouping instead, or write it bare ("
+                        + ref.name().substring(ref.name().indexOf('.') + 1)
+                        + ") to group by the evaluated dataset's own column");
             }
             return ref.name();
         }

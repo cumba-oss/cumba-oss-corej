@@ -72,16 +72,25 @@ class QualifiedNamePhase3FixesTest
     @Test
     void aQualifiedVlmAccessorNameIsRefusedAtLoad()
     {
-        for (String call : new String[]
+        // T2 r1 L5: every one of the ten accessors, in both spellings — a loop over the
+        // registry's vlm_ names, so an eleventh accessor is covered without anyone remembering.
+        java.util.List<String> accessors = net.cumba.corej.core.expr.eval.FunctionRegistry.all()
+                .stream().map(net.cumba.corej.core.expr.eval.FunctionDescriptor::name)
+                .filter(n -> n.startsWith("vlm_")).toList();
+        assertEquals(10, accessors.size(), accessors.toString());
+        for (String fn : accessors)
         {
-                "vlm_data_type(J.S)", "vlm_length(\"J.S\")"
-        })
-        {
-            Rule r = load(ruleJson("Record", QualifiedNameFixture.matchJ("") + ","
-                    + check(call + " == \"text\"") + "," + outcome("K")), true);
-            String error = r.getLoadError();
-            assertNotNull(error, call + " must not load clean");
-            assertTrue(error.contains("write it bare (S)"), error);
+            for (String call : new String[]
+            {
+                    fn + "(J.S)", fn + "(\"J.S\")"
+            })
+            {
+                Rule r = load(ruleJson("Record", QualifiedNameFixture.matchJ("") + ","
+                        + check(call + " == \"text\"") + "," + outcome("K")), true);
+                String error = r.getLoadError();
+                assertNotNull(error, call + " must not load clean");
+                assertTrue(error.contains("write it bare (S)"), call + ": " + error);
+            }
         }
     }
 

@@ -98,4 +98,55 @@ class RequirementsUniformityTest
                 "ScopeVariableSource.resolveMetas → resolver.resolve(\"j\") — exact in this"
                         + " inventory; the product's resolvers are not traced (findings S9)");
     }
+
+
+    private static Rule allOrNone(String... group)
+    {
+        StringBuilder entries = new StringBuilder();
+        for (String g : group)
+        {
+            entries.append(entries.length() == 0 ? "" : ",").append('"').append(g).append('"');
+        }
+        return loadClean(ruleJson("Record", "\"Requirements\":{\"Variables\":{\"All_Or_None\":[["
+                + entries + "]]}}," + check("K != \"zz\"") + "," + outcome("K")), false);
+    }
+
+
+    /**
+     * T2 r1 M6: the {@code [X, J.X]} pairing — both present or both absent runs, one side SKIPs.
+     */
+    @Test
+    void anAllOrNonePairGatesTheQualifiedMemberLikeTheBareOne()
+    {
+        IDataTable p = primary();
+        IDataTable j = joined();
+        IDataTable pAbsent = table("P", "S");
+        IDataTable jAbsent = table("J", "S");
+        assertEquals(RuleExecutionStatus.EXECUTED, status(allOrNone("S", "J.S"), p, j));
+        assertEquals(RuleExecutionStatus.EXECUTED, status(allOrNone("S", "J.S"), pAbsent, jAbsent));
+        assertEquals(RuleExecutionStatus.SKIPPED, status(allOrNone("S", "J.S"), pAbsent, j),
+                "the bare member absent, the qualified one present");
+        assertEquals(RuleExecutionStatus.SKIPPED, status(allOrNone("S", "J.S"), p, jAbsent),
+                "the qualified member absent, the bare one present");
+        // The mirror pairing reads the same way.
+        assertEquals(RuleExecutionStatus.SKIPPED, status(allOrNone("J.S", "S"), p, jAbsent));
+    }
+
+
+    /** T2 r1 M6: a qualified regex entry gates like the bare regex entry. */
+    @Test
+    void aQualifiedRegexEntryGatesLikeTheBareOne()
+    {
+        IDataTable p = primary();
+        IDataTable j = joined();
+        IDataTable pAbsent = table("P", "S");
+        IDataTable jAbsent = table("J", "S");
+        assertEquals(RuleExecutionStatus.EXECUTED, status(gated("All", "/^S$/"), p, j));
+        assertEquals(RuleExecutionStatus.EXECUTED, status(gated("All", "J./^S$/"), p, j));
+        assertEquals(RuleExecutionStatus.SKIPPED, status(gated("All", "/^S$/"), pAbsent, jAbsent));
+        assertEquals(RuleExecutionStatus.SKIPPED,
+                status(gated("All", "J./^S$/"), pAbsent, jAbsent));
+        assertEquals(RuleExecutionStatus.SKIPPED, status(gated("None", "/^S$/"), p, j));
+        assertEquals(RuleExecutionStatus.SKIPPED, status(gated("None", "J./^S$/"), p, j));
+    }
 }

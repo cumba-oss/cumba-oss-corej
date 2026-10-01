@@ -2538,6 +2538,14 @@ public final class ExprCompiler
                     + "' takes a column reference, not the literal " + lit.value()
                     + " — a quoted name is a string, never a column");
         }
+        if (e instanceof Expr.Ref r && r.kind() == OperandKind.DOTTED_REF)
+        {
+            // QNU N5 (T2 M2): name the bare spelling, as the registry functions' readers do.
+            throw unsupported("argument '" + parameter + "' of '" + function
+                    + "' names the qualified " + r.name() + " — write it bare ("
+                    + r.name().substring(r.name().indexOf('.') + 1)
+                    + "): the operand is a column of the evaluated dataset, never a joined one");
+        }
         throw unsupported("argument '" + parameter + "' of '" + function
                 + "' must be a plain column or --prefix reference");
     }
@@ -2920,8 +2928,10 @@ public final class ExprCompiler
      * requirement #1): ONE positional LIST literal, each member a {@link #keyMemberName} (a column,
      * a {@code --}-wildcard, a string literal, or a {@code $}-ref passed through raw for
      * {@code GroupSplice.splice}). ⚠ This legalises a {@code $}-ref in position 0, which
-     * {@link #groupOperandName} refused on the old first operand — intended, D-4 drops an
-     * unresolved member uniformly.
+     * {@link #groupOperandName} refused on the old first operand — intended: since QNU N29 a
+     * {@code $} member splices through {@code GroupSplice} (a qualified or non-list value is the
+     * rule's ERROR, a String is one name); D-4's "drop an unresolved member" is unreachable for a
+     * loaded rule, because a dangling {@code $} is a load error.
      * </p>
      *
      * <p>
@@ -3513,6 +3523,16 @@ public final class ExprCompiler
             throw unsupported("group operator operand takes a column reference, not the string"
                     + " literal \"" + lit.value() + "\" — write it bare: " + lit.value()
                     + " (a quoted name is a string, never a column)");
+        }
+        if (e instanceof Expr.Ref r && r.kind() == OperandKind.DOTTED_REF)
+        {
+            // QNU N5 (T2 M2): a loud refusal names the bare spelling, as every other refusal
+            // of a qualified name does — a group operator reads a column of the evaluated
+            // dataset, never a joined one.
+            throw unsupported("group operator operand names the qualified " + r.name()
+                    + " — write it bare (" + r.name().substring(r.name().indexOf('.') + 1)
+                    + "): a group operator reads a column of the evaluated dataset, never a"
+                    + " joined one");
         }
         throw unsupported("group operator operand must be a plain column or --prefix reference"
                 + " (got " + e.getClass().getSimpleName() + ")");

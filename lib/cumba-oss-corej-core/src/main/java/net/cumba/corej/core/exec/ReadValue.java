@@ -385,7 +385,8 @@ public final class ReadValue
         case Expr.Ref ref when ref
                 .kind() == OperandKind.DOTTED_REF -> throw new ExpressionException(NAME
                         + " reads a column of domain, so its column is written bare, not dotted ("
-                        + ref.name() + ")");
+                        + ref.name() + ") — write it bare ("
+                        + ref.name().substring(ref.name().indexOf('.') + 1) + ")");
         case Expr.Ref ref -> throw new ExpressionException(
                 NAME + " reads a column of domain; " + ref.name() + " is not one");
         case Expr.Lit lit -> throw new ExpressionException(
@@ -439,7 +440,10 @@ public final class ReadValue
             {
                 throw new ExpressionException(
                         NAME + "'s filter= reads the columns of domain only; " + ref.name()
-                                + " is not a bare column of it (no dotted, $ or -- reference)");
+                                + " is not a bare column of it (no dotted, $ or -- reference)"
+                                + (ref.kind() == OperandKind.DOTTED_REF ? " — write it bare ("
+                                        + ref.name().substring(ref.name().indexOf('.') + 1) + ")"
+                                        : ""));
             }
         }
         case Expr.Call call ->

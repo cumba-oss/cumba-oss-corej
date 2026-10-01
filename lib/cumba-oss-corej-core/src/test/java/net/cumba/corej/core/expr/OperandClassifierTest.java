@@ -56,6 +56,11 @@ class OperandClassifierTest
     {
         assertSame(OperandKind.DOTTED_REF, kind("DM.DTHDTC"));
         assertSame(OperandKind.DOTTED_REF, kind("SE.SEENDTC"));
+        // QNU T2 r1 (engine 2): the COLUMN half in any case is the dotted reference the run time
+        // reads (N3); the QUALIFIER half stays upper-case only (owner-pending N2).
+        assertSame(OperandKind.DOTTED_REF, kind("DM.arm"));
+        assertSame(OperandKind.DOTTED_REF, kind("DM.Arm_1"));
+        assertThrows(ExpressionException.class, () -> kind("dm.ARM"));
     }
 
 

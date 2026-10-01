@@ -3664,7 +3664,12 @@ public final class RuleRunner
                 {
                     continue;
                 }
-                cellAt = row -> lookup.lookupValue(table, row, joinedColumn, false);
+                // ⚠ T2 r1: hasColumn is ROW-dependent for a RELREC-expanded lookup (the parent
+                // domain varies per row), so a row the lookup does not serve contributes no
+                // member — never the not-supplied default as a phantom distinct value.
+                cellAt = row -> lookup.hasColumn(table, row, joinedColumn)
+                        ? lookup.lookupValue(table, row, joinedColumn, false)
+                        : null;
             }
             else
             {
@@ -3691,6 +3696,10 @@ public final class RuleRunner
             {
                 long row = it.nextLong();
                 IDataValue dv = cellAt.apply(row);
+                if (dv == null)
+                {
+                    continue; // a row the joined lookup does not serve (RELREC per-row parent)
+                }
                 MissingValue missing = net.cumba.corej.core.expr.eval.TypedValue
                         .missingIdentityOf(dv);
                 distinctByIdentity.putIfAbsent(missing != null

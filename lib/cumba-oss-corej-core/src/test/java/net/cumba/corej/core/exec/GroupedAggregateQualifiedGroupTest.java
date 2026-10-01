@@ -493,7 +493,9 @@ class GroupedAggregateQualifiedGroupTest
     {
         String error = loadError(DM_ENTRY, DM_REQUIREMENTS,
                 "has_multiple_values_for(BWSEQ, RPHASE, within=[DM.RPATHCD])");
-        assertTrue(error.contains("group operator operand must be a plain column"), error);
+        // QNU T2 r1 M2: the refusal names the qualified spelling AND the bare remedy.
+        assertTrue(error.contains("group operator operand names the qualified DM.RPATHCD"), error);
+        assertTrue(error.contains("write it bare (RPATHCD)"), error);
     }
 
 }

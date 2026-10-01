@@ -88,4 +88,31 @@ class JoinExpansionUniformityTest
         assertEquals("k1", QualifiedNameFixture.values(byHand).get(1).get("K"));
         assertEquals(QualifiedNameFixture.values(byHand), QualifiedNameFixture.values(viaJoin));
     }
+
+
+    /**
+     * The grouped half with the QUALIFIED key (T2 r1 M6): Grouping [J.G] over the expanded join.
+     */
+    @Test
+    void aDottedGroupingKeyOverAnExpandedJoinPartitionsLikeTheBareOne()
+    {
+        // D-SRC: a qualified key's source is an INNER join — k3 (no J row) is dropped on both
+        // sides: the hand-expanded primary omits it too.
+        IDataTable p = primaryP();
+        IDataTable j = manyJ();
+        // The join DUPLICATES the primary row: both k1 copies carry P's own S = a.
+        IDataTable byHandInner = RealTables.of("P").str("K", "k1", "k1", "k2")
+                .str("S", "a", "a", "b").str("G", "g1", "g1", "g2").build();
+        String inner = "\"Match_Datasets\":[{\"Name\":\"J\",\"Keys\":[\"K\"],"
+                + "\"Join_Type\":\"inner\"}]";
+        Rule dotted = loadClean(ruleJson("Group", "\"Grouping\":{\"Variables\":[\"J.G\"]}," + inner
+                + "," + check("S != \"zz\"") + "," + outcome("K")), true);
+        Rule bare = loadClean(ruleJson("Group", "\"Grouping\":{\"Variables\":[\"G\"]},"
+                + check("S != \"zz\"") + "," + outcome("K")), false);
+        RuleExecutionResult viaJoin = executed(dotted, p, exactInventory(p, j));
+        RuleExecutionResult byHand = executed(bare, byHandInner, exactInventory(byHandInner));
+        assertEquals(2, byHand.getViolations().size(), "g1 (the two k1 copies) and g2");
+        assertEquals(byHand.getViolations().size(), viaJoin.getViolations().size());
+        assertEquals(QualifiedNameFixture.values(byHand), QualifiedNameFixture.values(viaJoin));
+    }
 }

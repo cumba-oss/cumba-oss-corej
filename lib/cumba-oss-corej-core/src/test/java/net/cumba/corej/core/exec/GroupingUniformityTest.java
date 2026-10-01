@@ -7,6 +7,7 @@ import static net.cumba.corej.core.exec.QualifiedNameFixture.joined;
 import static net.cumba.corej.core.exec.QualifiedNameFixture.loadClean;
 import static net.cumba.corej.core.exec.QualifiedNameFixture.outcome;
 import static net.cumba.corej.core.exec.QualifiedNameFixture.primary;
+import static net.cumba.corej.core.exec.QualifiedNameFixture.renamed;
 import static net.cumba.corej.core.exec.QualifiedNameFixture.ruleJson;
 import static net.cumba.corej.core.exec.QualifiedNameFixture.run;
 import static net.cumba.corej.core.exec.QualifiedNameFixture.table;
@@ -94,17 +95,30 @@ class GroupingUniformityTest
     @Test
     void aQualifiedGroupingKeyPartitionsLikeTheBareOne()
     {
+        // J's G differs from P's (T2 r1 M5): h1 ×4 / h2 ×2 against P's g1 / g2 / g3 pairs. The
+        // reference for Grouping [J.G] over P ⋈ J is Grouping [G] over P', the primary carrying
+        // J's G itself.
         IDataTable p = primary();
-        IDataTable j = joined();
-        RuleExecutionResult bare = executed(groupRule("\"G\""), p, exactInventory(p, j));
-        RuleExecutionResult dotted = executed(groupRule("\"J.G\""), p, exactInventory(p, j));
-        assertEquals(3, bare.getViolations().size(), "one finding per group g1 / g2 / g3");
-        assertEquals(bare.getViolations().size(), dotted.getViolations().size());
-        assertEquals(QualifiedNameFixture.values(bare), QualifiedNameFixture.values(dotted),
-                "the same anchors, the same reported values");
+        IDataTable j = RealTables.of("J").str("K", "k1", "k2", "k3", "k4", "k5", "k6")
+                .str("S", "a", "b", "", "A", "b", "c").str("G", "h1", "h1", "h1", "h1", "h2", "h2")
+                .build();
+        IDataTable pLikeJ = RealTables.of("P").str("K", "k1", "k2", "k3", "k4", "k5", "k6")
+                .str("S", "a", "b", "", "A", "b", "c").str("G", "h1", "h1", "h1", "h1", "h2", "h2")
+                .build();
+        RuleExecutionResult bareOnP = executed(groupRule("\"G\""), p, exactInventory(p, j));
+        RuleExecutionResult bare = executed(groupRule("\"G\""), pLikeJ, exactInventory(pLikeJ, j));
+        RuleExecutionResult dotted = executed(groupRule("\"J.G\"", "S", "J.G"), p,
+                exactInventory(p, j));
+        assertEquals(3, bareOnP.getViolations().size(), "P's own G: g1 / g2 / g3");
+        assertEquals(2, bare.getViolations().size(), "J's G: h1 / h2");
+        assertEquals(bare.getViolations().size(), dotted.getViolations().size(),
+                "the qualified key partitions by J's values, not P's");
+        assertEquals(QualifiedNameFixture.values(bare),
+                renamed(QualifiedNameFixture.values(dotted), Map.of("J.G", "G")),
+                "the same anchors, the same reported values — the key printed as written");
         List<String> bareKeys = new ArrayList<>();
         List<String> dottedKeys = new ArrayList<>();
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 2; i++)
         {
             bareKeys.add(String.valueOf(groupKeys(bare).get(i).values()));
             dottedKeys.add(String.valueOf(groupKeys(dotted).get(i).values()));

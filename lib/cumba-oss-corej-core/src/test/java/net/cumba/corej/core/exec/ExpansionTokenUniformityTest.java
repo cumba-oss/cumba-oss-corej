@@ -28,13 +28,22 @@ import org.junit.jupiter.api.Test;
 class ExpansionTokenUniformityTest
 {
 
-    /** N drives the name: rows 0..3 name P1V, P2V, P1V, P3V (absent); row 4's driver is missing. */
-    private static IDataTable driven(String name)
+    /**
+     * N drives the name: rows 0..3 name P1V, P2V, P1V, P3V (absent); row 4's driver is missing.
+     * {@code offset} shifts every value column (T2 r1 M5): P and J carry DIFFERENT data, and the
+     * reference for the qualified spelling over P ⋈ J is the bare spelling over P', the primary
+     * that carries J's value columns itself.
+     */
+    private static IDataTable driven(String name, double offset)
     {
         return RealTables.of(name).str("K", "k1", "k2", "k3", "k4", "k5")
-                .lng("N", 1L, 2L, 1L, 3L, null).dbl("P1V", 1.0, 2.0, 3.0, 4.0, 5.0)
-                .dbl("P2V", 9.0, 9.0, 9.0, 9.0, 9.0).str("S", "x", "y", "x", "z", "q")
-                .str("Q1V", "x", "x", "x", "x", "x").str("Q2V", "y", "y", "y", "y", "y").build();
+                .lng("N", 1L, 2L, 1L, 3L, null)
+                .dbl("P1V", 1.0 + offset, 2.0 + offset, 3.0 + offset, 4.0 + offset, 5.0 + offset)
+                .dbl("P2V", 9.0 + offset, 9.0 + offset, 9.0 + offset, 9.0 + offset, 9.0 + offset)
+                .str("S", "x", "y", "x", "z", "q")
+                .str("Q1V", offset == 0 ? "x" : "q", offset == 0 ? "x" : "q",
+                        offset == 0 ? "x" : "q", offset == 0 ? "x" : "q", offset == 0 ? "x" : "q")
+                .str("Q2V", "y", "y", "y", "y", "y").build();
     }
 
 
@@ -50,26 +59,32 @@ class ExpansionTokenUniformityTest
     @Test
     void theScalarTokenResolvesTheQualifiedNameLikeTheBareOne()
     {
-        IDataTable p = driven("P");
-        IDataTable j = driven("J");
+        IDataTable p = driven("P", 0);
+        IDataTable j = driven("J", 10);
+        IDataTable pLikeJ = driven("P", 10);
         assertEquals(List.of(2L, 3L), fired("P${N:%d}V > 1.5", p, j),
                 "row 2 reads P2V = 9, row 3 P1V = 3; row 4 names the absent P3V (\"\", Q8); the"
                         + " missing driver names no column (MIS)");
-        assertEquals(fired("P${N:%d}V > 1.5", p, j), fired("J.P${N:%d}V > 1.5", p, j));
-        assertEquals(fired("empty(P${N:%d}V)", p, j), fired("empty(J.P${N:%d}V)", p, j));
-        assertEquals(fired("P${N:%d}V == 1", p, j), fired("J.P${N:%d}V == 1", p, j));
+        assertEquals(List.of(1L, 2L, 3L), fired("P${N:%d}V > 1.5", pLikeJ, j),
+                "J's values: 11, 19, 13 — the join must answer THESE, not P's");
+        assertEquals(fired("P${N:%d}V > 1.5", pLikeJ, j), fired("J.P${N:%d}V > 1.5", p, j));
+        assertEquals(fired("empty(P${N:%d}V)", pLikeJ, j), fired("empty(J.P${N:%d}V)", p, j));
+        assertEquals(fired("P${N:%d}V == 11", pLikeJ, j), fired("J.P${N:%d}V == 11", p, j));
     }
 
 
     @Test
     void theListWildcardResolvesTheQualifiedNameLikeTheBareOne()
     {
-        IDataTable p = driven("P");
-        IDataTable j = driven("J");
+        IDataTable p = driven("P", 0);
+        IDataTable j = driven("J", 10);
+        IDataTable pLikeJ = driven("P", 10);
         assertEquals(List.of(1L, 2L, 3L), fired("S in Q${*}V", p, j),
                 "S is x / y / x on rows 1-3, in {Q1V = x, Q2V = y}; z and q are not");
-        assertEquals(fired("S in Q${*}V", p, j), fired("S in J.Q${*}V", p, j));
-        assertEquals(fired("S not in Q${*}V", p, j), fired("S not in J.Q${*}V", p, j));
+        assertEquals(List.of(2L, 5L), fired("S in Q${*}V", pLikeJ, j),
+                "J's Q1V is q: y and q are in {q, y} — rows 2 and 5");
+        assertEquals(fired("S in Q${*}V", pLikeJ, j), fired("S in J.Q${*}V", p, j));
+        assertEquals(fired("S not in Q${*}V", pLikeJ, j), fired("S not in J.Q${*}V", p, j));
     }
 
 

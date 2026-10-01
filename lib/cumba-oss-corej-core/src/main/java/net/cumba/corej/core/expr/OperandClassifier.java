@@ -19,7 +19,13 @@ public final class OperandClassifier
 {
 
     /** Plain dotted cross-dataset reference {@code DOMAIN.COL} (no wildcard markers). */
-    private static final Pattern DOTTED = Pattern.compile("^[A-Z][A-Z0-9]*\\.[A-Z][A-Z0-9_]*$");
+    // ⚑ QNU T2 r1 (engine 2): the COLUMN half matches in any letter case — the datatable lookup
+    // and OperatorRegistry.DOTTED_DATASET_COLUMN (N3) already do, so var_exists(DM.arm) must be
+    // the dotted reference the run time treats it as, not a COLUMN named DM.arm. The QUALIFIER
+    // half stays upper-case only: a Match_Datasets name's case is owner-pending N2, and widening
+    // it here alone would re-create the inconsistency CIT §1's revision clause forbids.
+    private static final Pattern DOTTED = Pattern
+            .compile("^[A-Z][A-Z0-9]*\\.[A-Za-z][A-Za-z0-9_]*$");
 
     /**
      * The join-match flag {@code <DATASET>._matched_} (spec §3.3, D88). Must be tested before the
