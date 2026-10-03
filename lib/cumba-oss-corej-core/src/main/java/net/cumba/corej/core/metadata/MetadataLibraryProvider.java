@@ -1681,9 +1681,12 @@ public final class MetadataLibraryProvider implements MetadataProvider
         // Step 5 — Substitute `--` in model-derived names so the merge can match by substituted
         // name. Mirrors Python's `replace_variable_wildcards(var_list, original_domain, ...)`
         // call before the IG-override merge.
-        List<ResolvedVariable> idList = substituteAndResolve(identifiers, wildcardDomain);
-        List<ResolvedVariable> classList = substituteAndResolve(classVars, wildcardDomain);
-        List<ResolvedVariable> timingList = substituteAndResolve(timing, wildcardDomain);
+        List<ResolvedVariable> idList = substituteAndResolve(identifiers, wildcardDomain,
+                classNameNorm);
+        List<ResolvedVariable> classList = substituteAndResolve(classVars, wildcardDomain,
+                classNameNorm);
+        List<ResolvedVariable> timingList = substituteAndResolve(timing, wildcardDomain,
+                classNameNorm);
 
         // Step 6 — IG-override merge (Fix #42 Phase 2 step 3). Custom domains skip this step
         // (Python: `if is_custom: variables_metadata = model_variables`); their model-derived
@@ -1933,9 +1936,12 @@ public final class MetadataLibraryProvider implements MetadataProvider
         identifiers = sortSdtmByOrdinal(identifiers);
         timing = sortSdtmByOrdinal(timing);
 
-        List<ResolvedVariable> idList = substituteAndResolve(identifiers, aWildcardDomain);
-        List<ResolvedVariable> classList = substituteAndResolve(classVars, aWildcardDomain);
-        List<ResolvedVariable> timingList = substituteAndResolve(timing, aWildcardDomain);
+        List<ResolvedVariable> idList = substituteAndResolve(identifiers, aWildcardDomain,
+                aClassNameNorm);
+        List<ResolvedVariable> classList = substituteAndResolve(classVars, aWildcardDomain,
+                aClassNameNorm);
+        List<ResolvedVariable> timingList = substituteAndResolve(timing, aWildcardDomain,
+                aClassNameNorm);
         return flattenUniqueByName(idList, classList, timingList);
     }
 
@@ -2003,10 +2009,23 @@ public final class MetadataLibraryProvider implements MetadataProvider
     /**
      * Substitutes {@code --} → {@code aDomain} on each variable's name and packs the variable's
      * attributes ({@link #scalarAttributes}) into a map for downstream filter operations. Skips
-     * entries with null/empty names. The output preserves input order.
+     * entries with null/empty names, and — PLAN-store-library-content-errata D2 — every model
+     * variable whose {@link UsageRestrictions} exclude the walked domain: a class-table root such
+     * as {@code --EVDTYP} ("MH domain only") is part of the MH walk and of no other, so
+     * {@code AEEVDTYP} is no longer model-allowed in an AE dataset; a "Not in AE domain" variable
+     * leaves the AE walk. IG dataset variables carry no restriction and pass unchanged. The output
+     * preserves input order.
+     *
+     * @param aDomain
+     *            the {@code --} substitution prefix, which is also the domain the restriction is
+     *            judged against (for {@code APxx} the stripped parent)
+     * @param aClassNameNorm
+     *            the normalised observation class being walked, for the class-keyed restriction
+     *            ("Not in Findings class domains"); {@code null} when the walk has no class (the
+     *            SUPPQUAL and non-detectable tiers), which disables only that clause
      */
     private static List<ResolvedVariable> substituteAndResolve(List<StoredVariable> aVars,
-            String aDomain)
+            String aDomain, @Nullable String aClassNameNorm)
     {
         List<ResolvedVariable> out = new ArrayList<>(aVars.size());
         for (StoredVariable v : aVars)
@@ -2016,10 +2035,23 @@ public final class MetadataLibraryProvider implements MetadataProvider
             {
                 continue;
             }
+            if (v.usageRestrictions() != null && !UsageRestrictions.parse(v.usageRestrictions())
+                    .allowsDomain(aDomain, aClassNameNorm))
+            {
+                continue;
+            }
             String resolved = name.contains("--") ? name.replace("--", aDomain) : name;
             out.add(new ResolvedVariable(resolved, scalarAttributes(v)));
         }
         return out;
+    }
+
+
+    /** {@link #substituteAndResolve(List, String, String)} for a walk without a class. */
+    private static List<ResolvedVariable> substituteAndResolve(List<StoredVariable> aVars,
+            String aDomain)
+    {
+        return substituteAndResolve(aVars, aDomain, null);
     }
 
 
