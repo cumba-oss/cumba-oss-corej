@@ -101,9 +101,9 @@ class VersionInfoTest
     /**
      * P1c — the discriminating control: a class from ANOTHER jar does not answer with the engine's
      * metadata. {@code ValidationReport} lives in the datatable jar, which carries no
-     * {@code version.properties} internally (the unfiltered copy nothing read was deleted by
-     * PLAN-dead-code-followups F-6, so it reads {@code "unknown"}) and a copy filtered to its own
-     * id in the OSS stack; either way it is not the engine's. A lookup that took "the first
+     * {@code version.properties} (the copies nothing read were deleted, internally by
+     * PLAN-dead-code-followups F-6 and in the OSS stack by PLAN-oss-twin-alignment-sweep D4), so it
+     * reads {@code "unknown"}, not the engine's metadata. A lookup that took "the first
      * {@code version.properties} on the classpath" instead of the class's own location fails here
      * (verified by sabotage, see the plan's status record).
      */
