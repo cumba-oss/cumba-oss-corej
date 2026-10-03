@@ -35,7 +35,7 @@ import org.jspecify.annotations.Nullable;
  *            non-fatal problems: unreadable source entries, malformed ids, empty projections, and —
  *            loud on every surface — each label still ending in a footnote marker. A stale erratum
  *            is deliberately NOT a warning (D4, review F1): it is listed in {@link #errataStale()},
- *            named by {@link #summary()} and spelled out by {@link #details()}
+ *            counted by {@link #summary()} and spelled out by {@link #details()}
  * @param sourceRef
  *            what was seeded from, as far as the source can say (a resolved archive ref, a base
  *            URL, a directory); {@code null} when it cannot
@@ -114,9 +114,10 @@ public record StoreSeedReport(int productsSeeded, int productsCarried, int ctPac
 
 
     /**
-     * A one-line summary suitable for CLI output or a log line. Stale errata are named in it (their
-     * ids), since they are not warnings and a surface that prints only the summary and the warnings
-     * must still show them.
+     * A one-line summary suitable for CLI output or a log line. Its shape is fixed and the source
+     * ref, when known, is always its LAST element. Stale errata appear in it only as their count;
+     * their ids and reasons are spelled out by {@link #details()}, which the surfaces print or log
+     * beside it, so a register with many stale entries cannot bury the provenance in a list.
      *
      * @return the summary
      */
@@ -124,12 +125,12 @@ public record StoreSeedReport(int productsSeeded, int productsCarried, int ctPac
     {
         return ("seeded %d products (%d carried), %d CT packages fetched, %d carried, %d missing,"
                 + " %d errata applied (%d stale, %d unreached, %d not for this source), %d fields"
-                + " normalised -> %s (%d bytes, %d warnings)%s%s").formatted(productsSeeded,
+                + " normalised -> %s (%d bytes, %d warnings)%s").formatted(productsSeeded,
                         productsCarried, ctPackagesFetched, ctPackagesCarried,
                         ctPackagesMissed.size(), errataApplied.size(), errataStale.size(),
                         errataUnreached.size(), errataNotApplicable.size(), normalisations.total(),
                         target, storeBytes, warnings.size(),
-                        sourceRef == null ? "" : " from " + sourceRef, staleIds());
+                        sourceRef == null ? "" : " from " + sourceRef);
     }
 
 
@@ -146,20 +147,5 @@ public record StoreSeedReport(int productsSeeded, int productsCarried, int ctPac
         errataStale.forEach(s -> lines.add("errata entry stale, reported and NOT applied: " + s));
         footnoteLabels.forEach(f -> lines.add("label ends in a footnote marker: " + f));
         return List.copyOf(lines);
-    }
-
-
-    private String staleIds()
-    {
-        if (errataStale.isEmpty())
-        {
-            return "";
-        }
-        List<String> ids = errataStale.stream().map(s ->
-        {
-            int colon = s.indexOf(':');
-            return colon < 0 ? s : s.substring(0, colon);
-        }).toList();
-        return "; stale errata, NOT applied: " + String.join(", ", ids);
     }
 }

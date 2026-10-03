@@ -138,8 +138,13 @@ class SeedRunErrataTest
 
         assertEquals(List.of(), report.warnings(),
                 "F1: a stale entry is no warning, so a user seed does not fail on it");
-        assertTrue(report.summary().contains("stale errata, NOT applied: ")
-                && report.summary().contains(EVLINT_ENTRY), report.summary());
+        assertTrue(report.summary().contains("(" + report.errataStale().size() + " stale,"),
+                "the summary counts the stale entries: " + report.summary());
+        assertFalse(report.summary().contains(EVLINT_ENTRY),
+                "the summary names no stale id - details() does: " + report.summary());
+        String ref = report.sourceRef();
+        assertTrue(report.summary().endsWith(ref == null ? " warnings)" : " from " + ref),
+                "the summary keeps its shape, provenance last: " + report.summary());
         assertTrue(
                 report.details()
                         .contains("errata entry stale, reported and NOT applied: " + stale.get(0)),
