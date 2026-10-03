@@ -661,6 +661,36 @@
    "authority": "the 1.3 print swaps Events and Interventions (p8/p11); SDTM 1.4 prints --TERM"
   },
   {
+   "id": "282.33-AyLO",
+   "issue": "#282.33",
+   "product": "standards/adam/adamig-1-0",
+   "kind": "set-attribute",
+   "where": {
+    "structure": "BDS",
+    "set": "Lab Related Analysis Variables",
+    "variable": "AyLO"
+   },
+   "attribute": "simpleDatatype",
+   "expected": "Char",
+   "corrected": "Num",
+   "authority": "ADaMIG-v1-0.pdf p33 prints Char; ADaMIG 1.1 (p49) and later print Num, and R2AyLO = AVAL / AyLO (R2AyHI = AVAL / AyHI) needs a numeric limit"
+  },
+  {
+   "id": "282.33-AyHI",
+   "issue": "#282.33",
+   "product": "standards/adam/adamig-1-0",
+   "kind": "set-attribute",
+   "where": {
+    "structure": "BDS",
+    "set": "Lab Related Analysis Variables",
+    "variable": "AyHI"
+   },
+   "attribute": "simpleDatatype",
+   "expected": "Char",
+   "corrected": "Num",
+   "authority": "ADaMIG-v1-0.pdf p33 prints Char; ADaMIG 1.1 (p49) and later print Num, and R2AyLO = AVAL / AyLO (R2AyHI = AVAL / AyHI) needs a numeric limit"
+  },
+  {
    "id": "283.1-EGBEATNO",
    "issue": "#283.1",
    "product": "models/sdtm/1-5",
@@ -9042,6 +9072,21 @@
    "expected": "Population Pharmacokinetics Analysis  - Covariates",
    "corrected": "Population Pharmacokinetics Analysis Variables - Covariates",
    "authority": "the printed table heading (ADaM PopPK BDS IG v1.0 Table 3.3)"
+  },
+  {
+   "id": "283.48",
+   "issue": "#283.48",
+   "product": "standards/cdashig/1-1-1",
+   "kind": "set-attribute",
+   "where": {
+    "class": "Findings",
+    "domain": "IE",
+    "field": "IETESTCD"
+   },
+   "attribute": "definition",
+   "expected": "The identifier associated with the criterion that the subject did not meet.  This must be a unique identifier that corresponds to a specific entry criterion[i]",
+   "corrected": "The identifier associated with the criterion that the subject did not meet.  This must be a unique identifier that corresponds to a specific entry criterion",
+   "authority": "CDASH-v1-1.pdf p107, a leaked footnote marker (printed as a superscript)"
   },
   {
    "id": "284.1-adam-occds-1-1-OCCDS-STDY",
