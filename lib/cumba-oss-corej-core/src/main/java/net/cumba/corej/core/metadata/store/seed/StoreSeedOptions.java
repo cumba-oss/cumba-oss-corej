@@ -30,7 +30,9 @@ import org.jspecify.annotations.Nullable;
  *            would derive (its own source line merged with the existing store's). This is for
  *            callers that know the origin better than the seeder does — and it is what lets the
  *            byte-identity conformance test drive both seeders to a fully identical file,
- *            provenance included.
+ *            provenance included. The one line the seed appends regardless is the errata register's
+ *            digest ({@code errata-register}, {@code sha256:<hex>}): it records how the products
+ *            were corrected, which the next re-seed reads (PLAN-store-library-content-errata F3).
  */
 public record StoreSeedOptions(Path target, boolean refresh, String fetchedAt,
         @Nullable List<StoreProvenance> provenanceOverride)

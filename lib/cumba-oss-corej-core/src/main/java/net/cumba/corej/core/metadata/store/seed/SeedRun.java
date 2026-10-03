@@ -40,8 +40,15 @@ import org.jspecify.annotations.Nullable;
  * per-part sha256 already identifies each product's content exactly.</li>
  * <li><b>Errata and normalisation (format 5, PLAN-store-library-content-errata):</b> the products
  * projected from THIS run's source are text-normalised by the projection and then corrected by the
- * {@link StoreErrata errata register} before the merge; stale entries and labels still ending in a
- * footnote marker are reported and warned about ({@link StoreSeedReport}).</li>
+ * {@link StoreErrata errata register} (the entries scoped to this run's source) before the merge.
+ * Stale entries are REPORTED, not applied and not warned about (D4: a production seed reads the
+ * source's default branch, which may be ahead of the register, and must not fail for it — the
+ * pinned real-corpus test is what fails on one); labels still ending in a footnote marker are
+ * reported and warned about ({@link StoreSeedReport}).</li>
+ * <li><b>Register digest:</b> the register's sha256 is recorded as a provenance line
+ * ({@link StoreErrata#PROVENANCE_SOURCE}). A baseline recorded under a different digest — or none —
+ * holds products corrected by another register, so its products are NOT carried (as for an older
+ * format); its CT packages, which the register never touches, still are.</li>
  * <li><b>Rebuild:</b> the writer rebuilds the whole file from the merged model and the target is
  * replaced via temp file + atomic move, so an interrupted seed never leaves a partial store and a
  * concurrent reader keeps its old file.</li>
@@ -78,7 +85,15 @@ final class SeedRun
 
     private final StoreErrata errata = StoreErrata.load();
 
+    private final String errataSource;
+
     private final @Nullable MetadataStore existing;
+
+    /**
+     * Whether the baseline's products were corrected under this build's register (its provenance
+     * records the same digest); when not, none of them is carried.
+     */
+    private final boolean baselineProductsCurrent;
 
     private StoreErrata.@Nullable Outcome errataOutcome;
 
@@ -90,10 +105,23 @@ final class SeedRun
 
     private int productsCarried;
 
-    SeedRun(StoreSeedOptions aOptions) throws IOException
+    /**
+     * Opens a run.
+     *
+     * @param aOptions
+     *            the run configuration
+     * @param aErrataSource
+     *            the seed source the errata register is scoped by
+     *            ({@link StoreErrata#SOURCE_PICKLE} or {@link StoreErrata#SOURCE_WEBAPI})
+     * @throws IOException
+     *             when the target holds a store of a newer format and {@code refresh} is off
+     */
+    SeedRun(StoreSeedOptions aOptions, String aErrataSource) throws IOException
     {
         options = aOptions;
+        errataSource = aErrataSource;
         existing = openBaseline(aOptions);
+        baselineProductsCurrent = existing != null && errataDigestCurrent(existing);
     }
 
 
@@ -186,22 +214,25 @@ final class SeedRun
     /**
      * Applies the errata register (PLAN-store-library-content-errata D1/D4) to the products
      * projected from the source THIS run — never to carried baseline products, which were corrected
-     * when they were seeded — then scans every label for a footnote marker (owner rule 2026-10-03).
-     * A stale entry and a footnote hit are each a warning as well, so every surface prints them and
-     * the CLI's seed exit code reflects them.
+     * under the same register when they were seeded (see {@link #errataDigestCurrent}) — then scans
+     * every label and prompt for a footnote marker (owner rule 2026-10-03). A stale entry is listed
+     * in the report (its summary names it) but is NOT a warning: a seed from a source that is ahead
+     * of the register must not fail on the CLI's exit code. A footnote hit is a warning.
      */
     private Map<String, StoredProduct> applyErrata(Map<String, StoredProduct> aFromSource)
     {
-        StoreErrata.Outcome outcome = errata.apply(aFromSource, projection.normalisedSites());
+        StoreErrata.Outcome outcome = errata.apply(aFromSource, projection.normalisedSites(),
+                errataSource);
         errataOutcome = outcome;
         for (String stale : outcome.stale())
         {
-            warn("errata entry stale, NOT applied: " + stale);
+            LOGGER.log(System.Logger.Level.INFO,
+                    "errata entry stale, reported and NOT applied: {0}", stale);
         }
         footnoteLabels = LabelFootnoteScan.scan(outcome.products());
         for (String hit : footnoteLabels)
         {
-            warn("label ends in a footnote marker (owner rule 2026-10-03): " + hit);
+            warn("label or prompt ends in a footnote marker (owner rule 2026-10-03): " + hit);
         }
         return outcome.products();
     }
@@ -220,6 +251,22 @@ final class SeedRun
         Map<String, StoredProduct> merged = new TreeMap<>(applyErrata(aFromSource));
         if (existing == null)
         {
+            return merged;
+        }
+        if (!baselineProductsCurrent)
+        {
+            List<String> dropped = storedProductKeys(existing).stream()
+                    .filter(key -> !merged.containsKey(key)).toList();
+            if (!dropped.isEmpty())
+            {
+                // F3 (review): those products were corrected under another register, and the
+                // carried copy cannot be re-corrected (an entry already applied reads as stale).
+                // Like an older-format baseline: a notice, not a warning.
+                LOGGER.log(System.Logger.Level.INFO,
+                        "{0}: the existing store was corrected under another errata register -"
+                                + " not carrying the products this source does not offer: {1}",
+                        options.target(), dropped);
+            }
             return merged;
         }
         for (String key : storedProductKeys(existing))
@@ -276,7 +323,10 @@ final class SeedRun
     /**
      * The manifest provenance: the options' override verbatim when set; otherwise the baseline's
      * lines with the line for this seeder's source replaced (or appended), so provenance stays one
-     * line per source rather than growing per run.
+     * line per source rather than growing per run. Either way the register digest line
+     * ({@link StoreErrata#PROVENANCE_SOURCE}, ref {@code sha256:<hex>}) is replaced by this build's
+     * and comes last — it describes how the products were corrected, not where they came from, so
+     * an override cannot drop it.
      *
      * @param aOwn
      *            this run's provenance line
@@ -284,11 +334,25 @@ final class SeedRun
      */
     List<StoreProvenance> provenance(StoreProvenance aOwn)
     {
+        List<StoreProvenance> merged = new ArrayList<>();
         List<StoreProvenance> override = options.provenanceOverride();
         if (override != null)
         {
-            return override;
+            merged.addAll(override);
         }
+        else
+        {
+            merged.addAll(sourceProvenance(aOwn));
+        }
+        merged.removeIf(line -> StoreErrata.PROVENANCE_SOURCE.equals(line.source()));
+        merged.add(new StoreProvenance(StoreErrata.PROVENANCE_SOURCE,
+                StoreErrata.DIGEST_PREFIX + errata.digest(), ""));
+        return merged;
+    }
+
+
+    private List<StoreProvenance> sourceProvenance(StoreProvenance aOwn)
+    {
         List<StoreProvenance> merged = new ArrayList<>();
         boolean replaced = false;
         if (existing != null)
@@ -379,7 +443,8 @@ final class SeedRun
                 warnings, aSourceRef, options.target(), aStoreBytes, normalisations,
                 outcome == null ? List.of() : outcome.applied(),
                 outcome == null ? List.of() : outcome.stale(),
-                outcome == null ? List.of() : outcome.unreached(), footnoteLabels);
+                outcome == null ? List.of() : outcome.unreached(),
+                outcome == null ? List.of() : outcome.notApplicable(), footnoteLabels);
     }
 
 
@@ -433,6 +498,27 @@ final class SeedRun
                     + ") - re-acquiring everything from the source");
             return null;
         }
+    }
+
+
+    /**
+     * Whether the baseline's provenance records this build's register digest. A store seeded before
+     * the digest was recorded, or under another register, answers {@code false}.
+     */
+    private boolean errataDigestCurrent(MetadataStore aStore)
+    {
+        String current = StoreErrata.DIGEST_PREFIX + errata.digest();
+        boolean same = aStore.manifest().provenance().stream()
+                .anyMatch(line -> StoreErrata.PROVENANCE_SOURCE.equals(line.source())
+                        && current.equals(line.ref()));
+        if (!same)
+        {
+            LOGGER.log(System.Logger.Level.INFO,
+                    "{0}: existing store was not corrected under this build''s errata register"
+                            + " ({1}): its products are re-acquired, never carried",
+                    options.target(), current);
+        }
+        return same;
     }
 
 

@@ -4,7 +4,7 @@
   "#283": "CDISC-METADATA-ISSUES #283 (store differs from the printed document of the same version; owner 2026-10-03)",
   "#284": "CDISC-METADATA-ISSUES #284 (print defects with an unambiguous correction; owner rule 2026-10-03: no label references a printed footnote)"
  },
- "$comment": "Store errata register (PLAN-store-library-content-errata D1). Generated 2026-10-03 from the pickle corpus and the printed-document census; every entry cites its CDISC-METADATA-ISSUES row. Applied by SeedRun after projection and normalisation; an entry whose expected value no longer matches is reported stale and NOT applied (D4).",
+ "$comment": "Store errata register (PLAN-store-library-content-errata D1). Generated 2026-10-03 from the pickle corpus and the printed-document census; every entry cites its CDISC-METADATA-ISSUES row. Applied by SeedRun after projection and normalisation; an entry whose expected value no longer matches is reported stale and NOT applied (D4). An entry with \"sources\" applies only to the named seed sources (\"pickle\", \"webapi\"; absent = every source): the rows CDISC-METADATA-ISSUES flags \"(seed?)\" (#283.35, .36, .38, .40, .41, .43, .44, .47 and the literal-backslash-n #282.14) are pickle-only, so a Web API seed reports them as not applicable instead of correcting a value the API may serve right. A change to this file changes its sha256, which the store records in its provenance; see StoreErrataDigestPinTest.",
  "entries": [
   {
    "id": "282.1",
@@ -324,6 +324,9 @@
    "issue": "#282.14",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--STAT"
@@ -5907,6 +5910,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "variable": "--METHOD"
@@ -5921,6 +5927,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--SINTV"
@@ -5935,6 +5944,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--UNANT"
@@ -5949,6 +5961,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--RLPRT"
@@ -5963,6 +5978,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--RLPRC"
@@ -5977,6 +5995,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--TSTCND"
@@ -5991,6 +6012,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--BDAGNT"
@@ -6005,6 +6029,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--GATDEF"
@@ -6019,6 +6046,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--COLSRT"
@@ -6033,6 +6063,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--RESLOC"
@@ -6047,6 +6080,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--ANTREG"
@@ -6061,6 +6097,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--TOX"
@@ -6075,6 +6114,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--TOXGR"
@@ -6089,6 +6131,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Associated Persons",
     "variable": "RSUBJID"
@@ -6103,6 +6148,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Associated Persons",
     "variable": "SREL"
@@ -6117,6 +6165,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "DM",
     "variable": "RFCSTDTC"
@@ -6131,6 +6182,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "DM",
     "variable": "RFCENDTC"
@@ -6145,6 +6199,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "SE",
     "variable": "SEENDY"
@@ -6159,6 +6216,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "TD",
     "variable": "TDANCVAR"
@@ -6173,6 +6233,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "SUPPQUAL",
     "variable": "QNAM"
@@ -6187,6 +6250,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "APRELSUB",
     "variable": "RSUBJID"
@@ -6201,6 +6267,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "APRELSUB",
     "variable": "SREL"
@@ -6215,6 +6284,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--RLDEV"
@@ -6229,6 +6301,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--SCAN"
@@ -6243,6 +6318,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--SOD"
@@ -6257,6 +6335,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--SINTV"
@@ -6271,6 +6352,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--UNANT"
@@ -6285,6 +6369,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--RLPRT"
@@ -6299,6 +6386,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--RLPRC"
@@ -6313,6 +6403,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--TSTCND"
@@ -6327,6 +6420,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--BDAGNT"
@@ -6341,6 +6437,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--GATDEF"
@@ -6355,6 +6454,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--COLSRT"
@@ -6369,6 +6471,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--RESLOC"
@@ -6383,6 +6488,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--ANTREG"
@@ -6397,6 +6505,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--TOX"
@@ -6411,6 +6522,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--TOXGR"
@@ -6425,6 +6539,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Associated Persons",
     "variable": "RSUBJID"
@@ -6439,6 +6556,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Associated Persons",
     "variable": "SREL"
@@ -6453,6 +6573,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "DM",
     "variable": "RFCSTDTC"
@@ -6467,6 +6590,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "DM",
     "variable": "RFCENDTC"
@@ -6481,6 +6607,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "TD",
     "variable": "TDANCVAR"
@@ -6495,6 +6624,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "SUPPQUAL",
     "variable": "QNAM"
@@ -6509,6 +6641,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "APRELSUB",
     "variable": "RSUBJID"
@@ -6523,6 +6658,9 @@
    "issue": "#283.35",
    "product": "models/sdtm/2-1",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "APRELSUB",
     "variable": "SREL"
@@ -6537,6 +6675,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "variable": "--DOSTXT"
@@ -6551,6 +6692,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "variable": "--LOC"
@@ -6565,6 +6709,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "variable": "--METHOD"
@@ -6579,6 +6726,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "variable": "--TRTV"
@@ -6593,6 +6743,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--BODSYS"
@@ -6607,6 +6760,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--LOC"
@@ -6621,6 +6777,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--RELNST"
@@ -6635,6 +6794,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--TSTDTL"
@@ -6649,6 +6811,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--SCAT"
@@ -6663,6 +6828,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--STRESU"
@@ -6677,6 +6845,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--STNRC"
@@ -6691,6 +6862,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--RESCAT"
@@ -6705,6 +6879,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--SPCCND"
@@ -6719,6 +6896,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "CO",
     "variable": "COEVAL"
@@ -6733,6 +6913,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "SM",
     "variable": "MIDS"
@@ -6747,6 +6930,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "TA",
     "variable": "TABRANCH"
@@ -6761,6 +6947,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "TA",
     "variable": "TATRANS"
@@ -6775,6 +6964,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "TX",
     "variable": "TXVAL"
@@ -6789,6 +6981,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "TM",
     "variable": "MIDSTYPE"
@@ -6803,6 +6998,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "TS",
     "variable": "TSVAL"
@@ -6813,10 +7011,64 @@
    "authority": "the first quoted token lost its quotes; SDTM 2.0 p59 prints \"ASTHMA\""
   },
   {
+   "id": "283.36-2-0-GeneralObservations-NHOID",
+   "issue": "#283.36",
+   "product": "models/sdtm/2-0",
+   "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
+   "where": {
+    "class": "General Observations",
+    "variable": "NHOID"
+   },
+   "attribute": "examples",
+   "expected": "A/California/7/2009 (H1N1)",
+   "corrected": "\"A/California/7/2009 (H1N1)\"",
+   "authority": "the first quoted token lost its quotes; SDTM 2.0 p33 prints \"A/California/7/2009 (H1N1)\""
+  },
+  {
+   "id": "283.36-2-0-GeneralObservations---EVLINT",
+   "issue": "#283.36",
+   "product": "models/sdtm/2-0",
+   "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
+   "where": {
+    "class": "General Observations",
+    "variable": "--EVLINT"
+   },
+   "attribute": "examples",
+   "expected": "-P2M to represent a period of the past 2 months as the evaluation interval for a question from a questionnaire.",
+   "corrected": "\"-P2M\" to represent a period of the past 2 months as the evaluation interval for a question from a questionnaire.",
+   "authority": "the first quoted token lost its quotes; SDTM 2.0 p38 prints \"-P2M\""
+  },
+  {
+   "id": "283.36-2-0-SM-MIDSTYPE",
+   "issue": "#283.36",
+   "product": "models/sdtm/2-0",
+   "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
+   "where": {
+    "dataset": "SM",
+    "variable": "MIDSTYPE"
+   },
+   "attribute": "examples",
+   "expected": "HYPOGLYCEMIC EVENT",
+   "corrected": "\"HYPOGLYCEMIC EVENT\"",
+   "authority": "the first quoted token lost its quotes; SDTM 2.0 p49 prints \"HYPOGLYCEMIC EVENT\""
+  },
+  {
    "id": "283.36-2-1-Interventions---DOSTXT",
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "variable": "--DOSTXT"
@@ -6831,6 +7083,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "variable": "--LOC"
@@ -6845,6 +7100,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "variable": "--METHOD"
@@ -6859,6 +7117,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "variable": "--TRTV"
@@ -6873,6 +7134,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--BODSYS"
@@ -6887,6 +7151,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--LOC"
@@ -6901,6 +7168,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "variable": "--RELNST"
@@ -6915,6 +7185,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--TSTDTL"
@@ -6929,6 +7202,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--SCAT"
@@ -6943,6 +7219,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--CELLEV"
@@ -6957,6 +7236,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--STRESU"
@@ -6971,6 +7253,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--STNRC"
@@ -6985,6 +7270,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--RESCAT"
@@ -6999,6 +7287,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "variable": "--SPCCND"
@@ -7013,6 +7304,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "CO",
     "variable": "COEVAL"
@@ -7027,6 +7321,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "SM",
     "variable": "MIDS"
@@ -7041,6 +7338,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "TA",
     "variable": "TABRANCH"
@@ -7055,6 +7355,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "TA",
     "variable": "TATRANS"
@@ -7069,6 +7372,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "TX",
     "variable": "TXVAL"
@@ -7083,6 +7389,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "TM",
     "variable": "MIDSTYPE"
@@ -7097,6 +7406,9 @@
    "issue": "#283.36",
    "product": "models/sdtm/2-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "TS",
     "variable": "TSVAL"
@@ -7105,6 +7417,57 @@
    "expected": "ASTHMA when TSPARM value is \"Trial Indications\"",
    "corrected": "\"ASTHMA\" when TSPARM value is \"Trial Indications\"",
    "authority": "the first quoted token lost its quotes; SDTM 2.1 p68 prints \"ASTHMA\""
+  },
+  {
+   "id": "283.36-2-1-GeneralObservations-NHOID",
+   "issue": "#283.36",
+   "product": "models/sdtm/2-1",
+   "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
+   "where": {
+    "class": "General Observations",
+    "variable": "NHOID"
+   },
+   "attribute": "examples",
+   "expected": "A/California/7/2009 (H1N1)",
+   "corrected": "\"A/California/7/2009 (H1N1)\"",
+   "authority": "the first quoted token lost its quotes; SDTM 2.1 p37 prints \"A/California/7/2009 (H1N1)\""
+  },
+  {
+   "id": "283.36-2-1-GeneralObservations---EVLINT",
+   "issue": "#283.36",
+   "product": "models/sdtm/2-1",
+   "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
+   "where": {
+    "class": "General Observations",
+    "variable": "--EVLINT"
+   },
+   "attribute": "examples",
+   "expected": "-P2M to represent a period of the past 2 months as the evaluation interval for a question from a questionnaire.",
+   "corrected": "\"-P2M\" to represent a period of the past 2 months as the evaluation interval for a question from a questionnaire.",
+   "authority": "the first quoted token lost its quotes; SDTM 2.1 p44 prints \"-P2M\""
+  },
+  {
+   "id": "283.36-2-1-SM-MIDSTYPE",
+   "issue": "#283.36",
+   "product": "models/sdtm/2-1",
+   "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
+   "where": {
+    "dataset": "SM",
+    "variable": "MIDSTYPE"
+   },
+   "attribute": "examples",
+   "expected": "HYPOGLYCEMIC EVENT",
+   "corrected": "\"HYPOGLYCEMIC EVENT\"",
+   "authority": "the first quoted token lost its quotes; SDTM 2.1 p57 prints \"HYPOGLYCEMIC EVENT\""
   },
   {
    "id": "283.37",
@@ -7125,6 +7488,9 @@
    "issue": "#283.38",
    "product": "standards/sendig/genetox-1-0",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "dataset": "GV",
     "variable": "GVTPT"
@@ -7214,6 +7580,9 @@
    "issue": "#283.40",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "CV",
@@ -7229,6 +7598,9 @@
    "issue": "#283.40",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "MK",
@@ -7244,6 +7616,9 @@
    "issue": "#283.40",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "MK",
@@ -7259,6 +7634,9 @@
    "issue": "#283.40",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "NV",
@@ -7274,6 +7652,9 @@
    "issue": "#283.40",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "NV",
@@ -7289,6 +7670,9 @@
    "issue": "#283.40",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "RE",
@@ -7304,6 +7688,9 @@
    "issue": "#283.40",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "RE",
@@ -7319,6 +7706,9 @@
    "issue": "#283.40",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "UR",
@@ -7334,6 +7724,9 @@
    "issue": "#283.40",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "UR",
@@ -7349,6 +7742,9 @@
    "issue": "#283.40",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "scenario": "Central Reading",
@@ -7364,6 +7760,9 @@
    "issue": "#283.40",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "scenario": "Local Reading",
@@ -7379,6 +7778,9 @@
    "issue": "#283.40",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "scenario": "Central Reading with Investigator Assessment",
@@ -7394,6 +7796,9 @@
    "issue": "#283.40",
    "product": "standards/tig/1-0/cdash",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "RE",
@@ -7409,6 +7814,9 @@
    "issue": "#283.40",
    "product": "standards/tig/1-0/cdash",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "RE",
@@ -7424,6 +7832,9 @@
    "issue": "#283.40",
    "product": "standards/tig/1-0/cdash",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "scenario": "Central Reading",
@@ -7439,6 +7850,9 @@
    "issue": "#283.40",
    "product": "standards/tig/1-0/cdash",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "scenario": "Central Reading with Investigator Assessment",
@@ -7454,6 +7868,9 @@
    "issue": "#283.40",
    "product": "standards/tig/1-0/cdash",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "scenario": "Local Reading",
@@ -7469,6 +7886,9 @@
    "issue": "#283.41",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "scenario": "Local Processing",
@@ -7484,6 +7904,9 @@
    "issue": "#283.41",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "scenario": "Local Processing",
@@ -7499,6 +7922,9 @@
    "issue": "#283.41",
    "product": "standards/cdashig/2-2",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "ML",
@@ -7514,6 +7940,9 @@
    "issue": "#283.41",
    "product": "standards/cdashig/2-2",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "ML",
@@ -7529,6 +7958,9 @@
    "issue": "#283.41",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "ML",
@@ -7544,6 +7976,9 @@
    "issue": "#283.41",
    "product": "standards/cdashig/2-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "ML",
@@ -7559,6 +7994,9 @@
    "issue": "#283.41",
    "product": "models/cdash/1-2",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Timing",
     "field": "--STSS"
@@ -7573,6 +8011,9 @@
    "issue": "#283.41",
    "product": "models/cdash/1-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Timing",
     "field": "--STSS"
@@ -7587,6 +8028,9 @@
    "issue": "#283.41",
    "product": "models/cdash/1-3",
    "kind": "normalised",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "field": "--TSTCND"
@@ -7629,6 +8073,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--STAT"
@@ -7643,6 +8090,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--CSTAT"
@@ -7657,6 +8107,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--FLRT"
@@ -7671,6 +8124,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--FLRTU"
@@ -7685,6 +8141,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--ITRPYN"
@@ -7699,6 +8158,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--REASOC"
@@ -7713,6 +8175,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--ITRPRS"
@@ -7727,6 +8192,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--ITRPD"
@@ -7741,6 +8209,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--ITRPDU"
@@ -7755,6 +8226,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--TRTCMP"
@@ -7769,6 +8243,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--NCF"
@@ -7783,6 +8260,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--ATC1"
@@ -7797,6 +8277,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--ATC1CD"
@@ -7811,6 +8294,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--ATC2"
@@ -7825,6 +8311,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--ATC2CD"
@@ -7839,6 +8328,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--ATC3"
@@ -7853,6 +8345,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--ATC3CD"
@@ -7867,6 +8362,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--ATC4"
@@ -7881,6 +8379,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--ATC4CD"
@@ -7895,6 +8396,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--ATC5"
@@ -7909,6 +8413,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--ATC5CD"
@@ -7923,6 +8430,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--INGRD"
@@ -7937,6 +8447,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--LLT"
@@ -7951,6 +8464,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--LLTCD"
@@ -7965,6 +8481,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--PTCD"
@@ -7979,6 +8498,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--HLT"
@@ -7993,6 +8515,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--HLTCD"
@@ -8007,6 +8532,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--HLGT"
@@ -8021,6 +8549,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--HLGTCD"
@@ -8035,6 +8566,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--SOC"
@@ -8049,6 +8583,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "field": "--SOCCD"
@@ -8063,6 +8600,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "field": "--PERF"
@@ -8077,6 +8617,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "field": "--DESC"
@@ -8091,6 +8634,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "field": "--RES"
@@ -8105,6 +8651,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "field": "--STAT"
@@ -8119,6 +8668,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "field": "--CSPUFL"
@@ -8133,6 +8685,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "field": "--COND"
@@ -8147,6 +8702,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "field": "--CLSIG"
@@ -8161,6 +8719,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "field": "--REPNUM"
@@ -8175,6 +8736,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "domain": "DM",
     "field": "CRACE"
@@ -8189,6 +8753,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "domain": "DM",
     "field": "CETHNIC"
@@ -8203,6 +8770,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "domain": "DM",
     "field": "CAGETXT"
@@ -8217,6 +8787,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "domain": "AE",
     "field": "AESI"
@@ -8231,6 +8804,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "domain": "DS",
     "field": "DSCONT"
@@ -8245,6 +8821,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "domain": "DS",
     "field": "DSNEXT"
@@ -8259,6 +8838,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "domain": "DS",
     "field": "DSUNBLND"
@@ -8273,6 +8855,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "domain": "DS",
     "field": "DSUNBLND"
@@ -8287,6 +8872,9 @@
    "issue": "#283.43",
    "product": "models/cdash/1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "domain": "MH",
     "field": "MHEVDTYP"
@@ -8301,6 +8889,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "AE",
@@ -8316,6 +8907,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "AE",
@@ -8331,6 +8925,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "AE",
@@ -8346,6 +8943,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "AE",
@@ -8361,6 +8961,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "AE",
@@ -8376,6 +8979,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "AE",
@@ -8391,6 +8997,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "AE",
@@ -8406,6 +9015,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "AE",
@@ -8421,6 +9033,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "AE",
@@ -8436,6 +9051,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "AE",
@@ -8451,6 +9069,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "AE",
@@ -8466,6 +9087,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "CM",
@@ -8481,6 +9105,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "CM",
@@ -8496,6 +9123,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "CM",
@@ -8511,6 +9141,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "CM",
@@ -8526,6 +9159,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Special-Purpose",
     "domain": "DM",
@@ -8541,6 +9177,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Special-Purpose",
     "domain": "DM",
@@ -8556,6 +9195,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Special-Purpose",
     "domain": "DM",
@@ -8571,6 +9213,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Special-Purpose",
     "domain": "DM",
@@ -8586,6 +9231,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Special-Purpose",
     "domain": "DM",
@@ -8601,6 +9249,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "DS",
@@ -8616,6 +9267,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "DS",
@@ -8631,6 +9285,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "EX",
@@ -8646,6 +9303,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "EX",
@@ -8661,6 +9321,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "EX",
@@ -8676,6 +9339,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "EX",
@@ -8691,6 +9357,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "EX",
@@ -8706,6 +9375,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "EX",
@@ -8721,6 +9393,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "EX",
@@ -8736,6 +9411,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "EX",
@@ -8751,6 +9429,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "EX",
@@ -8766,6 +9447,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "EX",
@@ -8781,6 +9465,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "EX",
@@ -8796,6 +9483,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "IE",
@@ -8811,6 +9501,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "IE",
@@ -8826,6 +9519,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "MH",
@@ -8841,6 +9537,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "MH",
@@ -8856,6 +9555,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "DV",
@@ -8871,6 +9573,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Events",
     "domain": "DV",
@@ -8886,6 +9591,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "SU",
@@ -8901,6 +9609,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "SU",
@@ -8916,6 +9627,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "SU",
@@ -8931,6 +9645,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "SU",
@@ -8946,6 +9663,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Interventions",
     "domain": "SU",
@@ -8961,6 +9681,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "VS",
@@ -8976,6 +9699,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "VS",
@@ -8991,6 +9717,9 @@
    "issue": "#283.44",
    "product": "standards/cdashig/1-1-1",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "class": "Findings",
     "domain": "VS",
@@ -9036,6 +9765,9 @@
    "issue": "#283.47",
    "product": "standards/adam/adam-tte-1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "structure": "BDS for TTE",
     "set": "Time-to-Event Variables "
@@ -9050,6 +9782,9 @@
    "issue": "#283.47",
    "product": "standards/adam/adam-nca-1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "structure": "ADNCA",
     "set": "Standard   with Stronger Core for Non-Compartmental Analysis"
@@ -9064,6 +9799,9 @@
    "issue": "#283.47",
    "product": "standards/adam/adam-poppk-1-0",
    "kind": "set-attribute",
+   "sources": [
+    "pickle"
+   ],
    "where": {
     "structure": "ADPPK",
     "set": "Population Pharmacokinetics Analysis  - Covariates"

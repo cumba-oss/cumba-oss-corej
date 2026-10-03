@@ -172,8 +172,9 @@ class StoreSeederConformanceTest
                     .map(StoreProvenance::source).toList();
             assertEquals(
                     List.of(PickleStoreSeeder.PROVENANCE_SOURCE,
-                            WebApiStoreSeeder.PROVENANCE_SOURCE),
-                    sources, "both sources appear in provenance, once each");
+                            WebApiStoreSeeder.PROVENANCE_SOURCE, StoreErrata.PROVENANCE_SOURCE),
+                    sources,
+                    "both sources appear in provenance, once each, and the register digest last");
             assertTrue(store.product(SeedFixtures.IG_KEY).isPresent());
         }
     }

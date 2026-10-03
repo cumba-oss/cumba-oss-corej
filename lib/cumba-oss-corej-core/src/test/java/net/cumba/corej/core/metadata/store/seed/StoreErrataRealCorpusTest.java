@@ -109,7 +109,11 @@ class StoreErrataRealCorpusTest
         assertEquals(List.of(), r.errataStale(),
                 "D4: a stale entry is reported, not applied, and must be RETIRED from the register");
         assertEquals(List.of(), r.errataUnreached(),
-                "the register names a product, container or variable this source does not hold");
+                "the register names a product this source does not hold");
+        assertEquals(List.of(), r.errataNotApplicable(),
+                "every entry applies to a pickle seed (none is scoped to the Web API only)");
+        assertEquals(List.of(), r.details(), "a conforming seed has no detail lines");
+        assertFalse(r.summary().contains("stale errata"), r.summary());
         List<StoreErrata.Entry> entries = StoreErrata.load().entries();
         assertEquals(entries.size(), r.errataApplied().size());
         assertEquals(entries.stream().map(StoreErrata.Entry::id).toList(), r.errataApplied(),
@@ -190,6 +194,18 @@ class StoreErrataRealCorpusTest
                 variable(classOf("models/sdtm/2-0", "Events").classVariables(), "--STAT")
                         .usageRestrictions(),
                 "282.14 normalised");
+        for (String version : List.of("2-0", "2-1"))
+        {
+            String key = "models/sdtm/" + version;
+            assertEquals("\"A/California/7/2009 (H1N1)\"",
+                    variable(classOf(key, "General Observations").classVariables(), "NHOID")
+                            .examples(),
+                    "283.36 re-derived: a site the first register missed (" + key + ")");
+            assertTrue(variable(classOf(key, "General Observations").classVariables(), "--EVLINT")
+                    .examples().startsWith("\"-P2M\" to represent"), key);
+            assertEquals("\"HYPOGLYCEMIC EVENT\"",
+                    variable(dataset(key, "SM").variables(), "MIDSTYPE").examples(), key);
+        }
     }
 
 

@@ -116,4 +116,31 @@ class StoreTextNormaliserTest
         assertNull(n.value());
         assertEquals(Set.of(), n.kinds());
     }
+
+
+    /**
+     * Review F7: an entity that names no valid character — a numeric value past
+     * {@code Integer.MAX_VALUE}, past {@code U+10FFFF}, in the surrogate range — or a name outside
+     * the decoded list stays verbatim; normalising source text never throws.
+     */
+    @Test
+    void anEntityThatDoesNotDecodeIsLeftVerbatim()
+    {
+        for (String verbatim : new String[]
+        {
+                "overflow &#99999999999; here", "hex overflow &#xFFFFFFFFFF; here",
+                "past the last code point &#1114112; and &#x110000;", "a surrogate &#xD800;",
+                "an unknown name &hellip; &foo;"
+        })
+        {
+            StoreTextNormaliser.Result r = StoreTextNormaliser.normalise("definition", verbatim);
+            assertEquals(verbatim, r.value());
+            assertEquals(Set.of(), r.kinds(), "nothing changed, nothing counted");
+        }
+        StoreTextNormaliser.Result mixed = StoreTextNormaliser.normalise("definition",
+                "&#99999999999; &quot;Not Done&quot; &#x1F600; &#1114111;");
+        assertEquals("&#99999999999; \"Not Done\" \uD83D\uDE00 \uDBFF\uDFFF", mixed.value(),
+                "the valid entities around a bad one still decode, the last code point included");
+        assertEquals(Set.of(StoreTextNormaliser.Kind.HTML_ENTITY), mixed.kinds());
+    }
 }

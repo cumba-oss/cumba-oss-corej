@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
+import net.cumba.corej.core.metadata.UsageRestrictions;
 import net.cumba.corej.define.conformance.library.LibraryProvider;
 import org.jspecify.annotations.Nullable;
 
@@ -38,6 +39,12 @@ public final class StoreLibraryProvider implements LibraryProvider
     private static final String MODELS = "models/";
 
     private static final String MDR = "/mdr/";
+
+    /** The domain an Event/Intervention qualifier fragment is borrowed into (FATESTCD). */
+    private static final String FA_DOMAIN = "FA";
+
+    /** The normalised observation class the model walk passes for the FA domain. */
+    private static final String FA_CLASS = "FINDINGS ABOUT";
 
     private final MetadataStore store;
 
@@ -127,13 +134,29 @@ public final class StoreLibraryProvider implements LibraryProvider
             }
             for (StoredVariable variable : clazz.classVariables())
             {
-                if (wanted.equals(variable.name()) && variable.label() != null)
+                if (wanted.equals(variable.name()) && variable.label() != null
+                        && usableInFindingsAbout(variable))
                 {
                     return Optional.of(variable.label());
                 }
             }
         }
         return Optional.empty();
+    }
+
+
+    /**
+     * Whether a qualifier root answers for an FA test code (review F8): the fragment is a FATESTCD
+     * value, so the variable is judged as the model walk judges it for the FA domain, class
+     * {@code FINDINGS ABOUT} ({@link UsageRestrictions#allowsDomain}). A root restricted to another
+     * domain ({@code --METHOD} "EX domain only" in the SDTM 1.5–1.8 models after the errata,
+     * {@code --EVDTYP} "MH domain only") is not a qualifier FA can borrow; a root without a
+     * restriction, or with a study-type one, still is.
+     */
+    private static boolean usableInFindingsAbout(StoredVariable aVariable)
+    {
+        return aVariable.usageRestrictions() == null || UsageRestrictions
+                .parse(aVariable.usageRestrictions()).allowsDomain(FA_DOMAIN, FA_CLASS);
     }
 
 

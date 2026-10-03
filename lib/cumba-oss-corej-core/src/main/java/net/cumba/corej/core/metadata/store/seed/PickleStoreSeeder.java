@@ -82,7 +82,7 @@ public final class PickleStoreSeeder
      */
     public StoreSeedReport seed(StoreSeedOptions aOptions) throws IOException
     {
-        SeedRun run = new SeedRun(aOptions);
+        SeedRun run = new SeedRun(aOptions, StoreErrata.SOURCE_PICKLE);
         try
         {
             Path dir = source.resolve();

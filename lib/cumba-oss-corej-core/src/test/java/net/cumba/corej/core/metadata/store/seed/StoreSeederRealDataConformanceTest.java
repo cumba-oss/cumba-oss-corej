@@ -147,8 +147,12 @@ class StoreSeederRealDataConformanceTest
                 StandardCopyOption.REPLACE_EXISTING);
 
         Path fromWebApi = temp.resolve("from-web-api.zip");
-        StoreSeedReport webReport = new WebApiStoreSeeder(SeedFixtures.offlineAccess(webCache))
-                .seed(StoreSeedOptions.of(fromWebApi).withProvenanceOverride(FIXED_PROVENANCE));
+        // The web cache is GENERATED from the pickles, so it carries the pickle's encoding
+        // artefacts: the pickle-scoped errata entries (review F2) apply to it as to the pickles,
+        // which is what keeps this a comparison of the two projections.
+        StoreSeedReport webReport = new WebApiStoreSeeder(SeedFixtures.offlineAccess(webCache),
+                StoreErrata.SOURCE_PICKLE).seed(
+                        StoreSeedOptions.of(fromWebApi).withProvenanceOverride(FIXED_PROVENANCE));
 
         assertEquals(-1, Files.mismatch(fromPickles, fromWebApi),
                 "the two seeders diverged on the real corpus; pickle report: "

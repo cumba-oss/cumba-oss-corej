@@ -121,7 +121,13 @@ final class StoreTextNormaliser
     }
 
 
-    private static String decodeEntities(String aText)
+    /**
+     * Decodes the entities {@link #ENTITY} matches. An entity that does not decode to a valid
+     * character — a numeric value past {@code Integer.MAX_VALUE}, past {@code U+10FFFF} or in the
+     * surrogate range — is left verbatim: the normaliser never throws on source text (review F7).
+     * Names outside {@link #ENTITY}'s list are never matched, so they stay verbatim too.
+     */
+    static String decodeEntities(String aText)
     {
         Matcher m = ENTITY.matcher(aText);
         StringBuilder sb = new StringBuilder(aText.length());
@@ -136,13 +142,33 @@ final class StoreTextNormaliser
             case "gt" -> ">";
             case "apos" -> "'";
             case "nbsp" -> " ";
-            default -> entity.startsWith("#x")
-                    ? Character.toString(Integer.parseInt(entity.substring(2), 16))
-                    : Character.toString(Integer.parseInt(entity.substring(1)));
+            default -> numeric(entity, m.group());
             };
             m.appendReplacement(sb, Matcher.quoteReplacement(replacement));
         }
         m.appendTail(sb);
         return sb.toString();
+    }
+
+
+    /** A numeric entity's character, or {@code aVerbatim} when it names no valid character. */
+    private static String numeric(String aEntity, String aVerbatim)
+    {
+        boolean hex = aEntity.startsWith("#x");
+        int codePoint;
+        try
+        {
+            codePoint = Integer.parseInt(aEntity.substring(hex ? 2 : 1), hex ? 16 : 10);
+        }
+        catch (NumberFormatException _)
+        {
+            return aVerbatim;
+        }
+        if (!Character.isValidCodePoint(codePoint)
+                || (codePoint >= Character.MIN_SURROGATE && codePoint <= Character.MAX_SURROGATE))
+        {
+            return aVerbatim;
+        }
+        return Character.toString(codePoint);
     }
 }

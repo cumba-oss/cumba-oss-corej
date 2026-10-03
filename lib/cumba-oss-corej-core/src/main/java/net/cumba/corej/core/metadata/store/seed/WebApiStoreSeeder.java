@@ -77,6 +77,9 @@ public final class WebApiStoreSeeder
 
     private final CdiscLibraryClient client;
 
+    /** The seed source the errata register is scoped by; see {@link StoreErrata}. */
+    private final String errataSource;
+
     /**
      * Creates a seeder over the given library access.
      *
@@ -90,6 +93,24 @@ public final class WebApiStoreSeeder
      */
     public WebApiStoreSeeder(CoreLibraryAccess aAccess)
     {
+        this(aAccess, StoreErrata.SOURCE_WEBAPI);
+    }
+
+
+    /**
+     * A seeder whose errata scoping names another source. Only for a web-api cache GENERATED from
+     * the pickles (the real-data byte-identity conformance test): such a cache carries the pickle's
+     * encoding artefacts, so the pickle-scoped register entries apply to it exactly as to the
+     * pickles.
+     *
+     * @param aAccess
+     *            the access to seed through
+     * @param aErrataSource
+     *            {@link StoreErrata#SOURCE_PICKLE} or {@link StoreErrata#SOURCE_WEBAPI}
+     */
+    WebApiStoreSeeder(CoreLibraryAccess aAccess, String aErrataSource)
+    {
+        errataSource = aErrataSource;
         if (!(aAccess instanceof CoreLibraryAccessImpl impl))
         {
             throw new IllegalArgumentException(
@@ -115,7 +136,7 @@ public final class WebApiStoreSeeder
      */
     public StoreSeedReport seed(StoreSeedOptions aOptions) throws IOException
     {
-        SeedRun run = new SeedRun(aOptions);
+        SeedRun run = new SeedRun(aOptions, errataSource);
         try
         {
             List<String> igHrefs = igProductHrefs();

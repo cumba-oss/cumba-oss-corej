@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -98,6 +99,17 @@ public final class UsageRestrictions
 
     private static final Pattern SPLIT_LIST = Pattern.compile("(?i)\\s*(?:,|\\band\\b)\\s*");
 
+    /**
+     * Parsed texts by text (review F5): the model walk parses the restriction of every model
+     * variable on every walk, and the store's whole vocabulary is about twenty texts. Bounded by
+     * {@link #CACHE_LIMIT} so an arbitrary caller cannot grow it without limit; past that, a text
+     * is parsed and not cached.
+     */
+    private static final Map<String, UsageRestrictions> CACHE = new ConcurrentHashMap<>();
+
+    /** The most texts {@link #CACHE} holds — far above the measured vocabulary. */
+    static final int CACHE_LIMIT = 512;
+
     private static final UsageRestrictions UNRESTRICTED = new UsageRestrictions(null,
             List.of(Form.NONE), Set.of(), Set.of(), Set.of());
 
@@ -123,7 +135,8 @@ public final class UsageRestrictions
 
 
     /**
-     * Parses one {@code usageRestrictions} text.
+     * Parses one {@code usageRestrictions} text. The result is immutable and cached per text, so a
+     * repeated text returns the same instance.
      *
      * @param aText
      *            the text as the store holds it, or {@code null}
@@ -135,6 +148,22 @@ public final class UsageRestrictions
         {
             return UNRESTRICTED;
         }
+        UsageRestrictions cached = CACHE.get(aText);
+        if (cached != null)
+        {
+            return cached;
+        }
+        UsageRestrictions parsed = parseUncached(aText);
+        if (CACHE.size() < CACHE_LIMIT)
+        {
+            CACHE.putIfAbsent(aText, parsed);
+        }
+        return parsed;
+    }
+
+
+    private static UsageRestrictions parseUncached(String aText)
+    {
         List<Form> forms = new ArrayList<>();
         Set<String> only = new LinkedHashSet<>();
         Set<String> not = new LinkedHashSet<>();

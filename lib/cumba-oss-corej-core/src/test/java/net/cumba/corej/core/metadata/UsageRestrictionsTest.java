@@ -2,6 +2,7 @@ package net.cumba.corej.core.metadata;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -123,5 +124,34 @@ class UsageRestrictionsTest
         assertTrue(odd.allowsDomain("AE", "EVENTS"));
         assertTrue(UsageRestrictions.parse("MH domain only; whatever else").isUnparseable(),
                 "one unknown clause makes the text unparseable even beside a known one");
+    }
+
+
+    /**
+     * Review F5: the model walk parses every model variable's restriction on every walk, so a text
+     * is parsed once and the immutable result shared; the cache is bounded, and a text past the
+     * bound still parses correctly.
+     */
+    @Test
+    void aRepeatedTextIsParsedOnceAndShared()
+    {
+        UsageRestrictions first = UsageRestrictions.parse("EX domain only");
+        assertSame(first, UsageRestrictions.parse("EX domain only"));
+        assertSame(first, UsageRestrictions.parse(String.join(" ", "EX", "domain", "only")),
+                "keyed by the text, not the instance");
+        assertFalse(first.allowsDomain("FA", "FINDINGS ABOUT"));
+        assertTrue(first.allowsDomain("EX", "INTERVENTIONS"));
+        for (int i = 0; i < UsageRestrictions.CACHE_LIMIT + 10; i++)
+        {
+            String domain = String.valueOf(new char[]
+            {
+                    (char) ('A' + i / 26), (char) ('A' + i % 26)
+            });
+            assertEquals(Set.of(domain),
+                    UsageRestrictions.parse(domain + " domain only").onlyDomains());
+        }
+        UsageRestrictions late = UsageRestrictions.parse("ZZ domain only");
+        assertEquals(Set.of("ZZ"), late.onlyDomains(), "past the bound a text still parses");
+        assertSame(first, UsageRestrictions.parse("EX domain only"), "cached entries stay");
     }
 }

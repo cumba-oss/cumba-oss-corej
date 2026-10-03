@@ -22,15 +22,19 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@link StoreErrata} over synthetic products: one application per entry kind, the stale verdict
- * (D4: expected value gone → reported, NOT applied) and the unreached verdict (product, container
- * or variable absent → reported, no warning), the model-dataset double copy, and the register
- * guards (duplicate id, unknown kind). The shipped register itself is proven on the real corpus by
- * {@link StoreErrataRealCorpusTest}.
+ * (D4: expected value gone, or the target gone from a present product → reported, NOT applied), the
+ * unreached verdict (the product absent), the source scoping (not applicable), the model-dataset
+ * double copy, the digest, and the register guards (duplicate id, unknown kind, bad sources). The
+ * shipped register itself is proven on the real corpus by {@link StoreErrataRealCorpusTest}.
  */
 class StoreErrataTest
 {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static final String PICKLE = StoreErrata.SOURCE_PICKLE;
+
+    private static final String WEBAPI = StoreErrata.SOURCE_WEBAPI;
 
     private static StoreErrata register(String aEntriesJson)
     {
@@ -142,7 +146,7 @@ class StoreErrataTest
                  "where":{"class":"Events","variable":"--TERM"},"attribute":"codelistIds",
                  "expected":null,"corrected":["C66786"]}
                 """);
-        StoreErrata.Outcome out = errata.apply(all(), Set.of());
+        StoreErrata.Outcome out = errata.apply(all(), Set.of(), PICKLE);
         assertEquals(List.of("t.1", "t.2"), out.applied());
         assertEquals(List.of(), out.stale());
         assertEquals(List.of(), out.unreached());
@@ -166,7 +170,7 @@ class StoreErrataTest
                  "where":{"class":"Events","variable":"--TERM"},"attribute":"label",
                  "expected":"Reported Term e","corrected":"Reported Term"}
                 """);
-        StoreErrata.Outcome out = errata.apply(all(), Set.of());
+        StoreErrata.Outcome out = errata.apply(all(), Set.of(), PICKLE);
         assertEquals(List.of(), out.applied());
         assertEquals(1, out.stale().size(), out.stale().toString());
         assertTrue(out.stale().get(0).startsWith("s.1: label expected 'Reported Term e' but the"
@@ -176,8 +180,12 @@ class StoreErrataTest
     }
 
 
+    /**
+     * Review F4: only an absent PRODUCT is unreached (a partial source); a container, variable or
+     * field missing from a product the source DOES hold is silent drift, so it is stale.
+     */
     @Test
-    void anAbsentProductContainerOrVariableIsUnreachedNotStale()
+    void anAbsentProductIsUnreachedButAMissingTargetInsideAPresentProductIsStale()
     {
         StoreErrata errata = register(
                 """
@@ -189,15 +197,102 @@ class StoreErrataTest
                          "expected":"x","corrected":"y"},
                         {"id":"u.3","issue":"#282.1","product":"models/sdtm/1-7","kind":"set-attribute",
                          "where":{"class":"Events","variable":"--LLT"},"attribute":"label",
-                         "expected":"x","corrected":"y"}
+                         "expected":"x","corrected":"y"},
+                        {"id":"u.4","issue":"#282.1","product":"models/sdtm/1-7","kind":"set-attribute",
+                         "where":{"dataset":"XX","variable":"XXSEQ"},"attribute":"label",
+                         "expected":"x","corrected":"y"},
+                        {"id":"u.5","issue":"#283.39","product":"standards/cdashig/1-1-1","kind":"set-attribute",
+                         "where":{"class":"Events","domain":"AE","field":"AEGONE"},"attribute":"label",
+                         "expected":"x","corrected":"y"},
+                        {"id":"u.6","issue":"#283.11","product":"standards/cdashig/1-1-1","kind":"add-field",
+                         "where":{"class":"Events","domain":"CM"},"field":{"name":"VISENDAT"}}
                         """);
-        StoreErrata.Outcome out = errata.apply(all(), Set.of());
-        assertEquals(List.of(), out.stale());
-        assertEquals(3, out.unreached().size(), out.unreached().toString());
-        assertTrue(
-                out.unreached().get(0).contains("product standards/sdtmig/3-2 not in this source"));
-        assertTrue(out.unreached().get(1).contains("class Findings not in models/sdtm/1-7"));
-        assertTrue(out.unreached().get(2).contains("variable --LLT not in class Events"));
+        StoreErrata.Outcome out = errata.apply(all(), Set.of(), PICKLE);
+        assertEquals(List.of(), out.applied());
+        assertEquals(List.of("u.1: product standards/sdtmig/3-2 not in this source"),
+                out.unreached());
+        assertEquals(List.of("u.2", "u.3", "u.4", "u.5", "u.6"),
+                out.stale().stream().map(s -> s.substring(0, s.indexOf(':'))).toList(),
+                out.stale().toString());
+        assertTrue(out.stale().get(0).contains("class Findings not in models/sdtm/1-7"));
+        assertTrue(out.stale().get(1).contains("variable --LLT not in class Events"));
+        assertTrue(out.stale().get(2).contains("dataset XX not in models/sdtm/1-7"));
+        assertTrue(out.stale().get(3).contains("field AEGONE not in domain AE"));
+        assertTrue(out.stale().get(4).contains("domain CM not in class Events"));
+        assertEquals(all().get("models/sdtm/1-7"), out.products().get("models/sdtm/1-7"),
+                "nothing applied");
+    }
+
+
+    /** Review F4: the two copies of a model dataset disagreeing is drift too — stale. */
+    @Test
+    void differingCopiesOfAModelDatasetAreStale()
+    {
+        StoredProduct m = model();
+        StoredDataset topLevel = new StoredDataset("DM", "Demographics", "1", null,
+                List.of(var("DMDTC", "1", "Date/Time of Collection (revised)")), null, null);
+        StoredProduct diverged = StoredProduct.builder().key(m.key()).classes(m.classes())
+                .datasets(List.of(topLevel)).build();
+        StoreErrata.Outcome out = register("""
+                {"id":"d.1","issue":"#283.17","product":"models/sdtm/1-7","kind":"set-attribute",
+                 "where":{"dataset":"DM","variable":"DMDTC"},"attribute":"label",
+                 "expected":"Date/Time of Collection","corrected":"Datetime of Collection"}
+                """).apply(Map.of("models/sdtm/1-7", diverged), Set.of(), PICKLE);
+        assertEquals(List.of(), out.unreached());
+        assertEquals(1, out.stale().size(), out.stale().toString());
+        assertTrue(out.stale().get(0).contains("the copies of DM.DMDTC in models/sdtm/1-7 differ"),
+                out.stale().get(0));
+        assertEquals(diverged, out.products().get("models/sdtm/1-7"));
+    }
+
+
+    /**
+     * Review F2: an entry scoped to the pickle source applies to a pickle seed and is left alone —
+     * reported as not applicable, neither applied nor stale — by a Web API seed.
+     */
+    @Test
+    void anEntryScopedToAnotherSourceIsNotApplicableAndLeftAlone()
+    {
+        StoreErrata errata = register("""
+                {"id":"p.1","issue":"#283.36","product":"models/sdtm/1-7","kind":"set-attribute",
+                 "sources":["pickle"],
+                 "where":{"class":"Events","variable":"--TERM"},"attribute":"label",
+                 "expected":"Reported Term","corrected":"\\"Reported\\" Term"},
+                {"id":"p.2","issue":"#282.1","product":"models/sdtm/1-7","kind":"set-attribute",
+                 "sources":["pickle","webapi"],
+                 "where":{"class":"Events","variable":"--CAT"},"attribute":"label",
+                 "expected":"Category","corrected":"Category of Event"}
+                """);
+        StoreErrata.Outcome web = errata.apply(all(), Set.of(), WEBAPI);
+        assertEquals(List.of("p.2"), web.applied());
+        assertEquals(List.of(), web.stale());
+        assertEquals(List.of("p.1: registered for [pickle], not applicable to a webapi seed"),
+                web.notApplicable());
+        StoredClass events = classOf(web.products().get("models/sdtm/1-7"), "Events");
+        assertEquals("Reported Term", events.classVariables().get(0).label(), "left alone");
+        assertEquals("Category of Event", events.classVariables().get(2).label());
+
+        StoreErrata.Outcome pickle = errata.apply(all(), Set.of(), PICKLE);
+        assertEquals(List.of("p.1", "p.2"), pickle.applied());
+        assertEquals(List.of(), pickle.notApplicable());
+        assertEquals("\"Reported\" Term",
+                classOf(pickle.products().get("models/sdtm/1-7"), "Events").classVariables().get(0)
+                        .label());
+    }
+
+
+    @Test
+    void theSourcesMemberMustBeANonEmptyListOfKnownSources()
+    {
+        assertThrows(IllegalStateException.class, () -> register(
+                "{\"id\":\"s\",\"issue\":\"#1\",\"product\":\"p\",\"kind\":\"set-attribute\","
+                        + "\"sources\":[\"library\"]}"));
+        assertThrows(IllegalStateException.class, () -> register(
+                "{\"id\":\"s\",\"issue\":\"#1\",\"product\":\"p\",\"kind\":\"set-attribute\","
+                        + "\"sources\":[]}"));
+        assertThrows(IllegalStateException.class, () -> register(
+                "{\"id\":\"s\",\"issue\":\"#1\",\"product\":\"p\",\"kind\":\"set-attribute\","
+                        + "\"sources\":\"pickle\"}"));
     }
 
 
@@ -210,9 +305,9 @@ class StoreErrataTest
                  "expected":"Category \\\\n","corrected":"Category"}
                 """);
         String site = "models/sdtm/1-7/classes[Events]/classVariables[--CAT].label";
-        StoreErrata.Outcome applied = errata.apply(all(), Set.of(site));
+        StoreErrata.Outcome applied = errata.apply(all(), Set.of(site), PICKLE);
         assertEquals(List.of("n.1"), applied.applied());
-        StoreErrata.Outcome stale = errata.apply(all(), Set.of());
+        StoreErrata.Outcome stale = errata.apply(all(), Set.of(), PICKLE);
         assertEquals(1, stale.stale().size());
         assertTrue(stale.stale().get(0).contains("normalisation no longer changes " + site),
                 stale.stale().get(0));
@@ -220,8 +315,9 @@ class StoreErrataTest
                 {"id":"n.2","issue":"#283.35","product":"models/sdtm/1-7","kind":"normalised",
                  "where":{"dataset":"DM","variable":"DMDTC"},"attribute":"label",
                  "expected":"x","corrected":"Date/Time of Collection"}
-                """).apply(all(), Set.of(
-                "models/sdtm/1-7/classes[Special-Purpose]/datasets[DM]/variables[DMDTC].label"));
+                """).apply(all(), Set
+                .of("models/sdtm/1-7/classes[Special-Purpose]/datasets[DM]/variables[DMDTC].label"),
+                PICKLE);
         assertEquals(1, dataset.stale().size(),
                 "both copies of a model dataset must have been normalised: " + dataset.stale());
     }
@@ -238,7 +334,7 @@ class StoreErrataTest
                    "roleDescription":"Variable Qualifier of MHSTDTC and/or MHENDTC",
                    "description":"Specifies the aspect.","usageRestrictions":"MH domain only"}}
                 """);
-        StoreErrata.Outcome out = errata.apply(all(), Set.of());
+        StoreErrata.Outcome out = errata.apply(all(), Set.of(), PICKLE);
         assertEquals(List.of("a.1"), out.applied());
         List<StoredVariable> vars = classOf(out.products().get("models/sdtm/1-7"), "Events")
                 .classVariables();
@@ -249,7 +345,7 @@ class StoreErrataTest
         assertEquals("MH domain only", vars.get(2).usageRestrictions());
         assertNull(vars.get(2).variableCcode(), "not printed, not invented");
 
-        StoreErrata.Outcome again = errata.apply(out.products(), Set.of());
+        StoreErrata.Outcome again = errata.apply(out.products(), Set.of(), PICKLE);
         assertEquals(1, again.stale().size(), "a second application finds the root present");
         assertTrue(again.stale().get(0).contains("already in class Events"));
     }
@@ -265,7 +361,7 @@ class StoreErrataTest
                          "field":{"name":"VISENDAT","ordinal":"304","core":"O","prompt":"Visit End Date",
                            "questionText":"What is the visit end date?"}}
                         """);
-        StoreErrata.Outcome out = errata.apply(all(), Set.of());
+        StoreErrata.Outcome out = errata.apply(all(), Set.of(), PICKLE);
         assertEquals(List.of("f.1"), out.applied());
         List<StoredField> fields = classOf(out.products().get("standards/cdashig/1-1-1"), "Events")
                 .domains().get(0).fields();
@@ -273,7 +369,8 @@ class StoreErrataTest
                 fields.stream().map(StoredField::name).toList());
         assertEquals("304", fields.get(2).ordinal());
         assertEquals("O", fields.get(2).core());
-        assertEquals(1, errata.apply(out.products(), Set.of()).stale().size(), "present → stale");
+        assertEquals(1, errata.apply(out.products(), Set.of(), PICKLE).stale().size(),
+                "present → stale");
     }
 
 
@@ -293,7 +390,7 @@ class StoreErrataTest
                          "where":{"structure":"BDS","set":"Flag"},"attribute":"name",
                          "expected":"Flag","corrected":"Flags"}
                         """);
-        StoreErrata.Outcome out = errata.apply(all(), Set.of());
+        StoreErrata.Outcome out = errata.apply(all(), Set.of(), PICKLE);
         assertEquals(List.of("o.1", "o.2", "o.3", "o.4"), out.applied(), out.stale().toString());
         StoredDataStructure bds = out.products().get("standards/adam/adamig-1-3").dataStructures()
                 .get(0);
@@ -315,7 +412,7 @@ class StoreErrataTest
                          "where":{"structure":"BDS"},"expected":["Identifier","Flag","Population Indicators"],
                          "corrected":["Identifier","Population Indicators","Flag"]}
                         """)
-                        .apply(all(), Set.of());
+                        .apply(all(), Set.of(), PICKLE);
         assertEquals(1, moved.stale().size());
         assertTrue(moved.stale().get(0).contains("set order expected"), moved.stale().get(0));
         StoreErrata.Outcome bad = register(
@@ -324,7 +421,7 @@ class StoreErrataTest
                          "where":{"structure":"BDS"},"expected":["Flag","Population Indicators","Identifier"],
                          "corrected":["Identifier","Flag"]}
                         """)
-                        .apply(all(), Set.of());
+                        .apply(all(), Set.of(), PICKLE);
         assertTrue(bad.stale().get(0).contains("not a permutation"), bad.stale().get(0));
     }
 
@@ -339,7 +436,7 @@ class StoreErrataTest
                         {"id":"m.2","issue":"#283.25","product":"models/cdash/1-0","kind":"move-field",
                          "field":"--ORRES","from":{"class":"Findings"},"to":{"domain":"XX"},"createDomain":false}
                         """);
-        StoreErrata.Outcome out = errata.apply(all(), Set.of());
+        StoreErrata.Outcome out = errata.apply(all(), Set.of(), PICKLE);
         assertEquals(List.of("m.1"), out.applied());
         assertEquals(1, out.stale().size(), "a missing domain without createDomain is stale");
         StoredProduct m = out.products().get("models/cdash/1-0");
@@ -367,7 +464,7 @@ class StoreErrataTest
                          "where":{"domain":"DM","field":"SITEID"},"attribute":"prompt",
                          "expected":null,"corrected":"Site"}
                         """);
-        StoreErrata.Outcome out = errata.apply(all(), Set.of());
+        StoreErrata.Outcome out = errata.apply(all(), Set.of(), PICKLE);
         assertEquals(List.of("c.1", "c.2", "c.3"), out.applied(), out.unreached().toString());
         assertEquals("ECG Clin. Sig.",
                 classOf(out.products().get("standards/cdashig/1-1-1"), "Events").scenarios().get(0)
@@ -403,5 +500,66 @@ class StoreErrataTest
             assertTrue(e.issue().matches("#28[234]\\.\\d+"), e.id() + " cites " + e.issue());
             assertTrue(e.authority().length() > 10, e.id() + " names its authority");
         }
+    }
+
+
+    /**
+     * Review F2: the rows {@code CDISC-METADATA-ISSUES} flags "(seed?)" — #283.35, .36, .38, .40,
+     * .41, .43, .44, .47 and the literal-backslash-n #282.14 — are registered for the pickle source
+     * only; every other entry applies to every source.
+     */
+    @Test
+    void theSeedQuestionRowsArePickleOnly()
+    {
+        Set<String> pickleOnly = Set.of("#283.35", "#283.36", "#283.38", "#283.40", "#283.41",
+                "#283.43", "#283.44", "#283.47", "#282.14");
+        for (StoreErrata.Entry e : StoreErrata.load().entries())
+        {
+            assertEquals(pickleOnly.contains(e.issue()) ? Set.of(PICKLE) : Set.of(), e.sources(),
+                    e.id() + " (" + e.issue() + ")");
+        }
+    }
+
+
+    /**
+     * #283.36 re-derived 2026-10-03 (review): the issue row's "24 sites in 2.1" is right. The first
+     * register held 21 per 2.1 (20 per 2.0); the generator missed NHOID and --EVLINT (General
+     * Observations class) and SM.MIDSTYPE (TM's copy was found), which the register now holds.
+     */
+    @Test
+    void issue28336HoldsEverySiteOfBothModels()
+    {
+        Map<String, Long> perProduct = new java.util.TreeMap<>();
+        for (StoreErrata.Entry e : StoreErrata.load().entries())
+        {
+            if ("#283.36".equals(e.issue()))
+            {
+                perProduct.merge(e.product(), 1L, Long::sum);
+            }
+        }
+        assertEquals(Map.of("models/sdtm/2-0", 23L, "models/sdtm/2-1", 24L), perProduct);
+    }
+
+
+    /** F3: the digest is the sha256 of the resource's bytes, and a content change changes it. */
+    @Test
+    void theDigestIsTheSha256OfTheRegisterResource() throws Exception
+    {
+        byte[] bytes;
+        try (java.io.InputStream in = StoreErrata.class.getResourceAsStream(StoreErrata.RESOURCE))
+        {
+            bytes = java.util.Objects.requireNonNull(in).readAllBytes();
+        }
+        String expected = java.util.HexFormat.of()
+                .formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+        assertEquals(expected, StoreErrata.load().digest());
+        String a = register("""
+                {"id":"x","issue":"#1","product":"p","kind":"set-attribute"}
+                """).digest();
+        String b = register("""
+                {"id":"y","issue":"#1","product":"p","kind":"set-attribute"}
+                """).digest();
+        assertEquals(64, a.length());
+        assertTrue(!a.equals(b), "a different register has a different digest");
     }
 }

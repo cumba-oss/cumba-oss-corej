@@ -125,6 +125,61 @@ class StoreLibraryProviderTest
     }
 
 
+    /**
+     * Review F8: the qualifier fragment is a FATESTCD value, so a root is judged as the model walk
+     * judges it for FA: a root restricted to another domain does not answer, an unrestricted or
+     * merely excluding one does, and the walk moves on to the other class's root of the same name.
+     */
+    @Test
+    void aQualifierRestrictedToAnotherDomainDoesNotAnswerForFa() throws IOException
+    {
+        StoredVariable evdtyp = StoredVariable.builder().name("--EVDTYP")
+                .label("Medical History Event Date Type").usageRestrictions("MH domain only")
+                .build();
+        StoredVariable eventPresp = StoredVariable.builder().name("--PRESP")
+                .label("Pre-Specified (MH)").usageRestrictions("MH domain only").build();
+        StoredVariable occur = StoredVariable.builder().name("--OCCUR")
+                .label("Occurrence Indicator").usageRestrictions("Not in AE domain").build();
+        StoredVariable method = StoredVariable.builder().name("--METHOD")
+                .label("Method of Administration")
+                .usageRestrictions("Not in human clinical trials; EX domain only").build();
+        StoredVariable interventionPresp = StoredVariable.builder().name("--PRESP")
+                .label("Pre-Specified").build();
+        StoredVariable dose = StoredVariable.builder().name("--DOSE").label("Dose")
+                .usageRestrictions("Not in human clinical trials").build();
+        StoredProduct ig = StoredProduct.builder().key("standards/sdtmig/3-3").name("SDTMIG")
+                .version("3-3").modelHref("/mdr/sdtm/1-7").build();
+        StoredProduct model = StoredProduct.builder().key("models/sdtm/1-7").name("SDTM")
+                .version("1-7")
+                .classes(List.of(
+                        new StoredClass("Events", "Events", "1", List.of(evdtyp, eventPresp, occur),
+                                List.of(), null, List.of(), List.of(), List.of()),
+                        new StoredClass("Interventions", "Interventions", "2",
+                                List.of(method, interventionPresp, dose), List.of(), null,
+                                List.of(), List.of(), List.of())))
+                .build();
+        Path file = tempDir.resolve("restricted.zip");
+        new MetadataStoreWriter().addProduct(ig).addProduct(model).publishedCtPackages(List.of())
+                .productCatalogue(List.of("standards/sdtmig/3-3")).write(file);
+        try (MetadataStore store = MetadataStore.open(file))
+        {
+            StoreLibraryProvider p = StoreLibraryProvider.over(store);
+            assertEquals(Optional.empty(), p.qualifierVariableLabel("SDTMIG", "3.3", "EVDTYP"),
+                    "MH domain only: not a qualifier FA borrows");
+            assertEquals(Optional.empty(), p.qualifierVariableLabel("SDTMIG", "3.3", "METHOD"),
+                    "EX domain only (the study-type clause is not applied by domain)");
+            assertEquals(Optional.of("Pre-Specified"),
+                    p.qualifierVariableLabel("SDTMIG", "3.3", "PRESP"),
+                    "the restricted Events root is skipped, the Interventions root answers");
+            assertEquals(Optional.of("Occurrence Indicator"),
+                    p.qualifierVariableLabel("SDTMIG", "3.3", "OCCUR"),
+                    "an exclusion of another domain leaves FA allowed");
+            assertEquals(Optional.of("Dose"), p.qualifierVariableLabel("SDTMIG", "3.3", "DOSE"),
+                    "a study-type restriction is not a domain restriction");
+        }
+    }
+
+
     /** D-11: the key grammar the catalogue really uses. */
     @Test
     void igKeysFoldSpellingsAndMapVariantsToTheirRealKeys()

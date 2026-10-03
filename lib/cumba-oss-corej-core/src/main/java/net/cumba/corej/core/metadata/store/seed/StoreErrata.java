@@ -55,18 +55,46 @@ import org.jspecify.annotations.Nullable;
  * <li>{@code move-field}: a CDASH model field moved from a class to a domain.</li>
  * </ul>
  *
- * <h2>Outcomes (D4)</h2> An entry is {@code applied}, {@code stale} — its target exists but the
- * expected value no longer matches (CDISC fixed it upstream, or a rule changed under it): reported,
- * NOT applied, never silently re-applied, a warning on every surface and a failing test until the
- * entry is retired — or {@code unreached}: the product, or the container or variable inside it, is
- * not in this run's source at all (a partial fixture, a source that dropped the product). The
- * real-corpus test asserts every entry applied.
+ * <h2>Source scoping</h2> An entry may name the seed {@code sources} it applies to
+ * ({@value #SOURCE_PICKLE}, {@value #SOURCE_WEBAPI}); absent means every source. The rows
+ * {@code CDISC-METADATA-ISSUES} flags "(seed?)" — the encoding of newlines, quotes, {@code =} and
+ * HTML entities, which may originate in the pickle rather than the Library — are registered for
+ * {@value #SOURCE_PICKLE} only, so a Web API seed never "corrects" a value the API may serve right:
+ * there they are reported as not applicable to the source, never applied and never stale.
+ *
+ * <h2>Outcomes (D4)</h2> An entry is {@code applied}; {@code stale} — its product is in this run's
+ * source but the target inside it (container, variable, field, the agreeing copies of a model
+ * dataset) is gone or no longer carries the expected value (CDISC fixed it upstream, or a rule
+ * changed under it): reported in the seed report, NOT applied, never silently re-applied, and a
+ * failing real-corpus test until the entry is retired — deliberately NOT a seed warning, because a
+ * production seed reads the source's default branch, where CDISC may legitimately be ahead of the
+ * register, and must not fail for it; {@code unreached} — the product is not in this run's source
+ * at all (a partial source, a dropped product); or {@code not applicable} — the entry is scoped to
+ * another source. The real-corpus test asserts every entry applied.
+ *
+ * <h2>Digest</h2> {@link #digest()} is the sha256 of the register resource. The seed records it in
+ * the store manifest's provenance ({@link #PROVENANCE_SOURCE}), and a re-seed never carries a
+ * baseline product corrected under a different register (see {@link SeedRun}).
  */
 final class StoreErrata
 {
 
     /** The register resource on the class path. */
     static final String RESOURCE = "/metadata/store/store-errata.json";
+
+    /** The seed source name of {@link PickleStoreSeeder} for the {@code sources} scoping. */
+    static final String SOURCE_PICKLE = "pickle";
+
+    /** The seed source name of {@link WebApiStoreSeeder} for the {@code sources} scoping. */
+    static final String SOURCE_WEBAPI = "webapi";
+
+    /** The provenance line's source name under which a seed records {@link #digest()}. */
+    static final String PROVENANCE_SOURCE = "errata-register";
+
+    /** The prefix of the provenance line's ref ahead of the hex digest. */
+    static final String DIGEST_PREFIX = "sha256:";
+
+    private static final Set<String> SOURCES = Set.of(SOURCE_PICKLE, SOURCE_WEBAPI);
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -107,6 +135,22 @@ final class StoreErrata
         }
 
 
+        /** The seed sources this entry applies to; empty for every source. */
+        Set<String> sources()
+        {
+            Set<String> sources = new java.util.TreeSet<>();
+            node.path("sources").forEach(n -> sources.add(n.asText()));
+            return sources;
+        }
+
+
+        boolean appliesTo(String aSource)
+        {
+            Set<String> sources = sources();
+            return sources.isEmpty() || sources.contains(aSource);
+        }
+
+
         private static Map<String, String> locator(JsonNode aWhere)
         {
             Map<String, String> where = new LinkedHashMap<>();
@@ -128,13 +172,15 @@ final class StoreErrata
      *            the ids applied
      * @param stale
      *            {@code <id>: <reason>} for every entry whose target exists but whose expected
-     *            value no longer matches — reported, not applied
+     *            value no longer matches, or whose target is gone from a product this source holds
+     *            — reported, not applied
      * @param unreached
-     *            {@code <id>: <reason>} for every entry whose product or target is not in this
-     *            source at all
+     *            {@code <id>: <reason>} for every entry whose product is not in this source at all
+     * @param notApplicable
+     *            {@code <id>: <reason>} for every entry scoped to other seed sources
      */
     record Outcome(Map<String, StoredProduct> products, List<String> applied, List<String> stale,
-            List<String> unreached)
+            List<String> unreached, List<String> notApplicable)
     {
     }
 
@@ -164,24 +210,14 @@ final class StoreErrata
         }
     }
 
-
-    /** Thrown inside an application when the entry's container or variable is absent. */
-    private static final class Unreached extends Exception
-    {
-
-        private static final long serialVersionUID = 1L;
-
-        Unreached(String aReason)
-        {
-            super(aReason);
-        }
-    }
-
     private final List<Entry> entries;
 
-    private StoreErrata(List<Entry> aEntries)
+    private final String digest;
+
+    private StoreErrata(List<Entry> aEntries, String aDigest)
     {
         entries = List.copyOf(aEntries);
+        digest = aDigest;
     }
 
 
@@ -201,7 +237,8 @@ final class StoreErrata
             {
                 throw new IllegalStateException("errata register missing: " + RESOURCE);
             }
-            return parse(MAPPER.readTree(in));
+            byte[] bytes = in.readAllBytes();
+            return new StoreErrata(parse(MAPPER.readTree(bytes)).entries(), sha256(bytes));
         }
         catch (IOException e)
         {
@@ -215,9 +252,10 @@ final class StoreErrata
      *
      * @param aDocument
      *            the document
-     * @return the register
+     * @return the register; its {@link #digest()} is that of the document's compact JSON
      * @throws IllegalStateException
-     *             on a duplicate id, an unknown kind or an entry without product or issue
+     *             on a duplicate id, an unknown kind, an entry without product or issue, or a
+     *             {@code sources} member that is not a non-empty list of known sources
      */
     static StoreErrata parse(JsonNode aDocument)
     {
@@ -243,9 +281,66 @@ final class StoreErrata
                 throw new IllegalStateException(
                         "errata register: " + id + " needs a product and a #issue row");
             }
+            checkSources(id, node.get("sources"));
             entries.add(new Entry(id, issue, product, kind, node));
         }
-        return new StoreErrata(entries);
+        try
+        {
+            return new StoreErrata(entries, sha256(MAPPER.writeValueAsBytes(aDocument)));
+        }
+        catch (com.fasterxml.jackson.core.JsonProcessingException e)
+        {
+            throw new IllegalStateException("errata register: not serialisable", e);
+        }
+    }
+
+
+    private static void checkSources(String aId, @Nullable JsonNode aSources)
+    {
+        if (aSources == null)
+        {
+            return;
+        }
+        if (!aSources.isArray() || aSources.isEmpty())
+        {
+            throw new IllegalStateException("errata register: " + aId
+                    + " has sources that are not a non-empty list (omit the member for every"
+                    + " source)");
+        }
+        for (JsonNode source : aSources)
+        {
+            if (!SOURCES.contains(source.asText()))
+            {
+                throw new IllegalStateException("errata register: " + aId + " names the unknown"
+                        + " source " + source + " (known: " + SOURCES + ")");
+            }
+        }
+    }
+
+
+    /**
+     * The sha256 (lower-case hex) of the register: of the resource's bytes for {@link #load()}, of
+     * the document's compact JSON for {@link #parse(JsonNode)}.
+     *
+     * @return the digest
+     */
+    String digest()
+    {
+        return digest;
+    }
+
+
+    private static String sha256(byte[] aBytes)
+    {
+        try
+        {
+            return java.util.HexFormat.of()
+                    .formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(aBytes));
+        }
+        catch (java.security.NoSuchAlgorithmException e)
+        {
+            throw new IllegalStateException("JVM without SHA-256", e);
+        }
     }
 
 
@@ -267,17 +362,28 @@ final class StoreErrata
      *            the products by key (not modified)
      * @param aNormalisedSites
      *            the sites {@link StoreProjection#normalisedSites()} changed this run
+     * @param aSource
+     *            the seed source ({@value #SOURCE_PICKLE} or {@value #SOURCE_WEBAPI}) — an entry
+     *            scoped to other sources is reported as not applicable and left alone
      * @return the rewritten products and the per-entry outcomes
      */
-    Outcome apply(Map<String, StoredProduct> aProducts, Collection<String> aNormalisedSites)
+    Outcome apply(Map<String, StoredProduct> aProducts, Collection<String> aNormalisedSites,
+            String aSource)
     {
         Map<String, StoredProduct> products = new TreeMap<>(aProducts);
         Set<String> sites = new HashSet<>(aNormalisedSites);
         List<String> applied = new ArrayList<>();
         List<String> stale = new ArrayList<>();
         List<String> unreached = new ArrayList<>();
+        List<String> notApplicable = new ArrayList<>();
         for (Entry entry : entries)
         {
+            if (!entry.appliesTo(aSource))
+            {
+                notApplicable.add(entry.id() + ": registered for " + entry.sources()
+                        + ", not applicable to a " + aSource + " seed");
+                continue;
+            }
             StoredProduct product = products.get(entry.product());
             if (product == null)
             {
@@ -304,19 +410,15 @@ final class StoreErrata
             {
                 stale.add(entry.id() + ": " + e.getMessage());
             }
-            catch (Unreached e)
-            {
-                unreached.add(entry.id() + ": " + e.getMessage());
-            }
         }
-        return new Outcome(products, applied, stale, unreached);
+        return new Outcome(products, applied, stale, unreached, notApplicable);
     }
 
     // ------------------------------------------------------------------ the kinds
 
 
     private static StoredProduct setAttribute(StoredProduct aProduct, Entry aEntry)
-        throws StaleEntry, Unreached
+        throws StaleEntry
     {
         Target target = locate(aProduct, aEntry.where());
         String attribute = aEntry.attribute();
@@ -334,7 +436,7 @@ final class StoreErrata
 
     private static StoredProduct assertNormalised(StoredProduct aProduct, Entry aEntry,
             Set<String> aSites)
-        throws StaleEntry, Unreached
+        throws StaleEntry
     {
         Target target = locate(aProduct, aEntry.where());
         String attribute = aEntry.attribute();
@@ -359,8 +461,7 @@ final class StoreErrata
     }
 
 
-    private static StoredProduct addVariable(StoredProduct aProduct, Entry aEntry)
-        throws StaleEntry, Unreached
+    private static StoredProduct addVariable(StoredProduct aProduct, Entry aEntry) throws StaleEntry
     {
         String className = aEntry.where().get("class");
         String after = aEntry.node().path("after").asText();
@@ -369,7 +470,7 @@ final class StoreErrata
         int index = indexOfClass(aProduct, className);
         if (index < 0)
         {
-            throw new Unreached("class " + className + " not in " + aProduct.key());
+            throw new StaleEntry("class " + className + " not in " + aProduct.key());
         }
         StoredClass clazz = aProduct.classes().get(index);
         List<StoredVariable> vars = new ArrayList<>(clazz.classVariables());
@@ -414,8 +515,7 @@ final class StoreErrata
     }
 
 
-    private static StoredProduct addField(StoredProduct aProduct, Entry aEntry)
-        throws StaleEntry, Unreached
+    private static StoredProduct addField(StoredProduct aProduct, Entry aEntry) throws StaleEntry
     {
         Map<String, String> where = aEntry.where();
         JsonNode spec = aEntry.node().path("field");
@@ -423,13 +523,13 @@ final class StoreErrata
         int ci = indexOfClass(aProduct, where.get("class"));
         if (ci < 0)
         {
-            throw new Unreached("class " + where.get("class") + " not in " + aProduct.key());
+            throw new StaleEntry("class " + where.get("class") + " not in " + aProduct.key());
         }
         StoredClass clazz = aProduct.classes().get(ci);
         int di = indexOf(clazz.domains(), StoredDomain::name, where.get("domain"));
         if (di < 0)
         {
-            throw new Unreached("domain " + where.get("domain") + " not in class "
+            throw new StaleEntry("domain " + where.get("domain") + " not in class "
                     + where.get("class") + " of " + aProduct.key());
         }
         StoredDomain domain = clazz.domains().get(di);
@@ -457,14 +557,13 @@ final class StoreErrata
     }
 
 
-    private static StoredProduct setOrder(StoredProduct aProduct, Entry aEntry)
-        throws StaleEntry, Unreached
+    private static StoredProduct setOrder(StoredProduct aProduct, Entry aEntry) throws StaleEntry
     {
         String structureName = aEntry.where().get("structure");
         int si = indexOf(aProduct.dataStructures(), StoredDataStructure::name, structureName);
         if (si < 0)
         {
-            throw new Unreached("structure " + structureName + " not in " + aProduct.key());
+            throw new StaleEntry("structure " + structureName + " not in " + aProduct.key());
         }
         StoredDataStructure structure = aProduct.dataStructures().get(si);
         List<String> current = structure.variableSets().stream().map(StoredVariableSet::name)
@@ -501,22 +600,21 @@ final class StoreErrata
     }
 
 
-    private static StoredProduct removeSet(StoredProduct aProduct, Entry aEntry)
-        throws StaleEntry, Unreached
+    private static StoredProduct removeSet(StoredProduct aProduct, Entry aEntry) throws StaleEntry
     {
         Map<String, String> where = aEntry.where();
         int si = indexOf(aProduct.dataStructures(), StoredDataStructure::name,
                 where.get("structure"));
         if (si < 0)
         {
-            throw new Unreached(
+            throw new StaleEntry(
                     "structure " + where.get("structure") + " not in " + aProduct.key());
         }
         StoredDataStructure structure = aProduct.dataStructures().get(si);
         int vi = indexOf(structure.variableSets(), StoredVariableSet::name, where.get("set"));
         if (vi < 0)
         {
-            throw new Unreached("set " + where.get("set") + " not in structure "
+            throw new StaleEntry("set " + where.get("set") + " not in structure "
                     + where.get("structure") + " of " + aProduct.key());
         }
         List<String> names = structure.variableSets().get(vi).variables().stream()
@@ -533,8 +631,7 @@ final class StoreErrata
     }
 
 
-    private static StoredProduct moveField(StoredProduct aProduct, Entry aEntry)
-        throws StaleEntry, Unreached
+    private static StoredProduct moveField(StoredProduct aProduct, Entry aEntry) throws StaleEntry
     {
         String name = aEntry.node().path("field").asText();
         String fromClass = aEntry.node().path("from").path("class").asText();
@@ -543,7 +640,7 @@ final class StoreErrata
         int ci = indexOfClass(aProduct, fromClass);
         if (ci < 0)
         {
-            throw new Unreached("class " + fromClass + " not in " + aProduct.key());
+            throw new StaleEntry("class " + fromClass + " not in " + aProduct.key());
         }
         StoredClass clazz = aProduct.classes().get(ci);
         int fi = indexOf(clazz.cdashModelFields(), StoredField::name, name);
@@ -596,7 +693,7 @@ final class StoreErrata
      * (structure+set) or a data structure. The path mirrors {@link StoreProjection}'s site paths.
      */
     private static Target locate(StoredProduct aProduct, Map<String, String> aWhere)
-        throws Unreached
+        throws StaleEntry
     {
         String key = aProduct.key();
         if (aWhere.containsKey("field"))
@@ -609,7 +706,7 @@ final class StoreErrata
                     aWhere.get("structure"));
             if (si < 0)
             {
-                throw new Unreached("structure " + aWhere.get("structure") + " not in " + key);
+                throw new StaleEntry("structure " + aWhere.get("structure") + " not in " + key);
             }
             StoredDataStructure structure = aProduct.dataStructures().get(si);
             String path = key + "/dataStructures[" + structure.name() + "]";
@@ -621,7 +718,7 @@ final class StoreErrata
             int vi = indexOf(structure.variableSets(), StoredVariableSet::name, aWhere.get("set"));
             if (vi < 0)
             {
-                throw new Unreached("set " + aWhere.get("set") + " not in structure "
+                throw new StaleEntry("set " + aWhere.get("set") + " not in structure "
                         + structure.name() + " of " + key);
             }
             StoredVariableSet set = structure.variableSets().get(vi);
@@ -638,7 +735,7 @@ final class StoreErrata
             int xi = indexOf(set.variables(), StoredVariable::name, aWhere.get("variable"));
             if (xi < 0)
             {
-                throw new Unreached("variable " + aWhere.get("variable") + " not in set "
+                throw new StaleEntry("variable " + aWhere.get("variable") + " not in set "
                         + set.name() + " of " + key);
             }
             StoredVariable variable = set.variables().get(xi);
@@ -661,13 +758,13 @@ final class StoreErrata
             int ci = indexOfClass(aProduct, aWhere.get("class"));
             if (ci < 0)
             {
-                throw new Unreached("class " + aWhere.get("class") + " not in " + key);
+                throw new StaleEntry("class " + aWhere.get("class") + " not in " + key);
             }
             StoredClass clazz = aProduct.classes().get(ci);
             int xi = indexOf(clazz.classVariables(), StoredVariable::name, aWhere.get("variable"));
             if (xi < 0)
             {
-                throw new Unreached("variable " + aWhere.get("variable") + " not in class "
+                throw new StaleEntry("variable " + aWhere.get("variable") + " not in class "
                         + clazz.name() + " of " + key);
             }
             StoredVariable variable = clazz.classVariables().get(xi);
@@ -680,7 +777,7 @@ final class StoreErrata
                 return withClass(aProduct, ci, withClassVariables(clazz, vars));
             });
         }
-        throw new Unreached("locator " + aWhere + " names no class, dataset, structure or field");
+        throw new StaleEntry("locator " + aWhere + " names no class, dataset, structure or field");
     }
 
 
@@ -692,7 +789,7 @@ final class StoreErrata
      */
     private static Target locateDatasetVariable(StoredProduct aProduct, @Nullable String aDataset,
             @Nullable String aVariable)
-        throws Unreached
+        throws StaleEntry
     {
         String key = aProduct.key();
         List<String> paths = new ArrayList<>();
@@ -710,7 +807,7 @@ final class StoreErrata
             int xi = indexOf(dataset.variables(), StoredVariable::name, aVariable);
             if (xi < 0)
             {
-                throw new Unreached("variable " + aVariable + " not in dataset " + aDataset
+                throw new StaleEntry("variable " + aVariable + " not in dataset " + aDataset
                         + " (class " + clazz.name() + ") of " + key);
             }
             StoredVariable variable = dataset.variables().get(xi);
@@ -720,7 +817,7 @@ final class StoreErrata
             }
             else if (!first.equals(variable))
             {
-                throw new Unreached("the copies of " + aDataset + "." + aVariable + " in " + key
+                throw new StaleEntry("the copies of " + aDataset + "." + aVariable + " in " + key
                         + " differ, so one correction cannot serve both");
             }
             paths.add(key + "/classes[" + clazz.name() + "]/datasets[" + dataset.name()
@@ -747,7 +844,7 @@ final class StoreErrata
             int xi = indexOf(dataset.variables(), StoredVariable::name, aVariable);
             if (xi < 0)
             {
-                throw new Unreached(
+                throw new StaleEntry(
                         "variable " + aVariable + " not in dataset " + aDataset + " of " + key);
             }
             StoredVariable variable = dataset.variables().get(xi);
@@ -757,7 +854,7 @@ final class StoreErrata
             }
             else if (!first.equals(variable))
             {
-                throw new Unreached("the copies of " + aDataset + "." + aVariable + " in " + key
+                throw new StaleEntry("the copies of " + aDataset + "." + aVariable + " in " + key
                         + " differ, so one correction cannot serve both");
             }
             paths.add(key + "/datasets[" + dataset.name() + "]/variables[" + variable.name() + "]");
@@ -773,7 +870,7 @@ final class StoreErrata
         }
         if (first == null)
         {
-            throw new Unreached("dataset " + aDataset + " not in " + key);
+            throw new StaleEntry("dataset " + aDataset + " not in " + key);
         }
         return new Target(paths.get(0), paths, first, op ->
         {
@@ -788,7 +885,7 @@ final class StoreErrata
 
 
     private static Target locateField(StoredProduct aProduct, Map<String, String> aWhere)
-        throws Unreached
+        throws StaleEntry
     {
         String key = aProduct.key();
         String name = aWhere.get("field");
@@ -797,13 +894,13 @@ final class StoreErrata
             int di = indexOf(aProduct.domains(), StoredDomain::name, aWhere.get("domain"));
             if (di < 0)
             {
-                throw new Unreached("domain " + aWhere.get("domain") + " not in " + key);
+                throw new StaleEntry("domain " + aWhere.get("domain") + " not in " + key);
             }
             StoredDomain domain = aProduct.domains().get(di);
             int fi = indexOf(domain.fields(), StoredField::name, name);
             if (fi < 0)
             {
-                throw new Unreached(
+                throw new StaleEntry(
                         "field " + name + " not in domain " + domain.name() + " of " + key);
             }
             StoredField field = domain.fields().get(fi);
@@ -821,7 +918,7 @@ final class StoreErrata
         int ci = indexOfClass(aProduct, aWhere.get("class"));
         if (ci < 0)
         {
-            throw new Unreached("class " + aWhere.get("class") + " not in " + key);
+            throw new StaleEntry("class " + aWhere.get("class") + " not in " + key);
         }
         StoredClass clazz = aProduct.classes().get(ci);
         String classPath = key + "/classes[" + clazz.name() + "]";
@@ -830,14 +927,14 @@ final class StoreErrata
             int di = indexOf(clazz.domains(), StoredDomain::name, aWhere.get("domain"));
             if (di < 0)
             {
-                throw new Unreached("domain " + aWhere.get("domain") + " not in class "
+                throw new StaleEntry("domain " + aWhere.get("domain") + " not in class "
                         + clazz.name() + " of " + key);
             }
             StoredDomain domain = clazz.domains().get(di);
             int fi = indexOf(domain.fields(), StoredField::name, name);
             if (fi < 0)
             {
-                throw new Unreached(
+                throw new StaleEntry(
                         "field " + name + " not in domain " + domain.name() + " of " + key);
             }
             StoredField field = domain.fields().get(fi);
@@ -861,14 +958,14 @@ final class StoreErrata
             int si = indexOf(clazz.scenarios(), StoredScenario::scenario, aWhere.get("scenario"));
             if (si < 0)
             {
-                throw new Unreached("scenario " + aWhere.get("scenario") + " not in class "
+                throw new StaleEntry("scenario " + aWhere.get("scenario") + " not in class "
                         + clazz.name() + " of " + key);
             }
             StoredScenario scenario = clazz.scenarios().get(si);
             int fi = indexOf(scenario.fields(), StoredField::name, name);
             if (fi < 0)
             {
-                throw new Unreached(
+                throw new StaleEntry(
                         "field " + name + " not in scenario " + scenario.scenario() + " of " + key);
             }
             StoredField field = scenario.fields().get(fi);
@@ -890,7 +987,7 @@ final class StoreErrata
         int fi = indexOf(clazz.cdashModelFields(), StoredField::name, name);
         if (fi < 0)
         {
-            throw new Unreached("field " + name + " not in class " + clazz.name() + " of " + key);
+            throw new StaleEntry("field " + name + " not in class " + clazz.name() + " of " + key);
         }
         StoredField field = clazz.cdashModelFields().get(fi);
         String path = classPath + "/cdashModelFields[" + field.name() + "]";
