@@ -336,7 +336,7 @@ public final class StudyValidationService
         if (ctSelection.source() == CtSelection.Source.DEFINE)
         {
             LOGGER.log(System.Logger.Level.INFO,
-                    "CT Packages is blank; using the Define-XML's declared CT set: {0}",
+                    "CT Packages is blank; using the Define-XML''s declared CT set: {0}",
                     String.join(", ", ctSelection.packageIds()));
         }
         MetadataProvider provider = buildProvider(manager, metadataLibrary, params, kind,
