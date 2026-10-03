@@ -1,10 +1,12 @@
 {
   "manifest": "metadata store reachable-field manifest",
-  "formatVersion": 4,
+  "formatVersion": 5,
   "frozen": "2026-09-28",
   "authority": "databrowser-meta plans/AUDIT-metadata-reachable-fields.md sections 2 and 3 (the TABLES, never the prose counts), widened by plans/PLAN-define-ct-evaluation.md T1-3 (b) and T1-9 (every field the pickle cache publishes, at every level, except _links and the Python cache builder's additions), and by plans/PLAN-store-cdash-codelist-ids.md (owner 2026-09-28: T1-9's one _links-derived projection, codelistIds from _links.codelist, covers CDASH fields as well as variables - two codelistIds rows, one per level)",
   "guardedBy": "net.cumba.corej.core.metadata.store.seed.StoreFieldManifestTest",
   "purpose": [
+    "Format 5 (2026-10-03, PLAN-store-library-content-errata) changed NO slot of this manifest: the",
+    "bump carries the seeder's errata register and text normalisation, not a field-set change.",
     "Data only: the argument for every row lives in the audit and the plan and is not repeated here.",
     "This file freezes WHAT the store carries, at every level, with the TYPE of each slot - and,",
     "since format 3, WHAT IT DELIBERATELY DOES NOT CARRY: every level's `excluded` block names each",

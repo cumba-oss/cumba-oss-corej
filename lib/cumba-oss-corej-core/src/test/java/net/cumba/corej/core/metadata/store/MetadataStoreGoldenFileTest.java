@@ -35,6 +35,12 @@ class MetadataStoreGoldenFileTest
      * {@code <entry name> <sha256 of uncompressed content>}, sorted by entry name.
      *
      * <p>
+     * Re-pinned 2026-10-03 with {@code FORMAT_VERSION} 4 &rarr; 5
+     * (PLAN-store-library-content-errata): only {@code manifest.json} moved (its version). The
+     * errata register and the text normalisation act in the SEEDER, on projected source documents;
+     * this fixture is written through the writer directly, so no product entry here can move — the
+     * real-corpus errata test ({@code StoreErrataRealCorpusTest}) is where the corrections are
+     * proven. Taken from a run in which every other store test was green.<br>
      * Re-pinned 2026-09-28 with {@code FORMAT_VERSION} 3 &rarr; 4 (PLAN-store-cdash-codelist-ids):
      * only {@code manifest.json} moved (its version). No fixture builds a CDASH field, so the new
      * {@code StoredField.codelistIds} writes nothing here — the real-data conformance test and
@@ -55,7 +61,7 @@ class MetadataStoreGoldenFileTest
             ct/codelists.json 442e4c7d1eff80ef404cfe21c89fd9b060288f91c2a70d38d2c95302ba6c4c61
             ct/packages.json 8b0fa180c89e043f6479444720b1731d473ae2e566cc85c26a53a4a5c4f42a43
             ct/terms.bin 426cb169009a087ea1d9208324e53de6a9cde96421791dea446b28ea09ae35ff
-            manifest.json 32d258f2a52876ed140992027f4456c0807b32518bacbd4a064ce12900ae8e63
+            manifest.json 84a186757a0ea6df75f6ddf124656cb43085efeb346ed322a5d2b4f9120fe678
             products/models/sdtm/2-0.json 4d1f053c766a809899d2ac2616a4ee557f327e8adb4aec404fd906dbd428c568
             products/standards/adam/adamig-1-3.json d1802720a182f9670ded6186261486e3c81ae4b9074f583ff4d09ccf4022dbe8
             products/standards/sdtmig/3-4.json 7f9d3f9a8e7d02a75c9419507e1e93dd9c4153b4ae2cfb181fca5957693e1095

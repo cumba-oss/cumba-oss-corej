@@ -3,6 +3,7 @@ package net.cumba.corej.core.metadata.store.seed;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -249,13 +250,22 @@ class StoreSeederRealDataConformanceTest
 
 
     /**
-     * C5 (PLAN-store-cdash-codelist-ids): source and store walked IN PARALLEL, product by product,
-     * over all four CDASH field paths — the product's {@code domains[].fields}, and per class
+     * C5 (PLAN-store-cdash-codelist-ids): source and store walked product by product over all four
+     * CDASH field paths — the product's {@code domains[].fields}, and per class
      * {@code domains[].fields}, {@code scenarios[].fields} and {@code cdashModelFields}. Where the
      * source field has a {@code _links.codelist}, the stored {@code codelistIds} equals its refs'
      * trailing id segments, in order; where it has none, the stored key is ABSENT — never
      * {@code []}. The oracle is the pickle document itself, read through {@link PickleCache}, not
      * the projection under test.
+     *
+     * <p>
+     * Since format 5 the errata register (PLAN-store-library-content-errata) adds and moves CDASH
+     * fields — CDASH 1.1's three common timing fields per domain (#283.11), the CDASH model
+     * {@code --OBJ} / {@code APID} / {@code SREL} / {@code RSUBJID} moves into their printed
+     * domains (#283.24, #283.25) — so the walk matches elements BY NAME and every store-only or
+     * source-only element must be one the register accounts for ({@link ErrataAllowances}); any
+     * other difference is still a failure.
+     * </p>
      */
     private static void assertCdashFieldCodelistIds(ObjectMapper aMapper, PickleCache aSource,
             ZipFile aStore)
@@ -264,6 +274,7 @@ class StoreSeederRealDataConformanceTest
         Set<String> keys = new LinkedHashSet<>(aSource.standardKeys());
         keys.addAll(aSource.modelKeys());
         int[] counts = new int[2]; // [0] linked, [1] unlinked
+        ErrataAllowances allowances = ErrataAllowances.fromRegister();
         for (String key : keys)
         {
             JsonNode source = aMapper.valueToTree(
@@ -271,22 +282,26 @@ class StoreSeederRealDataConformanceTest
             ZipEntry entry = aStore.getEntry("products/" + key + ".json");
             assertNotNull(entry, "the store holds no product " + key);
             JsonNode stored = aMapper.readTree(aStore.getInputStream(entry));
+            allowances.indexSourceFields(source);
             compareFieldLists(key + ".domains", source.path("domains"), stored.path("domains"),
-                    "fields", counts);
+                    "name", counts, allowances, key, null);
             JsonNode sourceClasses = source.path("classes");
             JsonNode storedClasses = stored.path("classes");
             assertEquals(sourceClasses.size(), storedClasses.size(), key + ".classes");
             for (int c = 0; c < sourceClasses.size(); c++)
             {
-                String at = key + ".classes[" + c + "]";
                 JsonNode from = sourceClasses.get(c);
                 JsonNode to = storedClasses.get(c);
-                compareFieldLists(at + ".domains", from.path("domains"), to.path("domains"),
-                        "fields", counts);
+                String className = from.path("name").asText();
+                String at = key + ".classes[" + className + "]";
+                assertEquals(className, to.path("name").asText(), at);
+                compareFieldLists(at + ".domains", from.path("domains"), to.path("domains"), "name",
+                        counts, allowances, key, className);
                 compareFieldLists(at + ".scenarios", from.path("scenarios"), to.path("scenarios"),
-                        "fields", counts);
+                        "scenario", counts, allowances, key, className);
                 compareFields(at + ".cdashModelFields", from.path("cdashModelFields"),
-                        to.path("cdashModelFields"), counts);
+                        to.path("cdashModelFields"), counts,
+                        allowances.forClassFields(key, className));
             }
         }
         assertTrue(counts[0] >= MIN_LINKED_CDASH_FIELDS,
@@ -294,59 +309,331 @@ class StoreSeederRealDataConformanceTest
                         + ", below the " + MIN_LINKED_CDASH_FIELDS + " measured at format 4");
         assertTrue(counts[1] > 0, "no CDASH field WITHOUT a link was compared - the absent-key"
                 + " branch went unexercised");
+        allowances.assertEveryAllowanceWasUsed();
         // Surfaced in the test log for the gate evidence; the assertions above are the gate.
         System.out.printf("CDASH fields compared: %,d with codelistIds, %,d without%n", counts[0],
                 counts[1]);
     }
 
 
-    /** Each element's {@code aFieldsKey} array compared by {@link #compareFields}. */
+    /**
+     * Each element matched by {@code aNameKey}; a store-only element must be a domain the register
+     * creates. Each matched pair's {@code fields} compared by {@link #compareFields}.
+     */
     private static void compareFieldLists(String aWhere, JsonNode aSource, JsonNode aStored,
-            String aFieldsKey, int[] aCounts)
+            String aNameKey, int[] aCounts, ErrataAllowances aAllowances, String aProduct,
+            @Nullable String aClass)
     {
-        assertEquals(aSource.size(), aStored.size(), aWhere);
-        for (int i = 0; i < aSource.size(); i++)
+        // A scenario name repeats within a class ("Horizontal-Generic" once per domain), so the
+        // scenario key is scenario + domainName + ordinal; a domain's name is unique in its class.
+        java.util.function.Function<JsonNode, String> keyOf = element -> "scenario".equals(aNameKey)
+                ? element.path("scenario").asText() + "|" + element.path("domainName").asText()
+                        + "|" + element.path("ordinal").asText()
+                : element.path(aNameKey).asText();
+        java.util.Map<String, JsonNode> storedByName = new java.util.LinkedHashMap<>();
+        for (JsonNode element : aStored)
         {
-            compareFields(aWhere + "[" + i + "]." + aFieldsKey, aSource.get(i).path(aFieldsKey),
-                    aStored.get(i).path(aFieldsKey), aCounts);
+            assertNull(storedByName.put(keyOf.apply(element), element),
+                    aWhere + ": duplicate element key " + keyOf.apply(element));
+        }
+        for (JsonNode from : aSource)
+        {
+            String name = keyOf.apply(from);
+            JsonNode to = storedByName.remove(name);
+            assertNotNull(to, aWhere + "[" + name + "]: in the source, not in the store");
+            compareFields(aWhere + "[" + name + "].fields", from.path("fields"), to.path("fields"),
+                    aCounts,
+                    aAllowances.forContainer(aProduct, aClass, name, "scenario".equals(aNameKey)));
+        }
+        for (String storeOnly : storedByName.keySet())
+        {
+            assertTrue(aAllowances.createsDomain(aProduct, storeOnly), aWhere + "[" + storeOnly
+                    + "]: in the store, not in the source, and no errata" + " entry creates it");
+            compareFields(aWhere + "[" + storeOnly + "].fields", aMapperArray(),
+                    storedByName.get(storeOnly).path("fields"), aCounts,
+                    aAllowances.forContainer(aProduct, aClass, storeOnly, false));
         }
     }
 
 
-    private static void compareFields(String aWhere, JsonNode aSource, JsonNode aStored,
-            int[] aCounts)
+    private static JsonNode aMapperArray()
     {
-        assertEquals(aSource.size(), aStored.size(), aWhere);
+        return new ObjectMapper().createArrayNode();
+    }
+
+
+    /**
+     * Fields matched by name: the matched pairs' codelist links must agree and keep the source's
+     * relative order; a source-only field must be one the register moves away, a store-only field
+     * one the register adds or moves in.
+     */
+    private static void compareFields(String aWhere, JsonNode aSource, JsonNode aStored,
+            int[] aCounts, ErrataAllowances.Container aAllowed)
+    {
+        java.util.Map<String, Integer> storedIndex = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < aStored.size(); i++)
+        {
+            storedIndex.put(aStored.get(i).path("name").asText(), i);
+        }
+        int lastMatched = -1;
+        Set<String> seen = new LinkedHashSet<>();
         for (int i = 0; i < aSource.size(); i++)
         {
             JsonNode from = aSource.get(i);
-            JsonNode to = aStored.get(i);
-            String at = aWhere + "[" + i + "] " + from.path("name").asText();
-            assertEquals(from.path("name").asText(), to.path("name").asText(),
-                    at + ": the walk is out of step");
-            JsonNode link = from.path("_links").path("codelist");
-            if (link.isMissingNode() || link.isNull())
+            String name = from.path("name").asText();
+            String at = aWhere + "[" + i + "] " + name;
+            Integer j = storedIndex.get(name);
+            if (j == null)
             {
-                aCounts[1]++;
-                assertFalse(to.has("codelistIds"),
-                        at + ": no source link, so codelistIds must be ABSENT, never []: " + to);
+                assertTrue(aAllowed.removed(name),
+                        at + ": in the source, not in the store, and no errata entry moves it");
                 continue;
             }
-            aCounts[0]++;
-            List<String> expected = new ArrayList<>();
-            for (JsonNode ref : link.isArray() ? link : List.of(link))
+            seen.add(name);
+            assertTrue(j > lastMatched, at + ": the store's field order differs from the source's");
+            lastMatched = j;
+            assertCodelistIds(at, from, aStored.get(j), aCounts);
+        }
+        for (String name : storedIndex.keySet())
+        {
+            if (seen.contains(name))
             {
-                String href = ref.path("href").asText();
-                expected.add(href.substring(href.lastIndexOf('/') + 1));
+                continue;
             }
-            assertTrue(to.path("codelistIds").isArray(),
-                    at + ": a source link, so codelistIds must be stored: " + to);
-            List<String> actual = new ArrayList<>();
-            to.path("codelistIds").forEach(id -> actual.add(id.asText()));
-            assertEquals(expected, actual, at + ": the stored codelistIds");
+            JsonNode to = aStored.get(storedIndex.get(name));
+            if (aAllowed.movedIn(name))
+            {
+                // A field the register moved here keeps its source links: compared against the
+                // source node from the container it left, so the move cannot drop a codelist.
+                JsonNode from = aAllowed.sourceFieldOf(name);
+                assertNotNull(from, aWhere + " " + name + ": moved in, but no source field");
+                assertCodelistIds(aWhere + " " + name + " (moved)", from, to, aCounts);
+                continue;
+            }
+            assertTrue(aAllowed.added(name),
+                    aWhere + " " + name + ": in the store, not in the source, and no errata"
+                            + " entry adds or moves it there");
+            assertFalse(to.has("codelistIds"),
+                    aWhere + " " + name + ": an added field carries no codelistIds");
         }
     }
 
+
+    private static void assertCodelistIds(String aAt, JsonNode aFrom, JsonNode aTo, int[] aCounts)
+    {
+        JsonNode link = aFrom.path("_links").path("codelist");
+        if (link.isMissingNode() || link.isNull())
+        {
+            aCounts[1]++;
+            assertFalse(aTo.has("codelistIds"), aAt + ": no link, so no codelistIds key");
+            return;
+        }
+        aCounts[0]++;
+        List<String> expected = new ArrayList<>();
+        for (JsonNode ref : link.isArray() ? link : List.of(link))
+        {
+            String href = ref.path("href").asText();
+            expected.add(href.substring(href.lastIndexOf('/') + 1));
+        }
+        List<String> actual = new ArrayList<>();
+        aTo.path("codelistIds").forEach(id -> actual.add(id.asText()));
+        assertEquals(expected, actual, aAt);
+    }
+
+    /**
+     * The CDASH structure changes the errata register makes, read from the register itself so this
+     * test cannot drift from it: {@code add-field} (store-only fields of a CDASH IG domain) and
+     * {@code move-field} (a field leaving a model class for a model domain, the domain created when
+     * the entry says so). Every allowance must be USED by the walk — an allowance no difference
+     * consumed means the register and the store disagree.
+     */
+    private static final class ErrataAllowances
+    {
+
+        /** Per container: the field names the register adds to it and removes from it. */
+        record Container(Set<String> addedNames, Set<String> movedNames, Set<String> removedNames,
+                Set<String> used, ErrataAllowances owner)
+        {
+
+            boolean added(String aName)
+            {
+                boolean ok = addedNames.contains(aName);
+                if (ok)
+                {
+                    used.add("+" + aName);
+                }
+                return ok;
+            }
+
+
+            boolean movedIn(String aName)
+            {
+                boolean ok = movedNames.contains(aName);
+                if (ok)
+                {
+                    used.add(">" + aName);
+                }
+                return ok;
+            }
+
+
+            @Nullable
+            JsonNode sourceFieldOf(String aName)
+            {
+                return owner.sourceFields.get(aName);
+            }
+
+
+            boolean removed(String aName)
+            {
+                boolean ok = removedNames.contains(aName);
+                if (ok)
+                {
+                    used.add("-" + aName);
+                }
+                return ok;
+            }
+        }
+
+        private final java.util.Map<String, Container> containers = new java.util.HashMap<>();
+
+        private final Set<String> createdDomains = new LinkedHashSet<>();
+
+        private final Set<String> usedCreatedDomains = new LinkedHashSet<>();
+
+        /** The current product's source fields by name, over all four CDASH field paths. */
+        private final java.util.Map<String, JsonNode> sourceFields = new java.util.HashMap<>();
+
+        void indexSourceFields(JsonNode aSource)
+        {
+            sourceFields.clear();
+            for (JsonNode domain : aSource.path("domains"))
+            {
+                domain.path("fields").forEach(f -> sourceFields.put(f.path("name").asText(), f));
+            }
+            for (JsonNode clazz : aSource.path("classes"))
+            {
+                for (JsonNode domain : clazz.path("domains"))
+                {
+                    domain.path("fields")
+                            .forEach(f -> sourceFields.put(f.path("name").asText(), f));
+                }
+                for (JsonNode scenario : clazz.path("scenarios"))
+                {
+                    scenario.path("fields")
+                            .forEach(f -> sourceFields.put(f.path("name").asText(), f));
+                }
+                clazz.path("cdashModelFields")
+                        .forEach(f -> sourceFields.put(f.path("name").asText(), f));
+            }
+        }
+
+
+        static ErrataAllowances fromRegister()
+        {
+            ErrataAllowances a = new ErrataAllowances();
+            for (StoreErrata.Entry e : StoreErrata.load().entries())
+            {
+                switch (e.kind())
+                {
+                case "add-field" -> a
+                        .container(e.product(), e.where().get("class"), e.where().get("domain"),
+                                false)
+                        .addedNames().add(e.node().path("field").path("name").asText());
+                case "move-field" ->
+                {
+                    String field = e.node().path("field").asText();
+                    a.container(e.product(), e.node().path("from").path("class").asText(), null,
+                            false).removedNames().add(field);
+                    String domain = e.node().path("to").path("domain").asText();
+                    a.container(e.product(), null, domain, false).movedNames().add(field);
+                    if (e.node().path("createDomain").asBoolean(false))
+                    {
+                        a.createdDomains.add(e.product() + "/" + domain);
+                    }
+                }
+                default ->
+                {
+                    // no structural change
+                }
+                }
+            }
+            return a;
+        }
+
+
+        private Container container(String aProduct, @Nullable String aClass,
+                @Nullable String aName, boolean aScenario)
+        {
+            String key = aProduct + "|" + aClass + "|" + (aScenario ? "scenario:" : "") + aName;
+            return containers.computeIfAbsent(key, k -> new Container(new LinkedHashSet<>(),
+                    new LinkedHashSet<>(), new LinkedHashSet<>(), new LinkedHashSet<>(), this));
+        }
+
+
+        Container forContainer(String aProduct, @Nullable String aClass, String aName,
+                boolean aScenario)
+        {
+            return container(aProduct, aClass, aName, aScenario);
+        }
+
+
+        Container forClassFields(String aProduct, String aClass)
+        {
+            return container(aProduct, aClass, null, false);
+        }
+
+
+        boolean createsDomain(String aProduct, String aDomain)
+        {
+            boolean ok = createdDomains.contains(aProduct + "/" + aDomain);
+            if (ok)
+            {
+                usedCreatedDomains.add(aProduct + "/" + aDomain);
+            }
+            return ok;
+        }
+
+
+        void assertEveryAllowanceWasUsed()
+        {
+            List<String> unused = new ArrayList<>();
+            for (java.util.Map.Entry<String, Container> e : containers.entrySet())
+            {
+                Container c = e.getValue();
+                for (String n : c.addedNames())
+                {
+                    if (!c.used().contains("+" + n))
+                    {
+                        unused.add(e.getKey() + " +" + n);
+                    }
+                }
+                for (String n : c.movedNames())
+                {
+                    if (!c.used().contains(">" + n))
+                    {
+                        unused.add(e.getKey() + " >" + n);
+                    }
+                }
+                for (String n : c.removedNames())
+                {
+                    if (!c.used().contains("-" + n))
+                    {
+                        unused.add(e.getKey() + " -" + n);
+                    }
+                }
+            }
+            for (String d : createdDomains)
+            {
+                if (!usedCreatedDomains.contains(d))
+                {
+                    unused.add("created domain " + d);
+                }
+            }
+            assertEquals(List.of(), unused,
+                    "errata allowances the walk never needed - the register and the store disagree");
+        }
+    }
 
     /**
      * The store {@link PickleStoreSeeder} writes from the real pickle corpus with

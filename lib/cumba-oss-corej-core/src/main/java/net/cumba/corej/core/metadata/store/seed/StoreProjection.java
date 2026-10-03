@@ -68,6 +68,15 @@ import org.jspecify.annotations.Nullable;
  * manifest and its guard replaced it on 2026-09-08.)
  * </p>
  *
+ * <b>Text normalisation (format 5, PLAN-store-library-content-errata §2.2):</b> every PRODUCT text
+ * field goes through {@link StoreTextNormaliser} on the way in — literal {@code \n} sequences, line
+ * breaks in short fields, HTML entities — and the instance records each changed site
+ * ({@link #normalisedSites()}) and the counts by kind ({@link #normalisationCounts()}), which
+ * {@link SeedRun} hands to the errata register and the seed report. CT packages are projected
+ * verbatim. The field set is unchanged by this; the manifest guard above still holds.
+ * </p>
+ *
+ * <p>
  * An instance additionally <b>interns</b> terms and codelists across every package it projects: 206
  * cumulative CT packages hold ~1.75 M term rows but only ~64 K distinct terms, and without sharing,
  * a full seed would materialise every row as its own object graph. Interning is purely a memory
@@ -81,6 +90,11 @@ final class StoreProjection
     private final Map<StoredTerm, StoredTerm> termPool = new HashMap<>();
 
     private final Map<StoredCodelist, StoredCodelist> codelistPool = new HashMap<>();
+
+    private final List<String> normalisedSites = new ArrayList<>();
+
+    private final Map<StoreTextNormaliser.Kind, Integer> normalisationCounts = new java.util.EnumMap<>(
+            StoreTextNormaliser.Kind.class);
 
     /**
      * Projects one CT package document ({@code {…, "codelists": […]}}) onto its stored form.
@@ -138,34 +152,62 @@ final class StoreProjection
      */
     StoredProduct product(String aKey, JsonNode aProduct)
     {
+        String path = aKey;
         List<StoredClass> classes = new ArrayList<>();
         for (JsonNode clazz : array(aProduct, "classes"))
         {
-            classes.add(productClass(clazz));
+            classes.add(productClass(clazz, path + "/classes[" + text(clazz, "name") + "]"));
         }
         List<StoredDataset> datasets = new ArrayList<>();
         for (JsonNode dataset : array(aProduct, "datasets"))
         {
-            datasets.add(dataset(dataset));
+            datasets.add(dataset(dataset, path + "/datasets[" + text(dataset, "name") + "]"));
         }
         List<StoredDataStructure> structures = new ArrayList<>();
         for (JsonNode structure : array(aProduct, "dataStructures"))
         {
-            structures.add(dataStructure(structure));
+            structures.add(dataStructure(structure,
+                    path + "/dataStructures[" + text(structure, "name") + "]"));
         }
         List<StoredDomain> domains = new ArrayList<>();
         for (JsonNode domain : array(aProduct, "domains"))
         {
-            domains.add(domain(domain));
+            domains.add(domain(domain, path + "/domains[" + text(domain, "name") + "]"));
         }
-        return StoredProduct.builder().key(aKey).name(text(aProduct, "name"))
-                .label(text(aProduct, "label")).version(text(aProduct, "version"))
+        return StoredProduct.builder().key(aKey).name(ptext(aProduct, "name", path))
+                .label(ptext(aProduct, "label", path)).version(text(aProduct, "version"))
                 .modelHref(text(aProduct.path("_links").path("model"), "href"))
-                .description(text(aProduct, "description"))
+                .description(ptext(aProduct, "description", path))
                 .effectiveDate(text(aProduct, "effectiveDate"))
                 .registrationStatus(text(aProduct, "registrationStatus"))
-                .source(text(aProduct, "source")).classes(classes).datasets(datasets)
+                .source(ptext(aProduct, "source", path)).classes(classes).datasets(datasets)
                 .dataStructures(structures).domains(domains).build();
+    }
+
+
+    /**
+     * The text fields this projection normalised ({@link StoreTextNormaliser}), as
+     * {@code <product key>/<path>.<field>} site strings — what the errata register's
+     * {@code normalised} entries assert against (an entry whose site was NOT normalised this run is
+     * stale: the source no longer carries the defect). Product documents only; CT is never
+     * normalised.
+     *
+     * @return the sites, in projection order
+     */
+    List<String> normalisedSites()
+    {
+        return List.copyOf(normalisedSites);
+    }
+
+
+    /**
+     * How many fields each kind of normalisation changed, for the seed report.
+     *
+     * @return the counts by kind
+     */
+    Map<StoreTextNormaliser.Kind, Integer> normalisationCounts()
+    {
+        return Map.copyOf(normalisationCounts);
     }
 
 
@@ -187,59 +229,61 @@ final class StoreProjection
     }
 
 
-    private StoredClass productClass(JsonNode aClass)
+    private StoredClass productClass(JsonNode aClass, String aPath)
     {
         List<StoredVariable> classVariables = new ArrayList<>();
         for (JsonNode variable : array(aClass, "classVariables"))
         {
-            classVariables.add(variable(variable));
+            classVariables.add(
+                    variable(variable, aPath + "/classVariables[" + text(variable, "name") + "]"));
         }
         List<StoredDataset> datasets = new ArrayList<>();
         for (JsonNode dataset : array(aClass, "datasets"))
         {
-            datasets.add(dataset(dataset));
+            datasets.add(dataset(dataset, aPath + "/datasets[" + text(dataset, "name") + "]"));
         }
         List<StoredDomain> domains = new ArrayList<>();
         for (JsonNode domain : array(aClass, "domains"))
         {
-            domains.add(domain(domain));
+            domains.add(domain(domain, aPath + "/domains[" + text(domain, "name") + "]"));
         }
         List<StoredScenario> scenarios = new ArrayList<>();
         for (JsonNode scenario : array(aClass, "scenarios"))
         {
-            scenarios.add(scenario(scenario));
+            scenarios.add(
+                    scenario(scenario, aPath + "/scenarios[" + text(scenario, "scenario") + "]"));
         }
         List<StoredField> modelFields = new ArrayList<>();
         for (JsonNode field : array(aClass, "cdashModelFields"))
         {
-            modelFields.add(field(field));
+            modelFields.add(field(field, aPath + "/cdashModelFields[" + text(field, "name") + "]"));
         }
-        return new StoredClass(text(aClass, "name"), text(aClass, "label"), text(aClass, "ordinal"),
-                classVariables, datasets, text(aClass, "description"), domains, scenarios,
-                modelFields);
+        return new StoredClass(ptext(aClass, "name", aPath), ptext(aClass, "label", aPath),
+                text(aClass, "ordinal"), classVariables, datasets,
+                ptext(aClass, "description", aPath), domains, scenarios, modelFields);
     }
 
 
     /** A CDASH domain (a CDASH IG class's or a CDASH model's {@code domains[]} entry). */
-    private StoredDomain domain(JsonNode aDomain)
+    private StoredDomain domain(JsonNode aDomain, String aPath)
     {
         List<StoredField> fields = new ArrayList<>();
         for (JsonNode field : array(aDomain, "fields"))
         {
-            fields.add(field(field));
+            fields.add(field(field, aPath + "/fields[" + text(field, "name") + "]"));
         }
-        return new StoredDomain(text(aDomain, "name"), text(aDomain, "label"),
-                text(aDomain, "ordinal"), text(aDomain, "description"), fields);
+        return new StoredDomain(ptext(aDomain, "name", aPath), ptext(aDomain, "label", aPath),
+                text(aDomain, "ordinal"), ptext(aDomain, "description", aPath), fields);
     }
 
 
     /** A CDASH IG scenario (a class's {@code scenarios[]} entry). */
-    private StoredScenario scenario(JsonNode aScenario)
+    private StoredScenario scenario(JsonNode aScenario, String aPath)
     {
         List<StoredField> fields = new ArrayList<>();
         for (JsonNode field : array(aScenario, "fields"))
         {
-            fields.add(field(field));
+            fields.add(field(field, aPath + "/fields[" + text(field, "name") + "]"));
         }
         return new StoredScenario(text(aScenario, "scenario"), text(aScenario, "domain"),
                 text(aScenario, "domainName"), text(aScenario, "ordinal"), fields);
@@ -252,70 +296,97 @@ final class StoreProjection
      * use (format 4; T1-9 extended by the owner 2026-09-28). Every CDASH field level goes through
      * here, so none can diverge.
      */
-    private static StoredField field(JsonNode aField)
+    private StoredField field(JsonNode aField, String aPath)
     {
-        return StoredField.builder().name(text(aField, "name")).label(text(aField, "label"))
-                .ordinal(text(aField, "ordinal")).core(text(aField, "core"))
-                .definition(text(aField, "definition"))
+        return StoredField.builder().name(ptext(aField, "name", aPath))
+                .label(ptext(aField, "label", aPath)).ordinal(text(aField, "ordinal"))
+                .core(text(aField, "core")).definition(ptext(aField, "definition", aPath))
                 .simpleDatatype(text(aField, "simpleDatatype"))
                 .codelistSubmissionValues(stringList(aField, "codelistSubmissionValues"))
-                .completionInstructions(text(aField, "completionInstructions"))
-                .implementationNotes(text(aField, "implementationNotes"))
-                .mappingInstructions(text(aField, "mappingInstructions"))
-                .prompt(text(aField, "prompt")).questionText(text(aField, "questionText"))
+                .completionInstructions(ptext(aField, "completionInstructions", aPath))
+                .implementationNotes(ptext(aField, "implementationNotes", aPath))
+                .mappingInstructions(ptext(aField, "mappingInstructions", aPath))
+                .prompt(ptext(aField, "prompt", aPath))
+                .questionText(ptext(aField, "questionText", aPath))
                 .domainSpecific(text(aField, "domainSpecific")).codelistIds(codelistIds(aField))
                 .build();
     }
 
 
-    private StoredDataset dataset(JsonNode aDataset)
+    private StoredDataset dataset(JsonNode aDataset, String aPath)
     {
         List<StoredVariable> variables = new ArrayList<>();
         for (JsonNode variable : array(aDataset, "datasetVariables"))
         {
-            variables.add(variable(variable));
+            variables.add(variable(variable, aPath + "/variables[" + text(variable, "name") + "]"));
         }
-        return new StoredDataset(text(aDataset, "name"), text(aDataset, "label"),
-                text(aDataset, "ordinal"), text(aDataset, "datasetStructure"), variables,
-                text(aDataset, "description"), text(aDataset, "status"));
+        return new StoredDataset(ptext(aDataset, "name", aPath), ptext(aDataset, "label", aPath),
+                text(aDataset, "ordinal"), ptext(aDataset, "datasetStructure", aPath), variables,
+                ptext(aDataset, "description", aPath), text(aDataset, "status"));
     }
 
 
-    private StoredDataStructure dataStructure(JsonNode aStructure)
+    private StoredDataStructure dataStructure(JsonNode aStructure, String aPath)
     {
         List<StoredVariableSet> sets = new ArrayList<>();
         for (JsonNode set : array(aStructure, "analysisVariableSets"))
         {
+            String setPath = aPath + "/variableSets[" + text(set, "name") + "]";
             List<StoredVariable> variables = new ArrayList<>();
             for (JsonNode variable : array(set, "analysisVariables"))
             {
-                variables.add(variable(variable));
+                variables.add(
+                        variable(variable, setPath + "/variables[" + text(variable, "name") + "]"));
             }
-            sets.add(new StoredVariableSet(text(set, "name"), text(set, "label"),
-                    text(set, "ordinal"), variables, text(set, "description")));
+            sets.add(
+                    new StoredVariableSet(ptext(set, "name", setPath), ptext(set, "label", setPath),
+                            text(set, "ordinal"), variables, ptext(set, "description", setPath)));
         }
-        return new StoredDataStructure(text(aStructure, "name"), text(aStructure, "label"),
-                text(aStructure, "ordinal"), text(aStructure, "class"),
-                text(aStructure, "subClass"), sets, text(aStructure, "description"));
+        return new StoredDataStructure(ptext(aStructure, "name", aPath),
+                ptext(aStructure, "label", aPath), text(aStructure, "ordinal"),
+                text(aStructure, "class"), text(aStructure, "subClass"), sets,
+                ptext(aStructure, "description", aPath));
     }
 
 
-    private StoredVariable variable(JsonNode aVariable)
+    private StoredVariable variable(JsonNode aVariable, String aPath)
     {
         StoredVariable.StoredVariableBuilder builder = StoredVariable.builder()
-                .name(text(aVariable, "name")).label(text(aVariable, "label"))
+                .name(ptext(aVariable, "name", aPath)).label(ptext(aVariable, "label", aPath))
                 .ordinal(text(aVariable, "ordinal")).core(text(aVariable, "core"))
                 .role(text(aVariable, "role")).simpleDatatype(text(aVariable, "simpleDatatype"))
-                .description(text(aVariable, "description"))
+                .description(ptext(aVariable, "description", aPath))
                 .valueList(stringList(aVariable, "valueList"))
-                .describedValueDomain(text(aVariable, "describedValueDomain"))
+                .describedValueDomain(ptext(aVariable, "describedValueDomain", aPath))
                 .codelistSubmissionValues(stringList(aVariable, "codelistSubmissionValues"))
-                .roleDescription(text(aVariable, "roleDescription"))
-                .definition(text(aVariable, "definition")).notes(text(aVariable, "notes"))
-                .examples(text(aVariable, "examples"))
-                .usageRestrictions(text(aVariable, "usageRestrictions"))
+                .roleDescription(ptext(aVariable, "roleDescription", aPath))
+                .definition(ptext(aVariable, "definition", aPath))
+                .notes(ptext(aVariable, "notes", aPath))
+                .examples(ptext(aVariable, "examples", aPath))
+                .usageRestrictions(ptext(aVariable, "usageRestrictions", aPath))
                 .variableCcode(text(aVariable, "variableCcode"));
         return builder.codelistIds(codelistIds(aVariable)).build();
+    }
+
+
+    /**
+     * A PRODUCT text field: {@link #text} plus {@link StoreTextNormaliser}, with the site recorded
+     * when the value changed. Structural scalars (ordinal, core, role, type, status, hrefs) and
+     * every CT field keep the plain reader.
+     */
+    private @Nullable String ptext(JsonNode aNode, String aField, String aPath)
+    {
+        String raw = text(aNode, aField);
+        StoreTextNormaliser.Result result = StoreTextNormaliser.normalise(aField, raw);
+        if (!result.kinds().isEmpty())
+        {
+            normalisedSites.add(aPath + "." + aField);
+            for (StoreTextNormaliser.Kind kind : result.kinds())
+            {
+                normalisationCounts.merge(kind, 1, Integer::sum);
+            }
+        }
+        return result.value();
     }
 
 

@@ -211,7 +211,7 @@ public final class WebApiStoreSeeder
      */
     private Map<String, StoredProduct> projectProducts(List<String> aIgHrefs, SeedRun aRun)
     {
-        StoreProjection projection = new StoreProjection();
+        StoreProjection projection = aRun.projection();
         Map<String, StoredProduct> products = new TreeMap<>();
         TreeSet<String> modelHrefs = new TreeSet<>();
         for (String href : aIgHrefs)

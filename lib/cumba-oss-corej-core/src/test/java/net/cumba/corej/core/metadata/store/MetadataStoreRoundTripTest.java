@@ -106,9 +106,10 @@ class MetadataStoreRoundTripTest
             StoreManifest manifest = store.manifest();
             // ⚠ A literal on purpose: reading StoreFormat.FORMAT_VERSION here would make an
             // accidental bump invisible. 1 → 2 on 2026-09-08 (StoredVariable.examples became a
-            // scalar), 2 → 3 on 2026-09-26, 3 → 4 on 2026-09-28 (CDASH field codelistIds); see
-            // that constant's javadoc.
-            assertEquals(4, manifest.formatVersion());
+            // scalar), 2 → 3 on 2026-09-26, 3 → 4 on 2026-09-28 (CDASH field codelistIds), 4 → 5
+            // on 2026-10-03 (the errata register and the text normalisation); see that
+            // constant's javadoc.
+            assertEquals(5, manifest.formatVersion());
             assertEquals(
                     List.of(new StoreProvenance("pickle", "v0.17.1", "2026-09-08T00:00:00Z"),
                             new StoreProvenance("web-api", "https://library.cdisc.org", "")),

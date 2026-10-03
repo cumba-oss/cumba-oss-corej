@@ -37,6 +37,14 @@ final class StoreFormat
      * The current on-disk format version.
      *
      * <p>
+     * <b>5</b> (2026-10-03) — the errata register and the text normalisation
+     * (PLAN-store-library-content-errata, D5): the seeder corrects the projected products where the
+     * Library deviates from the printed standard (CDISC-METADATA-ISSUES #282–#284: the SDTM 1.5–1.8
+     * domain-specific variables as class-table roots with {@code usageRestrictions}, the 2.x
+     * "Variable(s) Qualified" column in {@code roleDescription}, labels, cores, codelists, set
+     * orders) and normalises literal {@code \n} sequences and HTML entities in every product text
+     * field. No record changed shape, but a v4 store holds none of the corrections and would look
+     * complete, so it is REFUSED and re-seeded (never read with the gaps in place).<br>
      * <b>4</b> (2026-09-28) — CDASH field {@code codelistIds} (PLAN-store-cdash-codelist-ids; T1-9
      * extended by the owner 2026-09-28): every CDASH field level — domain, scenario, model class,
      * model domain — carries the C-codes of its {@code _links.codelist}, projected exactly as
@@ -58,7 +66,7 @@ final class StoreFormat
      * <b>1</b> — the initial layout.
      * </p>
      */
-    static final int FORMAT_VERSION = 4;
+    static final int FORMAT_VERSION = 5;
 
     static final String ENTRY_MANIFEST = "manifest.json";
 

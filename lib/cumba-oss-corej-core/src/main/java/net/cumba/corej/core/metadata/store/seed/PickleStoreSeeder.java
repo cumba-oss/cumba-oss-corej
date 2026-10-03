@@ -156,7 +156,7 @@ public final class PickleStoreSeeder
     /** Projects the two standards files (IG products and foundational models). */
     private static Map<String, StoredProduct> projectProducts(PickleCache aCache, SeedRun aRun)
     {
-        StoreProjection projection = new StoreProjection();
+        StoreProjection projection = aRun.projection();
         Map<String, StoredProduct> products = new TreeMap<>();
         for (String key : aCache.standardKeys())
         {

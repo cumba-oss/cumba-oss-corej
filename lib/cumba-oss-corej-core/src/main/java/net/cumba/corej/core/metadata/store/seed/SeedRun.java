@@ -38,6 +38,10 @@ import org.jspecify.annotations.Nullable;
  * offers are carried, with a warning. There is deliberately no per-product freshness bookkeeping: a
  * fetch date in the manifest would break the byte-identity of plan §5.1, and the manifest's
  * per-part sha256 already identifies each product's content exactly.</li>
+ * <li><b>Errata and normalisation (format 5, PLAN-store-library-content-errata):</b> the products
+ * projected from THIS run's source are text-normalised by the projection and then corrected by the
+ * {@link StoreErrata errata register} before the merge; stale entries and labels still ending in a
+ * footnote marker are reported and warned about ({@link StoreSeedReport}).</li>
  * <li><b>Rebuild:</b> the writer rebuilds the whole file from the merged model and the target is
  * replaced via temp file + atomic move, so an interrupted seed never leaves a partial store and a
  * concurrent reader keeps its old file.</li>
@@ -72,7 +76,13 @@ final class SeedRun
 
     private final StoreProjection projection = new StoreProjection();
 
+    private final StoreErrata errata = StoreErrata.load();
+
     private final @Nullable MetadataStore existing;
+
+    private StoreErrata.@Nullable Outcome errataOutcome;
+
+    private List<String> footnoteLabels = List.of();
 
     private int ctFetched;
 
@@ -90,6 +100,18 @@ final class SeedRun
     void warn(String aWarning)
     {
         warnings.add(aWarning);
+    }
+
+
+    /**
+     * The ONE projection for this run's products and CT packages — the seeders project through it
+     * so its text-normalisation sites and counters reach the errata application and the report.
+     *
+     * @return the run's projection
+     */
+    StoreProjection projection()
+    {
+        return projection;
     }
 
 
@@ -162,6 +184,30 @@ final class SeedRun
 
 
     /**
+     * Applies the errata register (PLAN-store-library-content-errata D1/D4) to the products
+     * projected from the source THIS run — never to carried baseline products, which were corrected
+     * when they were seeded — then scans every label for a footnote marker (owner rule 2026-10-03).
+     * A stale entry and a footnote hit are each a warning as well, so every surface prints them and
+     * the CLI's seed exit code reflects them.
+     */
+    private Map<String, StoredProduct> applyErrata(Map<String, StoredProduct> aFromSource)
+    {
+        StoreErrata.Outcome outcome = errata.apply(aFromSource, projection.normalisedSites());
+        errataOutcome = outcome;
+        for (String stale : outcome.stale())
+        {
+            warn("errata entry stale, NOT applied: " + stale);
+        }
+        footnoteLabels = LabelFootnoteScan.scan(outcome.products());
+        for (String hit : footnoteLabels)
+        {
+            warn("label ends in a footnote marker (owner rule 2026-10-03): " + hit);
+        }
+        return outcome.products();
+    }
+
+
+    /**
      * Merges the source's freshly projected products with baseline products whose key the source no
      * longer offers (carried, with a warning — they cannot be refreshed from this source).
      *
@@ -171,7 +217,7 @@ final class SeedRun
      */
     Map<String, StoredProduct> mergeProducts(Map<String, StoredProduct> aFromSource)
     {
-        Map<String, StoredProduct> merged = new TreeMap<>(aFromSource);
+        Map<String, StoredProduct> merged = new TreeMap<>(applyErrata(aFromSource));
         if (existing == null)
         {
             return merged;
@@ -323,8 +369,17 @@ final class SeedRun
 
     StoreSeedReport report(int aProductsSeeded, @Nullable String aSourceRef, long aStoreBytes)
     {
+        Map<StoreTextNormaliser.Kind, Integer> counts = projection.normalisationCounts();
+        StoreSeedReport.Normalisations normalisations = new StoreSeedReport.Normalisations(
+                counts.getOrDefault(StoreTextNormaliser.Kind.LITERAL_NEWLINE, 0),
+                counts.getOrDefault(StoreTextNormaliser.Kind.SHORT_FIELD_NEWLINE, 0),
+                counts.getOrDefault(StoreTextNormaliser.Kind.HTML_ENTITY, 0));
+        StoreErrata.Outcome outcome = errataOutcome;
         return new StoreSeedReport(aProductsSeeded, productsCarried, ctFetched, ctCarried, missed,
-                warnings, aSourceRef, options.target(), aStoreBytes);
+                warnings, aSourceRef, options.target(), aStoreBytes, normalisations,
+                outcome == null ? List.of() : outcome.applied(),
+                outcome == null ? List.of() : outcome.stale(),
+                outcome == null ? List.of() : outcome.unreached(), footnoteLabels);
     }
 
 

@@ -11,7 +11,10 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * The fetched/carried split is what makes the incremental acquisition of plan §5.2 observable: a
  * re-seed that fetched everything it could have carried is a defect this report makes visible, and
- * the tests assert on exactly these counters.
+ * the tests assert on exactly these counters. The errata and normalisation members
+ * (PLAN-store-library-content-errata) make the seeder's corrections observable the same way: what
+ * the register applied, what it could not (stale, D4), and how many fields the text normalisation
+ * changed.
  * </p>
  *
  * @param productsSeeded
@@ -29,7 +32,9 @@ import org.jspecify.annotations.Nullable;
  *            source could deliver nor the existing store held — the store answers ABSENT for these,
  *            and a later run naming one aborts rather than degrades
  * @param warnings
- *            non-fatal problems: unreadable source entries, malformed ids, empty projections
+ *            non-fatal problems: unreadable source entries, malformed ids, empty projections, and —
+ *            loud on every surface — each stale erratum and each label still ending in a footnote
+ *            marker
  * @param sourceRef
  *            what was seeded from, as far as the source can say (a resolved archive ref, a base
  *            URL, a directory); {@code null} when it cannot
@@ -37,11 +42,54 @@ import org.jspecify.annotations.Nullable;
  *            the store file written
  * @param storeBytes
  *            the written store's size in bytes
+ * @param normalisations
+ *            how many product text fields {@link StoreTextNormaliser} changed, by kind
+ * @param errataApplied
+ *            the ids of the register entries applied to this run's source products
+ * @param errataStale
+ *            {@code <id>: <reason>} for every entry whose target exists but whose expected value
+ *            the source no longer carries — reported, NOT applied (D4); retire the entry
+ * @param errataUnreached
+ *            {@code <id>: <reason>} for every entry whose product, container or variable this
+ *            source does not hold at all (a partial source, a dropped product)
+ * @param footnoteLabels
+ *            labels still ending in a footnote marker after the errata (owner rule 2026-10-03);
+ *            empty on a conforming seed
  */
 public record StoreSeedReport(int productsSeeded, int productsCarried, int ctPackagesFetched,
         int ctPackagesCarried, List<String> ctPackagesMissed, List<String> warnings,
-        @Nullable String sourceRef, Path target, long storeBytes)
+        @Nullable String sourceRef, Path target, long storeBytes, Normalisations normalisations,
+        List<String> errataApplied, List<String> errataStale, List<String> errataUnreached,
+        List<String> footnoteLabels)
 {
+
+    /**
+     * The text-normalisation counters (fields changed, not characters).
+     *
+     * @param literalNewlines
+     *            long text fields whose literal {@code \n} became a line break
+     * @param shortFieldNewlines
+     *            short fields (label, prompt, usage restrictions, role description, name) whose
+     *            line break became one space
+     * @param htmlEntities
+     *            fields whose HTML entities were decoded
+     */
+    public record Normalisations(int literalNewlines, int shortFieldNewlines, int htmlEntities)
+    {
+
+        /** No normalisation at all. */
+        public static final Normalisations NONE = new Normalisations(0, 0, 0);
+
+        /**
+         * The total number of fields changed by any kind.
+         *
+         * @return the sum of the three counters
+         */
+        public int total()
+        {
+            return literalNewlines + shortFieldNewlines + htmlEntities;
+        }
+    }
 
     /** Defensively copies the lists. */
     public StoreSeedReport
@@ -50,6 +98,11 @@ public record StoreSeedReport(int productsSeeded, int productsCarried, int ctPac
                 .copyOf(Objects.requireNonNull(ctPackagesMissed, "ctPackagesMissed"));
         warnings = List.copyOf(Objects.requireNonNull(warnings, "warnings"));
         Objects.requireNonNull(target, "target");
+        Objects.requireNonNull(normalisations, "normalisations");
+        errataApplied = List.copyOf(Objects.requireNonNull(errataApplied, "errataApplied"));
+        errataStale = List.copyOf(Objects.requireNonNull(errataStale, "errataStale"));
+        errataUnreached = List.copyOf(Objects.requireNonNull(errataUnreached, "errataUnreached"));
+        footnoteLabels = List.copyOf(Objects.requireNonNull(footnoteLabels, "footnoteLabels"));
     }
 
 
@@ -60,9 +113,12 @@ public record StoreSeedReport(int productsSeeded, int productsCarried, int ctPac
      */
     public String summary()
     {
-        return ("seeded %d products (%d carried), %d CT packages fetched, %d carried, %d missing"
+        return ("seeded %d products (%d carried), %d CT packages fetched, %d carried, %d missing,"
+                + " %d errata applied (%d stale, %d unreached), %d fields normalised"
                 + " -> %s (%d bytes, %d warnings)%s").formatted(productsSeeded, productsCarried,
-                        ctPackagesFetched, ctPackagesCarried, ctPackagesMissed.size(), target,
-                        storeBytes, warnings.size(), sourceRef == null ? "" : " from " + sourceRef);
+                        ctPackagesFetched, ctPackagesCarried, ctPackagesMissed.size(),
+                        errataApplied.size(), errataStale.size(), errataUnreached.size(),
+                        normalisations.total(), target, storeBytes, warnings.size(),
+                        sourceRef == null ? "" : " from " + sourceRef);
     }
 }
