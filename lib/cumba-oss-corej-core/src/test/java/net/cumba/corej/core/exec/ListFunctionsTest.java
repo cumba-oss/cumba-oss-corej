@@ -245,9 +245,11 @@ class ListFunctionsTest
                 "ADCM + CMSEQ confirm CM: CMTRT is demanded, AESER (AE) is not");
         IDataTable unconfirmed = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
                 .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").name("ADAE").build();
-        assertEquals(List.of("STUDYID", "USUBJID", "AOCCzzFL"),
+        assertEquals(List.of("STUDYID", "USUBJID", "AESER", "AOCCzzFL"),
                 list(LibraryLists.requiredVariables(run(unconfirmed, lib), List.of())),
-                "no AESEQ: no confirmed domain, so neither a -- name nor a prefixed name is demanded");
+                "no AESEQ: no confirmed domain, so a -- name is not demanded; but AESER carries"
+                        + " ADAE's own candidate AE and stays demanded (a missing AESEQ must not"
+                        + " disarm its siblings), while CMTRT (CM, no CMSEQ) is dropped");
         IDataTable adaeWithDomain = MockTable.of().col("STUDYID", "S").col("DOMAIN", "AE")
                 .col("USUBJID", "1").col("AESEQ", "1").col("AETERM", "HEADACHE")
                 .col("AEDECOD", "HEADACHE").col("AESER", "N").col("AOCC01FL", "Y").name("ADAE")
@@ -257,9 +259,10 @@ class ListFunctionsTest
                 "the dataset NAME gives the domain, never a kept SDTM DOMAIN cell");
         IDataTable events = MockTable.of().col("STUDYID", "S").col("USUBJID", "1").col("AESEQ", "1")
                 .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").name("ADEVENT").build();
-        assertEquals(List.of("STUDYID", "USUBJID", "AOCCzzFL"),
+        assertEquals(List.of("STUDYID", "USUBJID", "AESER", "AOCCzzFL"),
                 list(LibraryLists.requiredVariables(run(events, lib), List.of())),
-                "ADEVENT names EV, and no EVSEQ confirms it (AESEQ confirms nothing for EV)");
+                "ADEVENT names EV, and no EVSEQ confirms it, so -- is not demanded; its AESEQ"
+                        + " column confirms AE for the AE-prefixed AESER, which stays demanded");
         // A source token whose domain the NAME does not carry (ADSL's DM.ARM) is a copied value,
         // not a prefix: still demanded.
         lib.published.put("SUBJECT LEVEL ANALYSIS DATASET", List.of("STUDYID", "ARM"));

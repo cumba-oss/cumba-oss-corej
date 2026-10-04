@@ -2031,8 +2031,11 @@ public final class RuleRunner
         Expr checkExpr = Objects.requireNonNull(checkExprOf(rule, ctx));
         // PLAN-binding-expressions I2: a var_*("LIBRARY") / define_* read inside a COMPILED binding
         // the Check reads requests its provider exactly as one in the Check does.
-        var needed = MetadataExprScan.providerLevelsUsed(Objects.requireNonNull(
-                net.cumba.corej.core.expr.convert.BindingInliner.inline(checkExpr, rule)));
+        // The same inlined form feeds labelTemplateStem below: a label_template(..., stem=) read
+        // inside a binding selects the judged stem exactly as one in the Check does.
+        Expr inlinedCheck = Objects.requireNonNull(
+                net.cumba.corej.core.expr.convert.BindingInliner.inline(checkExpr, rule));
+        var needed = MetadataExprScan.providerLevelsUsed(inlinedCheck);
         // The Define universe iterates the ItemDefs, so it needs the provider even when no leaf
         // reads the DEFINE level (the `var_exists(varname())` discriminator reads DATA only):
         // without one the rule is SKIPPED, never silently run over the data columns.
@@ -2134,7 +2137,7 @@ public final class RuleRunner
                 // Gated on the expression actually naming one: the candidate lookup costs a
                 // library round-trip per column, and no other metadata rule reads them.
                 boolean carryOver = isMetadataCheck && referencesCarryOverOperand(checkExpr);
-                String judgedStem = MetadataExprScan.labelTemplateStem(checkExpr);
+                String judgedStem = MetadataExprScan.labelTemplateStem(inlinedCheck);
                 for (int c = 0; c < colCount; c++)
                 {
                     DataTableColumnMeta colMeta = meta.getColumn(c);
@@ -2158,7 +2161,8 @@ public final class RuleRunner
                         reportJudgedStemTemplate(varMeta, judgedStem);
                         violations.add(buildVariableViolation(c, colMeta, varMeta, outputVars,
                                 isMetadataCheck, libProvider, defProvider, domainName, perColVars,
-                                datasetSensitivity, ctx, derivedOutputVars, excludedOutputVars));
+                                datasetSensitivity, ctx, derivedOutputVars, excludedOutputVars,
+                                judgedStem));
                         if (datasetSensitivity)
                         {
                             break;
@@ -2701,14 +2705,19 @@ public final class RuleRunner
 
 
     /**
-     * Builds a violation for a variable-level finding.
+     * Builds a violation for a variable-level finding. With no Output_Variables the default
+     * projection reports the column's library keys — never the per-stem templates
+     * ({@link LibraryTemplates#STEM_TEMPLATE_KEY_PREFIX}, provider-internal operands), and
+     * {@code library_variable_label_template} as the judged stem's template when the Check selects
+     * one ({@link #reportJudgedStemTemplate}, R2-3), exactly as an Output_Variables request reads
+     * it.
      */
     private static Violation buildVariableViolation(int colIndex, DataTableColumnMeta colMeta,
             Map<String, Object> varMeta, List<String> outputVars, boolean isMetadataCheck,
             @Nullable MetadataProvider libProvider, @Nullable MetadataProvider defProvider,
             @Nullable String domainName, Map<String, Object> contextVariables,
             boolean datasetSensitivity, EvaluationContext ctx, Set<String> derivedOutputVars,
-            Set<String> excludedOutputVars)
+            Set<String> excludedOutputVars, @Nullable String judgedStem)
     {
         // A variable-metadata violation is not tied to a data row. For DATASET-sensitivity rules
         // the engine's dataset-level convention is row 0 (mirrored by Python's
@@ -2739,7 +2748,22 @@ public final class RuleRunner
             {
                 for (Map.Entry<String, String> e : libMeta.entrySet())
                 {
-                    values.put("library_variable_" + e.getKey(), e.getValue());
+                    if (!e.getKey().startsWith(LibraryTemplates.STEM_TEMPLATE_KEY_PREFIX))
+                    {
+                        values.put("library_variable_" + e.getKey(), e.getValue());
+                    }
+                }
+                if (judgedStem != null)
+                {
+                    String judged = libMeta.get(LibraryTemplates.stemKey(judgedStem));
+                    if (judged != null)
+                    {
+                        values.put(LIBRARY_LABEL_TEMPLATE, judged);
+                    }
+                    else
+                    {
+                        values.remove(LIBRARY_LABEL_TEMPLATE);
+                    }
                 }
             }
         }
@@ -3064,8 +3088,11 @@ public final class RuleRunner
         Expr checkExpr = Objects.requireNonNull(checkExprOf(rule, ctx));
         // PLAN-binding-expressions I2: a var_*("LIBRARY") / define_* read inside a COMPILED binding
         // the Check reads requests its provider exactly as one in the Check does.
-        var needed = MetadataExprScan.providerLevelsUsed(Objects.requireNonNull(
-                net.cumba.corej.core.expr.convert.BindingInliner.inline(checkExpr, rule)));
+        // The same inlined form feeds labelTemplateStem below: a label_template(..., stem=) read
+        // inside a binding selects the judged stem exactly as one in the Check does.
+        Expr inlinedCheck = Objects.requireNonNull(
+                net.cumba.corej.core.expr.convert.BindingInliner.inline(checkExpr, rule));
+        var needed = MetadataExprScan.providerLevelsUsed(inlinedCheck);
         if (needed.contains(net.cumba.corej.core.expr.eval.MetadataLevel.DEFINE)
                 && ctx.getDefineProvider() == null)
         {
@@ -3106,7 +3133,7 @@ public final class RuleRunner
         // evaluates over the rows ONCE instead of once per column. The per-binding contexts below
         // inherit the armed memo through toBuilder.
         EvaluationContext loopCtx = armBindingHoist(ctx);
-        String judgedStem = MetadataExprScan.labelTemplateStem(checkExpr);
+        String judgedStem = MetadataExprScan.labelTemplateStem(inlinedCheck);
         for (int c = 0; c < colCount; c++)
         {
             DataTableColumnMeta colMeta = meta.getColumn(c);

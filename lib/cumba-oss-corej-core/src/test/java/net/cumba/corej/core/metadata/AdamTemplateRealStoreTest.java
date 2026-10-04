@@ -189,8 +189,40 @@ class AdamTemplateRealStoreTest
                 "ADCM confirmed as CM by CMSEQ: CMTRT demanded, AESER not");
         IDataTable unconfirmed = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1")
                 .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").name("ADAE").build();
-        assertEquals(List.of("STUDYID", "USUBJID"), required(p, unconfirmed),
-                "no AESEQ: no confirmed domain, nothing domain-bound is demanded");
+        assertEquals(List.of("STUDYID", "USUBJID", "AESER"), required(p, unconfirmed),
+                "no AESEQ: no confirmed domain, so no -- name is demanded; AESER carries ADAE's own"
+                        + " candidate AE and stays demanded, CMTRT (no CMSEQ) does not");
+    }
+
+
+    /**
+     * Round-2 T2 review H1, on our store: under a declared {@code adam-adae-1-0} the {@code ADAE}
+     * structure publishes its AE variables as concrete names ({@code AESEQ}, {@code AETERM},
+     * {@code AEDECOD}, {@code AEBODSYS}, {@code AESER} Req, each opening with {@code AE.<name>}).
+     * An {@code ADAE} lacking {@code AESEQ} confirms no domain, and the AE names must still be
+     * demanded — the dataset name's own candidate {@code AE} — so the missing {@code AESEQ} is
+     * reported rather than disarming its own requirement (before the fix: only {@code STUDYID},
+     * {@code USUBJID}). An {@code ADTEAE} whose {@code AESEQ} confirms {@code AE} keeps them too.
+     */
+    @Test
+    void requiredVariablesOfAdaeUnderAdamAdaeKeepTheAeNamesWithoutAeseq() throws IOException
+    {
+        StoreMetadataProviderFactory factory = realStoreFactory();
+        assumeTrue(factory != null, RealCorpusLocator.ABSENT_MESSAGE);
+        MetadataProvider p = factory.forAdam("adamig", "1-1",
+                List.of("standards/adam/adamig-1-1", "standards/adam/adam-adae-1-0"), List.of(),
+                List.of()).orElseThrow();
+        List<Object> aeReq = List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AEDECOD", "AEBODSYS",
+                "AESER");
+        IDataTable noSeq = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1")
+                .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE")
+                .col("AEBODSYS", "NERVOUS SYSTEM DISORDERS").col("AESER", "N").name("ADAE").build();
+        assertEquals(aeReq, required(p, noSeq),
+                "AESEQ absent: still demanded (and so reported missing), with its AE siblings");
+        IDataTable withSeq = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1")
+                .col("AESEQ", "1").col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE")
+                .col("AEBODSYS", "NERVOUS SYSTEM DISORDERS").col("AESER", "N").name("ADAE").build();
+        assertEquals(aeReq, required(p, withSeq), "control: AESEQ present, the same demand");
     }
 
 

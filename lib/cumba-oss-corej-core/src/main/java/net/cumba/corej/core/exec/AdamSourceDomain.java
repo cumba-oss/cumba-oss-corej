@@ -3,7 +3,6 @@ package net.cumba.corej.core.exec;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import org.jspecify.annotations.Nullable;
 
@@ -55,9 +54,12 @@ import org.jspecify.annotations.Nullable;
  * the 22 {@code AE} names of {@code adam-adae-1-0}'s {@code ADAE}; and for {@code PCSEQ}
  * ({@code Cond}) of {@code adam-nca-1-0}. No ADaMIG (1.0–1.3), {@code adam-tte}, {@code adam-md} or
  * {@code adam-poppk} name satisfies it, so ADSL, BDS and TTE walks are unchanged. Such a name is
- * demanded only of a dataset whose confirmed source domain is {@code DD}; of a dataset of another
- * domain, or of one with no confirmed domain, it is not — as in (i), a demand the engine cannot tie
- * to the dataset is no demand.
+ * not demanded only when the dataset gives evidence of a <b>different</b> domain
+ * ({@link #carriesAnotherDomain}): {@code DD} is neither its {@code AD<domain>} candidate,
+ * confirmed or not, nor confirmed by a {@code DDSEQ} column. Unlike (i), an unconfirmed candidate
+ * suffices here — the name is concrete, so an {@code ADAE} lacking {@code AESEQ} is still asked for
+ * {@code AESEQ}'s siblings, and a missing required column cannot disarm its own requirement
+ * (round-2 T2 review H1).
  * </p>
  */
 public final class AdamSourceDomain
@@ -93,27 +95,65 @@ public final class AdamSourceDomain
      */
     public static @Nullable String of(IDataTable aTable)
     {
-        DataTableMeta meta = aTable.getMetaData();
-        String datasetName = meta.getName();
+        String candidate = candidateOf(aTable);
+        return candidate != null && hasSequenceColumn(aTable, candidate) ? candidate : null;
+    }
+
+
+    /**
+     * The dataset's <b>candidate</b> SDTM source domain: the two letters after {@code AD} in its
+     * name (upper-cased), unconfirmed — {@link #of} is this plus the {@code <domain>SEQ} column.
+     *
+     * @param aTable
+     *            the dataset
+     * @return the candidate domain code ({@code AE} for {@code ADAE}), or {@code null} when the
+     *         name is not {@code AD<domain>}
+     */
+    public static @Nullable String candidateOf(IDataTable aTable)
+    {
+        String datasetName = aTable.getMetaData().getName();
         if (datasetName == null)
         {
             return null;
         }
         Matcher m = AD_DOMAIN_NAME.matcher(datasetName.toUpperCase(Locale.ROOT));
-        if (!m.find())
-        {
-            return null;
-        }
-        String domain = m.group(1);
-        String seq = domain + SEQ;
-        for (String column : AdamStructureContext.columnNamesOf(meta))
+        return m.find() ? m.group(1) : null;
+    }
+
+
+    /**
+     * Whether a published name carrying domain {@code aCarried}'s prefix ({@link #carriedDomainOf})
+     * is evidence of a <b>different</b> domain than the dataset's — predicate (ii)'s drop
+     * condition: the carried domain is neither the dataset's candidate domain
+     * ({@link #candidateOf}, confirmed or not) nor confirmed by a {@code <carried>SEQ} column of
+     * the dataset. Only then is the name not demanded; an {@code ADAE} that lacks {@code AESEQ} is
+     * still asked for {@code AESEQ}'s siblings {@code AETERM}, {@code AESER}, and an {@code ADTEAE}
+     * carrying {@code AESEQ} for its {@code AE} names — a missing required column must not disarm
+     * its own requirement.
+     *
+     * @param aTable
+     *            the dataset
+     * @param aCarried
+     *            the carried domain code ({@code CM})
+     * @return {@code true} when the name is to be dropped
+     */
+    public static boolean carriesAnotherDomain(IDataTable aTable, String aCarried)
+    {
+        return !aCarried.equals(candidateOf(aTable)) && !hasSequenceColumn(aTable, aCarried);
+    }
+
+
+    private static boolean hasSequenceColumn(IDataTable aTable, String aDomain)
+    {
+        String seq = aDomain + SEQ;
+        for (String column : AdamStructureContext.columnNamesOf(aTable.getMetaData()))
         {
             if (seq.equalsIgnoreCase(column))
             {
-                return domain;
+                return true;
             }
         }
-        return null;
+        return false;
     }
 
 

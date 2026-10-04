@@ -224,9 +224,11 @@ public final class LibraryLists
      * the concrete variable, so it cannot report it missing as {@code --SEQ};</li>
      * <li>a name carrying another SDTM domain's prefix ({@link AdamSourceDomain#carriedDomainOf}:
      * {@code CMTRT} is {@code CM.CMTRT}, {@code AESER} is {@code AE.AESER} in the base OCCDS 1.0)
-     * is demanded only of a dataset whose confirmed source domain is that domain — the description
-     * is read through the structure-keyed LIBRARY read, the same read {@code var_*("LIBRARY")}
-     * resolves the column with, so the {@code .cdt} harness and the product answer alike.</li>
+     * is not demanded only of a dataset that gives evidence of a different domain
+     * ({@link AdamSourceDomain#carriesAnotherDomain}: neither its {@code AD<domain>} candidate,
+     * confirmed or not, nor a {@code <domain>SEQ} column of it) — the description is read through
+     * the structure-keyed LIBRARY read, the same read {@code var_*("LIBRARY")} resolves the column
+     * with, so the {@code .cdt} harness and the product answer alike.</li>
      * </ol>
      * The SDTM walks never reach here: their provider is domain-keyed and substitutes {@code --}
      * itself.
@@ -251,7 +253,7 @@ public final class LibraryLists
                     subclasses, domain, name);
             String carried = AdamSourceDomain.carriedDomainOf(name,
                     attributes == null ? null : attributes.get("description"));
-            if (carried != null && !carried.equals(source))
+            if (carried != null && AdamSourceDomain.carriesAnotherDomain(table, carried))
             {
                 continue;
             }
