@@ -345,12 +345,12 @@ class MapBackedLibraryMetadataProviderTest
             MapBackedLibraryMetadataProvider p = MapBackedLibraryMetadataProvider.builder()
                     .variableMetadata("ae", "aesev", meta).build();
 
-            // PLAN-library-template-label-resolution: the read goes through LibraryTemplates, so
-            // the row carries its own spelling as `name` and, for a literal, its label as the
-            // template (label_template); the declared attributes are served as given.
+            // A non-ADaM standard: the declared row is served as stored — the attributes given
+            // plus the builder's own `name` (the row's spelling, as every store row carries one) —
+            // with no template leg and so no label_template (T2 review L3; see
+            // templateLeg_isAdamOnly).
             Map<String, String> expected = new LinkedHashMap<>(meta);
             expected.put("name", "aesev");
-            expected.put("label_template", "Adverse Event Severity");
             Map<String, String> got = p.getVariableMetadata("AE", "AESEV");
             assertEquals(expected, got);
             assertEquals(expected, p.getVariableMetadata("ae", "Aesev"));
@@ -358,6 +358,47 @@ class MapBackedLibraryMetadataProviderTest
             assertEquals(Map.of(), p.getVariableMetadata("AE", "UNKNOWN"));
             // Other domain entirely returns empty.
             assertEquals(Map.of(), p.getVariableMetadata("DM", "AESEV"));
+        }
+
+
+        /**
+         * PLAN-library-template-label-resolution, T2 review L3. The product serves the template leg
+         * (an index template, a stem, an ADSL copy, {@code label_template}) only on the ADaM
+         * structure-keyed read; a scenario of any other standard must not be able to pass with a
+         * feature the product never serves it. So the harness runs the leg for an ADaM standard
+         * only, and reads every other standard's rows verbatim, by name.
+         */
+        @Test
+        void templateLeg_isAdamOnly()
+        {
+            Map<String, String> trtxxp = new LinkedHashMap<>();
+            trtxxp.put("name", "TRTxxP");
+            trtxxp.put("label", "Planned Treatment for Period xx");
+            Map<String, String> stem = Map.of("name", "*SDT", "label", "{Start Date}");
+            Map<String, String> sdtmRow = Map.of("label", "Subject Identifier");
+
+            MapBackedLibraryMetadataProvider adam = MapBackedLibraryMetadataProvider.builder()
+                    .standard("adamig").variableMetadata("ADSL", "TRTxxP", trtxxp)
+                    .variableMetadata("BDS", "*SDT", stem)
+                    .variableMetadata("BDS", "SUBJID", sdtmRow).build();
+            Map<String, String> resolved = adam.getVariableMetadata("ADSL", "TRT01P");
+            assertEquals("TRTxxP", resolved.get("name"));
+            assertEquals("Planned Treatment for Period 01", resolved.get("label"));
+            assertEquals("Planned Treatment for Period 01", resolved.get("label_template"));
+            assertEquals("*SDT", adam.getVariableMetadata("BDS", "XXSDT").get("name"));
+            assertEquals("Planned Treatment for Period 01",
+                    adam.getVariableMetadata("BDS", "TRT01P").get("label"), "D9: the ADSL copy");
+
+            MapBackedLibraryMetadataProvider sdtm = MapBackedLibraryMetadataProvider.builder()
+                    .standard("sdtmig").variableMetadata("DM", "TRTxxP", trtxxp)
+                    .variableMetadata("DM", "*SDT", stem)
+                    .variableMetadata("ADSL", "SUBJID", sdtmRow).build();
+            assertEquals(Map.of(), sdtm.getVariableMetadata("DM", "TRT01P"),
+                    "no index template outside ADaM");
+            assertEquals(Map.of(), sdtm.getVariableMetadata("DM", "XXSDT"), "no stem");
+            assertEquals(Map.of(), sdtm.getVariableMetadata("DM", "SUBJID"), "no ADSL copy");
+            assertEquals(trtxxp, sdtm.getVariableMetadata("DM", "TRTXXP"),
+                    "the row itself, by name, verbatim: no label_template key");
         }
     }
 

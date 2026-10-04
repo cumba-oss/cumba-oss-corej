@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.gen.DefineXMLProvider;
+import net.cumba.datatable.IDataTable;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -141,6 +142,74 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
     @Override
     public Map<String, String> getVariableMetadata(String domain, String variable)
     {
+        Map<String, String> direct = declaredVariable(domain, variable);
+        if (direct == null)
+        {
+            // Not declared in the Define-XML — defer entirely to the fallback (if any).
+            return fallback != null ? fallback.getVariableMetadata(domain, variable) : Map.of();
+        }
+        if (fallback == null)
+        {
+            return direct;
+        }
+        // Merge: datatable base (length / format / core …) overlaid with the ODM's authoritative
+        // role and the ccode / codelist_coded_codes the datatable model omits.
+        Map<String, String> merged = new LinkedHashMap<>(
+                fallback.getVariableMetadata(domain, variable));
+        merged.putAll(direct);
+        return merged;
+    }
+
+
+    /**
+     * The structure-keyed read ({@code PLAN-library-template-label-resolution}), forwarded to the
+     * fallback exactly as the domain-keyed read is: the ODM's declaration overlays the fallback's
+     * answer, and an undeclared variable defers to it entirely. T2 review L1: a decorator that
+     * inherited the interface default would answer by member name for a structure-keyed fallback —
+     * empty for every non-ADSL dataset, silently. For a domain-keyed fallback the answer is the
+     * domain-keyed one, as before (the interface default of the fallback forwards there).
+     */
+    @Override
+    public Map<String, String> getVariableMetadata(IDataTable aTable, List<String> aStructures,
+            List<String> aSubclasses, String aDomain, String aVariable)
+    {
+        if (fallback == null)
+        {
+            return getVariableMetadata(aDomain, aVariable);
+        }
+        Map<String, String> base = fallback.getVariableMetadata(aTable, aStructures, aSubclasses,
+                aDomain, aVariable);
+        Map<String, String> direct = declaredVariable(aDomain, aVariable);
+        if (direct == null)
+        {
+            return base;
+        }
+        Map<String, String> merged = new LinkedHashMap<>(base);
+        merged.putAll(direct);
+        return merged;
+    }
+
+
+    /**
+     * The structure-keyed column order, forwarded as {@link #getColumnOrder} is: the ODM's declared
+     * order, else the fallback's (T2 review L1).
+     */
+    @Override
+    public List<String> getColumnOrderForStructures(List<String> aStructures,
+            List<String> aSubclasses, String aDomain)
+    {
+        List<String> order = declaredColumnOrder(aDomain);
+        if (order.isEmpty() && fallback != null)
+        {
+            return fallback.getColumnOrderForStructures(aStructures, aSubclasses, aDomain);
+        }
+        return order;
+    }
+
+
+    /** The ODM's ItemDef for {@code variable} in provider keys, or {@code null} when undeclared. */
+    private @Nullable Map<String, String> declaredVariable(String domain, String variable)
+    {
         // The dataset's column is matched to its ItemDef by NAME, ignoring letter case (register
         // CIT §1): a lowercase paramcd reads the PARAMCD ItemDef. Codelist and decode VALUES stay
         // exact. When two ItemDefs differ only in case, an exact spelling wins, and otherwise the
@@ -164,39 +233,31 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
         {
             direct = toProviderKeys(firstIgnoringCase);
         }
-        if (direct == null)
-        {
-            // Not declared in the Define-XML — defer entirely to the fallback (if any).
-            return fallback != null ? fallback.getVariableMetadata(domain, variable) : Map.of();
-        }
-        if (fallback == null)
-        {
-            return direct;
-        }
-        // Merge: datatable base (length / format / core …) overlaid with the ODM's authoritative
-        // role and the ccode / codelist_coded_codes the datatable model omits.
-        Map<String, String> merged = new LinkedHashMap<>(
-                fallback.getVariableMetadata(domain, variable));
-        merged.putAll(direct);
-        return merged;
+        return direct;
     }
 
 
     @Override
     public List<String> getColumnOrder(String domain)
     {
-        // An ItemDef without a Name names no column; it is skipped, as getVariableMetadata and
-        // VlmResolver skip it. A BLANK Name="" names no column either and is skipped the same way
-        // (register NNL §1; PLAN-no-null-list-elements review round 2, MEDIUM-1): served, it was
-        // the present "" in define_variable_names(), and FDA/PMDA-SD0054 reported it as a
-        // declared variable missing from the dataset.
-        List<String> order = define.getVariables(domain).stream().map(v -> v.get("name"))
-                .filter(n -> n != null && !n.isBlank()).toList();
+        List<String> order = declaredColumnOrder(domain);
         if (order.isEmpty() && fallback != null)
         {
             return fallback.getColumnOrder(domain);
         }
         return order;
+    }
+
+
+    private List<String> declaredColumnOrder(String domain)
+    {
+        // An ItemDef without a Name names no column; it is skipped, as getVariableMetadata and
+        // VlmResolver skip it. A BLANK Name="" names no column either and is skipped the same way
+        // (register NNL §1; PLAN-no-null-list-elements review round 2, MEDIUM-1): served, it was
+        // the present "" in define_variable_names(), and FDA/PMDA-SD0054 reported it as a
+        // declared variable missing from the dataset.
+        return define.getVariables(domain).stream().map(v -> v.get("name"))
+                .filter(n -> n != null && !n.isBlank()).toList();
     }
 
 

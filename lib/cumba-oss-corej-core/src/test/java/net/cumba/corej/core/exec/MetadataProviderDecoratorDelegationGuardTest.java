@@ -223,6 +223,23 @@ class MetadataProviderDecoratorDelegationGuardTest
     private static final String STRING_OF_STRING = "(?<![\\w.])String\\s+%s\\s*"
             + "\\(\\s*String\\s+(\\w+)\\s*\\)";
 
+    /**
+     * {@code Map<String, String> name(IDataTable t, List<String> s, List<String> c, String d,
+     * String v)} — the structure-keyed variable read's shape
+     * (PLAN-library-template-label-resolution).
+     */
+    private static final String MAP_OF_TABLE_LISTS_TWO_STRINGS = "(?<![\\w.])Map\\s*<\\s*String\\s*,"
+            + "\\s*String\\s*>\\s+%s\\s*\\(\\s*IDataTable\\s+(\\w+)\\s*,"
+            + "\\s*List<String>\\s+(\\w+)\\s*,\\s*List<String>\\s+(\\w+)\\s*,"
+            + "\\s*String\\s+(\\w+)\\s*,\\s*String\\s+(\\w+)\\s*\\)";
+
+    /**
+     * {@code List<String> name(List<String> s, List<String> c, String d)} — the structure order.
+     */
+    private static final String LIST_OF_LISTS_STRING = "(?<![\\w.])List<String>\\s+%s\\s*"
+            + "\\(\\s*List<String>\\s+(\\w+)\\s*,\\s*List<String>\\s+(\\w+)\\s*,"
+            + "\\s*String\\s+(\\w+)\\s*\\)";
+
     /** {@code List<String> name(String x)} — the declared-subclasses accessor's shape. */
     private static final String LIST_OF_STRING = "(?<![\\w.])List<String>\\s+%s\\s*"
             + "\\(\\s*String\\s+(\\w+)\\s*\\)";
@@ -314,7 +331,19 @@ class MetadataProviderDecoratorDelegationGuardTest
             // datasets, and one inheriting getKeyVariables() reports a domain with no key
             // sequence — which the key-uniqueness checks read as "nothing to check" and pass.
             capability("getKeyVariables(String)", LIST_OF_STRING),
-            capability("getDatasetNames()", "(?<![\\w.])List<String>\\s+%s\\s*\\(\\s*\\)"));
+            capability("getDatasetNames()", "(?<![\\w.])List<String>\\s+%s\\s*\\(\\s*\\)"),
+            // PLAN-library-template-label-resolution, T2 review L1: the structure-keyed variable
+            // read and column order — the LIBRARY read's first tier for an ADaM product. Their
+            // interface defaults self-delegate to the DOMAIN-keyed forms, which is the whole answer
+            // for a domain-keyed provider but, for a decorator over a structure-keyed one, silently
+            // answers by member name: empty for every non-ADSL dataset, with nothing red. Filed
+            // SELF_DELEGATING until the review; a CAPABILITY in the rules repository's guard from
+            // the start. Both decorators here forward them.
+            capability(
+                    "getVariableMetadata(IDataTable, List<String>, List<String>, String, String)",
+                    MAP_OF_TABLE_LISTS_TWO_STRINGS),
+            capability("getColumnOrderForStructures(List<String>, List<String>, String)",
+                    LIST_OF_LISTS_STRING));
 
     /**
      * Floor on the capability set itself, so an accidental deletion reds.
@@ -325,7 +354,7 @@ class MetadataProviderDecoratorDelegationGuardTest
      * and carry different values on purpose. Never copy one across.
      * </p>
      */
-    private static final int MIN_CAPABILITIES = 11;
+    private static final int MIN_CAPABILITIES = 13;
 
     /** Floor on the interface's own default count, so a truncated parse cannot pass. */
     private static final int MIN_INTERFACE_DEFAULTS = 26;
@@ -433,19 +462,6 @@ class MetadataProviderDecoratorDelegationGuardTest
                     Why.NOT_YET_ENFORCED, "not delegated by DefineXmlMetadataProvider"),
             inheritable("getStandardVariablesDetailed(IDataTable, DatasetResolver)",
                     Why.NOT_YET_ENFORCED, "not delegated by DefineXmlMetadataProvider"),
-            inheritable(
-                    "getVariableMetadata(IDataTable, List<String>, List<String>, String, String)",
-                    Why.SELF_DELEGATING,
-                    "the interface body is `return getVariableMetadata(aDomain, aVariable)`, the "
-                            + "whole answer for a domain-keyed provider; DefineXmlMetadataProvider "
-                            + "is only ever the DEFINE provider and inherits it; "
-                            + "CompanionDomainsProvider DOES delegate it, pinned by "
-                            + "CompanionDomainsProviderStructureDelegationTest"),
-            inheritable("getColumnOrderForStructures(List<String>, List<String>, String)",
-                    Why.SELF_DELEGATING,
-                    "the interface body is `return getColumnOrder(aDomain)`; "
-                            + "CompanionDomainsProvider DOES delegate it, pinned by "
-                            + "CompanionDomainsProviderStructureDelegationTest"),
             inheritable("getIgAbsentVariableMetadata(IDataTable, DatasetResolver, String, String)",
                     Why.NOT_YET_ENFORCED,
                     "not delegated by DefineXmlMetadataProvider, deliberately: it is only ever the "

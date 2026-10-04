@@ -1,6 +1,7 @@
 package net.cumba.corej.core.metadata;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -128,6 +129,31 @@ class AdamTemplateRealStoreTest
                 "§9.4 (iii) precondition: errata #282.33 corrects the 1.0 print's Char");
         assertEquals(Map.of("name", "*SDT", LT, "Start Date of ..."), read(p, adlb, "RANDSDT"),
                 "ADaMIG 1.0 spells its stems with an ellipsis (D11)");
+    }
+
+
+    /**
+     * T2 review H1, on our store: the inferred OCCDS product publishes {@code DECDORGw} twice in
+     * one structure, as the MedDRA {@code PT in Original Dictionary w} and the WHO Drug
+     * {@code Standardized Med Name in Orig Dict w}. A {@code DECDORG1} column therefore gets no
+     * label and no template (it got the MedDRA one before, and a WHO Drug dataset a false AD0018);
+     * the structure's other templates still answer.
+     */
+    @Test
+    void decdorgwIsPublishedWithTwoLabelsAndSoResolvesToNothing() throws IOException
+    {
+        for (String version : List.of("1-1", "1-2", "1-3"))
+        {
+            MetadataProvider p = adamig(version);
+            IDataTable adcm = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1")
+                    .col("CMTRT", "ASPIRIN").col("CMDECOD", "ASPIRIN").col("DECDORG1", "X")
+                    .col("AOCC01FL", "Y").name("ADCM").build();
+            Map<String, String> decdorg = read(p, adcm, "DECDORG1");
+            assertNull(decdorg.get("label"), version + ": " + decdorg);
+            assertNull(decdorg.get(LT), version + ": " + decdorg);
+            assertEquals("AOCCzzFL", read(p, adcm, "AOCC01FL").get("name"),
+                    version + ": control, the OCCDS template leg is reached");
+        }
     }
 
 

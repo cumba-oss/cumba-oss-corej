@@ -3,6 +3,7 @@ package net.cumba.corej.core.metadata;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -29,8 +30,8 @@ class LibraryTemplatesTest
     private static final List<Entry> BDS = List.of(e("PARAMCD", "Parameter Code"),
             e("ASTDT", "Analysis Start Date"), e("ANLzzFL", "Analysis Flag zz"),
             e("AVALCATy", "Analysis Category y"), e("AyLO", "Analysis Range y Lower Limit"),
-            e("PxxSwSDT", "Period xx Subperiod w Start Date"), e("DECDORGw", "Dict Decode Org w"),
-            e("DECDORGw", "Dict Decode Org w"), e("AOCCzzFL", "1st Occurrence of ..."));
+            e("PxxSwSDT", "Period xx Subperiod w Start Date"),
+            e("AOCCzzFL", "1st Occurrence of ..."));
 
     private static final List<Entry> ADSL = List.of(e("STUDYID", "Study Identifier"),
             e("ITTFL", "Intent-To-Treat Population Flag"),
@@ -85,15 +86,110 @@ class LibraryTemplatesTest
     }
 
 
+    /**
+     * T2 review H1. {@code adam-occds-1-0} (and {@code -1-1}, and the TIG) publish {@code DECDORGw}
+     * twice in ONE structure, with the two labels below — measured in our store
+     * ({@code products/standards/adam/adam-occds-1-0.json}, variable sets "Original or Prior MedDRA
+     * Coding Variables" and "Original or Prior WHO Drug Coding Variables"). Which one a
+     * {@code DECDORG1} column must carry depends on the dictionary, which the name does not tell:
+     * no answer. The fixture this replaced gave both rows ONE invented label, so it could only ever
+     * confirm the merge.
+     */
     @Test
-    void twoRowsOfOneTemplateAreOneTemplateButTwoTemplatesAreAnAmbiguity()
+    void oneTemplateNamePublishedWithTwoDifferentLabelsIsAnAmbiguity()
     {
-        assertEquals("DECDORGw", LibraryTemplates.resolve("DECDORG1", BDS_DATASET).get("name"),
-                "adam-occds-1-0 publishes DECDORGw twice: one template");
+        List<Entry> occds = List.of(e("STUDYID", "Study Identifier"),
+                e("DECDORGw", "PT in Original Dictionary w"),
+                e("DECDORGw", "Standardized Med Name in Orig Dict w"),
+                e("AOCCzzFL", "1st Occurrence of ..."));
+        Candidates occdsDataset = new Candidates(occds, ADSL, STEMS);
+        assertEquals(Map.of(), LibraryTemplates.resolve("DECDORG1", occdsDataset),
+                "MedDRA or WHO Drug: no answer, and no fall-through to ADSL or a stem");
+        assertEquals("1st Occurrence of ...",
+                LibraryTemplates.resolve("AOCC01FL", occdsDataset).get(LT),
+                "control: the other template of the same structure still answers");
+        // the order of the two rows does not matter
+        assertEquals(Map.of(), LibraryTemplates.resolve("DECDORG1",
+                new Candidates(List.of(occds.get(2), occds.get(1)), ADSL, STEMS)));
+    }
+
+
+    @Test
+    void rowsOfOneNameWithEqualLabelsAreOneTemplateWhitespaceAside()
+    {
+        List<Entry> twice = List.of(e("AOCCzzFL", "1st Occurrence of ..."),
+                e("AOCCzzFL", "1st Occurrence of ..."), e("ANLzzFL", "Analysis Flag zz"),
+                e("ANLzzFL", "Analysis  Flag zz "));
+        Candidates c = new Candidates(twice, ADSL, STEMS);
+        assertEquals("AOCCzzFL", LibraryTemplates.resolve("AOCC01FL", c).get("name"),
+                "the same label twice: one template");
+        assertEquals("Analysis Flag 01", LibraryTemplates.resolve("ANL01FL", c).get("label"),
+                "a label differing only in whitespace is no disagreement; the first row serves");
+    }
+
+
+    @Test
+    void aLiteralPublishedTwiceWithDifferentLabelsIsAnAmbiguityToo()
+    {
+        Candidates clash = new Candidates(
+                List.of(e("ADURN", "Analysis Duration (N)"), e("ADURN", "AE Duration (N)")),
+                List.of(e("ADURN", "ADSL row")), STEMS);
+        assertEquals(Map.of(), LibraryTemplates.resolve("ADURN", clash),
+                "no answer, and no fall-through to the ADSL literal");
+        Candidates same = new Candidates(
+                List.of(e("SRCDOM", "Source Data"), e("SRCDOM", "Source Data")), ADSL, STEMS);
+        assertEquals("Source Data", LibraryTemplates.resolve("SRCDOM", same).get("label"));
+    }
+
+
+    @Test
+    void twoDifferentTemplatesMatchingOneColumnAreAnAmbiguity()
+    {
         List<Entry> clashing = List.of(e("ANLzzFL", "Analysis Flag zz"), e("ANLxxFL", "Other zz"));
         assertEquals(Map.of(),
                 LibraryTemplates.resolve("ANL01FL", new Candidates(clashing, ADSL, STEMS)),
                 "two different templates match: no answer, and no fall-through to ADSL or a stem");
+    }
+
+
+    /**
+     * The governing chain is tiered (subclass, then base): ambiguity is a property of ONE tier, and
+     * the most specific tier with an answer governs. Labels as our store publishes them:
+     * {@code adam-adae-1-0} ADAE ({@code AOCCzzFL} with four dots, {@code DECDORGy}) over the OCCDS
+     * base ({@code AOCCzzFL} with three, {@code DECDORGw} twice).
+     */
+    @Test
+    void theMostSpecificTierGovernsInsteadOfCollidingWithItsBase()
+    {
+        List<Entry> adae = List.of(e("AOCCzzFL", "1st Occurrence of ...."),
+                e("DECDORGy", "PT in Original Dictionary y"));
+        List<Entry> occds = List.of(e("AOCCzzFL", "1st Occurrence of ..."),
+                e("DECDORGw", "PT in Original Dictionary w"),
+                e("DECDORGw", "Standardized Med Name in Orig Dict w"),
+                e("ANLzzFL", "Analysis Flag zz"));
+        Candidates chain = Candidates.ofTiers(List.of(adae, occds), List.of(ADSL), STEMS);
+        assertEquals("1st Occurrence of ....", LibraryTemplates.resolve("AOCC01FL", chain).get(LT),
+                "the subclass's own label, not a collision with the base's");
+        assertEquals("DECDORGy", LibraryTemplates.resolve("DECDORG1", chain).get("name"),
+                "DECDORGy (subclass) governs DECDORGw (base), which alone would be ambiguous");
+        assertEquals("ANLzzFL", LibraryTemplates.resolve("ANL01FL", chain).get("name"),
+                "a name only the base publishes resolves from the base");
+        assertEquals(Map.of(),
+                LibraryTemplates.resolve("DECDORG1",
+                        Candidates.ofTiers(List.of(occds), List.of(ADSL), STEMS)),
+                "control: the base alone is ambiguous for the same column");
+    }
+
+
+    @Test
+    void aResolutionIsMemoisedPerCandidatesAndColumn()
+    {
+        Candidates c = new Candidates(BDS, ADSL, STEMS);
+        Map<String, String> first = LibraryTemplates.resolve("ANL01FL", c);
+        assertSame(first, LibraryTemplates.resolve("ANL01FL", c),
+                "the second read of the same column is the memoised answer");
+        assertEquals(first, LibraryTemplates.resolve("ANL01FL", new Candidates(BDS, ADSL, STEMS)),
+                "and equal to a fresh resolution");
     }
 
 

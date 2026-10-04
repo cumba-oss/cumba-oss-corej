@@ -338,10 +338,19 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         // PLAN-library-template-label-resolution (review H5): the scenario rows go through the SAME
         // template leg the product provider uses — a sidecar lists TRTxxP, as the store does, and
         // the scenario's TRT01P resolves to it with its label substituted; a stem row (*SDT)
-        // governs
-        // every column that ends in it; the ADSL rows serve an ADSL variable copied into another
-        // dataset (D9). Without this, every template scenario would confirm itself against a row
-        // spelled like the data and never execute the leg it claims to test.
+        // governs every column that ends in it; the ADSL rows serve an ADSL variable copied into
+        // another dataset (D9). Without this, every template scenario would confirm itself against
+        // a row spelled like the data and never execute the leg it claims to test.
+        //
+        // ⚠ T2 review L3: for an ADaM standard ONLY. The product serves that leg (and its
+        // label_template key) solely on the ADaM structure-keyed read, so a scenario of another
+        // standard must not pass with a feature the product never serves it: its rows are read
+        // verbatim, by name, as they were before the leg existed.
+        if (!isAdamStandard())
+        {
+            Map<String, Map<String, String>> rows = variableMetadata.get(up(aDomain));
+            return rows == null ? Map.of() : rows.getOrDefault(up(aVariable), Map.of());
+        }
         Map<String, Map<String, String>> own = variableMetadata.get(up(aDomain));
         Map<String, Map<String, String>> adsl = ADSL.equals(up(aDomain)) ? null
                 : variableMetadata.get(ADSL);
@@ -355,6 +364,16 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
                         own == null ? List.of() : LibraryTemplates.entriesOf(own),
                         adsl == null ? List.of() : LibraryTemplates.entriesOf(adsl),
                         LibraryTemplates.stemsOf(every)));
+    }
+
+
+    /**
+     * Whether the scenario declares an ADaM standard ({@code adamig}, or any {@code adam*} product
+     * name) — the one family whose LIBRARY read the product runs through the template leg.
+     */
+    private boolean isAdamStandard()
+    {
+        return standard.toLowerCase(Locale.ROOT).startsWith("adam");
     }
 
 

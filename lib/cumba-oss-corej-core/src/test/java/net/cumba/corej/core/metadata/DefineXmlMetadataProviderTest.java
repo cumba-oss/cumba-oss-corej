@@ -322,4 +322,173 @@ class DefineXmlMetadataProviderTest
         org.junit.jupiter.api.Assertions.assertNull(defineOnly
                 .getExpectedVariablesForStructure("OCCURRENCE DATA STRUCTURE", subclasses));
     }
+
+
+    /** A define declaring nothing at all. */
+    private static DefineXMLProvider emptyDefine()
+    {
+        return new DefineXMLProvider()
+        {
+
+            @Override
+            public Map<String, String> getDatasetMetadata(String datasetName)
+            {
+                return Map.of();
+            }
+
+
+            @Override
+            public List<Map<String, String>> getVariables(String datasetName)
+            {
+                return List.of();
+            }
+
+
+            @Override
+            public List<Map<String, String>> getCodelistTerms(String codelistOID)
+            {
+                return List.of();
+            }
+
+
+            @Override
+            public List<String> getDatasetNames()
+            {
+                return List.of();
+            }
+
+
+            @Override
+            public List<String> getKeyVariables(String datasetName)
+            {
+                return List.of();
+            }
+        };
+    }
+
+    /**
+     * A small fake whose only answers are the two structure-keyed reads — so a forward that does
+     * not reach them is visible, and a fall back to the domain-keyed read answers nothing.
+     */
+    private static final class StructureKeyedFake
+            implements
+            net.cumba.corej.core.exec.MetadataProvider
+    {
+
+        @Override
+        public Map<String, String> getVariableMetadata(net.cumba.datatable.IDataTable aTable,
+                List<String> aStructures, List<String> aSubclasses, String aDomain,
+                String aVariable)
+        {
+            return Map.of("name", "TRTxxP", "length", "40", "via", aStructures + "|" + aSubclasses);
+        }
+
+
+        @Override
+        public List<String> getColumnOrderForStructures(List<String> aStructures,
+                List<String> aSubclasses, String aDomain)
+        {
+            return List.of("BY", "STRUCTURE");
+        }
+
+
+        @Override
+        public List<String> getRequiredVariables(String domain)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public List<String> getExpectedVariables(String domain)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public List<String> getColumnOrder(String domain)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public boolean isDomainCustom(String domain)
+        {
+            return false;
+        }
+
+
+        @Override
+        public List<String> getCodelistTerms(String codelistCode)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public Map<String, String> getVariableMetadata(String domain, String variable)
+        {
+            return Map.of();
+        }
+
+
+        @Override
+        public List<Map<String, String>> getDomainVariables(String domain)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public Map<String, String> getDatasetMetadata(String domain)
+        {
+            return Map.of();
+        }
+
+
+        @Override
+        public java.util.Optional<Boolean> isCodelistExtensible(String codelistName)
+        {
+            return java.util.Optional.empty();
+        }
+
+
+        @Override
+        public String getStandard()
+        {
+            return "adamig";
+        }
+    }
+
+    /**
+     * {@code PLAN-library-template-label-resolution}, T2 review L1: the structure-keyed variable
+     * read and column order are forwarded to the fallback, the ODM overlaying a declared variable
+     * as the domain-keyed read does. Inherited, they answered by member name: nothing at all from a
+     * structure-keyed fallback.
+     */
+    @Test
+    void structureKeyedReads_forwardToTheFallbackWithTheOdmOverlaid()
+    {
+        DefineXmlMetadataProvider provider = new DefineXmlMetadataProvider(stub(),
+                new StructureKeyedFake());
+        net.cumba.datatable.IDataTable adlb = net.cumba.datatable.testkit.MockTable.of()
+                .col("TRT01P", "A").name("ADLB").build();
+        Map<String, String> undeclared = provider.getVariableMetadata(adlb, List.of("BDS"),
+                List.of("SUB"), "ADLB", "TRT01P");
+        assertEquals("[BDS]|[SUB]", undeclared.get("via"), "forwarded with its tokens");
+        assertEquals("TRTxxP", undeclared.get("name"));
+        Map<String, String> declared = provider.getVariableMetadata(adlb, List.of("BDS"), List.of(),
+                "DM", "DOMAIN");
+        assertEquals("Identifier", declared.get("role"), "the ODM overlays the fallback");
+        assertEquals("40", declared.get("length"), "the fallback's structure-keyed base survives");
+        assertEquals(List.of("BY", "STRUCTURE"),
+                new DefineXmlMetadataProvider(emptyDefine(), new StructureKeyedFake())
+                        .getColumnOrderForStructures(List.of("BDS"), List.of(), "ADLB"),
+                "no ODM order: the fallback's structure order");
+        assertEquals(List.of("DOMAIN"),
+                provider.getColumnOrderForStructures(List.of("BDS"), List.of(), "DM"),
+                "the ODM's declared order wins");
+    }
 }

@@ -1,5 +1,6 @@
 package net.cumba.corej.core.exec;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -100,6 +101,105 @@ public final class AdamStructureContext
                 defineFirst);
     }
 
+    /**
+     * A dataset's structure set and subclass set together, as {@link #detectAll} and
+     * {@link #detectSubclasses} derive them.
+     *
+     * @param structures
+     *            the structure set, most-specific first
+     * @param subclasses
+     *            the subclass tokens, most-specific first
+     */
+    public record Detected(List<String> structures, List<String> subclasses)
+    {
+
+        public Detected
+        {
+            structures = List.copyOf(structures);
+            subclasses = List.copyOf(subclasses);
+        }
+    }
+
+    /**
+     * {@link #detectAll} and {@link #detectSubclasses} in one call, memoised for the LAST dataset
+     * asked about on this thread (T2 review M2). The structure-keyed LIBRARY read (tier 0 of
+     * {@code ExprCompiler.libraryVariableMetadata}) asks once per (rule, column) read, always for
+     * the dataset in hand, so a one-entry memo answers every read of a dataset after its first and
+     * cannot grow.
+     *
+     * <p>
+     * Correct because the derivation is a pure function of what the memo compares: the metadata
+     * instance ({@link DataTableMeta} is immutable — final name and column array), the two provider
+     * instances (a run's providers do not change their declarations), and
+     * {@link AdamDataStructureDetector#defineFirstPreference()}, re-read on every call. The memo
+     * holds them by {@link WeakReference}, so it keeps no closed table or finished run alive.
+     * </p>
+     *
+     * @param aMeta
+     *            the dataset's metadata
+     * @param aDefineProvider
+     *            the Define-XML provider, or {@code null}
+     * @param aLibraryProvider
+     *            the metadata-library provider, or {@code null}
+     * @return the structure and subclass sets, exactly as the two methods answer
+     */
+    public static Detected detectMemoised(DataTableMeta aMeta,
+            @Nullable MetadataProvider aDefineProvider, @Nullable MetadataProvider aLibraryProvider)
+    {
+        boolean defineFirst = AdamDataStructureDetector.defineFirstPreference();
+        Memo memo = LAST.get();
+        if (memo != null && memo.answers(aMeta, aDefineProvider, aLibraryProvider, defineFirst))
+        {
+            return memo.detected;
+        }
+        List<String> structures = detectAll(aMeta, aDefineProvider, aLibraryProvider);
+        Detected detected = new Detected(structures,
+                detectSubclasses(aMeta, aDefineProvider, aLibraryProvider, structures));
+        LAST.set(new Memo(aMeta, aDefineProvider, aLibraryProvider, defineFirst, detected));
+        return detected;
+    }
+
+    private static final ThreadLocal<@Nullable Memo> LAST = new ThreadLocal<>();
+
+    /** The one-entry memo of {@link #detectMemoised}. */
+    private static final class Memo
+    {
+
+        private final WeakReference<DataTableMeta> meta;
+
+        private final @Nullable WeakReference<MetadataProvider> define;
+
+        private final @Nullable WeakReference<MetadataProvider> library;
+
+        private final boolean defineFirst;
+
+        private final Detected detected;
+
+        Memo(DataTableMeta aMeta, @Nullable MetadataProvider aDefine,
+                @Nullable MetadataProvider aLibrary, boolean aDefineFirst, Detected aDetected)
+        {
+            meta = new WeakReference<>(aMeta);
+            define = aDefine == null ? null : new WeakReference<>(aDefine);
+            library = aLibrary == null ? null : new WeakReference<>(aLibrary);
+            defineFirst = aDefineFirst;
+            detected = aDetected;
+        }
+
+
+        boolean answers(DataTableMeta aMeta, @Nullable MetadataProvider aDefine,
+                @Nullable MetadataProvider aLibrary, boolean aDefineFirst)
+        {
+            return defineFirst == aDefineFirst && meta.refersTo(aMeta) && same(define, aDefine)
+                    && same(library, aLibrary);
+        }
+
+
+        private static boolean same(@Nullable WeakReference<MetadataProvider> aRef,
+                @Nullable MetadataProvider aProvider)
+        {
+            return aRef == null ? aProvider == null : aProvider != null && aRef.refersTo(aProvider);
+        }
+    }
 
     /** The dataset's column names, in declaration order. */
     public static List<String> columnNamesOf(DataTableMeta aMeta)

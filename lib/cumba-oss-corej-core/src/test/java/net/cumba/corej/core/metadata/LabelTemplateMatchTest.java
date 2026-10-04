@@ -60,6 +60,46 @@ class LabelTemplateMatchTest
     }
 
 
+    /**
+     * T2 review M1 / L5: free text glued to a letter or digit of the fixed text is not free text —
+     * it changes the word or the index the fixed text ends in. {@code Analysis Value Category 12}
+     * is AVALCAT12's label, not AVALCAT1's with a descriptive tail (D8: the IG allows descriptive
+     * text AT THE END of the label, i.e. after it).
+     */
+    @Test
+    void anEllipsisBesideALetterOrDigitNeedsABoundary()
+    {
+        assertFalse(LibraryTemplates.matches("Analysis Value Category 12",
+                "Analysis Value Category 1 ..."), "a glued digit is another index");
+        assertFalse(LibraryTemplates.matches("Analysis Flag 012", "Analysis Flag 01 ..."));
+        assertFalse(LibraryTemplates.matches("Analysis Flag 01a", "Analysis Flag 01 ..."),
+                "a glued letter too");
+        assertFalse(LibraryTemplates.matches("Start Date ofFirst Dose", "Start Date of ..."));
+        // the boundary is any non-alphanumeric character, not only a space
+        assertTrue(LibraryTemplates.matches("Analysis Value Category 1",
+                "Analysis Value Category 1 ..."));
+        assertTrue(LibraryTemplates.matches("Analysis Value Category 1 (Low/High)",
+                "Analysis Value Category 1 ..."));
+        assertTrue(LibraryTemplates.matches("Analysis Flag 01, Primary", "Analysis Flag 01 ..."));
+        assertTrue(LibraryTemplates.matches("Analysis Flag 01-Primary", "Analysis Flag 01 ..."));
+        // an inner ellipsis between two alphanumerics: separated on both sides, never glued
+        assertFalse(
+                LibraryTemplates.matches("Pooled Site Group1 Code", "Pooled Site Group ... Code"));
+        assertFalse(
+                LibraryTemplates.matches("Pooled Site Group 1Code", "Pooled Site Group ... Code"));
+        assertFalse(
+                LibraryTemplates.matches("Pooled Site GroupCode", "Pooled Site Group ... Code"));
+        assertTrue(LibraryTemplates.matches("Pooled Site Group Code", "Pooled Site Group ... Code"),
+                "the empty free text, its two separators collapsed into one");
+        // a leading ellipsis before an alphanumeric
+        assertFalse(LibraryTemplates.matches("XFlag", "... Flag"));
+        assertTrue(LibraryTemplates.matches("Any Flag", "... Flag"));
+        assertTrue(LibraryTemplates.matches("Flag", "... Flag"));
+        // fixed text that ends in a non-alphanumeric needs no extra boundary
+        assertTrue(LibraryTemplates.matches("Duration (N)x", "Duration (N) ..."));
+    }
+
+
     @Test
     void aBracePhraseMustOccurSomewhereAndTheLabelIsOtherwiseFree()
     {

@@ -6512,12 +6512,11 @@ public final class ExprCompiler
     {
         if (table != null && provider.supportsStructureKeyedVariables())
         {
-            DataTableMeta meta = table.getMetaData();
-            List<String> structures = AdamStructureContext.detectAll(meta, define, provider);
-            List<String> subclasses = AdamStructureContext.detectSubclasses(meta, define, provider,
-                    structures);
-            Map<String, String> byStructure = provider.getVariableMetadata(table, structures,
-                    subclasses, member, variable);
+            // T2 review M2: memoised for the dataset in hand — this runs once per (rule, column)
+            AdamStructureContext.Detected detected = AdamStructureContext
+                    .detectMemoised(table.getMetaData(), define, provider);
+            Map<String, String> byStructure = provider.getVariableMetadata(table,
+                    detected.structures(), detected.subclasses(), member, variable);
             if (byStructure != null && !byStructure.isEmpty())
             {
                 return byStructure; // tier 0 — the structure-keyed read

@@ -1118,6 +1118,9 @@ public final class Primitives
      */
     public static BitSet matchesLabelTemplate(Vector labels, Vector templates, int rowCount)
     {
+        // T2 review M2: the template is the same on every row of a column, so its regex is
+        // compiled once per scan, not once per row.
+        net.cumba.corej.core.metadata.LibraryTemplates.TemplateMatcher matcher = new net.cumba.corej.core.metadata.LibraryTemplates.TemplateMatcher();
         return scan(labels, rowCount, (dv, r) ->
         {
             TypedValue template = templates.value(r);
@@ -1127,8 +1130,7 @@ public final class Primitives
             }
             Object raw = java.util.Objects.requireNonNull(template.resolved());
             String label = ScalarSemantics.isMissing(dv) ? "" : dv.getValueAsString();
-            return net.cumba.corej.core.metadata.LibraryTemplates.matches(label,
-                    String.valueOf(raw));
+            return matcher.matches(label, String.valueOf(raw));
         });
     }
 

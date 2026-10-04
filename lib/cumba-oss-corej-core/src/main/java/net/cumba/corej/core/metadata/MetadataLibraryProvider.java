@@ -309,7 +309,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * Memoised {@link LibraryTemplates.Candidates} per {@code structures|subclasses} token set —
      * derived data only, so the instance stays effectively immutable and safe for concurrent use.
      */
-    private final Map<String, LibraryTemplates.Candidates> candidatesCache = new ConcurrentHashMap<>();
+    private final Map<CandidatesKey, LibraryTemplates.Candidates> candidatesCache = new ConcurrentHashMap<>();
 
     /** Memoised entries per structure, keyed by {@link SourcedStructure#describe()}. */
     private final Map<String, List<LibraryTemplates.Entry>> entriesCache = new ConcurrentHashMap<>();
@@ -3134,30 +3134,32 @@ public final class MetadataLibraryProvider implements MetadataProvider
     private LibraryTemplates.Candidates adamCandidates(@Nullable List<String> aStructures,
             @Nullable List<String> aSubclasses)
     {
-        List<String> structures = aStructures == null ? List.of() : List.copyOf(aStructures);
-        List<String> subclasses = aSubclasses == null ? List.of() : List.copyOf(aSubclasses);
-        return candidatesCache.computeIfAbsent(structures + "|" + subclasses,
-                _ -> buildCandidates(structures, subclasses));
+        // List.copyOf returns an immutable argument itself, so the key costs nothing on the hot
+        // path (T2 review M2: the key used to be a string concatenated on every read).
+        CandidatesKey key = new CandidatesKey(
+                aStructures == null ? List.of() : List.copyOf(aStructures),
+                aSubclasses == null ? List.of() : List.copyOf(aSubclasses));
+        return candidatesCache.computeIfAbsent(key,
+                k -> buildCandidates(k.structures(), k.subclasses()));
     }
 
+    /** The memo key of {@link #adamCandidates}: the dataset's structure and subclass tokens. */
+    private record CandidatesKey(List<String> structures, List<String> subclasses)
+    {
+    }
 
     private LibraryTemplates.Candidates buildCandidates(List<String> aStructures,
             List<String> aSubclasses)
     {
-        List<LibraryTemplates.Entry> own = new ArrayList<>();
-        for (SourcedStructure sourced : governingStructures(aStructures, aSubclasses))
-        {
-            own.addAll(entriesOf(sourced));
-        }
-        List<LibraryTemplates.Entry> adsl = new ArrayList<>();
+        // T2 review H1: the chain stays TIERED (subclass, then base) so ambiguity is judged within
+        // one tier and the most specific tier governs — see LibraryTemplates.Candidates#ofTiers.
+        List<List<LibraryTemplates.Entry>> own = governingEntryTiers(aStructures, aSubclasses);
+        List<List<LibraryTemplates.Entry>> adsl = new ArrayList<>();
         if (!aStructures.contains(AdamDataStructureDetector.ADSL))
         {
             for (ChainTier tier : governingTiers(AdamDataStructureDetector.ADSL, List.of()))
             {
-                for (SourcedStructure sourced : tier.structures())
-                {
-                    adsl.addAll(entriesOf(sourced));
-                }
+                adsl.add(entriesOfTier(tier));
             }
         }
         // The stems are a naming convention of the IG, published under BDS alone; a column of any
@@ -3172,7 +3174,47 @@ public final class MetadataLibraryProvider implements MetadataProvider
                         .stemsOf(entriesOf(new SourcedStructure(declared.cacheKey(), ds))));
             }
         }
-        return new LibraryTemplates.Candidates(own, adsl, LibraryTemplates.stemsOf(stems));
+        return LibraryTemplates.Candidates.ofTiers(own, adsl, LibraryTemplates.stemsOf(stems));
+    }
+
+
+    /**
+     * {@link #governingStructures}, tier by tier: the entries of each tier of the first structure
+     * token with a governing chain, most specific tier first; empty when no token has one.
+     */
+    private List<List<LibraryTemplates.Entry>> governingEntryTiers(List<String> aStructures,
+            List<String> aSubclasses)
+    {
+        for (String token : aStructures)
+        {
+            if (token == null || token.isBlank())
+            {
+                continue;
+            }
+            List<List<LibraryTemplates.Entry>> out = new ArrayList<>();
+            boolean anyStructure = false;
+            for (ChainTier tier : governingTiers(token, aSubclasses))
+            {
+                anyStructure |= !tier.structures().isEmpty();
+                out.add(entriesOfTier(tier));
+            }
+            if (anyStructure)
+            {
+                return List.copyOf(out);
+            }
+        }
+        return List.of();
+    }
+
+
+    private List<LibraryTemplates.Entry> entriesOfTier(ChainTier aTier)
+    {
+        List<LibraryTemplates.Entry> out = new ArrayList<>();
+        for (SourcedStructure sourced : aTier.structures())
+        {
+            out.addAll(entriesOf(sourced));
+        }
+        return out;
     }
 
 

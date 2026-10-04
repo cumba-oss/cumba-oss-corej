@@ -7,9 +7,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.cumba.corej.core.gen.WildcardExpander;
 import net.cumba.corej.core.gen.WildcardExpander.WildcardPattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code PLAN-library-template-label-resolution} — <b>the one template leg</b> of the LIBRARY-level
@@ -29,6 +33,13 @@ import net.cumba.corej.core.gen.WildcardExpander.WildcardPattern;
  * under {@link WildcardExpander#indexTemplate} — the same compiled pattern the scope gate and the
  * core-variable walks use. Two matching templates are an ambiguity, and an ambiguity is <b>no
  * answer</b> (the read stops; it does not fall through to a weaker tier);</li>
+ * <li>⚠ <b>one published name with two different labels is an ambiguity too</b> (T2 review H1):
+ * {@code adam-occds-1-0} / {@code -1-1} and the TIG publish {@code DECDORGw} twice in one structure
+ * — {@code PT in Original Dictionary w} (MedDRA) and {@code Standardized Med Name in Orig
+ * Dict w} (WHO Drug) — so which label a {@code DECDORG1} column must carry depends on a dictionary
+ * the name does not tell. Rows of one name merge only when their labels agree (compared with
+ * whitespace collapsed, so a cosmetic double space is no disagreement); otherwise the tier answers
+ * nothing. The same holds for a literal name published twice;</li>
  * <li><b>ADSL literal</b>, then <b>ADSL index template</b> (D9): an ADSL variable copied into a BDS
  * or OCCDS dataset resolves to its ADSL row when the dataset's own structure lacks it;</li>
  * <li><b>stem</b>: the longest published {@code *}-stem that is a proper suffix of the column
@@ -36,6 +47,21 @@ import net.cumba.corej.core.gen.WildcardExpander.WildcardPattern;
  * {@code *STM}/{@code *ETM}, {@code *DTM} ⊂ {@code *SDTM}/{@code *EDTM}, so the longest suffix is
  * never ambiguous).</li>
  * </ol>
+ *
+ * <p>
+ * <b>The governing chain is a list of tiers</b>, most specific first (a subclass structure, then
+ * its base — {@code MetadataLibraryProvider.governingTiers}). Literals are looked up tier by tier
+ * before any template, as one flat list was; the template tier, too, is judged tier by tier: the
+ * first tier with a matching template answers, so a subclass that re-publishes a name with its own
+ * label ({@code adam-adae-1-0}'s {@code AOCCzzFL}) governs its base's row instead of colliding with
+ * it. Ambiguity is a property of ONE tier.
+ * </p>
+ *
+ * <p>
+ * <b>Cost.</b> A {@link Candidates} compiles each template's pattern once and memoises the
+ * resolution of each column it is asked about, so a run that asks the same (structure set, column)
+ * for every rule pays for the tier walk once.
+ * </p>
  *
  * <h2>What the answer carries</h2>
  * <ul>
@@ -102,69 +128,204 @@ public final class LibraryTemplates
 
 
     /**
-     * The candidates one read resolves against: the dataset's own structure's entries, the ADSL
-     * entries (empty when the dataset is ADSL itself, or no ADSL structure is declared) and the
-     * stems (every {@code *}-rooted entry the declared products publish, any structure).
+     * The candidates one read resolves against: the dataset's own governing chain (its tiers, most
+     * specific first), the ADSL chain (empty when the dataset is ADSL itself, or no ADSL structure
+     * is declared) and the stems (every {@code *}-rooted entry the declared products publish, any
+     * structure).
+     *
+     * <p>
+     * Built once per (structure set, subclass set) by the provider and then shared by every read:
+     * each template's {@link WildcardPattern} is compiled here, once, and every column's resolution
+     * is memoised (T2 review M2). The memo is unbounded on purpose — its keys are the column names
+     * a study actually has, a few hundred at most. Thread-safe: the tiers are immutable and the
+     * memo is a {@link ConcurrentHashMap}.
+     * </p>
      */
-    public record Candidates(List<Entry> own, List<Entry> adsl, List<Entry> stems)
+    public static final class Candidates
     {
 
         /** No candidates at all — every read answers the empty map. */
         public static final Candidates NONE = new Candidates(List.of(), List.of(), List.of());
 
-        public Candidates
+        private final List<Tier> own;
+
+        private final List<Tier> adsl;
+
+        private final List<Entry> stems;
+
+        private final Map<String, Map<String, String>> resolved = new ConcurrentHashMap<>();
+
+        /**
+         * One tier each — the shape of a provider with no subclass axis (the {@code .cdt} harness).
+         *
+         * @param aOwn
+         *            the dataset's own structure's entries
+         * @param aAdsl
+         *            the ADSL entries
+         * @param aStems
+         *            the stems
+         */
+        public Candidates(List<Entry> aOwn, List<Entry> aAdsl, List<Entry> aStems)
         {
-            own = List.copyOf(own);
-            adsl = List.copyOf(adsl);
-            stems = List.copyOf(stems);
+            this(new Tier[]
+            {
+                    new Tier(aOwn)
+            }, new Tier[]
+            {
+                    new Tier(aAdsl)
+            }, aStems);
+        }
+
+
+        private Candidates(Tier[] aOwn, Tier[] aAdsl, List<Entry> aStems)
+        {
+            own = List.of(aOwn);
+            adsl = List.of(aAdsl);
+            stems = List.copyOf(aStems);
+        }
+
+
+        /**
+         * The candidates of a governing chain: one entry list per tier, most specific first (a
+         * subclass structure, then its base).
+         *
+         * @param aOwnTiers
+         *            the dataset's own chain
+         * @param aAdslTiers
+         *            the ADSL chain
+         * @param aStems
+         *            the stems
+         * @return the candidates
+         */
+        public static Candidates ofTiers(List<List<Entry>> aOwnTiers, List<List<Entry>> aAdslTiers,
+                List<Entry> aStems)
+        {
+            return new Candidates(tiersOf(aOwnTiers), tiersOf(aAdslTiers), aStems);
+        }
+
+
+        private static Tier[] tiersOf(List<List<Entry>> aTiers)
+        {
+            return aTiers.stream().map(Tier::new).toArray(Tier[]::new);
         }
     }
 
+
     /**
-     * Resolves {@code aColumn} against {@code aCandidates} through the tiers of the class javadoc.
+     * One tier of a governing chain: its entries in publication order, and its index templates
+     * grouped by published name with their patterns compiled once. A name published twice with
+     * labels that disagree is kept, marked {@code conflicting}: a column it matches has no answer
+     * (T2 review H1).
+     */
+    private static final class Tier
+    {
+
+        private final List<Entry> entries;
+
+        private final List<Template> templates;
+
+        Tier(List<Entry> aEntries)
+        {
+            entries = List.copyOf(aEntries);
+            Map<String, Template> byName = new LinkedHashMap<>();
+            for (Entry entry : entries)
+            {
+                Template seen = byName.get(entry.name());
+                if (seen == null)
+                {
+                    WildcardPattern pattern = WildcardExpander.indexTemplate(entry.name());
+                    if (pattern != null)
+                    {
+                        byName.put(entry.name(), new Template(entry, pattern, false));
+                    }
+                }
+                else if (!seen.conflicting() && !sameLabel(seen.entry(), entry))
+                {
+                    byName.put(entry.name(), new Template(seen.entry(), seen.pattern(), true));
+                }
+            }
+            templates = List.copyOf(byName.values());
+        }
+    }
+
+
+    /** One published index template of a tier, its pattern compiled. */
+    private record Template(Entry entry, WildcardPattern pattern, boolean conflicting)
+    {
+    }
+
+    /**
+     * Resolves {@code aColumn} against {@code aCandidates} through the tiers of the class javadoc,
+     * memoised per {@link Candidates} and column.
      *
      * @param aColumn
      *            the dataset's column name, in the dataset's own spelling
      * @param aCandidates
      *            the candidates
      * @return the resolved attributes (see the class javadoc), or an empty map when no tier answers
-     *         or the index-template tier is ambiguous; never {@code null}
+     *         or a tier is ambiguous; never {@code null}
      */
-    public static Map<String, String> resolve(String aColumn, Candidates aCandidates)
+    public static Map<String, String> resolve(@Nullable String aColumn, Candidates aCandidates)
     {
         if (aColumn == null || aColumn.isEmpty())
         {
             return Map.of();
         }
-        Map<String, String> hit = literal(aColumn, aCandidates.own());
-        if (!hit.isEmpty())
+        return aCandidates.resolved.computeIfAbsent(aColumn, c -> resolveUncached(c, aCandidates));
+    }
+
+
+    private static Map<String, String> resolveUncached(String aColumn, Candidates aCandidates)
+    {
+        Hit hit = firstLiteral(aColumn, aCandidates.own);
+        if (hit == Hit.NONE)
         {
-            return hit;
+            hit = firstTemplate(aColumn, aCandidates.own);
         }
-        TemplateHit template = template(aColumn, aCandidates.own());
-        if (template.ambiguous())
+        if (hit == Hit.NONE)
         {
-            return Map.of();
+            hit = firstLiteral(aColumn, aCandidates.adsl);
         }
-        if (!template.attributes().isEmpty())
+        if (hit == Hit.NONE)
         {
-            return template.attributes();
+            hit = firstTemplate(aColumn, aCandidates.adsl);
         }
-        hit = literal(aColumn, aCandidates.adsl());
-        if (!hit.isEmpty())
+        if (hit == Hit.NONE)
         {
-            return hit;
+            return stem(aColumn, aCandidates.stems);
         }
-        template = template(aColumn, aCandidates.adsl());
-        if (template.ambiguous())
+        // an ambiguity is no answer: the read stops, it does not fall through
+        return hit.attributes;
+    }
+
+
+    /** The literal tier over a chain: the first tier publishing the name answers. */
+    private static Hit firstLiteral(String aColumn, List<Tier> aChain)
+    {
+        for (Tier tier : aChain)
         {
-            return Map.of();
+            Hit hit = literal(aColumn, tier);
+            if (hit != Hit.NONE)
+            {
+                return hit;
+            }
         }
-        if (!template.attributes().isEmpty())
+        return Hit.NONE;
+    }
+
+
+    /** The index-template tier over a chain: the first tier with a matching template answers. */
+    private static Hit firstTemplate(String aColumn, List<Tier> aChain)
+    {
+        for (Tier tier : aChain)
         {
-            return template.attributes();
+            Hit hit = template(aColumn, tier);
+            if (hit != Hit.NONE)
+            {
+                return hit;
+            }
         }
-        return stem(aColumn, aCandidates.stems());
+        return Hit.NONE;
     }
 
 
@@ -179,7 +340,16 @@ public final class LibraryTemplates
      * otherwise free. A template with a phrase is judged by this clause alone.</li>
      * <li><b>{@code ...}</b> — any text, including none (D11: the IG's ellipsis, and the
      * descriptive tail a {@code y}/{@code zz} name is allowed, D8); the whitespace beside it is
-     * optional, so {@code Analysis Category 1 ...} accepts {@code Analysis Category 1}.</li>
+     * optional, so {@code Analysis Category 1 ...} accepts {@code Analysis Category 1}. ⚠ <b>Where
+     * the fixed text beside it ends (or starts) with a letter or digit, the free text is either
+     * empty or separated from it by a non-alphanumeric character</b> (T2 review M1/L5): text glued
+     * to the fixed text is not free text, it changes the word or the index the fixed text ends in —
+     * {@code Analysis Value Category 12} is {@code AVALCAT12}'s label, not {@code AVALCAT1}'s with
+     * a tail. The IG's own wording supports exactly this reading: descriptive text is allowed <i>at
+     * the end</i> of the label — after it, not inside its last word. Any non-alphanumeric character
+     * is a boundary ({@code Analysis Flag 01, Primary}), because the IG prescribes no separator; an
+     * inner {@code ...} between two alphanumerics needs one on each side, and the empty free text
+     * there collapses them into one ({@code Pooled Site Group Code}).</li>
      * <li><b>fixed text</b> — exactly, letter case included, as the exact-label rules compare.</li>
      * <li><b>{@code Imput.} ≡ {@code Imputation}</b> on both sides (D7): the one abbreviation the
      * IG itself publishes (24 labels; metadata issue {@code #97}). No other.</li>
@@ -195,14 +365,64 @@ public final class LibraryTemplates
      */
     public static boolean matches(String aLabel, String aTemplate)
     {
-        String label = normaliseImputation(aLabel);
+        return matcher(aTemplate).test(aLabel);
+    }
+
+
+    /**
+     * {@link #matches} with the template compiled once: the predicate a caller applies to many
+     * labels of one template (a column's rows).
+     *
+     * @param aTemplate
+     *            the resolved template
+     * @return whether a label conforms to it
+     */
+    public static Predicate<String> matcher(String aTemplate)
+    {
         String template = normaliseImputation(aTemplate);
         List<String> phrases = bracePhrases(template);
         if (!phrases.isEmpty())
         {
-            return phrases.stream().allMatch(label::contains);
+            return label ->
+            {
+                String normalised = normaliseImputation(label);
+                return phrases.stream().allMatch(normalised::contains);
+            };
         }
-        return fixedTextRegex(template).matcher(label).matches();
+        Pattern regex = fixedTextRegex(template);
+        return label -> regex.matcher(normaliseImputation(label)).matches();
+    }
+
+    /**
+     * A one-entry memo of {@link #matcher}: the last template and its compiled predicate. Made for
+     * a scan over one column, whose template is the same on every row (T2 review M2: the matcher
+     * compiled its regex once per ROW). Not thread-safe — one per scan.
+     */
+    public static final class TemplateMatcher
+    {
+
+        private @Nullable String lastTemplate;
+
+        private Predicate<String> lastMatcher = _ -> false;
+
+        /**
+         * As {@link LibraryTemplates#matches}.
+         *
+         * @param aLabel
+         *            the data label
+         * @param aTemplate
+         *            the resolved template
+         * @return whether the label conforms
+         */
+        public boolean matches(String aLabel, String aTemplate)
+        {
+            if (!aTemplate.equals(lastTemplate))
+            {
+                lastMatcher = matcher(aTemplate);
+                lastTemplate = aTemplate;
+            }
+            return lastMatcher.test(aLabel);
+        }
     }
 
     private static final Pattern BRACE_PHRASE = Pattern.compile("\\{([^}]*)\\}");
@@ -220,7 +440,7 @@ public final class LibraryTemplates
     static List<String> bracePhrases(String aTemplate)
     {
         List<String> out = new ArrayList<>();
-        java.util.regex.Matcher m = BRACE_PHRASE.matcher(aTemplate);
+        Matcher m = BRACE_PHRASE.matcher(aTemplate);
         while (m.find())
         {
             String phrase = m.group(1).strip();
@@ -234,31 +454,69 @@ public final class LibraryTemplates
 
 
     /**
-     * The template's fixed text as an anchored regex: each {@code ...} becomes {@code .*} with the
-     * whitespace beside it optional, everything else is quoted.
+     * The template's fixed text as an anchored regex: each {@code ...} becomes free text (see
+     * {@link #freeText}) with the whitespace beside it optional, everything else is quoted.
      */
     static Pattern fixedTextRegex(String aTemplate)
     {
         String[] fixed = aTemplate.split(Pattern.quote(ANY_TEXT), -1);
         StringBuilder regex = new StringBuilder("^");
+        String previous = "";
         for (int i = 0; i < fixed.length; i++)
         {
             String part = fixed[i];
             if (i > 0)
             {
-                regex.append("\\s*.*\\s*");
                 part = part.stripLeading();
             }
             if (i < fixed.length - 1)
             {
                 part = part.stripTrailing();
             }
+            if (i > 0)
+            {
+                regex.append(freeText(previous, part));
+            }
             if (!part.isEmpty())
             {
                 regex.append(Pattern.quote(part));
             }
+            previous = part;
         }
         return Pattern.compile(regex.append('$').toString(), Pattern.DOTALL);
+    }
+
+
+    /**
+     * The regex of one {@code ...} between the fixed text {@code aBefore} and {@code aAfter} (each
+     * stripped of the whitespace beside the ellipsis): any text — but where a side ends (or starts)
+     * with a letter or digit, the free text is empty or begins (ends) with a non-alphanumeric
+     * character, and between two such sides it is a non-empty run bounded so on both ends.
+     */
+    private static String freeText(String aBefore, String aAfter)
+    {
+        boolean left = !aBefore.isEmpty() && isAsciiAlnum(aBefore.charAt(aBefore.length() - 1));
+        boolean right = !aAfter.isEmpty() && isAsciiAlnum(aAfter.charAt(0));
+        if (left && right)
+        {
+            return "[^\\p{Alnum}](?:.*[^\\p{Alnum}])?";
+        }
+        if (left)
+        {
+            return "(?:[^\\p{Alnum}].*)?";
+        }
+        if (right)
+        {
+            return "(?:.*[^\\p{Alnum}])?";
+        }
+        return ".*";
+    }
+
+
+    /** {@code \p{Alnum}}'s character set: ASCII letters and digits. */
+    private static boolean isAsciiAlnum(char aChar)
+    {
+        return aChar < 128 && Character.isLetterOrDigit(aChar);
     }
 
 
@@ -283,70 +541,84 @@ public final class LibraryTemplates
         return markers.contains("y") || markers.contains("zz");
     }
 
-
-    private static Map<String, String> literal(String aColumn, List<Entry> aEntries)
+    /**
+     * The outcome of one tier: an answer, nothing ({@link #NONE}), or an ambiguity
+     * ({@link #AMBIGUOUS}, which carries the empty map — no answer, and the read stops).
+     */
+    private static final class Hit
     {
-        for (Entry entry : aEntries)
+
+        static final Hit NONE = new Hit(Map.of());
+
+        static final Hit AMBIGUOUS = new Hit(Map.of());
+
+        private final Map<String, String> attributes;
+
+        Hit(Map<String, String> aAttributes)
+        {
+            attributes = aAttributes;
+        }
+    }
+
+    private static Hit literal(String aColumn, Tier aTier)
+    {
+        Entry first = null;
+        for (Entry entry : aTier.entries)
         {
             if (entry.name().equalsIgnoreCase(aColumn))
             {
-                Map<String, String> out = withName(entry);
-                String label = entry.attributes().get(LABEL);
-                if (label != null && !hasPhrase(label) && markersOf(entry.name()).isEmpty())
+                if (first == null)
                 {
-                    out.put(LABEL_TEMPLATE_KEY, label);
+                    first = entry;
                 }
-                return Collections.unmodifiableMap(out);
+                else if (!sameLabel(first, entry))
+                {
+                    return Hit.AMBIGUOUS; // T2 review H1: one name, two labels
+                }
             }
         }
-        return Map.of();
+        if (first == null)
+        {
+            return Hit.NONE;
+        }
+        Map<String, String> out = withName(first);
+        String label = first.attributes().get(LABEL);
+        if (label != null && !hasPhrase(label) && markersOf(first.name()).isEmpty())
+        {
+            out.put(LABEL_TEMPLATE_KEY, label);
+        }
+        return new Hit(Collections.unmodifiableMap(out));
     }
 
-    /** The outcome of the index-template tier: an answer, nothing, or an ambiguity. */
-    private record TemplateHit(Map<String, String> attributes, boolean ambiguous)
+
+    private static Hit template(String aColumn, Tier aTier)
     {
-
-        static final TemplateHit NONE = new TemplateHit(Map.of(), false);
-
-        static final TemplateHit AMBIGUOUS = new TemplateHit(Map.of(), true);
-    }
-
-    private static TemplateHit template(String aColumn, List<Entry> aEntries)
-    {
-        Entry match = null;
+        Template match = null;
         Map<String, String> captured = null;
-        // Two rows of one published name are one template (adam-occds-1-0 publishes DECDORGw
-        // twice); two DIFFERENT templates matching the column are an ambiguity.
-        Map<String, Entry> byName = new LinkedHashMap<>();
-        for (Entry entry : aEntries)
+        for (Template candidate : aTier.templates)
         {
-            byName.putIfAbsent(entry.name(), entry);
-        }
-        for (Entry entry : byName.values())
-        {
-            WildcardPattern pattern = WildcardExpander.indexTemplate(entry.name());
-            if (pattern == null)
-            {
-                continue;
-            }
-            Map<String, String> markers = pattern.capture(aColumn);
+            Map<String, String> markers = candidate.pattern().capture(aColumn);
             if (markers == null)
             {
                 continue;
             }
             if (match != null)
             {
-                return TemplateHit.AMBIGUOUS;
+                return Hit.AMBIGUOUS; // two different templates match the column
             }
-            match = entry;
+            match = candidate;
             captured = markers;
         }
         if (match == null || captured == null)
         {
-            return TemplateHit.NONE;
+            return Hit.NONE;
         }
-        Map<String, String> out = withName(match);
-        String label = match.attributes().get(LABEL);
+        if (match.conflicting())
+        {
+            return Hit.AMBIGUOUS; // T2 review H1: one template name, two labels (DECDORGw)
+        }
+        Map<String, String> out = withName(match.entry());
+        String label = match.entry().attributes().get(LABEL);
         if (label != null)
         {
             String substituted = substituteMarkers(label, captured);
@@ -359,15 +631,36 @@ public final class LibraryTemplates
                 out.put(LABEL, substituted);
             }
             String template = substituted;
-            if (allowsDescriptiveTail(match.name()) && !substituted.endsWith(ANY_TEXT))
+            if (allowsDescriptiveTail(match.entry().name()) && !substituted.endsWith(ANY_TEXT))
             {
                 template = substituted + " " + ANY_TEXT;
             }
             out.put(LABEL_TEMPLATE_KEY, template);
         }
-        return new TemplateHit(Collections.unmodifiableMap(out), false);
+        return new Hit(Collections.unmodifiableMap(out));
     }
 
+
+    /**
+     * Whether two rows of one name agree on their label, compared with whitespace collapsed (a run
+     * of whitespace is one space, the ends stripped): a cosmetic double space is no disagreement.
+     * Our store holds no such pair (measured 2026-10-04: no ADaM or TIG label carries a double or
+     * an edge space — the seeder normalises them), so the collapse only keeps a future print defect
+     * from turning one template into no answer.
+     */
+    private static boolean sameLabel(Entry aFirst, Entry aSecond)
+    {
+        return Objects.equals(collapseWhitespace(aFirst.attributes().get(LABEL)),
+                collapseWhitespace(aSecond.attributes().get(LABEL)));
+    }
+
+
+    private static @Nullable String collapseWhitespace(@Nullable String aLabel)
+    {
+        return aLabel == null ? null : WHITESPACE_RUN.matcher(aLabel.strip()).replaceAll(" ");
+    }
+
+    private static final Pattern WHITESPACE_RUN = Pattern.compile("\\s+");
 
     private static Map<String, String> stem(String aColumn, List<Entry> aStems)
     {
@@ -413,13 +706,28 @@ public final class LibraryTemplates
         String out = aLabel;
         for (Map.Entry<String, String> e : aCaptured.entrySet())
         {
-            out = Pattern.compile("(?<![A-Za-z])" + Pattern.quote(e.getKey()) + "(?![A-Za-z])")
-                    .matcher(out)
-                    .replaceAll(java.util.regex.Matcher.quoteReplacement(e.getValue()));
+            Pattern marker = MARKER_WORDS.get(e.getKey());
+            if (marker == null)
+            {
+                marker = markerWord(e.getKey());
+            }
+            out = marker.matcher(out).replaceAll(Matcher.quoteReplacement(e.getValue()));
         }
         return out;
     }
 
+
+    private static Pattern markerWord(String aMarker)
+    {
+        return Pattern.compile("(?<![A-Za-z])" + Pattern.quote(aMarker) + "(?![A-Za-z])");
+    }
+
+    /**
+     * The whole-word pattern of each index marker {@link WildcardExpander} knows, compiled once (T2
+     * review M2); a marker outside this set is compiled on the spot.
+     */
+    private static final Map<String, Pattern> MARKER_WORDS = Map.of("xx", markerWord("xx"), "zz",
+            markerWord("zz"), "y", markerWord("y"), "w", markerWord("w"));
 
     private static boolean hasPhrase(String aLabel)
     {
