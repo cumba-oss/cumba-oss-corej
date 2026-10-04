@@ -15,6 +15,7 @@ import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.LibraryLists;
 import net.cumba.corej.core.exec.MetadataProvider;
+import net.cumba.corej.core.exec.StubMetadataProvider;
 import net.cumba.corej.core.expr.eval.ConstVector;
 import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.ExprCompiler;
@@ -182,16 +183,17 @@ class AdamTemplateRealStoreTest
                 .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").col("AESER", "N").name("ADAE")
                 .build();
         assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER"), required(p, adae),
-                "ADAE confirmed as AE by AESEQ");
+                "AESEQ / AETERM / AEDECOD name AE");
         IDataTable adcm = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1").col("CMSEQ", "1")
                 .col("CMTRT", "ASPIRIN").col("CMDECOD", "ASPIRIN").name("ADCM").build();
         assertEquals(List.of("STUDYID", "USUBJID", "CMSEQ", "CMTERM", "CMTRT"), required(p, adcm),
-                "ADCM confirmed as CM by CMSEQ: CMTRT demanded, AESER not");
+                "CMSEQ / CMTRT / CMDECOD name CM: CMTRT demanded, AESER not");
         IDataTable unconfirmed = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1")
                 .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").name("ADAE").build();
-        assertEquals(List.of("STUDYID", "USUBJID", "AESER"), required(p, unconfirmed),
-                "no AESEQ: no confirmed domain, so no -- name is demanded; AESER carries ADAE's own"
-                        + " candidate AE and stays demanded, CMTRT (no CMSEQ) does not");
+        assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER"),
+                required(p, unconfirmed),
+                "no AESEQ: AETERM / AEDECOD name AE (PLAN-occds-source-domain-by-ig D1/D2), so"
+                        + " --SEQ is demanded as AESEQ and reported missing; CMTRT is not");
     }
 
 
@@ -199,10 +201,11 @@ class AdamTemplateRealStoreTest
      * Round-2 T2 review H1, on our store: under a declared {@code adam-adae-1-0} the {@code ADAE}
      * structure publishes its AE variables as concrete names ({@code AESEQ}, {@code AETERM},
      * {@code AEDECOD}, {@code AEBODSYS}, {@code AESER} Req, each opening with {@code AE.<name>}).
-     * An {@code ADAE} lacking {@code AESEQ} confirms no domain, and the AE names must still be
-     * demanded — the dataset name's own candidate {@code AE} — so the missing {@code AESEQ} is
-     * reported rather than disarming its own requirement (before the fix: only {@code STUDYID},
-     * {@code USUBJID}). An {@code ADTEAE} whose {@code AESEQ} confirms {@code AE} keeps them too.
+     * An {@code ADAE} lacking {@code AESEQ} must still be asked for the AE names — its
+     * {@code AETERM} / {@code AEDECOD} name the domain {@code AE}
+     * ({@code PLAN-occds-source-domain-by-ig} D1) — so the missing {@code AESEQ} is reported rather
+     * than disarming its own requirement (before round-2's fix: only {@code STUDYID},
+     * {@code USUBJID}).
      */
     @Test
     void requiredVariablesOfAdaeUnderAdamAdaeKeepTheAeNamesWithoutAeseq() throws IOException
@@ -226,10 +229,48 @@ class AdamTemplateRealStoreTest
     }
 
 
+    /**
+     * {@code PLAN-occds-source-domain-by-ig} review H1, on our store: the source domain now comes
+     * from the occurrence variables, never the dataset name, so an {@code ADAE} declared under
+     * {@code adam-adae-1-0} that carries <b>no</b> occurrence variable ({@code --SEQ},
+     * {@code --TERM}, {@code --TRT}, {@code --DECOD}) gives evidence of no domain at all. Its
+     * concrete AE names must stay demanded — an empty evidence set never drops a carried name — or
+     * the missing {@code AESEQ} / {@code AETERM} / {@code AEDECOD} would disarm their own
+     * requirement and CDISC-AD9704 would go silent on exactly the dataset it should report.
+     */
+    @Test
+    void requiredVariablesOfAdaeUnderAdamAdaeWithNoOccurrenceVariableKeepTheAeNames()
+        throws IOException
+    {
+        StoreMetadataProviderFactory factory = realStoreFactory();
+        assumeTrue(factory != null, RealCorpusLocator.ABSENT_MESSAGE);
+        MetadataProvider p = factory.forAdam("adamig", "1-1",
+                List.of("standards/adam/adamig-1-1", "standards/adam/adam-adae-1-0"), List.of(),
+                List.of()).orElseThrow();
+        IDataTable bare = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1")
+                .col("AEBODSYS", "NERVOUS SYSTEM DISORDERS").col("AESER", "N").name("ADAE").build();
+        // No occurrence column, so no column heuristic: the define declares the structure.
+        StubMetadataProvider define = new StubMetadataProvider().declares("ADAE",
+                AdamDataStructureDetector.OCCDS, "ADVERSE EVENT");
+        assertEquals(
+                List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AEDECOD", "AEBODSYS", "AESER"),
+                required(p, define, bare),
+                "no occurrence variable: no domain evidence, so every carried AE name stays"
+                        + " demanded (AESEQ, AETERM, AEDECOD reported missing)");
+    }
+
+
     private static List<Object> required(MetadataProvider p, IDataTable table)
     {
+        return required(p, null, table);
+    }
+
+
+    private static List<Object> required(MetadataProvider p, @Nullable MetadataProvider define,
+            IDataTable table)
+    {
         EvalRun run = EvalRun.fullRange(EvaluationContext.builder().table(table).ruleId("R2-1")
-                .libraryProvider(p).datasetResolver(NO_RESOLVER).build());
+                .libraryProvider(p).defineProvider(define).datasetResolver(NO_RESOLVER).build());
         Vector v = LibraryLists.requiredVariables(run, List.of());
         assertTrue(v instanceof ConstVector, "a dataset-level list is one broadcast constant");
         @SuppressWarnings("unchecked")

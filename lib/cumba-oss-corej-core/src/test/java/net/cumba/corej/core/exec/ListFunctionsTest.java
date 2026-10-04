@@ -206,11 +206,13 @@ class ListFunctionsTest
 
 
     /**
-     * PLAN-library-template-label-resolution round-2 ruling R2-1: an occurrence structure's
-     * {@code --} names resolve to the dataset's confirmed source domain, and a name carrying
-     * another domain's prefix (the store's {@code CM.CMTRT} / {@code AE.AESER} source token) is not
-     * demanded of a dataset of a different — or of no confirmed — domain. {@code AESEQ} is both the
-     * confirmation and what {@code --SEQ} becomes.
+     * PLAN-library-template-label-resolution round-2 ruling R2-1, as
+     * {@code PLAN-occds-source-domain-by-ig} D1–D4 restate it: an occurrence structure's {@code --}
+     * names resolve to the dataset's source domain — the two-letter prefix of the occurrence
+     * variables it carries ({@code --SEQ}, {@code --TERM}, {@code --TRT}, {@code --DECOD}), never
+     * its name — and a name carrying another domain's prefix (the store's {@code CM.CMTRT} /
+     * {@code AE.AESER} source token) is not demanded of a dataset whose occurrence variables name a
+     * different domain.
      */
     @Test
     void theAdamCoreWalkResolvesTheSourceDomainAndDemandsOnlyItsOwnDomainsPrefixedNames()
@@ -245,24 +247,41 @@ class ListFunctionsTest
                 "ADCM + CMSEQ confirm CM: CMTRT is demanded, AESER (AE) is not");
         IDataTable unconfirmed = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
                 .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").name("ADAE").build();
-        assertEquals(List.of("STUDYID", "USUBJID", "AESER", "AOCCzzFL"),
+        assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER", "AOCCzzFL"),
                 list(LibraryLists.requiredVariables(run(unconfirmed, lib), List.of())),
-                "no AESEQ: no confirmed domain, so a -- name is not demanded; but AESER carries"
-                        + " ADAE's own candidate AE and stays demanded (a missing AESEQ must not"
-                        + " disarm its siblings), while CMTRT (CM, no CMSEQ) is dropped");
+                "no AESEQ: AETERM / AEDECOD name AE, so --SEQ is demanded as AESEQ and reported"
+                        + " missing (D2: a missing --SEQ must not disarm its own requirement);"
+                        + " CMTRT (CM) is dropped");
         IDataTable adaeWithDomain = MockTable.of().col("STUDYID", "S").col("DOMAIN", "AE")
                 .col("USUBJID", "1").col("AESEQ", "1").col("AETERM", "HEADACHE")
                 .col("AEDECOD", "HEADACHE").col("AESER", "N").col("AOCC01FL", "Y").name("ADAE")
                 .build();
         assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER", "AOCC01FL"),
                 list(LibraryLists.requiredVariables(run(adaeWithDomain, lib), List.of())),
-                "the dataset NAME gives the domain, never a kept SDTM DOMAIN cell");
+                "the occurrence variables give the domain, never a kept SDTM DOMAIN cell");
         IDataTable events = MockTable.of().col("STUDYID", "S").col("USUBJID", "1").col("AESEQ", "1")
                 .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").name("ADEVENT").build();
-        assertEquals(List.of("STUDYID", "USUBJID", "AESER", "AOCCzzFL"),
+        assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER", "AOCCzzFL"),
                 list(LibraryLists.requiredVariables(run(events, lib), List.of())),
-                "ADEVENT names EV, and no EVSEQ confirms it, so -- is not demanded; its AESEQ"
-                        + " column confirms AE for the AE-prefixed AESER, which stays demanded");
+                "D1: the dataset name is not used — ADEVENT's AESEQ / AETERM name AE, so -- is"
+                        + " AE and AESER is demanded, CMTRT not");
+        IDataTable multi = MockTable.of().col("STUDYID", "S").col("USUBJID", "1").col("AESEQ", "1")
+                .col("MHSEQ", "1").col("MHTERM", "ASTHMA").col("AESER", "N").name("ADAE").build();
+        assertEquals(List.of("STUDYID", "USUBJID", "AESER", "AOCCzzFL"),
+                list(LibraryLists.requiredVariables(run(multi, lib), List.of())),
+                "D3: AE and MH both present — no -- name is demanded (so no AETERM), AESER (AE,"
+                        + " present) is, CMTRT (CM, absent from the evidence) is not");
+        IDataTable noEvidence = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
+                .col("AESER", "N").name("ADAE").build();
+        // No occurrence column, so no column heuristic: the define declares the structure.
+        StubMetadataProvider define = new StubMetadataProvider().declares("ADAE",
+                "OCCURRENCE DATA STRUCTURE");
+        assertEquals(List.of("STUDYID", "USUBJID", "CMTRT", "AESER", "AOCCzzFL"),
+                list(LibraryLists.requiredVariables(run(noEvidence, lib, define, NO_INVENTORY),
+                        List.of())),
+                "D4 as sharpened (review H1): no occurrence variable — -- stays unresolved and"
+                        + " is not demanded, and with no evidence of ANY domain no concrete"
+                        + " carried name is dropped (CMTRT and AESER both stay demanded)");
         // A source token whose domain the NAME does not carry (ADSL's DM.ARM) is a copied value,
         // not a prefix: still demanded.
         lib.published.put("SUBJECT LEVEL ANALYSIS DATASET", List.of("STUDYID", "ARM"));

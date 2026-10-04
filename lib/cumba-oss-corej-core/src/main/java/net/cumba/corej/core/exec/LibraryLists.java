@@ -214,21 +214,26 @@ public final class LibraryLists
 
     /**
      * The published names of an ADaM structure, resolved against the dataset the walk is about —
-     * {@code PLAN-library-template-label-resolution} round-2 ruling R2-1, then
-     * {@link #substituteNamingTemplates}:
+     * {@code PLAN-library-template-label-resolution} round-2 ruling R2-1 as
+     * {@code PLAN-occds-source-domain-by-ig} restates it after ADaMIG-OCCDS, then
+     * {@link #substituteNamingTemplates}. The dataset's source domains are the two-letter prefixes
+     * of the occurrence variables it carries ({@link AdamSourceDomain#domainsOf}: {@code AESEQ},
+     * {@code AETERM} → {@code AE}), never its name:
      * <ol>
      * <li>a {@code --} name ({@code --SEQ}, {@code --TERM}: an OCCDS structure's "copied from the
-     * SDTM domain XX" variables) resolves to the dataset's confirmed source domain
-     * ({@link AdamSourceDomain#of}: {@code ADAE} with an {@code AESEQ} column → {@code AESEQ},
-     * {@code AETERM}); with no confirmed domain it is <b>not demanded</b> — the engine cannot name
-     * the concrete variable, so it cannot report it missing as {@code --SEQ};</li>
-     * <li>a name carrying another SDTM domain's prefix ({@link AdamSourceDomain#carriedDomainOf}:
+     * SDTM domain XX" variables) resolves to the dataset's domain when there is exactly one
+     * ({@link AdamSourceDomain#singleDomainOf}) and is then demanded, present or not — an
+     * {@code ADAE} with {@code AETERM} and no {@code AESEQ} is asked for {@code AESEQ} (D2); with
+     * several domains (a multi-domain OCCDS, D3) or none (D4) it is <b>not demanded</b> — the
+     * engine cannot name one concrete variable, so it cannot report it missing as
+     * {@code --SEQ};</li>
+     * <li>a name carrying an SDTM domain's prefix ({@link AdamSourceDomain#carriedDomainOf}:
      * {@code CMTRT} is {@code CM.CMTRT}, {@code AESER} is {@code AE.AESER} in the base OCCDS 1.0)
-     * is not demanded only of a dataset that gives evidence of a different domain
-     * ({@link AdamSourceDomain#carriesAnotherDomain}: neither its {@code AD<domain>} candidate,
-     * confirmed or not, nor a {@code <domain>SEQ} column of it) — the description is read through
-     * the structure-keyed LIBRARY read, the same read {@code var_*("LIBRARY")} resolves the column
-     * with, so the {@code .cdt} harness and the product answer alike.</li>
+     * is not demanded only of a dataset whose occurrence variables name other domains and not this
+     * one ({@link AdamSourceDomain#carriesAnotherDomain}); with no evidence at all it stays
+     * demanded (review H1) — the description is read through the structure-keyed LIBRARY read, the
+     * same read {@code var_*("LIBRARY")} resolves the column with, so the {@code .cdt} harness and
+     * the product answer alike.</li>
      * </ol>
      * The SDTM walks never reach here: their provider is domain-keyed and substitutes {@code --}
      * itself.
@@ -236,7 +241,8 @@ public final class LibraryLists
     static List<String> resolvePublishedNames(List<String> published, IDataTable table,
             MetadataProvider provider, List<String> structures, List<String> subclasses)
     {
-        String source = AdamSourceDomain.of(table);
+        Set<String> sources = AdamSourceDomain.domainsOf(table);
+        String source = AdamSourceDomain.singleDomainOf(sources);
         String domain = CdiscDomainResolver.cdiscDomainOf(table);
         List<String> resolved = new ArrayList<>(published.size());
         for (String name : published)
@@ -253,7 +259,7 @@ public final class LibraryLists
                     subclasses, domain, name);
             String carried = AdamSourceDomain.carriedDomainOf(name,
                     attributes == null ? null : attributes.get("description"));
-            if (carried != null && AdamSourceDomain.carriesAnotherDomain(table, carried))
+            if (carried != null && AdamSourceDomain.carriesAnotherDomain(sources, carried))
             {
                 continue;
             }

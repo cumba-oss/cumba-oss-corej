@@ -221,6 +221,15 @@ public final class AdamDataStructureDetector
      * coded-term column is no longer "structure-less". That is intended (such a dataset is an OCCDS
      * dataset), and it is why {@code Scope.Classes:["ADAM OTHER"]} rules no longer reach it.
      * </p>
+     * <p>
+     * ⚠ Not the source-domain evidence of the ADaM core-variable walks
+     * ({@link net.cumba.corej.core.exec.AdamSourceDomain}, {@code PLAN-occds-source-domain-by-ig}
+     * D5): that set adds {@code SEQ} and matches only the exact {@code
+     *
+    <DD><suffix>} shape, because it names a <em>domain</em>, while this one decides whether a
+     * dataset <em>is</em> occurrence-shaped. Kept apart on purpose — widening this one would move
+     * structure detection.
+     * </p>
      */
     static final List<String> OCCDS_SUFFIXES = List.of("TERM", "TRT", "DECOD");
 
