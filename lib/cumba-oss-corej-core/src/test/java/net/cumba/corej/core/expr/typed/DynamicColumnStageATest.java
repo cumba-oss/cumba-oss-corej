@@ -13,6 +13,7 @@ import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.typed.ExprType.ListOf;
 import net.cumba.corej.core.expr.typed.ExprType.Primitive;
 import net.cumba.corej.core.expr.typed.ExprType.Unknown;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.report.Severity;
@@ -176,5 +177,104 @@ class DynamicColumnStageATest
                 TypeExpectations.of(List.of(CheckExpressionParser.parse(expr))).valueReadColumns()
                         .contains("APERIOD"),
                 "the driver inside a computed presence probe is a value read (absent-column fold)");
+    }
+
+    // ------------------------------------------------------------------ $-bindings (respelling
+    // §6.2)
+
+    /** The S2 / S3 shapes' computed names. */
+    private static final String TRT_P = "concat(\"ADSL.TRT\", printf(\"%02d\", APERIOD), \"P\")";
+
+    private static final String P_S = "concat(\"ADSL.P\", printf(\"%02d\", APERIOD), \"S\")";
+
+    /**
+     * A rule joining ADSL ({@code child} its {@code Child:} flag, {@code null} for no
+     * {@code Match_Datasets} at all) whose compiled bindings are {@code nameAndSource} pairs, each
+     * preceded by the ones before it.
+     */
+    private static Rule adslRule(Boolean child, String... nameAndSource)
+    {
+        Rule rule = new Rule();
+        if (child != null)
+        {
+            MatchDataset adsl = new MatchDataset();
+            adsl.setName("ADSL");
+            adsl.setKeys(List.of("USUBJID"));
+            adsl.setChild(child);
+            rule.setMatchDatasets(List.of(adsl));
+        }
+        List<CompiledBinding> bindings = new java.util.ArrayList<>();
+        List<String> before = new java.util.ArrayList<>();
+        for (int i = 0; i < nameAndSource.length; i += 2)
+        {
+            bindings.add(new CompiledBinding(nameAndSource[i],
+                    CheckExpressionParser.parse(nameAndSource[i + 1]), List.copyOf(before), null));
+            before.add(nameAndSource[i]);
+        }
+        rule.setCompiledBindings(bindings.isEmpty() ? null : bindings);
+        return rule;
+    }
+
+
+    /**
+     * LOW-1 ({@code PLAN-dynamic-column-corpus-respelling} §6.2): a {@code $}-binding handed to
+     * {@code colref} / {@code find_vars} is followed into its expression, so a bound qualified name
+     * is judged exactly as the same name written inline — the armed Child arm and the observe-only
+     * undeclared arm alike.
+     */
+    @Test
+    void aBoundQualifiedNameIsJudgedAsTheInlineOne()
+    {
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
+                kinds(check(adslRule(Boolean.TRUE), "count(find_vars(" + P_S + ")) == 0")),
+                "the inline spelling (the reference)");
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
+                kinds(check(adslRule(Boolean.TRUE, "$p", P_S), "count(find_vars($p)) == 0")),
+                "bound: find_vars($p)");
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
+                kinds(check(
+                        adslRule(Boolean.TRUE, "$a",
+                                "concat(\"ADSL.AP\", printf(\"%02d\", APERIOD), \"SDT\")"),
+                        "APERSDT != colref($a)")),
+                "bound: colref($a)");
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
+                kinds(check(adslRule(Boolean.TRUE, "$p", P_S, "$q", "$p"),
+                        "count(find_vars($q)) == 0")),
+                "a binding of a binding is followed to the expression");
+        assertEquals(List.of(),
+                kinds(check(adslRule(Boolean.FALSE, "$p", P_S), "count(find_vars($p)) == 0")),
+                "an ordinary ADSL entry: declared, clean");
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED),
+                kinds(check(adslRule(null, "$p", P_S), "count(find_vars($p)) == 0")),
+                "no Match_Datasets: the observe-only undeclared kind, as inline");
+        assertEquals(kinds(check(adslRule(null), "count(find_vars(" + P_S + ")) == 0")),
+                kinds(check(adslRule(null, "$p", P_S), "count(find_vars($p)) == 0")));
+    }
+
+
+    /**
+     * A presence probe over a {@code $}-binding is the inline computed probe: record level when the
+     * binding is, no qualifier judgement (the exists family reads the named dataset's inventory
+     * with no join, inline or bound), and a statically non-string name is PARAMETER_TYPE.
+     */
+    @Test
+    void aBoundPresenceProbeIsTypedAsTheInlineOne()
+    {
+        Rule rule = adslRule(Boolean.TRUE, "$n", TRT_P);
+        assertEquals(Level.RECORD,
+                check(rule, "var_exists($n)").typedLevels().get(Severity.ERROR).level(),
+                "the binding's record level, not the literal probe's dataset level");
+        assertEquals(Level.RECORD,
+                check(rule, "var_not_exists($n)").typedLevels().get(Severity.ERROR).level());
+        assertEquals(kinds(check(rule, "var_exists(" + TRT_P + ")")),
+                kinds(check(rule, "var_exists($n)")));
+        assertEquals(List.of(), kinds(check(rule, "not empty($n) and not var_exists($n)")));
+        Rule numeric = adslRule(Boolean.FALSE, "$k", "num(APERIOD) + 1");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check(numeric, "var_exists($k)")));
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check(numeric, "var_not_exists(num(APERIOD) + 1)")), "inline too");
+        assertEquals(List.of(), kinds(check(numeric, "var_exists(APERIOD)")),
+                "a bare reference stays the literal-name probe");
     }
 }

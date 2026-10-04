@@ -894,6 +894,15 @@ public final class StageAChecker
         {
             return new TypedExpr(c, Primitive.BOOLEAN, presenceLevel(c), children);
         }
+        if (isComputedPresenceProbe(c) && !isNameType(children.get(0).type()))
+        {
+            // PLAN-dynamic-column-corpus-respelling §6.2: var_exists over a computed name or a
+            // $-binding — the colref precedent (Q7) and D3: a statically non-string argument
+            // cannot name a column, so it is refused at load, bound and inline alike, instead of
+            // leaving every row unset. (The call then types as any registered BOOLEAN call.)
+            find(StageAErrorKind.PARAMETER_TYPE, name + " takes a column name (a string), not "
+                    + children.get(0).type().describe() + at(c));
+        }
         if (BroadcastFold.isWholeColumnVerdictCall(c))
         {
             // One dataset fact per column: the operands' record granularity is absorbed, the
@@ -1061,6 +1070,20 @@ public final class StageAChecker
                     + " of column names, not " + arg.describe() + at(c));
         }
         return new TypedExpr(c, Primitive.COLUMN_REFERENCE, Level.RECORD, children);
+    }
+
+
+    /**
+     * Whether {@code c} is a {@code var_exists} / {@code var_not_exists} over a COMPUTED name — an
+     * expression or a {@code $}-binding, never a literal, a bare / dotted / template reference or
+     * the {@code varname()} cursor ({@link BroadcastFold#isExistsCall} answers those).
+     */
+    private static boolean isComputedPresenceProbe(Expr.Call c)
+    {
+        return ("var_exists".equals(c.name()) || "var_not_exists".equals(c.name()))
+                && c.args().size() == 1 && c.kwargs().isEmpty() && !BroadcastFold.isExistsCall(c)
+                && !isCurrentVariableName(c.args().get(0))
+                && !(c.args().get(0) instanceof Expr.Lit);
     }
 
 
@@ -2458,15 +2481,20 @@ public final class StageAChecker
         // authored DS.X (UNIFORMITY): by the undeclared arm (observe-only) and, since QNU N26, by
         // the Child arm (armed) — it used to skip the Child arm, so colref("AE.AESMIE") on a
         // Child: true entry loaded clean and read the not-supplied default on every row.
+        // ⭐ PLAN-dynamic-column-corpus-respelling §6.2 (LOW-1): a $-binding handed to colref /
+        // find_vars is followed into the expression it holds, so `$p: concat("ADSL.P", …)` read
+        // as find_vars($p) is judged exactly as find_vars(concat("ADSL.P", …)) is.
+        Map<String, Expr> bound = new HashMap<>();
+        rule.bindingOrder().forEach(b -> bound.put(b.name(), b.expression()));
         Set<String> dynamic = new LinkedHashSet<>();
         for (Expr root : roots)
         {
-            collectDynamicNames(root, dynamic);
+            collectDynamicNames(root, bound, dynamic);
         }
         List<CompiledBinding> compiledBindings = rule.getCompiledBindings();
         if (compiledBindings != null)
         {
-            compiledBindings.forEach(b -> collectDynamicNames(b.expression(), dynamic));
+            compiledBindings.forEach(b -> collectDynamicNames(b.expression(), bound, dynamic));
         }
         List<MatchDataset> entries = matches == null ? List.of() : matches;
         // ⭐ A WILDCARD_COLUMN operand with a JUDGEABLE qualifier (non-empty, no `${`, no `&`:
@@ -2819,18 +2847,27 @@ public final class StageAChecker
      * first {@code .}. A {@code find_vars} entry that is a whole-entry {@code /regex/} is never
      * split ({@code ScopeVariableEntry.parse}: a regex contains dots by construction), so it names
      * no qualifier here. A computed qualifier cannot be judged and is not collected.
+     *
+     * <p>
+     * A {@code $}-binding argument is followed into the expression it holds ({@code bound}, name →
+     * expression; {@link #boundExpression}), so the bound and the inline spelling are judged alike
+     * ({@code PLAN-binding-substitutability} G1). ⚠ The exists family is deliberately not
+     * collected, bound or inline: a presence probe reads the named dataset's own inventory with no
+     * join ({@link #checkDottedRefs}' name-read exemption), so neither the undeclared nor the Child
+     * arm applies to {@code var_exists(<name>)}.
+     * </p>
      */
-    private static void collectDynamicNames(Expr e, Set<String> out)
+    private static void collectDynamicNames(Expr e, Map<String, Expr> bound, Set<String> out)
     {
         switch (e)
         {
-        case Expr.And a -> a.parts().forEach(p -> collectDynamicNames(p, out));
-        case Expr.Or o -> o.parts().forEach(p -> collectDynamicNames(p, out));
-        case Expr.Not n -> collectDynamicNames(n.inner(), out);
+        case Expr.And a -> a.parts().forEach(p -> collectDynamicNames(p, bound, out));
+        case Expr.Or o -> o.parts().forEach(p -> collectDynamicNames(p, bound, out));
+        case Expr.Not n -> collectDynamicNames(n.inner(), bound, out);
         case Expr.Binary b ->
         {
-            collectDynamicNames(b.left(), out);
-            collectDynamicNames(b.right(), out);
+            collectDynamicNames(b.left(), bound, out);
+            collectDynamicNames(b.right(), bound, out);
         }
         case Expr.Lit lit ->
         {
@@ -2840,7 +2877,7 @@ public final class StageAChecker
                 {
                     if (item instanceof Expr inner)
                     {
-                        collectDynamicNames(inner, out);
+                        collectDynamicNames(inner, bound, out);
                     }
                 }
             }
@@ -2854,7 +2891,7 @@ public final class StageAChecker
             boolean findVars = "find_vars".equals(c.name());
             if (("colref".equals(c.name()) || findVars) && c.args().size() == 1)
             {
-                String text = staticNameText(c.args().get(0));
+                String text = staticNameText(boundExpression(c.args().get(0), bound));
                 if (text != null && !(findVars && text.startsWith("/")))
                 {
                     int dot = text.indexOf('.');
@@ -2864,10 +2901,32 @@ public final class StageAChecker
                     }
                 }
             }
-            c.args().forEach(a -> collectDynamicNames(a, out));
-            c.kwargs().values().forEach(a -> collectDynamicNames(a, out));
+            c.args().forEach(a -> collectDynamicNames(a, bound, out));
+            c.kwargs().values().forEach(a -> collectDynamicNames(a, bound, out));
         }
         }
+    }
+
+
+    /**
+     * {@code arg}, or — when it is a {@code $}-binding reference — the expression that binding
+     * holds, followed through a binding of a binding. Bindings reference only earlier ones
+     * ({@link StageAErrorKind#FORWARD_OR_CYCLIC_BINDING} is armed); the walk is bounded by the
+     * binding count all the same, so a cycle that reached here could not loop.
+     */
+    private static Expr boundExpression(Expr arg, Map<String, Expr> bound)
+    {
+        Expr e = arg;
+        for (int hops = 0; hops <= bound.size() && BroadcastFold.isBindingReference(e); hops++)
+        {
+            Expr next = bound.get(((Expr.Ref) e).name());
+            if (next == null)
+            {
+                break;
+            }
+            e = next;
+        }
+        return e;
     }
 
 

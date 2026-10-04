@@ -471,12 +471,48 @@ public final class BroadcastFold
     /**
      * An exists-family call on a single bare reference or string-literal name (the two argument
      * forms are equivalent by definition).
+     *
+     * <p>
+     * ⭐ A {@code $}-binding handed to {@code var_exists} / {@code var_not_exists} is <b>not</b> a
+     * name: it is the computed name its expression yields, per row
+     * ({@code PLAN-dynamic-column-corpus-respelling} §6.2, owner ruling (a), 2026-10-04 —
+     * {@code PLAN-binding-substitutability} G1: the binding answers as its expression written
+     * inline). So, exactly like {@code var_exists(<computed string>)}, it is an ordinary registered
+     * BOOLEAN call for every consumer of this predicate — the broadcast verdicts, the absent-leaf
+     * fold, the dotted-reference walk, {@code TypeExpectations}, {@code DomainScan} and stage A's
+     * level — and {@code ExprCompiler.compileExists} evaluates it through the computed-name path.
+     * Before, it took the literal path and asked for a column literally named {@code $n}, never
+     * present, so {@code not var_exists($n)} fired on every row. ({@code ds_exists($x)} is not
+     * covered by the ruling and keeps the name reading.)
+     * </p>
      */
     public static boolean isExistsCall(Expr.Call c)
     {
-        return EXISTS_CALLS.contains(c.name()) && c.args().size() == 1 && c.kwargs().isEmpty()
-                && (c.args().get(0) instanceof Expr.Ref || (c.args().get(0) instanceof Expr.Lit lit
-                        && lit.kind() == Expr.LitKind.STRING));
+        if (!EXISTS_CALLS.contains(c.name()) || c.args().size() != 1 || !c.kwargs().isEmpty())
+        {
+            return false;
+        }
+        Expr arg = c.args().get(0);
+        if (arg instanceof Expr.Ref r)
+        {
+            return !(isBindingReference(r) && c.name().startsWith("var_"));
+        }
+        return arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING;
+    }
+
+
+    /**
+     * Whether {@code e} is a {@code $}-binding reference ({@link OperandKind#OPERATION_REF}: the
+     * parser's kind for a {@code $name}; a {@code ${…}} template is a
+     * {@link OperandKind#WILDCARD_COLUMN} and never one).
+     *
+     * @param e
+     *            the expression to test
+     * @return whether it is a {@code $}-binding reference
+     */
+    public static boolean isBindingReference(Expr e)
+    {
+        return e instanceof Expr.Ref r && r.kind() == OperandKind.OPERATION_REF;
     }
 
     /**
