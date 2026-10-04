@@ -403,6 +403,16 @@ public class Rule
      * ({@link OutputVariableToken#applyExclusions}) is the most faithful answer there — never a raw
      * token or an excluded name.
      * </p>
+     *
+     * <p>
+     * The first-read derivation is idempotent and memoised: {@code derive} and {@code excludedOf}
+     * are pure functions of this rule's authored fields, so every call returns an equal list. Two
+     * threads racing on an underived rule may both derive and both store, which is benign — each
+     * stores an equal value, and since the stored list is immutable ({@code List.copyOf}) a reader
+     * sees either {@code null} (and derives again) or a complete list. Like
+     * {@link #excludedOutputVariables}, the memo is runtime state and takes no part in
+     * {@code equals} / {@code hashCode} / {@code toString}.
+     * </p>
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
     public List<String> effectiveOutputVariablesOrAuthored()
@@ -1092,6 +1102,8 @@ public class Rule
      * the former and falls back to the authored list only for the latter.
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
     private @Nullable List<String> effectiveOutputVariables;
 
     /**
@@ -1102,6 +1114,8 @@ public class Rule
      * derivation did not run — read through {@link #excludedOutputVariablesOrAuthored()}.
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
     private @Nullable Set<String> excludedOutputVariables;
 
     /**
