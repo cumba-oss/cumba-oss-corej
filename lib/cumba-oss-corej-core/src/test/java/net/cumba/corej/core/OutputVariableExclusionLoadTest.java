@@ -7,22 +7,17 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
-import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
  * E-3 of {@code PLAN-authoring-grammar-unique-set-and-output-exclusion} ({@code Fix #354}): the
  * five load-time checks on {@code !X} exclusion tokens, each with its rejecting AND its accepting
  * arm in the same class — a one-armed validator silently becomes the only arm. Plus the two doors
- * the subtraction must close outside {@code OutputVariableDeriver.derive}: the
- * {@code -Dcorej.autoOutputVariables=false} fallback and the three load-path {@code $}-id removers.
+ * the subtraction must close outside {@code OutputVariableDeriver.derive}: the load-error fallback
+ * (the kill switch is retired, 2026-10-04) and the three load-path {@code $}-id removers.
  */
 class OutputVariableExclusionLoadTest
 {
@@ -287,42 +282,29 @@ class OutputVariableExclusionLoadTest
         assertEquals(Set.of(), plain.excludedOutputVariablesOrAuthored());
     }
 
-    // ------------------------------------------------------------ the kill-switch door
+    // ------------------------------------------------------------ the load-error fallback
 
 
+    /**
+     * A rule E-3 parks derives nothing, and the consumers' fallback for it is the authored list
+     * with every token stripped <em>and</em> applied — never a raw token, never an excluded name.
+     * (Until 2026-10-04 this door was the {@code -Dcorej.autoOutputVariables=false} kill switch;
+     * the switch is retired — {@code PLAN-redundant-output-variables-sweep} Q6 — and a rule without
+     * a derived list now derives on first read instead, see
+     * {@code RulePackageLoaderDeriveOutputVariablesTest}.)
+     */
     @Test
-    void killSwitchFallbackStripsTokensAndAppliesTheExclusion() throws Exception
+    void loadErrorFallbackStripsTokensAndAppliesTheExclusion() throws Exception
     {
-        System.setProperty("corej.autoOutputVariables", "false");
-        try
-        {
-            Rule rule = load(recordRule("AETERM", "AESEV", "!AESEV", "!AEDECOD"));
-            // E-3 still ran: AESEV is both authored and excluded.
-            assertNotNull(rule.getLoadError());
-            assertTrue(rule.getLoadError().contains("AESEV is both authored and excluded"),
-                    rule.getLoadError());
-
-            Rule ok = load(recordRule("AETERM", "AESEV", "!AEDECOD"));
-            assertNull(ok.getLoadError(), ok.getLoadError());
-            assertNull(ok.getEffectiveOutputVariables(), "derivation is off");
-            // the fallback list carries neither the token nor the excluded name
-            assertEquals(List.of("AETERM", "AESEV"), ok.effectiveOutputVariablesOrAuthored());
-            assertEquals(Set.of("AEDECOD"), ok.excludedOutputVariablesOrAuthored());
-
-            IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AETERM", "H")
-                    .col("AEDECOD", "").col("AESEV", "MILD").build();
-            RuleExecutionResult result = RuleRunnerCalls.execute(ok, ae);
-            assertEquals(1, result.getViolationCount(), "status=" + result.getStatus());
-            Map<String, String> values = result.getViolations().get(0).getValues();
-            assertEquals("H", values.get("AETERM"));
-            assertEquals("MILD", values.get("AESEV"));
-            assertFalse(values.containsKey("AEDECOD"), values.toString());
-            assertFalse(values.containsKey("!AEDECOD"), values.toString());
-        }
-        finally
-        {
-            System.clearProperty("corej.autoOutputVariables");
-        }
+        Rule rule = load(recordRule("AETERM", "AESEV", "!AESEV", "!AEDECOD"));
+        // E-3 ran: AESEV is both authored and excluded — the rule is parked.
+        assertNotNull(rule.getLoadError());
+        assertTrue(rule.getLoadError().contains("AESEV is both authored and excluded"),
+                rule.getLoadError());
+        assertNull(rule.getEffectiveOutputVariables(), "a parked rule derives nothing");
+        // the fallback list carries neither a token nor an excluded name
+        assertEquals(List.of("AETERM"), rule.effectiveOutputVariablesOrAuthored());
+        assertEquals(Set.of("AESEV", "AEDECOD"), rule.excludedOutputVariablesOrAuthored());
     }
 
     // ------------------------------------------------------------ the three $-id removers

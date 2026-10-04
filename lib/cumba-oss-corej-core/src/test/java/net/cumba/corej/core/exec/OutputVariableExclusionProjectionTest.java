@@ -204,10 +204,13 @@ class OutputVariableExclusionProjectionTest
      *            the authored {@code Outcome.Output_Variables}
      * @param derive
      *            whether to run the load-time derivation. {@code false} leaves the rule on the
-     *            authored-only reading — the shape the {@code -Dcorej.autoOutputVariables=false}
-     *            kill-switch presents, and the only way to reach an EMPTY effective list on a
-     *            single-leaf Check (with the derivation on, the derived list and the Fix #15
-     *            inference read the same leaf, so they empty together)
+     *            authored-only reading — the shape a rule that failed to load presents (the retired
+     *            kill switch presented it too), and the only way to reach an EMPTY effective list
+     *            on a single-leaf Check (with the derivation on, the derived list and the Fix #15
+     *            inference read the same leaf, so they empty together). Since the accessor derives
+     *            on first read for a rule without a derived list (2026-10-04), the {@code false}
+     *            arm installs the authored-only list explicitly, which is exactly what the
+     *            load-error fallback answers
      */
     private static Rule singleLeafForeignRefRule(List<String> authoredOutputVariables,
             boolean derive)
@@ -236,6 +239,13 @@ class OutputVariableExclusionProjectionTest
         if (derive)
         {
             RulePackageLoader.deriveOutputVariables(rule);
+        }
+        else
+        {
+            rule.setEffectiveOutputVariables(net.cumba.corej.core.model.OutputVariableToken
+                    .applyExclusions(authoredOutputVariables));
+            rule.setExcludedOutputVariables(net.cumba.corej.core.model.OutputVariableToken
+                    .exclusions(authoredOutputVariables));
         }
         assertNull(rule.getLoadError(), rule.getLoadError());
         return rule;

@@ -5457,19 +5457,6 @@ public class RulePackageLoader
         };
     }
 
-    /**
-     * EC-37 kill-switch for the Output_Variables derivation ({@code PLAN-auto-output-variables}).
-     * Default ON; a production escape hatch, not a staged rollout. Read per call rather than
-     * latched in a constant so an operator can flip it on a live run — the same contract as
-     * {@code corej.studyAnchorPass} ({@code LibraryValidator}).
-     */
-    private static final String AUTO_OV_PROPERTY = "corej.autoOutputVariables";
-
-    private static boolean autoOutputVariablesEnabled()
-    {
-        return !"false".equalsIgnoreCase(System.getProperty(AUTO_OV_PROPERTY));
-    }
-
 
     private static void deriveOutputVariables(RulePackage pkg)
     {
@@ -5489,7 +5476,18 @@ public class RulePackageLoader
      * {@code rule}'s runtime-only field and records the derived delta in the
      * {@code derivationRationale} under the key {@code "Output_Variables"} (EC-37). Runs after
      * {@link #installNativeExpr} wherever a rule is loaded, expanded or generated; a no-op when the
-     * rule is {@code null}, failed to load, or {@code -Dcorej.autoOutputVariables=false}.
+     * rule is {@code null} or failed to load.
+     *
+     * <p>
+     * ⚑ The derivation is always on. Its kill switch ({@code -Dcorej.autoOutputVariables=false},
+     * EC-37's production escape hatch) was retired on 2026-10-04
+     * ({@code PLAN-redundant-output-variables-sweep} Q6, owner): nothing ever set it, and after
+     * that plan swept the corpus of every authored entry the derivation produces, "off" would have
+     * degraded the findings of 2 631 rules — the authored list is no longer a complete fallback.
+     * {@link Rule#effectiveOutputVariablesOrAuthored()} therefore derives on first read for a rule
+     * this never ran for (a hand-built one), and reads the authored list only for a rule that
+     * failed to load.
+     * </p>
      */
     public static void deriveOutputVariables(@Nullable Rule rule)
     {
@@ -5497,11 +5495,11 @@ public class RulePackageLoader
         {
             return;
         }
-        // E-3 runs whether or not the derivation is enabled: a malformed or contradictory
-        // exclusion token is an authoring error, not a derivation artefact, and the kill-switch
-        // fallback (Rule#effectiveOutputVariablesOrAuthored) applies the same tokens.
+        // E-3 runs first: a malformed or contradictory exclusion token is an authoring error, not
+        // a derivation artefact, and a rule it parks derives nothing (the load-error fallback of
+        // Rule#effectiveOutputVariablesOrAuthored applies the same tokens to the authored list).
         validateOutputVariableExclusions(rule);
-        if (rule.getLoadError() != null || !autoOutputVariablesEnabled())
+        if (rule.getLoadError() != null)
         {
             return;
         }

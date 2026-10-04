@@ -13,7 +13,9 @@ import org.junit.jupiter.api.Test;
 /**
  * Phase-2 wiring of {@code plans/done/PLAN-auto-output-variables.md} (EC-37): the loader installs
  * the effective Output_Variables after {@code retainNativeExpr}, records the delta in the
- * {@code derivationRationale}, and honours the {@code corej.autoOutputVariables} kill-switch.
+ * {@code derivationRationale}, derives nothing for a rule that failed to load, and derives on first
+ * read when a rule is projected without the loader's derivation (the kill switch is retired,
+ * 2026-10-04).
  */
 class RulePackageLoaderDeriveOutputVariablesTest
 {
@@ -45,23 +47,46 @@ class RulePackageLoaderDeriveOutputVariablesTest
     }
 
 
+    /**
+     * The one path left without a derived list: a rule the loader parked with a load error. The
+     * consumers' accessor then answers the authored list (exclusions applied) — the ERROR sentinel
+     * still projects something, and nothing better exists for a rule that never compiled.
+     */
     @Test
-    void killSwitchDisablesDerivation() throws Exception
+    void aLoadErrorRuleDerivesNothingAndFallsBackToTheAuthoredList() throws Exception
     {
-        System.setProperty("corej.autoOutputVariables", "false");
-        try
-        {
-            RulePackage pkg = RulePackageLoader.loadFromString(PKG);
-            Rule rule = pkg.getRules().get("TEST-OV");
-            assertNotNull(rule);
-            assertNull(rule.getEffectiveOutputVariables());
-            // Consumers fall back to the authored list.
-            assertEquals(List.of("AESTDTC"), rule.effectiveOutputVariablesOrAuthored());
-        }
-        finally
-        {
-            System.clearProperty("corej.autoOutputVariables");
-        }
+        // AESTDTC authored AND excluded: E-3.2, a contradiction the loader parks.
+        RulePackage pkg = RulePackageLoader
+                .loadFromString(PKG.replace("[\"AESTDTC\"]", "[\"AESTDTC\", \"!AESTDTC\"]"));
+        Rule rule = pkg.getRules().get("TEST-OV");
+        assertNotNull(rule);
+        assertNotNull(rule.getLoadError(), "the contradiction must park the rule");
+        assertNull(rule.getEffectiveOutputVariables(), "a parked rule derives nothing");
+        assertEquals(List.of(), rule.effectiveOutputVariablesOrAuthored(),
+                "the fallback is the authored list with the exclusion applied");
+    }
+
+
+    /**
+     * Q6 / M1 of {@code PLAN-redundant-output-variables-sweep}: with the kill switch retired, a
+     * rule whose derivation never ran has no honest authored fallback — the authored list is lossy
+     * since the sweep — so the accessor derives on first read, exactly the loader's list, and
+     * memoises it.
+     */
+    @Test
+    void aRuleProjectedWithoutTheDerivationDerivesOnFirstRead() throws Exception
+    {
+        RulePackage pkg = RulePackageLoader.loadFromString(PKG);
+        Rule rule = pkg.getRules().get("TEST-OV");
+        assertNotNull(rule);
+        List<String> loaderList = rule.getEffectiveOutputVariables();
+        rule.setEffectiveOutputVariables(null); // the state a caller bypassing the loader leaves
+        rule.setExcludedOutputVariables(null);
+        assertEquals(loaderList, rule.effectiveOutputVariablesOrAuthored(),
+                "the first read derives exactly what the loader installed");
+        assertEquals(List.of("AESTDTC", "AEENDTC"), rule.getEffectiveOutputVariables(),
+                "and memoises it on the rule");
+        assertNotNull(rule.getExcludedOutputVariables(), "the exclusion set rides along");
     }
 
 

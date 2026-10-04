@@ -382,11 +382,27 @@ public class Rule
 
     /**
      * The Output_Variables list every execution-side consumer reads (EC-37): the derived
-     * {@link #effectiveOutputVariables} when the load-time derivation ran, else the authored
-     * {@code Outcome.Output_Variables} (empty when absent) — in that fallback with every {@code !X}
-     * exclusion token stripped <em>and</em> applied ({@link OutputVariableToken#applyExclusions}),
-     * so the {@code -Dcorej.autoOutputVariables=false} kill switch never leaks a raw token or an
-     * excluded name into a finding. Never {@code null}.
+     * {@link #effectiveOutputVariables} installed by
+     * {@code RulePackageLoader#deriveOutputVariables}. Never {@code null}.
+     *
+     * <p>
+     * ⚠ No lossy fallback (2026-10-04, {@code PLAN-redundant-output-variables-sweep} Q6 / M1).
+     * Until then this fell back to the authored {@code Outcome.Output_Variables} — the shape the
+     * retired {@code -Dcorej.autoOutputVariables=false} kill switch presented. Since that plan
+     * swept the corpus of every authored entry the derivation produces, the authored list is a
+     * <em>lossy</em> stand-in (2 029 rules author none at all), so a rule whose derivation never
+     * ran — one an embedder or a test built by hand, which the loader and the three generation
+     * sites never produce — is <b>derived here, on first read</b>, exactly as the loader would have
+     * ({@code OutputVariableDeriver.derive} / {@code excludedOf}, memoised on the rule). Measured
+     * before choosing this over failing loud: 45 engine test classes project hand-built rules
+     * through the report builder, the Stage B gate and the classifier, and {@code StageBChecker}
+     * turns a throw into a soft {@code CHECKER_FAILURE} finding — so a throw would not have been
+     * loud where it mattered. The one list that stays authored is a rule that <b>failed to
+     * load</b>: the loader derives nothing for it, its ERROR sentinel still projects, and the
+     * authored list with every {@code !X} exclusion token stripped <em>and</em> applied
+     * ({@link OutputVariableToken#applyExclusions}) is the most faithful answer there — never a raw
+     * token or an excluded name.
+     * </p>
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
     public List<String> effectiveOutputVariablesOrAuthored()
@@ -395,8 +411,15 @@ public class Rule
         {
             return effectiveOutputVariables;
         }
-        return OutputVariableToken
-                .applyExclusions(outcome != null ? outcome.getOutputVariables() : null);
+        if (loadError != null)
+        {
+            return OutputVariableToken
+                    .applyExclusions(outcome != null ? outcome.getOutputVariables() : null);
+        }
+        List<String> derived = net.cumba.corej.core.exec.OutputVariableDeriver.derive(this);
+        excludedOutputVariables = net.cumba.corej.core.exec.OutputVariableDeriver.excludedOf(this);
+        effectiveOutputVariables = derived;
+        return derived;
     }
 
 
@@ -1063,9 +1086,10 @@ public class Rule
      * the bindings and the rule type (EC-37, {@code PLAN-auto-output-variables}). Populated only at
      * runtime by {@code RulePackageLoader#deriveOutputVariables}; never serialised, so
      * {@code /api/rules/full}, the XLSX export and every offline tool keep showing exactly what the
-     * author wrote. {@code null} when the derivation is disabled
-     * ({@code -Dcorej.autoOutputVariables=false}), so consumers fall back to the authored list via
-     * {@link #effectiveOutputVariablesOrAuthored()}.
+     * author wrote (which, since the 2026-10-04 sweep, is only what the engine cannot derive).
+     * {@code null} until the derivation ran, and permanently for a rule that failed to load —
+     * consumers read {@link #effectiveOutputVariablesOrAuthored()}, which derives on first read for
+     * the former and falls back to the authored list only for the latter.
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
     private @Nullable List<String> effectiveOutputVariables;

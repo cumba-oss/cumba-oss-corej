@@ -35,10 +35,21 @@ class StageBCheckerTest
     }
 
 
+    /**
+     * A hand-built rule for the CHECK scan. Its effective Output_Variables are pinned EMPTY: these
+     * fixtures run unspecialised, and since 2026-10-04 a rule without a derived list derives one on
+     * first read ({@code Rule#effectiveOutputVariablesOrAuthored}), which would put the Check's own
+     * {@code --} operands into the list and report the D92a-exempt {@code variable_count(--DTC)} as
+     * an unresolved OUTPUT wildcard — a shape the production path never presents (the specialiser
+     * resolves the effective list before Stage B runs). The Output_Variables scan has its own
+     * fixtures below.
+     */
     private static Rule rule(String expression)
     {
         Rule rule = new Rule();
         rule.setCheckExpr(CheckExpressionParser.parse(expression));
+        rule.setEffectiveOutputVariables(List.of());
+        rule.setExcludedOutputVariables(Set.of());
         return rule;
     }
 

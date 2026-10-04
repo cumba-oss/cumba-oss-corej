@@ -184,8 +184,9 @@ public final class OutputVariableToken
 
     /**
      * {@code entries} with every exclusion token removed <em>and</em> every name an exclusion token
-     * names removed: the post-exclusion view of an authored list. Used where no derivation runs
-     * (the {@code -Dcorej.autoOutputVariables=false} fallback, the equivalence fingerprints).
+     * names removed: the post-exclusion view of an authored list. Used where no derivation runs (a
+     * rule that failed to load — {@code Rule#effectiveOutputVariablesOrAuthored}'s one fallback —
+     * and the equivalence fingerprints).
      */
     public static List<String> applyExclusions(@Nullable List<String> entries)
     {
