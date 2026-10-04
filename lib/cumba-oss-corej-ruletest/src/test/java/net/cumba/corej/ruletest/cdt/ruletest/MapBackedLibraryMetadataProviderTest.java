@@ -386,6 +386,9 @@ class MapBackedLibraryMetadataProviderTest
             assertEquals("Planned Treatment for Period 01", resolved.get("label"));
             assertEquals("Planned Treatment for Period 01", resolved.get("label_template"));
             assertEquals("*SDT", adam.getVariableMetadata("BDS", "XXSDT").get("name"));
+            assertEquals("{Start Date}",
+                    adam.getVariableMetadata("BDS", "XXSDT").get("label_template:*SDT"),
+                    "R2-3: the stem-selecting form reads the stem's own key");
             assertEquals("Planned Treatment for Period 01",
                     adam.getVariableMetadata("BDS", "TRT01P").get("label"), "D9: the ADSL copy");
 

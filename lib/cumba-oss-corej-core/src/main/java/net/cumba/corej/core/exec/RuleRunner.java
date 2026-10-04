@@ -16,8 +16,10 @@ import lombok.CustomLog;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.Domain;
 import net.cumba.corej.core.expr.eval.ExprCompiler;
+import net.cumba.corej.core.expr.eval.MetadataExprScan;
 import net.cumba.corej.core.expr.eval.MetadataNormalizer;
 import net.cumba.corej.core.expr.eval.MetadataNormalizer.Normalization;
+import net.cumba.corej.core.metadata.LibraryTemplates;
 import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
 import net.cumba.corej.core.metadata.VlmResolver;
 import net.cumba.corej.core.model.CheckCondition;
@@ -2029,9 +2031,8 @@ public final class RuleRunner
         Expr checkExpr = Objects.requireNonNull(checkExprOf(rule, ctx));
         // PLAN-binding-expressions I2: a var_*("LIBRARY") / define_* read inside a COMPILED binding
         // the Check reads requests its provider exactly as one in the Check does.
-        var needed = net.cumba.corej.core.expr.eval.MetadataExprScan
-                .providerLevelsUsed(Objects.requireNonNull(
-                        net.cumba.corej.core.expr.convert.BindingInliner.inline(checkExpr, rule)));
+        var needed = MetadataExprScan.providerLevelsUsed(Objects.requireNonNull(
+                net.cumba.corej.core.expr.convert.BindingInliner.inline(checkExpr, rule)));
         // The Define universe iterates the ItemDefs, so it needs the provider even when no leaf
         // reads the DEFINE level (the `var_exists(varname())` discriminator reads DATA only):
         // without one the rule is SKIPPED, never silently run over the data columns.
@@ -2133,6 +2134,7 @@ public final class RuleRunner
                 // Gated on the expression actually naming one: the candidate lookup costs a
                 // library round-trip per column, and no other metadata rule reads them.
                 boolean carryOver = isMetadataCheck && referencesCarryOverOperand(checkExpr);
+                String judgedStem = MetadataExprScan.labelTemplateStem(checkExpr);
                 for (int c = 0; c < colCount; c++)
                 {
                     DataTableColumnMeta colMeta = meta.getColumn(c);
@@ -2153,6 +2155,7 @@ public final class RuleRunner
                         Map<String, Object> varMeta = buildVariableMetadata(colMeta,
                                 isMetadataCheck, libProvider, defProvider, domainName,
                                 ctx.getTable(), ctx.getDatasetResolver());
+                        reportJudgedStemTemplate(varMeta, judgedStem);
                         violations.add(buildVariableViolation(c, colMeta, varMeta, outputVars,
                                 isMetadataCheck, libProvider, defProvider, domainName, perColVars,
                                 datasetSensitivity, ctx, derivedOutputVars, excludedOutputVars));
@@ -2671,6 +2674,31 @@ public final class RuleRunner
         return varMeta;
     }
 
+    /** The finding's library label template, as {@code label_template(…, "LIBRARY")} reads it. */
+    private static final String LIBRARY_LABEL_TEMPLATE = "library_variable_"
+            + LibraryTemplates.LABEL_TEMPLATE_KEY;
+
+    /**
+     * {@code PLAN-library-template-label-resolution} R2-3 — a finding shows the template its rule
+     * judged. A Check that selects one stem ({@link MetadataExprScan#labelTemplateStem}:
+     * {@code label_template("LIBRARY", stem="*DT")}) judged the column against that stem's
+     * template, which the provider serves under {@link LibraryTemplates#stemKey} and
+     * {@link #buildVariableMetadata} copies with the {@code library_variable_} prefix like every
+     * library key; so {@code library_variable_label_template} reports it — {@code {Date}} for
+     * {@code RANDSDT} under the {@code *DT} rule, where the column's own template (its longest
+     * stem, {@code *SDT}) is {@code {Start Date}} — and no value when the column carries no such
+     * key. Any other Check keeps the column's own template.
+     */
+    private static void reportJudgedStemTemplate(Map<String, Object> varMeta,
+            @Nullable String judgedStem)
+    {
+        if (judgedStem != null)
+        {
+            varMeta.put(LIBRARY_LABEL_TEMPLATE,
+                    varMeta.get("library_variable_" + LibraryTemplates.stemKey(judgedStem)));
+        }
+    }
+
 
     /**
      * Builds a violation for a variable-level finding.
@@ -3036,9 +3064,8 @@ public final class RuleRunner
         Expr checkExpr = Objects.requireNonNull(checkExprOf(rule, ctx));
         // PLAN-binding-expressions I2: a var_*("LIBRARY") / define_* read inside a COMPILED binding
         // the Check reads requests its provider exactly as one in the Check does.
-        var needed = net.cumba.corej.core.expr.eval.MetadataExprScan
-                .providerLevelsUsed(Objects.requireNonNull(
-                        net.cumba.corej.core.expr.convert.BindingInliner.inline(checkExpr, rule)));
+        var needed = MetadataExprScan.providerLevelsUsed(Objects.requireNonNull(
+                net.cumba.corej.core.expr.convert.BindingInliner.inline(checkExpr, rule)));
         if (needed.contains(net.cumba.corej.core.expr.eval.MetadataLevel.DEFINE)
                 && ctx.getDefineProvider() == null)
         {
@@ -3079,6 +3106,7 @@ public final class RuleRunner
         // evaluates over the rows ONCE instead of once per column. The per-binding contexts below
         // inherit the armed memo through toBuilder.
         EvaluationContext loopCtx = armBindingHoist(ctx);
+        String judgedStem = MetadataExprScan.labelTemplateStem(checkExpr);
         for (int c = 0; c < colCount; c++)
         {
             DataTableColumnMeta colMeta = meta.getColumn(c);
@@ -3108,6 +3136,7 @@ public final class RuleRunner
             }
             Map<String, Object> varMeta = buildVariableMetadata(colMeta, isMetadataCheck,
                     libProvider, defProvider, domainName, ctx.getTable(), ctx.getDatasetResolver());
+            reportJudgedStemTemplate(varMeta, judgedStem);
             int colIdx = meta.getColumnIndex(colMeta.getName());
             bindings.note(BindingOutcome.fired(colMeta.getName(), rowBits.cardinality()));
             addVariableRowViolations(violations, rowBits, colMeta, colIdx, varMeta, outputVars,

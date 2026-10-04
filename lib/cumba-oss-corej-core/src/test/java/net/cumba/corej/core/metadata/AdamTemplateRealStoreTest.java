@@ -12,8 +12,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import net.cumba.corej.core.exec.DatasetResolver;
+import net.cumba.corej.core.exec.EvaluationContext;
+import net.cumba.corej.core.exec.LibraryLists;
 import net.cumba.corej.core.exec.MetadataProvider;
+import net.cumba.corej.core.expr.eval.ConstVector;
+import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.ExprCompiler;
+import net.cumba.corej.core.expr.eval.Vector;
 import net.cumba.corej.core.metadata.pickle.LocalPickleSource;
 import net.cumba.corej.core.metadata.store.RealCorpusLocator;
 import net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory;
@@ -127,8 +132,12 @@ class AdamTemplateRealStoreTest
         assertEquals("AyLO", a1lo.get("name"));
         assertEquals("Num", a1lo.get("simpleDatatype"),
                 "§9.4 (iii) precondition: errata #282.33 corrects the 1.0 print's Char");
-        assertEquals(Map.of("name", "*SDT", LT, "Start Date of ..."), read(p, adlb, "RANDSDT"),
-                "ADaMIG 1.0 spells its stems with an ellipsis (D11)");
+        assertEquals(
+                Map.of("name", "*SDT", LT, "Start Date of ...", LibraryTemplates.stemKey("*DT"),
+                        "Date of ...", LibraryTemplates.stemKey("*SDT"), "Start Date of ..."),
+                read(p, adlb, "RANDSDT"),
+                "ADaMIG 1.0 spells its stems with an ellipsis (D11); R2-3: each stem RANDSDT ends in"
+                        + " serves its own phrase under its own key");
     }
 
 
@@ -154,6 +163,46 @@ class AdamTemplateRealStoreTest
             assertEquals("AOCCzzFL", read(p, adcm, "AOCC01FL").get("name"),
                     version + ": control, the OCCDS template leg is reached");
         }
+    }
+
+
+    /**
+     * Round-2 ruling R2-1, on our store: {@code required_variables()} of an {@code ADAE} under the
+     * D10-inferred OCCDS 1.0 names the AE variables ({@code --SEQ} → {@code AESEQ}, {@code --TERM}
+     * → {@code AETERM}, {@code AESER} carrying {@code AE.AESER}) and not {@code CMTRT} (the store's
+     * {@code CM.CMTRT}); the P5 stop reported {@code [--SEQ, --TERM, CMTRT]} missing here. The same
+     * walk on an {@code ADCM} demands {@code CMTRT} and not {@code AESER}.
+     */
+    @Test
+    void requiredVariablesOfAdaeUnderTheInferredOccdsAreTheAeVariablesAndNeverCmtrt()
+        throws IOException
+    {
+        MetadataProvider p = adamig("1-1");
+        IDataTable adae = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1").col("AESEQ", "1")
+                .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").col("AESER", "N").name("ADAE")
+                .build();
+        assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER"), required(p, adae),
+                "ADAE confirmed as AE by AESEQ");
+        IDataTable adcm = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1").col("CMSEQ", "1")
+                .col("CMTRT", "ASPIRIN").col("CMDECOD", "ASPIRIN").name("ADCM").build();
+        assertEquals(List.of("STUDYID", "USUBJID", "CMSEQ", "CMTERM", "CMTRT"), required(p, adcm),
+                "ADCM confirmed as CM by CMSEQ: CMTRT demanded, AESER not");
+        IDataTable unconfirmed = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1")
+                .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").name("ADAE").build();
+        assertEquals(List.of("STUDYID", "USUBJID"), required(p, unconfirmed),
+                "no AESEQ: no confirmed domain, nothing domain-bound is demanded");
+    }
+
+
+    private static List<Object> required(MetadataProvider p, IDataTable table)
+    {
+        EvalRun run = EvalRun.fullRange(EvaluationContext.builder().table(table).ruleId("R2-1")
+                .libraryProvider(p).datasetResolver(NO_RESOLVER).build());
+        Vector v = LibraryLists.requiredVariables(run, List.of());
+        assertTrue(v instanceof ConstVector, "a dataset-level list is one broadcast constant");
+        @SuppressWarnings("unchecked")
+        List<Object> names = (List<Object>) v.value(0).resolved();
+        return names;
     }
 
 

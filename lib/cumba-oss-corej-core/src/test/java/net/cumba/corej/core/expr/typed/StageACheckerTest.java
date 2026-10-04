@@ -196,6 +196,43 @@ class StageACheckerTest
     }
 
 
+    /**
+     * R2-3 (PLAN-library-template-label-resolution): the stem-selecting form
+     * {@code label_template("LIBRARY", stem="*DT")} — the stem is a parameter with a type, a
+     * {@code *}-rooted string literal, so anything else is the armed PARAMETER_TYPE finding, as is
+     * the keyword on an accessor that selects no stem.
+     */
+    @Test
+    void labelTemplateStemFormTakesAStarRootedStringLiteral()
+    {
+        assertEquals(List.of(),
+                kinds(check("not empty(label_template(\"LIBRARY\", stem=\"*DT\"))")));
+        assertEquals(List.of(), kinds(check("not matches_label_template(var_label(\"DATA\"),"
+                + " label_template(varname(), \"LIBRARY\", stem=\"*SDT\"))")));
+        assertEquals(Primitive.STRING,
+                root(check("label_template(\"LIBRARY\", stem=\"*DT\")")).type());
+        assertEquals(Level.VARIABLE_METADATA,
+                root(check("label_template(\"LIBRARY\", stem=\"*DT\")")).level(),
+                "the cursor variable's template, as the plain form");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("not empty(label_template(\"LIBRARY\", stem=\"DT\"))")), "no * root");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("not empty(label_template(\"LIBRARY\", stem=\"*\"))")),
+                "an empty suffix");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("not empty(label_template(\"LIBRARY\", stem=5))")), "not a string");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("not empty(label_template(\"LIBRARY\", stem=upper(AESEV)))")),
+                "not a literal");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("not empty(var_label(\"LIBRARY\", stem=\"*DT\"))")),
+                "only label_template selects a stem");
+        assertEquals(List.of(StageAErrorKind.METADATA_LEVEL_ILLEGAL),
+                kinds(check("not empty(label_template(\"DATA\", stem=\"*DT\"))")),
+                "the level table still applies");
+    }
+
+
     @Test
     void anIllegalAttributeLevelPairIsAStageAError()
     {

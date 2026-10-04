@@ -2,6 +2,7 @@ package net.cumba.corej.core.metadata;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -2323,7 +2324,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
         // on the occurrence that SURVIVES the keep-first dedupe. A last-wins index would place the
         // IG attributes on the duplicate the dedupe then discards, silently answering with the
         // Model's metadata instead of the IG's.
-        Map<String, Integer> nameIndex = new java.util.HashMap<>();
+        Map<String, Integer> nameIndex = new HashMap<>();
         for (int i = 0; i < merged.size(); i++)
         {
             nameIndex.putIfAbsent(merged.get(i).name(), i);
@@ -3235,12 +3236,31 @@ public final class MetadataLibraryProvider implements MetadataProvider
             Optional<IDataTableMetadata> table = library.getDataTable(ds.name());
             if (table.isPresent())
             {
+                // R2-1 (ii): the view's columns carry no description, the stored variables do —
+                // the core-variable walk reads the published source token (CM.CMTRT) from it, and
+                // it must find the same attribute whether the structure is served from the view
+                // (the first declared product) or from the store (an inferred or later product).
+                Map<String, String> descriptions = new HashMap<>();
+                for (StoredVariableSet set : ds.variableSets())
+                {
+                    for (StoredVariable v : set.variables())
+                    {
+                        if (v.name() != null && v.description() != null)
+                        {
+                            descriptions.putIfAbsent(v.name().toUpperCase(Locale.ROOT),
+                                    v.description());
+                        }
+                    }
+                }
                 for (IColumnMetadata col : table.get().getColumns())
                 {
                     String name = col.getName();
                     if (name != null && !name.isEmpty())
                     {
-                        out.add(new LibraryTemplates.Entry(name, columnToMap(col)));
+                        Map<String, String> attrs = new LinkedHashMap<>(columnToMap(col));
+                        putIfPresent(attrs, "description",
+                                descriptions.get(name.toUpperCase(Locale.ROOT)));
+                        out.add(new LibraryTemplates.Entry(name, attrs));
                     }
                 }
                 return List.copyOf(out);

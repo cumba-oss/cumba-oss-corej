@@ -39,6 +39,7 @@ import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.metadata.CdiscDomainResolver;
 import net.cumba.corej.core.metadata.DefineMetadataListCodec;
+import net.cumba.corej.core.metadata.LibraryTemplates;
 import net.cumba.corej.core.metadata.VlmResolver;
 import net.cumba.corej.core.model.NextRecordRelation;
 import net.cumba.datatable.DataTableMeta;
@@ -5955,14 +5956,23 @@ public final class ExprCompiler
     {
         // §9.D: a variable-scope var_* accessor may carry a `dataset="D"` keyword — read the named
         // variable's DATA-level metadata from another dataset (join-free, via the DatasetResolver),
-        // the inline form of cross_dataset_variable_metadata. No other keyword is accepted.
+        // the inline form of cross_dataset_variable_metadata. label_template may carry a
+        // `stem="*DT"` keyword instead — the stem-selecting form (PLAN-library-template-label-
+        // resolution R2-3): the named stem's published template, when the column's name ends in
+        // that stem's suffix and no literal or index template governs the column; a missing
+        // otherwise (LibraryTemplates#stemKey). No other keyword is accepted.
         String foreignDataset = null;
+        String stem = null;
         for (Map.Entry<String, Expr> kw : c.kwargs().entrySet())
         {
             if ("dataset".equals(kw.getKey()) && attr.scope() == MetadataAttribute.Scope.VARIABLE
                     && kw.getValue() instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING)
             {
                 foreignDataset = (String) lit.value();
+            }
+            else if (STEM_KEYWORD.equals(kw.getKey()) && attr == MetadataAttribute.LABEL_TEMPLATE)
+            {
+                stem = stemLiteral(kw.getValue());
             }
             else
             {
@@ -6083,6 +6093,8 @@ public final class ExprCompiler
         String capturedName = literalName;
         boolean fromVariableName = variableNameRef;
         String foreign = foreignDataset;
+        // The provider-map key: the attribute's own, or the named stem's (R2-3).
+        String providerKey = stem == null ? attr.providerKey() : LibraryTemplates.stemKey(stem);
         return run ->
         {
             EvaluationContext ctx = run.ctx();
@@ -6112,7 +6124,7 @@ public final class ExprCompiler
                                 .getForVariable(name);
                 return ConstVector.of(value);
             }
-            String raw = readMetadata(ctx, attr, level, name);
+            String raw = readMetadata(ctx, attr, level, name, providerKey);
             if (attr.isList())
             {
                 // A list-valued attribute (e.g. var_codelist_coded_codes) is carried JSON-encoded
@@ -6171,17 +6183,60 @@ public final class ExprCompiler
                 attr.functionName() + " level must be a string literal (DATA, DEFINE, or LIBRARY)");
     }
 
+    /** The keyword of the stem-selecting {@code label_template} form (R2-3). */
+    public static final String STEM_KEYWORD = "stem";
+
+    /**
+     * The {@code stem=} argument of {@code label_template}: a string literal naming a published
+     * {@code *}-stem ({@code "*DT"}) — rooted at {@code *} with at least one suffix character.
+     * Anything else is a rule definition error; the typed stage-A checker files the same shape as a
+     * {@code PARAMETER_TYPE} finding first.
+     */
+    private static String stemLiteral(Expr stemExpr)
+    {
+        if (stemExpr instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
+                && isStemName((String) lit.value()))
+        {
+            return (String) lit.value();
+        }
+        throw new RuleDefinitionException(MetadataAttribute.LABEL_TEMPLATE.functionName() + " "
+                + STEM_KEYWORD + "= takes a published *-stem as a string literal (\"*DT\")");
+    }
+
+
+    /**
+     * Whether {@code value} spells a {@code *}-stem as the Library publishes one: a {@code *} root
+     * followed by at least one character.
+     */
+    public static boolean isStemName(@Nullable String value)
+    {
+        return value != null && value.length() >= 2 && value.charAt(0) == '*';
+    }
+
 
     private static @Nullable String readMetadata(EvaluationContext ctx, MetadataAttribute attr,
             MetadataLevel level, @Nullable String name)
+    {
+        return readMetadata(ctx, attr, level, name, attr.providerKey());
+    }
+
+
+    /**
+     * As {@link #readMetadata(EvaluationContext, MetadataAttribute, MetadataLevel, String)}, with
+     * the provider-map key made explicit — the attribute's own, or a stem's
+     * ({@link LibraryTemplates#stemKey}) for the stem-selecting {@code label_template} form. The
+     * DATA level has no provider map and ignores the key.
+     */
+    private static @Nullable String readMetadata(EvaluationContext ctx, MetadataAttribute attr,
+            MetadataLevel level, @Nullable String name, String providerKey)
     {
         return switch (level)
         {
         case DATA -> readDataLevel(ctx, attr, name);
         case DEFINE -> readProviderLevel(ctx.getDefineProvider(), ctx, attr, name,
-                MetadataLevel.DEFINE);
+                MetadataLevel.DEFINE, providerKey);
         case LIBRARY -> readProviderLevel(ctx.getLibraryProvider(), ctx, attr, name,
-                MetadataLevel.LIBRARY);
+                MetadataLevel.LIBRARY, providerKey);
         };
     }
 
@@ -6293,7 +6348,7 @@ public final class ExprCompiler
 
     private static @Nullable String readProviderLevel(@Nullable MetadataProvider provider,
             EvaluationContext ctx, MetadataAttribute attr, @Nullable String name,
-            MetadataLevel level)
+            MetadataLevel level, String providerKey)
     {
         // Provider absent ⇒ missing, matching the *_variable_* / *_dataset_* operands this family
         // replaces (those resolve to null when their level's provider is not configured).
@@ -6412,7 +6467,7 @@ public final class ExprCompiler
                 throw new UnresolvableCodelistException(domain, name, meta.get("codelist"));
             }
         }
-        return meta != null ? meta.get(attr.providerKey()) : null;
+        return meta != null ? meta.get(providerKey) : null;
     }
 
 

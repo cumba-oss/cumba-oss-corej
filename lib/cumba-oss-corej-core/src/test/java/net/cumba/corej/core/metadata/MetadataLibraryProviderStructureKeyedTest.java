@@ -135,7 +135,10 @@ class MetadataLibraryProviderStructureKeyedTest
         assertEquals("TRTSDT", read(p, adlb, "TRTSDT").get("name"), "ADSL literal beats *SDT");
         assertEquals("Planned Treatment for Period 01", read(p, adlb, "TRT01P").get("label"));
         // the stems, longest suffix
-        assertEquals(Map.of("name", "*SDT", LT, "{Start Date}"), read(p, adlb, "RANDSDT"));
+        assertEquals(
+                Map.of("name", "*SDT", LT, "{Start Date}", LibraryTemplates.stemKey("*DT"),
+                        "{Date}", LibraryTemplates.stemKey("*SDT"), "{Start Date}"),
+                read(p, adlb, "RANDSDT"), "R2-3: plus one key per stem the name ends in");
         assertEquals("*DT", read(p, adlb, "XXDT").get("name"));
         assertEquals("*SDTF", read(p, adlb, "XXSDTF").get("name"));
     }

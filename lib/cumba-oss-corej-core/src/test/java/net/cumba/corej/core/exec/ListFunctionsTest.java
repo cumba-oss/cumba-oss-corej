@@ -205,6 +205,72 @@ class ListFunctionsTest
     }
 
 
+    /**
+     * PLAN-library-template-label-resolution round-2 ruling R2-1: an occurrence structure's
+     * {@code --} names resolve to the dataset's confirmed source domain, and a name carrying
+     * another domain's prefix (the store's {@code CM.CMTRT} / {@code AE.AESER} source token) is not
+     * demanded of a dataset of a different — or of no confirmed — domain. {@code AESEQ} is both the
+     * confirmation and what {@code --SEQ} becomes.
+     */
+    @Test
+    void theAdamCoreWalkResolvesTheSourceDomainAndDemandsOnlyItsOwnDomainsPrefixedNames()
+    {
+        StructureLibrary lib = new StructureLibrary();
+        lib.published.put("OCCURRENCE DATA STRUCTURE",
+                List.of("STUDYID", "USUBJID", "--SEQ", "--TERM", "CMTRT", "AESER", "AOCCzzFL"));
+        lib.attributes.put("--SEQ", Map.of("description", "XX.--SEQ This would be copied"));
+        lib.attributes.put("CMTRT", Map.of("description", "CM.CMTRT"));
+        lib.attributes.put("AESER", Map.of("description", "AE.AESER"));
+        lib.attributes.put("STUDYID", Map.of("description", "XX.STUDYID"));
+        IDataTable adae = MockTable.of().col("STUDYID", "S").col("USUBJID", "1").col("AESEQ", "1")
+                .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").col("AESER", "N")
+                .col("AOCC01FL", "Y").name("ADAE").build();
+        assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER", "AOCC01FL"),
+                list(LibraryLists.requiredVariables(run(adae, lib), List.of())),
+                "ADAE + AESEQ confirm AE: -- becomes AE, CMTRT (CM) is not demanded, AESER (AE) is");
+        assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER", "AOCC01FL"),
+                list(LibraryLists.columnOrderFromLibrary(run(adae, lib), List.of())),
+                "the column order is the same walk");
+        IDataTable adaeNoTerm = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
+                .col("AESEQ", "1").col("AEDECOD", "HEADACHE").col("AESER", "N").name("ADAE")
+                .build();
+        assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER", "AOCCzzFL"),
+                list(LibraryLists.requiredVariables(run(adaeNoTerm, lib), List.of())),
+                "a resolved --TERM is demanded as AETERM, present or not (and an index template no"
+                        + " column matches stays verbatim, as substituteNamingTemplates keeps it)");
+        IDataTable adcm = MockTable.of().col("STUDYID", "S").col("USUBJID", "1").col("CMSEQ", "1")
+                .col("CMTRT", "ASPIRIN").col("CMDECOD", "ASPIRIN").name("ADCM").build();
+        assertEquals(List.of("STUDYID", "USUBJID", "CMSEQ", "CMTERM", "CMTRT", "AOCCzzFL"),
+                list(LibraryLists.requiredVariables(run(adcm, lib), List.of())),
+                "ADCM + CMSEQ confirm CM: CMTRT is demanded, AESER (AE) is not");
+        IDataTable unconfirmed = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
+                .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").name("ADAE").build();
+        assertEquals(List.of("STUDYID", "USUBJID", "AOCCzzFL"),
+                list(LibraryLists.requiredVariables(run(unconfirmed, lib), List.of())),
+                "no AESEQ: no confirmed domain, so neither a -- name nor a prefixed name is demanded");
+        IDataTable adaeWithDomain = MockTable.of().col("STUDYID", "S").col("DOMAIN", "AE")
+                .col("USUBJID", "1").col("AESEQ", "1").col("AETERM", "HEADACHE")
+                .col("AEDECOD", "HEADACHE").col("AESER", "N").col("AOCC01FL", "Y").name("ADAE")
+                .build();
+        assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER", "AOCC01FL"),
+                list(LibraryLists.requiredVariables(run(adaeWithDomain, lib), List.of())),
+                "the dataset NAME gives the domain, never a kept SDTM DOMAIN cell");
+        IDataTable events = MockTable.of().col("STUDYID", "S").col("USUBJID", "1").col("AESEQ", "1")
+                .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").name("ADEVENT").build();
+        assertEquals(List.of("STUDYID", "USUBJID", "AOCCzzFL"),
+                list(LibraryLists.requiredVariables(run(events, lib), List.of())),
+                "ADEVENT names EV, and no EVSEQ confirms it (AESEQ confirms nothing for EV)");
+        // A source token whose domain the NAME does not carry (ADSL's DM.ARM) is a copied value,
+        // not a prefix: still demanded.
+        lib.published.put("SUBJECT LEVEL ANALYSIS DATASET", List.of("STUDYID", "ARM"));
+        lib.attributes.put("ARM", Map.of("description", "DM.ARM"));
+        IDataTable adsl = MockTable.of().col("STUDYID", "S").col("USUBJID", "1").name("ADSL")
+                .build();
+        assertEquals(List.of("STUDYID", "ARM"),
+                list(LibraryLists.requiredVariables(run(adsl, lib), List.of())));
+    }
+
+
     @Test
     void theFilteredWalksAnswerTheLegacyRowsAndAnEmptySourceIsAnEmptyList()
     {
@@ -1327,10 +1393,37 @@ class ListFunctionsTest
 
         final Map<String, List<String>> published = new LinkedHashMap<>();
 
+        /** The published attributes by name (R2-1: the description's source token). */
+        final Map<String, Map<String, String>> attributes = new LinkedHashMap<>();
+
         @Override
         public boolean supportsStructureKeyedVariables()
         {
             return true;
+        }
+
+
+        @Override
+        public Map<String, String> getVariableMetadata(IDataTable table, List<String> structures,
+                List<String> subclasses, String domain, String variable)
+        {
+            return attributes.getOrDefault(variable, Map.of());
+        }
+
+
+        @Override
+        public List<String> getColumnOrderForStructures(List<String> structures,
+                List<String> subclasses, String domain)
+        {
+            for (String token : structures)
+            {
+                List<String> order = published.get(token);
+                if (order != null)
+                {
+                    return order;
+                }
+            }
+            return List.of();
         }
 
 

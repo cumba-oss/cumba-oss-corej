@@ -404,6 +404,7 @@ class QualifiedNameUniformityTest
             var_label | dataset | N | V:var_label("#S", "DATA"@DS)
             label_template | name | N | X:provider — LIBRARY level only; the name is a string literal or varname()
             label_template | level | - | static level
+            label_template | stem | - | static stem (a *-rooted string literal, R2-3)
             matches_label_template | label | N | B:matches_label_template(@S, "a")
             matches_label_template | template | N | B:matches_label_template("a", @S)
             var_type | name | N | V:var_type("@S", "DATA")
@@ -670,6 +671,25 @@ class QualifiedNameUniformityTest
 
 
     /**
+     * R2-3: the stem-selecting {@code stem=} keyword compiles on exactly one accessor —
+     * {@code label_template} — derived here as {@link #takesDatasetKwarg} derives {@code dataset=}.
+     */
+    private static boolean takesStemKwarg(MetadataAttribute attr)
+    {
+        try
+        {
+            NativeExprEvaluator.bindingProgram(CheckExpressionParser
+                    .parse(attr.functionName() + "(\"S\", \"LIBRARY\", stem=\"*DT\")"));
+            return true;
+        }
+        catch (RuntimeException _)
+        {
+            return false;
+        }
+    }
+
+
+    /**
      * Whether {@code attr} takes the {@code dataset=} kwarg — DERIVED from the engine (T2 r1 L1): a
      * call carrying the kwarg either compiles or is refused by {@code metadataPlan}.
      */
@@ -708,6 +728,10 @@ class QualifiedNameUniformityTest
             if (takesDatasetKwarg(m))
             {
                 names.add("dataset");
+            }
+            if (takesStemKwarg(m))
+            {
+                names.add("stem");
             }
             out.put(m.functionName(), names);
         }
@@ -765,6 +789,16 @@ class QualifiedNameUniformityTest
             }
         }
         assertEquals(List.of("var_label", "var_type", "var_length", "var_format"), withDataset);
+        List<String> withStem = new ArrayList<>();
+        for (MetadataAttribute m : MetadataAttribute.values())
+        {
+            if (takesStemKwarg(m))
+            {
+                withStem.add(m.functionName());
+            }
+        }
+        assertEquals(List.of("label_template"), withStem,
+                "R2-3: only label_template selects a stem");
     }
 
 
@@ -801,8 +835,8 @@ class QualifiedNameUniformityTest
         }
         assertEquals(48, unprobed.size(), "unprobed name-bearing rows: " + unprobed);
         // T2 r2 L5: the non-name class is pinned too — a row that flips to '-' to dodge a probe
-        // moves this count.
-        assertEquals(136, rows.stream().filter(r -> !r.name()).count(), "non-name rows");
+        // moves this count. +1 for label_template's stem= keyword (R2-3), a static selector.
+        assertEquals(137, rows.stream().filter(r -> !r.name()).count(), "non-name rows");
     }
 
     // ------------------------------------------------------------------

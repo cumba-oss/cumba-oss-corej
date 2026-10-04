@@ -17,6 +17,7 @@ import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.convert.BindingInliner;
 import net.cumba.corej.core.expr.eval.ArgumentBinder;
 import net.cumba.corej.core.expr.eval.BroadcastFold;
+import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionKind;
 import net.cumba.corej.core.expr.eval.FunctionRegistry;
@@ -1274,6 +1275,7 @@ public final class StageAChecker
                 accessorName(attr, args.get(0));
             }
         }
+        stemKeyword(c, attr);
         Level level;
         if (attr.scope() == MetadataAttribute.Scope.DATASET
                 || (args.size() == 2 && !isCurrentVariableName(args.get(0))))
@@ -1311,6 +1313,40 @@ public final class StageAChecker
         {
             find(StageAErrorKind.METADATA_LEVEL_ILLEGAL, "(" + attr.functionName() + ", " + level
                     + ") is not a legal (attribute, metadata-level) pair");
+        }
+    }
+
+
+    /**
+     * The stem-selecting {@code label_template} form
+     * ({@code PLAN-library-template-label-resolution} R2-3):
+     * {@code label_template([x,] "LIBRARY", stem="*DT")} reads the named stem's published template.
+     * The {@code stem=} value is a parameter with a type — a string literal spelling a published
+     * {@code *}-stem ({@link ExprCompiler#isStemName}) — so any other value, and the keyword on any
+     * other accessor, is the armed {@link StageAErrorKind#PARAMETER_TYPE} finding; the compiler
+     * refuses the same shapes at load. Other keywords ({@code dataset=}) are the compiler's to
+     * judge, as before.
+     */
+    private void stemKeyword(Expr.Call c, MetadataAttribute attr)
+    {
+        Expr stem = c.kwargs().get(ExprCompiler.STEM_KEYWORD);
+        if (stem == null)
+        {
+            return;
+        }
+        if (attr != MetadataAttribute.LABEL_TEMPLATE)
+        {
+            find(StageAErrorKind.PARAMETER_TYPE, attr.functionName() + " takes no "
+                    + ExprCompiler.STEM_KEYWORD + "= argument: only label_template selects a stem");
+        }
+        else if (!(stem instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.STRING
+                || !ExprCompiler.isStemName((String) lit.value()))
+        {
+            find(StageAErrorKind.PARAMETER_TYPE,
+                    attr.functionName() + " " + ExprCompiler.STEM_KEYWORD
+                            + "= takes a published *-stem as a string literal (\"*DT\"), not "
+                            + (stem instanceof Expr.Lit lit ? String.valueOf(lit.value())
+                                    : "a computed value"));
         }
     }
 

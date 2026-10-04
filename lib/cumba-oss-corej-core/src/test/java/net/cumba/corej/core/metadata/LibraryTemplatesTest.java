@@ -227,7 +227,8 @@ class LibraryTemplatesTest
     void theLongestStemSuffixGovernsAndServesOnlyNameAndTemplate()
     {
         Map<String, String> sdt = LibraryTemplates.resolve("RANDSDT", BDS_DATASET);
-        assertEquals(Map.of("name", "*SDT", LT, "{Start Date}"), sdt, "*SDT, never *DT");
+        assertEquals("*SDT", sdt.get("name"), "*SDT, never *DT");
+        assertEquals("{Start Date}", sdt.get(LT), "the longest stem's phrase");
         assertEquals("*SDTF", LibraryTemplates.resolve("XXSDTF", BDS_DATASET).get("name"));
         assertEquals("*DTF", LibraryTemplates.resolve("XXDTF", BDS_DATASET).get("name"));
         assertEquals("*DT", LibraryTemplates.resolve("XXDT", BDS_DATASET).get("name"));
@@ -241,6 +242,39 @@ class LibraryTemplatesTest
         assertEquals("*DT", LibraryTemplates.resolve("SDT", BDS_DATASET).get("name"),
                 "SDT is *DT with the one-letter root S, not *SDT with an empty one");
         assertEquals(Map.of(), LibraryTemplates.resolve("NOTHING", BDS_DATASET));
+    }
+
+
+    /**
+     * R2-3: a stem hit carries every published stem the name ends in under its own key, so the
+     * stem-selecting accessor form serves each stem rule its own phrase — and a literal or index
+     * template hit carries none, which is the stem rules' literal skip.
+     */
+    @Test
+    void everyStemTheNameEndsInServesItsOwnTemplateUnderItsKey()
+    {
+        Map<String, String> sdt = LibraryTemplates.resolve("RANDSDT", BDS_DATASET);
+        assertEquals("{Date}", sdt.get(LibraryTemplates.stemKey("*DT")), "*DT fits RANDSDT");
+        assertEquals("{Start Date}", sdt.get(LibraryTemplates.stemKey("*SDT")));
+        assertEquals("{Start Date}", sdt.get(LibraryTemplates.stemKey("*sdt")),
+                "the key is case-folded");
+        assertNull(sdt.get(LibraryTemplates.stemKey("*DTF")), "a stem the name does not end in");
+        assertEquals("label_template:*DT", LibraryTemplates.stemKey("*dt"));
+        Map<String, String> dt = LibraryTemplates.resolve("XXDT", BDS_DATASET);
+        assertEquals("{Date}", dt.get(LibraryTemplates.stemKey("*DT")));
+        assertNull(dt.get(LibraryTemplates.stemKey("*SDT")), "XXDT does not end in SDT");
+        assertEquals(Map.of("name", "*DT", LT, "{Date}", "label_template:*DT", "{Date}"), dt,
+                "a stem hit: the longest stem's name and phrase, plus one key per fitting stem");
+        // a literal of the own structure (ASTDT ends in SDT), an ADSL literal copied into BDS
+        // (TRTSDT) and an index template (PxxSwSDT) are governed by their own published label,
+        // never by the suffix convention: no stem key, so the stem form answers a missing
+        for (String literal : List.of("ASTDT", "TRTSDT", "P01S1SDT"))
+        {
+            Map<String, String> r = LibraryTemplates.resolve(literal, BDS_DATASET);
+            assertFalse(r.isEmpty(), literal + " resolves");
+            assertNull(r.get(LibraryTemplates.stemKey("*DT")), literal + " carries no *DT key");
+            assertNull(r.get(LibraryTemplates.stemKey("*SDT")), literal + " carries no *SDT key");
+        }
     }
 
 

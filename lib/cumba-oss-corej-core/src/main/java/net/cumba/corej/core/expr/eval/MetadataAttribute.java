@@ -44,6 +44,21 @@ public enum MetadataAttribute
      * accessor answers a missing — for a column the Library does not know, a column spelled like a
      * template ({@code TRTXXP}) and a label the provider could not resolve. LIBRARY only: the
      * template is a product of the Library's naming conventions, which no Define-XML publishes.
+     *
+     * <p>
+     * <b>The stem-selecting form</b> {@code label_template([x,] "LIBRARY", stem="*DT")} (round-2
+     * ruling R2-3): the <em>named</em> stem's published template, served when the column's name
+     * ends in that stem's suffix and the column is a stem case (no literal or index template of the
+     * governing or ADSL structure claims it) — {@code RANDSDT} answers {@code {Date}} for
+     * {@code stem="*DT"} and {@code {Start Date}} for {@code stem="*SDT"}, so each stem rule judges
+     * every column its suffix matches with its own phrase. A missing otherwise: a library literal
+     * ({@code TRTSDT}), a column the stem does not fit, a stem the product does not publish. The
+     * {@code stem=} value is a {@code *}-rooted string literal (stage A {@code PARAMETER_TYPE});
+     * the provider-map key is {@code LibraryTemplates.stemKey}. A finding of a Check whose
+     * {@code label_template} reads all select one stem reports that stem's template as
+     * {@code library_variable_label_template}, the phrase the rule judged
+     * ({@code MetadataExprScan.labelTemplateStem}, applied by {@code RuleRunner}).
+     * </p>
      */
     LABEL_TEMPLATE("label_template", Scope.VARIABLE, "label_template", Normalization.RAW, LIBRARY),
     VAR_TYPE("var_type", Scope.VARIABLE, "simpleDatatype", Normalization.TYPE, DATA, DEFINE, LIBRARY),

@@ -1,10 +1,14 @@
 package net.cumba.corej.core.expr.eval;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 import net.cumba.corej.core.expr.ast.Expr;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Static analysis of a compiled-rule {@link Expr} for the metadata accessor functions
@@ -91,6 +95,71 @@ public final class MetadataExprScan
     public static boolean usesCurrentVariableValue(Expr e)
     {
         return containsZeroArgCall(e, VALUE_FN);
+    }
+
+
+    /**
+     * The one {@code *}-stem the {@code label_template} reads of {@code e} select
+     * ({@code PLAN-library-template-label-resolution} round-2 ruling R2-3), upper-cased as
+     * {@code LibraryTemplates.stemKey} keys it: every {@code label_template} call in {@code e}
+     * carries {@code stem=} with the same string literal. {@code null} when {@code e} reads no
+     * {@code label_template}, reads the plain form anywhere, or names two different stems.
+     *
+     * <p>
+     * {@code RuleRunner} reports the selected stem's template as the finding's
+     * {@code library_variable_label_template}, so a finding shows the phrase its rule judged —
+     * {@code {Date}} for {@code RANDSDT} under the {@code *DT} rule, where the column's own
+     * template (the longest stem it ends in, {@code *SDT}) is {@code {Start Date}}.
+     * </p>
+     *
+     * @param e
+     *            the Check expression
+     * @return the selected stem ({@code *DT}), or {@code null}
+     */
+    public static @Nullable String labelTemplateStem(Expr e)
+    {
+        List<String> reads = new ArrayList<>();
+        collectLabelTemplateStems(e, reads);
+        Set<String> stems = new LinkedHashSet<>(reads);
+        if (stems.size() != 1 || stems.contains(PLAIN_LABEL_TEMPLATE))
+        {
+            return null;
+        }
+        return stems.iterator().next();
+    }
+
+    /** The {@link #collectLabelTemplateStems} entry of a plain {@code label_template} read. */
+    private static final String PLAIN_LABEL_TEMPLATE = "";
+
+    private static void collectLabelTemplateStems(Expr e, List<String> out)
+    {
+        switch (e)
+        {
+        case Expr.And a -> a.parts().forEach(p -> collectLabelTemplateStems(p, out));
+        case Expr.Or o -> o.parts().forEach(p -> collectLabelTemplateStems(p, out));
+        case Expr.Not n -> collectLabelTemplateStems(n.inner(), out);
+        case Expr.Binary b ->
+        {
+            collectLabelTemplateStems(b.left(), out);
+            collectLabelTemplateStems(b.right(), out);
+        }
+        case Expr.Call c ->
+        {
+            if (MetadataAttribute.LABEL_TEMPLATE.functionName().equals(c.name()))
+            {
+                Expr stem = c.kwargs().get(ExprCompiler.STEM_KEYWORD);
+                out.add(stem instanceof Expr.Lit lit && lit.value() instanceof String text
+                        ? text.toUpperCase(Locale.ROOT)
+                        : PLAIN_LABEL_TEMPLATE);
+            }
+            c.args().forEach(p -> collectLabelTemplateStems(p, out));
+            c.kwargs().values().forEach(p -> collectLabelTemplateStems(p, out));
+        }
+        case Expr.Ref _,Expr.Lit _ ->
+        {
+            // a leaf reads no label_template
+        }
+        }
     }
 
 

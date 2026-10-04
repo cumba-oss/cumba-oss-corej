@@ -78,13 +78,20 @@ import org.jspecify.annotations.Nullable;
  * (D8 expressed through D11: {@code ...} is any text). A label that still carries a {@code {…}}
  * phrase after substitution is served as {@value #LABEL_TEMPLATE_KEY} only, never as {@code label}
  * — the accessor never hands back a template as a value;</li>
- * <li>a <b>stem</b> hit: {@code name} is the stem ({@code *SDT}) and {@value #LABEL_TEMPLATE_KEY}
- * the stem's published label verbatim ({@code {Start Date}}; ADaMIG 1.0: {@code Start Date of
- * ...}). Nothing else: a stem is a naming convention whose one published obligation the rules read
- * is the label phrase, and serving its type or core would make every type rule judge every sponsor
- * {@code *DT} column — a movement no rule's authority asks for. Rules that read
+ * <li>a <b>stem</b> hit: {@code name} is the longest stem ({@code *SDT}) and
+ * {@value #LABEL_TEMPLATE_KEY} that stem's published label verbatim ({@code {Start Date}}; ADaMIG
+ * 1.0: {@code Start Date of ...}); and — round-2 ruling R2-3 — <b>one key per published stem the
+ * column's name ends in</b>, {@link #stemKey}: {@code label_template:*DT} → {@code {Date}} and
+ * {@code label_template:*SDT} → {@code {Start Date}} for {@code RANDSDT}, so the stem-selecting
+ * accessor form {@code label_template("LIBRARY", stem="*DT")} serves every stem rule whose
+ * authority covers the column, each with its <em>own</em> phrase (a nested column is reported under
+ * each such rule). Nothing else: a stem is a naming convention whose one published obligation the
+ * rules read is the label phrase, and serving its type or core would make every type rule judge
+ * every sponsor {@code *DT} column — a movement no rule's authority asks for. Rules that read
  * {@code var_label("LIBRARY")} therefore never see a stem (their {@code not empty} guard holds),
- * and the stem rules select their stem by {@code var_name("LIBRARY") == "*SDT"}.</li>
+ * and a literal or index-template hit carries no stem key at all: a library variable is governed by
+ * its own published label, never by the suffix convention, so the stem form answers a missing for
+ * it (the structural literal skip of the stem rules).</li>
  * </ul>
  */
 public final class LibraryTemplates
@@ -92,6 +99,13 @@ public final class LibraryTemplates
 
     /** The attribute key of the resolved label template (the {@code label_template} accessor). */
     public static final String LABEL_TEMPLATE_KEY = "label_template";
+
+    /**
+     * The key prefix of the per-stem templates a stem hit carries ({@link #stemKey}): the
+     * stem-selecting accessor form {@code label_template("LIBRARY", stem="*DT")} reads
+     * {@code label_template:*DT}.
+     */
+    public static final String STEM_TEMPLATE_KEY_PREFIX = LABEL_TEMPLATE_KEY + ":";
 
     /** The IG's "any text" placeholder, and the tail appended for a {@code y}/{@code zz} name. */
     public static final String ANY_TEXT = "...";
@@ -666,6 +680,7 @@ public final class LibraryTemplates
     {
         String upper = aColumn.toUpperCase(Locale.ROOT);
         Entry best = null;
+        Map<String, String> byStem = new LinkedHashMap<>();
         for (Entry entry : aStems)
         {
             String name = entry.name();
@@ -675,10 +690,18 @@ public final class LibraryTemplates
             }
             String suffix = name.substring(1).toUpperCase(Locale.ROOT);
             // A proper suffix: the root (`*`) binds at least one character.
-            if (upper.length() > suffix.length() && upper.endsWith(suffix)
-                    && (best == null || suffix.length() > best.name().length() - 1))
+            if (upper.length() > suffix.length() && upper.endsWith(suffix))
             {
-                best = entry;
+                if (best == null || suffix.length() > best.name().length() - 1)
+                {
+                    best = entry;
+                }
+                String label = entry.attributes().get(LABEL);
+                if (label != null)
+                {
+                    // R2-3: every stem the name ends in serves its own phrase under its own key
+                    byStem.putIfAbsent(stemKey(name), label);
+                }
             }
         }
         if (best == null)
@@ -692,7 +715,23 @@ public final class LibraryTemplates
         {
             out.put(LABEL_TEMPLATE_KEY, label);
         }
+        out.putAll(byStem);
         return Collections.unmodifiableMap(out);
+    }
+
+
+    /**
+     * The attribute key under which a stem hit carries the named stem's template:
+     * {@code label_template:*DT}. The stem is upper-cased, as {@link #stemsOf} keys the published
+     * stems, so {@code stem="*dt"} and {@code stem="*DT"} read the same entry.
+     *
+     * @param aStem
+     *            a {@code *}-rooted stem as a rule names it ({@code *DT})
+     * @return the key
+     */
+    public static String stemKey(String aStem)
+    {
+        return STEM_TEMPLATE_KEY_PREFIX + aStem.toUpperCase(Locale.ROOT);
     }
 
 
