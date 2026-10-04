@@ -49,6 +49,14 @@ public final class RuleEvaluator
     /** The {@code Alias/@Context} marker for NCI c-code aliases. */
     private static final String NCI_EXT_CODE_ID = "nci:ExtCodeID";
 
+    /**
+     * {@code PLAN-library-template-label-resolution} §4.4 — a bracketed token in a published
+     * dataset label ({@code Supplemental Qualifiers for [domain name]}, SDTMIG and TIG's
+     * {@code SUPPQUAL}) is a template the sponsor fills, never a label to compare with. The same
+     * pattern the dataset-level accessor of the rule engine drops templated answers by.
+     */
+    private static final Pattern BRACKETED_TOKEN = Pattern.compile("\\[[^\\]]*\\]");
+
     // ConcurrentHashMap: a single RuleEvaluator may be reused across concurrent
     // validate() calls; custom-check instances are stateless.
     private final Map<String, CustomCheck> customChecks = new ConcurrentHashMap<>();
@@ -889,6 +897,13 @@ public final class RuleEvaluator
             }
             Optional<String> libraryLabel = library.datasetLabel(standard.get().name(),
                     standard.get().version(), dataset.get());
+            if (libraryLabel.isPresent() && BRACKETED_TOKEN.matcher(libraryLabel.get()).find())
+            {
+                // A templated published label (a combined SUPPQUAL's "[domain name]") names no
+                // expected text: a sponsor fills it, and a combined file has no single parent
+                // domain to substitute. The conservative skip, as for a library-unknown Name.
+                continue;
+            }
             Optional<String> documentLabel = englishText(node, "Description");
             if (libraryLabel.isPresent() && documentLabel.isPresent()
                     && !documentLabel.get().trim().equals(libraryLabel.get().trim()))

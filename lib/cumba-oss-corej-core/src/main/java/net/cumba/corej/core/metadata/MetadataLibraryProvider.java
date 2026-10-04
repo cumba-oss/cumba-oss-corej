@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
@@ -303,6 +304,15 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * loader.
      */
     private final @Nullable Function<String, Optional<StoredCtPackage>> ctPackageLoader;
+
+    /**
+     * Memoised {@link LibraryTemplates.Candidates} per {@code structures|subclasses} token set —
+     * derived data only, so the instance stays effectively immutable and safe for concurrent use.
+     */
+    private final Map<String, LibraryTemplates.Candidates> candidatesCache = new ConcurrentHashMap<>();
+
+    /** Memoised entries per structure, keyed by {@link SourcedStructure#describe()}. */
+    private final Map<String, List<LibraryTemplates.Entry>> entriesCache = new ConcurrentHashMap<>();
 
     /**
      * One declared ADaM product with its provenance: the {@code standards/...} cache key it was
@@ -3021,6 +3031,196 @@ public final class MetadataLibraryProvider implements MetadataProvider
             }
         }
         return Map.of();
+    }
+
+
+    /**
+     * {@code PLAN-library-template-label-resolution} §4.1 / D9 — the structure-keyed read. The ADaM
+     * {@link IMetadataLibrary} view names its tables after the published <b>structures</b>
+     * ({@code ADSL}, {@code BDS}, {@code OCCDS}, {@code AE}, {@code TTE}), so the domain-keyed
+     * {@link #getVariableMetadata(String, String)} answered only a dataset literally named
+     * {@code ADSL} (measured: 0 of 460 non-ADSL pilot columns). Here the caller's structure tokens
+     * select the governing chain exactly as {@link #adamNamesWhereCore} does, and
+     * {@link LibraryTemplates#resolve} runs its tiers over that chain's entries, the ADSL entries
+     * (D9: an ADSL variable copied into a BDS or OCCDS dataset keeps its ADSL definition) and the
+     * published stems. A read nothing resolves falls back to the domain-keyed answer, which keeps
+     * today's behaviour for a dataset named after a structure.
+     *
+     * <p>
+     * ⚠ The entries of a structure the <em>first</em> declared product publishes are the library
+     * view's columns ({@link #columnToMap}: the codelist family included), so an {@code ADSL}
+     * answer is byte-for-byte the domain-keyed one; a structure another declared product publishes
+     * — the D10-inferred OCCDS, a second {@code -mp} product — has no library table and is served
+     * from its stored variables ({@link #scalarAttributes}, {@code role} dropped as ADaM has none),
+     * which carry no codelist keys. The candidate sets are memoised per token set: the governing
+     * chain and its provenance log are computed once per (structures, subclasses), not once per
+     * read.
+     * </p>
+     */
+    @Override
+    public Map<String, String> getVariableMetadata(IDataTable aTable, List<String> aStructures,
+            List<String> aSubclasses, String aDomain, String aVariable)
+    {
+        if (hasAdamProduct() && aVariable != null)
+        {
+            Map<String, String> resolved = LibraryTemplates.resolve(aVariable,
+                    adamCandidates(aStructures, aSubclasses));
+            if (!resolved.isEmpty())
+            {
+                return resolved;
+            }
+        }
+        return getVariableMetadata(aDomain, aVariable);
+    }
+
+
+    /**
+     * The published names of the dataset's governing structure(s), in the standard's own order,
+     * first structure token with a chain winning (as {@code LibraryLists.coreVariables} walks the
+     * tokens); the domain-keyed order when no token resolves or this is no ADaM provider.
+     */
+    @Override
+    public List<String> getColumnOrderForStructures(List<String> aStructures,
+            List<String> aSubclasses, String aDomain)
+    {
+        if (hasAdamProduct())
+        {
+            List<SourcedStructure> governing = governingStructures(aStructures, aSubclasses);
+            if (!governing.isEmpty())
+            {
+                Set<String> names = new LinkedHashSet<>();
+                for (SourcedStructure sourced : governing)
+                {
+                    for (LibraryTemplates.Entry entry : entriesOf(sourced))
+                    {
+                        names.add(entry.name());
+                    }
+                }
+                return List.copyOf(names);
+            }
+        }
+        return getColumnOrder(aDomain);
+    }
+
+
+    /**
+     * The governing chain's structures for the first of {@code aStructures} that has one, most
+     * specific tier first; empty when none does.
+     */
+    private List<SourcedStructure> governingStructures(@Nullable List<String> aStructures,
+            @Nullable List<String> aSubclasses)
+    {
+        List<String> subclasses = aSubclasses == null ? List.of() : aSubclasses;
+        for (String token : aStructures == null ? List.<String> of() : aStructures)
+        {
+            if (token == null || token.isBlank())
+            {
+                continue;
+            }
+            List<SourcedStructure> out = new ArrayList<>();
+            for (ChainTier tier : governingTiers(token, subclasses))
+            {
+                out.addAll(tier.structures());
+            }
+            if (!out.isEmpty())
+            {
+                return List.copyOf(out);
+            }
+        }
+        return List.of();
+    }
+
+
+    private LibraryTemplates.Candidates adamCandidates(@Nullable List<String> aStructures,
+            @Nullable List<String> aSubclasses)
+    {
+        List<String> structures = aStructures == null ? List.of() : List.copyOf(aStructures);
+        List<String> subclasses = aSubclasses == null ? List.of() : List.copyOf(aSubclasses);
+        return candidatesCache.computeIfAbsent(structures + "|" + subclasses,
+                _ -> buildCandidates(structures, subclasses));
+    }
+
+
+    private LibraryTemplates.Candidates buildCandidates(List<String> aStructures,
+            List<String> aSubclasses)
+    {
+        List<LibraryTemplates.Entry> own = new ArrayList<>();
+        for (SourcedStructure sourced : governingStructures(aStructures, aSubclasses))
+        {
+            own.addAll(entriesOf(sourced));
+        }
+        List<LibraryTemplates.Entry> adsl = new ArrayList<>();
+        if (!aStructures.contains(AdamDataStructureDetector.ADSL))
+        {
+            for (ChainTier tier : governingTiers(AdamDataStructureDetector.ADSL, List.of()))
+            {
+                for (SourcedStructure sourced : tier.structures())
+                {
+                    adsl.addAll(entriesOf(sourced));
+                }
+            }
+        }
+        // The stems are a naming convention of the IG, published under BDS alone; a column of any
+        // structure — a sponsor RANDSDT in ADSL — is governed by them, so they are pooled across
+        // every structure of every declared product, declaration order first.
+        List<LibraryTemplates.Entry> stems = new ArrayList<>();
+        for (DeclaredAdamProduct declared : adamProducts)
+        {
+            for (StoredDataStructure ds : declared.product().dataStructures())
+            {
+                stems.addAll(LibraryTemplates
+                        .stemsOf(entriesOf(new SourcedStructure(declared.cacheKey(), ds))));
+            }
+        }
+        return new LibraryTemplates.Candidates(own, adsl, LibraryTemplates.stemsOf(stems));
+    }
+
+
+    private List<LibraryTemplates.Entry> entriesOf(SourcedStructure aSourced)
+    {
+        return entriesCache.computeIfAbsent(aSourced.describe(), _ -> buildEntries(aSourced));
+    }
+
+
+    private List<LibraryTemplates.Entry> buildEntries(SourcedStructure aSourced)
+    {
+        StoredDataStructure ds = aSourced.structure();
+        List<LibraryTemplates.Entry> out = new ArrayList<>();
+        if (!adamProducts.isEmpty() && adamProducts.get(0).cacheKey().equals(aSourced.cacheKey())
+                && ds.name() != null)
+        {
+            // §7-0: the library view follows the first declared product, table per structure.
+            Optional<IDataTableMetadata> table = library.getDataTable(ds.name());
+            if (table.isPresent())
+            {
+                for (IColumnMetadata col : table.get().getColumns())
+                {
+                    String name = col.getName();
+                    if (name != null && !name.isEmpty())
+                    {
+                        out.add(new LibraryTemplates.Entry(name, columnToMap(col)));
+                    }
+                }
+                return List.copyOf(out);
+            }
+        }
+        List<StoredVariable> all = new ArrayList<>();
+        for (StoredVariableSet set : ds.variableSets())
+        {
+            all.addAll(set.variables());
+        }
+        for (StoredVariable v : sortAdamByOrdinal(all))
+        {
+            String name = v.name();
+            if (name == null || name.isEmpty())
+            {
+                continue;
+            }
+            Map<String, String> attrs = scalarAttributes(v);
+            attrs.remove(ATTR_ROLE); // ADaM publishes no role — as buildResolvedAdam
+            out.add(new LibraryTemplates.Entry(name, attrs));
+        }
+        return List.copyOf(out);
     }
 
 

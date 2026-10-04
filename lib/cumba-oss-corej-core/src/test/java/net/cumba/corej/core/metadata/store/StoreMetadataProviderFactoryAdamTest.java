@@ -332,13 +332,23 @@ class StoreMetadataProviderFactoryAdamTest
                 "standards/adam/adam-nca-1-0", "standards/adam/adam-occds-1-0",
                 "standards/adam/adam-occds-1-1", "standards/adam/adam-poppk-1-0",
                 "standards/adam/adam-tte-1-0", "standards/tig/1-0/adam");
+        // PLAN-library-template-label-resolution D10: an ADaMIG declared without an OCCDS product
+        // gets the OCCDS of its own generation appended (1.1 → OCCDS 1.0; 1.2 / 1.3 → OCCDS 1.1);
+        // ADaMIG 1.0, the TIG leg and every other product declare exactly what they resolve.
+        Map<String, List<String>> inferred = Map.of("standards/adam/adamig-1-1",
+                List.of("standards/adam/adamig-1-1", "standards/adam/adam-occds-1-0"),
+                "standards/adam/adamig-1-2",
+                List.of("standards/adam/adamig-1-2", "standards/adam/adam-occds-1-1"),
+                "standards/adam/adamig-1-3",
+                List.of("standards/adam/adamig-1-3", "standards/adam/adam-occds-1-1"));
         for (String key : keys)
         {
             Optional<MetadataProvider> p = factory.forAdam("adamig", "1-3", List.of(key), List.of(),
                     List.of());
             assertTrue(p.isPresent(), () -> key + " did not resolve offline");
             assertTrue(p.get().supportsStructureKeyedVariables(), key);
-            assertEquals(List.of(key), p.get().declaredStructureKeyedProducts(), key);
+            assertEquals(inferred.getOrDefault(key, List.of(key)),
+                    p.get().declaredStructureKeyedProducts(), key);
         }
     }
 
@@ -353,9 +363,18 @@ class StoreMetadataProviderFactoryAdamTest
         StoreMetadataProviderFactory factory = realStoreFactory();
         assumeTrue(factory != null, RealCorpusLocator.ABSENT_MESSAGE);
 
+        // PLAN-library-template-label-resolution D10: ADaMIG 1.3 alone now carries the inferred
+        // OCCDS 1.1 at lowest precedence, so the "one product" arm of the evidence is ADaMIG 1.0,
+        // which has no OCCDS generation and infers nothing.
+        MetadataProvider none = factory.forAdam("adamig", "1-0",
+                List.of("standards/adam/adamig-1-0"), List.of(), List.of()).orElseThrow();
+        assertNull(none.getRequiredVariablesForStructure(OCCDS_TOKEN, List.of(ADVERSE_EVENT)));
         MetadataProvider one = factory.forAdam("adamig", "1-3",
                 List.of("standards/adam/adamig-1-3"), List.of(), List.of()).orElseThrow();
-        assertNull(one.getRequiredVariablesForStructure(OCCDS_TOKEN, List.of(ADVERSE_EVENT)));
+        List<String> inferredAe = one.getRequiredVariablesForStructure(OCCDS_TOKEN,
+                List.of(ADVERSE_EVENT));
+        assertTrue(inferredAe != null && inferredAe.contains("--DECOD")
+                && !inferredAe.contains("CMTRT"), () -> "D10: " + inferredAe);
 
         MetadataProvider two = factory.forAdam("adamig", "1-3",
                 List.of("standards/adam/adam-occds-1-1", "standards/adam/adamig-1-3"), List.of(),

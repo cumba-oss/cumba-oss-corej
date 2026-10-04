@@ -12,6 +12,7 @@ import java.util.Set;
 
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
+import net.cumba.corej.core.metadata.LibraryTemplates;
 import net.cumba.corej.core.metadata.MetadataKeys;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.ICodeList;
@@ -43,6 +44,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class MapBackedLibraryMetadataProvider implements MetadataProvider
 {
+
+    /** The ADSL rows serve the D9 tier of every other dataset's variable read. */
+    private static final String ADSL = "ADSL";
 
     private final String standard;
 
@@ -331,12 +335,26 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
     @Override
     public Map<String, String> getVariableMetadata(String aDomain, String aVariable)
     {
-        Map<String, Map<String, String>> dm = variableMetadata.get(up(aDomain));
-        if (dm == null)
+        // PLAN-library-template-label-resolution (review H5): the scenario rows go through the SAME
+        // template leg the product provider uses — a sidecar lists TRTxxP, as the store does, and
+        // the scenario's TRT01P resolves to it with its label substituted; a stem row (*SDT)
+        // governs
+        // every column that ends in it; the ADSL rows serve an ADSL variable copied into another
+        // dataset (D9). Without this, every template scenario would confirm itself against a row
+        // spelled like the data and never execute the leg it claims to test.
+        Map<String, Map<String, String>> own = variableMetadata.get(up(aDomain));
+        Map<String, Map<String, String>> adsl = ADSL.equals(up(aDomain)) ? null
+                : variableMetadata.get(ADSL);
+        List<LibraryTemplates.Entry> every = new ArrayList<>();
+        for (Map<String, Map<String, String>> rows : variableMetadata.values())
         {
-            return Map.of();
+            every.addAll(LibraryTemplates.entriesOf(rows));
         }
-        return dm.getOrDefault(up(aVariable), Map.of());
+        return LibraryTemplates.resolve(aVariable,
+                new LibraryTemplates.Candidates(
+                        own == null ? List.of() : LibraryTemplates.entriesOf(own),
+                        adsl == null ? List.of() : LibraryTemplates.entriesOf(adsl),
+                        LibraryTemplates.stemsOf(every)));
     }
 
 
@@ -994,8 +1012,13 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         public Builder variableMetadata(String aDomain, String aVariable,
                 Map<String, String> aMetadata)
         {
+            // The row keeps its own spelling as `name` when the sidecar gives none — as every
+            // metadata-store row carries one — so a template written as the key (TRTxxP) keeps its
+            // index markers for the template leg; the lookup key is case-folded as before.
+            Map<String, String> row = new LinkedHashMap<>(aMetadata);
+            row.putIfAbsent("name", aVariable);
             variableMetadata.computeIfAbsent(up(aDomain), _ -> new HashMap<>()).put(up(aVariable),
-                    new LinkedHashMap<>(aMetadata));
+                    row);
             return this;
         }
 

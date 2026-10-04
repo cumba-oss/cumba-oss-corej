@@ -433,6 +433,19 @@ class MetadataProviderDecoratorDelegationGuardTest
                     Why.NOT_YET_ENFORCED, "not delegated by DefineXmlMetadataProvider"),
             inheritable("getStandardVariablesDetailed(IDataTable, DatasetResolver)",
                     Why.NOT_YET_ENFORCED, "not delegated by DefineXmlMetadataProvider"),
+            inheritable(
+                    "getVariableMetadata(IDataTable, List<String>, List<String>, String, String)",
+                    Why.SELF_DELEGATING,
+                    "the interface body is `return getVariableMetadata(aDomain, aVariable)`, the "
+                            + "whole answer for a domain-keyed provider; DefineXmlMetadataProvider "
+                            + "is only ever the DEFINE provider and inherits it; "
+                            + "CompanionDomainsProvider DOES delegate it, pinned by "
+                            + "CompanionDomainsProviderStructureDelegationTest"),
+            inheritable("getColumnOrderForStructures(List<String>, List<String>, String)",
+                    Why.SELF_DELEGATING,
+                    "the interface body is `return getColumnOrder(aDomain)`; "
+                            + "CompanionDomainsProvider DOES delegate it, pinned by "
+                            + "CompanionDomainsProviderStructureDelegationTest"),
             inheritable("getIgAbsentVariableMetadata(IDataTable, DatasetResolver, String, String)",
                     Why.NOT_YET_ENFORCED,
                     "not delegated by DefineXmlMetadataProvider, deliberately: it is only ever the "

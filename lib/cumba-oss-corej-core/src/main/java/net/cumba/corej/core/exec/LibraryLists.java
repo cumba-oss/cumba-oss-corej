@@ -266,7 +266,27 @@ public final class LibraryLists
     {
         MetadataProvider provider = ListFunctionSupport.library(run, GET_COLUMN_ORDER_FROM_LIBRARY);
         IDataTable table = run.ctx().getTable();
-        List<String> order = provider.getColumnOrder(CdiscDomainResolver.cdiscDomainOf(table));
+        String domain = CdiscDomainResolver.cdiscDomainOf(table);
+        List<String> order;
+        if (provider.supportsStructureKeyedVariables())
+        {
+            // PLAN-library-template-label-resolution: an ADaM product's order is keyed by data
+            // structure, found through the SAME derivation the scope gate and the core-variable
+            // walks use; the published templates are substituted against the dataset's columns
+            // exactly as required_variables() substitutes them.
+            MetadataProvider define = run.ctx().getDefineProvider();
+            List<String> structures = AdamStructureContext.detectAll(table.getMetaData(), define,
+                    provider);
+            List<String> subclasses = AdamStructureContext.detectSubclasses(table.getMetaData(),
+                    define, provider, structures);
+            List<String> published = provider.getColumnOrderForStructures(structures, subclasses,
+                    domain);
+            order = published == null ? List.of() : substituteNamingTemplates(published, table);
+        }
+        else
+        {
+            order = provider.getColumnOrder(domain);
+        }
         if (order == null || order.isEmpty())
         {
             LOGGER.log(System.Logger.Level.INFO,

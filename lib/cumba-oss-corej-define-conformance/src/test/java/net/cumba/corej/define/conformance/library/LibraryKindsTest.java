@@ -241,6 +241,40 @@ class LibraryKindsTest
 
 
     @Test
+    void datasetLabelSkipsATemplatedPublishedLabel()
+    {
+        // PLAN-library-template-label-resolution §4.4: a combined SUPPQUAL file is published with
+        // "Supplemental Qualifiers for [domain name]" — a template, which a sponsor fills and no
+        // single parent domain can substitute. Comparing it would flag every combined SUPPQUAL.
+        // Control first: the stub really serves the template, so without the guard the labels
+        // below differ and the check would fire.
+        assertEquals(java.util.Optional.of("Supplemental Qualifiers for [domain name]"),
+                new StubLibraryProvider().datasetLabel("SDTMIG", "3.4", "SUPPQUAL"));
+        RuleResult result = evaluate(rule("ItemGroupDef", """
+                kind: "library_dataset_label_matches"
+                """),
+                context("""
+                        <def:Standards>
+                          <def:Standard OID="STD.IG" Name="SDTMIG" Type="IG" Version="3.4"/>
+                        </def:Standards>
+                        <ItemGroupDef OID="IG.SUPPQUAL" Name="SUPPQUAL" def:StandardOID="STD.IG">
+                          <Description>
+                            <TranslatedText xml:lang="en">Supplemental Qualifiers for All Domains</TranslatedText>
+                          </Description>
+                        </ItemGroupDef>
+                        <ItemGroupDef OID="IG.AE" Name="AE" Domain="AE" def:StandardOID="STD.IG">
+                          <Description>
+                            <TranslatedText xml:lang="en">Adverse Event Log</TranslatedText>
+                          </Description>
+                        </ItemGroupDef>
+                        """));
+        assertEquals(ExecutionStatus.EXECUTED, result.status());
+        assertEquals(List.of("Adverse Event Log vs Adverse Events"), values(result),
+                "the templated SUPPQUAL label is skipped; a plain mismatch beside it still fires");
+    }
+
+
+    @Test
     void datasetLabelIsOutOfReachForNonIgStandardsAndBlankNames()
     // The stub library DOES know ADaMIG 1.3 / DM and gives it a different label, so a finding
     // here would mean the SDTMIG/SENDIG family filter had stopped filtering.

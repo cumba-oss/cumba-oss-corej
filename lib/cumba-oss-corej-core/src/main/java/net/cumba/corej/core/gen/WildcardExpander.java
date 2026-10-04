@@ -291,6 +291,37 @@ public final class WildcardExpander
 
 
     /**
+     * The index-template view of a <b>published</b> variable name
+     * ({@code PLAN-library-template-label-resolution}): the compiled pattern and its marker list
+     * for a name that carries at least one of the engine's index markers ({@code xx}, {@code zz},
+     * {@code y}, {@code w}) and no {@code *} root — {@code TRTxxP}, {@code PxxSw},
+     * {@code AVALCATy}. {@code null} for a literal name ({@code TRTSDT}), for a stem ({@code *SDT}:
+     * a stem resolves by suffix, never by pattern — see
+     * {@code net.cumba.corej.core.metadata.LibraryTemplates}) and for a mixed-case literal whose
+     * lowercase runs are no marker ({@code TRTyyP}, which {@link WildcardPattern#parse} quotes).
+     *
+     * <p>
+     * It is the SAME compiled pattern {@link #scopeVariableWildcardPattern} gives the scope gate
+     * and {@code LibraryLists.substituteNamingTemplates} the core-variable walks, so the three
+     * cannot disagree about which concrete columns a template names.
+     * </p>
+     *
+     * @param publishedName
+     *            a name as the CDISC Library publishes it
+     * @return the template, or {@code null} when the name is not an index template
+     */
+    public static @Nullable WildcardPattern indexTemplate(String publishedName)
+    {
+        if (publishedName == null || publishedName.startsWith("*") || !isWildcard(publishedName))
+        {
+            return null;
+        }
+        WildcardPattern pat = WildcardPattern.parse(publishedName);
+        return pat.groupNames().isEmpty() ? null : pat;
+    }
+
+
+    /**
      * Expands a template rule into concrete rules by matching wildcard names against the dataset's
      * column names.
      *
@@ -972,8 +1003,48 @@ public final class WildcardExpander
      * product of that walk.
      * </p>
      */
-    record WildcardPattern(String original, Pattern regex, List<String> groupNames)
+    public record WildcardPattern(String original, Pattern regex, List<String> groupNames)
     {
+
+        public WildcardPattern
+        {
+            groupNames = List.copyOf(groupNames); // immutable: the accessor exposes nothing mutable
+        }
+
+
+        /**
+         * The index markers a concrete column name binds under this pattern, marker → captured
+         * digits in group order ({@code TRT01P} under {@code TRTxxP} → {@code {xx=01}};
+         * {@code P02S1SDT} under {@code PxxSwSDT} → {@code {xx=02, w=1}}), or {@code null} when the
+         * column does not match. A marker that appears twice in one name must capture the same
+         * digits both times, else the column does not match it (there is no such published name
+         * today; the rule keeps the substitution well defined).
+         *
+         * @param column
+         *            the dataset's column name, matched case-insensitively
+         * @return the captured markers, or {@code null} when the column does not match
+         */
+        public @Nullable Map<String, String> capture(String column)
+        {
+            Matcher m = regex.matcher(column);
+            if (!m.matches() || m.groupCount() != groupNames.size())
+            {
+                return null;
+            }
+            Map<String, String> out = new LinkedHashMap<>();
+            for (int i = 0; i < groupNames.size(); i++)
+            {
+                String marker = groupNames.get(i);
+                String value = m.group(i + 1);
+                String previous = out.putIfAbsent(marker, value);
+                if (previous != null && !previous.equals(value))
+                {
+                    return null;
+                }
+            }
+            return out;
+        }
+
 
         /**
          * Parses a wildcard name into a regex pattern.

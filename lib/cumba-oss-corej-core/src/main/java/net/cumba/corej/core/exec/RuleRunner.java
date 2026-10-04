@@ -2141,8 +2141,9 @@ public final class RuleRunner
                             colMeta.getName());
                     if (carryOver && libProvider != null && domainName != null)
                     {
-                        putCarryOverIfUndefined(perColVars, libProvider, ctx.getTable(),
-                                ctx.getDatasetResolver(), domainName, colMeta.getName());
+                        putCarryOverIfUndefined(perColVars, libProvider, ctx.getDefineProvider(),
+                                ctx.getTable(), ctx.getDatasetResolver(), domainName,
+                                colMeta.getName());
                     }
                     EvaluationContext colCtx = ctx.toBuilder().variables(perColVars).build();
                     if (net.cumba.corej.core.expr.eval.NativeExprEvaluator
@@ -2516,8 +2517,22 @@ public final class RuleRunner
             @Nullable IDataTable libraryTable, DatasetResolver libraryResolver, String domainName,
             String variableName)
     {
+        putCarryOverIfUndefined(target, libProvider, null, libraryTable, libraryResolver,
+                domainName, variableName);
+    }
+
+
+    /**
+     * As above, with the run's DEFINE provider for the structure-keyed tier of the library read
+     * ({@code PLAN-library-template-label-resolution}: an ADSL variable copied into a BDS dataset
+     * now resolves through its ADSL row, so it is no carry-over candidate any more — D9).
+     */
+    static void putCarryOverIfUndefined(Map<String, Object> target, MetadataProvider libProvider,
+            @Nullable MetadataProvider defineProvider, @Nullable IDataTable libraryTable,
+            DatasetResolver libraryResolver, String domainName, String variableName)
+    {
         Map<String, String> libMeta = ExprCompiler.libraryVariableMetadata(libProvider,
-                libraryTable, libraryResolver, domainName, variableName);
+                defineProvider, libraryTable, libraryResolver, domainName, variableName);
         if (libMeta == null || libMeta.isEmpty())
         {
             putCarryOverCandidates(target, libProvider, variableName);
@@ -2607,7 +2622,7 @@ public final class RuleRunner
             // split member resolved to nothing. The DEFINE block below deliberately keeps
             // domainName: a Define-XML declares one ItemGroupDef per dataset FILE.
             Map<String, String> libMeta = ExprCompiler.libraryVariableMetadata(libProvider,
-                    libraryTable, libraryResolver, domainName, colMeta.getName());
+                    defProvider, libraryTable, libraryResolver, domainName, colMeta.getName());
             if (libMeta != null && !libMeta.isEmpty())
             {
                 for (Map.Entry<String, String> e : libMeta.entrySet())
@@ -2690,7 +2705,8 @@ public final class RuleRunner
             // Output_Variables PROJECTION: CDISC-CG0010 reports library_variable_role, so leaving
             // it member-keyed would ship a rule that FIRES with an empty reported cell.
             Map<String, String> libMeta = ExprCompiler.libraryVariableMetadata(libProvider,
-                    ctx.getTable(), ctx.getDatasetResolver(), domainName, colMeta.getName());
+                    defProvider, ctx.getTable(), ctx.getDatasetResolver(), domainName,
+                    colMeta.getName());
             if (libMeta != null)
             {
                 for (Map.Entry<String, String> e : libMeta.entrySet())
@@ -2863,7 +2879,8 @@ public final class RuleRunner
         {
             // Fix #373 — LIBRARY half only; the DEFINE block above keeps the member name.
             Map<String, String> libMeta = ExprCompiler.libraryVariableMetadata(libProvider,
-                    ctx.getTable(), ctx.getDatasetResolver(), domainName, varName);
+                    ctx.getDefineProvider(), ctx.getTable(), ctx.getDatasetResolver(), domainName,
+                    varName);
             if (libMeta != null)
             {
                 for (Map.Entry<String, String> e : libMeta.entrySet())

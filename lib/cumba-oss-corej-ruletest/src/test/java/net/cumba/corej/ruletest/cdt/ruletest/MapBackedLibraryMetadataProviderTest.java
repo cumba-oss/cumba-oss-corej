@@ -345,9 +345,15 @@ class MapBackedLibraryMetadataProviderTest
             MapBackedLibraryMetadataProvider p = MapBackedLibraryMetadataProvider.builder()
                     .variableMetadata("ae", "aesev", meta).build();
 
+            // PLAN-library-template-label-resolution: the read goes through LibraryTemplates, so
+            // the row carries its own spelling as `name` and, for a literal, its label as the
+            // template (label_template); the declared attributes are served as given.
+            Map<String, String> expected = new LinkedHashMap<>(meta);
+            expected.put("name", "aesev");
+            expected.put("label_template", "Adverse Event Severity");
             Map<String, String> got = p.getVariableMetadata("AE", "AESEV");
-            assertEquals(meta, got);
-            assertEquals(meta, p.getVariableMetadata("ae", "Aesev"));
+            assertEquals(expected, got);
+            assertEquals(expected, p.getVariableMetadata("ae", "Aesev"));
             // Other variable on the same (existing) domain returns empty.
             assertEquals(Map.of(), p.getVariableMetadata("AE", "UNKNOWN"));
             // Other domain entirely returns empty.

@@ -33,7 +33,10 @@ public final class StubLibraryProvider implements LibraryProvider
     private static final Map<String, String> DATASET_LABELS = Map.of(SDTMIG_34 + "|DM",
             "Demographics", SDTMIG_34 + "|AE", "Adverse Events", SDTMIG_34 + "|SUPPDM",
             "Supplemental Qualifiers for DM", SENDIG_31 + "|DM", "Demographics", ADAMIG_13 + "|DM",
-            "Demographics (ADaM spelling)");
+            "Demographics (ADaM spelling)",
+            // SDTMIG's combined SUPPQUAL dataset is published with a template label (measured
+            // in the store across SDTMIG 3.2-3.4 and TIG 1.0: "[domain name]" / "[DOMAIN NAME]")
+            SDTMIG_34 + "|SUPPQUAL", "Supplemental Qualifiers for [domain name]");
 
     /** Variable labels, keyed "<standard>|<version>|<dataset>|<variable>". */
     private static final Map<String, String> VARIABLE_LABELS = Map.of(SDTMIG_34 + "|DM|SEX", "Sex",

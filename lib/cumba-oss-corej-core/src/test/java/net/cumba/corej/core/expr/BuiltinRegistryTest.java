@@ -89,8 +89,10 @@ class BuiltinRegistryTest
         // carry-over lane: distinct (label, simpleDatatype) pairs from the companion product) = 64.
         // ⛔ There is deliberately NO library_variable_format_values — the CDISC Library publishes
         // no format and no length, measured across variables_metadata.pkl and
-        // standards_details.pkl.
-        assertEquals(64, BuiltinRegistry.names().size());
+        // standards_details.pkl. + library_variable_label_template
+        // (PLAN-library-template-label-resolution D6 (b): the resolved label template a finding
+        // shows as the expected form) = 65.
+        assertEquals(65, BuiltinRegistry.names().size());
     }
 
 }

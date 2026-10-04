@@ -181,11 +181,32 @@ class StageACheckerTest
 
 
     @Test
+    void matchesLabelTemplateTakesTwoStrings()
+    {
+        // PLAN-library-template-label-resolution D6 (b): the matcher is name-free and typed — the
+        // label and the template are STRING parameters, so a number there is the armed
+        // PARAMETER_TYPE finding (a load error), and the accessor pair type-checks.
+        assertEquals(List.of(), kinds(check("not matches_label_template(var_label(\"DATA\"),"
+                + " label_template(\"LIBRARY\"))")));
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("matches_label_template(var_label(\"DATA\"), 5)")));
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("matches_label_template(1, label_template(\"LIBRARY\"))")));
+        assertEquals(Primitive.BOOLEAN, root(check("matches_label_template(\"a\", \"b\")")).type());
+    }
+
+
+    @Test
     void anIllegalAttributeLevelPairIsAStageAError()
     {
-        // var_role has no DATA cell (the 78-cell table, 50 legal).
+        // var_role has no DATA cell (the 81-cell table, 51 legal).
         assertEquals(List.of(StageAErrorKind.METADATA_LEVEL_ILLEGAL),
                 kinds(check("var_role(\"DATA\") == \"IDENTIFIER\"")));
+        // label_template is LIBRARY only (PLAN-library-template-label-resolution): the template is
+        // a product of the Library's naming conventions, which no Define-XML publishes.
+        assertEquals(List.of(StageAErrorKind.METADATA_LEVEL_ILLEGAL),
+                kinds(check("not empty(label_template(\"DATA\"))")));
+        assertEquals(List.of(), kinds(check("not empty(label_template(\"LIBRARY\"))")));
         // unknown level spelling
         assertEquals(List.of(StageAErrorKind.METADATA_LEVEL_ILLEGAL),
                 kinds(check("var_label(\"BOGUS\") == \"L\"")));

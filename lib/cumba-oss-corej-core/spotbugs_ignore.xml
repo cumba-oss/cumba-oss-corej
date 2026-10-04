@@ -486,6 +486,15 @@
         <Bug pattern="NP_BOOLEAN_RETURN_NULL" />
     </Match>
 
+    <Match>
+        <!--
+            Verified false positive (SpotBugs 4.10). LibraryValidator's resolver returns
+            lookup.keySet() from availableDatasets(), and `lookup` is built as
+            Map.copyOf(mutable) precisely so it can be published to rule threads unsynchronised
+            (the comment at the freeze says so). An immutable map's keySet is an immutable view,
+            so nothing mutable is exposed; SpotBugs simply does not track immutability through
+            Map.copyOf.
+        -->
     <!--
         ⛔⛔ REGEX MATCHER — the dots below are ESCAPED, so this line contains no
         contiguous "net.cumba.corej.core" and a package rename done by literal
@@ -497,18 +506,22 @@
         the bug, printed it, and the build still exited 0 — and CI caught it one push
         later. Grep the escaped form: git grep -n 'net\\.cumba\\.'
     -->
-    <Match>
-        <!--
-            Verified false positive (SpotBugs 4.10). LibraryValidator's resolver returns
-            lookup.keySet() from availableDatasets(), and `lookup` is built as
-            Map.copyOf(mutable) precisely so it can be published to rule threads unsynchronised
-            (the comment at the freeze says so). An immutable map's keySet is an immutable view,
-            so nothing mutable is exposed; SpotBugs simply does not track immutability through
-            Map.copyOf.
-        -->
         <Class name="~net\.cumba\.corej\.core\.report\.LibraryValidator\$\d+" />
         <Method name="availableDatasets" />
         <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+
+    <!-- WildcardExpander$WildcardPattern (public since PLAN-library-template-label-resolution,
+         for LibraryTemplates): the compact constructor stores List.copyOf of the marker list, so
+         the record accessor returns an immutable list and the constructor keeps no caller-owned
+         reference — same shape as VlmMatch above. -->
+    <Match>
+        <Class name="net.cumba.corej.core.gen.WildcardExpander$WildcardPattern" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.corej.core.gen.WildcardExpander$WildcardPattern" />
+        <Bug pattern="EI_EXPOSE_REP2" />
     </Match>
 
 </FindBugsFilter>

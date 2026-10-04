@@ -58,6 +58,9 @@ public final class MetadataOperandMapping
     /** E9 — the library-level paired code/decode match operand and accessor share this name. */
     private static final String LIBRARY_CODE_PAIR_MATCHES = "library_variable_code_pair_matches";
 
+    /** The resolved library label template operand ({@code label_template(…, "LIBRARY")}). */
+    private static final String LIBRARY_LABEL_TEMPLATE = "library_variable_label_template";
+
     /**
      * VLM operand -&gt; per-record {@code vlm_*} accessor function name. These Define-XML
      * value-level operands have no {@code var_*} cousin (the applicable codelist / type / length is
@@ -138,6 +141,16 @@ public final class MetadataOperandMapping
         {
             Expr nameRef = new Expr.Ref(VARIABLE_NAME, OperandKind.BUILTIN);
             return new Expr.Call(DEFINE_VARIABLE_DECODE_MATCHES, List.of(nameRef), Map.of());
+        }
+        // PLAN-library-template-label-resolution D6 (b): the resolved label template is read by
+        // label_template(variable_name, "LIBRARY") — an accessor with no var_ prefix, so the
+        // library_variable_ prefix rule below (var_<suffix>) cannot derive it.
+        if (LIBRARY_LABEL_TEMPLATE.equals(operand))
+        {
+            Expr nameRef = new Expr.Ref(VARIABLE_NAME, OperandKind.BUILTIN);
+            Expr levelLit = new Expr.Lit(Expr.LitKind.STRING, MetadataLevel.LIBRARY.name());
+            return new Expr.Call(MetadataAttribute.LABEL_TEMPLATE.functionName(),
+                    List.of(nameRef, levelLit), Map.of());
         }
         Prefix match = null;
         for (Prefix p : PREFIXES)
@@ -461,8 +474,11 @@ public final class MetadataOperandMapping
      */
     private static String operandSuffix(String functionName)
     {
+        // An accessor without the var_/ds_ prefix (label_template) IS its own suffix: stripping
+        // three characters of it produced an operand no classifier could place, and a rule
+        // reading it silently stopped being a per-variable check.
         String suffix = functionName.startsWith("var_") ? functionName.substring(4)
-                : functionName.substring(3);
+                : functionName.startsWith("ds_") ? functionName.substring(3) : functionName;
         return "type".equals(suffix) ? "data_type" : suffix;
     }
 

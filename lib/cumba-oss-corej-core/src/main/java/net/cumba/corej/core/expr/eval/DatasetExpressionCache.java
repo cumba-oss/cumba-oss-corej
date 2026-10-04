@@ -53,13 +53,16 @@ public final class DatasetExpressionCache
             // VALUE (19)
             "lower", "lowcase", "upper", "upcase", "len", "length", "abs", "round", "floor", "ceil",
             "trim", "year", "month", "day", "concat", "coalesce", "substring", "prefix", "suffix",
-            // BOOLEAN (23)
+            // BOOLEAN (24)
             "between", "empty", "is_missing", "non_empty", "present", "is_present", "contains",
             "does_not_contain", "starts_with", "ends_with", "equalsIgnoreCase", "prefix_matches",
             "suffix_matches", "imatches", "is_integer", "is_not_integer", "invalid_duration",
             "is_valid_duration", "is_valid_date", "is_complete_date", "is_partial_date",
             "is_incomplete_date", "invalid_date", "is_complete_date_part",
-            "is_not_complete_date_part");
+            "is_not_complete_date_part",
+            // PLAN-library-template-label-resolution (review L2): reads only its two argument
+            // Vectors — the label and the template — like `contains`.
+            "matches_label_template");
 
     private DatasetExpressionCache()
     {

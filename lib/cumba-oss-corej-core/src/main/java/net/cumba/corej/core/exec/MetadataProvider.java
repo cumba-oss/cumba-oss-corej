@@ -440,6 +440,69 @@ public interface MetadataProvider
 
 
     /**
+     * {@code PLAN-library-template-label-resolution} — the <b>structure-keyed</b> variable read,
+     * the first tier of the LIBRARY-level read ({@code ExprCompiler.libraryVariableMetadata}) when
+     * {@link #supportsStructureKeyedVariables()} holds. An ADaM product's variable model is keyed
+     * by data structure, and only a dataset literally named {@code ADSL} ever reached it through
+     * the domain-keyed {@link #getVariableMetadata(String, String)}: measured on two pilot ADaM
+     * studies, 0 of 460 non-ADSL columns resolved. The caller derives {@code aStructures} and
+     * {@code aSubclasses} with {@code AdamStructureContext} — the one derivation the
+     * {@code Scope.Data_Structures} gate and the core-variable walks use, Define-XML declaration
+     * first — so the read can never answer against a structure the rule was not admitted under.
+     *
+     * <p>
+     * A product-backed implementation resolves, in order: the column's literal name in the
+     * governing structure, an index template there ({@code TRT01P} → {@code TRTxxP}, label
+     * substituted), the ADSL structure's literal / template (D9 — an ADSL variable copied into a
+     * BDS or OCCDS dataset), then the longest published {@code *}-stem; see
+     * {@code net.cumba.corej.core.metadata.LibraryTemplates} for what each answer carries. The
+     * default delegates to the domain-keyed read, which is the whole answer for a domain-keyed
+     * (SDTM) provider; a decorator over a structure-keyed provider must forward it.
+     * </p>
+     *
+     * @param aTable
+     *            the dataset whose variable is read
+     * @param aStructures
+     *            the dataset's structure tokens, most specific first (never empty)
+     * @param aSubclasses
+     *            the dataset's resolved subclass tokens, most specific first; may be empty
+     * @param aDomain
+     *            the dataset's member name — the key the domain-keyed fallback uses
+     * @param aVariable
+     *            the variable name
+     * @return the resolved attributes, or an empty map — never {@code null}
+     */
+    default Map<String, String> getVariableMetadata(IDataTable aTable, List<String> aStructures,
+            List<String> aSubclasses, String aDomain, String aVariable)
+    {
+        return getVariableMetadata(aDomain, aVariable);
+    }
+
+
+    /**
+     * {@code PLAN-library-template-label-resolution} — the structure-keyed counterpart of
+     * {@link #getColumnOrder(String)} for {@code get_column_order_from_library()}: the published
+     * variable names of the dataset's governing structure(s), in the standard's own order, names
+     * <b>as published</b> (a template such as {@code TRTxxP} verbatim — the caller substitutes it
+     * against the dataset's columns, as the core-variable walks do). The default delegates to the
+     * domain-keyed order; a decorator over a structure-keyed provider must forward it.
+     *
+     * @param aStructures
+     *            the dataset's structure tokens, most specific first
+     * @param aSubclasses
+     *            the dataset's resolved subclass tokens, most specific first; may be empty
+     * @param aDomain
+     *            the dataset's CDISC domain / member name — the key of the domain-keyed fallback
+     * @return the ordered published names, or an empty list when no structure resolves
+     */
+    default List<String> getColumnOrderForStructures(List<String> aStructures,
+            List<String> aSubclasses, String aDomain)
+    {
+        return getColumnOrder(aDomain);
+    }
+
+
+    /**
      * {@code PLAN-library-var-custom-domains} — the <b>last</b> tier of the LIBRARY-level variable
      * read ({@code ExprCompiler.libraryVariableMetadata}): asked only after every
      * {@link #getVariableMetadata} tier (member name, CDISC domain, bare domain) answered nothing,

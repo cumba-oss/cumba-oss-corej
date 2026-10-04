@@ -235,6 +235,29 @@ public final class CompanionDomainsProvider implements MetadataProvider
 
 
     /**
+     * Delegated to {@code base}: production wraps the ADaM run provider, whose structure-keyed read
+     * is the LIBRARY read's first tier ({@code PLAN-library-template-label-resolution}); the
+     * interface default would route to the domain-keyed read and silently lose every non-ADSL
+     * answer. Pinned by {@code CompanionDomainsProviderStructureDelegationTest}.
+     */
+    @Override
+    public Map<String, String> getVariableMetadata(IDataTable aTable, List<String> aStructures,
+            List<String> aSubclasses, String aDomain, String aVariable)
+    {
+        return base.getVariableMetadata(aTable, aStructures, aSubclasses, aDomain, aVariable);
+    }
+
+
+    /** Delegated to {@code base}, for the same reason as the structure-keyed variable read. */
+    @Override
+    public List<String> getColumnOrderForStructures(List<String> aStructures,
+            List<String> aSubclasses, String aDomain)
+    {
+        return base.getColumnOrderForStructures(aStructures, aSubclasses, aDomain);
+    }
+
+
+    /**
      * Delegated to {@code base}, as {@link #getVariableMetadata} is. Production wraps only an
      * ADaM-family run, whose base answers {@code {}} here, so the SDTM companion is never consulted
      * for a variable read ({@code PLAN-library-var-custom-domains} S4).

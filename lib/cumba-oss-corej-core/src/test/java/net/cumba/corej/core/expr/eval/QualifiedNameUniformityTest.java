@@ -402,6 +402,10 @@ class QualifiedNameUniformityTest
             var_label | name | N | V:var_label("@S", "DATA")
             var_label | level | - | static level
             var_label | dataset | N | V:var_label("#S", "DATA"@DS)
+            label_template | name | N | X:provider — LIBRARY level only; the name is a string literal or varname()
+            label_template | level | - | static level
+            matches_label_template | label | N | B:matches_label_template(@S, "a")
+            matches_label_template | template | N | B:matches_label_template("a", @S)
             var_type | name | N | V:var_type("@S", "DATA")
             var_type | level | - | static level
             var_type | dataset | N | V:var_type("#S", "DATA"@DS)
@@ -768,19 +772,21 @@ class QualifiedNameUniformityTest
     @Test
     void populationIsPinned()
     {
-        assertEquals(164, FunctionRegistry.all().size(), "registered descriptors");
-        assertEquals(281,
+        // +1 descriptor / +2 parameters / +1 accessor since PLAN-library-template-label-resolution
+        // (matches_label_template(label, template) and label_template(…, "LIBRARY")).
+        assertEquals(165, FunctionRegistry.all().size(), "registered descriptors");
+        assertEquals(283,
                 FunctionRegistry.all().stream().mapToInt(d -> d.parameters().size()).sum(),
                 "declared parameters");
-        assertEquals(26, MetadataAttribute.values().length, "metadata accessors");
+        assertEquals(27, MetadataAttribute.values().length, "metadata accessors");
         assertEquals(Set.of("date", "date_part", "num", "time", "time_part"),
                 new TreeSet<>(ExprCompiler.comparisonMarkers()), "comparison markers");
         assertEquals(14, Expr.BinOp.values().length, "operators");
         List<Row> rows = rows();
         long probed = rows.stream().filter(Row::probed).count();
         long nameClass = rows.stream().filter(Row::name).count();
-        assertEquals(252, nameClass, "name-bearing parameters in the hand table");
-        assertEquals(205, probed, "probed parameters in the hand table");
+        assertEquals(255, nameClass, "name-bearing parameters in the hand table");
+        assertEquals(207, probed, "probed parameters in the hand table");
         // T2 r1 L2: every unprobed name-bearing row states one of the three admitted reasons.
         List<String> unprobed = new ArrayList<>();
         for (Row r : rows)
@@ -793,10 +799,10 @@ class QualifiedNameUniformityTest
                 unprobed.add(r.id());
             }
         }
-        assertEquals(47, unprobed.size(), "unprobed name-bearing rows: " + unprobed);
+        assertEquals(48, unprobed.size(), "unprobed name-bearing rows: " + unprobed);
         // T2 r2 L5: the non-name class is pinned too — a row that flips to '-' to dodge a probe
         // moves this count.
-        assertEquals(135, rows.stream().filter(r -> !r.name()).count(), "non-name rows");
+        assertEquals(136, rows.stream().filter(r -> !r.name()).count(), "non-name rows");
     }
 
     // ------------------------------------------------------------------
@@ -1720,6 +1726,6 @@ class QualifiedNameUniformityTest
             }
         }
         assertEquals(List.of(), invalid);
-        assertEquals(205, probed);
+        assertEquals(207, probed);
     }
 }

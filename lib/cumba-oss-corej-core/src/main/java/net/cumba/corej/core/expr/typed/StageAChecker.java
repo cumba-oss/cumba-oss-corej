@@ -1288,7 +1288,10 @@ public final class StageAChecker
     }
 
 
-    /** §1.1: the {@code (attribute, metadata-level)} legality table — 78 cells, 50 legal. */
+    /**
+     * §1.1: the {@code (attribute, metadata-level)} legality table — 81 cells, 51 legal (27
+     * {@code MetadataAttribute} constants × 3 since {@code label_template}, LIBRARY only).
+     */
     private void metadataLevel(MetadataAttribute attr, Expr levelArg)
     {
         if (!(levelArg instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.STRING)

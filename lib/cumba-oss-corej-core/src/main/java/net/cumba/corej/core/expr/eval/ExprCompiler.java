@@ -18,6 +18,7 @@ import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import net.cumba.corej.core.exec.AdamStructureContext;
 import net.cumba.corej.core.exec.ArithmeticSemantics;
 import net.cumba.corej.core.exec.BindingValue;
 import net.cumba.corej.core.exec.DatasetIdentity;
@@ -6393,8 +6394,8 @@ public final class ExprCompiler
                 return null;
             }
             meta = level == MetadataLevel.LIBRARY
-                    ? libraryVariableMetadata(provider, ctx.getTable(), ctx.getDatasetResolver(),
-                            domain, name)
+                    ? libraryVariableMetadata(provider, ctx.getDefineProvider(), ctx.getTable(),
+                            ctx.getDatasetResolver(), domain, name)
                     : provider.getVariableMetadata(domain, name);
             // F-corej-ct-02 (define-ct plan P1): a variable WITH a bound library codelist whose
             // extensibility did not resolve must not read as absent — `null == false` is false, so
@@ -6486,6 +6487,42 @@ public final class ExprCompiler
     public static Map<String, String> libraryVariableMetadata(MetadataProvider provider,
             @Nullable IDataTable table, DatasetResolver resolver, String member, String variable)
     {
+        return libraryVariableMetadata(provider, null, table, resolver, member, variable);
+    }
+
+
+    /**
+     * As
+     * {@link #libraryVariableMetadata(MetadataProvider, IDataTable, DatasetResolver, String, String)},
+     * with the run's DEFINE provider so <b>tier 0</b> — the structure-keyed read of
+     * {@code PLAN-library-template-label-resolution} — detects the dataset's ADaM structures the
+     * way the {@code Scope.Data_Structures} gate does ({@link AdamStructureContext}: the Define-XML
+     * declaration first, then the library's, then the column heuristic). Tier 0 runs only for a
+     * structure-keyed provider ({@link MetadataProvider#supportsStructureKeyedVariables()}) with
+     * the dataset in hand, and it is FIRST: for an ADaM run the member name reaches the library
+     * only when the dataset is named after a structure, so tiers 1–4 are what tier 0 falls back to,
+     * never what pre-empts it.
+     *
+     * @param define
+     *            the run's DEFINE provider, or {@code null} when the run has none
+     */
+    public static Map<String, String> libraryVariableMetadata(MetadataProvider provider,
+            @Nullable MetadataProvider define, @Nullable IDataTable table, DatasetResolver resolver,
+            String member, String variable)
+    {
+        if (table != null && provider.supportsStructureKeyedVariables())
+        {
+            DataTableMeta meta = table.getMetaData();
+            List<String> structures = AdamStructureContext.detectAll(meta, define, provider);
+            List<String> subclasses = AdamStructureContext.detectSubclasses(meta, define, provider,
+                    structures);
+            Map<String, String> byStructure = provider.getVariableMetadata(table, structures,
+                    subclasses, member, variable);
+            if (byStructure != null && !byStructure.isEmpty())
+            {
+                return byStructure; // tier 0 — the structure-keyed read
+            }
+        }
         Map<String, String> byMember = provider.getVariableMetadata(member, variable);
         if (byMember != null && !byMember.isEmpty())
         {

@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import lombok.CustomLog;
 import net.cumba.corej.core.metadata.store.StoredDataStructure;
@@ -132,8 +135,7 @@ public final class DeclaredAdamProducts
         if (out.isEmpty())
         {
             String igKey = MetadataProductKeys.standardsKey(aStandardName, aStandardVersion);
-            out = List.of(
-                    new MetadataLibraryProvider.DeclaredAdamProduct(igKey, aFetcher.fetch(igKey)));
+            out.add(new MetadataLibraryProvider.DeclaredAdamProduct(igKey, aFetcher.fetch(igKey)));
         }
         else
         {
@@ -143,8 +145,102 @@ public final class DeclaredAdamProducts
                     out.size(), out.stream()
                             .map(MetadataLibraryProvider.DeclaredAdamProduct::cacheKey).toList());
         }
+        inferOccdsProduct(out, aFetcher);
         validateDeclaredStructures(out);
         return List.copyOf(out);
+    }
+
+    /**
+     * {@code PLAN-library-template-label-resolution} D10 — the OCCDS product of an ADaMIG's own
+     * generation: OCCDS 1.0 belongs to ADaMIG 1.1, OCCDS 1.1 to ADaMIG 1.2 and 1.3. ADaMIG 1.0 has
+     * no OCCDS generation, and a TIG ADaM leg carries its own occurrence structure.
+     */
+    static final Map<String, String> OCCDS_BY_ADAMIG_VERSION = Map.of(//
+            "1-1", "standards/adam/adam-occds-1-0", //
+            "1-2", "standards/adam/adam-occds-1-1", //
+            "1-3", "standards/adam/adam-occds-1-1");
+
+    private static final String ADAMIG_PREFIX = "adamig-";
+
+    /**
+     * <b>D10 (owner, 2026-10-03): infer the OCCDS product from the ADaMIG version; an explicit
+     * declaration wins.</b> Both pilot ADaM studies declare only ADaMIG 1.1, which publishes no
+     * occurrence structure, so {@code ADAE} resolved against nothing — no required variables, no
+     * labels, no types — although that IG's generation has OCCDS 1.0. When no declared product
+     * publishes an {@code OCCURRENCE DATA STRUCTURE} (a declared {@code adam-occds-*} or
+     * {@code adam-adae-1-0} is the user's explicit choice and is left alone), the first declared
+     * ADaMIG's generation names the OCCDS product, which is appended at the <b>lowest</b>
+     * precedence and announced at INFO — so report provenance
+     * ({@link MetadataLibraryProvider#declaredStructureKeyedProducts()}) names it and a user who
+     * wants another one declares it with {@code -mp}. Nothing is inferred for ADaMIG 1.0 or for a
+     * TIG leg, and that is said at INFO too. An inferred product the source cannot deliver is a
+     * WARNING and no inference — never a degraded run: the user declared nothing that failed.
+     */
+    private static void inferOccdsProduct(
+            List<MetadataLibraryProvider.DeclaredAdamProduct> aDeclared,
+            AdamProductFetcher aFetcher)
+    {
+        for (MetadataLibraryProvider.DeclaredAdamProduct declared : aDeclared)
+        {
+            for (StoredDataStructure ds : declared.product().dataStructures())
+            {
+                if (AdamDataStructureDetector.OCCDS
+                        .equals(MetadataLibraryProvider.structureTokenOf(declared.cacheKey(), ds)))
+                {
+                    return; // an explicit OCCDS-publishing product wins
+                }
+            }
+        }
+        Optional<String> tigLeg = aDeclared.stream()
+                .map(MetadataLibraryProvider.DeclaredAdamProduct::cacheKey)
+                .filter(MetadataProductKeys::isTigAdamLeg).findFirst();
+        if (tigLeg.isPresent())
+        {
+            LOGGER.log(System.Logger.Level.INFO,
+                    "No OCCDS product inferred for {0}: a TIG ADaM leg carries its own "
+                            + "occurrence structure (D10).",
+                    tigLeg.get());
+            return;
+        }
+        Optional<String> adamig = aDeclared.stream()
+                .map(MetadataLibraryProvider.DeclaredAdamProduct::cacheKey).filter(key ->
+                {
+                    String id = MetadataProductKeys.adamProductIdOf(key);
+                    return id != null && id.startsWith(ADAMIG_PREFIX);
+                }).findFirst();
+        if (adamig.isEmpty())
+        {
+            return; // no ADaMIG declared (an OCCDS-less supplement alone): nothing to infer from
+        }
+        String source = adamig.get();
+        String version = Objects.requireNonNull(MetadataProductKeys.adamProductIdOf(source))
+                .substring(ADAMIG_PREFIX.length());
+        String occdsKey = OCCDS_BY_ADAMIG_VERSION.get(version);
+        if (occdsKey == null)
+        {
+            LOGGER.log(System.Logger.Level.INFO,
+                    "No OCCDS product inferred for {0}: ADaMIG {1} has no OCCDS generation (D10); "
+                            + "declare one with -mp to resolve occurrence datasets.",
+                    source, version);
+            return;
+        }
+        try
+        {
+            StoredProduct occds = aFetcher.fetch(occdsKey);
+            aDeclared.add(new MetadataLibraryProvider.DeclaredAdamProduct(occdsKey, occds));
+            LOGGER.log(System.Logger.Level.INFO,
+                    "OCCDS metadata product inferred from {0}: {1} appended at lowest precedence "
+                            + "(D10: the OCCDS of the ADaMIG''s own generation); declare an OCCDS "
+                            + "product with -mp to override.",
+                    source, occdsKey);
+        }
+        catch (IOException e)
+        {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "OCCDS metadata product {0}, inferred from {1}, is not available ({2}); "
+                            + "occurrence datasets resolve against no structure.",
+                    occdsKey, source, e.getMessage());
+        }
     }
 
 

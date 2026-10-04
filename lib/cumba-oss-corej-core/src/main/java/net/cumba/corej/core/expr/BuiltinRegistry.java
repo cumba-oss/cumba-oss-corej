@@ -66,6 +66,11 @@ public final class BuiltinRegistry
             // the library provider. Mirrors the Python library-metadata builder columns.
             "library_variable_codelist_coded_values", "library_variable_codelist_coded_codes",
             "library_variable_codelist_extensible",
+            // PLAN-library-template-label-resolution D6 (b): the resolved library label template
+            // (label_template(varname(), "LIBRARY")), so a finding can show the expected form.
+            // Mapped explicitly by MetadataOperandMapping (the accessor has no var_ prefix);
+            // populated by the library provider's label_template key.
+            "library_variable_label_template",
             // Plan 2 R11 — the SDTM carry-over lane. NAME-keyed (not domain-keyed) distinct
             // published values from the COMPANION product, each a distinct
             // (label, simpleDatatype) pair. Absent when the name is published nowhere, which is

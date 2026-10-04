@@ -1107,6 +1107,33 @@ public final class Primitives
 
 
     /**
+     * {@code matches_label_template(label, template)} —
+     * {@code PLAN-library-template-label-resolution} D6 (b): per row, whether the label conforms to
+     * the resolved library label template
+     * ({@link net.cumba.corej.core.metadata.LibraryTemplates#matches}). A genuine
+     * {@code MissingValue} in <b>either</b> operand answers {@code false} — the substring limb's
+     * contract (D13 / R2-20), so a column without a template is judged by the rule's own
+     * {@code not empty(label_template(…))} guard, never by this function. A blank cell is a present
+     * {@code ""} (D34 #3) and is matched as text.
+     */
+    public static BitSet matchesLabelTemplate(Vector labels, Vector templates, int rowCount)
+    {
+        return scan(labels, rowCount, (dv, r) ->
+        {
+            TypedValue template = templates.value(r);
+            if (TypedValue.missingIdentityOf(dv) != null || template.missing() != null)
+            {
+                return false;
+            }
+            Object raw = java.util.Objects.requireNonNull(template.resolved());
+            String label = ScalarSemantics.isMissing(dv) ? "" : dv.getValueAsString();
+            return net.cumba.corej.core.metadata.LibraryTemplates.matches(label,
+                    String.valueOf(raw));
+        });
+    }
+
+
+    /**
      * {@code starts_with} with a per-row needle: fires where the cell starts with the row's target.
      */
     public static BitSet startsWith(Vector v, Vector targets, int rowCount)

@@ -680,6 +680,17 @@ public final class BuiltinFunctions implements FunctionProvider
         bool(fns, "equalsIgnoreCase", List.of(p("a"), p("b")), (run, args) -> Primitives
                 .equality(args.get(0), args.get(1), run.rowCount(), false, true, false, false));
 
+        // -- BOOLEAN label template (PLAN-library-template-label-resolution, D6 (b)) ----------
+        // matches_label_template(label, template): the label conforms to the resolved library
+        // label template (label_template("LIBRARY")) — fixed text exactly, `...` any text, a
+        // {phrase} somewhere in the label, `Imput.` ≡ `Imputation`. Two STRING parameters (stage A
+        // PARAMETER_TYPE: a non-string argument is a load error); a missing operand ⇒ false, as
+        // contains. Pure: it reads only its two argument Vectors (DatasetExpressionCache).
+        bool(fns, "matches_label_template",
+                List.of(p("label", Primitive.STRING), p("template", Primitive.STRING)),
+                (run, args) -> Primitives.matchesLabelTemplate(args.get(0), args.get(1),
+                        run.rowCount()));
+
         // -- BOOLEAN affix regex (anchored full-match) -----------------------
         // prefix_matches(x, /re/[, n]) / suffix_matches(x, /re/[, n]): anchored full-match on the
         // whole operand, or — when the optional n (raised from a (not_)(prefix|suffix)_

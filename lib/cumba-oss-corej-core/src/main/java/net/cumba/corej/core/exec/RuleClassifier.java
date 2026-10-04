@@ -1130,8 +1130,10 @@ public final class RuleClassifier
      */
     private static String suffixOf(String functionName)
     {
+        // An accessor without the var_/ds_ prefix (label_template) is its own suffix — the same
+        // rule as MetadataOperandMapping.operandSuffix, which reverseToOperand applies first.
         String suffix = functionName.startsWith("var_") ? functionName.substring(4)
-                : functionName.substring(3);
+                : functionName.startsWith("ds_") ? functionName.substring(3) : functionName;
         return "type".equals(suffix) ? "data_type" : suffix;
     }
 

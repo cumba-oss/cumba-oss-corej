@@ -34,6 +34,18 @@ public enum MetadataAttribute
     // -- variable scope --------------------------------------------------------
     VAR_NAME("var_name", Scope.VARIABLE, "name", Normalization.RAW, DATA, DEFINE, LIBRARY),
     VAR_LABEL("var_label", Scope.VARIABLE, "label", Normalization.RAW, DATA, DEFINE, LIBRARY),
+    /**
+     * {@code label_template([x,] "LIBRARY")} — {@code PLAN-library-template-label-resolution} D6
+     * (b): the variable's resolved library label <b>template</b>, in the grammar of
+     * {@code matches_label_template}. For a literal published name it is the label itself; for an
+     * index template ({@code TRTxxP}) the label with the column's digits substituted, plus a
+     * trailing {@code " ..."} when the name carries {@code y} or {@code zz} (the IG's descriptive
+     * tail, D8); for a {@code *}-stem the published phrase ({@code {Start Date}}). Absent — the
+     * accessor answers a missing — for a column the Library does not know, a column spelled like a
+     * template ({@code TRTXXP}) and a label the provider could not resolve. LIBRARY only: the
+     * template is a product of the Library's naming conventions, which no Define-XML publishes.
+     */
+    LABEL_TEMPLATE("label_template", Scope.VARIABLE, "label_template", Normalization.RAW, LIBRARY),
     VAR_TYPE("var_type", Scope.VARIABLE, "simpleDatatype", Normalization.TYPE, DATA, DEFINE, LIBRARY),
     VAR_LENGTH("var_length", Scope.VARIABLE, "length", Normalization.NUMERIC, DATA, DEFINE, LIBRARY),
     VAR_FORMAT("var_format", Scope.VARIABLE, "format", Normalization.RAW, DATA, DEFINE),
