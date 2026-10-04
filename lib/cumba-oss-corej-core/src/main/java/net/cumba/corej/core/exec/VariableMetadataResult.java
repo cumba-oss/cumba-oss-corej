@@ -36,8 +36,19 @@ public final class VariableMetadataResult
      */
     private final Map<String, String> variableToValue;
 
+    /** The attribute this map carries ({@code label}, {@code length}, …), or null when unknown. */
+    private final @Nullable String metadataField;
+
     public VariableMetadataResult(Map<String, String> variableToValue)
     {
+        this(variableToValue, null);
+    }
+
+
+    public VariableMetadataResult(Map<String, String> variableToValue,
+            @Nullable String metadataField)
+    {
+        this.metadataField = metadataField;
         Map<String, String> byName = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         if (variableToValue != null)
         {
@@ -54,6 +65,19 @@ public final class VariableMetadataResult
     public @Nullable String getForVariable(@Nullable String variableName)
     {
         return variableName == null ? null : variableToValue.get(variableName);
+    }
+
+
+    /**
+     * The reported value for a variable this map does not carry
+     * ({@code PLAN-output-variable-null-key-provenance} §2.1): the typed default of the attribute
+     * the map was built for — {@code MissingValue.MIS} for {@code length}, {@code ""} for the
+     * string attributes — through the one type source, {@link OutputEntryKind}.
+     */
+    public String defaultValue()
+    {
+        return OutputEntryKind.of("variable_" + (metadataField == null ? "label" : metadataField))
+                .defaultValue();
     }
 
 
@@ -78,7 +102,7 @@ public final class VariableMetadataResult
     {
         if (resolver == null || domainName == null)
         {
-            return new VariableMetadataResult(Map.of());
+            return new VariableMetadataResult(Map.of(), metadataField);
         }
 
         // Wildcard domain: search all available datasets for each variable
@@ -90,7 +114,7 @@ public final class VariableMetadataResult
         net.cumba.datatable.IDataTable table = resolver.resolve(domainName);
         if (table == null)
         {
-            return new VariableMetadataResult(Map.of());
+            return new VariableMetadataResult(Map.of(), metadataField);
         }
         return buildFromTable(table, metadataField);
     }
@@ -113,7 +137,7 @@ public final class VariableMetadataResult
     {
         if (!(resolver instanceof DatasetResolver.WithInventory inventory))
         {
-            return new VariableMetadataResult(Map.of());
+            return new VariableMetadataResult(Map.of(), metadataField);
         }
         List<String> ordered = new ArrayList<>(inventory.availableDatasets());
         ordered.sort(
@@ -147,7 +171,7 @@ public final class VariableMetadataResult
                 }
             }
         }
-        return new VariableMetadataResult(result);
+        return new VariableMetadataResult(result, metadataField);
     }
 
 
@@ -167,7 +191,7 @@ public final class VariableMetadataResult
                 result.put(varName, value);
             }
         }
-        return new VariableMetadataResult(result);
+        return new VariableMetadataResult(result, metadataField);
     }
 
 

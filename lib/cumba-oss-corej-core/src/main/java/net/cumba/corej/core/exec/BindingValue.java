@@ -6,8 +6,11 @@ import net.cumba.corej.core.expr.eval.ConstVector;
 import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.NativeExprEvaluator;
 import net.cumba.corej.core.expr.eval.Vector;
+import net.cumba.corej.core.expr.typed.ExprType;
 import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.values.DataValueType;
+import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -70,6 +73,13 @@ public final class BindingValue
 
     private final BindingProgram program;
 
+    /**
+     * The binding's static type (stage A, {@code StageAChecker.bindingTypes}) — the type source of
+     * {@link #reportedHandOver} when a missing's carrier lost it; {@code null} when the caller had
+     * none (a test constructing the value directly).
+     */
+    private final @Nullable ExprType staticType;
+
     private @Nullable Map<String, Object> memoVariables;
 
     private @Nullable IDataTable memoTable;
@@ -94,8 +104,15 @@ public final class BindingValue
      */
     public BindingValue(CompiledBinding aBinding)
     {
+        this(aBinding, null);
+    }
+
+
+    public BindingValue(CompiledBinding aBinding, @Nullable ExprType aStaticType)
+    {
         binding = aBinding;
         program = NativeExprEvaluator.bindingProgram(aBinding.expression());
+        staticType = aStaticType;
     }
 
 
@@ -201,6 +218,71 @@ public final class BindingValue
             return v;
         }
         return firstValue(v, ctx.rowCount());
+    }
+
+
+    /**
+     * The form a <b>finding</b> reports ({@code PLAN-output-variable-null-key-provenance} §2.1 /
+     * H3): exactly {@link #handOver}, except that a missing value is never {@code null} — it is the
+     * binding's typed default absence value, decided by the type the binding evaluated to:
+     * {@code ""} for a string, the {@link MissingValue} the value carries ({@code MIS} for a
+     * function result that answered nothing) for every other type. A per-row binding is still its
+     * {@link Vector} (the caller renders the finding's row). {@code handOver} itself keeps
+     * answering {@code null} for a missing: it is the <em>evaluation</em> accessor, and a verdict
+     * must not move because the report learnt to spell absence.
+     *
+     * @param ctx
+     *            the reading context
+     * @return the hand-over value or the typed default; never {@code null}
+     */
+    public Object reportedHandOver(EvaluationContext ctx)
+    {
+        Object value = handOver(ctx);
+        if (value != null)
+        {
+            return value;
+        }
+        Vector v = vector(EvalRun.fullRange(ctx));
+        int rows = ctx.rowCount();
+        DataValueType type = v.declaredType();
+        MissingValue identity = null;
+        if (!(v instanceof ConstVector) && rows > 0)
+        {
+            net.cumba.corej.core.expr.eval.TypedValue first = v.value(0);
+            type = first.type();
+            identity = first.missing();
+        }
+        if (type == DataValueType.STRING)
+        {
+            return "";
+        }
+        if (type == DataValueType.LONG || type == DataValueType.DOUBLE
+                || type == DataValueType.BOOLEAN)
+        {
+            // The carrier kept the evaluated type: the MissingValue it carries (MIS for a function
+            // result that answered nothing).
+            return identity != null ? identity : MissingValue.MIS;
+        }
+        // An untyped missing (ConstVector.of(null) — a metadata accessor with no cell, a function
+        // that answered nothing): the binding's STATIC type decides (H3).
+        if (staticType == ExprType.Primitive.STRING)
+        {
+            return "";
+        }
+        if (staticType == ExprType.Primitive.NUMBER || staticType == ExprType.Primitive.BOOLEAN
+                || staticType instanceof ExprType.ListOf)
+        {
+            return MissingValue.MIS;
+        }
+        // ⚑ OPEN (PLAN-output-variable-null-key-provenance, reported 2026-10-04): neither the
+        // evaluation nor stage A knows this binding's type — a registered function with no
+        // ElementTable result type (dataset_class_from_library) or a read typed by a column the
+        // walk cannot see (read_value(TSVAL, domain=TS, …)) that answered nothing. The plan
+        // names no default to invent for an entry without a type source, so the spelling the
+        // record path has always printed for it is KEPT ("" — a preservation, not a decision)
+        // until the owner rules; a MissingValue here would print "." for a value that may well
+        // be a string.
+        return "";
     }
 
 

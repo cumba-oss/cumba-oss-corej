@@ -17,8 +17,9 @@ import org.junit.jupiter.api.Test;
 /**
  * Phase 3 of {@code plans/done/PLAN-auto-output-variables.md} (EC-37): the finding projection
  * resolves dataset-scope virtual variables from the evaluation context, the row identity falls back
- * to the ADaM {@code ASEQ} (D5b), and a <em>derived</em> effective entry that resolves to nothing
- * is omitted rather than inserted as a null-valued key (authored entries keep the historical null).
+ * to the ADaM {@code ASEQ} (D5b), and an effective entry that resolves to nothing — derived or
+ * authored alike since {@code PLAN-output-variable-null-key-provenance} — carries its typed default
+ * ({@code ""} for a char entry), never a null-valued key and never a provenance-dependent omission.
  */
 class RuleRunnerProjectionCompletenessTest
 {
@@ -82,21 +83,23 @@ class RuleRunnerProjectionCompletenessTest
 
 
     @Test
-    void unresolvableDatasetScopeNameIsOmitted()
+    void unresolvableDatasetScopeNameIsOmittedAndAResolvableOneCarriesItsDefault()
     {
-        // dataset_structure exists only at the DEFINE/LIBRARY levels; with no providers the
-        // read resolves to nothing and the key is omitted (never a null-valued entry).
+        // dataset_structure exists only at the DEFINE/LIBRARY levels; with no providers the read
+        // resolves to nothing and the key carries the char default "" (never null;
+        // PLAN-output-variable-null-key-provenance §2.1 case 3 — it was omitted before). A name
+        // that is no dataset-scope attribute at all is unresolvable and omitted.
         IDataTable table = MockTable.of().name("AE").col("AETERM", "Headache").build();
         EvaluationContext ctx = EvaluationContext.builder().table(table).build();
 
         Map<String, String> values = RuleRunner.extractOutputValues(table, ctx,
                 List.of("define_dataset_structure", "dataset_bogus"), 0);
 
-        assertFalse(values.containsKey("define_dataset_structure"));
+        assertEquals("", values.get("define_dataset_structure"), values.toString());
         assertFalse(values.containsKey("dataset_bogus"));
     }
 
-    // ------------------------------------------------------------- omit-don't-null (3.3)
+    // ------------------------------------------------------------- typed default (§2.1)
 
 
     private static Rule loadVmcRule(String... outputVars) throws Exception
@@ -124,10 +127,11 @@ class RuleRunnerProjectionCompletenessTest
 
 
     @Test
-    void derivedEntryResolvingToNothingIsOmitted() throws Exception
+    void derivedEntryResolvingToNothingCarriesItsTypedDefault() throws Exception
     {
-        // variable_format is DERIVED (the Check reads it); the column declares no format, so
-        // the derived key is dropped from the finding instead of landing as a null value.
+        // variable_format is DERIVED (the Check reads it); the column declares no format, so the
+        // derived key carries the char default "" — PLAN-output-variable-null-key-provenance §2.1
+        // (it was omitted before: EC-37 phase 3.3's omit-don't-null applied to derived entries).
         Rule rule = loadVmcRule("variable_name");
         assertTrue(rule.getEffectiveOutputVariables().contains("variable_format"),
                 "precondition: variable_format must be a derived effective entry");
@@ -140,16 +144,16 @@ class RuleRunnerProjectionCompletenessTest
                 "status=" + result.getStatus() + " violations=" + result.getViolations());
         Map<String, String> values = result.getViolations().get(0).getValues();
         assertEquals("AETERM", values.get("variable_name"));
-        assertFalse(values.containsKey("variable_format"),
-                "derived null-resolving entry must be omitted");
+        assertEquals("", values.get("variable_format"),
+                "a derived char entry resolving to nothing carries \"\": " + values);
     }
 
 
     @Test
-    void authoredEntryResolvingToNothingKeepsTheNullKey() throws Exception
+    void authoredEntryResolvingToNothingCarriesTheSameTypedDefault() throws Exception
     {
-        // The same rule with variable_format AUTHORED keeps today's null-valued key, so no
-        // existing fixture flips (Phase 3.3 applies to derived entries only).
+        // The same rule with variable_format AUTHORED projects identically — one policy, no
+        // provenance split (D1); the historical null-valued key is gone.
         Rule rule = loadVmcRule("variable_name", "variable_format");
         IDataTable table = MockTable.of().name("AE").col("AETERM", "X", "Y").build();
 
@@ -158,8 +162,7 @@ class RuleRunnerProjectionCompletenessTest
         assertEquals(1, result.getViolationCount(),
                 "status=" + result.getStatus() + " violations=" + result.getViolations());
         Map<String, String> values = result.getViolations().get(0).getValues();
-        assertTrue(values.containsKey("variable_format"),
-                "authored entry keeps the historical null-valued key");
-        assertNull(values.get("variable_format"));
+        assertEquals("", values.get("variable_format"),
+                "an authored char entry resolving to nothing carries \"\", never null: " + values);
     }
 }

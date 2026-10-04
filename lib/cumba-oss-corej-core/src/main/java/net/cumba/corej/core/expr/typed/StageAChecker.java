@@ -780,6 +780,32 @@ public final class StageAChecker
 
 
     /**
+     * The static type of every binding of {@code rule}, in declaration order — what the walk types
+     * each binding expression as ({@code var_label(…)} a string, {@code max(AVAL)} a number,
+     * {@code var_exists(…)} a boolean, a codelist read a list). The <b>type source</b> of a
+     * finding's default for a binding that evaluated to a missing whose carrier lost the type
+     * ({@code BindingValue.reportedHandOver}, {@code PLAN-output-variable-null-key-provenance} H3:
+     * {@code model/Binding} has no type of its own). Empty when the walk fails — the finding then
+     * has no type source and says so.
+     */
+    public static Map<String, ExprType> bindingTypes(Rule rule)
+    {
+        try
+        {
+            StageAChecker checker = new StageAChecker(rule);
+            checker.scanBindings(rule.bindingOrder());
+            return Map.copyOf(checker.bindingTypes);
+        }
+        catch (RuntimeException ex)
+        {
+            LOGGER.log(System.Logger.Level.TRACE, "binding typing failed for {0}: {1}",
+                    rule.getId(), ex.toString());
+            return Map.of();
+        }
+    }
+
+
+    /**
      * Phase 5 entry point: the typed tree of one expression of {@code rule}, with the bind-time
      * {@code columnLevels} refinement applied (D39a — an absent column is a dataset-level
      * constant). (Phase 6's D106d refinement of a {@code $}-binding's level from the run's dataset
@@ -834,33 +860,45 @@ public final class StageAChecker
         {
             level = Level.DATASET;
         }
-        ExprType type;
+        return new TypedExpr(r, builtinOperandType(name), level, List.of());
+    }
+
+
+    /**
+     * The static type of a bare builtin operand name — what the Check sees for
+     * {@code variable_length}, {@code library_variable_codelist_coded_values},
+     * {@code define_variable_has_comment}, … — and therefore the <b>one type source</b> of a
+     * finding's typed default for an entry that resolves to no value ({@code OutputEntryKind},
+     * {@code PLAN-output-variable-null-key-provenance} §2.1 / H3): {@link #NUMERIC_BUILTINS} are
+     * numbers, a {@code _values} / {@code _codes} suffix is a list of strings, an
+     * {@code _extensible} / {@code _has_} / {@code _matches} / {@code _conforms} name is a boolean,
+     * {@code variable_name} a column reference, {@code variable_value} unknown (the cell's own
+     * type), everything else a string.
+     */
+    public static ExprType builtinOperandType(String name)
+    {
         if ("variable_name".equals(name))
         {
-            type = Primitive.COLUMN_REFERENCE;
+            return Primitive.COLUMN_REFERENCE;
         }
-        else if ("variable_value".equals(name))
+        if ("variable_value".equals(name))
         {
-            type = Unknown.UNKNOWN;
+            return Unknown.UNKNOWN;
         }
-        else if (NUMERIC_BUILTINS.contains(name))
+        if (NUMERIC_BUILTINS.contains(name))
         {
-            type = Primitive.NUMBER;
+            return Primitive.NUMBER;
         }
-        else if (name.endsWith("_values") || name.endsWith("_codes"))
+        if (name.endsWith("_values") || name.endsWith("_codes"))
         {
-            type = new ListOf(Primitive.STRING);
+            return new ListOf(Primitive.STRING);
         }
-        else if (name.endsWith("_extensible") || name.contains("_has_") || name.endsWith("_matches")
+        if (name.endsWith("_extensible") || name.contains("_has_") || name.endsWith("_matches")
                 || name.endsWith("_conforms"))
         {
-            type = Primitive.BOOLEAN;
+            return Primitive.BOOLEAN;
         }
-        else
-        {
-            type = Primitive.STRING;
-        }
-        return new TypedExpr(r, type, level, List.of());
+        return Primitive.STRING;
     }
 
     // ------------------------------------------------------------------

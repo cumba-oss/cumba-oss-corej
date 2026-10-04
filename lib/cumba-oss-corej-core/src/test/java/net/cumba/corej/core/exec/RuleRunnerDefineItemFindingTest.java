@@ -96,6 +96,10 @@ class RuleRunnerDefineItemFindingTest
         expectedAaa.put("define_variable_codelist_coded_codes", "[C1, C2]");
         expectedAaa.put("record_count", "1");
         expectedAaa.put("$flag", "true");
+        // STUDYID is derived from the binding's var_exists read: a PRESENT column on a finding
+        // that has no row keeps its key with the deferred null (PLAN-output-variable-null-key-
+        // provenance H2 — the state PLAN-finding-values-record-level-only turns name-only).
+        expectedAaa.put("STUDYID", null);
         assertEquals(expectedAaa, aaa.getValues());
 
         Violation ccc = r.getViolations().get(1);

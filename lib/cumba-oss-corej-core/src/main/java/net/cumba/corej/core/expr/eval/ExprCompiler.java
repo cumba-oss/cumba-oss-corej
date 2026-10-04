@@ -6253,6 +6253,41 @@ public final class ExprCompiler
      */
     public static @Nullable String datasetScopeOperandValue(EvaluationContext ctx, String operand)
     {
+        MetadataAttribute attr = datasetScopeAttribute(operand);
+        if (attr == null)
+        {
+            return null;
+        }
+        return attr.normalize(readMetadata(ctx, attr, datasetScopeLevel(operand), null));
+    }
+
+
+    /**
+     * Whether {@code operand} is a dataset-scope operand name that names a supported attribute /
+     * level cell ({@code dataset_label}, {@code library_dataset_class},
+     * {@code define_dataset_name}, …) — one {@link #datasetScopeOperandValue} can resolve, so a
+     * {@code null} from it means "resolves to nothing here" rather than "not a dataset virtual",
+     * and a finding reports the typed default for it
+     * ({@code PLAN-output-variable-null-key-provenance} §2.1 case 3) instead of omitting it.
+     */
+    public static boolean isDatasetScopeOperand(String operand)
+    {
+        return datasetScopeAttribute(operand) != null;
+    }
+
+
+    private static MetadataLevel datasetScopeLevel(String operand)
+    {
+        if (operand.startsWith("library_dataset_"))
+        {
+            return MetadataLevel.LIBRARY;
+        }
+        return operand.startsWith("define_dataset_") ? MetadataLevel.DEFINE : MetadataLevel.DATA;
+    }
+
+
+    private static @Nullable MetadataAttribute datasetScopeAttribute(String operand)
+    {
         MetadataLevel level;
         String suffix;
         if (operand.startsWith("library_dataset_"))
@@ -6281,7 +6316,7 @@ public final class ExprCompiler
         {
             return null;
         }
-        return attr.normalize(readMetadata(ctx, attr, level, null));
+        return attr;
     }
 
 

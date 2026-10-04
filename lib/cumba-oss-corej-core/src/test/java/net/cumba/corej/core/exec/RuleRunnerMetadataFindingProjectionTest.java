@@ -99,6 +99,10 @@ class RuleRunnerMetadataFindingProjectionTest
         expected.put("record_count", "2");
         expected.put("dataset_label", "Demographics");
         expected.put("$flag", "true");
+        // STUDYID is derived from the binding's var_exists read: a PRESENT column on a finding
+        // that has no row keeps its key with the deferred null (PLAN-output-variable-null-key-
+        // provenance H2 — the state PLAN-finding-values-record-level-only turns name-only).
+        expected.put("STUDYID", null);
         assertEquals(expected, v.getValues());
     }
 

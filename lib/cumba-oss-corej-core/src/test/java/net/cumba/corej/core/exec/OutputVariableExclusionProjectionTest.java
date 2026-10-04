@@ -25,10 +25,11 @@ import org.junit.jupiter.api.Test;
  * everything.
  *
  * <p>
- * Paths 2, 3 and 4 are the ones that would have inherited the null-key policy
- * ({@code putUnlessDerivedNull} keeps a null for an <em>authored</em> entry) — they are the point
- * of the ruling. Plus the Fix #15 inference fallback with a fully excluded list, which would
- * otherwise re-project what the author excluded.
+ * Paths 2, 3 and 4 are the ones that carried the historical null-key policy (an <em>authored</em>
+ * unresolved entry kept a null-valued key until {@code PLAN-output-variable-null-key-provenance}
+ * replaced it with the typed default) — they are the point of the ruling: excluded means
+ * <em>absent</em>, not defaulted. Plus the Fix #15 inference fallback with a fully excluded list,
+ * which would otherwise re-project what the author excluded.
  * </p>
  */
 class OutputVariableExclusionProjectionTest
@@ -86,9 +87,9 @@ class OutputVariableExclusionProjectionTest
     @Test
     void p2VariableMetadataProjectionIsAbsentNotNullKeyed() throws Exception
     {
-        // variable_format is DERIVED (the Check reads it) and, unresolved, would be omitted as
-        // derived; variable_label is AUTHORED-shaped in the historical null-key policy. Exclude
-        // variable_format and keep variable_name + variable_label.
+        // variable_format is DERIVED (the Check reads it) and, unresolved, would carry its typed
+        // default ""; variable_label is authored and unresolved too. Exclude variable_format and
+        // keep variable_name + variable_label.
         Rule rule = load(
                 """
                         {"Core":{"Id":"R1"},"Sensitivity":"Record",
@@ -103,16 +104,17 @@ class OutputVariableExclusionProjectionTest
 
         assertFalse(values.containsKey("variable_format"), values.toString());
         assertEquals("AETERM", values.get("variable_name"));
-        assertTrue(values.containsKey("variable_label"),
-                "retained authored sibling stays (null-keyed, the historical policy): " + values);
+        assertEquals("", values.get("variable_label"),
+                "retained authored sibling stays, with its typed default: " + values);
     }
 
 
     @Test
-    void p2ControlAuthoredUnresolvedEntryStillKeepsTheNullKey() throws Exception
+    void p2ControlAuthoredUnresolvedEntryCarriesItsTypedDefault() throws Exception
     {
-        // Without the token the same entry lands as a null-valued key — proving the absence
-        // above is the exclusion's doing and not a silent change of the null-key policy.
+        // Without the token the same entry lands with its typed default "" — proving the absence
+        // above is the exclusion's doing and not the projection policy's
+        // (PLAN-output-variable-null-key-provenance §2.1: never a null-valued key).
         Rule rule = load(
                 """
                         {"Core":{"Id":"R1"},"Sensitivity":"Record",
@@ -123,8 +125,7 @@ class OutputVariableExclusionProjectionTest
 
         Map<String, String> values = singleViolationValues(RuleRunnerCalls.execute(rule, table));
 
-        assertTrue(values.containsKey("variable_format"));
-        assertNull(values.get("variable_format"));
+        assertEquals("", values.get("variable_format"), values.toString());
     }
 
     // ------------------------------------------------------------ T-OV-P3
@@ -164,9 +165,9 @@ class OutputVariableExclusionProjectionTest
     void p4PerVariableRowProjectionIsAbsentNotNullKeyed() throws Exception
     {
         // value() per-row rule: variable_name / variable_value / variable_label are the
-        // native per-(variable,row) arms (:1884 put, :1888 putUnlessDerivedNull, :1896 put); the
-        // trailing `else` re-enters extractOutputValues for a plain column. Exclude
-        // variable_label (the putUnlessDerivedNull arm) and a plain column; keep the rest.
+        // native per-(variable,row) arms of addVariableRowViolations; the trailing `else`
+        // re-enters extractOutputValues for a plain column. Exclude variable_label and a plain
+        // column; keep the rest.
         Rule rule = load(
                 """
                         {"Core":{"Id":"R1"},"Sensitivity":"Record",

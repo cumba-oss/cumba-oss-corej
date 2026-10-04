@@ -13,8 +13,11 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import lombok.CustomLog;
+import net.cumba.corej.core.expr.MetadataOperandMapping;
 import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.expr.eval.BindingProgram;
 import net.cumba.corej.core.expr.eval.Domain;
+import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.MetadataExprScan;
 import net.cumba.corej.core.expr.eval.MetadataNormalizer;
@@ -803,9 +806,15 @@ public final class RuleRunner
                 return noProvider;
             }
             Map<String, Object> lazyVars = new LinkedHashMap<>();
+            // The bindings' static types ride along as the finding's type source for a binding
+            // that answers no value (PLAN-output-variable-null-key-provenance H3,
+            // BindingValue.reportedHandOver).
+            Map<String, net.cumba.corej.core.expr.typed.ExprType> bindingTypes = net.cumba.corej.core.expr.typed.StageAChecker
+                    .bindingTypes(rule);
             for (net.cumba.corej.core.model.CompiledBinding compiled : compiledBindings)
             {
-                lazyVars.put(compiled.name(), new BindingValue(compiled));
+                lazyVars.put(compiled.name(),
+                        new BindingValue(compiled, bindingTypes.get(compiled.name())));
             }
             variables = lazyVars;
         }
@@ -998,7 +1007,7 @@ public final class RuleRunner
             }
             try
             {
-                value.vector(net.cumba.corej.core.expr.eval.EvalRun.fullRange(ctx));
+                value.vector(EvalRun.fullRange(ctx));
             }
             catch (net.cumba.corej.core.expr.eval.UnusableProviderAnswerException unusable)
             {
@@ -2086,7 +2095,6 @@ public final class RuleRunner
             // stop after the first firing column. RECORD-sensitivity rules keep emitting one
             // finding per failing variable (Python's _generate_errors_by_target_presence).
             boolean datasetSensitivity = rule.getSensitivity() == Sensitivity.DATASET;
-            Set<String> derivedOutputVars = derivedOnlyOutputVars(rule);
             Set<String> excludedOutputVars = rule.excludedOutputVariablesOrAuthored();
             // D1 of PLAN-define-item-metadata-parity-929-1081: a
             // DEFINE_ITEM_METADATA_CHECK_AGAINST_LIBRARY rule's row universe is the define.xml
@@ -2119,7 +2127,7 @@ public final class RuleRunner
                         bindings.note(BindingOutcome.fired(varName, 1));
                         violations.add(buildDefineVariableViolation(defineIndex, varName,
                                 outputVars, libProvider, defProvider, domainName, perColVars,
-                                datasetSensitivity, ctx, derivedOutputVars, excludedOutputVars));
+                                datasetSensitivity, ctx, excludedOutputVars));
                         if (datasetSensitivity)
                         {
                             break;
@@ -2161,8 +2169,7 @@ public final class RuleRunner
                         reportJudgedStemTemplate(varMeta, judgedStem);
                         violations.add(buildVariableViolation(c, colMeta, varMeta, outputVars,
                                 isMetadataCheck, libProvider, defProvider, domainName, perColVars,
-                                datasetSensitivity, ctx, derivedOutputVars, excludedOutputVars,
-                                judgedStem));
+                                datasetSensitivity, ctx, excludedOutputVars, judgedStem));
                         if (datasetSensitivity)
                         {
                             break;
@@ -2614,12 +2621,17 @@ public final class RuleRunner
             @Nullable MetadataProvider defProvider, @Nullable String domainName,
             @Nullable IDataTable libraryTable, DatasetResolver libraryResolver)
     {
+        // PLAN-output-variable-null-key-provenance §2.1: an attribute the column does not carry is
+        // its typed default, never null ("" for a char attribute, MissingValue.MIS for a numeric
+        // one — OutputEntryKind). This map feeds the FINDING only (it is built after the verdict),
+        // so the defaults change what is reported, never what is judged.
         Map<String, Object> varMeta = new LinkedHashMap<>();
         varMeta.put(VARIABLE_NAME, colMeta.getName());
-        varMeta.put(VARIABLE_LABEL, colMeta.getLabel());
-        varMeta.put("variable_data_type", declaredDataType(colMeta));
+        varMeta.put(VARIABLE_LABEL, reportedMeta(VARIABLE_LABEL, colMeta.getLabel()));
+        varMeta.put("variable_data_type",
+                reportedMeta("variable_data_type", declaredDataType(colMeta)));
         varMeta.put("variable_length", colMeta.getLength());
-        varMeta.put("variable_format", colMeta.getDisplayFormat());
+        varMeta.put("variable_format", reportedMeta("variable_format", colMeta.getDisplayFormat()));
 
         // For metadata-check rules, inject the CDISC Library metadata (the "library" level),
         // keyed library_variable_*.
@@ -2634,7 +2646,8 @@ public final class RuleRunner
             {
                 for (Map.Entry<String, String> e : libMeta.entrySet())
                 {
-                    varMeta.put("library_variable_" + e.getKey(), e.getValue());
+                    String key = "library_variable_" + e.getKey();
+                    varMeta.put(key, reportedMeta(key, e.getValue()));
                 }
                 String simpleDatatype = libMeta.get("simpleDatatype");
                 if (simpleDatatype != null)
@@ -2661,7 +2674,8 @@ public final class RuleRunner
             {
                 for (Map.Entry<String, String> e : dfMeta.entrySet())
                 {
-                    varMeta.put("define_variable_" + e.getKey(), e.getValue());
+                    String key = "define_variable_" + e.getKey();
+                    varMeta.put(key, reportedMeta(key, e.getValue()));
                 }
                 String simpleDatatype = dfMeta.get("simpleDatatype");
                 if (simpleDatatype != null)
@@ -2698,8 +2712,9 @@ public final class RuleRunner
     {
         if (judgedStem != null)
         {
-            varMeta.put(LIBRARY_LABEL_TEMPLATE,
-                    varMeta.get("library_variable_" + LibraryTemplates.stemKey(judgedStem)));
+            Object judged = varMeta.get("library_variable_" + LibraryTemplates.stemKey(judgedStem));
+            varMeta.put(LIBRARY_LABEL_TEMPLATE, judged != null ? judged
+                    : OutputEntryKind.of(LIBRARY_LABEL_TEMPLATE).defaultValue());
         }
     }
 
@@ -2716,8 +2731,8 @@ public final class RuleRunner
             Map<String, Object> varMeta, List<String> outputVars, boolean isMetadataCheck,
             @Nullable MetadataProvider libProvider, @Nullable MetadataProvider defProvider,
             @Nullable String domainName, Map<String, Object> contextVariables,
-            boolean datasetSensitivity, EvaluationContext ctx, Set<String> derivedOutputVars,
-            Set<String> excludedOutputVars, @Nullable String judgedStem)
+            boolean datasetSensitivity, EvaluationContext ctx, Set<String> excludedOutputVars,
+            @Nullable String judgedStem)
     {
         // A variable-metadata violation is not tied to a data row. For DATASET-sensitivity rules
         // the engine's dataset-level convention is row 0 (mirrored by Python's
@@ -2750,7 +2765,8 @@ public final class RuleRunner
                 {
                     if (!e.getKey().startsWith(LibraryTemplates.STEM_TEMPLATE_KEY_PREFIX))
                     {
-                        values.put("library_variable_" + e.getKey(), e.getValue());
+                        String key = "library_variable_" + e.getKey();
+                        values.put(key, reportedMeta(key, e.getValue()));
                     }
                 }
                 if (judgedStem != null)
@@ -2775,7 +2791,8 @@ public final class RuleRunner
             {
                 for (Map.Entry<String, String> e : dfMeta.entrySet())
                 {
-                    values.put("define_variable_" + e.getKey(), e.getValue());
+                    String key = "define_variable_" + e.getKey();
+                    values.put(key, reportedMeta(key, e.getValue()));
                 }
             }
         }
@@ -2788,39 +2805,19 @@ public final class RuleRunner
                 if (varMeta.containsKey(ov))
                 {
                     Object val = varMeta.get(ov);
-                    putUnlessDerivedNull(filtered, ov, val != null ? val.toString() : null,
-                            derivedOutputVars);
+                    filtered.put(ov,
+                            val != null ? val.toString() : OutputEntryKind.of(ov).defaultValue());
                 }
                 else if (ov.startsWith("$") && contextVariables != null
                         && contextVariables.containsKey(ov))
                 {
-                    Object val = contextVariables.get(ov);
-                    if (val instanceof BindingValue compiled)
-                    {
-                        val = compiled.handOver(ctx); // W2a: as projectVariablesForColumn
-                    }
-                    // W4b (D-W4b-12): the per-variable map reports THIS variable's value, as the
-                    // verdict read it (projectVariablesForColumn) — it rendered the map's
-                    // toString ("VariableMetadataResult[3 variables]") before.
-                    if (val instanceof VariableMetadataResult vmr)
-                    {
-                        val = vmr.getForVariable(colMeta.getName());
-                    }
-                    putUnlessDerivedNull(filtered, ov, val != null ? scalarToString(val) : null,
-                            derivedOutputVars);
+                    filtered.put(ov,
+                            reportedBinding(ov, contextVariables.get(ov), colMeta.getName(), ctx));
                 }
                 else
                 {
-                    // EC-37 Phase 3: dataset-scope virtuals resolve from the context (same
-                    // sources as the ds_* accessors); anything else falls back to the values
-                    // map, where a derived entry that resolves to nothing is omitted rather
-                    // than inserted as a null-valued key (authored entries keep the historical
-                    // null so no existing fixture flips).
-                    String resolved = "record_count".equals(ov)
-                            ? Long.toString(ctx.getTable().getRowCount())
-                            : ExprCompiler.datasetScopeOperandValue(ctx, ov);
-                    putUnlessDerivedNull(filtered, ov, resolved != null ? resolved : values.get(ov),
-                            derivedOutputVars);
+                    putResolvedOrDefault(filtered, ov, values, colMeta.getName(), contextVariables,
+                            ctx, -1);
                 }
             }
             return new Violation(violationRow, filtered, null, null, Map.of(), null,
@@ -2835,38 +2832,228 @@ public final class RuleRunner
 
 
     /**
-     * EC-37 Phase 3.3 — the omit-don't-null policy, applied to <b>derived</b> effective
-     * Output_Variables only: a derived entry that resolves to nothing is dropped from the finding
-     * (matching {@code extractOutputValues}' "unresolved entries are intentionally omitted"), while
-     * an authored entry keeps today's null-valued-key behaviour so no existing fixture flips.
+     * A metadata attribute's reported value: the value, or — for none — the attribute's typed
+     * default ({@code PLAN-output-variable-null-key-provenance} §2.1 case 3, type source
+     * {@link OutputEntryKind}). Never {@code null}.
      */
-    private static void putUnlessDerivedNull(Map<String, String> out, String key,
-            @Nullable String value, Set<String> derivedOutputVars)
+    private static String reportedMeta(String key, @Nullable String value)
     {
-        if (value != null || !derivedOutputVars.contains(key))
-        {
-            out.put(key, value);
-        }
+        return value != null ? value : OutputEntryKind.of(key).defaultValue();
     }
 
 
-    /** The effective-OV entries that are derived, not authored (EC-37) — the omit-on-null set. */
-    private static Set<String> derivedOnlyOutputVars(Rule rule)
+    /**
+     * The reported value of a {@code $} entry on a per-variable path, from the per-column variable
+     * view ({@link #projectVariablesForColumn}): a binding kept as the binding (dataset-level or
+     * row-cursor) hands over its report form ({@link BindingValue#reportedHandOver}); a
+     * per-variable map ({@link VariableMetadataResult}) reports THIS variable's value, as the
+     * verdict read it (W4b, D-W4b-12), or the map's typed default; a VAR-only binding the view
+     * already handed over against the column reports its value, or — for a missing — the binding's
+     * typed default, read the same way ({@link #bindingDefaultForColumn}). Never {@code null}.
+     */
+    private static String reportedBinding(String ov, @Nullable Object projected,
+            String variableName, EvaluationContext ctx)
     {
-        List<String> effective = rule.getEffectiveOutputVariables();
-        if (effective == null)
+        Object val = projected;
+        if (val instanceof BindingValue compiled)
         {
-            return Set.of();
+            val = compiled.reportedHandOver(ctx);
         }
-        List<String> authored = rule.getOutcome() != null
-                && rule.getOutcome().getOutputVariables() != null
-                        ? rule.getOutcome().getOutputVariables()
-                        : List.of();
-        Set<String> derived = new java.util.HashSet<>(effective);
-        authored.forEach(derived::remove);
-        return derived;
+        if (val instanceof VariableMetadataResult vmr)
+        {
+            String v = vmr.getForVariable(variableName);
+            return v != null ? v : vmr.defaultValue();
+        }
+        if (val == null)
+        {
+            return bindingDefaultForColumn(ov, variableName, ctx);
+        }
+        return scalarToString(val);
     }
 
+
+    /**
+     * The typed default of a VAR-only binding that answered no value for {@code variableName}: the
+     * binding is re-read in a cursor context for the column — exactly as
+     * {@link #projectVariablesForColumn} handed it over — through
+     * {@link BindingValue#reportedHandOver}, which spells a missing by the binding's evaluated
+     * type.
+     *
+     * @throws IllegalStateException
+     *             when {@code ov} is not a compiled binding of the rule — then the finding has no
+     *             type source for its default, and inventing one is not this method's to do
+     */
+    private static String bindingDefaultForColumn(String ov, String variableName,
+            EvaluationContext ctx)
+    {
+        Object outer = ctx.getVariables().get(ov);
+        if (!(outer instanceof BindingValue compiled))
+        {
+            throw new IllegalStateException(ov + " resolved to no value and is not a compiled"
+                    + " binding of the rule — the finding has no type source for its default"
+                    + " (PLAN-output-variable-null-key-provenance §2.1)");
+        }
+        Map<String, Object> cursorVars = new LinkedHashMap<>(ctx.getVariables());
+        cursorVars.put(VARIABLE_NAME, variableName);
+        Object v = compiled.reportedHandOver(ctx.toBuilder().variables(cursorVars).build());
+        if (v instanceof VariableMetadataResult vmr)
+        {
+            String s = vmr.getForVariable(variableName);
+            return s != null ? s : vmr.defaultValue();
+        }
+        return scalarToString(v);
+    }
+
+
+    /**
+     * The {@code else} arm of the per-variable projections — an entry that is neither in the
+     * variable map nor a {@code $} the view carries — under the one policy of
+     * {@code PLAN-output-variable-null-key-provenance} §2.1, authored and derived alike:
+     * <ol>
+     * <li>the dataset-scope virtuals resolve from the context ({@code record_count},
+     * {@code dataset_*} / {@code library_dataset_*} / {@code define_dataset_*}, the same sources as
+     * the {@code ds_*} accessors — EC-37 phase 3), a resolvable one with no value as its typed
+     * default;</li>
+     * <li>the default projection's own values ({@code library_variable_*} /
+     * {@code define_variable_*} the providers answered);</li>
+     * <li><b>M3</b> — a builtin operand the map does not carry ({@code variable_size},
+     * {@code variable_max_size}, {@code define_vlm_*}, {@code variable_value_length}, the
+     * {@code *_matches} facts, a {@code library_variable_*} / {@code define_variable_*} attribute
+     * the Check never read) is <em>projected</em>, not defaulted: its accessor form is evaluated in
+     * the column's context at the finding's row ({@link #evaluateOperandAtRow}) — the value the
+     * Check reads, a missing one as its typed default;</li>
+     * <li>by kind ({@link OutputEntryKind}): {@code variable_name} is the variable; a metadata
+     * attribute with no accessor form carries its typed default; a {@code $} naming no binding of
+     * the rule is unresolvable and omitted, like an unknown column; a raw column name is
+     * <b>omitted</b> when the dataset lacks the column (§2.1 case 1 — authored or derived, so no
+     * provenance split) and, when it is present, keeps the key with the deferred {@code null}: a
+     * column-level finding has no row to read a cell from, the state
+     * {@code PLAN-finding-values-record-level-only} resolves (its V8 — the committed roster
+     * {@code nullkey/present-column-no-cell.tsv} of the corpus names every such entry).</li>
+     * </ol>
+     */
+    private static void putResolvedOrDefault(Map<String, String> out, String ov,
+            Map<String, String> defaults, String variableName, Map<String, Object> contextVariables,
+            EvaluationContext ctx, long row)
+    {
+        if ("record_count".equals(ov))
+        {
+            out.put(ov, Long.toString(ctx.getTable().getRowCount()));
+            return;
+        }
+        String resolved = ExprCompiler.datasetScopeOperandValue(ctx, ov);
+        if (resolved != null)
+        {
+            out.put(ov, resolved);
+            return;
+        }
+        if (ExprCompiler.isDatasetScopeOperand(ov))
+        {
+            out.put(ov, OutputEntryKind.of(ov).defaultValue());
+            return;
+        }
+        String known = defaults.get(ov);
+        if (known != null)
+        {
+            out.put(ov, known);
+            return;
+        }
+        OutputEntryKind kind = OutputEntryKind.of(ov);
+        if (kind == OutputEntryKind.NAME)
+        {
+            out.put(ov, variableName);
+            return;
+        }
+        if (kind == OutputEntryKind.COLUMN)
+        {
+            if (columnPresent(ctx, VARIABLE_VALUE.equals(ov) ? variableName : ov))
+            {
+                out.put(ov, null); // the deferred present-column / no-cell state (5c roster)
+            }
+            return; // an absent column: omitted (§2.1 case 1)
+        }
+        if (kind == OutputEntryKind.BINDING)
+        {
+            return; // names no binding of the rule: unresolvable, omitted
+        }
+        if (ov.startsWith("library_variable_")
+                && !LibraryAnswerability.libraryAnswerable(ctx.getLibraryProvider()))
+        {
+            // Fix #369's gate, mirrored: a LIBRARY-level fact is never read from a degraded or
+            // absent library for the report either — the Check did not read it, or the rule would
+            // have been SKIPPED before any finding.
+            out.put(ov, kind.defaultValue());
+            return;
+        }
+        Map<String, Object> vars = contextVariables != null ? contextVariables : ctx.getVariables();
+        String projected = evaluateOperandAtRow(ov, ctx.toBuilder().variables(vars).build(), row);
+        out.put(ov, projected != null ? projected : kind.defaultValue());
+    }
+
+    /** The accessor-form programs of {@link #evaluateOperandAtRow}, compiled once per operand. */
+    private static final Map<String, BindingProgram> OPERAND_PROGRAMS = new ConcurrentHashMap<>();
+
+    /**
+     * M3 of {@code PLAN-output-variable-null-key-provenance}: a builtin operand's value for the
+     * finding, read as the Check reads it — its accessor form
+     * ({@link MetadataOperandMapping#forwardOperand}: {@code variable_size} →
+     * {@code var_length(variable_name, "DATA")}, {@code variable_max_size} →
+     * {@code max_value_length(variable_name)}, {@code define_vlm_length} →
+     * {@code vlm_length(variable_name)}, …) evaluated in the column's context. A per-record fact is
+     * read at the finding's row; with no row (a column-level finding, {@code row < 0}) a
+     * row-varying fact has no cell and reports the typed default; a missing answer is the operand's
+     * typed default by its <em>static</em> type ({@link OutputEntryKind} — the accessor's missing
+     * carries no attribute type of its own). {@code null} when the operand has no accessor form.
+     */
+    private static @Nullable String evaluateOperandAtRow(String ov, EvaluationContext colCtx,
+            long row)
+    {
+        Expr forward = MetadataOperandMapping.forwardOperand(ov);
+        if (forward == null)
+        {
+            return null;
+        }
+        BindingProgram program = OPERAND_PROGRAMS.computeIfAbsent(ov,
+                _ -> net.cumba.corej.core.expr.eval.NativeExprEvaluator.bindingProgram(forward));
+        net.cumba.corej.core.expr.eval.Vector v = program.evaluate(EvalRun.fullRange(colCtx));
+        net.cumba.corej.core.expr.eval.TypedValue cell;
+        if (v instanceof net.cumba.corej.core.expr.eval.ConstVector constant)
+        {
+            cell = constant.typed();
+        }
+        else if (row >= 0 && row < colCtx.rowCount())
+        {
+            cell = v.value((int) row);
+        }
+        else
+        {
+            return OutputEntryKind.of(ov).defaultValue();
+        }
+        if (cell.isMissing())
+        {
+            return OutputEntryKind.of(ov).defaultValue();
+        }
+        Object resolved = cell.resolved();
+        if (resolved instanceof java.util.Collection<?> c)
+        {
+            return renderCollection(c);
+        }
+        return resolved instanceof Number || resolved instanceof Boolean ? scalarToString(resolved)
+                : reportedValue(cell.cell());
+    }
+
+
+    /**
+     * Whether the dataset under evaluation carries {@code name} (a SUPP-delivered qualifier too).
+     */
+    private static boolean columnPresent(EvaluationContext ctx, String name)
+    {
+        return ctx.getTable().getMetaData().getColumnIndex(name) >= 0
+                || SuppPivot.qualifierColumn(ctx, name) != null;
+    }
+
+    /** {@link OutputEntryKind#VARIABLE_VALUE}. */
+    private static final String VARIABLE_VALUE = OutputEntryKind.VARIABLE_VALUE;
 
     /**
      * Formats a define-variable attribute value for the violation output. A list-valued attribute
@@ -2902,7 +3089,7 @@ public final class RuleRunner
             List<String> outputVars, @Nullable MetadataProvider libProvider,
             @Nullable MetadataProvider defProvider, @Nullable String domainName,
             Map<String, Object> contextVariables, boolean datasetSensitivity, EvaluationContext ctx,
-            Set<String> derivedOutputVars, Set<String> excludedOutputVars)
+            Set<String> excludedOutputVars)
     {
         // Same row-key convention as buildVariableViolation: DATASET sensitivity reports row 0; a
         // RECORD-sensitivity finding keeps the define index (out of the data-row range, so the
@@ -2917,8 +3104,9 @@ public final class RuleRunner
             {
                 for (Map.Entry<String, String> e : dfMeta.entrySet())
                 {
-                    values.put("define_variable_" + e.getKey(),
-                            formatDefineOutput(e.getKey(), e.getValue()));
+                    String key = "define_variable_" + e.getKey();
+                    values.put(key,
+                            reportedMeta(key, formatDefineOutput(e.getKey(), e.getValue())));
                 }
                 String label = dfMeta.get("label");
                 if (label != null)
@@ -2937,7 +3125,8 @@ public final class RuleRunner
             {
                 for (Map.Entry<String, String> e : libMeta.entrySet())
                 {
-                    values.put("library_variable_" + e.getKey(), e.getValue());
+                    String key = "library_variable_" + e.getKey();
+                    values.put(key, reportedMeta(key, e.getValue()));
                 }
             }
         }
@@ -2952,27 +3141,13 @@ public final class RuleRunner
         {
             if (ov.startsWith("$") && contextVariables != null && contextVariables.containsKey(ov))
             {
-                Object val = contextVariables.get(ov);
-                if (val instanceof BindingValue compiled)
-                {
-                    val = compiled.handOver(ctx); // W2a: as projectVariablesForColumn
-                }
-                if (val instanceof VariableMetadataResult vmr) // W4b (D-W4b-12), as above
-                {
-                    val = vmr.getForVariable(varName);
-                }
-                putUnlessDerivedNull(filtered, ov, val != null ? scalarToString(val) : null,
-                        derivedOutputVars);
+                filtered.put(ov, reportedBinding(ov, contextVariables.get(ov), varName, ctx));
             }
             else
             {
-                // EC-37 Phase 3 — same dataset-scope resolution + omit-don't-null policy as
-                // buildVariableViolation.
-                String resolved = "record_count".equals(ov)
-                        ? Long.toString(ctx.getTable().getRowCount())
-                        : ExprCompiler.datasetScopeOperandValue(ctx, ov);
-                putUnlessDerivedNull(filtered, ov, resolved != null ? resolved : values.get(ov),
-                        derivedOutputVars);
+                // The one policy of buildVariableViolation's else arm (§2.1; M3 reads a builtin
+                // operand's accessor form against the define variable's column, present or not).
+                putResolvedOrDefault(filtered, ov, values, varName, contextVariables, ctx, -1);
             }
         }
         return new Violation(violationRow, filtered, null, null, Map.of(), null,
@@ -2990,7 +3165,7 @@ public final class RuleRunner
      */
     private static void addVariableRowViolations(ViolationSink violations, BitSet rowBits,
             DataTableColumnMeta colMeta, int colIdx, Map<String, Object> varMeta,
-            List<String> outputVars, EvaluationContext ctx, Set<String> derivedOutputVars,
+            List<String> outputVars, EvaluationContext ctx, EvaluationContext bindingCtx,
             Set<String> excludedOutputVars)
     {
         // r comes from rowBits, derived from evaluating the real table's rows, so the loop is
@@ -3014,9 +3189,9 @@ public final class RuleRunner
                     }
                     else if (VARIABLE_LABEL.equals(ov))
                     {
-                        putUnlessDerivedNull(values, ov, colMeta.getLabel(), derivedOutputVars);
+                        values.put(ov, reportedMeta(VARIABLE_LABEL, colMeta.getLabel()));
                     }
-                    else if ("variable_value".equals(ov))
+                    else if (VARIABLE_VALUE.equals(ov))
                     {
                         // Resolve actual cell value for this variable at this row
                         if (colIdx >= 0)
@@ -3028,8 +3203,24 @@ public final class RuleRunner
                     else if (varMeta.containsKey(ov))
                     {
                         Object val = varMeta.get(ov);
-                        putUnlessDerivedNull(values, ov, val != null ? val.toString() : null,
-                                derivedOutputVars);
+                        values.put(ov, val != null ? val.toString()
+                                : OutputEntryKind.of(ov).defaultValue());
+                    }
+                    else if (ov.startsWith("$") && ctx.getVariables().containsKey(ov)
+                            && ctx.getVariables().get(ov) == null)
+                    {
+                        // A VAR-only binding the per-column view handed over as a missing: its
+                        // typed default, read against the column (§2.1; the outer context still
+                        // carries the compiled binding).
+                        values.put(ov, bindingDefaultForColumn(ov, colMeta.getName(), bindingCtx));
+                    }
+                    else if (OutputEntryKind.isVariableMetadata(ov))
+                    {
+                        // A metadata attribute the map does not carry: projected through its
+                        // accessor form at this row (M3), else its typed default (§2.1 case 3).
+                        String projected = evaluateOperandAtRow(ov, ctx, r);
+                        values.put(ov, projected != null ? projected
+                                : OutputEntryKind.of(ov).defaultValue());
                     }
                     else
                     {
@@ -3121,7 +3312,6 @@ public final class RuleRunner
                         : null;
         String domainName = ctx.getDomainName();
         ViolationSink violations = new ViolationSink(ctx.getMaxErrorsPerRule());
-        Set<String> derivedOutputVars = derivedOnlyOutputVars(rule);
         Set<String> excludedOutputVars = rule.excludedOutputVariablesOrAuthored();
         boolean datasetSensitivity = rule.getSensitivity() == Sensitivity.DATASET;
         int colCount = meta.getColumnCount();
@@ -3167,7 +3357,7 @@ public final class RuleRunner
             int colIdx = meta.getColumnIndex(colMeta.getName());
             bindings.note(BindingOutcome.fired(colMeta.getName(), rowBits.cardinality()));
             addVariableRowViolations(violations, rowBits, colMeta, colIdx, varMeta, outputVars,
-                    colCtx, derivedOutputVars, excludedOutputVars);
+                    colCtx, ctx, excludedOutputVars);
             if (datasetSensitivity)
             {
                 break;
@@ -4514,19 +4704,36 @@ public final class RuleRunner
             // A $-binding's reported value
             if (varName.startsWith("$"))
             {
-                Object val = ctx.resolveVariable(varName);
+                if (!ctx.getVariables().containsKey(varName))
+                {
+                    // Names no binding of the rule: unresolvable, omitted like an unknown column
+                    // (PLAN-output-variable-null-key-provenance §2.1 — it printed an untyped "").
+                    continue;
+                }
+                Object raw = ctx.getVariables().get(varName);
+                // §2.1: the REPORT form of a binding — handOver, with a missing spelled by the
+                // binding's own type ("" / MIS) instead of null (BindingValue.reportedHandOver).
+                Object val = raw instanceof BindingValue compiled ? compiled.reportedHandOver(ctx)
+                        : raw;
+                if (val == null)
+                {
+                    throw new IllegalStateException(varName + " is bound to a null value — the"
+                            + " finding has no type source for its default"
+                            + " (PLAN-output-variable-null-key-provenance §2.1)");
+                }
                 if (val instanceof net.cumba.corej.core.expr.eval.Vector perRow)
                 {
                     // Wave 0 (PLAN-binding-expressions §5.2): a per-row COMPILED binding reports
                     // its value AT THE FINDING'S ROW. A collection renders like an operation's
                     // list; a scalar cell renders like any other cell (reportedValue: a missing
                     // prints its marker, never ""). A dataset-level compiled binding is not a
-                    // Vector here — resolveVariable hands over its raw value, which takes the
+                    // Vector here — reportedHandOver hands over its raw value, which takes the
                     // arm below and renders exactly as the operation it replaces.
                     if (row >= ctx.rowCount())
                     {
-                        // A dataset-level finding on an empty table has no row to read.
-                        values.put(varName, "");
+                        // A dataset-level finding on an empty table has no row to read: the
+                        // binding's typed default (§6.2 M4), never an untyped "".
+                        values.put(varName, OutputEntryKind.defaultValue(perRow.declaredType()));
                         continue;
                     }
                     net.cumba.corej.core.expr.eval.TypedValue cell = perRow.value((int) row);
@@ -4555,6 +4762,13 @@ public final class RuleRunner
             if (datasetFact != null)
             {
                 values.put(varName, datasetFact);
+                continue;
+            }
+            if (ExprCompiler.isDatasetScopeOperand(varName))
+            {
+                // A dataset-scope virtual that resolves to nothing carries its typed default
+                // (§2.1 case 3) — it was omitted before PLAN-output-variable-null-key-provenance.
+                values.put(varName, OutputEntryKind.of(varName).defaultValue());
                 continue;
             }
             // Handle dot-qualified references (e.g., DM.DTHDTC)
