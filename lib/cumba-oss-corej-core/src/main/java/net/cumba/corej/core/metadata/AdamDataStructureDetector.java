@@ -224,10 +224,11 @@ public final class AdamDataStructureDetector
      * <p>
      * ⚠ Not the source-domain evidence of the ADaM core-variable walks
      * ({@link net.cumba.corej.core.exec.AdamSourceDomain}, {@code PLAN-occds-source-domain-by-ig}
-     * D5): that set adds {@code SEQ} and matches only the exact two-letter-prefix-plus-suffix
-     * shape, because it names a <em>domain</em>, while this one decides whether a dataset
-     * <em>is</em> occurrence-shaped. Kept apart on purpose — widening this one would move structure
-     * detection.
+     * D5, narrowed by owner ruling MED-1 (a)): that set is {@code SEQ}, {@code TERM}, {@code TRT} —
+     * it adds {@code SEQ}, leaves {@code DECOD} out (a copied ADSL {@code DCDECOD} is no domain)
+     * and matches only the exact two-letter-prefix-plus-suffix shape, because it names a
+     * <em>domain</em>, while this one decides whether a dataset <em>is</em> occurrence-shaped. Kept
+     * apart on purpose — changing this one would move structure detection.
      * </p>
      */
     static final List<String> OCCDS_SUFFIXES = List.of("TERM", "TRT", "DECOD");

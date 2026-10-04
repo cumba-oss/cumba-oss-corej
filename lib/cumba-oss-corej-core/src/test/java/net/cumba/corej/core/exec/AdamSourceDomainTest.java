@@ -13,9 +13,10 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@code PLAN-occds-source-domain-by-ig} D1–D5: an OCCDS dataset's source domains are the
- * two-letter prefixes of the occurrence variables it carries ({@code --SEQ}, {@code --TERM},
- * {@code --TRT}, {@code --DECOD}), as ADaMIG-OCCDS §3 says, never its name; and a carried-prefix
- * name is dropped only on evidence of a different domain.
+ * two-letter prefixes of the occurrence variables it carries — its {@code --SEQ} or its topic
+ * variable ({@code --TERM}, {@code --TRT}; a {@code --DECOD} alone is no evidence, owner ruling
+ * MED-1 (a)) — as ADaMIG-OCCDS §3 says, never its name; and a carried-prefix name is dropped only
+ * on evidence of a different domain.
  */
 class AdamSourceDomainTest
 {
@@ -38,9 +39,36 @@ class AdamSourceDomainTest
                 "--SEQ alone");
         assertEquals(Set.of("AE"),
                 AdamSourceDomain.domainsOf(table("ADAE", "AETERM", "AEDECOD", "AESER")),
-                "--TERM / --DECOD without --SEQ (D2: AESEQ is then demanded)");
+                "--TERM without --SEQ (D2: AESEQ is then demanded)");
         assertEquals(Set.of("CM"), AdamSourceDomain.domainsOf(table("ADCM", "CMTRT")), "--TRT");
         assertEquals("AE", AdamSourceDomain.singleDomainOf(Set.of("AE")));
+    }
+
+
+    /**
+     * Owner ruling MED-1 (a), 2026-10-04: a domain is evidenced only by its {@code --SEQ} or its
+     * topic variable; a {@code --DECOD} column alone adds no domain. ADSL's {@code DCDECOD} /
+     * {@code DSDECOD}, routinely copied onto an occurrence dataset, read as a second domain before
+     * and disarmed every {@code --} requirement (D3).
+     */
+    @Test
+    void aDecodColumnAloneIsNoEvidence()
+    {
+        assertEquals(Set.of(), AdamSourceDomain.domainsOf(table("ADAE", "STUDYID", "DCDECOD")),
+                "ADSL's DCDECOD gives no domain");
+        assertEquals(Set.of(), AdamSourceDomain.domainsOf(table("ADAE", "AEDECOD", "AESER")),
+                "AEDECOD alone gives no domain either");
+        assertEquals(Set.of(), AdamSourceDomain.domainsOf(table("ADCM", "cmdecod")),
+                "letter case does not make it evidence");
+        assertEquals(Set.of("AE"),
+                AdamSourceDomain.domainsOf(
+                        table("ADAE", "AETERM", "AEDECOD", "AESER", "DCDECOD", "DSDECOD")),
+                "copied ADSL DECOD columns do not make an AE dataset multi-domain");
+        assertEquals(Set.of("AE"), AdamSourceDomain.domainsOf(table("ADAE", "AESEQ", "AEDECOD")),
+                "--SEQ evidences AE; AEDECOD beside it adds nothing either way");
+        assertEquals(Set.of("AE", "EX"),
+                AdamSourceDomain.domainsOf(table("ADAE", "AETERM", "EXTRT")),
+                "a --TRT topic variable is still evidence (the ruling names --TRT)");
     }
 
 

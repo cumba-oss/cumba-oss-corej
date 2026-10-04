@@ -209,10 +209,10 @@ class ListFunctionsTest
      * PLAN-library-template-label-resolution round-2 ruling R2-1, as
      * {@code PLAN-occds-source-domain-by-ig} D1–D4 restate it: an occurrence structure's {@code --}
      * names resolve to the dataset's source domain — the two-letter prefix of the occurrence
-     * variables it carries ({@code --SEQ}, {@code --TERM}, {@code --TRT}, {@code --DECOD}), never
-     * its name — and a name carrying another domain's prefix (the store's {@code CM.CMTRT} /
-     * {@code AE.AESER} source token) is not demanded of a dataset whose occurrence variables name a
-     * different domain.
+     * variables it carries ({@code --SEQ}, {@code --TERM}, {@code --TRT}; a {@code --DECOD} alone
+     * is no evidence, owner ruling MED-1 (a)), never its name — and a name carrying another
+     * domain's prefix (the store's {@code CM.CMTRT} / {@code AE.AESER} source token) is not
+     * demanded of a dataset whose occurrence variables name a different domain.
      */
     @Test
     void theAdamCoreWalkResolvesTheSourceDomainAndDemandsOnlyItsOwnDomainsPrefixedNames()
@@ -249,7 +249,7 @@ class ListFunctionsTest
                 .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").name("ADAE").build();
         assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER", "AOCCzzFL"),
                 list(LibraryLists.requiredVariables(run(unconfirmed, lib), List.of())),
-                "no AESEQ: AETERM / AEDECOD name AE, so --SEQ is demanded as AESEQ and reported"
+                "no AESEQ: AETERM names AE, so --SEQ is demanded as AESEQ and reported"
                         + " missing (D2: a missing --SEQ must not disarm its own requirement);"
                         + " CMTRT (CM) is dropped");
         IDataTable adaeWithDomain = MockTable.of().col("STUDYID", "S").col("DOMAIN", "AE")
@@ -271,6 +271,27 @@ class ListFunctionsTest
                 list(LibraryLists.requiredVariables(run(multi, lib), List.of())),
                 "D3: AE and MH both present — no -- name is demanded (so no AETERM), AESER (AE,"
                         + " present) is, CMTRT (CM, absent from the evidence) is not");
+        IDataTable copiedAdslDecod = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
+                .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").col("AESER", "N")
+                .col("DCDECOD", "COMPLETED").name("ADAE").build();
+        assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER", "AOCCzzFL"),
+                list(LibraryLists.requiredVariables(run(copiedAdslDecod, lib), List.of())),
+                "owner ruling MED-1 (a): a copied ADSL DCDECOD is no evidence of a DC domain, so"
+                        + " the dataset is AE alone and the missing AESEQ is demanded (read as"
+                        + " {AE, DC} before, D3 demanded no -- name and AESEQ went unreported)");
+        IDataTable dcDecodOnly = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
+                .col("AESER", "N").col("DCDECOD", "COMPLETED").name("ADAE").build();
+        assertEquals(List.of("STUDYID", "USUBJID", "CMTRT", "AESER", "AOCCzzFL"),
+                list(LibraryLists.requiredVariables(run(dcDecodOnly, lib), List.of())),
+                "MED-1 (a): DCDECOD alone is no evidence, so the set is empty — -- is not"
+                        + " demanded (D4) and no carried name is dropped (review H1); read as {DC}"
+                        + " before, -- became DCSEQ / DCTERM and AESER was dropped");
+        IDataTable aeDecodOnly = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
+                .col("AEDECOD", "HEADACHE").col("AESER", "N").name("ADAE").build();
+        assertEquals(List.of("STUDYID", "USUBJID", "CMTRT", "AESER", "AOCCzzFL"),
+                list(LibraryLists.requiredVariables(run(aeDecodOnly, lib), List.of())),
+                "MED-1 (a): AEDECOD alone names no domain either — the same empty-evidence"
+                        + " answer, so -- is not resolved to AE");
         IDataTable noEvidence = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
                 .col("AESER", "N").name("ADAE").build();
         // No occurrence column, so no column heuristic: the define declares the structure.

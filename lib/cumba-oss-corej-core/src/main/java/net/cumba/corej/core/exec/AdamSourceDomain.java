@@ -26,9 +26,10 @@ import org.jspecify.annotations.Nullable;
  * can fill in. ADaMIG-OCCDS v1.1 §3 says where the domain comes from: <i>"The 2-letter prefix of the
  * variable name is the SDTM domain name"</i> — the prefix of the occurrence variables the dataset
  * carries, never its name (§4.2: <i>"ADAE is not a required dataset name"</i>). The evidence is a
- * column named a two-letter prefix plus one of {@link #EVIDENCE_SUFFIXES} ({@code AESEQ},
- * {@code AETERM}, {@code CMTRT}, {@code MHDECOD}; letter case ignored, the prefix upper-cased), and
- * the dataset's domains are the set of those prefixes (D1):
+ * column named a two-letter prefix plus one of {@link #EVIDENCE_SUFFIXES} — the domain's
+ * {@code --SEQ} or its topic variable ({@code AESEQ}, {@code AETERM}, {@code CMTRT}; letter case
+ * ignored, the prefix upper-cased) — and the dataset's domains are the set of those prefixes (D1,
+ * as narrowed by owner ruling MED-1 (a)):
  * </p>
  * <ul>
  * <li><b>one</b> domain — a {@code --} name resolves to it and is demanded, present or not: an
@@ -43,21 +44,36 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * The suffix set (D5, measured 2026-10-04 on our store's {@code adam-occds-1-0} / {@code -1-1},
  * {@code adam-adae-1-0}, {@code adam-nca-1-0} and the TIG's ADaM leg) is the row identifier
- * {@code --SEQ} the IG names plus the occurrence topic / dictionary variables {@code --TERM},
- * {@code --TRT} and {@code --DECOD} — the ones every OCCDS product publishes as {@code Req} or
- * {@code Cond}, and the same evidence the structure heuristic reads. No ADaMIG (ADSL, BDS),
- * {@code adam-tte}, {@code adam-md} or {@code adam-poppk} name matches it. {@code --BODSYS} and
- * {@code --CAT} are left out: a dataset carrying them but none of the four is already missing its
- * required topic variable, and {@code CAT} is a qualifier suffix of every SDTM domain, so a copied
- * grouping column would read as a second domain. Timing suffixes are never evidence
- * ({@code RFSTDTC} would read as {@code RF}). The exact two-letter shape is what keeps the ADaM
- * {@code ASEQ}, {@code SRCSEQ} and {@code RECSEQ} out.
+ * {@code --SEQ} the IG names plus the occurrence topic variables {@code --TERM} and {@code --TRT}.
+ * No ADaMIG (ADSL, BDS), {@code adam-tte}, {@code adam-md} or {@code adam-poppk} name matches it.
+ * </p>
+ * <p>
+ * <b>{@code --DECOD} is not evidence</b> (owner ruling MED-1, 2026-10-04, option (a): a domain
+ * needs its {@code --SEQ} or its topic variable, {@code --TERM} / {@code --TRT}; a
+ * {@code --DECOD} alone adds no domain). ADSL's {@code DCDECOD} and {@code DSDECOD} are routinely copied onto an
+ * occurrence dataset; read as evidence they made an {@code ADAE} multi-domain ({@code {AE, DC}}, so
+ * D3 demanded no {@code --} name and a missing {@code AESEQ} went unreported), or, on an
+ * {@code ADAE} carrying no AE occurrence variable, a single foreign domain that dropped every
+ * carried AE name. Whether a {@code --DECOD} still counts once a {@code --SEQ} / {@code --TERM} /
+ * {@code --TRT} of the same domain is present is moot: that column already names the domain, so a
+ * {@code DECOD} adds nothing either way — hence the plain suffix set, with no pairing rule. A
+ * consequence, recorded: an occurrence dataset whose only occurrence column is a {@code --DECOD}
+ * ({@code AEDECOD} with no {@code AETERM}, no {@code AESEQ}) gives no evidence, so its {@code --}
+ * names are not demanded (D4) — the H1 rule below still keeps every concrete carried name.
+ * </p>
+ * <p>
+ * {@code --BODSYS} and {@code --CAT} are left out too: a dataset carrying them but none of the
+ * three is already missing its required topic variable, and {@code CAT} is a qualifier suffix of
+ * every SDTM domain, so a copied grouping column would read as a second domain. Timing suffixes are
+ * never evidence ({@code RFSTDTC} would read as {@code RF}). The exact two-letter shape is what
+ * keeps the ADaM {@code ASEQ}, {@code SRCSEQ} and {@code RECSEQ} out.
  * </p>
  * <p>
  * ⚠ Deliberately not {@code AdamDataStructureDetector.OCCDS_SUFFIXES} ({@code TERM}, {@code TRT},
  * {@code DECOD}, matched as a bare suffix of any length): that set decides whether a dataset
- * <em>is</em> occurrence-shaped and widening it would move structure detection; this one names a
- * <em>domain</em>, so it needs the exact {@code <DD><suffix>} shape and the {@code SEQ} identifier.
+ * <em>is</em> occurrence-shaped and changing it would move structure detection; this one names a
+ * <em>domain</em>, so it needs the exact {@code <DD><suffix>} shape, adds the {@code SEQ}
+ * identifier and leaves {@code DECOD} out.
  * </p>
  *
  * <h2>(ii) A published name that carries a domain's prefix — {@link #carriedDomainOf}</h2>
@@ -101,12 +117,12 @@ public final class AdamSourceDomain
 {
 
     /**
-     * D5: the suffixes whose {@code <DD><suffix>} column names the source domain {@code DD} — the
-     * row identifier {@code --SEQ} and the topic / dictionary variables {@code --TERM},
-     * {@code --TRT}, {@code --DECOD} (see the class javadoc for the measurement and for why this is
-     * not {@code AdamDataStructureDetector.OCCDS_SUFFIXES}).
+     * D5 as narrowed by owner ruling MED-1 (a): the suffixes whose {@code <DD><suffix>} column names
+     * the source domain {@code DD} — the row identifier {@code --SEQ} and the topic variables
+     * {@code --TERM}, {@code --TRT}; never {@code --DECOD} (see the class javadoc for the
+     * measurement, the ruling and why this is not {@code AdamDataStructureDetector.OCCDS_SUFFIXES}).
      */
-    static final List<String> EVIDENCE_SUFFIXES = List.of("SEQ", "TERM", "TRT", "DECOD");
+    static final List<String> EVIDENCE_SUFFIXES = List.of("SEQ", "TERM", "TRT");
 
     /** A two-letter prefix plus one evidence suffix, the whole column name, letter case ignored. */
     private static final Pattern EVIDENCE = Pattern.compile(
@@ -126,8 +142,8 @@ public final class AdamSourceDomain
 
     /**
      * The dataset's SDTM source domains (D1): the upper-cased two-letter prefix of every column named
-     * {@code <DD>SEQ}, {@code <DD>TERM}, {@code <DD>TRT} or {@code <DD>DECOD} (letter case ignored).
-     * The dataset name is not read, nor a kept SDTM {@code DOMAIN} cell.
+     * {@code <DD>SEQ}, {@code <DD>TERM} or {@code <DD>TRT} (letter case ignored). The dataset name is
+     * not read, nor a kept SDTM {@code DOMAIN} cell, nor a {@code <DD>DECOD} column (MED-1 (a)).
      *
      * @param aTable
      *            the dataset

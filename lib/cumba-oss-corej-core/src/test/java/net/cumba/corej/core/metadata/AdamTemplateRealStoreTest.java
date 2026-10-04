@@ -183,17 +183,25 @@ class AdamTemplateRealStoreTest
                 .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").col("AESER", "N").name("ADAE")
                 .build();
         assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER"), required(p, adae),
-                "AESEQ / AETERM / AEDECOD name AE");
+                "AESEQ / AETERM name AE");
         IDataTable adcm = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1").col("CMSEQ", "1")
                 .col("CMTRT", "ASPIRIN").col("CMDECOD", "ASPIRIN").name("ADCM").build();
         assertEquals(List.of("STUDYID", "USUBJID", "CMSEQ", "CMTERM", "CMTRT"), required(p, adcm),
-                "CMSEQ / CMTRT / CMDECOD name CM: CMTRT demanded, AESER not");
+                "CMSEQ / CMTRT name CM: CMTRT demanded, AESER not");
         IDataTable unconfirmed = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1")
                 .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").name("ADAE").build();
         assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER"),
                 required(p, unconfirmed),
-                "no AESEQ: AETERM / AEDECOD name AE (PLAN-occds-source-domain-by-ig D1/D2), so"
-                        + " --SEQ is demanded as AESEQ and reported missing; CMTRT is not");
+                "no AESEQ: AETERM names AE (PLAN-occds-source-domain-by-ig D1/D2), so --SEQ is"
+                        + " demanded as AESEQ and reported missing; CMTRT is not");
+        IDataTable copiedAdslDecod = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1")
+                .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").col("AESER", "N")
+                .col("DCDECOD", "COMPLETED").name("ADAE").build();
+        assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER"),
+                required(p, copiedAdslDecod),
+                "owner ruling MED-1 (a): ADSL's copied DCDECOD is no evidence of a DC domain, so"
+                        + " the dataset stays AE alone and the missing AESEQ is demanded (read as"
+                        + " {AE, DC} before: no -- name demanded, AESEQ silent)");
     }
 
 
@@ -202,10 +210,9 @@ class AdamTemplateRealStoreTest
      * structure publishes its AE variables as concrete names ({@code AESEQ}, {@code AETERM},
      * {@code AEDECOD}, {@code AEBODSYS}, {@code AESER} Req, each opening with {@code AE.<name>}).
      * An {@code ADAE} lacking {@code AESEQ} must still be asked for the AE names — its
-     * {@code AETERM} / {@code AEDECOD} name the domain {@code AE}
-     * ({@code PLAN-occds-source-domain-by-ig} D1) — so the missing {@code AESEQ} is reported rather
-     * than disarming its own requirement (before round-2's fix: only {@code STUDYID},
-     * {@code USUBJID}).
+     * {@code AETERM} names the domain {@code AE} ({@code PLAN-occds-source-domain-by-ig} D1) — so
+     * the missing {@code AESEQ} is reported rather than disarming its own requirement (before
+     * round-2's fix: only {@code STUDYID}, {@code USUBJID}).
      */
     @Test
     void requiredVariablesOfAdaeUnderAdamAdaeKeepTheAeNamesWithoutAeseq() throws IOException
@@ -233,10 +240,10 @@ class AdamTemplateRealStoreTest
      * {@code PLAN-occds-source-domain-by-ig} review H1, on our store: the source domain now comes
      * from the occurrence variables, never the dataset name, so an {@code ADAE} declared under
      * {@code adam-adae-1-0} that carries <b>no</b> occurrence variable ({@code --SEQ},
-     * {@code --TERM}, {@code --TRT}, {@code --DECOD}) gives evidence of no domain at all. Its
-     * concrete AE names must stay demanded — an empty evidence set never drops a carried name — or
-     * the missing {@code AESEQ} / {@code AETERM} / {@code AEDECOD} would disarm their own
-     * requirement and CDISC-AD9704 would go silent on exactly the dataset it should report.
+     * {@code --TERM}, {@code --TRT}) gives evidence of no domain at all. Its concrete AE names must
+     * stay demanded — an empty evidence set never drops a carried name — or the missing
+     * {@code AESEQ} / {@code AETERM} / {@code AEDECOD} would disarm their own requirement and
+     * CDISC-AD9704 would go silent on exactly the dataset it should report.
      */
     @Test
     void requiredVariablesOfAdaeUnderAdamAdaeWithNoOccurrenceVariableKeepTheAeNames()
@@ -257,6 +264,35 @@ class AdamTemplateRealStoreTest
                 required(p, define, bare),
                 "no occurrence variable: no domain evidence, so every carried AE name stays"
                         + " demanded (AESEQ, AETERM, AEDECOD reported missing)");
+    }
+
+
+    /**
+     * Owner ruling MED-1 (a) of {@code PLAN-occds-source-domain-by-ig}, on our store: a
+     * {@code --DECOD} column alone is no evidence of a domain. An {@code adam-adae-1-0}
+     * {@code ADAE} carrying no AE occurrence variable but ADSL's copied {@code DCDECOD} therefore
+     * has an empty evidence set, and every carried AE name stays demanded (review H1). Read as
+     * {@code {DC}} before, the evidence named a different domain and all the AE names were dropped,
+     * leaving only {@code STUDYID} and {@code USUBJID} — CDISC-AD9704 silent on an ADAE missing
+     * AESEQ, AETERM, AEDECOD and AEBODSYS.
+     */
+    @Test
+    void requiredVariablesOfAdaeUnderAdamAdaeWithOnlyACopiedDecodKeepTheAeNames() throws IOException
+    {
+        StoreMetadataProviderFactory factory = realStoreFactory();
+        assumeTrue(factory != null, RealCorpusLocator.ABSENT_MESSAGE);
+        MetadataProvider p = factory.forAdam("adamig", "1-1",
+                List.of("standards/adam/adamig-1-1", "standards/adam/adam-adae-1-0"), List.of(),
+                List.of()).orElseThrow();
+        IDataTable copied = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1")
+                .col("AESER", "N").col("DCDECOD", "COMPLETED").name("ADAE").build();
+        StubMetadataProvider define = new StubMetadataProvider().declares("ADAE",
+                AdamDataStructureDetector.OCCDS, "ADVERSE EVENT");
+        assertEquals(
+                List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AEDECOD", "AEBODSYS", "AESER"),
+                required(p, define, copied),
+                "DCDECOD names no domain, so no carried AE name is dropped (AESEQ, AETERM,"
+                        + " AEDECOD, AEBODSYS reported missing)");
     }
 
 
