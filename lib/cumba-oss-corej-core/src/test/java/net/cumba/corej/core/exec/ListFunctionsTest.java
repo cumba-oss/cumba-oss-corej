@@ -229,7 +229,7 @@ class ListFunctionsTest
                 .col("AOCC01FL", "Y").name("ADAE").build();
         assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER", "AOCC01FL"),
                 list(LibraryLists.requiredVariables(run(adae, lib), List.of())),
-                "ADAE + AESEQ confirm AE: -- becomes AE, CMTRT (CM) is not demanded, AESER (AE) is");
+                "AESEQ + AETERM name AE: -- becomes AE, CMTRT (CM) is not demanded, AESER (AE) is");
         assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER", "AOCC01FL"),
                 list(LibraryLists.columnOrderFromLibrary(run(adae, lib), List.of())),
                 "the column order is the same walk");
@@ -244,7 +244,7 @@ class ListFunctionsTest
                 .col("CMTRT", "ASPIRIN").col("CMDECOD", "ASPIRIN").name("ADCM").build();
         assertEquals(List.of("STUDYID", "USUBJID", "CMSEQ", "CMTERM", "CMTRT", "AOCCzzFL"),
                 list(LibraryLists.requiredVariables(run(adcm, lib), List.of())),
-                "ADCM + CMSEQ confirm CM: CMTRT is demanded, AESER (AE) is not");
+                "CMSEQ + CMTRT name CM: CMTRT is demanded, AESER (AE) is not");
         IDataTable unconfirmed = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
                 .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").name("ADAE").build();
         assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER", "AOCCzzFL"),
