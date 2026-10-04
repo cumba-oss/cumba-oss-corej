@@ -2051,6 +2051,13 @@ public class RulePackageLoader
         // (Element B — the `variable_exists` lowering — is gone with the operation: runbook W2a
         // re-spelled every site as the compiled binding `var_exists("X")`, PLAN-operation-
         // replacements §2.4.)
+        // ⭐ D3 / D16 (T2 review of PLAN-dynamic-column-corpus-respelling's S2 round, MEDIUM-2):
+        // var_exists($x) / var_not_exists($x) over a binding holding a NAME FORM — a bare column,
+        // DS.X, a ${…} template, a string literal, varname() — IS the inline spelling
+        // var_exists(<name>): rewritten here, before canonicalisation, stage A, the compiler and
+        // the domain scan, so every reader sees one tree and the computed path keeps only the
+        // computed names (concat, printf, a call).
+        inlineBoundPresenceNames(rule, levels);
         // ⚑ The Plan J3/J4 absent-column guard injection that stood here is DELETED
         // (2026-08-26, owner-ruled). Every guard the corpus needs is now AUTHORED — as
         // Requirements.Variables.All where absence means there is nothing to check, or as a
@@ -2171,6 +2178,42 @@ public class RulePackageLoader
                     rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
             return true;
         }
+    }
+
+
+    /**
+     * Rewrites every presence probe over a name-form {@code $}-binding to its inline spelling
+     * ({@link net.cumba.corej.core.expr.convert.BindingInliner#inlinePresenceNames}) — in the Check
+     * levels (against every binding) and in each binding's own expression (against the bindings
+     * authored BEFORE it only, so a forward reference stays a {@code $}-reference and meets stage
+     * A's armed {@code FORWARD_OR_CYCLIC_BINDING}). Idempotent.
+     */
+    private static void inlineBoundPresenceNames(Rule rule,
+            SequencedMap<Severity, net.cumba.corej.core.expr.ast.Expr> levels)
+    {
+        List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
+        if (compiled == null || compiled.isEmpty())
+        {
+            return;
+        }
+        Map<String, net.cumba.corej.core.expr.ast.Expr> earlier = new LinkedHashMap<>();
+        List<net.cumba.corej.core.model.CompiledBinding> rewritten = new ArrayList<>(
+                compiled.size());
+        boolean changed = false;
+        for (net.cumba.corej.core.model.CompiledBinding binding : compiled)
+        {
+            net.cumba.corej.core.expr.ast.Expr e = net.cumba.corej.core.expr.convert.BindingInliner
+                    .inlinePresenceNames(binding.expression(), earlier);
+            changed |= e != binding.expression();
+            rewritten.add(e == binding.expression() ? binding : binding.withExpression(e));
+            earlier.put(binding.name(), binding.expression());
+        }
+        if (changed)
+        {
+            rule.setCompiledBindings(rewritten);
+        }
+        levels.replaceAll((severity, level) -> net.cumba.corej.core.expr.convert.BindingInliner
+                .inlinePresenceNames(level, earlier));
     }
 
 

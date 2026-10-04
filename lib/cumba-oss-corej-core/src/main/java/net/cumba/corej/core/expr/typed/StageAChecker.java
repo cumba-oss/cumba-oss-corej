@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.expr.convert.BindingInliner;
 import net.cumba.corej.core.expr.eval.ArgumentBinder;
 import net.cumba.corej.core.expr.eval.BroadcastFold;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
@@ -141,6 +142,9 @@ public final class StageAChecker
     private final Map<String, ExprType> bindingTypes;
 
     private final List<StageAFinding> findings = new ArrayList<>();
+
+    /** {@link #boundExpressions()}, computed on first use. */
+    private @Nullable Map<String, Expr> bound;
 
     /**
      * The root being walked, for the locating prefix of a {@link StageAErrorKind#PARAMETER_TYPE}
@@ -865,6 +869,15 @@ public final class StageAChecker
 
     private TypedExpr call(Expr.Call c)
     {
+        Expr.Call probe = BindingInliner.inlinePresenceName(c, boundExpressions());
+        if (probe != c)
+        {
+            // D3 / D16 (T2 review of the respelling's S2 round, MEDIUM-2): var_exists($x) over a
+            // name-form binding is judged as the inline var_exists(<name>) — the loader rewrites
+            // it before this walk (RulePackageLoader.installNativeExpr); a tree handed to stage A
+            // directly is held to the same reading here.
+            return call(probe);
+        }
         String name = c.name();
         List<TypedExpr> children = walkArguments(c);
         if ("value".equals(name) && c.args().isEmpty() && c.kwargs().isEmpty())
@@ -1074,9 +1087,25 @@ public final class StageAChecker
 
 
     /**
+     * The rule's bindings, name → expression, in authored order.
+     */
+    private Map<String, Expr> boundExpressions()
+    {
+        if (bound == null)
+        {
+            Map<String, Expr> byName = new LinkedHashMap<>();
+            rule.bindingOrder().forEach(b -> byName.put(b.name(), b.expression()));
+            bound = byName;
+        }
+        return bound;
+    }
+
+
+    /**
      * Whether {@code c} is a {@code var_exists} / {@code var_not_exists} over a COMPUTED name — an
-     * expression or a {@code $}-binding, never a literal, a bare / dotted / template reference or
-     * the {@code varname()} cursor ({@link BroadcastFold#isExistsCall} answers those).
+     * expression or a {@code $}-binding holding one, never a literal, a bare / dotted / template
+     * reference or the {@code varname()} cursor ({@link BroadcastFold#isExistsCall} answers those,
+     * and a binding holding one of them was rewritten to it by {@link #call}).
      */
     private static boolean isComputedPresenceProbe(Expr.Call c)
     {
@@ -2484,8 +2513,7 @@ public final class StageAChecker
         // ⭐ PLAN-dynamic-column-corpus-respelling §6.2 (LOW-1): a $-binding handed to colref /
         // find_vars is followed into the expression it holds, so `$p: concat("ADSL.P", …)` read
         // as find_vars($p) is judged exactly as find_vars(concat("ADSL.P", …)) is.
-        Map<String, Expr> bound = new HashMap<>();
-        rule.bindingOrder().forEach(b -> bound.put(b.name(), b.expression()));
+        Map<String, Expr> bound = boundExpressions();
         Set<String> dynamic = new LinkedHashSet<>();
         for (Expr root : roots)
         {
@@ -2850,11 +2878,11 @@ public final class StageAChecker
      *
      * <p>
      * A {@code $}-binding argument is followed into the expression it holds ({@code bound}, name →
-     * expression; {@link #boundExpression}), so the bound and the inline spelling are judged alike
-     * ({@code PLAN-binding-substitutability} G1). ⚠ The exists family is deliberately not
-     * collected, bound or inline: a presence probe reads the named dataset's own inventory with no
-     * join ({@link #checkDottedRefs}' name-read exemption), so neither the undeclared nor the Child
-     * arm applies to {@code var_exists(<name>)}.
+     * expression; {@link BindingInliner#boundExpression}), so the bound and the inline spelling are
+     * judged alike ({@code PLAN-binding-substitutability} G1). ⚠ The exists family is deliberately
+     * not collected, bound or inline: a presence probe reads the named dataset's own inventory with
+     * no join ({@link #checkDottedRefs}' name-read exemption), so neither the undeclared nor the
+     * Child arm applies to {@code var_exists(<name>)}.
      * </p>
      */
     private static void collectDynamicNames(Expr e, Map<String, Expr> bound, Set<String> out)
@@ -2891,7 +2919,8 @@ public final class StageAChecker
             boolean findVars = "find_vars".equals(c.name());
             if (("colref".equals(c.name()) || findVars) && c.args().size() == 1)
             {
-                String text = staticNameText(boundExpression(c.args().get(0), bound));
+                String text = staticNameText(
+                        BindingInliner.boundExpression(c.args().get(0), bound));
                 if (text != null && !(findVars && text.startsWith("/")))
                 {
                     int dot = text.indexOf('.');
@@ -2905,28 +2934,6 @@ public final class StageAChecker
             c.kwargs().values().forEach(a -> collectDynamicNames(a, bound, out));
         }
         }
-    }
-
-
-    /**
-     * {@code arg}, or — when it is a {@code $}-binding reference — the expression that binding
-     * holds, followed through a binding of a binding. Bindings reference only earlier ones
-     * ({@link StageAErrorKind#FORWARD_OR_CYCLIC_BINDING} is armed); the walk is bounded by the
-     * binding count all the same, so a cycle that reached here could not loop.
-     */
-    private static Expr boundExpression(Expr arg, Map<String, Expr> bound)
-    {
-        Expr e = arg;
-        for (int hops = 0; hops <= bound.size() && BroadcastFold.isBindingReference(e); hops++)
-        {
-            Expr next = bound.get(((Expr.Ref) e).name());
-            if (next == null)
-            {
-                break;
-            }
-            e = next;
-        }
-        return e;
     }
 
 

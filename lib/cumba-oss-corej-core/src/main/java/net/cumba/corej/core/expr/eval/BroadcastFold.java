@@ -473,17 +473,19 @@ public final class BroadcastFold
      * forms are equivalent by definition).
      *
      * <p>
-     * ⭐ A {@code $}-binding handed to {@code var_exists} / {@code var_not_exists} is <b>not</b> a
-     * name: it is the computed name its expression yields, per row
-     * ({@code PLAN-dynamic-column-corpus-respelling} §6.2, owner ruling (a), 2026-10-04 —
-     * {@code PLAN-binding-substitutability} G1: the binding answers as its expression written
-     * inline). So, exactly like {@code var_exists(<computed string>)}, it is an ordinary registered
-     * BOOLEAN call for every consumer of this predicate — the broadcast verdicts, the absent-leaf
-     * fold, the dotted-reference walk, {@code TypeExpectations}, {@code DomainScan} and stage A's
-     * level — and {@code ExprCompiler.compileExists} evaluates it through the computed-name path.
-     * Before, it took the literal path and asked for a column literally named {@code $n}, never
-     * present, so {@code not var_exists($n)} fired on every row. ({@code ds_exists($x)} is not
-     * covered by the ruling and keeps the name reading.)
+     * ⭐ A {@code $}-binding handed to {@code var_exists} / {@code var_not_exists} answers as its
+     * expression written inline ({@code PLAN-binding-substitutability} G1; D3 / D16). A binding
+     * holding a NAME FORM (a bare column, {@code DS.X}, a {@code ${…}} template, a string literal,
+     * {@code varname()}) never reaches this predicate as a {@code $}-reference: the loader rewrites
+     * the call to {@code var_exists(<name>)} first ({@code BindingInliner.inlinePresenceNames}, T2
+     * review MEDIUM-2), so it is an exists call here like the inline one. A {@code $}-reference
+     * that is still here holds a COMPUTED name ({@code PLAN-dynamic-column-corpus-respelling} §6.2,
+     * owner ruling (a), 2026-10-04): exactly like {@code var_exists(<computed string>)} it is an
+     * ordinary registered BOOLEAN call for every consumer of this predicate — the broadcast
+     * verdicts, the absent-leaf fold, the dotted-reference walk, {@code TypeExpectations},
+     * {@code DomainScan} and stage A's level — and {@code ExprCompiler.compileExists} evaluates it
+     * per row through the computed-name path. ({@code ds_exists($x)} is not covered by the ruling
+     * and keeps the name reading.)
      * </p>
      */
     public static boolean isExistsCall(Expr.Call c)

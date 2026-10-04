@@ -3694,12 +3694,15 @@ public final class ExprCompiler
         // A literal is never computed: a number / regex / list literal stays the compile error it
         // always was (ExprCompilerExistsModesTest, a ${…} test kept unmodified — Q8).
         // ⭐ PLAN-dynamic-column-corpus-respelling §6.2 (owner ruling (a), 2026-10-04): a
-        // $-binding IS computed — the binding answers as its expression written inline
-        // (PLAN-binding-substitutability G1), so var_exists($n) tests the name $n's value names,
-        // per row. It used to take the literal path below: existsAsVariable(ctx, "$n") asked for
-        // a column literally named `$n`, never present (not var_exists($n) fired on every row).
-        // Every other reference — a bare column, DS.X, `variable_name`, a ${…} template — keeps
-        // the literal path (BroadcastFold.isExistsCall carries the same split).
+        // $-binding answers as its expression written inline (PLAN-binding-substitutability G1).
+        // One holding a NAME FORM never reaches here — the loader rewrote var_exists($c) with
+        // `$c: TRT01P` to var_exists(TRT01P) (BindingInliner.inlinePresenceNames, T2 review
+        // MEDIUM-2), so it takes the literal path below like the inline spelling. One still here
+        // holds a COMPUTED name, and var_exists($n) tests the name $n's value names, per row. (It
+        // used to take the literal path: existsAsVariable(ctx, "$n") asked for a column literally
+        // named `$n`, never present, so not var_exists($n) fired on every row.) Every other
+        // reference — a bare column, DS.X, `variable_name`, a ${…} template — keeps the literal
+        // path (BroadcastFold.isExistsCall carries the same split).
         if (mode == ExistsMode.VARIABLE && (BroadcastFold.isBindingReference(nameArg)
                 || (!(nameArg instanceof Expr.Ref) && !(nameArg instanceof Expr.Lit))))
         {
@@ -3770,10 +3773,11 @@ public final class ExprCompiler
      * {@code var_exists("DS.X")} does. A missing argument — or a present non-string value, which
      * names no column — leaves the row unset for BOTH polarities, as a missing {@code ${…}} driver
      * does ({@code existsPerRowBits}). The verdict is memoised by name for the evaluation, so a
-     * name shared by many rows is resolved once. A {@code $}-binding argument takes this path too
-     * ({@code PLAN-dynamic-column-corpus-respelling} §6.2): its value is read through
-     * {@link #valuePlan} like any operand, so {@code var_exists($n)} answers as the expression
-     * {@code $n} holds written inline.
+     * name shared by many rows is resolved once. A {@code $}-binding argument holding a computed
+     * name takes this path too ({@code PLAN-dynamic-column-corpus-respelling} §6.2): its value is
+     * read through {@link #valuePlan} like any operand, so {@code var_exists($n)} answers as the
+     * expression {@code $n} holds written inline. (A binding holding a name form was rewritten to
+     * the inline name at load and takes the literal path.)
      */
     private static ExprProgram.BoolPlan compileComputedExists(Expr nameArg, boolean negate)
     {
