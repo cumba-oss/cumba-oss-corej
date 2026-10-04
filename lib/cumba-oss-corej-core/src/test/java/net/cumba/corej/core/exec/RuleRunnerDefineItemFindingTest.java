@@ -97,9 +97,8 @@ class RuleRunnerDefineItemFindingTest
         expectedAaa.put("record_count", "1");
         expectedAaa.put("$flag", "true");
         // STUDYID is derived from the binding's var_exists read: a PRESENT column on a finding
-        // that has no row keeps its key with the deferred null (PLAN-output-variable-null-key-
-        // provenance H2 — the state PLAN-finding-values-record-level-only turns name-only).
-        expectedAaa.put("STUDYID", null);
+        // that has no row is OMITTED — never a null key (PLAN-output-variable-null-key-provenance
+        // T2: the deferred state PLAN-finding-values-record-level-only turns name-only).
         assertEquals(expectedAaa, aaa.getValues());
 
         Violation ccc = r.getViolations().get(1);

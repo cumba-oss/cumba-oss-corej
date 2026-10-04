@@ -553,16 +553,32 @@ public final class StudyValidationService
         {
             return null;
         }
-        return entry ->
+        return new LibraryValidator.RuntimeListener()
         {
-            checkCancelled(cancellation, "during rule execution");
-            if (runtimeListener != null)
+
+            @Override
+            public void onRuleExecuted(LibraryValidator.RuntimeEntry entry)
             {
-                runtimeListener.onRuleExecuted(entry);
+                checkCancelled(cancellation, "during rule execution");
+                if (runtimeListener != null)
+                {
+                    runtimeListener.onRuleExecuted(entry);
+                }
+                if (progress != null)
+                {
+                    progress.onRuleExecuted(entry);
+                }
             }
-            if (progress != null)
+
+
+            @Override
+            public void onRuleResult(LibraryValidator.RuntimeEntry entry,
+                    net.cumba.corej.core.exec.RuleExecutionResult result)
             {
-                progress.onRuleExecuted(entry);
+                if (runtimeListener != null)
+                {
+                    runtimeListener.onRuleResult(entry, result);
+                }
             }
         };
     }

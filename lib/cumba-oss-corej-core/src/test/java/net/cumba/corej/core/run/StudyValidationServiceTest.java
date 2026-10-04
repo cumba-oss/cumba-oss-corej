@@ -456,6 +456,52 @@ class StudyValidationServiceTest
                 "single-dataset run: completion fires after all its rule events");
     }
 
+
+    @Test
+    void validate_handsEveryRuleResultToTheRuntimeListener() throws IOException
+    {
+        // PLAN-output-variable-null-key-provenance T2 MED-3: the runtime listener receives the
+        // engine-level result of every execution it hears about, right after its runtime entry —
+        // so an instrument can judge a study run's findings as the engine produced them.
+        IDataTableManager mgr = managerWith(dmTable());
+        Path rulesDir = writeRules("rules-custom-1-0.json", "CORE-X-002");
+        List<String> entries = new ArrayList<>();
+        List<String> results = new ArrayList<>();
+        AtomicInteger violations = new AtomicInteger();
+        LibraryValidator.RuntimeListener listener = new LibraryValidator.RuntimeListener()
+        {
+
+            @Override
+            public synchronized void onRuleExecuted(LibraryValidator.RuntimeEntry entry)
+            {
+                entries.add(entry.coreId() + "@" + entry.domain());
+            }
+
+
+            @Override
+            public synchronized void onRuleResult(LibraryValidator.RuntimeEntry entry,
+                    net.cumba.corej.core.exec.RuleExecutionResult result)
+            {
+                results.add(entry.coreId() + "@" + entry.domain());
+                assertEquals(entry.violationCount(), result.getViolationCount(),
+                        "the entry and the result describe one execution");
+                violations.addAndGet(result.getViolations().size());
+            }
+        };
+
+        StudyValidationParams params = StudyValidationParams.builder().manager(mgr)
+                .dataLibrary(tempDir.toString()).rulesDir(rulesDir.toString())
+                .runtimeListener(listener).rulesPackages(List.of("custom-1-0"))
+                .metadataProducts(CUSTOM_PRODUCT).build();
+
+        StudyValidationResult result = new StudyValidationService().validate(params);
+
+        assertFalse(entries.isEmpty(), "at least one rule should have executed");
+        assertEquals(entries, results, "one result per runtime entry, in the same order");
+        assertTrue(violations.get() >= 1,
+                "the results carry the findings: " + result.findingCount());
+    }
+
     // ------------------------------------------------------------------
     // Error paths
     // ------------------------------------------------------------------

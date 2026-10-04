@@ -6,12 +6,19 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import net.cumba.corej.core.RulePackageLoader;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
 
@@ -123,13 +130,15 @@ class FindingValuesTypedDefaultTest
         assertEquals("[]", v.get("library_variable_codelist_coded_values"), "list: [] — " + v);
         assertEquals(MIS, v.get("define_variable_has_comment"), "boolean (D36): MIS — " + v);
         assertEquals("", v.get("define_variable_label"), "char: \"\" — " + v);
-        assertEquals("0", v.get("variable_length"), "the mock's unspecified length stays 0 — " + v);
+        // T2 MED-1: an unspecified length (the mock's 0) is no value — the Check reads it as
+        // missing (var_length), so the finding prints the numeric default, never "0".
+        assertEquals(MIS, v.get("variable_length"), "unspecified length: MIS — " + v);
         assertNullFree(v);
     }
 
 
     @Test
-    void s1AnAbsentColumnIsOmittedAndAPresentColumnKeepsTheDeferredKey() throws Exception
+    void s1AColumnEntryOnAColumnLevelFindingIsOmittedWhetherAbsentOrPresent() throws Exception
     {
         Rule rule = load(
                 """
@@ -141,12 +150,13 @@ class FindingValuesTypedDefaultTest
         Map<String, String> v = single(RuleRunnerCalls.execute(rule, ae));
 
         assertFalse(v.containsKey("NOPE"), "an absent column is omitted (§2.1 case 1): " + v);
-        // The one deferred state: a PRESENT column on a finding without a row (no cell to read).
-        // PLAN-finding-values-record-level-only (V8) carries it as a name-only entry; until then
-        // the key stays with a null, listed in the corpus roster
-        // nullkey/present-column-no-cell.tsv.
-        assertTrue(v.containsKey("DOMAIN"), v.toString());
-        assertNull(v.get("DOMAIN"));
+        // The deferred state: a PRESENT column on a finding without a row (no cell to read).
+        // PLAN-finding-values-record-level-only (V8) gives it a name-only form; until then it is
+        // OMITTED, never a null key (T2 coordinator decision under "nothing can be null"), and the
+        // corpus roster nullkey/present-column-omitted.tsv lists every such entry for that plan.
+        assertFalse(v.containsKey("DOMAIN"), "a present column with no cell is omitted: " + v);
+        assertEquals("AETERM", v.get("variable_name"));
+        assertNullFree(v);
     }
 
 
@@ -187,6 +197,161 @@ class FindingValuesTypedDefaultTest
 
         assertEquals(MIS, v.get("variable_size"), "no declared length: the numeric default — " + v);
         assertEquals("4", v.get("variable_max_size"), v.toString());
+    }
+
+    // ------------------------------------------------------------------ M3 on the row path
+
+    /**
+     * A {@link MetadataProvider} that forwards every call to {@code target} and counts the calls (a
+     * small fake, no Mockito: a JDK proxy over the real stub); {@code unavailable} reports the
+     * library as degraded ({@link MetadataProvider#isLibraryUnavailable}).
+     */
+    private static final class CountingProvider implements InvocationHandler
+    {
+
+        private final MetadataProvider target;
+
+        private final boolean unavailable;
+
+        private final AtomicInteger reads = new AtomicInteger();
+
+        CountingProvider(MetadataProvider aTarget, boolean aUnavailable)
+        {
+            target = aTarget;
+            unavailable = aUnavailable;
+        }
+
+
+        MetadataProvider proxy()
+        {
+            return (MetadataProvider) Proxy
+                    .newProxyInstance(MetadataProvider.class.getClassLoader(), new Class<?>[]
+                    {
+                            MetadataProvider.class
+                    }, this);
+        }
+
+
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable
+        {
+            if (method.getDeclaringClass() == Object.class)
+            {
+                return method.invoke(this, args);
+            }
+            if ("isLibraryUnavailable".equals(method.getName()))
+            {
+                return unavailable;
+            }
+            reads.incrementAndGet();
+            try
+            {
+                return method.invoke(target, args);
+            }
+            catch (InvocationTargetException e)
+            {
+                throw e.getCause();
+            }
+        }
+    }
+
+    private static Rule valueRule(String outputVariables) throws Exception
+    {
+        return load("""
+                {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                 "Check":{"all":[{"expression": "ends_with(varname(), \\"DESC\\")"},
+                                 {"expression": "len(value()) > 1"}]},
+                 "Outcome":{"Message":"m","Output_Variables":[%s]}}""".formatted(outputVariables));
+    }
+
+
+    private static int libraryReads(Rule rule, IDataTable table, boolean unavailable,
+            int expectedFindings)
+    {
+        CountingProvider counting = new CountingProvider(new StubMetadataProvider().variable("ADSL",
+                Map.of("name", "DESC", "role", "Qualifier")), unavailable);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, _ -> null, "ADSL",
+                counting.proxy(), null, null);
+        assertEquals(expectedFindings, result.getViolationCount(), String.valueOf(result));
+        result.getViolations().forEach(v -> assertNullFree(v.getValues()));
+        return counting.reads.get();
+    }
+
+
+    @Test
+    void m3TheRowPathEvaluatesAnOperandOncePerColumnNotOncePerFinding() throws Exception
+    {
+        // T2 MED-2: the per-(variable, row) path projects library_variable_role (the Check never
+        // read it) through its accessor form. Three findings in one column must read the library
+        // exactly as often as one finding does — the operand's Vector is evaluated once per
+        // column and every finding reads its row from it.
+        Rule rule = valueRule("\"variable_name\",\"variable_value\",\"library_variable_role\"");
+        IDataTable threeFindings = MockTable.of().name("ADSL").col("DESC", "abc", "abd", "abe")
+                .build();
+        IDataTable oneFinding = MockTable.of().name("ADSL").col("DESC", "abc", "a", "b").build();
+
+        int three = libraryReads(rule, threeFindings, false, 3);
+        int one = libraryReads(rule, oneFinding, false, 1);
+
+        assertTrue(one > 0, "precondition: the projection reads the library (" + one + ")");
+        assertEquals(one, three, "library reads must not scale with the findings of a column");
+        Map<String, String> v = single(RuleRunnerCalls.execute(rule, oneFinding, _ -> null, "ADSL",
+                new StubMetadataProvider().variable("ADSL",
+                        Map.of("name", "DESC", "role", "Qualifier")),
+                null, null));
+        assertEquals("Qualifier", v.get("library_variable_role"), "the value is projected: " + v);
+    }
+
+
+    @Test
+    void m3TheRowPathHonoursTheLibraryAnswerabilityGate() throws Exception
+    {
+        // T2 LOW-1: Fix #369's gate on the row path too — a degraded library is never read for the
+        // report; the entry carries its typed default and the provider is not consulted for it.
+        Rule rule = valueRule("\"variable_name\",\"variable_value\",\"library_variable_role\"");
+        Rule without = valueRule("\"variable_name\",\"variable_value\"");
+        IDataTable table = MockTable.of().name("ADSL").col("DESC", "abc", "abd").build();
+
+        int with = libraryReads(rule, table, true, 2);
+        int baseline = libraryReads(without, table, true, 2);
+
+        assertEquals(baseline, with, "a degraded library is not read for the projection");
+        CountingProvider degraded = new CountingProvider(new StubMetadataProvider().variable("ADSL",
+                Map.of("name", "DESC", "role", "Qualifier")), true);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, _ -> null, "ADSL",
+                degraded.proxy(), null, null);
+        for (Violation violation : result.getViolations())
+        {
+            assertEquals("", violation.getValues().get("library_variable_role"),
+                    "the char default, never the degraded library's answer: "
+                            + violation.getValues());
+        }
+    }
+
+
+    @Test
+    void s5TheReportedDefaultFallsBackToTheStaticTypeForAnUntypedCarrier()
+    {
+        // T2 LOW-5: one decision for reportedHandOver and the record path's empty-table arm — an
+        // evaluated type that is neither a string nor a number / boolean (a missing, a
+        // carrier of no evaluated type) defers to the binding's stage-A static type.
+        CompiledBinding binding = new CompiledBinding("$b",
+                new net.cumba.corej.core.expr.ast.Expr.Lit(
+                        net.cumba.corej.core.expr.ast.Expr.LitKind.STRING, "x"),
+                List.of(), null);
+        BindingValue charBinding = new BindingValue(binding,
+                net.cumba.corej.core.expr.typed.ExprType.Primitive.STRING);
+        BindingValue numBinding = new BindingValue(binding,
+                net.cumba.corej.core.expr.typed.ExprType.Primitive.NUMBER);
+        BindingValue untyped = new BindingValue(binding, null);
+
+        assertEquals("", charBinding.reportedDefault(DataValueType.MISSING));
+        assertEquals(MissingValue.MIS, numBinding.reportedDefault(DataValueType.MISSING));
+        assertEquals("", untyped.reportedDefault(DataValueType.MISSING), "OPEN-T: kept \"\"");
+        assertEquals("", numBinding.reportedDefault(DataValueType.STRING),
+                "an evaluated string wins over the static type");
+        assertEquals(MissingValue.MIS, charBinding.reportedDefault(DataValueType.DOUBLE),
+                "an evaluated number wins over the static type");
     }
 
     // ------------------------------------------------------------------ S2

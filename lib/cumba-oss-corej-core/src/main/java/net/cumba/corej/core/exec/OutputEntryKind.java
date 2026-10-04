@@ -20,8 +20,9 @@ import net.cumba.datatable.values.MissingValue;
  * {@code variable_value} — is decided by the <em>table</em>: an absent column is <b>omitted</b>
  * from the finding (case 1), a present column's missing cell reports that cell's own
  * {@link MissingValue} (case 2), and a present column on a finding that has no row (a column-level
- * finding) is the deferred state {@code PLAN-finding-values-record-level-only} resolves (its
- * roster);</li>
+ * finding) is omitted too — the deferred state {@code PLAN-finding-values-record-level-only} gives
+ * a name-only form (the corpus roster {@code nullkey/present-column-omitted.tsv} lists it); never a
+ * {@code null} key;</li>
  * <li>a {@link #BINDING} ({@code $name}) is decided by its <em>evaluated</em> type
  * ({@code BindingValue.reportedHandOver});</li>
  * <li>a metadata attribute or dataset virtual carries the typed default of its <em>static</em>

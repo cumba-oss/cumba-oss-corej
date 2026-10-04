@@ -3,6 +3,7 @@ package net.cumba.corej.core.exec;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -809,8 +810,8 @@ public final class RuleRunner
             // The bindings' static types ride along as the finding's type source for a binding
             // that answers no value (PLAN-output-variable-null-key-provenance H3,
             // BindingValue.reportedHandOver).
-            Map<String, net.cumba.corej.core.expr.typed.ExprType> bindingTypes = net.cumba.corej.core.expr.typed.StageAChecker
-                    .bindingTypes(rule);
+            Map<String, net.cumba.corej.core.expr.typed.ExprType> bindingTypes = rule
+                    .staticBindingTypes();
             for (net.cumba.corej.core.model.CompiledBinding compiled : compiledBindings)
             {
                 lazyVars.put(compiled.name(),
@@ -2630,7 +2631,11 @@ public final class RuleRunner
         varMeta.put(VARIABLE_LABEL, reportedMeta(VARIABLE_LABEL, colMeta.getLabel()));
         varMeta.put("variable_data_type",
                 reportedMeta("variable_data_type", declaredDataType(colMeta)));
-        varMeta.put("variable_length", colMeta.getLength());
+        // T2 MED-1: an unspecified length (<= 0) is no value — the Check reads it as missing
+        // (var_length answers missing for it, VariableMetadataResult.extractMetadataField), so the
+        // finding prints the numeric default, never "0".
+        varMeta.put("variable_length",
+                colMeta.getLength() > 0 ? colMeta.getLength() : MissingValue.MIS);
         varMeta.put("variable_format", reportedMeta("variable_format", colMeta.getDisplayFormat()));
 
         // For metadata-check rules, inject the CDISC Library metadata (the "library" level),
@@ -2924,12 +2929,15 @@ public final class RuleRunner
      * Check reads, a missing one as its typed default;</li>
      * <li>by kind ({@link OutputEntryKind}): {@code variable_name} is the variable; a metadata
      * attribute with no accessor form carries its typed default; a {@code $} naming no binding of
-     * the rule is unresolvable and omitted, like an unknown column; a raw column name is
-     * <b>omitted</b> when the dataset lacks the column (§2.1 case 1 — authored or derived, so no
-     * provenance split) and, when it is present, keeps the key with the deferred {@code null}: a
-     * column-level finding has no row to read a cell from, the state
-     * {@code PLAN-finding-values-record-level-only} resolves (its V8 — the committed roster
-     * {@code nullkey/present-column-no-cell.tsv} of the corpus names every such entry).</li>
+     * the rule is unresolvable and omitted, like an unknown column; a raw column name (or
+     * {@code variable_value}) is <b>omitted</b> — when the dataset lacks the column (§2.1 case 1)
+     * and equally when it carries it: a column-level finding has no row to read a cell from, and
+     * the no-null ruling (§2.1, <i>"nothing can be null"</i>) admits no {@code null} key for it.
+     * That present-column / no-cell entry is the deferred state
+     * {@code PLAN-finding-values-record-level-only} gives its name-only form (V8); until then it is
+     * omitted for both provenances (T2 coordinator decision, 2026-10-04), and the corpus roster
+     * {@code nullkey/present-column-omitted.tsv} names every such entry as that plan's hand-over
+     * list.</li>
      * </ol>
      */
     private static void putResolvedOrDefault(Map<String, String> out, String ov,
@@ -2964,25 +2972,12 @@ public final class RuleRunner
             out.put(ov, variableName);
             return;
         }
-        if (kind == OutputEntryKind.COLUMN)
+        if (kind == OutputEntryKind.COLUMN || kind == OutputEntryKind.BINDING)
         {
-            if (columnPresent(ctx, VARIABLE_VALUE.equals(ov) ? variableName : ov))
-            {
-                out.put(ov, null); // the deferred present-column / no-cell state (5c roster)
-            }
-            return; // an absent column: omitted (§2.1 case 1)
-        }
-        if (kind == OutputEntryKind.BINDING)
-        {
-            return; // names no binding of the rule: unresolvable, omitted
-        }
-        if (ov.startsWith("library_variable_")
-                && !LibraryAnswerability.libraryAnswerable(ctx.getLibraryProvider()))
-        {
-            // Fix #369's gate, mirrored: a LIBRARY-level fact is never read from a degraded or
-            // absent library for the report either — the Check did not read it, or the rule would
-            // have been SKIPPED before any finding.
-            out.put(ov, kind.defaultValue());
+            // A column entry: absent (§2.1 case 1) or present with no row to read (the deferred
+            // present-column / no-cell state, roster nullkey/present-column-omitted.tsv) — omitted
+            // either way, never a null key. A $ naming no binding of the rule: unresolvable,
+            // omitted like an unknown column.
             return;
         }
         Map<String, Object> vars = contextVariables != null ? contextVariables : ctx.getVariables();
@@ -2990,38 +2985,72 @@ public final class RuleRunner
         out.put(ov, projected != null ? projected : kind.defaultValue());
     }
 
-    /** The accessor-form programs of {@link #evaluateOperandAtRow}, compiled once per operand. */
+    /** The accessor-form programs of {@link #operandVector}, compiled once per operand. */
     private static final Map<String, BindingProgram> OPERAND_PROGRAMS = new ConcurrentHashMap<>();
 
     /**
      * M3 of {@code PLAN-output-variable-null-key-provenance}: a builtin operand's value for the
-     * finding, read as the Check reads it — its accessor form
-     * ({@link MetadataOperandMapping#forwardOperand}: {@code variable_size} →
-     * {@code var_length(variable_name, "DATA")}, {@code variable_max_size} →
-     * {@code max_value_length(variable_name)}, {@code define_vlm_length} →
-     * {@code vlm_length(variable_name)}, …) evaluated in the column's context. A per-record fact is
-     * read at the finding's row; with no row (a column-level finding, {@code row < 0}) a
-     * row-varying fact has no cell and reports the typed default; a missing answer is the operand's
-     * typed default by its <em>static</em> type ({@link OutputEntryKind} — the accessor's missing
-     * carries no attribute type of its own). {@code null} when the operand has no accessor form.
+     * finding, read as the Check reads it — {@link #operandVector} read at {@code row}
+     * ({@link #operandCell}). {@code null} when the operand has no accessor form.
      */
     private static @Nullable String evaluateOperandAtRow(String ov, EvaluationContext colCtx,
             long row)
+    {
+        net.cumba.corej.core.expr.eval.Vector v = operandVector(ov, colCtx);
+        return v == null ? null : operandCell(ov, v, row, colCtx.rowCount());
+    }
+
+
+    /**
+     * The Vector of a builtin operand's accessor form
+     * ({@link MetadataOperandMapping#forwardOperand}: {@code variable_size} →
+     * {@code var_length(variable_name, "DATA")}, {@code variable_max_size} →
+     * {@code max_value_length(variable_name)}, {@code define_vlm_length} →
+     * {@code vlm_length(variable_name)}, …) evaluated over the column's context — once; a caller
+     * with several findings in one column reads every row from the same Vector (T2 MED-2:
+     * {@link OperandColumnReads}). {@code null} when the operand has no accessor form.
+     *
+     * <p>
+     * Fix #369's gate is honoured here, for every path that projects an operand: a
+     * {@code library_variable_*} fact is never read from a degraded or absent library for the
+     * report either — the Check did not read it, or the rule would have been SKIPPED before any
+     * finding — so it answers the missing Vector (the typed default) without evaluating anything.
+     * </p>
+     */
+    private static net.cumba.corej.core.expr.eval.@Nullable Vector operandVector(String ov,
+            EvaluationContext colCtx)
     {
         Expr forward = MetadataOperandMapping.forwardOperand(ov);
         if (forward == null)
         {
             return null;
         }
+        if (ov.startsWith("library_variable_")
+                && !LibraryAnswerability.libraryAnswerable(colCtx.getLibraryProvider()))
+        {
+            return net.cumba.corej.core.expr.eval.ConstVector.of(null);
+        }
         BindingProgram program = OPERAND_PROGRAMS.computeIfAbsent(ov,
                 _ -> net.cumba.corej.core.expr.eval.NativeExprEvaluator.bindingProgram(forward));
-        net.cumba.corej.core.expr.eval.Vector v = program.evaluate(EvalRun.fullRange(colCtx));
+        return program.evaluate(EvalRun.fullRange(colCtx));
+    }
+
+
+    /**
+     * One finding's reading of an operand's Vector: a per-record fact at the finding's row; with no
+     * row (a column-level finding, {@code row < 0}) a row-varying fact has no cell and reports the
+     * typed default; a missing answer is the operand's typed default by its <em>static</em> type
+     * ({@link OutputEntryKind} — the accessor's missing carries no attribute type of its own).
+     */
+    private static String operandCell(String ov, net.cumba.corej.core.expr.eval.Vector v, long row,
+            int rowCount)
+    {
         net.cumba.corej.core.expr.eval.TypedValue cell;
         if (v instanceof net.cumba.corej.core.expr.eval.ConstVector constant)
         {
             cell = constant.typed();
         }
-        else if (row >= 0 && row < colCtx.rowCount())
+        else if (row >= 0 && row < rowCount)
         {
             cell = v.value((int) row);
         }
@@ -3042,14 +3071,42 @@ public final class RuleRunner
                 : reportedValue(cell.cell());
     }
 
-
     /**
-     * Whether the dataset under evaluation carries {@code name} (a SUPP-delivered qualifier too).
+     * The M3 operand reads of ONE column on the per-(variable, row) path (T2 MED-2): each operand's
+     * accessor form is evaluated once for the column ({@link #operandVector}) and every finding of
+     * the column reads its row from that Vector — instead of re-running the whole program per
+     * finding (a {@code library_variable_code_pair_matches} rebuilt its codelist maps each time).
+     * One instance per {@code addVariableRowViolations} call; not thread-safe.
      */
-    private static boolean columnPresent(EvaluationContext ctx, String name)
+    static final class OperandColumnReads
     {
-        return ctx.getTable().getMetaData().getColumnIndex(name) >= 0
-                || SuppPivot.qualifierColumn(ctx, name) != null;
+
+        private final EvaluationContext colCtx;
+
+        private final Map<String, net.cumba.corej.core.expr.eval.@Nullable Vector> vectors = new HashMap<>();
+
+        OperandColumnReads(EvaluationContext aColCtx)
+        {
+            colCtx = aColCtx;
+        }
+
+
+        /** {@link #evaluateOperandAtRow}, from the column's one Vector per operand. */
+        @Nullable
+        String at(String ov, long row)
+        {
+            net.cumba.corej.core.expr.eval.Vector v;
+            if (vectors.containsKey(ov))
+            {
+                v = vectors.get(ov);
+            }
+            else
+            {
+                v = operandVector(ov, colCtx);
+                vectors.put(ov, v);
+            }
+            return v == null ? null : operandCell(ov, v, row, colCtx.rowCount());
+        }
     }
 
     /** {@link OutputEntryKind#VARIABLE_VALUE}. */
@@ -3174,6 +3231,7 @@ public final class RuleRunner
         // at most the per-rule cap, shared across this rule's variables (see ViolationSink).
         int card = rowBits.cardinality();
         int taken = 0;
+        OperandColumnReads operandReads = new OperandColumnReads(ctx);
         for (int r = rowBits.nextSetBit(0); r >= 0
                 && violations.wantsMore(); r = rowBits.nextSetBit(r + 1))
         {
@@ -3218,7 +3276,7 @@ public final class RuleRunner
                     {
                         // A metadata attribute the map does not carry: projected through its
                         // accessor form at this row (M3), else its typed default (§2.1 case 3).
-                        String projected = evaluateOperandAtRow(ov, ctx, r);
+                        String projected = operandReads.at(ov, r);
                         values.put(ov, projected != null ? projected
                                 : OutputEntryKind.of(ov).defaultValue());
                     }
@@ -4732,8 +4790,14 @@ public final class RuleRunner
                     if (row >= ctx.rowCount())
                     {
                         // A dataset-level finding on an empty table has no row to read: the
-                        // binding's typed default (§6.2 M4), never an untyped "".
-                        values.put(varName, OutputEntryKind.defaultValue(perRow.declaredType()));
+                        // binding's typed default (§6.2 M4), never an untyped "" — by the
+                        // Vector's declared type, else the binding's stage-A static type, the
+                        // one decision reportedHandOver makes (T2 LOW-5).
+                        values.put(varName,
+                                raw instanceof BindingValue compiled
+                                        ? scalarToString(
+                                                compiled.reportedDefault(perRow.declaredType()))
+                                        : OutputEntryKind.defaultValue(perRow.declaredType()));
                         continue;
                     }
                     net.cumba.corej.core.expr.eval.TypedValue cell = perRow.value((int) row);

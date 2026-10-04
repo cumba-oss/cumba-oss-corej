@@ -455,6 +455,33 @@ public class Rule
 
 
     /**
+     * The stage-A static type of each of this rule's bindings ({@code StageAChecker.bindingTypes})
+     * — the finding's type source for a binding that answers no value
+     * ({@code PLAN-output-variable-null-key-provenance} H3). A pure function of the rule's compiled
+     * bindings, computed on first read and memoised (T2 LOW-4: it was re-derived on every (rule ×
+     * dataset) execution); the memo is keyed on the bindings list's identity, so replacing the
+     * bindings re-derives. Two threads racing on the first read may both derive and both store,
+     * which is benign — each stores an equal, immutable map.
+     *
+     * @return the types by {@code $}-name; empty when the rule has no bindings or the walk failed
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public Map<String, net.cumba.corej.core.expr.typed.ExprType> staticBindingTypes()
+    {
+        StaticBindingTypes memo = staticBindingTypes;
+        List<CompiledBinding> source = compiledBindings;
+        if (memo != null && memo.source() == source)
+        {
+            return memo.types();
+        }
+        Map<String, net.cumba.corej.core.expr.typed.ExprType> types = net.cumba.corej.core.expr.typed.StageAChecker
+                .bindingTypes(this);
+        staticBindingTypes = new StaticBindingTypes(source, types);
+        return types;
+    }
+
+
+    /**
      * The rule-level grouping key every execution-side consumer reads: {@code Grouping.Variables}
      * when the {@code Grouping:} block is present, else the flat {@code Grouping_Variables:}.
      * {@code null} when the rule declares neither — which is the "not a grouped rule" signal, so
@@ -1117,6 +1144,27 @@ public class Rule
     @lombok.EqualsAndHashCode.Exclude
     @lombok.ToString.Exclude
     private @Nullable Set<String> excludedOutputVariables;
+
+    /**
+     * The memo of {@link #staticBindingTypes()}: the stage-A static types of this rule's bindings,
+     * beside the {@link #compiledBindings} list instance they were derived from. Runtime-only,
+     * never serialised, no part of {@code equals} / {@code hashCode} / {@code toString}, and no
+     * Lombok accessors. Keyed on the list's <em>identity</em>, so a copy whose bindings were
+     * replaced ({@code RuleSpecialiser}'s copy-on-write, which carries every field across
+     * reflectively) re-derives instead of reading its source's types.
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
+    @lombok.Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private volatile @Nullable StaticBindingTypes staticBindingTypes;
+
+    /** {@link #staticBindingTypes}: the types and the bindings list they were derived from. */
+    private record StaticBindingTypes(@Nullable List<CompiledBinding> source,
+            Map<String, net.cumba.corej.core.expr.typed.ExprType> types)
+    {
+    }
 
     /**
      * Native-evaluator backing expression, installed by

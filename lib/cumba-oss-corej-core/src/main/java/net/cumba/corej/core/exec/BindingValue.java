@@ -252,19 +252,40 @@ public final class BindingValue
             type = first.type();
             identity = first.missing();
         }
-        if (type == DataValueType.STRING)
+        if (identity != null && (type == DataValueType.LONG || type == DataValueType.DOUBLE
+                || type == DataValueType.BOOLEAN))
+        {
+            // The carrier kept the evaluated type: the MissingValue it carries.
+            return identity;
+        }
+        return reportedDefault(type);
+    }
+
+
+    /**
+     * The typed default absence value a finding reports for this binding when it has no value,
+     * given the type the evaluation carried ({@code PLAN-output-variable-null-key-provenance} §2.1
+     * / H3) — the one decision {@link #reportedHandOver} and the record path's empty-table arm
+     * share (T2 LOW-5): {@code ""} for a string; {@link MissingValue#MIS} for a number or a
+     * boolean; for an untyped carrier ({@code ConstVector.of(null)} — a metadata accessor with no
+     * cell, a function that answered nothing — or a per-row binding with no row to read) the
+     * binding's <em>static</em> type decides.
+     *
+     * @param evaluated
+     *            the type the evaluation carried
+     * @return {@code ""} or {@link MissingValue#MIS}; never {@code null}
+     */
+    public Object reportedDefault(DataValueType evaluated)
+    {
+        if (evaluated == DataValueType.STRING)
         {
             return "";
         }
-        if (type == DataValueType.LONG || type == DataValueType.DOUBLE
-                || type == DataValueType.BOOLEAN)
+        if (evaluated == DataValueType.LONG || evaluated == DataValueType.DOUBLE
+                || evaluated == DataValueType.BOOLEAN)
         {
-            // The carrier kept the evaluated type: the MissingValue it carries (MIS for a function
-            // result that answered nothing).
-            return identity != null ? identity : MissingValue.MIS;
+            return MissingValue.MIS;
         }
-        // An untyped missing (ConstVector.of(null) — a metadata accessor with no cell, a function
-        // that answered nothing): the binding's STATIC type decides (H3).
         if (staticType == ExprType.Primitive.STRING)
         {
             return "";

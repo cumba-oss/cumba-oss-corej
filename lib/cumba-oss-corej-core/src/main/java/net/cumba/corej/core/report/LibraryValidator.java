@@ -144,6 +144,25 @@ public final class LibraryValidator
     {
 
         void onRuleExecuted(RuntimeEntry entry);
+
+
+        /**
+         * Fired right after {@link #onRuleExecuted} for the same execution, with the engine-level
+         * result itself — its findings as the engine produced them, before the report model reads
+         * them. For instruments that judge every finding of a study run
+         * ({@code PLAN-output-variable-null-key-provenance} T2 MED-3: the corpus's finding-map null
+         * guard over {@code testdata/study}). Same threading contract as {@link #onRuleExecuted};
+         * the listener must not retain or mutate the result.
+         *
+         * @param entry
+         *            the runtime record {@link #onRuleExecuted} received
+         * @param result
+         *            the rule's result on that dataset
+         */
+        default void onRuleResult(RuntimeEntry entry, RuleExecutionResult result)
+        {
+            // no-op
+        }
     }
 
 
@@ -1288,9 +1307,11 @@ public final class LibraryValidator
         logIfTruncated(rule, table.getMetaData().getName(), result);
         if (runtimeListener != null)
         {
-            runtimeListener.onRuleExecuted(new RuntimeEntry(domain, fileName, table.getRowCount(),
+            RuntimeEntry entry = new RuntimeEntry(domain, fileName, table.getRowCount(),
                     table.getColumnCount(), rule.effectiveId(), rt, result.getStatus(),
-                    result.getViolationCount()));
+                    result.getViolationCount());
+            runtimeListener.onRuleExecuted(entry);
+            runtimeListener.onRuleResult(entry, result);
         }
         return result;
     }

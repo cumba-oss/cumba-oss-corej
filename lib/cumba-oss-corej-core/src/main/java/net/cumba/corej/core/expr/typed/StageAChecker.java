@@ -786,7 +786,8 @@ public final class StageAChecker
      * finding's default for a binding that evaluated to a missing whose carrier lost the type
      * ({@code BindingValue.reportedHandOver}, {@code PLAN-output-variable-null-key-provenance} H3:
      * {@code model/Binding} has no type of its own). Empty when the walk fails — the finding then
-     * has no type source and says so.
+     * has no type source and says so. Callers read it through {@link Rule#staticBindingTypes()},
+     * which memoises it per rule.
      */
     public static Map<String, ExprType> bindingTypes(Rule rule)
     {
@@ -798,7 +799,10 @@ public final class StageAChecker
         }
         catch (RuntimeException ex)
         {
-            LOGGER.log(System.Logger.Level.TRACE, "binding typing failed for {0}: {1}",
+            // T2 LOW-4: WARNING, not TRACE — the result is a finding's type source for a binding
+            // that answers no value, and an empty map silently degrades it to the record path's
+            // untyped default. Logged once per rule (Rule.staticBindingTypes memoises).
+            LOGGER.log(System.Logger.Level.WARNING, "binding typing failed for {0}: {1}",
                     rule.getId(), ex.toString());
             return Map.of();
         }
