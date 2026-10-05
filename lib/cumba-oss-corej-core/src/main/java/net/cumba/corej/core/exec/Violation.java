@@ -26,7 +26,8 @@ import org.jspecify.annotations.Nullable;
  * into {@link #values}; a dataset verdict ({@link Unit#DATASET} — a broadcast fold, a {@code {}}
  * metadata broadcast, a non-Record rule's first firing row), a column-level {@link Unit.Column}
  * site with no row, and a Study rule list every raw column in {@link #namedColumns} instead. The
- * finding's own values always print: a binding ({@code $x}, V2), the dataset-scope facts
+ * finding's own values always print: a binding ({@code $x}, V2 — but a per-row one is listed by
+ * name on every non-record finding, column-level included, owner Q-C), the dataset-scope facts
  * ({@code record_count}, {@code dataset_name}, {@code ds_*}), the per-variable metadata
  * ({@code variable_*}, {@code library_variable_*}, {@code define_*}, V4). A <b>Group</b> finding
  * keeps D94c's per-group distinct sets for its raw columns (owner Q-A, 2026-10-05) and lists
@@ -42,9 +43,10 @@ public class Violation
 
     /**
      * The projected {@code Output_Variables} entries that carry a value, in the effective list's
-     * order: a raw column's cell on a record-level finding, every binding, dataset fact and
-     * per-variable metadata value on any finding, a group's distinct set on a Group finding. Never
-     * a {@code null} value (NK §1); never a key of {@link #namedColumns}.
+     * order: a raw column's cell and a per-row binding's value on a record-level finding (owner
+     * Q-C), every other binding, dataset fact and per-variable metadata value on any finding, a
+     * group's distinct set on a Group finding. Never a {@code null} value (NK §1); never a key of
+     * {@link #namedColumns}.
      */
     Map<String, String> values;
 

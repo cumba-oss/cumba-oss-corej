@@ -453,6 +453,83 @@ class RuleRunnerNameOnlyProjectionTest
         assertNameOnly(v, List.of("AETERM"));
     }
 
+
+    @Test
+    void qcAPerRowBindingOnAColumnLevelFindingIsListedByName() throws Exception
+    {
+        // Owner Q-C on the column-level per-variable path (buildVariableViolation). A {VAR} rule
+        // (no row cursor: the Check reads only the variable cursor) may still REPORT a per-row
+        // binding — Output_Variables is not part of the domain inference — so $end reaches the
+        // finding, which has no row. Before this fix its value was the Vector's toString (an
+        // engine object, not even a record's value). Now it is listed by name; the scalar $n and
+        // the VAR-only $fmt (the column's own metadata) keep their values (V2 / V4).
+        Rule rule = load(
+                """
+                        {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                         "Bindings":[{"name":"$end","expression":"AEENDY"},
+                                     {"name":"$n","expression":"record_count()"},
+                                     {"name":"$fmt","expression":"var_format(\\"DATA\\")"}],
+                         "Check":{"all":[{"expression": "ends_with(varname(), \\"AETERM\\")"},
+                                         {"expression": "empty(var_format(\\"DATA\\"))"}]},
+                         "Outcome":{"Message":"m","Output_Variables":["variable_name","$end","$n","$fmt"]}}""");
+        assertEquals(net.cumba.corej.core.expr.eval.Domain.VARIABLE, rule.getEvaluationDomain(),
+                "the probe needs the column-level path: a {VAR} domain");
+        IDataTable ae = MockTable.of().name("AE").col("AETERM", "X", "Y")
+                .colDouble("AEENDY", 2.0, 30.0).build();
+        IDataTable empty = MockTable.of().name("AE").col("AETERM").colDouble("AEENDY").build();
+
+        Violation v = single(RuleRunnerCalls.execute(rule, ae));
+        Violation onEmpty = single(RuleRunnerCalls.execute(rule, empty));
+
+        for (Violation finding : List.of(v, onEmpty))
+        {
+            assertEquals("AETERM", finding.getValues().get("variable_name"), describe(finding));
+            assertNameOnly(finding, List.of("$end", "AEENDY"));
+            assertEquals("", finding.getValues().get("$fmt"), describe(finding));
+        }
+        assertEquals("2", v.getValues().get("$n"), describe(v));
+        assertEquals("0", onEmpty.getValues().get("$n"), describe(onEmpty));
+    }
+
+
+    @Test
+    void qcAPerRowBindingOnADefineItemFindingIsListedByName() throws Exception
+    {
+        // The same on the Define-universe column-level path (buildDefineVariableViolation): the
+        // ItemDef finding has no row, so the per-row $age is listed by name.
+        Rule rule = load(
+                """
+                        {"Core":{"Id":"R1"},"Sensitivity":"Record","Variable_Universe":"Define",
+                         "Bindings":[{"name":"$age","expression":"AGE"},
+                                     {"name":"$n","expression":"record_count()"}],
+                         "Check":{"expression":
+                           "not empty(var_name(\\"DEFINE\\")) and var_role(\\"DEFINE\\") != var_role(\\"LIBRARY\\")"},
+                         "Outcome":{"Message":"m","Output_Variables":["define_variable_name","$age","$n"]}}""");
+        assertEquals(net.cumba.corej.core.expr.eval.Domain.VARIABLE, rule.getEvaluationDomain());
+        IDataTable dm = MockTable.of().name("DM").col("AGE", "56").build();
+
+        Violation v = single(RuleRunnerCalls.execute(rule, dm, _ -> null, "DM",
+                defineProvider("Record Qualifier"), null, defineProvider("Identifier")));
+
+        assertEquals("AGE", v.getValues().get("define_variable_name"), describe(v));
+        assertNameOnly(v, List.of("$age", "AGE"));
+        assertEquals("1", v.getValues().get("$n"), describe(v));
+    }
+
+
+    private static MetadataProvider defineProvider(String role)
+    {
+        return net.cumba.corej.core.metadata.MetadataLibraryProvider
+                .forDefine(net.cumba.datatable.testkit.TestMetadataFixtures.lib("x")
+                        .table(net.cumba.datatable.testkit.TestMetadataFixtures.table("DM")
+                                .column(net.cumba.datatable.testkit.TestMetadataFixtures
+                                        .column("AGE", 0,
+                                                net.cumba.datatable.values.DataValueType.LONG)
+                                        .role(role).build())
+                                .build())
+                        .build());
+    }
+
     // ------------------------------------------------------------------ the record path never
     // lists
 

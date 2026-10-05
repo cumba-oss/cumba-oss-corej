@@ -2835,8 +2835,8 @@ public final class RuleRunner
                 else if (ov.startsWith("$") && contextVariables != null
                         && contextVariables.containsKey(ov))
                 {
-                    filtered.put(ov,
-                            reportedBinding(ov, contextVariables.get(ov), colMeta.getName(), ctx));
+                    putReportedBinding(filtered, named, ov, contextVariables.get(ov),
+                            colMeta.getName(), ctx);
                 }
                 else
                 {
@@ -2886,13 +2886,48 @@ public final class RuleRunner
 
 
     /**
+     * A {@code $} entry of a <b>column-level</b> finding ({@link #buildVariableViolation},
+     * {@link #buildDefineVariableViolation}) — a finding with no row. A <b>per-row binding</b> (one
+     * whose derived domain carries the ROW cursor; the per-column view keeps it as the binding,
+     * {@link #projectVariablesForColumn}) is listed by name in {@code named}, never valued: its
+     * value at any row belongs to an arbitrary record, exactly as on a dataset verdict (owner Q-C,
+     * 2026-10-05: <i>"agree, name only"</i>; {@code PLAN-finding-values-record-level-only}). It
+     * reaches this path although the Check of a {@code {VAR}} rule reads no row cursor, because
+     * {@code Output_Variables} take no part in the domain inference ({@code DomainScan} reads the
+     * Check): a {@code {VAR}} rule may report a binding its Check never reads. Before this the
+     * finding printed the binding's {@code Vector} itself — an engine object's {@code toString}.
+     * Every other binding — dataset-scope, VAR-only, a per-variable map — keeps its value
+     * ({@link #reportedBinding}).
+     */
+    private static void putReportedBinding(Map<String, String> out, List<String> named, String ov,
+            @Nullable Object projected, String variableName, EvaluationContext ctx)
+    {
+        if (projected instanceof BindingValue compiled)
+        {
+            Domain domain = compiled.binding().domain();
+            if (domain != null && domain.rowCursor())
+            {
+                named.add(ov);
+                return;
+            }
+        }
+        out.put(ov, reportedBinding(ov, projected, variableName, ctx));
+    }
+
+
+    /**
      * The reported value of a {@code $} entry on a per-variable path, from the per-column variable
-     * view ({@link #projectVariablesForColumn}): a binding kept as the binding (dataset-level or
-     * row-cursor) hands over its report form ({@link BindingValue#reportedHandOver}); a
-     * per-variable map ({@link VariableMetadataResult}) reports THIS variable's value, as the
-     * verdict read it (W4b, D-W4b-12), or the map's typed default; a VAR-only binding the view
-     * already handed over against the column reports its value, or — for a missing — the binding's
-     * typed default, read the same way ({@link #bindingDefaultForColumn}). Never {@code null}.
+     * view ({@link #projectVariablesForColumn}): a dataset-level binding kept as the binding hands
+     * over its report form ({@link BindingValue#reportedHandOver}); a per-variable map
+     * ({@link VariableMetadataResult}) reports THIS variable's value, as the verdict read it (W4b,
+     * D-W4b-12), or the map's typed default; a VAR-only binding the view already handed over
+     * against the column reports its value, or — for a missing — the binding's typed default, read
+     * the same way ({@link #bindingDefaultForColumn}). Never {@code null}. A per-row binding never
+     * reaches here ({@link #putReportedBinding} lists it by name, Q-C).
+     *
+     * @throws IllegalStateException
+     *             when the entry hands over a per-row {@code Vector} — a column-level finding has
+     *             no row to read it at, and printing the vector would print an engine object
      */
     private static String reportedBinding(String ov, @Nullable Object projected,
             String variableName, EvaluationContext ctx)
@@ -2901,6 +2936,12 @@ public final class RuleRunner
         if (val instanceof BindingValue compiled)
         {
             val = compiled.reportedHandOver(ctx);
+        }
+        if (val instanceof net.cumba.corej.core.expr.eval.Vector)
+        {
+            throw new IllegalStateException(ov + " hands over a per-row value on a column-level"
+                    + " finding, which has no row — a per-row binding is listed by name there"
+                    + " (owner Q-C, PLAN-finding-values-record-level-only)");
         }
         if (val instanceof VariableMetadataResult vmr)
         {
@@ -3245,7 +3286,7 @@ public final class RuleRunner
         {
             if (ov.startsWith("$") && contextVariables != null && contextVariables.containsKey(ov))
             {
-                filtered.put(ov, reportedBinding(ov, contextVariables.get(ov), varName, ctx));
+                putReportedBinding(filtered, named, ov, contextVariables.get(ov), varName, ctx);
             }
             else
             {
