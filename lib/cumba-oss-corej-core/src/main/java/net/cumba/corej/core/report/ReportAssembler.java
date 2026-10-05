@@ -669,11 +669,11 @@ public final class ReportAssembler
         List<String> keyVars = loc.getKeyVariableNames();
         // Owner Q-A (2026-10-05): a Group finding is located by its group variables; the anchor
         // row's USUBJID / SEQ describe the block's first flagged row, not the group, so v2 prints
-        // them only when the column is one of the group variables. v1 keeps them (frozen, D66).
-        boolean groupKeyed = loc.isGroupKeyed();
-        boolean usubjidIsGroupKey = groupKeyed && containsIgnoreCase(keyVars, "USUBJID");
-        boolean seqIsGroupKey = groupKeyed
-                && containsIgnoreCase(keyVars, domain.toUpperCase(Locale.ROOT) + "SEQ");
+        // them only when the column is one of the group variables — the one test the report table
+        // and the data browser share (ValidationFindingLocation.isHiddenAnchorIdentity). v1 keeps
+        // them (frozen, D66).
+        boolean hideUsubjid = loc.isHiddenAnchorIdentity("USUBJID");
+        boolean hideSeq = loc.isHiddenAnchorIdentity("SEQ");
 
         List<Map<String, Object>> rows = new ArrayList<>(slab.rowCount());
         for (int p = 0, rc = slab.rowCount(); p < rc; p++)
@@ -681,8 +681,8 @@ public final class ReportAssembler
             RowCells c = extractRow(slab, p, names, domain, outputVars, namedColumns.isEmpty());
             Map<String, Object> rowMap = new LinkedHashMap<>();
             rowMap.put("row", c.row() > 0 ? c.row() : "");
-            rowMap.put("USUBJID", groupKeyed && !usubjidIsGroupKey ? "" : c.usubjid());
-            rowMap.put("SEQ", groupKeyed && !seqIsGroupKey ? "" : c.seq());
+            rowMap.put("USUBJID", hideUsubjid ? "" : c.usubjid());
+            rowMap.put("SEQ", hideSeq ? "" : c.seq());
             // EC-40: the record key, omitted entirely when none resolved so the default
             // corej.findingKeys=off leaves this object byte-identical to a pre-EC-40 build.
             // D29/D66a (phase 5b): a Group-sensitivity finding always resolves a key — its
@@ -735,19 +735,6 @@ public final class ReportAssembler
      * The v2 finding-level field carrying the name-only columns; see {@link #buildCombinedFinding}.
      */
     public static final String FIELD_COLUMNS = "columns";
-
-    private static boolean containsIgnoreCase(List<String> names, String name)
-    {
-        for (String n : names)
-        {
-            if (name.equalsIgnoreCase(n))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
 
     private List<Map<String, Object>> buildRulesReport()
     {

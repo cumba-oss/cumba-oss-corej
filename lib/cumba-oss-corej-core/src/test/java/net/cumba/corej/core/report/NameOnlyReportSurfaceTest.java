@@ -447,4 +447,24 @@ class NameOnlyReportSurfaceTest
         assertEquals("A", keyedRow.get("USUBJID"));
         assertEquals("", keyedRow.get("SEQ"), "AESEQ is not a group variable here");
     }
+
+
+    @Test
+    void v2PrintsTheAnchorSeqWhenTheDataSetsSeqOrABareSeqIsAGroupVariable()
+    {
+        // The shared test (ValidationFindingLocation.isHiddenAnchorIdentity): SEQ — the report's
+        // canonical name — prints when SEQ or the location data set's <DATASET>SEQ is a group key.
+        Rule rule = rule("T-GRP-SEQ", Domain.ROW);
+        ReportSections byAeseq = sections(rule, result("T-GRP-SEQ", List.of(grouped(1, "A", "2",
+                values("AEDECOD", "{HEADACHE}"), values("USUBJID", "A", "AESEQ", "2")))));
+        Map<String, Object> aeseqRow = v2Rows(onlyV2Finding(byAeseq)).get(0);
+        assertEquals("A", aeseqRow.get("USUBJID"));
+        assertEquals("2", aeseqRow.get("SEQ"), "AESEQ is the group variable");
+
+        ReportSections byBareSeq = sections(rule, result("T-GRP-SEQ", List
+                .of(grouped(1, "A", "2", values("AEDECOD", "{HEADACHE}"), values("seq", "2")))));
+        Map<String, Object> bareRow = v2Rows(onlyV2Finding(byBareSeq)).get(0);
+        assertEquals("", bareRow.get("USUBJID"), "USUBJID is not a group variable here");
+        assertEquals("2", bareRow.get("SEQ"), "a bare SEQ key, matched ignoring case");
+    }
 }
