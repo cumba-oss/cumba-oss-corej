@@ -92,6 +92,14 @@ public final class SuppPivot
      */
     public static @Nullable IDataTableColumn qualifierColumn(EvaluationContext ctx, String name)
     {
+        IDataTableColumn column = pivot(ctx, name);
+        MergedTableShadow.Session shadow = ctx.getMergedShadow();
+        return shadow == null ? column : shadow.suppColumn(ctx.getTable(), name, column);
+    }
+
+
+    private static @Nullable IDataTableColumn pivot(EvaluationContext ctx, String name)
+    {
         if (!ctx.isSuppMerge() || ctx.getTable().getMetaData().getColumnIndex(name) >= 0)
         {
             return null;

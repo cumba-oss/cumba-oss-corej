@@ -847,6 +847,17 @@ public final class RuleRunner
             joinedDatasets.putAll(keyExpansion.lookups());
         }
 
+        // W2 of PLAN-merged-evaluation-table — the merged view built BESIDE this pipeline, every
+        // join / SUPP read compared with it. `null` (one volatile read) unless a test installed a
+        // MergedTableShadow.Observer; it changes no answer either way.
+        MergedTableShadow.Session shadow = MergedTableShadow.open(rule, table, evalTable,
+                keyExpansion, forwardRelrec != null, joinedDatasets, resolver, ruleId,
+                domainPrefix);
+        if (shadow != null)
+        {
+            joinedDatasets = shadow.joinedDatasets(joinedDatasets);
+        }
+
         // Phase 2c is gone (D77): the Check tree — every level of it — was resolved by the
         // specialisation stage at the top of this method, under the same EC-36 policy this site
         // used to apply per execution. The tree read here is already concrete.
@@ -868,7 +879,7 @@ public final class RuleRunner
                 // PLAN-identity-safe-join-caches D4: the run's wildcard column cache, so every rule
                 // of a validation run shares it; without a run cache the context's own default is
                 // used (per-execute scope, still cached).
-                .wildcardColumns(runWildcardColumns(joinCache)).build();
+                .wildcardColumns(runWildcardColumns(joinCache)).mergedShadow(shadow).build();
         try
         {
             // The rule's joins and its context are built BEFORE the eager "answered but unusable"
@@ -893,6 +904,10 @@ public final class RuleRunner
             // EC-43: exactly one aggregated INFO line per (rule, dataset), whatever the outcome
             // (finding, SKIPPED, or a propagating evaluation error). See logAbsentColumnFolds.
             logAbsentColumnFolds(ruleId, evalTable, ctx);
+            if (shadow != null)
+            {
+                shadow.close();
+            }
         }
     }
 

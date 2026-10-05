@@ -93,6 +93,16 @@ final class KeyMatchExpandedLookup implements JoinLookup
     }
 
 
+    /**
+     * The child row bound to an expanded row, or {@code -1} — read by the W2 merged-table shadow
+     * ({@link MergedTableShadow}) to compare a read at its (real row, part row).
+     */
+    long boundRowAt(long row)
+    {
+        return boundChildRow(row);
+    }
+
+
     /** The bound child row for {@code row}, or {@code -1} when there is none. */
     private long boundChildRow(long row)
     {

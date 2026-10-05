@@ -260,6 +260,15 @@ public class EvaluationContext
     @Nullable
     CheckLevelPlan levelPlan;
 
+    /**
+     * The W2 merged-table shadow of this execution ({@code PLAN-merged-evaluation-table}), or
+     * {@code null} — always {@code null} outside a test that installed a
+     * {@link MergedTableShadow.Observer}. {@link SuppPivot#qualifierColumn} hands its answer
+     * through it so every qualifier read is compared with the merged view; {@code toBuilder}
+     * carries it into every derived context. Deleted in W6.
+     */
+    MergedTableShadow.@Nullable Session mergedShadow;
+
     public int rowCount()
     {
         return Math.toIntExact(table.getRowCount());

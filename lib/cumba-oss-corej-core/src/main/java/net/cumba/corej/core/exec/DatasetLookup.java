@@ -410,6 +410,17 @@ public class DatasetLookup implements JoinLookup
 
 
     /**
+     * The joined row a primary row is served from (first wins), or {@code -1} — read by the W2
+     * merged-table shadow ({@link MergedTableShadow}) to compare a read at its (real row, part
+     * row).
+     */
+    long joinedRowAt(IDataTable primaryTable, long row)
+    {
+        return ensureJoinMap(primaryTable).getValueAsLong((int) row);
+    }
+
+
+    /**
      * Returns the dataset name this lookup was built from.
      */
     @Override
