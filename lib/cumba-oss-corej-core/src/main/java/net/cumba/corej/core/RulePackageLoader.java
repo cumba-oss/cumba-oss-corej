@@ -1935,9 +1935,12 @@ public class RulePackageLoader
 
     /**
      * Whether every occurrence of {@code opCall} in {@code check} is the direct operand of an
-     * {@code empty()} / {@code is_missing()} call — the rule tests <em>only</em> the operation
-     * result's emptiness, so an {@code available(<op>)} gate would make it unreachable. Ported from
-     * the retired {@code OperationInliner}, so loader-injected gates keep the exact shape it baked.
+     * {@code empty()} call — the rule tests <em>only</em> the operation result's emptiness, so an
+     * {@code available(<op>)} gate would make it unreachable. Ported from the retired
+     * {@code OperationInliner}, so loader-injected gates keep the exact shape it baked.
+     * {@code is_missing} no longer earns the exemption (register D50, owner 2026-10-05): it is true
+     * only for a {@code MissingValue}, and an unavailable provider answer is an empty result, not a
+     * missing one — exempting it would let such a rule pass silently instead of SKIP.
      */
     private static boolean testsOnlyEmptiness(net.cumba.corej.core.expr.ast.Expr check,
             net.cumba.corej.core.expr.ast.Expr opCall)
@@ -1961,7 +1964,7 @@ public class RulePackageLoader
             return;
         }
         boolean emptiness = node instanceof net.cumba.corej.core.expr.ast.Expr.Call c
-                && ("empty".equals(c.name()) || "is_missing".equals(c.name()));
+                && "empty".equals(c.name());
         switch (node)
         {
         case net.cumba.corej.core.expr.ast.Expr.And a -> a.parts()

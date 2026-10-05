@@ -232,6 +232,11 @@ public final class TypeExpectations
      * {@link #numericDefaultColumns()}: a primary column of the same name is another column, and it
      * must not flip (the pre-go review's M2). Dynamic targets ({@code colref}, {@code row_max}'s
      * pattern, {@code value()}'s cursor) have no entry and stay keyed by the call site alone.
+     * &#9888; <b>Known limit:</b> a call pinned to the primary dataset
+     * ({@code max(AEX, domain=AE)}, keyed {@code ("AE", "AEX")}) and an unpinned one
+     * ({@code max(AEX)}, keyed {@code ("", "AEX")}) are NOT unified, although on an AE evaluation
+     * they read the same column: which dataset is the primary is known only per evaluation, never
+     * at load, so the two keys stay distinct and each site keeps its own kind.
      */
     private final Map<Expr.Call, StaticColumn> staticTargets = new LinkedHashMap<>();
 

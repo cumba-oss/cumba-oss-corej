@@ -89,6 +89,22 @@ class InjectInlineOperationGatesTest
 
 
     @Test
+    void anIsMissingCheckIsNotEmptinessOnlyAndGetsTheAvailableTerm()
+    {
+        // Register D50 (owner 2026-10-05): is_missing is strict -- true only for a MissingValue.
+        // An unavailable provider answer is an EMPTY result, not a MissingValue, so
+        // is_missing(<op>) would answer false and the rule would pass silently instead of
+        // SKIP. Only `empty` earns the exemption; is_missing(<op>) keeps available(<op>).
+        Rule rule = load("{\"Core\":{\"Id\":\"X-1\"},"
+                + "\"Check\":{\"expression\":\"is_missing(dataset_class_from_library())\"}}");
+        assertEquals("library_available() and available(dataset_class_from_library())",
+                preconditionText(rule));
+        assertEquals("library_available() and available(dataset_class_from_library())",
+                rule.getInjectedPreconditionGates());
+    }
+
+
+    @Test
     void aDictionaryCallGetsItsTypedGate()
     {
         Rule rule = load("{\"Core\":{\"Id\":\"X-1\"},\"Check\":{\"expression\":"
