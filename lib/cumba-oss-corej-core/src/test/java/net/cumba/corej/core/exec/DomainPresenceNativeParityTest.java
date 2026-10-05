@@ -1,6 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -199,6 +200,12 @@ class DomainPresenceNativeParityTest
         // Violation.getRowNumber() reports 1-based as row 1.
         assertEquals(List.of(1L), nativeF.keySet().stream().sorted().toList(),
                 "exactly one dataset-level finding");
-        assertEquals("S1", nativeF.get(1L).get("STUDYID"), "STUDYID projected onto the finding");
+        // PLAN-finding-values-record-level-only V1: a dataset verdict lists the raw column by
+        // name — row 0's STUDYID is no fact about the finding (it printed "S1" until then).
+        assertFalse(nativeF.get(1L).containsKey("STUDYID"), "STUDYID carries no value: " + nativeF);
+        Violation v = RuleRunnerCalls
+                .execute(rule, dm, resolverOf(Map.of("DM", dm)), null, null, null, null)
+                .getViolations().get(0);
+        assertEquals(List.of("STUDYID"), v.getNamedColumns(), "STUDYID listed by name");
     }
 }

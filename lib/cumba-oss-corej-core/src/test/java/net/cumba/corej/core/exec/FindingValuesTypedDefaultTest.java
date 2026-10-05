@@ -458,8 +458,9 @@ class FindingValuesTypedDefaultTest
     void s5APerRowNumericBindingOnAnEmptyTableReportsTheMissingMarker() throws Exception
     {
         // M4: the empty-table arm printed an untyped "" for every binding; a numeric one now
-        // prints MIS, a char one still "". The PRESENT column's "" on an empty table is N20's,
-        // handed to PLAN-finding-values-record-level-only (it does not move here).
+        // prints MIS, a char one still "". The PRESENT column is N20's: it printed "" until
+        // PLAN-finding-values-record-level-only listed it by name (V8 (b)) — "no value" is a
+        // state, not a value (V6).
         Rule rule = load("""
                 {"Core":{"Id":"R1"},"Sensitivity":"Dataset",
                  "Bindings":[{"name":"$n","expression":"AENUM + 1"},
@@ -468,9 +469,13 @@ class FindingValuesTypedDefaultTest
                  "Outcome":{"Message":"m","Output_Variables":["AETERM","$n","$s"]}}""");
         IDataTable empty = MockTable.of().name("AE").col("AETERM").colDouble("AENUM").build();
 
-        Map<String, String> v = single(RuleRunnerCalls.execute(rule, empty));
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, empty);
+        Map<String, String> v = single(result);
 
-        assertEquals("", v.get("AETERM"), "N20: a present column on an empty table — " + v);
+        assertFalse(v.containsKey("AETERM"), "N20: a present column on an empty table is listed"
+                + " by name, never printed \"\" — " + v);
+        // AENUM is derived from the binding ($n reads it), so it is a projected raw column too.
+        assertEquals(List.of("AETERM", "AENUM"), result.getViolations().get(0).getNamedColumns());
         assertEquals(MIS, v.get("$n"), "a per-row numeric binding with no row: MIS — " + v);
         assertEquals("", v.get("$s"), "a per-row char binding with no row: \"\" — " + v);
         assertNullFree(v);

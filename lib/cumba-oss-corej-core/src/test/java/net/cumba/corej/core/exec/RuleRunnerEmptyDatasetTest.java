@@ -93,9 +93,11 @@ class RuleRunnerEmptyDatasetTest
 
 
     @Test
-    void datasetLevelRule_emptyPrimary_outputVarIsRealColumn_emptyValue()
+    void datasetLevelRule_emptyPrimary_outputVarIsRealColumn_listedByName()
     {
-        // STUDYID is a real (present) column; on an empty dataset there is no value to read.
+        // STUDYID is a real (present) column; on an empty dataset there is no value to read. It
+        // printed "" (N20) until PLAN-finding-values-record-level-only listed it by name (V8 (b)):
+        // "no value" is a state, not a value.
         IDataTable empty = MockTable.of().name("ADSL").col("STUDYID").build();
 
         Rule rule = trtsdtNotExistsRule("CORE-EMPTY-OUTVAR", List.of("STUDYID"));
@@ -103,8 +105,10 @@ class RuleRunnerEmptyDatasetTest
         RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunnerCalls.execute(rule, empty));
 
         assertTrue(result.hasViolations());
-        assertEquals("", result.getViolations().getFirst().getValues().get("STUDYID"),
-                "present column on empty dataset resolves to empty, not a crash");
+        Violation v = result.getViolations().getFirst();
+        assertFalse(v.getValues().containsKey("STUDYID"),
+                "present column on empty dataset prints no value, not a crash: " + v.getValues());
+        assertEquals(List.of("STUDYID"), v.getNamedColumns());
     }
 
 
@@ -122,7 +126,10 @@ class RuleRunnerEmptyDatasetTest
         assertTrue(result.hasViolations());
         assertEquals(1, result.getViolationCount());
         assertEquals(0L, result.getViolations().getFirst().getRow());
-        assertEquals("S1", result.getViolations().getFirst().getValues().get("STUDYID"));
+        // V1 (PLAN-finding-values-record-level-only): the dataset verdict lists STUDYID by name;
+        // it read row 0's "S1" until then.
+        assertFalse(result.getViolations().getFirst().getValues().containsKey("STUDYID"));
+        assertEquals(List.of("STUDYID"), result.getViolations().getFirst().getNamedColumns());
     }
 
 

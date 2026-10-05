@@ -4,16 +4,35 @@ import java.util.List;
 import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Value;
+import lombok.With;
 import net.cumba.datatable.report.Severity;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One emitted violation. {@link #values} carries only the rule-projected {@code Output_Variables};
- * row-identity columns ({@code USUBJID}, {@code <DOMAIN>SEQ}) live in {@link #usubjid} and
+ * One emitted violation. {@link #values} carries only the rule-projected {@code Output_Variables}
+ * that have a <b>value</b>; the projected raw columns a finding lists <em>by name without a
+ * value</em> ride in {@link #namedColumns} ({@code PLAN-finding-values-record-level-only}, V8 (b)).
+ * Row-identity columns ({@code USUBJID}, {@code <DOMAIN>SEQ}) live in {@link #usubjid} and
  * {@link #seq} to mirror Python's {@code ValidationErrorEntity}, where USUBJID and SEQ are
  * top-level fields rather than entries in {@code value}. {@code ValidationReportBuilder} re-injects
  * them into the slab values map so {@code JsonReportWriter} keeps reading from the canonical keys;
  * the parity normaliser reads only {@code values} and therefore stays clean.
+ *
+ * <p>
+ * <b>A raw column's value is printed only on a record-level finding</b> (owner, 2026-10-04:
+ * <i>"values should only be printed on record level findings"</i>; V1–V5). "Record-level" is a
+ * property of the <em>producing site</em>, never of the rule's {@code Sensitivity}: a
+ * {@link Unit.Row} site and a per-(variable, row) {@link Unit.Column} site read the row's cells
+ * into {@link #values}; a dataset verdict ({@link Unit#DATASET} — a broadcast fold, a {@code {}}
+ * metadata broadcast, a non-Record rule's first firing row), a column-level {@link Unit.Column}
+ * site with no row, and a Study rule list every raw column in {@link #namedColumns} instead. The
+ * finding's own values always print: a binding ({@code $x}, V2), the dataset-scope facts
+ * ({@code record_count}, {@code dataset_name}, {@code ds_*}), the per-variable metadata
+ * ({@code variable_*}, {@code library_variable_*}, {@code define_*}, V4). A <b>Group</b> finding
+ * keeps D94c's per-group distinct sets for its raw columns (owner Q-A, 2026-10-05) and lists
+ * nothing; what a report surface must drop from it is the anchor row's identity — see
+ * {@link #isGroupFinding()}.
+ * </p>
  */
 @Value
 @AllArgsConstructor
@@ -22,6 +41,12 @@ public class Violation
 
     long row;
 
+    /**
+     * The projected {@code Output_Variables} entries that carry a value, in the effective list's
+     * order: a raw column's cell on a record-level finding, every binding, dataset fact and
+     * per-variable metadata value on any finding, a group's distinct set on a Group finding. Never
+     * a {@code null} value (NK §1); never a key of {@link #namedColumns}.
+     */
     Map<String, String> values;
 
     /** USUBJID for the row, or {@code null} when not applicable. */
@@ -73,6 +98,7 @@ public class Violation
      * </p>
      */
     @Nullable
+    @With
     Severity level;
 
     /**
@@ -123,6 +149,33 @@ public class Violation
      */
     @Nullable
     Map<String, String> groupKey;
+
+    /**
+     * <b>V8 (b)</b> — the projected raw columns this finding lists <em>by name, without a
+     * value</em>: every raw column (bare, {@code --}-resolved, SUPP-delivered or dotted joined —
+     * pattern and template entries after expansion) of the effective {@code Output_Variables} that
+     * the dataset carries, on a finding that is <b>not record-level</b> (V1, V5): a dataset
+     * verdict, a non-Record rule's first firing row, a Study rule, a column-level per-variable
+     * finding (where such an entry used to be omitted — 5b's hand-over list). In the effective
+     * list's order.
+     *
+     * <p>
+     * <b>Empty</b> ({@code List.of()}, the shared constant — no per-row allocation) on every
+     * record-level finding, every Group finding (D94c sets stay, Q-A), every {@code __error__}
+     * sentinel, and whenever no raw column is projected. Never {@code null}, never a {@code $} or
+     * metadata name, never a name that is also a key of {@link #values}; an absent column is in
+     * neither (NK §1 case 1).
+     * </p>
+     *
+     * <p>
+     * ⚠ Like {@link #keys}, {@link #level}, {@link #unit} and {@link #groupKey}, this rides as a
+     * sibling field and is <b>never merged into {@link #values}</b> — that map is the rulespec
+     * contract, and the no-null ruling (5b §2.1) admits no marker value for "no value": the
+     * {@code .cdt} checker, the rulespec normaliser and the report model read this list as a state
+     * of its own (V6 — never {@code ""}, {@code MIS} or {@code null}).
+     * </p>
+     */
+    List<String> namedColumns;
 
     /**
      * The finding-unit discriminator (Plan C &#167;3.4 step 4). Each variant identifies one unit of
@@ -196,25 +249,55 @@ public class Violation
         }
     }
 
-    /** Compatibility constructor for sites with no per-row identity. */
+    /**
+     * Compatibility constructor for sites with no per-row identity — the {@code __error__}
+     * sentinels and external producers. Lists nothing by name.
+     */
     public Violation(long row, Map<String, String> values)
     {
-        this(row, values, null, null, Map.of(), null, null);
+        this(row, values, null, null, Map.of(), null, null, null, List.of());
     }
 
 
-    /** Compatibility constructor for sites that stamp a unit but no group key (row paths). */
+    /**
+     * Compatibility constructor for record-level sites that stamp a unit but no group key (the row
+     * paths); such a finding lists nothing by name.
+     */
     public Violation(long row, Map<String, String> values, @Nullable String usubjid,
             @Nullable String seq, Map<String, String> keys, @Nullable Severity level,
             @Nullable Unit unit)
     {
-        this(row, values, usubjid, seq, keys, level, unit, null);
+        this(row, values, usubjid, seq, keys, level, unit, null, List.of());
+    }
+
+
+    /** Compatibility constructor for Group sites: a Group finding lists nothing by name (Q-A). */
+    public Violation(long row, Map<String, String> values, @Nullable String usubjid,
+            @Nullable String seq, Map<String, String> keys, @Nullable Severity level,
+            @Nullable Unit unit, @Nullable Map<String, String> groupKey)
+    {
+        this(row, values, usubjid, seq, keys, level, unit, groupKey, List.of());
     }
 
 
     public long getRowNumber()
     {
         return row + 1;
+    }
+
+
+    /**
+     * Whether this is a <b>Group</b>-sensitivity finding — one {@link #groupKey} was stamped on
+     * (every grouped path stamps it, an empty map when the whole dataset is one group). Its
+     * {@link #usubjid}, {@link #seq} and EC-40 {@link #keys} describe the <em>anchor row</em> (the
+     * group's first flagged row, a per-level accident — D29), not the finding: a report surface
+     * that keys a group finding by its group variables (v2, the data browser) drops them unless the
+     * name is a group key; v1 keeps anchoring at the first flagged row (frozen, D66/D66a). Owner
+     * Q-A, 2026-10-05.
+     */
+    public boolean isGroupFinding()
+    {
+        return groupKey != null;
     }
 
 }

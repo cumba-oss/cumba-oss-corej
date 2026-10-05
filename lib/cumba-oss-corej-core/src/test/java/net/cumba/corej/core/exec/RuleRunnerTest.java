@@ -46,8 +46,11 @@ class RuleRunnerTest
         Violation v = result.getViolations().get(0);
         assertEquals(1, v.getRow()); // 0-based row index
         assertEquals(2, v.getRowNumber()); // 1-based
-        assertEquals("SUBJ02", v.getValues().get("USUBJID"));
-        assertEquals("U", v.getValues().get("SEX"));
+        // No Sensitivity declared: the rule collapses to ONE dataset-level finding at its first
+        // firing row, whose raw columns are listed by name (PLAN-finding-values-record-level-only
+        // V5 — "SUBJ02" / "U" were printed until then).
+        assertEquals(List.of("USUBJID", "SEX"), v.getNamedColumns());
+        assertTrue(v.getValues().isEmpty(), v.getValues().toString());
     }
 
 
@@ -175,7 +178,8 @@ class RuleRunnerTest
 
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertEquals(1, result.getViolationCount());
-        assertEquals("X", result.getViolations().get(0).getValues().get("SEX"));
+        assertEquals(List.of("SEX"), result.getViolations().get(0).getNamedColumns(),
+                "a collapsed dataset-level finding lists SEX by name (V5)");
     }
 
     // -----------------------------------------------------------------------

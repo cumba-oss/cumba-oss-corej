@@ -667,6 +667,13 @@ public final class RuleTestCdt
                 aOut.write(" severity=");
                 aOut.write(ev.getSeverity().getJsonValue());
             }
+            // nameOnly= is reserved too (PLAN-finding-values-record-level-only): emitted here, in
+            // file order, for the same reason severity= is — the constraint loop cannot carry it.
+            for (String name : ev.getNameOnly())
+            {
+                aOut.write(" nameOnly=");
+                aOut.write(quoteIfNeeded(name));
+            }
             // TreeMap for a stable key order so back-filled / regenerated files diff cleanly.
             for (var e : new java.util.TreeMap<>(ev.getConstraints()).entrySet())
             {
@@ -789,7 +796,8 @@ public final class RuleTestCdt
         sorted.sort(java.util.Comparator
                 .comparingInt((ExpectedViolation e) -> e.getRow() == null ? -1 : e.getRow())
                 .thenComparing(e -> new java.util.TreeMap<>(e.getConstraints()).toString())
-                .thenComparing(e -> e.getSeverity() == null ? "" : e.getSeverity().name()));
+                .thenComparing(e -> e.getSeverity() == null ? "" : e.getSeverity().name())
+                .thenComparing(e -> e.getNameOnly().toString()));
         return sorted;
     }
 
@@ -1180,14 +1188,15 @@ public final class RuleTestCdt
 
 
     /**
-     * Parse a {@code #expectViolationAt [row=N] [severity=LEVEL] [COL=value ...]} directive into
-     * one {@link ExpectedViolation}.
+     * Parse a {@code #expectViolationAt [row=N] [severity=LEVEL] [nameOnly=COL ...] [COL=value
+     * ...]} directive into one {@link ExpectedViolation}.
      *
      * <p>
-     * <b>Two</b> reserved keys, both lowercase: {@code row} becomes
-     * {@link ExpectedViolation#getRow()} and {@code severity} becomes
-     * {@link ExpectedViolation#getSeverity()}. Every other {@code key=value} token is a column
-     * constraint.
+     * <b>Three</b> reserved keys: {@code row} becomes {@link ExpectedViolation#getRow()},
+     * {@code severity} becomes {@link ExpectedViolation#getSeverity()}, and the repeatable
+     * {@code nameOnly} collects into {@link ExpectedViolation#nameOnly} — the columns the violation
+     * lists by name without a value ({@code PLAN-finding-values-record-level-only} V8 (b)). Every
+     * other {@code key=value} token is a column constraint.
      * </p>
      *
      * <p>
@@ -1205,6 +1214,7 @@ public final class RuleTestCdt
         Integer row = null;
         Severity severity = null;
         Map<String, String> constraints = new java.util.LinkedHashMap<>();
+        List<String> nameOnly = new ArrayList<>();
         for (int i = 1; i < aTokens.size(); i++)
         {
             String tok = aTokens.get(i);
@@ -1234,20 +1244,41 @@ public final class RuleTestCdt
                 }
                 severity = parseSeverity(value, aSource, aLineIdx);
             }
+            else if (key.equals("nameOnly"))
+            {
+                // Reserved like severity=, and for the same reason: unreserved it would declare a
+                // constraint on a column named `nameOnly`. Repeatable — one token per column.
+                if (value.isEmpty())
+                {
+                    throw error(aSource, aLineIdx, "#expectViolationAt: nameOnly= needs a column");
+                }
+                if (nameOnly.contains(value) || constraints.containsKey(value))
+                {
+                    throw error(aSource, aLineIdx, "#expectViolationAt: " + value
+                            + " is pinned twice (nameOnly= and / or a value pin)");
+                }
+                nameOnly.add(value);
+            }
             else
             {
+                if (nameOnly.contains(key))
+                {
+                    throw error(aSource, aLineIdx, "#expectViolationAt: " + key
+                            + " is pinned twice (nameOnly= and / or a value pin)");
+                }
                 constraints.put(key, value);
             }
         }
         // ⚑ severity= counts as a pin. Without this arm, reserving the key would turn the
         // previously-working spelling `#expectViolationAt severity=ERROR` into a parse error.
-        if (row == null && severity == null && constraints.isEmpty())
+        if (row == null && severity == null && constraints.isEmpty() && nameOnly.isEmpty())
         {
             throw error(aSource, aLineIdx,
-                    "#expectViolationAt: needs at least one of row=, severity= or COL=value");
+                    "#expectViolationAt: needs at least one of row=, severity=, nameOnly= or"
+                            + " COL=value");
         }
         return ExpectedViolation.builder().row(row).constraints(constraints).severity(severity)
-                .build();
+                .nameOnly(List.copyOf(nameOnly)).build();
     }
 
 

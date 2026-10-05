@@ -257,22 +257,27 @@ class QualifiedNamePhase3FixesTest
 
     /**
      * N20: a dataset-level finding on an EMPTY primary has no row to read. A present bare output
-     * column prints {@code ""} (the row guard of {@code RuleRunner.extractOutputValues}); a dotted
+     * column printed {@code ""} (the row guard of {@code RuleRunner.extractOutputValues}); a dotted
      * one read row 0 through the join anyway and printed the numeric column's missing marker. One
-     * guard for both arms now. RED before: {@code J.N} printed {@code "."}.
+     * guard for both arms since N20 (RED before: {@code J.N} printed {@code "."}) — and since
+     * {@code PLAN-finding-values-record-level-only} (V1 / V8 (b)) both arms list the column by name
+     * instead of printing {@code ""}: a dotted joined column is a raw column like a bare one.
      */
     @Test
-    void aDatasetLevelFindingOnAnEmptyPrimaryPrintsDottedOutputsLikeBareOnes()
+    void aDatasetLevelFindingOnAnEmptyPrimaryListsDottedOutputsLikeBareOnes()
     {
         IDataTable empty = RealTables.of("P").str("K").str("S").dbl("N").build();
         IDataTable j = joined();
         Rule r = loadClean(ruleJson("Dataset", QualifiedNameFixture.matchJ("") + ","
                 + check("var_not_exists(\"TRTSDT\")") + "," + outcome("S", "N", "J.S", "J.N")),
                 true);
-        java.util.List<java.util.Map<String, String>> values = QualifiedNameFixture
-                .values(executed(r, empty, exactInventory(empty, j)));
-        assertEquals(1, values.size(), "the dataset-level finding fires on the empty dataset");
-        assertEquals(java.util.Map.of("S", "", "N", "", "J.S", "", "J.N", ""), values.get(0));
+        RuleExecutionResult result = executed(r, empty, exactInventory(empty, j));
+        assertEquals(1, result.getViolations().size(),
+                "the dataset-level finding fires on the empty dataset");
+        Violation v = result.getViolations().get(0);
+        assertEquals(java.util.Map.of(), v.getValues(), "no raw column prints a value");
+        assertEquals(java.util.List.of("S", "N", "J.S", "J.N"), v.getNamedColumns(),
+                "bare and dotted columns alike are listed by name, in effective order");
     }
 
 

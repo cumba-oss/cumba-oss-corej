@@ -1,5 +1,6 @@
 package net.cumba.corej.ruletest.cdt.ruletest;
 
+import java.util.List;
 import java.util.Map;
 import lombok.Builder;
 import lombok.Value;
@@ -23,6 +24,12 @@ import org.jspecify.annotations.Nullable;
  * row. Output variables are consulted first, so per-domain rules (variable-metadata, dataset
  * presence, …) are pinned by their projected keys (e.g. {@code variable_name=AEFOO}) rather than by
  * an unreliable row index.</li>
+ * <li>{@link #nameOnly} — the reserved, repeatable {@code nameOnly=COL} pin: the violation lists
+ * {@code COL} <em>by name without a value</em> ({@code Violation.getNamedColumns()},
+ * {@code PLAN-finding-values-record-level-only} V8 (b) — a raw column on a non-record finding). A
+ * {@code COL=value} pin on such a column <b>fails</b>, and is never resolved against the table
+ * cell: that fallback is exactly what let a dataset finding's row-0 value pass as the finding's
+ * own.</li>
  * </ul>
  *
  * <p>
@@ -60,4 +67,12 @@ public class ExpectedViolation
      */
     @Nullable
     Severity severity;
+
+    /**
+     * The columns the violation must list by name without a value, from the reserved
+     * {@code nameOnly=COL} tokens in file order; empty when the scenario pins none. Never
+     * {@code null}.
+     */
+    @Builder.Default
+    List<String> nameOnly = List.of();
 }

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
@@ -237,7 +238,12 @@ class NativeBroadcastVerdictParityTest
         Map<Long, Map<String, String>> legacyF = findings(rule, t, "AE");
         assertEquals(legacyF, nativeF, "output projection must match the legacy fold");
         assertEquals(1, nativeF.size());
-        assertTrue(nativeF.values().iterator().next().containsKey("STUDYID"));
+        // PLAN-finding-values-record-level-only V1: the verdict is about the dataset, so the raw
+        // column is listed by name, not valued from row 0 (which this test pinned until then).
+        assertFalse(nativeF.values().iterator().next().containsKey("STUDYID"), nativeF.toString());
+        Violation v = RuleRunnerCalls.execute(rule, t, NO_RESOLVER, "AE", null, null, null)
+                .getViolations().get(0);
+        assertEquals(List.of("STUDYID"), v.getNamedColumns());
     }
 
     // ------------------------------------------------------------------

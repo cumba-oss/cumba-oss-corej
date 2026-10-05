@@ -68,6 +68,20 @@ import org.jspecify.annotations.Nullable;
  * reachable-by-regression: with the payload key gone the check read the row's column of that name
  * and <b>passed</b>.
  * </p>
+ *
+ * <h2>&#9940; A NAME-ONLY column is never read from the table</h2>
+ * <p>
+ * {@code PLAN-finding-values-record-level-only} (V1, V8 (b)): a non-record finding lists its raw
+ * columns <em>by name without a value</em> ({@link Violation#getNamedColumns()}). The table
+ * fallback above would have made that change invisible — a dataset verdict pinned {@code DOMAIN=AE}
+ * kept passing against the row-0 cell after the engine stopped printing it (~185 corpus pins,
+ * review H2). So a key the observed violation lists by name is <b>never</b> resolved against the
+ * table: a {@code COL=value} pin on it fails, {@link #verify} names such pins up front
+ * ({@link #verifyNameOnlyKeysAreNotValuePinned}), and the reserved spelling {@code nameOnly=COL}
+ * ({@link ExpectedViolation#nameOnly}) is how a scenario asserts the state. {@link #toExpectations}
+ * emits it, so the back-fill cannot erase it (the same self-deleting shape as the {@code $} and
+ * {@code severity=} pins below).
+ * </p>
  */
 public final class ViolationLocationCheck
 {
@@ -137,6 +151,16 @@ public final class ViolationLocationCheck
         {
             return unbackedDollarPin;
         }
+        Result valuePinnedNameOnly = verifyNameOnlyKeysAreNotValuePinned(prefix, wantAt, aObserved);
+        if (valuePinnedNameOnly != null)
+        {
+            return valuePinnedNameOnly;
+        }
+        Result unbackedNameOnlyPin = verifyNameOnlyPinsAreCarried(prefix, wantAt, aObserved);
+        if (unbackedNameOnlyPin != null)
+        {
+            return unbackedNameOnlyPin;
+        }
         DataTableMeta meta = aPrimary.getMetaData();
         if (aObserved.size() != wantAt.size())
         {
@@ -192,10 +216,25 @@ public final class ViolationLocationCheck
             return false;
         }
         Map<String, String> out = aObserved.getValues() != null ? aObserved.getValues() : Map.of();
+        List<String> named = aObserved.getNamedColumns();
+        for (String name : aExpected.getNameOnly())
+        {
+            if (!named.contains(name))
+            {
+                return false;
+            }
+        }
         for (Map.Entry<String, String> c : aExpected.getConstraints().entrySet())
         {
             boolean ok;
-            if (out.containsKey(c.getKey()))
+            if (named.contains(c.getKey()))
+            {
+                // ⛔ A name-only column has NO value on this finding: a value pin on it — the
+                // empty spelling `COL=` included — is a non-match, and the table is never
+                // consulted. Pin it `nameOnly=COL`.
+                ok = false;
+            }
+            else if (out.containsKey(c.getKey()))
             {
                 // Output variables first: per-domain rules (variable-metadata, …) are pinned by
                 // their projected keys, whose Violation.row is a column index — never read the
@@ -322,6 +361,106 @@ public final class ViolationLocationCheck
                 + " resolved against a table column of that name. Either the engine stopped"
                 + " projecting the operation, or the key is mis-spelled / mis-cased (the payload"
                 + " lookup is case-sensitive). Keys actually projected: " + carried);
+    }
+
+
+    /**
+     * Fail loudly, naming the pins, when a {@code COL=value} constraint names a column that
+     * <em>every</em> observed violation lists by name without a value: the pin cannot match (a
+     * name-only column has no value, and the table is never read for it), and the message says what
+     * the fixture must say instead. The per-violation non-match in {@link #matches} stays the
+     * authority; this names the cause instead of a bare set diff.
+     */
+    private static @Nullable Result verifyNameOnlyKeysAreNotValuePinned(String aPrefix,
+            List<ExpectedViolation> aExpected, List<Violation> aObserved)
+    {
+        if (aObserved.isEmpty())
+        {
+            return null;
+        }
+        Set<String> namedOnEvery = null;
+        for (Violation v : aObserved)
+        {
+            Set<String> named = new TreeSet<>(v.getNamedColumns());
+            if (namedOnEvery == null)
+            {
+                namedOnEvery = named;
+            }
+            else
+            {
+                namedOnEvery.retainAll(named);
+            }
+        }
+        if (namedOnEvery == null || namedOnEvery.isEmpty())
+        {
+            return null;
+        }
+        Set<String> offending = new TreeSet<>();
+        for (ExpectedViolation e : aExpected)
+        {
+            for (String key : e.getConstraints().keySet())
+            {
+                if (namedOnEvery.contains(key))
+                {
+                    offending.add(key);
+                }
+            }
+        }
+        if (offending.isEmpty())
+        {
+            return null;
+        }
+        return new Result(false, aPrefix + "#expectViolationAt pins a VALUE for " + offending
+                + ", which every observed violation lists by name without a value — a raw"
+                + " column on a non-record finding prints no value"
+                + " (PLAN-finding-values-record-level-only V1) and is never read from the table"
+                + " cell; pin it as nameOnly=COL. Name-only on every violation: " + namedOnEvery);
+    }
+
+
+    /**
+     * Fail loudly when a {@code nameOnly=COL} pin is backed by <em>no</em> observed violation's
+     * name-only list — the engine prints the column's value again, or omits it (the column is
+     * absent), or the name is mis-spelled.
+     */
+    private static @Nullable Result verifyNameOnlyPinsAreCarried(String aPrefix,
+            List<ExpectedViolation> aExpected, List<Violation> aObserved)
+    {
+        Set<String> pinned = new LinkedHashSet<>();
+        for (ExpectedViolation e : aExpected)
+        {
+            pinned.addAll(e.getNameOnly());
+        }
+        if (pinned.isEmpty())
+        {
+            return null;
+        }
+        Set<String> listed = new TreeSet<>();
+        Set<String> valued = new TreeSet<>();
+        for (Violation v : aObserved)
+        {
+            listed.addAll(v.getNamedColumns());
+            if (v.getValues() != null)
+            {
+                valued.addAll(v.getValues().keySet());
+            }
+        }
+        List<String> absent = new ArrayList<>();
+        for (String key : pinned)
+        {
+            if (!listed.contains(key))
+            {
+                absent.add(key);
+            }
+        }
+        if (absent.isEmpty())
+        {
+            return null;
+        }
+        return new Result(false, aPrefix + "#expectViolationAt pins " + absent
+                + " as nameOnly=, which NO observed violation lists by name — the engine prints"
+                + " a value for it (then pin COL=value), or omits it (an absent column is in"
+                + " neither channel). Listed by name: " + listed + "; valued: " + valued);
     }
 
 
@@ -491,6 +630,11 @@ public final class ViolationLocationCheck
             sb.append(sb.length() == 0 ? "" : " ").append("severity=")
                     .append(aExpected.getSeverity());
         }
+        if (!aExpected.getNameOnly().isEmpty())
+        {
+            sb.append(sb.length() == 0 ? "" : " ").append("nameOnly=")
+                    .append(new TreeSet<>(aExpected.getNameOnly()));
+        }
         if (!aExpected.getConstraints().isEmpty())
         {
             sb.append(new TreeMap<>(aExpected.getConstraints()));
@@ -511,6 +655,8 @@ public final class ViolationLocationCheck
         }
         return "row=" + aViolation.getRowNumber()
                 + (aViolation.getLevel() != null ? " severity=" + aViolation.getLevel() : "")
+                + (aViolation.getNamedColumns().isEmpty() ? ""
+                        : " nameOnly=" + new TreeSet<>(aViolation.getNamedColumns()))
                 + " vars=" + vars;
     }
 
@@ -580,6 +726,12 @@ public final class ViolationLocationCheck
      * &mdash; an empty pin would match vacuously, see {@link #valueMatchesCell}. No corpus scenario
      * pins an empty value today.
      * </p>
+     * <p>
+     * &#9733; The columns a violation lists <b>by name without a value</b>
+     * ({@link Violation#getNamedColumns()}) are emitted as {@code nameOnly=COL} on BOTH branches
+     * &mdash; the third pin that cannot be recovered from the table, and the third that the
+     * back-fill would otherwise erase in silence.
+     * </p>
      */
     public static Expectations toExpectations(List<Violation> aObserved, long aTotalCount,
             boolean aTruncated, boolean aValueBased, String aDomain)
@@ -629,7 +781,7 @@ public final class ViolationLocationCheck
                         pins.put(e.getKey(), e.getValue());
                     }
                 }
-                if (pins.isEmpty())
+                if (pins.isEmpty() && v.getNamedColumns().isEmpty())
                 {
                     continue;
                 }
@@ -639,7 +791,7 @@ public final class ViolationLocationCheck
                 continue;
             }
             ats.add(ExpectedViolation.builder().row(row).constraints(pins).severity(v.getLevel())
-                    .build());
+                    .nameOnly(v.getNamedColumns()).build());
         }
         if (ats.size() != count)
         {
@@ -649,7 +801,8 @@ public final class ViolationLocationCheck
         }
         ats.sort(Comparator
                 .comparingInt((ExpectedViolation e) -> e.getRow() == null ? -1 : e.getRow())
-                .thenComparing(e -> new TreeMap<>(e.getConstraints()).toString()));
+                .thenComparing(e -> new TreeMap<>(e.getConstraints()).toString())
+                .thenComparing(e -> e.getNameOnly().toString()));
         return new Expectations(count, ats);
     }
 

@@ -472,4 +472,134 @@ class ViolationLocationCheckTest
         assertFalse(verify.apply(".A"), "a different marker does not match (D34 #5-2)");
         assertFalse(verify.apply("1"), "control: a present value does not match a missing cell");
     }
+
+    // ---- name-only columns (PLAN-finding-values-record-level-only V8 (b)) -----------------
+
+
+    /** A dataset verdict at row 1 listing AESER by name — AESER's row-1 cell is "Y". */
+    private static Violation nameOnly(String... aNames)
+    {
+        return new Violation(0, Map.of(), null, null, Map.of(), null, null, null, List.of(aNames));
+    }
+
+
+    @Test
+    void nameOnlyPin_hit()
+    {
+        RuleTestScenario s = scn("#expectViolationAt nameOnly=AESER");
+        assertTrue(ViolationLocationCheck
+                .verify(s, List.of(nameOnly("AESER")), 1, false, primary(s)).pass());
+    }
+
+
+    @Test
+    void nameOnlyPin_missing_failsNamingTheKey()
+    {
+        RuleTestScenario s = scn("#expectViolationAt nameOnly=AESER");
+        ViolationLocationCheck.Result r = ViolationLocationCheck.verify(s,
+                List.of(new Violation(0, Map.of("AESER", "Y"))), 1, false, primary(s));
+        assertFalse(r.pass());
+        assertTrue(r.detail().contains("[AESER]") && r.detail().contains("nameOnly="), r.detail());
+    }
+
+
+    /**
+     * ⛔⛔ THE PLANTED SENSITIVITY TEST (review H2). The table cell AESER at row 1 IS "Y", and before
+     * this plan a {@code AESER=Y} pin on a violation whose payload lacked AESER fell back to that
+     * cell and PASSED — which is how ~185 corpus pins would have stayed green while the engine
+     * stopped printing the value. A name-only key is never read from the table.
+     */
+    @Test
+    void valuePin_onANameOnlyKey_failsAndNeverReadsTheTableCell()
+    {
+        RuleTestScenario s = scn("#expectViolationAt AESER=Y");
+        ViolationLocationCheck.Result r = ViolationLocationCheck.verify(s,
+                List.of(nameOnly("AESER")), 1, false, primary(s));
+        assertFalse(r.pass(), "a value pin on a name-only column must fail");
+        assertTrue(r.detail().contains("pins a VALUE for [AESER]")
+                && r.detail().contains("nameOnly=COL"), r.detail());
+
+        // Control — the identical pin against a violation that still VALUES the column passes
+        // through the payload, and against one that carries nothing passes through the table
+        // fallback (the documented, unchanged hazard for excluded columns).
+        assertTrue(ViolationLocationCheck
+                .verify(s, List.of(new Violation(0, Map.of("AESER", "Y"))), 1, false, primary(s))
+                .pass());
+        assertTrue(ViolationLocationCheck.verify(s, List.of(row(0)), 1, false, primary(s)).pass());
+    }
+
+
+    @Test
+    void emptyValuePin_onANameOnlyKey_failsToo()
+    {
+        // `AESER=` means "an empty or missing cell" — a value state. "No value" is not one of
+        // them (V6): the fixture must say nameOnly=AESER.
+        RuleTestScenario s = scn("#expectViolationAt AESER=");
+        assertFalse(ViolationLocationCheck
+                .verify(s, List.of(nameOnly("AESER")), 1, false, primary(s)).pass());
+    }
+
+
+    @Test
+    void nameOnlyPin_isPerViolation_inTheBijection()
+    {
+        // Two observed violations: one lists AESER by name, one values it. The two pins must
+        // each claim the right one — the pre-checks pass (AESER is name-only on SOME, not every,
+        // violation) and the bijection decides.
+        RuleTestScenario s = scn("#expectViolationAt nameOnly=AESER\n#expectViolationAt AESER=N");
+        Violation listed = nameOnly("AESER");
+        Violation valued = new Violation(1, Map.of("AESER", "N"));
+        assertTrue(ViolationLocationCheck.verify(s, List.of(valued, listed), 2, false, primary(s))
+                .pass());
+        assertFalse(ViolationLocationCheck.verify(s, List.of(listed, listed), 2, false, primary(s))
+                .pass(), "a second name-only violation does not satisfy the value pin");
+    }
+
+
+    @Test
+    void toExpectations_nonValueBased_emitsNameOnlyAndRoundTrips()
+    {
+        Violation v = new Violation(0, Map.of("variable_name", "AEFOO"), null, null, Map.of(), null,
+                null, null, List.of("AESER", "USUBJID"));
+        Expectations e = ViolationLocationCheck.toExpectations(List.of(v), 1, false, false, "AE");
+
+        assertEquals(1, e.ats().size());
+        ExpectedViolation at = e.ats().get(0);
+        assertEquals(List.of("AESER", "USUBJID"), at.getNameOnly());
+        assertEquals(Map.of("variable_name", "AEFOO"), at.getConstraints());
+
+        RuleTestScenario s = scn(
+                "#expectViolationAt nameOnly=AESER nameOnly=USUBJID variable_name=AEFOO");
+        assertTrue(ViolationLocationCheck.verify(s, List.of(v), 1, false, primary(s)).pass());
+        // The teeth: the emitted pin rejects a violation that values the column again.
+        assertFalse(ViolationLocationCheck.verify(s,
+                List.of(new Violation(0,
+                        Map.of("variable_name", "AEFOO", "AESER", "Y", "USUBJID", "001"))),
+                1, false, primary(s)).pass());
+    }
+
+
+    @Test
+    void toExpectations_nonValueBased_aViolationListingNamesOnlyIsStillAnAtLine()
+    {
+        // A presence-class dataset verdict projects nothing but names: before V8 (b) such a
+        // violation had no pin at all and the emitter fell back to count-only.
+        Violation v = nameOnly("AESER");
+        Expectations e = ViolationLocationCheck.toExpectations(List.of(v), 1, false, false, "AE");
+        assertEquals(1, e.ats().size(), e.toString());
+        assertEquals(List.of("AESER"), e.ats().get(0).getNameOnly());
+    }
+
+
+    @Test
+    void toExpectations_valueBased_carriesNameOnlyBesideTheIdentityPins()
+    {
+        Violation v = new Violation(2, Map.of(), "002", "1", Map.of(), null, null, null,
+                List.of("AESER"));
+        Expectations e = ViolationLocationCheck.toExpectations(List.of(v), 1, false, true, "AE");
+        ExpectedViolation at = e.ats().get(0);
+        assertEquals(3, at.getRow());
+        assertEquals(List.of("AESER"), at.getNameOnly());
+        assertEquals("002", at.getConstraints().get("USUBJID"));
+    }
 }

@@ -271,6 +271,52 @@ class ScenarioLocationBackfillTest
     }
 
 
+    /**
+     * {@code PLAN-finding-values-record-level-only} V8 (b): the {@code nameOnly=} pin is the third
+     * pin the back-fill cannot recover from the table — it must survive a run exactly as the
+     * {@code $} pin does, re-parse, and keep its teeth.
+     */
+    @Test
+    void backfillRoundTripsANameOnlyPin() throws IOException
+    {
+        Path dir = Files.createTempDirectory("backfill-nameonly");
+        String pinned = """
+                #!RuleTest
+                #test CORE-1 expect=violation domain=AE
+                #expectViolationCount 1
+                #expectViolationAt nameOnly=AESEQ variable_name=USUBJID
+                dataset AE
+                col USUBJID type=Char
+                col AESEQ   type=Num
+                ---
+                001 |    1
+                002 |    2
+                ---
+                """;
+        Path f = write(dir, pinned);
+        RuleTestScenario s = RuleTestCdt.parse(pinned, f.toString(), null);
+        assertEquals(List.of("AESEQ"), s.getExpectedViolations().get(0).getNameOnly());
+
+        Violation v = new Violation(0, Map.of("variable_name", "USUBJID"), null, null, Map.of(),
+                null, null, null, List.of("AESEQ"));
+        ScenarioLocationBackfill.run(f, s, List.of(v), 1, false, false);
+
+        String out = Files.readString(f);
+        assertEquals(1, count(out, "nameOnly=AESEQ"),
+                () -> "the nameOnly pin must survive the back-fill exactly once:\n" + out);
+        RuleTestScenario reparsed = RuleTestCdt.parse(out, f.toString(), null);
+        assertEquals(List.of("AESEQ"), reparsed.getExpectedViolations().get(0).getNameOnly(), out);
+        assertTrue(ViolationLocationCheck.verify(reparsed, List.of(v), 1, false, s.primaryTable())
+                .pass(), out);
+        // The teeth: a violation that VALUES AESEQ again (the table cell is 1) is rejected.
+        assertFalse(
+                ViolationLocationCheck.verify(reparsed,
+                        List.of(new Violation(0, Map.of("variable_name", "USUBJID", "AESEQ", "1"))),
+                        1, false, s.primaryTable()).pass(),
+                "a back-filled nameOnly pin that matches a valued column is an erased pin");
+    }
+
+
     /** Occurrence count for a needle that is not a safe regex ({@code $} is a metacharacter). */
     private static int count(String aHaystack, String aNeedle)
     {

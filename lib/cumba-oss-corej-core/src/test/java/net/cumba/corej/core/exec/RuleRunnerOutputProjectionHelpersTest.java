@@ -456,9 +456,11 @@ class RuleRunnerOutputProjectionHelpersTest
 
 
     /**
-     * Plain column projection: a present cell reports its value, a missing cell reports empty, and
-     * a dataset-level violation row beyond the row count reports empty rather than reading a
-     * non-existent row.
+     * Plain column projection: on the record-level projection a present cell reports its value and
+     * a blank cell reports empty; a row beyond the row count is a programming error there (every
+     * record-level site iterates real rows), while the non-record projection lists the column by
+     * name whatever the row ({@code PLAN-finding-values-record-level-only} V1 / V8 (b) — it printed
+     * {@code ""} beyond the row count until then, N20).
      */
     @Test
     void plainColumnPresentMissingAndBeyondRowCount()
@@ -466,8 +468,19 @@ class RuleRunnerOutputProjectionHelpersTest
         IDataTable t = MockTable.of().name("AE").col("AESEV", "MILD", "").build();
         assertEquals(Map.of("AESEV", "MILD"), extract(t, ctx(t), List.of("AESEV"), 0));
         assertEquals(Map.of("AESEV", ""), extract(t, ctx(t), List.of("AESEV"), 1));
-        assertEquals(Map.of("AESEV", ""), extract(t, ctx(t), List.of("AESEV"), 2),
-                "beyond-row-count reads must not dereference a row");
+        IllegalStateException beyond = assertThrows(IllegalStateException.class,
+                () -> extract(t, ctx(t), List.of("AESEV"), 2),
+                "a record-level read beyond the row count is a programming error, not \"\"");
+        assertTrue(beyond.getMessage().contains("name-only projection"), beyond.getMessage());
+        RuleRunner.NameOnlyProjection named = RuleRunner.extractNameOnlyOutputValues(t, ctx(t),
+                List.of("AESEV"), 2);
+        assertEquals(Map.of(), named.values());
+        assertEquals(List.of("AESEV"), named.namedColumns(),
+                "the non-record projection lists the column by name, row or no row");
+        assertEquals(
+                List.of("AESEV"), RuleRunner
+                        .extractNameOnlyOutputValues(t, ctx(t), List.of("AESEV"), 0).namedColumns(),
+                "…and never reads the cell even where a row exists");
     }
 
 

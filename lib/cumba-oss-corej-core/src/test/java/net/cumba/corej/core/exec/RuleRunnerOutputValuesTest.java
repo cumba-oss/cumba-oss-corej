@@ -47,12 +47,17 @@ class RuleRunnerOutputValuesTest
 
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertEquals(1, result.getViolationCount());
-        Map<String, String> values = result.getViolations().get(0).getValues();
-        assertEquals("S02", values.get("USUBJID"));
-        assertEquals("U", values.get("SEX"));
+        // A rule with no Sensitivity collapses to one dataset-level finding at the first firing
+        // row; PLAN-finding-values-record-level-only V5 lists its raw columns by name (they
+        // printed row 2's values until then). The unresolved entries are in NEITHER channel.
+        Violation v = result.getViolations().get(0);
+        Map<String, String> values = v.getValues();
+        assertEquals(List.of("USUBJID", "SEX"), v.getNamedColumns());
+        assertFalse(values.containsKey("USUBJID"), values.toString());
         assertFalse(values.containsKey("AESEV"),
                 "Unresolved Output_Variables omitted from values map");
         assertFalse(values.containsKey("AESMIE"));
+        assertFalse(v.getNamedColumns().contains("AESEV"), "…and never listed by name either");
     }
 
 
@@ -67,10 +72,12 @@ class RuleRunnerOutputValuesTest
 
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertTrue(result.hasViolations());
-        Map<String, String> values = result.getViolations().get(0).getValues();
-        assertEquals("Headache", values.get("AETERM"));
-        assertEquals("AE", values.get("DOMAIN"));
-        assertFalse(values.containsKey("AESMIE"));
+        Violation v = result.getViolations().get(0);
+        // Present columns resolve — listed by name on this collapsed dataset-level finding (V5);
+        // the absent one is omitted from both channels.
+        assertEquals(List.of("AETERM", "DOMAIN"), v.getNamedColumns());
+        assertFalse(v.getValues().containsKey("AESMIE"));
+        assertFalse(v.getNamedColumns().contains("AESMIE"));
     }
 
 

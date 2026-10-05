@@ -1231,8 +1231,12 @@ public final class RuleRunner
                     continue;
                 }
                 claimedHere.add(unit);
-                merged.add(new Violation(v.getRow(), v.getValues(), v.getUsubjid(), v.getSeq(),
-                        v.getKeys(), level.level(), v.getUnit()));
+                // The surviving violation is the level's own, re-stamped with the claiming level
+                // and NOTHING else changed: withLevel copies every sibling field. Until
+                // PLAN-finding-values-record-level-only (§7 M3) this rebuilt with the 7-arg
+                // constructor and silently dropped groupKey (no shipped multi-level rule groups,
+                // so no finding moved — measured: 4 multi-level rules, none with a Grouping).
+                merged.add(v.withLevel(level.level()));
             }
             claimed.addAll(claimedHere);
             // `dropped` counts only what a STRICTER level had already claimed, so the arithmetic
@@ -1685,9 +1689,11 @@ public final class RuleRunner
                         r);
                 RowIdentity ri = readRowIdentity(ctx.getTable(), ctx.getDomainName(), r);
                 long realRow = ctx.getTable().getRealRowIndex(r);
+                // A RECORD-level site (Unit.Row): the raw columns' cells are the finding's values
+                // and nothing is listed by name (V1; the shared empty list, no per-row allocation).
                 violations.store(new Violation(realRow, values, ri.usubjid(), ri.seq(),
                         RecordKeyResolver.readRowKeys(ctx.getTable(), keySpec, r), null,
-                        stamp(ctx, () -> new Violation.Unit.Row(realRow))));
+                        stamp(ctx, () -> new Violation.Unit.Row(realRow)), null, List.of()));
                 taken++;
             }
             violations.recordSkipped(card - taken);
@@ -1698,15 +1704,20 @@ public final class RuleRunner
             int r = violationBits.nextSetBit(0);
             if (r >= 0)
             {
-                Map<String, String> values = extractOutputValues(ctx.getTable(), ctx, outputVars,
-                        r);
+                // V5 (PLAN-finding-values-record-level-only): a Dataset / Study rule evaluated row
+                // by row reports ONE finding at its first firing row — the row index stays (M2,
+                // rulings 2/9: the firing row is still named) but the finding is not about that
+                // row, so its raw columns are listed by name without a value.
+                NameOnlyProjection projected = extractNameOnlyOutputValues(ctx.getTable(), ctx,
+                        outputVars, r);
                 // r is a real row of the real table: on a 0-row dataset the BitSet is empty and
                 // this branch is never entered (Fix #349 retired the synthetic 1-row table).
                 // The stamp is the DATASET unit, not the anchor row: this branch is a collapsed
                 // {} verdict, and another level of the same rule may reach the same verdict via
                 // datasetBroadcastResult or anchor at a different first firing row.
-                violations.add(new Violation(ctx.getTable().getRealRowIndex(r), values, null, null,
-                        Map.of(), null, stamp(ctx, () -> Violation.Unit.DATASET)));
+                violations.add(new Violation(ctx.getTable().getRealRowIndex(r), projected.values(),
+                        null, null, Map.of(), null, stamp(ctx, () -> Violation.Unit.DATASET), null,
+                        projected.namedColumns()));
             }
         }
 
@@ -2180,9 +2191,11 @@ public final class RuleRunner
         else if (net.cumba.corej.core.expr.eval.NativeExprEvaluator.evaluateBroadcast(checkExpr,
                 ctx))
         {
-            Map<String, String> values = extractOutputValues(ctx.getTable(), ctx, outputVars, 0);
-            violations.add(new Violation(0, values, null, null, Map.of(), null,
-                    stamp(ctx, () -> Violation.Unit.DATASET)));
+            // A dataset verdict (V1): raw columns by name, the finding's own values printed.
+            NameOnlyProjection projected = extractNameOnlyOutputValues(ctx.getTable(), ctx,
+                    outputVars, 0);
+            violations.add(new Violation(0, projected.values(), null, null, Map.of(), null,
+                    stamp(ctx, () -> Violation.Unit.DATASET), null, projected.namedColumns()));
         }
         return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(violations)
                 .totalRows(ctx.getTable().getRowCount())
@@ -2196,9 +2209,13 @@ public final class RuleRunner
      * evaluates exactly the leaves the legacy {@code partialEvaluateDataset} fold evaluates,
      * natively — presence facts via {@code OperatorRegistry.exists}, dataset facts, runtime-scalar
      * {@code $}-comparisons, the missing-column fold mirror — and short-circuits with the same
-     * Kleene collapse). A true verdict emits exactly ONE dataset-level violation with the same
-     * output projection ({@link #extractOutputValues} at row 0) as the legacy fold-to-constant
-     * path. This is bit-for-bit faithful to the legacy dataset-level verdict.
+     * Kleene collapse). A true verdict emits exactly ONE dataset-level violation whose projection
+     * is the <b>name-only</b> one ({@link #extractNameOnlyOutputValues}, V1 of
+     * {@code PLAN-finding-values-record-level-only}): the verdict is about the dataset, so a raw
+     * column is listed by name and row 0's cell — which belonged to an arbitrary record — is no
+     * longer printed; bindings, dataset facts and metadata keep their values. ⚠ This is the
+     * producing site that decides, not the rule's Sensitivity: a Record rule whose Check the
+     * missing-column fold decided here is a dataset verdict too (§7 M1).
      */
     private static RuleExecutionResult datasetBroadcastResult(@Nullable String ruleId,
             @Nullable String message, List<String> outputVars, EvaluationContext ctx,
@@ -2207,9 +2224,10 @@ public final class RuleRunner
         List<Violation> violations = new ArrayList<>();
         if (verdict)
         {
-            Map<String, String> values = extractOutputValues(ctx.getTable(), ctx, outputVars, 0);
-            violations.add(new Violation(0, values, null, null, Map.of(), null,
-                    stamp(ctx, () -> Violation.Unit.DATASET)));
+            NameOnlyProjection projected = extractNameOnlyOutputValues(ctx.getTable(), ctx,
+                    outputVars, 0);
+            violations.add(new Violation(0, projected.values(), null, null, Map.of(), null,
+                    stamp(ctx, () -> Violation.Unit.DATASET), null, projected.namedColumns()));
         }
         return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(violations)
                 .totalRows(ctx.getTable().getRowCount()).build();
@@ -2803,6 +2821,7 @@ public final class RuleRunner
         if (outputVars != null && !outputVars.isEmpty())
         {
             Map<String, String> filtered = new LinkedHashMap<>();
+            List<String> named = new ArrayList<>();
             for (String ov : outputVars)
             {
                 if (varMeta.containsKey(ov))
@@ -2820,17 +2839,29 @@ public final class RuleRunner
                 else
                 {
                     putResolvedOrDefault(filtered, ov, values, colMeta.getName(), contextVariables,
-                            ctx, -1);
+                            ctx, -1, named);
                 }
             }
             return new Violation(violationRow, filtered, null, null, Map.of(), null,
-                    stamp(ctx, () -> new Violation.Unit.Column(colMeta.getName(), violationRow)));
+                    stamp(ctx, () -> new Violation.Unit.Column(colMeta.getName(), violationRow)),
+                    null, namedColumns(named));
         }
         // No Output_Variables left to project (none authored, or every entry excluded): the
-        // metadata default still honours the author's exclusions (E-2).
+        // metadata default still honours the author's exclusions (E-2). The default projection
+        // carries no raw column, so nothing is listed by name.
         values.keySet().removeAll(excludedOutputVars);
         return new Violation(violationRow, values, null, null, Map.of(), null,
-                stamp(ctx, () -> new Violation.Unit.Column(colMeta.getName(), violationRow)));
+                stamp(ctx, () -> new Violation.Unit.Column(colMeta.getName(), violationRow)), null,
+                List.of());
+    }
+
+
+    /**
+     * The immutable name-only list of a finding: the shared empty constant when nothing is listed.
+     */
+    private static List<String> namedColumns(List<String> named)
+    {
+        return named.isEmpty() ? List.of() : List.copyOf(named);
     }
 
 
@@ -2927,20 +2958,18 @@ public final class RuleRunner
      * Check reads, a missing one as its typed default;</li>
      * <li>by kind ({@link OutputEntryKind}): {@code variable_name} is the variable; a metadata
      * attribute with no accessor form carries its typed default; a {@code $} naming no binding of
-     * the rule is unresolvable and omitted, like an unknown column; a raw column name (or
-     * {@code variable_value}) is <b>omitted</b> — when the dataset lacks the column (§2.1 case 1)
-     * and equally when it carries it: a column-level finding has no row to read a cell from, and
-     * the no-null ruling (§2.1, <i>"nothing can be null"</i>) admits no {@code null} key for it.
-     * That present-column / no-cell entry is the deferred state
-     * {@code PLAN-finding-values-record-level-only} gives its name-only form (V8); until then it is
-     * omitted for both provenances (T2 coordinator decision, 2026-10-04), and the corpus roster
-     * {@code nullkey/present-column-omitted.tsv} names every such entry as that plan's hand-over
-     * list.</li>
+     * the rule is unresolvable and omitted, like an unknown column; a raw column name the dataset
+     * lacks is <b>omitted</b> (§2.1 case 1); a raw column the dataset carries is <b>listed by
+     * name</b> in {@code named} ({@code PLAN-finding-values-record-level-only} V1 / V8 (b)): a
+     * column-level finding has no row to read a cell from, and the no-null ruling (§2.1,
+     * <i>"nothing can be null"</i>) admits no {@code null} key for it — until that plan the entry
+     * was omitted (5b's hand-over list, now retired). {@code variable_value} on a column-level
+     * finding is omitted: it names the variable the finding already names.</li>
      * </ol>
      */
     private static void putResolvedOrDefault(Map<String, String> out, String ov,
             Map<String, String> defaults, String variableName, Map<String, Object> contextVariables,
-            EvaluationContext ctx, long row)
+            EvaluationContext ctx, long row, List<String> named)
     {
         if ("record_count".equals(ov))
         {
@@ -2970,12 +2999,19 @@ public final class RuleRunner
             out.put(ov, variableName);
             return;
         }
-        if (kind == OutputEntryKind.COLUMN || kind == OutputEntryKind.BINDING)
+        if (kind == OutputEntryKind.COLUMN)
         {
-            // A column entry: absent (§2.1 case 1) or present with no row to read (the deferred
-            // present-column / no-cell state, roster nullkey/present-column-omitted.tsv) — omitted
-            // either way, never a null key. A $ naming no binding of the rule: unresolvable,
-            // omitted like an unknown column.
+            // A column entry on a finding with no row: a present column is listed by name without
+            // a value (V8 (b)); an absent one is omitted (§2.1 case 1) — never a null key.
+            if (!VARIABLE_VALUE.equals(ov) && columnPresent(ctx, ov))
+            {
+                named.add(ov);
+            }
+            return;
+        }
+        if (kind == OutputEntryKind.BINDING)
+        {
+            // A $ naming no binding of the rule: unresolvable, omitted like an unknown column.
             return;
         }
         Map<String, Object> vars = contextVariables != null ? contextVariables : ctx.getVariables();
@@ -3189,9 +3225,11 @@ public final class RuleRunner
         {
             values.keySet().removeAll(excludedOutputVars); // E-2, as in buildVariableViolation
             return new Violation(violationRow, values, null, null, Map.of(), null,
-                    stamp(ctx, () -> new Violation.Unit.Column(varName, violationRow)));
+                    stamp(ctx, () -> new Violation.Unit.Column(varName, violationRow)), null,
+                    List.of());
         }
         Map<String, String> filtered = new LinkedHashMap<>();
+        List<String> named = new ArrayList<>();
         for (String ov : outputVars)
         {
             if (ov.startsWith("$") && contextVariables != null && contextVariables.containsKey(ov))
@@ -3202,11 +3240,13 @@ public final class RuleRunner
             {
                 // The one policy of buildVariableViolation's else arm (§2.1; M3 reads a builtin
                 // operand's accessor form against the define variable's column, present or not).
-                putResolvedOrDefault(filtered, ov, values, varName, contextVariables, ctx, -1);
+                putResolvedOrDefault(filtered, ov, values, varName, contextVariables, ctx, -1,
+                        named);
             }
         }
         return new Violation(violationRow, filtered, null, null, Map.of(), null,
-                stamp(ctx, () -> new Violation.Unit.Column(varName, violationRow)));
+                stamp(ctx, () -> new Violation.Unit.Column(varName, violationRow)), null,
+                namedColumns(named));
     }
 
 
@@ -3308,8 +3348,11 @@ public final class RuleRunner
             // exclude variable_name — without it, two columns firing on one row materialise the
             // same values map and first-claim would collapse them into one unit.
             long realRow = ctx.getTable().getRealRowIndex(r);
+            // A RECORD-level site (a (column, row) unit WITH a row): cells are values, nothing is
+            // listed by name (V1 — the shared empty list, no per-row allocation).
             violations.store(new Violation(realRow, values, null, null, Map.of(), null,
-                    stamp(ctx, () -> new Violation.Unit.Column(colMeta.getName(), realRow))));
+                    stamp(ctx, () -> new Violation.Unit.Column(colMeta.getName(), realRow)), null,
+                    List.of()));
             taken++;
         }
         violations.recordSkipped(card - taken);
@@ -3844,9 +3887,12 @@ public final class RuleRunner
             Map<String, String> values = extractGroupOutputValues(table, ctx, outputVars, row,
                     flagged, nonConstant);
             RowIdentity ri = readRowIdentity(table, ctx.getDomainName(), row);
+            // Q-A (owner 2026-10-05): a Group finding keeps D94c's distinct sets as its values and
+            // lists nothing by name; the anchor row's identity (usubjid / seq / keys) rides along
+            // for v1 and is what a group-keyed surface drops (Violation.isGroupFinding).
             violations.store(new Violation(table.getRealRowIndex(row), values, ri.usubjid(),
                     ri.seq(), RecordKeyResolver.readRowKeys(table, keySpec, row), null, unit,
-                    groupKey));
+                    groupKey, List.of()));
         }
         else
         {
@@ -4773,9 +4819,64 @@ public final class RuleRunner
         return identity != null ? identity.toString() : dv.getValueAsString();
     }
 
+    /**
+     * A <b>non-record</b> finding's projection ({@code PLAN-finding-values-record-level-only} V1 /
+     * V8 (b)): the entries that carry a value, and the raw columns listed by name without one.
+     *
+     * @param values
+     *            the valued entries in effective order — bindings, dataset facts, metadata; never a
+     *            raw column's cell
+     * @param namedColumns
+     *            the raw columns the dataset carries, in effective order; {@code List.of()} when
+     *            none
+     */
+    record NameOnlyProjection(Map<String, String> values, List<String> namedColumns)
+    {
+    }
 
+    /**
+     * The <b>record-level</b> projection: every raw column of {@code outputVars} the dataset
+     * carries reports its cell at {@code row} — the finding is about that row (V1). Callers are the
+     * record-level producing sites only: the row path ({@link Violation.Unit.Row}), the
+     * per-(variable, row) path ({@link #addVariableRowViolations}) and the Group anchor read
+     * {@link #extractGroupOutputValues} replaces by D94c's distinct sets. A dataset verdict, a
+     * Dataset {@code {ROW}} rule's first firing row and a Study rule use
+     * {@link #extractNameOnlyOutputValues} instead — the producing site passes the kind, never the
+     * rule's Sensitivity (§7 M1).
+     */
     static Map<String, String> extractOutputValues(IDataTable table, EvaluationContext ctx,
             List<String> outputVars, long row)
+    {
+        return projectOutputValues(table, ctx, outputVars, row, null);
+    }
+
+
+    /**
+     * The <b>non-record</b> projection (V1, V5): the same resolution as
+     * {@link #extractOutputValues} — the same wildcard / pattern expansion, the same omission of an
+     * absent column, the same values for bindings, dataset facts and the Fix #18 identifier's
+     * sibling — except that a raw column the dataset carries (bare, {@code --}-resolved,
+     * SUPP-delivered, dotted joined; the Fix #18 identifier too) is <em>listed by name</em> instead
+     * of reporting the cell at {@code row}, which belongs to an arbitrary record of a finding that
+     * is about the dataset. On an empty primary the column is listed the same way (QNU N20's
+     * {@code ""} is gone — V6: "no value" is a state, not a value).
+     */
+    static NameOnlyProjection extractNameOnlyOutputValues(IDataTable table, EvaluationContext ctx,
+            List<String> outputVars, long row)
+    {
+        List<String> named = new ArrayList<>();
+        Map<String, String> values = projectOutputValues(table, ctx, outputVars, row, named);
+        return new NameOnlyProjection(values, namedColumns(named));
+    }
+
+
+    /**
+     * The one projection body behind {@link #extractOutputValues} ({@code named == null}: a raw
+     * column reports its cell at {@code row}) and {@link #extractNameOnlyOutputValues}
+     * ({@code named != null}: a raw column the dataset carries is appended to {@code named}).
+     */
+    private static Map<String, String> projectOutputValues(IDataTable table, EvaluationContext ctx,
+            List<String> outputVars, long row, @Nullable List<String> named)
     {
         if (outputVars == null || outputVars.isEmpty())
         {
@@ -4904,14 +5005,14 @@ public final class RuleRunner
                     {
                         continue;
                     }
-                    if (row >= table.getRowCount())
+                    if (named != null)
                     {
-                        // QNU N20: the bare arm's row guard, for the same reason — a dataset-level
-                        // finding on an EMPTY primary has no row to read through the join either
-                        // (it used to read row 0 anyway and print a numeric column's marker).
-                        values.put(varName, "");
+                        // A non-record finding: the joined column is there, so it is listed by
+                        // name (V1 / V8 (b)); its cell at `row` is no fact about the finding.
+                        named.add(varName);
                         continue;
                     }
+                    requireRow(table, row, varName);
                     // The column exists, so it HAS a value to report — and the typed channel always
                     // gives one (D72: "" for character, a MissingValue for numeric), so no null can
                     // reach this line any more.
@@ -4938,7 +5039,17 @@ public final class RuleRunner
                         : ctx.getEvaluationDomain();
                 if (Domain.VARIABLE.equals(evalDomain))
                 {
-                    values.put(varName, varName);
+                    // §7 M7: the identifier IS a name — on a non-record finding it is listed as
+                    // one; the record-level arm keeps the name-as-value spelling (unreachable
+                    // in practice: a {VAR} rule has no row cursor).
+                    if (named != null)
+                    {
+                        named.add(varName);
+                    }
+                    else
+                    {
+                        values.put(varName, varName);
+                    }
                 }
                 continue;
             }
@@ -4946,14 +5057,15 @@ public final class RuleRunner
             int colIdx = meta.getColumnIndex(varName);
             if (colIdx >= 0)
             {
-                if (row >= table.getRowCount())
+                if (named != null)
                 {
-                    // Dataset-level violation on an empty dataset: the column exists in the
-                    // metadata but there is no row to read a value from. Emit empty rather than
-                    // dereferencing a non-existent row.
-                    values.put(varName, "");
+                    // A non-record finding lists the column by name (V1 / V8 (b)); on an empty
+                    // primary too — QNU N20 printed "" here, and "no value" is a state, not a
+                    // value (V6).
+                    named.add(varName);
                     continue;
                 }
+                requireRow(table, row, varName);
                 IDataValue dv = table.getColumn(colIdx).getDataValue(row);
                 values.put(varName, reportedValue(dv));
                 // ⚠ No `continue` here any more, and Error Prone is what noticed: with the join
@@ -4963,11 +5075,20 @@ public final class RuleRunner
             else
             {
                 // W2a (C1 ruled (a)): a SUPP-delivered qualifier reports the record's value —
-                // the same pivot the Check read it through.
+                // the same pivot the Check read it through; on a non-record finding it is a raw
+                // column like any other and is listed by name.
                 IDataTableColumn qualifier = SuppPivot.qualifierColumn(ctx, varName);
-                if (qualifier != null && row < table.getRowCount())
+                if (qualifier != null)
                 {
-                    values.put(varName, reportedValue(qualifier.getDataValue(row)));
+                    if (named != null)
+                    {
+                        named.add(varName);
+                    }
+                    else
+                    {
+                        requireRow(table, row, varName);
+                        values.put(varName, reportedValue(qualifier.getDataValue(row)));
+                    }
                 }
             }
             // ⭐⭐ UVC unqualified + the UNIFORMITY ruling (owner, 2026-09-21). A join fallback for
@@ -4988,6 +5109,45 @@ public final class RuleRunner
             // not the engine's.
         }
         return values;
+    }
+
+
+    /**
+     * The record-level projection reads a cell, so it must have a row: every record-level site
+     * iterates real rows of the table (the row path's bits, the per-(variable, row) bits, a group's
+     * flagged rows), so a row beyond the table is a programming error, never a data state — a
+     * dataset-level finding on an empty primary takes the name-only projection.
+     */
+    private static void requireRow(IDataTable table, long row, String varName)
+    {
+        if (row < 0 || row >= table.getRowCount())
+        {
+            throw new IllegalStateException("record-level projection of " + varName + " at row "
+                    + row + " of a " + table.getRowCount() + "-row table — a finding with no row"
+                    + " takes the name-only projection (PLAN-finding-values-record-level-only V1)");
+        }
+    }
+
+
+    /**
+     * Whether the dataset carries raw column {@code name} as the projection resolves it: a bare
+     * name as a primary column or a SUPP-delivered qualifier ({@link SuppPivot}), a dotted name
+     * through its join lookup (asked at row 0 — a RELREC-expanded lookup is row-dependent, and a
+     * column-level finding has no row of its own; on an empty primary the lookup's existence
+     * decides). Used by the column-level per-variable paths, which have no row to read.
+     */
+    private static boolean columnPresent(EvaluationContext ctx, String name)
+    {
+        IDataTable table = ctx.getTable();
+        int dot = name.indexOf('.');
+        if (dot > 0)
+        {
+            JoinLookup lookup = ctx.getJoinedDatasets().get(name.substring(0, dot));
+            return lookup != null && (table.getRowCount() == 0
+                    || lookup.hasColumn(table, 0, name.substring(dot + 1)));
+        }
+        return table.getMetaData().getColumnIndex(name) >= 0
+                || SuppPivot.qualifierColumn(ctx, name) != null;
     }
 
 

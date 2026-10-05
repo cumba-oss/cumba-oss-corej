@@ -17,12 +17,12 @@ import net.cumba.datatable.values.MissingValue;
  * </p>
  * <ul>
  * <li>a {@link #COLUMN} entry — a raw column name (bare, dot-qualified or {@code --}-prefixed) or
- * {@code variable_value} — is decided by the <em>table</em>: an absent column is <b>omitted</b>
- * from the finding (case 1), a present column's missing cell reports that cell's own
- * {@link MissingValue} (case 2), and a present column on a finding that has no row (a column-level
- * finding) is omitted too — the deferred state {@code PLAN-finding-values-record-level-only} gives
- * a name-only form (the corpus roster {@code nullkey/present-column-omitted.tsv} lists it); never a
- * {@code null} key;</li>
+ * {@code variable_value} — is decided by the <em>table</em> and the <em>producing site</em>: an
+ * absent column is <b>omitted</b> from the finding (case 1); on a record-level finding a present
+ * column's cell is its value, a missing cell its own {@link MissingValue} (case 2); on every other
+ * finding — a dataset verdict, a column-level finding with no row — a present column is <b>listed
+ * by name</b> without a value ({@code Violation.getNamedColumns()},
+ * {@code PLAN-finding-values-record-level-only} V1 / V8 (b)); never a {@code null} key;</li>
  * <li>a {@link #BINDING} ({@code $name}) is decided by its <em>evaluated</em> type
  * ({@code BindingValue.reportedHandOver});</li>
  * <li>a metadata attribute or dataset virtual carries the typed default of its <em>static</em>
