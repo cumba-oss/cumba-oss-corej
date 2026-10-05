@@ -135,6 +135,17 @@ public final class TypeExpectations
     {
     }
 
+
+    /**
+     * The static column a {@code read_value} / {@code max} call site reads: its pinned
+     * {@code domain=} dataset ({@code ""} for an unpinned {@code max}, the dataset under
+     * evaluation) and its target column, both upper-cased (names match case-insensitively, owner
+     * 2026-09-28 / 2026-10-01).
+     */
+    private record StaticColumn(String dataset, String column)
+    {
+    }
+
     /**
      * Positional numeric arguments per function name, mirroring the builtin gates that
      * {@code BuiltinFunctions} / {@code Primitives} raise at vector construction ({@code between};
@@ -209,6 +220,20 @@ public final class TypeExpectations
      * exactly as two occurrences of one authored name do.
      */
     private final Map<Expr.Call, EnumSet<Expectation>> dynamicExpectations = new LinkedHashMap<>();
+
+    /**
+     * ⭐ {@code PLAN-column-typed-function-absent-type} fold, LOW-3 (per-column parity, the owner's
+     * rule read literally): the <b>static column</b> each {@code read_value} / {@code max} call
+     * site of the rule reads — {@code (dataset, column)} with a pinned {@code domain=}, or
+     * {@code ("", column)} for an unpinned {@code max} over the dataset under evaluation. Two
+     * direct reads of one absent column get one kind (D76a: numeric wins), so two different calls
+     * over one static column do too: {@link #numericDynamicSites()} unions the kinds of every site
+     * that reads it. ⛔ <b>A namespace of its own</b> — never {@link #expectations} /
+     * {@link #numericDefaultColumns()}: a primary column of the same name is another column, and it
+     * must not flip (the pre-go review's M2). Dynamic targets ({@code colref}, {@code row_max}'s
+     * pattern, {@code value()}'s cursor) have no entry and stay keyed by the call site alone.
+     */
+    private final Map<Expr.Call, StaticColumn> staticTargets = new LinkedHashMap<>();
 
     private final List<EqualityPair> equalityPairs = new ArrayList<>();
 
@@ -389,7 +414,10 @@ public final class TypeExpectations
      * ({@link #numericDefaultColumns()}), keyed by the call expression: {@code colref(…)}
      * ({@code PLAN-dynamic-column-functions} §2.3, owner Q14 (b)) and, since
      * {@code PLAN-column-typed-function-absent-type} A1, {@code read_value(…)}, {@code max(…)} over
-     * a column and {@code row_max(…)}. The engine reads the set once per evaluation
+     * a column and {@code row_max(…)}, and since the plan's fold {@code value()} (A5). Two
+     * different {@code read_value} / {@code max} sites over one static {@code (dataset, column)}
+     * share one kind — numeric when any of them is numerically read (D76a; fold LOW-3, as two
+     * direct reads of one column do). The engine reads the set once per evaluation
      * ({@code EvaluationContext.getNumericExpectedDynamicSites()}) and a site whose column (or
      * dataset) is absent answers {@code MissingValue.MIS}, exactly the default the column would get
      * if it were read at that position; every other site answers {@code ""} (D76a).
@@ -408,14 +436,54 @@ public final class TypeExpectations
     public Set<Expr.Call> numericDynamicSites()
     {
         Set<Expr.Call> out = new LinkedHashSet<>();
+        Set<StaticColumn> numericColumns = new LinkedHashSet<>();
         for (Map.Entry<Expr.Call, EnumSet<Expectation>> e : dynamicExpectations.entrySet())
         {
             if (e.getValue().contains(Expectation.NUMERIC))
             {
                 out.add(e.getKey());
+                StaticColumn target = staticTargets.get(e.getKey());
+                if (target != null)
+                {
+                    numericColumns.add(target);
+                }
+            }
+        }
+        // LOW-3: every other site over a numerically read static column is numeric too.
+        for (Map.Entry<Expr.Call, StaticColumn> e : staticTargets.entrySet())
+        {
+            if (numericColumns.contains(e.getValue()))
+            {
+                out.add(e.getKey());
             }
         }
         return Set.copyOf(out);
+    }
+
+
+    /**
+     * The column-typed call sites whose static target is the column {@code column} of the dataset
+     * under evaluation — an unpinned {@code max(column, …)} — the reads stage B's
+     * {@code ABSENT_COLUMN} report names with the kind the engine applies at the call
+     * ({@code PLAN-column-typed-function-absent-type} fold, LOW-4). A pinned call reads another
+     * dataset's column and is never one.
+     *
+     * @param column
+     *            a bare primary column name
+     * @return the sites, in first-seen order (immutable)
+     */
+    public List<Expr.Call> primaryTargetSites(String column)
+    {
+        StaticColumn key = new StaticColumn("", column.toUpperCase(java.util.Locale.ROOT));
+        List<Expr.Call> out = new ArrayList<>();
+        for (Map.Entry<Expr.Call, StaticColumn> e : staticTargets.entrySet())
+        {
+            if (key.equals(e.getValue()))
+            {
+                out.add(e.getKey());
+            }
+        }
+        return List.copyOf(out);
     }
 
 
@@ -598,6 +666,11 @@ public final class TypeExpectations
                 }
             }
         }
+        StaticColumn target = staticColumn(c);
+        if (target != null)
+        {
+            staticTargets.putIfAbsent(c, target);
+        }
         if (StudyRuleClassifier.isDomainPinnedCall(name)
                 && isPinnedDomain(c.kwargs().get("domain")))
         {
@@ -767,8 +840,10 @@ public final class TypeExpectations
      * result is the type of a column they read, which the engine cannot see when that column (or
      * its dataset) is absent. Keyed by the call itself. A {@code max} over a computed target is not
      * one: its type is the expression's, not a column's ({@code StageAChecker.columnTypedBindings}
-     * asks the same of its target). {@code value()} is not one either: it reads the current
-     * variable, and the variable cursor names the columns of the dataset under evaluation.
+     * asks the same of its target). {@code value()} is one since the plan's fold (A5): it reads the
+     * column the variable cursor names, and in the Define universe that is an ItemDef the data may
+     * lack — all its calls are one site ({@code value()} takes no argument), as all reads of one
+     * authored name are one column.
      */
     private static Expr.@org.jspecify.annotations.Nullable Call dynamicSite(Expr e)
     {
@@ -781,8 +856,51 @@ public final class TypeExpectations
         case "colref" -> c.args().size() == 1 && c.kwargs().isEmpty() ? c : null;
         case "read_value", "row_max" -> c;
         case "max" -> maxTarget(c) instanceof Expr.Ref ? c : null;
+        case "value" -> c.args().isEmpty() && c.kwargs().isEmpty() ? c : null;
         default -> null;
         };
+    }
+
+
+    /**
+     * The static column a {@code read_value} / {@code max} call site reads (LOW-3), or
+     * {@code null}: its target must be a bare column reference and its {@code domain=} pinned (or,
+     * for {@code max}, absent — the dataset under evaluation); a wildcard {@code domain=} resolves
+     * per dataset and stays keyed by the call site alone.
+     */
+    private static @org.jspecify.annotations.Nullable StaticColumn staticColumn(Expr.Call c)
+    {
+        Expr target = switch (c.name())
+        {
+        case "read_value" -> c.args().size() == 1 ? c.args().get(0) : null;
+        case "max" -> maxTarget(c);
+        default -> null;
+        };
+        if (!(target instanceof Expr.Ref ref) || ref.kind() != OperandKind.COLUMN)
+        {
+            return null;
+        }
+        Expr domain = c.kwargs().get("domain");
+        String dataset;
+        if (domain == null)
+        {
+            if (!"max".equals(c.name()))
+            {
+                return null; // read_value requires domain= (its reader's load error)
+            }
+            dataset = "";
+        }
+        else if (isPinnedDomain(domain))
+        {
+            dataset = domain instanceof Expr.Ref r ? r.name()
+                    : String.valueOf(((Expr.Lit) domain).value());
+        }
+        else
+        {
+            return null;
+        }
+        return new StaticColumn(dataset.toUpperCase(java.util.Locale.ROOT),
+                ref.name().toUpperCase(java.util.Locale.ROOT));
     }
 
 

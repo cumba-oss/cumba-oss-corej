@@ -850,6 +850,29 @@ public final class Primitives
     }
 
 
+    /**
+     * {@code is_missing(x)} — true <b>only</b> for a genuine {@code MissingValue} (any identity:
+     * {@code MIS}, the special missings), never for {@code ""} (a present value, D34 #1) nor for an
+     * empty collection. Register D50 (owner 2026-10-05: <i>"is_missing() is for misisng and empty()
+     * is for missing or \"\""</i>); until then it was {@link #empty}'s alias. An absent column
+     * reads its type default (D34 #3/#4, D76a): {@code ""} ⇒ {@code false}, {@code MIS} ⇒
+     * {@code true}. Reads the value's own missing identity ({@link TypedValue#isMissing}) — the
+     * same decode every comparison primitive uses.
+     */
+    public static BitSet isMissing(Vector v, int rowCount)
+    {
+        BitSet result = new BitSet(rowCount);
+        for (int r = 0; r < rowCount; r++)
+        {
+            if (v.value(r).isMissing())
+            {
+                result.set(r);
+            }
+        }
+        return result;
+    }
+
+
     /** Present, non-empty ⇒ violation. */
     public static BitSet nonEmpty(Vector v, int rowCount)
     {

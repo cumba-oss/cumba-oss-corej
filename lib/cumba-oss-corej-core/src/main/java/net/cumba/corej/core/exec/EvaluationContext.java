@@ -306,11 +306,13 @@ public class EvaluationContext
      * call sites</b> this rule's expression places in a <b>numeric-expected</b> position
      * ({@code TypeExpectations.numericDynamicSites()}): {@code colref(…)}, and since
      * {@code PLAN-column-typed-function-absent-type} A1 / A2 {@code read_value(…)}, {@code max(…)}
-     * over a column and {@code row_max(…)}, each also through the uses of a binding it is the root
-     * of. Carried beside {@link #numericExpectedColumns} and computed by the same builders from the
-     * same {@code TypeExpectations} walk. A site's plan reads it <b>once per evaluation</b> — never
-     * at compile time (compiled plans are shared across rules), never per row, never in a cache key
-     * — and an absent column (or dataset) read by such a site answers {@code MissingValue.MIS}, the
+     * over a column, {@code row_max(…)} and (the plan's fold, A5) {@code value()}, each also
+     * through the uses of a binding it is the root of; two {@code read_value} / {@code max} sites
+     * over one static {@code (dataset, column)} share one kind (fold LOW-3). Carried beside
+     * {@link #numericExpectedColumns} and computed by the same builders from the same
+     * {@code TypeExpectations} walk. A site's plan reads it <b>once per evaluation</b> — never at
+     * compile time (compiled plans are shared across rules), never per row, never in a cache key —
+     * and an absent column (or dataset) read by such a site answers {@code MissingValue.MIS}, the
      * default the column would get if it were read directly at that position
      * ({@code ColumnTypedAbsence}).
      *

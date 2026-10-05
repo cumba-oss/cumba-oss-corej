@@ -3,6 +3,8 @@ package net.cumba.corej.core.exec;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.ConstVector;
 import net.cumba.corej.core.expr.eval.EvalRun;
+import net.cumba.corej.core.expr.eval.TypedValue;
+import net.cumba.corej.core.expr.eval.Vector;
 import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.DataValueType;
 import org.jspecify.annotations.Nullable;
@@ -16,12 +18,14 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * The functions are {@code read_value} (absent {@code domain=} dataset or column), {@code max} over
- * a column (absent dataset or column) and {@code row_max} (no column matches its pattern). The
- * default is the one a directly read absent column folds to (D34 #3/#4, D76, D76a): the all-
- * {@code MissingValue.MIS} constant where the call site stands in a <b>numeric-expected</b>
- * position of the rule — through a binding, the binding's uses (A2) — and the all-{@code ""}
- * constant everywhere else: a character position, conflicting positions resolve to numeric (D76a:
- * numeric when any position expects numeric), no typed position at all to {@code ""}.
+ * a column (absent dataset or column), {@code row_max} (no column matches its pattern) and, since
+ * the plan's fold (A5), {@code value()} (the cursor names a Define-universe variable the data
+ * lacks; a {@code null} cursor names no variable and stays {@code MIS}). The default is the one a
+ * directly read absent column folds to (D34 #3/#4, D76, D76a): the all- {@code MissingValue.MIS}
+ * constant where the call site stands in a <b>numeric-expected</b> position of the rule — through a
+ * binding, the binding's uses (A2) — and the all-{@code ""} constant everywhere else: a character
+ * position, conflicting positions resolve to numeric (D76a: numeric when any position expects
+ * numeric), no typed position at all to {@code ""}.
  * </p>
  *
  * <p>
@@ -51,8 +55,43 @@ public final class ColumnTypedAbsence
     private static final ConstVector CHARACTER = GroupedAggregate.constantCell(DataValueType.STRING,
             DataValueSupport.defaultForType(DataValueType.STRING));
 
+    /**
+     * {@code value()}'s answer when the variable cursor names a column the evaluated table lacks,
+     * before its call site resolves it ({@link #cursorValueAtSite}): one shared instance, so the
+     * resolution is an identity test, distinct from the {@code null}-cursor answer (which names no
+     * variable and stays {@code MIS}). Its own value is the all-{@code MIS} broadcast
+     * ({@code ConstVector.of(null)}) the function answered before the fold — what a caller that
+     * never resolves it reads.
+     */
+    public static final ConstVector ABSENT_CURSOR_COLUMN = new ConstVector(null,
+            DataValueType.MISSING, TypedValue.resolved(DataValueType.MISSING, null));
+
     private ColumnTypedAbsence()
     {
+    }
+
+
+    /**
+     * The compiler's {@code value()} arm: {@code evaluated} as the registry function answered it,
+     * with {@link #ABSENT_CURSOR_COLUMN} resolved to the call site's use-derived default —
+     * {@code MIS} at a numeric-expected site, {@code ""} otherwise (A1 / A5). One identity test
+     * and, only for an absent cursor column, one set lookup per evaluation; never per row.
+     *
+     * @param evaluated
+     *            what the registry function answered ({@code null} propagates)
+     * @param run
+     *            the evaluation run
+     * @param site
+     *            the authored {@code value()} call
+     * @return the answer
+     */
+    // Identity is the point: one shared instance marks "the cursor names an absent column", and an
+    // equal value computed any other way (the null cursor's all-MIS) must not be mistaken for it.
+    @SuppressWarnings("ReferenceEquality")
+    public static @Nullable Vector cursorValueAtSite(@Nullable Vector evaluated, EvalRun run,
+            Expr.Call site)
+    {
+        return evaluated == ABSENT_CURSOR_COLUMN ? answer(run, site) : evaluated;
     }
 
 

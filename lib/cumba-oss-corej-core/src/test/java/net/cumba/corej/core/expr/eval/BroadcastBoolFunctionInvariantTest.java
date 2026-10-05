@@ -171,7 +171,7 @@ class BroadcastBoolFunctionInvariantTest
                         + " silently returned nothing would pass the two assertions above"
                         + " vacuously");
         assertTrue(builtin.contains("empty") && builtin.contains("is_missing"),
-                "the two spellings of one EvalFunction that the retired roster disagreed about"
-                        + " must both be here: " + builtin);
+                "the two predicates the retired roster disagreed about (one EvalFunction until"
+                        + " register D50 split them, 2026-10-05) must both be here: " + builtin);
     }
 }

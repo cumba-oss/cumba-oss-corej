@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import net.cumba.corej.core.exec.ScopeVariableEntry;
+import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.ColumnTypeGate;
@@ -133,7 +134,7 @@ public final class StageBChecker
         {
             List<Expr> roots = expressionRoots(rule);
             DataTableMeta meta = table.getMetaData();
-            checkColumnTypes(rule, roots, meta, findings);
+            checkColumnTypes(rule, meta, findings);
             if (concreteContract)
             {
                 checkUnresolvedWildcards(rule, roots, findings);
@@ -212,15 +213,16 @@ public final class StageBChecker
      * {@code date()}/{@code time()} conversion is the D55 observation, and an <b>absent</b>
      * foldable column is recorded with its D76 default — numeric-expected ⇒ {@code number} ⇒
      * {@code MissingValue.MIS}, otherwise {@code string} ⇒ {@code ""} (D34 #3/#4). The expectation
-     * is the stage-A fact (D76c) — nothing here infers a type from the dataset.
+     * is the stage-A fact (D76c) — nothing here infers a type from the dataset. An absent column
+     * that is also the target of a column-typed call ({@code max(X, …)} over the dataset under
+     * evaluation) names the kind the engine applies AT the call as well
+     * ({@code PLAN-column-typed-function-absent-type} fold, LOW-4) — the call site's, which the
+     * column's own direct-read default need not equal.
      */
-    private static void checkColumnTypes(Rule rule, List<Expr> roots, DataTableMeta meta,
+    private static void checkColumnTypes(Rule rule, DataTableMeta meta,
             List<StageBFinding> findings)
     {
-        if (roots.isEmpty())
-        {
-            return;
-        }
+        // (A rule with no expression roots walks nothing: no value read, no equality pair.)
         // ⭐ The ONE factory the engine's application of the defaults reads too
         // (RuleRunner.typeExpectations; PLAN-column-typed-function-absent-type §6 M2): the same
         // roots and the same binding map, so a $-reference's kind (A2) is reported as applied.
@@ -239,9 +241,23 @@ public final class StageBChecker
                 String defaultType = expectations.numericExpected(column)
                         ? "number (missing = MissingValue.MIS)"
                         : "string (missing = \"\")";
-                findings.add(new StageBFinding(StageBErrorKind.ABSENT_COLUMN, column, "absent from "
-                        + meta.getName() + "; D76 default type " + defaultType
-                        + (hasChildEntry ? " (unless its Child: true parent supplies it)" : "")));
+                StringBuilder message = new StringBuilder("absent from ").append(meta.getName())
+                        .append("; D76 default type ").append(defaultType)
+                        .append(hasChildEntry ? " (unless its Child: true parent supplies it)"
+                                : "");
+                List<Expr.Call> sites = expectations.primaryTargetSites(column);
+                Set<Expr.Call> numericSites = sites.isEmpty() ? Set.of()
+                        : expectations.numericDynamicSites();
+                for (Expr.Call site : sites)
+                {
+                    message.append("; as the target of ").append(ExpressionPrinter.print(site))
+                            .append(": ")
+                            .append(numericSites.contains(site)
+                                    ? "number (missing = MissingValue.MIS)"
+                                    : "string (missing = \"\")");
+                }
+                findings.add(new StageBFinding(StageBErrorKind.ABSENT_COLUMN, column,
+                        message.toString()));
                 continue;
             }
             ColumnTypeGate.Kind kind = ColumnTypeGate.kindOf(meta.getColumn(idx).getType());

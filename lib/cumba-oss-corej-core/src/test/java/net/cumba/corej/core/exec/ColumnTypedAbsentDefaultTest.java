@@ -28,9 +28,10 @@ import org.junit.jupiter.api.Test;
  * <b>character</b> position ({@code $v != ""} — fires iff the value is a missing, D12) and <b>no
  * typed position</b> ({@code len($v) == 0} — {@code len} records no kind; it answers {@code 0} for
  * {@code ""} and propagates a missing, so it fires iff the value is {@code ""}). ⚠ {@code empty()}
- * cannot tell the two apart (it flags both), and {@code is_missing} is its alias today (register
- * D50) — neither is used as the discriminator. Conflicting positions take numeric (A3 = D76a) and
- * no position takes {@code ""} (A4 = D76a), exactly as for a directly read absent column.
+ * cannot tell the two apart (it flags both); {@code is_missing} could since register D50 was
+ * enforced (2026-10-05, {@link #isMissingOverAnAbsentColumnFollowsItsTypeDefault}), but these pins
+ * predate it and keep their discriminators. Conflicting positions take numeric (A3 = D76a) and no
+ * position takes {@code ""} (A4 = D76a), exactly as for a directly read absent column.
  * </p>
  *
  * <p>
@@ -374,6 +375,80 @@ class ColumnTypedAbsentDefaultTest
                 .forEach(f -> out.add(f.message().contains("default type number") ? "number"
                         : f.message().contains("default type string") ? "string" : f.message()));
         return out;
+    }
+
+    // ------------------------------------------------------------------ per-column parity (LOW-3)
+
+
+    @Test
+    void twoCallsOverOneStaticColumnTakeOneKind()
+    {
+        // Two direct reads of one absent column take ONE kind (D76a: numeric wins), so two
+        // different read_value / max calls over one static (dataset, column) do too — the owner's
+        // rule read literally. LBZZ is absent from LB: the FIRST read makes the column numeric,
+        // so the MAX read is MIS as well, and MIS == "" is false (D12).
+        Case none = new Case("inline", false, true);
+        String first = "read_value(LBZZ, domain=LB, mode=\"FIRST\")";
+        assertEquals(NONE,
+                fired(first + " > 5 or read_value(LBZZ, domain=LB, mode=\"MAX\")" + " == \"\"",
+                        none),
+                "read_value FIRST and MAX over one absent column");
+        assertEquals(NONE,
+                fired(first + " > 5 or max(LBZZ, domain=LB, group=[USUBJID]) == \"\"", none),
+                "read_value and max over one absent column");
+        assertEquals(NONE, fired("$a > 5 or $b == \"\"", new Case("bound", false, true, "$a", first,
+                "$b", "read_value(LBZZ, domain=LB, mode=\"MAX\")")), "through bindings");
+        // Controls: another column, another dataset, and a primary column of the same name
+        // (the pre-go review's M2 leak) keep their own kind.
+        assertEquals(ALL,
+                fired(first + " > 5 or read_value(LBYY, domain=LB, mode=\"MAX\")" + " == \"\"",
+                        none),
+                "another column of LB stays character");
+        assertEquals(ALL,
+                fired(first + " > 5 or read_value(LBZZ, domain=ADSL, mode=\"MAX\")" + " == \"\"",
+                        none),
+                "another dataset's column stays character");
+        assertEquals(ALL,
+                fired("read_value(ZZ, domain=LB, mode=\"FIRST\") > 5 or ZZ == \"\"", none),
+                "the primary column ZZ never takes the read_value target's kind");
+    }
+
+
+    @Test
+    void theCheckerNamesTheKindAColumnTypedCallAppliesToItsTarget()
+    {
+        // LOW-4: an unpinned max reads the PRIMARY column, so stage B reports ZZ absent — and the
+        // report names the kind the engine applies at the call (numeric: MIS), not only the
+        // column's own direct-read default.
+        Rule rule = load(
+                rule("not empty(USUBJID) and (max(ZZ, group=[USUBJID]) < 3)", false, List.of()));
+        List<String> messages = new ArrayList<>();
+        net.cumba.corej.core.expr.typed.StageBChecker
+                .check(rule, dm(), false, null, java.util.Set.of()).findings().stream()
+                .filter(f -> f
+                        .kind() == net.cumba.corej.core.expr.typed.StageBErrorKind.ABSENT_COLUMN
+                        && "ZZ".equals(f.binding()))
+                .forEach(f -> messages.add(f.message()));
+        assertEquals(List.of("absent from DM; D76 default type string (missing = \"\"); as the"
+                + " target of max(ZZ, group=[USUBJID]): number (missing = MissingValue.MIS)"),
+                messages);
+        assertEquals(ALL, fired("max(ZZ, group=[USUBJID]) < 3", new Case("max", false, false)),
+                "what the engine applies: MIS");
+    }
+
+
+    @Test
+    void isMissingOverAnAbsentColumnFollowsItsTypeDefault()
+    {
+        // D50 (owner 2026-10-05): is_missing is true only for a MissingValue. An absent column
+        // reads its type default (D34 #3/#4, D76a): "" where no position expects numeric ⇒ false,
+        // MIS where one does ⇒ true. empty() keeps firing on both (missing or "").
+        Case none = new Case("inline", false, false);
+        assertEquals(NONE, fired("is_missing(ZZ)", none), "absent char (untyped) column: \"\"");
+        assertEquals(ALL, fired("is_missing(ZZ) or ZZ > 3", none),
+                "absent numeric-expected column: MIS (and MIS > 3 is false, so only is_missing)");
+        assertEquals(ALL, fired("empty(ZZ)", none), "empty() over an absent column: unchanged");
+        assertEquals(NONE, fired("is_missing(SEX)", none), "a present value is not missing");
     }
 
 

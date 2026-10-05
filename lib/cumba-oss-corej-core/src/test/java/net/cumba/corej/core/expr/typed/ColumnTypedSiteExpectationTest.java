@@ -92,6 +92,63 @@ class ColumnTypedSiteExpectationTest
         assertEquals(Set.of(), sites(of("max_date(DSSTDTC, domain=D, group=[USUBJID]) > 3")));
     }
 
+
+    @Test
+    void valueRecordsItsPositionUnderTheCall()
+    {
+        // A5 (fold): value() reads the cursor variable, which in the Define universe may name a
+        // column the data lacks — its position's kind is recorded under the call, as colref's is.
+        assertEquals(Set.of("value()"), sites(of("value() < 3")));
+        assertEquals(Set.of("value()"), sites(of("$v + 1 > 3", "$v", "value()")),
+                "through a binding (A2)");
+        assertEquals(Set.of(), sites(of("value() == \"Y\"")));
+        assertEquals(Set.of(), sites(of("len(value()) > 200")), "len records no kind");
+    }
+
+    // ------------------------------------------------------------------ LOW-3: per-column parity
+
+
+    @Test
+    void twoCallsOverOneStaticColumnShareOneKind()
+    {
+        // Two direct reads of one column get one kind (D76a: numeric wins); so do two different
+        // read_value / max calls over one static (dataset, column) — the owner's rule read
+        // literally ("handled in the same way as the variable would be handled").
+        String first = "read_value(X, domain=D, mode=\"FIRST\")";
+        String last = "read_value(X, domain=D, mode=\"MAX\")";
+        String max = "max(X, domain=D, group=[USUBJID])";
+        assertEquals(Set.of(first, last), sites(of(first + " > 5 or " + last + " == \"\"")));
+        assertEquals(Set.of(first, max), sites(of(first + " > 5 or " + max + " == \"\"")),
+                "read_value and max over one (dataset, column) are one column");
+        assertEquals(Set.of(first, last),
+                sites(of("$a > 5 or $b == \"\"", "$a", first, "$b", last)), "through bindings");
+        assertEquals(Set.of(first, last), sites(of(first + " > 5 or len(" + last + ") == 0")),
+                "a call in no typed position takes the column's kind too");
+        assertEquals(Set.of("max(X, group=[USUBJID])", "max(X, group=[STUDYID])"),
+                sites(of("max(X, group=[USUBJID]) > 5 or max(X, group=[STUDYID]) == \"\"")),
+                "an unpinned max reads the dataset under evaluation: one column too");
+    }
+
+
+    @Test
+    void theStaticColumnKeyIsItsOwnNamespace()
+    {
+        String first = "read_value(X, domain=D, mode=\"FIRST\")";
+        // Another dataset's X is another column.
+        assertEquals(Set.of(first),
+                sites(of(first + " > 5 or read_value(X, domain=E, mode=\"MAX\") == \"\"")));
+        // An unpinned max reads the primary X, a pinned read D's X: not one column.
+        assertEquals(Set.of(first), sites(of(first + " > 5 or max(X, group=[USUBJID]) == \"\"")));
+        // ⛔ The pre-go review's M2 leak: a primary column of the same name never flips.
+        TypeExpectations te = of(first + " > 5 or X == \"\"");
+        assertTrue(!te.numericExpected("X") && !te.numericDefaultColumns().contains("X"),
+                "the static target key never enters the column namespace");
+        // Dynamic targets stay keyed by the call site.
+        assertEquals(Set.of("row_max(name_pattern=\"^TR\")"),
+                sites(of("row_max(name_pattern=\"^TR\") > 5 or row_max(name_pattern=\"^TR.*\")"
+                        + " == \"\"")));
+    }
+
     // ------------------------------------------------------------------ A2: bindings
 
 

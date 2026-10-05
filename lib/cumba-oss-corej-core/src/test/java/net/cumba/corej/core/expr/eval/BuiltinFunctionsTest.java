@@ -327,7 +327,30 @@ class BuiltinFunctionsTest
         IDataTable t = MockTable.of().col("X", "v", "", (String) null).build();
         assertEquals(bits(1, 2), bool("empty", 3, col(t, "X")));
         assertEquals(bits(0), bool("non_empty", 3, col(t, "X")));
-        assertEquals(bits(1, 2), bool("is_missing", 3, col(t, "X"))); // alias
+        assertEquals(bits(2), bool("is_missing", 3, col(t, "X")),
+                "is_missing is strict (D50): \"\" is present, only the null cell is missing");
+    }
+
+
+    /**
+     * D50 (owner 2026-10-05: <i>"is_missing() is for misisng and empty() is for missing or
+     * \"\""</i>): {@code is_missing(x)} is true only for a {@code MissingValue} — every identity,
+     * {@code MIS} and the special missings alike — and {@code ""} is a present value (D34 #1);
+     * {@code empty(x)} keeps folding both.
+     */
+    @Test
+    void isMissingIsTrueOnlyForAMissingValue()
+    {
+        IDataTable chars = MockTable.of().col("X", "v", "", "").build();
+        assertEquals(bits(), bool("is_missing", 3, col(chars, "X")), "is_missing(\"\") is false");
+        assertEquals(bits(1, 2), bool("empty", 3, col(chars, "X")), "empty(\"\") is true");
+        IDataTable nums = MissingCellTables.of("T")
+                .dbl("N", 2.0, MissingValue.MIS, MissingValue.MIS_A, MissingValue.MIS_B).build();
+        assertEquals(bits(1, 2, 3), bool("is_missing", 4, col(nums, "N")),
+                "is_missing(MIS) and every special missing are true");
+        assertEquals(bits(1, 2, 3), bool("empty", 4, col(nums, "N")));
+        assertEquals(bits(), bool("is_missing", 2, ConstVector.of("")), "a constant \"\" too");
+        assertEquals(bits(0, 1), bool("is_missing", 2, ConstVector.of(null)), "the computed MIS");
     }
 
 

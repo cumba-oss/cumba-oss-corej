@@ -328,7 +328,7 @@ class DynamicColumnFunctionsTest
         assertSameAsAuthored("colref(\"ZZ\") < 3", "ZZ < 3", false, List.of(1L, 2L, 3L));
         assertSameAsAuthored("colref(\"ADSL.ZZ\") < 3", "ADSL.ZZ < 3", true, List.of(1L, 2L, 3L));
         // `X != ""` tells MIS (fires: a missing is not the empty string, D12) from "" (does not).
-        // ⚠ is_missing cannot: it is empty()'s alias today (register D50, enforcement unbuilt).
+        // (is_missing could too since register D50 was enforced, 2026-10-05; this pin predates it.)
         assertSameAsAuthored("colref(\"ZZ\") == 3 or colref(\"ZZ\") != \"\"",
                 "ZZ == 3 or ZZ != \"\"", false, List.of(1L, 2L, 3L));
         assertSameAsAuthored("colref(\"ZZ\") == \"Y\" or colref(\"ZZ\") != \"\"",

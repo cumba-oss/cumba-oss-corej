@@ -60,16 +60,16 @@ import org.jspecify.annotations.Nullable;
  * {@code prefix}/{@code suffix} (arity 2 — the first/last n characters, the legacy
  * {@code prefix_*}/{@code suffix_*} comparison operand), and the ISO-8601 date-component extractors
  * {@code year}/{@code month}/{@code day} (LONG).</li>
- * <li><b>BOOLEAN predicates</b>: {@code empty}/{@code is_missing},
- * {@code non_empty}/{@code present}/ {@code is_present}, {@code contains},
- * {@code does_not_contain}, {@code starts_with}, {@code ends_with}, {@code equalsIgnoreCase},
- * {@code prefix_matches}/{@code suffix_matches} (arity 2 = whole operand; arity 3 = length-bounded
- * affix), {@code imatches} (case-insensitive regex search), {@code is_integer},
- * {@code is_not_integer}, {@code invalid_duration}, {@code is_valid_duration}, and the
- * three-predicate calendar-validating date family {@code is_valid_date}/
- * {@code is_complete_date}/{@code is_partial_date} (alias {@code is_incomplete_date}) plus
- * {@code invalid_date} (= not valid) and the date-portion-only pair
- * {@code is_complete_date_part}/{@code is_not_complete_date_part} (Fix #157).</li>
+ * <li><b>BOOLEAN predicates</b>: {@code empty} (missing or {@code ""}), {@code is_missing} (a
+ * {@code MissingValue} only — register D50, owner 2026-10-05), {@code non_empty}/{@code present}/
+ * {@code is_present}, {@code contains}, {@code does_not_contain}, {@code starts_with},
+ * {@code ends_with}, {@code equalsIgnoreCase}, {@code prefix_matches}/{@code suffix_matches} (arity
+ * 2 = whole operand; arity 3 = length-bounded affix), {@code imatches} (case-insensitive regex
+ * search), {@code is_integer}, {@code is_not_integer}, {@code invalid_duration},
+ * {@code is_valid_duration}, and the three-predicate calendar-validating date family
+ * {@code is_valid_date}/ {@code is_complete_date}/{@code is_partial_date} (alias
+ * {@code is_incomplete_date}) plus {@code invalid_date} (= not valid) and the date-portion-only
+ * pair {@code is_complete_date_part}/{@code is_not_complete_date_part} (Fix #157).</li>
  * </ul>
  *
  * <p>
@@ -294,8 +294,11 @@ public final class BuiltinFunctions implements FunctionProvider
         // value(): the per-row VALUE of the "current variable" — the cells of the column named by
         // the cursor (variables["variable_name"]). Mirrors the legacy variable_value operand, which
         // the retired CheckConditionOptimizer.bindVariableValue rewrote to the current column. A
-        // missing cursor or an absent column ⇒ a broadcast null (no row fires), matching the legacy
-        // resolution.
+        // missing cursor ⇒ a broadcast null (MIS — no variable is named). A cursor naming a column
+        // the table lacks (a Define-universe ItemDef the data does not carry) ⇒ the shared marker
+        // ColumnTypedAbsence.ABSENT_CURSOR_COLUMN — itself the all-MIS broadcast — which the
+        // compiler's value() arm resolves to the call site's use-derived default
+        // (PLAN-column-typed-function-absent-type A5: MIS where numeric-expected, "" otherwise).
         fns.add(new FunctionDescriptor("value", List.of(), FunctionKind.VALUE, (run, _) ->
         {
             EvaluationContext ctx = run.ctx();
@@ -308,7 +311,7 @@ public final class BuiltinFunctions implements FunctionProvider
             int idx = meta.getColumnIndex(colName);
             if (idx < 0)
             {
-                return ConstVector.of(null);
+                return net.cumba.corej.core.exec.ColumnTypedAbsence.ABSENT_CURSOR_COLUMN;
             }
             return new ColumnVector(null, ctx.getTable().getColumn(idx),
                     meta.getColumn(idx).getType());
@@ -503,7 +506,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // -- BOOLEAN presence ------------------------------------------------
         EvalFunction empty = (run, args) -> Primitives.empty(args.get(0), run.rowCount());
         bool(fns, "empty", List.of(p("x")), empty);
-        bool(fns, "is_missing", List.of(p("x")), empty);
+        // D50 (owner 2026-10-05): is_missing is for missing, empty for missing or "" — no alias.
+        bool(fns, "is_missing", List.of(p("x")),
+                (run, args) -> Primitives.isMissing(args.get(0), run.rowCount()));
         EvalFunction nonEmpty = (run, args) -> Primitives.nonEmpty(args.get(0), run.rowCount());
         bool(fns, "non_empty", List.of(p("x")), nonEmpty);
         bool(fns, "present", List.of(p("x")), nonEmpty);

@@ -198,11 +198,13 @@ public final class ExprCompiler
 
     /**
      * Boolean predicates that fire on a wholly-absent operand column. An absent column carries no
-     * data, so it is empty for every row — {@code empty}/{@code is_missing} therefore flag all rows
-     * rather than taking the no-rows missing-column short-circuit. Follows the empty-operator
-     * absent-column branch.
+     * data, so it is empty for every row — {@code empty} therefore flags all rows rather than
+     * taking the no-rows missing-column short-circuit. Follows the empty-operator absent-column
+     * branch. ⚠ {@code is_missing} left this set with register D50 (owner 2026-10-05): it is true
+     * only for a {@code MissingValue}, so an operand with no value at all has no type default to be
+     * missing in and reads as the untyped {@code ""} default (D76a) — not missing.
      */
-    private static final Set<String> FIRES_ON_ABSENT_COLUMN = Set.of("empty", "is_missing");
+    private static final Set<String> FIRES_ON_ABSENT_COLUMN = Set.of("empty");
 
     /**
      * EC-43: the all-missing vector an absent column folds to. Broadcast, type
@@ -2184,8 +2186,8 @@ public final class ExprCompiler
         }
         // EC-43 (T1 reconciliation): every registered BOOLEAN predicate folds an absent operand to
         // all-missing and computes its own verdict over it — is_integer("") is false, contains("")
-        // is false, matches_regex "^$" is true. `empty`/`is_missing` are the ONE exclusion: they
-        // own
+        // is false, matches_regex "^$" is true. `empty` is the ONE exclusion (is_missing left it
+        // with register D50, owner 2026-10-05): it owns
         // their absent-column contract via FIRES_ON_ABSENT_COLUMN below (class E, the plain-vs-dot-
         // qualified asymmetry Fix #126 built), and folding them would produce the identical verdict
         // by a different route — so the special case is kept rather than quietly replaced.
@@ -4902,6 +4904,15 @@ public final class ExprCompiler
                 // (colref's shape), and the site's kind is read once per evaluation.
                 ValuePlan plain = valueCallPlan(c);
                 yield run -> net.cumba.corej.core.exec.RowMax.atSite(plain.eval(run), run, c);
+            }
+            if ("value".equals(c.name()) && c.args().isEmpty() && c.kwargs().isEmpty())
+            {
+                // PLAN-column-typed-function-absent-type A5 (fold): a cursor naming a column the
+                // table lacks answers its call site's use-derived default — the plan closes over
+                // the CALL (row_max's shape), the site's kind read once per evaluation.
+                ValuePlan plain = valueCallPlan(c);
+                yield run -> net.cumba.corej.core.exec.ColumnTypedAbsence
+                        .cursorValueAtSite(plain.eval(run), run, c);
             }
             yield valueCallPlan(c);
         }
