@@ -137,14 +137,18 @@ public final class ValidationReportBuilder
         {
             findings = buildRuleFindings(aDomain, aRule, aResult);
         }
-        catch (IllegalStateException e)
+        catch (RuntimeException e)
         {
             // P2 review MED-1: the report model refuses a null cell / a missing key value (5b S7
             // / S8 / S9) by throwing — a producer defect. The report build runs OUTSIDE every
             // per-rule containment (LibraryValidator.executeRule catches per rule; the merge into
             // this builder does not), so an uncaught throw here lost the whole run's report.
             // Loud, but scoped: this rule × dataset reports one ENGINE_ERROR finding naming the
-            // defect, and every other rule's findings survive.
+            // defect, and every other rule's findings survive. Any RuntimeException, not only the
+            // IllegalStateException of those refusals (confirmation look LOW-2): the slab's
+            // IllegalArgumentException and Math.toIntExact's ArithmeticException on a row index
+            // past int range would otherwise escape the same way. The findings are computed in
+            // full before any is added, so a throw leaves none of this rule's findings behind.
             acc.add(buildEngineErrorFinding(aDomain, aRule,
                     "Report model defect — the rule's findings could not be reported: "
                             + e.getMessage()));

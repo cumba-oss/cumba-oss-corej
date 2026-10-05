@@ -290,6 +290,34 @@ class NameOnlyReportSurfaceTest
 
 
     @Test
+    void aNonIllegalStateRefusalIsContainedTooAndAddsNoPartialFindings()
+    {
+        // Confirmation look LOW-2: the report build can throw more than IllegalStateException —
+        // here Math.toIntExact's ArithmeticException on a row index past int range. It must be
+        // contained the same way: ONE ENGINE_ERROR finding for the rule × dataset, and none of
+        // the rule's findings built before the throw (the AETERM group precedes the failing
+        // AEDECOD group), while another rule's findings survive.
+        Rule rule = rule("T-ROW", Domain.ROW);
+        Violation fine = record(0, "S1", "1", values("AETERM", "x"));
+        Violation tooFar = record(1L << 32, "S2", "2", values("AEDECOD", "y"));
+        Rule other = rule("T-OK", Domain.ROW);
+        ValidationReport report = new ValidationReportBuilder()
+                .add("AE", "ae.xpt", rule, result("T-ROW", List.of(fine, tooFar)))
+                .add("AE", "ae.xpt", other,
+                        result("T-OK", List.of(record(3, "S3", "3", values("AETERM", "z")))))
+                .build();
+        List<ValidationFinding> findings = report.getMembers().get(0).getFindings();
+        assertEquals(2, findings.size(), findings.toString());
+        ValidationFinding error = findings.get(0);
+        assertEquals("T-ROW", error.getRuleId());
+        assertEquals(FindingKind.ENGINE_ERROR, error.getKind());
+        assertTrue(error.getMessage().contains("Report model defect"), error.getMessage());
+        assertEquals("T-OK", findings.get(1).getRuleId());
+        assertEquals(FindingKind.RULE_VIOLATION, findings.get(1).getKind());
+    }
+
+
+    @Test
     void aGroupFindingIsGroupKeyedAndKeepsItsAnchorIdentityInTheModel()
     {
         Rule rule = rule("T-GRP", Domain.ROW);
