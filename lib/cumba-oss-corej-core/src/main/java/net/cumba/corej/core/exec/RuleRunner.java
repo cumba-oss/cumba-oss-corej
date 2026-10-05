@@ -5398,9 +5398,13 @@ public final class RuleRunner
     /**
      * Whether the dataset carries raw column {@code name} as the projection resolves it: a bare
      * name as a primary column or a SUPP-delivered qualifier ({@link SuppPivot}), a dotted name
-     * through its join lookup (asked at row 0 — a RELREC-expanded lookup is row-dependent, and a
-     * column-level finding has no row of its own; on an empty primary the lookup's existence
-     * decides). Used by the column-level per-variable paths, which have no row to read.
+     * through its join lookup. A lookup that knows its column set — a part of the merged evaluation
+     * view, a single joined dataset — answers from it, whatever the row count
+     * ({@code PLAN-merged-evaluation-table} W3b: on an empty primary the row-0 probe below used to
+     * take the lookup's existence for the column's, and an absent joined column was listed by
+     * name). Only a row-dependent lookup (the RELREC expansion, until W5) is still asked at row 0 —
+     * a column-level finding has no row of its own — and on an empty primary its existence decides.
+     * Used by the column-level per-variable paths, which have no row to read.
      */
     private static boolean columnPresent(EvaluationContext ctx, String name)
     {
@@ -5409,8 +5413,9 @@ public final class RuleRunner
         if (dot > 0)
         {
             JoinLookup lookup = ctx.getJoinedDatasets().get(name.substring(0, dot));
-            return lookup != null && (table.getRowCount() == 0
-                    || lookup.hasColumn(table, 0, name.substring(dot + 1)));
+            String column = name.substring(dot + 1);
+            return lookup != null && !lookup.lacksColumnOnEveryRow(column)
+                    && (table.getRowCount() == 0 || lookup.hasColumn(table, 0, column));
         }
         return table.getMetaData().getColumnIndex(name) >= 0
                 || SuppPivot.qualifierColumn(ctx, name) != null;
