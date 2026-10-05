@@ -621,10 +621,12 @@ class ValidationReportBuilderTest
 
 
     @Test
-    void variableNameOnlyRuleFlagsColumn()
+    void variableNameOnlyRuleListsTheColumnByName()
     {
-        // Defensive: when the output has only variable_name (no partner), the column name must
-        // still appear in the schema so downstream consumers can locate the target column.
+        // When the output has only variable_name (no partner), the column is the finding's
+        // subject with no value of its own: it is listed by name (namedColumns), not put into
+        // the schema with a null cell (5b's S7, PLAN-finding-values-record-level-only P2), so
+        // downstream consumers can still locate the target column.
         RuleExecutionResult result = withViolations("SOMERULE", "Something",
                 List.of(v(0, "variable_name", "USUBJID")));
 
@@ -632,7 +634,9 @@ class ValidationReportBuilderTest
                 .add("DM", "dm.xpt", rule("SOMERULE"), result).build();
 
         ValidationFinding f = report.getMembers().get(0).getFindings().get(0);
-        assertEquals(List.of("USUBJID"), f.getVariableNames());
+        assertEquals(List.of(), f.getVariableNames(), "no schema slot without a value");
+        assertEquals(List.of("USUBJID"), f.getNamedColumns());
+        assertEquals(0, f.getRows().variableCount());
     }
 
 

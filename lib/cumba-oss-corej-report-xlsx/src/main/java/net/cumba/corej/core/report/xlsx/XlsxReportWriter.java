@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -106,8 +107,24 @@ public final class XlsxReportWriter implements ReportWriter
     private static final List<String> SUMMARY_COLUMNS = List.of("dataset", "core_id", "message",
             "issues");
 
+    /**
+     * The {@code Issue Details} columns: the nine template columns, then the appended
+     * {@link #DETAIL_COLUMNS_HEADER name-only column}
+     * ({@code PLAN-finding-values-record-level-only}, owner Q-B 2026-10-05: the XLSX carries v2's
+     * exact states). The sheet is fed from the v2 {@code Findings} rows ({@link #issueDetailRows}),
+     * never from the frozen v1 {@code Issue_Details}, whose {@code "null"} token cannot tell a
+     * name-only column from an empty value.
+     */
     private static final List<String> DETAIL_COLUMNS = List.of("core_id", "message",
-            "executability", "dataset", "USUBJID", "row", "SEQ", "variables", "values");
+            "executability", "dataset", "USUBJID", "row", "SEQ", "variables", "values", "columns");
+
+    /**
+     * Header of the tenth {@code Issue Details} column — the raw columns the finding lists by name
+     * without a value, joined like {@code variables}. A distinct column, so a name-only column is
+     * told from an empty value ({@code ""} prints as {@code null} in {@code values}) and from a
+     * missing one ({@code .}) at a glance, with nothing invented inside {@code values} (V6).
+     */
+    static final String DETAIL_COLUMNS_HEADER = "Columns (name only)";
 
     /**
      * D65: the three trailing count columns ({@code executed} / {@code skipped} / {@code errored})
@@ -241,7 +258,7 @@ public final class XlsxReportWriter implements ReportWriter
                     wrapStyles);
             fillList(wb, wb.getSheet(SHEET_ISSUE_SUMMARY), aSections.issueSummary(),
                     SUMMARY_COLUMNS, wrapStyles);
-            fillList(wb, wb.getSheet(SHEET_ISSUE_DETAILS), aSections.issueDetails(), DETAIL_COLUMNS,
+            fillList(wb, issueDetailsSheet(wb), issueDetailRows(aSections), DETAIL_COLUMNS,
                     wrapStyles);
             fillList(wb, rulesReportSheet(wb), aSections.rulesReport(), RULES_COLUMNS, wrapStyles);
             fillList(wb, skippedRulesSheet(wb), aSections.skippedRules(), SKIPPED_COLUMNS,
@@ -334,6 +351,105 @@ public final class XlsxReportWriter implements ReportWriter
             cell.setCellValue(RULES_COUNT_HEADERS.get(i));
             sheet.setColumnWidth(firstCountCol + i, 12 * 256);
         }
+        return sheet;
+    }
+
+
+    /**
+     * The {@code Issue Details} rows, one per v2 {@code Findings} row in document order: the
+     * finding's {@code core_id} / {@code message} / {@code executability} / {@code dataset}, the
+     * row's {@code USUBJID} / {@code row} / {@code SEQ} / positional {@code values}, the finding's
+     * {@code variables} and its name-only {@code columns} (absent ⇒ none). A finding with no rows
+     * (an engine error's virtual finding) contributes nothing, exactly as v1 dropped it, so the row
+     * set is v1's — what moved is the rendering of the two states v1 cannot carry: a Group
+     * finding's anchor identity (blank, owner Q-A) and the name-only columns (their own column).
+     *
+     * <p>
+     * ⛔ A document that carries v1 {@code Issue_Details} but no v2 {@code Findings} is refused:
+     * rendering it from v1 would silently show the {@code "null"} token for a name-only column, and
+     * rendering nothing would silently show an empty sheet. Every producer of
+     * {@link ReportSections} (the live assembler, the REST store's persisted v2 document) carries
+     * the v2 section.
+     * </p>
+     */
+    static List<Map<String, Object>> issueDetailRows(ReportSections aSections)
+    {
+        List<Map<String, Object>> findings = aSections.combinedFindings();
+        if (findings.isEmpty() && !aSections.issueDetails().isEmpty())
+        {
+            throw new IllegalArgumentException("the XLSX Issue Details sheet is rendered from the"
+                    + " v2 Findings section, and this document carries only v1 Issue_Details ("
+                    + aSections.issueDetails().size() + " row(s)) — a v1-only document cannot"
+                    + " render the name-only state (PLAN-finding-values-record-level-only Q-B)");
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> f : findings)
+        {
+            Object rows = f.get("rows");
+            if (!(rows instanceof List<?> rowList))
+            {
+                continue;
+            }
+            for (Object o : rowList)
+            {
+                if (!(o instanceof Map<?, ?> r))
+                {
+                    continue;
+                }
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("core_id", f.get("core_id"));
+                row.put("message", f.get("message"));
+                row.put("executability", f.get("executability"));
+                row.put("dataset", f.get("dataset"));
+                row.put("USUBJID", r.get("USUBJID"));
+                row.put("row", r.get("row"));
+                row.put("SEQ", r.get("SEQ"));
+                row.put("variables", f.get("variables"));
+                row.put("values", r.get("values"));
+                row.put("columns", f.get("columns"));
+                out.add(row);
+            }
+        }
+        return out;
+    }
+
+
+    /**
+     * Returns the {@code Issue Details} sheet with the {@link #DETAIL_COLUMNS_HEADER} header
+     * appended to its header row when it is not already present — the same pattern as
+     * {@link #rulesReportSheet}: the shipped template (copied verbatim from the Python resources)
+     * carries the nine Python columns, and the appended header reuses the last template header's
+     * style so the row reads as one. A future template that ships the header — or a second call on
+     * the same workbook — is used as-is.
+     */
+    static @Nullable Sheet issueDetailsSheet(XSSFWorkbook aWorkbook)
+    {
+        Sheet sheet = aWorkbook.getSheet(SHEET_ISSUE_DETAILS);
+        if (sheet == null)
+        {
+            return null;
+        }
+        Row header = sheet.getRow(0);
+        if (header == null)
+        {
+            header = sheet.createRow(0);
+        }
+        int col = DETAIL_COLUMNS.size() - 1;
+        // Presence is a non-blank VALUE, not a non-null cell — see rulesReportSheet.
+        Cell existing = header.getCell(col);
+        if (existing != null && existing.getCellType() == CellType.STRING
+                && !existing.getStringCellValue().isBlank())
+        {
+            return sheet;
+        }
+        Cell styleSource = header.getCell(col - 1);
+        Cell cell = header.getCell(col, MissingCellPolicy.CREATE_NULL_AS_BLANK);
+        if (styleSource != null)
+        {
+            cell.setCellStyle(styleSource.getCellStyle());
+        }
+        cell.setCellValue(DETAIL_COLUMNS_HEADER);
+        sheet.setColumnWidth(col, 24 * 256);
         return sheet;
     }
 

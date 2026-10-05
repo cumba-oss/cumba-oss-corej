@@ -236,8 +236,7 @@ public final class ValidationReportBuilder
         Map<GroupKey, List<Violation>> byKey = new LinkedHashMap<>();
         for (Violation v : violations)
         {
-            LinkedHashSet<String> schemaSet = new LinkedHashSet<>();
-            collectSchema(withIdentity(v), schemaSet);
+            Collapse collapse = collapse(withIdentity(v));
             // ⛔ Plan C §3.4: the CLAIMING LEVEL is part of the key. Before per-level Checks a
             // group could only hold one level, so grouping on the collapsed schema alone was
             // enough and `severityOf` could read the group's first violation as representative.
@@ -246,24 +245,29 @@ public final class ValidationReportBuilder
             // findings — which is also what a reader wants, since the message (§3.6) is resolved
             // per level too. ⚑ Every violation of a single-level rule carries a null level, so the
             // partition — and therefore every shipped finding — is byte-identical.
-            GroupKey key = new GroupKey(List.copyOf(schemaSet), v.getLevel());
+            // The NAME-ONLY list is part of the key as well (PLAN-finding-values-record-level-only
+            // §7 M3): two per-variable findings about different variables with no partner value
+            // share an empty schema and differ only in the column they list.
+            GroupKey key = new GroupKey(List.copyOf(collapse.names()), v.getLevel(),
+                    namedColumnsOf(collapse, v));
             byKey.computeIfAbsent(key, _ -> new ArrayList<>()).add(v);
         }
 
         FindingScope scope = scopeOf(aRule);
         String executability = executabilityOf(aRule);
+        String coreId = coreIdOf(aRule);
         List<ValidationFinding> out = new ArrayList<>(byKey.size());
         for (Map.Entry<GroupKey, List<Violation>> e : byKey.entrySet())
         {
             List<String> names = e.getKey().names();
+            List<String> named = e.getKey().named();
             int vc = names.size();
             List<Violation> group = e.getValue();
 
             RowFindingSlab.Builder slabBuilder = RowFindingSlab.builder(vc);
             for (Violation v : group)
             {
-                @Nullable
-                String[] values = rowValues(withIdentity(v), names);
+                String[] values = rowValues(withIdentity(v), names, coreId, v);
                 slabBuilder.addRow(Math.toIntExact(v.getRow()), values);
             }
 
@@ -271,36 +275,38 @@ public final class ValidationReportBuilder
             // BY ITS GROUP VARIABLES — the grouping key stamped on the violation wins over the
             // EC-40 record key, which describes the anchor row (a per-level accident) rather
             // than the group the finding is about. The group key is kept in full (no all-empty
-            // drop — the key IS the finding's identity), with key source GROUP. Non-grouped
-            // findings keep the EC-40 path unchanged.
-            // ⚑ The branch decides `groupKeyed` and `keyNames` together instead of deriving the
-            // second from the first: a separate boolean hides the null check from every reader
-            // (NullAway included) that has to re-derive why groupKey.keySet() is safe here.
-            Map<String, String> groupKey = firstGroupKeyOf(group);
-            boolean groupKeyed;
-            List<String> keyNames;
-            if (groupKey != null && !groupKey.isEmpty())
-            {
-                groupKeyed = true;
-                keyNames = List.copyOf(groupKey.keySet());
-            }
-            else
-            {
-                groupKeyed = false;
-                keyNames = withoutAllEmptyColumns(keyNamesOf(group), group);
-            }
+            // drop — the key IS the finding's identity), with key source GROUP — also when it is
+            // EMPTY (the data set carries no grouping column and is one group): the finding is
+            // still a group finding and never takes the anchor row's EC-40 key (owner Q-A,
+            // 2026-10-05; ValidationFindingLocation.GROUP_KEY_SOURCE). Non-grouped findings keep
+            // the EC-40 path unchanged.
+            boolean groupFinding = isGroupFinding(group);
+            List<String> keyNames = groupFinding ? groupKeyNamesOf(group)
+                    : withoutAllEmptyColumns(keyNamesOf(group), group);
             RowFindingSlab keySlab = RowFindingSlab.EMPTY;
             if (!keyNames.isEmpty())
             {
                 RowFindingSlab.Builder keyBuilder = RowFindingSlab.builder(keyNames.size());
                 for (Violation v : group)
                 {
-                    @Nullable
                     String[] keyValues = new String[keyNames.size()];
-                    Map<String, String> vKeys = groupKeyed ? v.getGroupKey() : v.getKeys();
+                    Map<String, String> vKeys = groupFinding ? v.getGroupKey() : v.getKeys();
                     for (int i = 0; i < keyNames.size(); i++)
                     {
-                        keyValues[i] = vKeys == null ? null : vKeys.get(keyNames.get(i));
+                        String keyValue = vKeys == null ? null : vKeys.get(keyNames.get(i));
+                        if (keyValue == null)
+                        {
+                            // 5b's S8: every violation of one finding comes from one rule x
+                            // dataset and so from one key spec (a missing key CELL carries its
+                            // marker, RuleRunner.reportedValue), so a key COLUMN the row's key
+                            // map lacks is a producer defect, never a storage state. Measured
+                            // 2026-10-05 over testdata/study: 0 such cells.
+                            throw new IllegalStateException("rule " + coreId + " on " + aDomain
+                                    + ", row " + v.getRowNumber() + ": the record key column "
+                                    + keyNames.get(i) + " has no value in the row's key map "
+                                    + vKeys + " — the report model stores no null (5b S8)");
+                        }
+                        keyValues[i] = keyValue;
                     }
                     keyBuilder.addRow(Math.toIntExact(v.getRow()), keyValues);
                 }
@@ -311,6 +317,9 @@ public final class ValidationReportBuilder
             // drop any non-column tokens ($scalars, dataset-qualified refs). No name marker — the
             // variable_name collapse already resolved the targeted column into `names`. A null
             // scope is intentional: it tells columnsFor to keep the real variable columns.
+            // The name-only columns are flagged too: the column a non-record finding lists by
+            // name IS what the finding is about, so it is what the UI highlights
+            // (PLAN-finding-values-record-level-only P2 — P1's interim dropped them).
             //
             // D5/D17: the identity entries withIdentity() injected are excluded here. They are
             // "which row" facts, not "what is wrong" facts, and one of them ("SEQ") is not even a
@@ -318,27 +327,36 @@ public final class ValidationReportBuilder
             // column is <DOMAIN>SEQ. Leaving them in put a non-existent column into a field
             // documented as real-columns-only. Entries a rule genuinely declared in its own
             // Output_Variables are kept (see declaredNames).
-            List<String> flagged = withoutInjectedIdentity(names, declaredNames(aRule, group));
+            // Name-only first: the collapsed variable used to be hoisted to the front of the
+            // schema, so the finding's subject stays the first highlighted column.
+            List<String> flaggedCandidates = new ArrayList<>(names.size() + named.size());
+            flaggedCandidates.addAll(named);
+            flaggedCandidates.addAll(names);
+            List<String> flagged = withoutInjectedIdentity(flaggedCandidates,
+                    declaredNames(aRule, group));
             ValidationFindingLocation location = ValidationFindingLocation.builder()
                     .dataset(aDomain)
                     .variableNames(FindingLocations.columnsFor(scope, flagged, List.of(), Set.of()))
                     .keyVariableNames(keyNames)
-                    .keySource(groupKeyed ? GROUP_KEY_SOURCE : keySourceOf(aResult, keyNames))
+                    .keySource(groupFinding ? ValidationFindingLocation.GROUP_KEY_SOURCE
+                            : keySourceOf(aResult, keyNames))
                     .build();
 
-            out.add(ValidationFinding.builder().source(SOURCE).ruleId(coreIdOf(aRule))
+            out.add(ValidationFinding.builder().source(SOURCE).ruleId(coreId)
                     .kind(FindingKind.RULE_VIOLATION)
                     .severity(severityOf(e.getKey().level(), aResult, aRule))
                     .executability(executability).scope(scope)
                     .message(messageOf(aRule, e.getKey().level(), aResult)).variableNames(names)
-                    .location(location).rows(slabBuilder.build()).keyRows(keySlab).build());
+                    .namedColumns(named).location(location).rows(slabBuilder.build())
+                    .keyRows(keySlab).build());
         }
         return out;
     }
 
     /**
-     * The grouping key of a {@code RULE_VIOLATION} finding: the collapsed column schema <b>and the
-     * claiming level</b> (Plan C §3.4).
+     * The grouping key of a {@code RULE_VIOLATION} finding: the collapsed column schema, <b>the
+     * claiming level</b> (Plan C §3.4) and the columns listed by name without a value
+     * ({@code PLAN-finding-values-record-level-only} §7 M3).
      *
      * @param names
      *            the collapsed schema — the column list after the {@code variable_name} + partner
@@ -346,11 +364,74 @@ public final class ValidationReportBuilder
      * @param level
      *            the level that claimed these rows, or {@code null} when the producing site
      *            resolved none (every single-level rule)
+     * @param named
+     *            the finding's name-only columns, in effective order
      */
-    private record GroupKey(List<String> names, @Nullable Severity level)
+    private record GroupKey(List<String> names, @Nullable Severity level, List<String> named)
     {
 
     }
+
+    /**
+     * The columns a violation's finding lists by name without a value, in order: the variable a
+     * partner-less {@code variable_name} collapse names (5b's S7 — the finding's subject, with no
+     * value of its own), then the engine's own list ({@link Violation#getNamedColumns()}). A name
+     * the collapsed schema values wins over the list: a column cannot be valued and name-only at
+     * once, and a value is the stronger statement.
+     */
+    private static List<String> namedColumnsOf(Collapse aCollapse, Violation aViolation)
+    {
+        List<String> engineNamed = aViolation.getNamedColumns();
+        if (aCollapse.nameOnlyColumn() == null && engineNamed.isEmpty())
+        {
+            return List.of();
+        }
+        LinkedHashSet<String> named = new LinkedHashSet<>();
+        if (aCollapse.nameOnlyColumn() != null)
+        {
+            named.add(aCollapse.nameOnlyColumn());
+        }
+        named.addAll(engineNamed);
+        named.removeAll(aCollapse.names());
+        return List.copyOf(named);
+    }
+
+
+    /**
+     * Whether the group's violations are a Group-sensitivity finding — the engine stamped a group
+     * key on them ({@link Violation#isGroupFinding()}; every violation of one rule × dataset
+     * execution stamps one or none).
+     */
+    private static boolean isGroupFinding(List<Violation> aGroup)
+    {
+        for (Violation v : aGroup)
+        {
+            if (v.isGroupFinding())
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    /**
+     * The grouping variables of a Group finding — the key names of the first stamped group key.
+     * Empty when the data set carries no grouping column (the whole data set is one group).
+     */
+    private static List<String> groupKeyNamesOf(List<Violation> aGroup)
+    {
+        for (Violation v : aGroup)
+        {
+            Map<String, String> key = v.getGroupKey();
+            if (key != null)
+            {
+                return List.copyOf(key.keySet());
+            }
+        }
+        return List.of();
+    }
+
 
     /**
      * The message a {@code RULE_VIOLATION} finding reports (Plan C §3.6, ruling 6): the <b>claiming
@@ -427,32 +508,6 @@ public final class ValidationReportBuilder
             return aResult.getSeverity();
         }
         return aRule.effectiveSeverity();
-    }
-
-    /**
-     * D29's key source label: the finding is keyed by its grouping variables, not by any
-     * {@link RecordKeyResolver.KeySource} tier — deliberately a distinct label so a report consumer
-     * can tell a group-keyed finding from a record-keyed one.
-     */
-    private static final String GROUP_KEY_SOURCE = "GROUP";
-
-    /**
-     * The first non-null grouping key stamped on the group's violations, or {@code null} when none
-     * carries one (every non-grouped execution). Every violation of one finding group comes from
-     * the same rule × dataset, so the key <em>names</em> are identical across the group;
-     * per-violation <em>values</em> are read in the slab loop.
-     */
-    private static @Nullable Map<String, String> firstGroupKeyOf(List<Violation> aGroup)
-    {
-        for (Violation v : aGroup)
-        {
-            Map<String, String> key = v.getGroupKey();
-            if (key != null && !key.isEmpty())
-            {
-                return key;
-            }
-        }
-        return null;
     }
 
 
@@ -631,52 +686,81 @@ public final class ValidationReportBuilder
             "variable_label", "variable_data_type", "variable_length", "variable_format");
 
     /**
-     * Populate {@code aOut} with the effective column names contributed by a single violation's
-     * value map, applying the variable_name/partner collapse.
+     * The {@code variable_name} + partner collapse of one violation's value map.
+     *
+     * @param names
+     *            the collapsed schema: the targeted column (the {@code variable_name} value) when a
+     *            partner carries its value, then every other key as-is
+     * @param nameOnlyColumn
+     *            the targeted column when the finding carries <b>no</b> partner value — the
+     *            finding's subject, listed by name without a value ({@code namedColumns}; 5b's S7,
+     *            which used to be a {@code null} slab cell) — or {@code null}
+     */
+    private record Collapse(Set<String> names, @Nullable String nameOnlyColumn)
+    {
+    }
+
+    /**
+     * Collapses a violation's value map into its schema, applying the variable_name/partner
+     * collapse.
      *
      * <p>
-     * When {@code variable_name} is present, its <em>value</em> is always added to the schema (so
-     * findings flag the targeted column) regardless of whether a partner is present. The partner,
-     * if any, is absorbed into the same column; all other keys are added as-is.
+     * When {@code variable_name} is present and one of {@link #VARIABLE_NAME_PARTNERS} is too, the
+     * two become one schema entry named after the variable (the actual column), whose row value is
+     * the partner's. With no partner the variable is the finding's <em>name-only</em> column
+     * ({@link Collapse#nameOnlyColumn()}) and enters no schema slot: a slot with nothing to put in
+     * it was 5b's S7 {@code null} cell. All other keys are added as-is.
      * </p>
      */
-    private static void collectSchema(Map<String, String> aValues, Set<String> aOut)
+    private static Collapse collapse(Map<String, String> aValues)
     {
+        LinkedHashSet<String> names = new LinkedHashSet<>();
         if (aValues == null || aValues.isEmpty())
         {
-            return;
+            return new Collapse(names, null);
         }
         String varName = aValues.get(VARIABLE_NAME);
         boolean hasName = aValues.containsKey(VARIABLE_NAME) && varName != null
                 && !varName.isBlank();
-        String partnerKey = null;
-        if (hasName)
+        String partnerKey = hasName ? partnerKeyOf(aValues) : null;
+        if (hasName && partnerKey != null)
         {
-            for (String candidate : VARIABLE_NAME_PARTNERS)
-            {
-                if (aValues.containsKey(candidate))
-                {
-                    partnerKey = candidate;
-                    break;
-                }
-            }
-            // Always hoist the variable name's value into the schema so the UI can flag the
-            // correct column, even when no known partner is present.
-            aOut.add(varName);
+            // The variable's value is hoisted into the schema so the UI flags the correct
+            // column; the partner's value rides on that slot.
+            names.add(varName);
         }
         for (Map.Entry<String, String> e : aValues.entrySet())
         {
             String key = e.getKey();
             if (hasName && VARIABLE_NAME.equals(key))
             {
-                continue; // already represented by varName
+                continue; // represented by varName (a schema slot, or the name-only column)
             }
             if (hasName && partnerKey != null && partnerKey.equals(key))
             {
                 continue; // partner value is carried on the varName slot
             }
-            aOut.add(key);
+            names.add(key);
         }
+        // A variable that is ALSO a plain key of the map (variable_name = DOMAIN beside a DOMAIN
+        // entry) has a value of its own and is not name-only.
+        String nameOnly = hasName && partnerKey == null && !names.contains(varName) ? varName
+                : null;
+        return new Collapse(names, nameOnly);
+    }
+
+
+    /** The first {@link #VARIABLE_NAME_PARTNERS partner} the value map carries, or null. */
+    private static @Nullable String partnerKeyOf(Map<String, String> aValues)
+    {
+        for (String candidate : VARIABLE_NAME_PARTNERS)
+        {
+            if (aValues.containsKey(candidate))
+            {
+                return candidate;
+            }
+        }
+        return null;
     }
 
 
@@ -717,46 +801,42 @@ public final class ValidationReportBuilder
 
     /**
      * Project a violation's value map onto the given name schema, applying the variable_name
-     * collapse. Absent keys yield null.
+     * collapse. Every slot is filled: the schema is the collapse of this very map, so a slot
+     * nothing fills is a defect of the collapse, not a storage state — the report model stores no
+     * {@code null} (5b's S7 / S9; {@code PLAN-finding-values-record-level-only} V6).
      */
-    private static @Nullable String[] rowValues(Map<String, String> aValues, List<String> aNames)
+    private static String[] rowValues(Map<String, String> aValues, List<String> aNames,
+            @Nullable String aCoreId, Violation aViolation)
     {
-        @Nullable
         String[] out = new String[aNames.size()];
-        if (aValues == null || aValues.isEmpty() || aNames.isEmpty())
+        if (aNames.isEmpty())
         {
             return out;
         }
-        String varName = aValues.get(VARIABLE_NAME);
-        boolean hasName = aValues.containsKey(VARIABLE_NAME) && varName != null
+        Map<String, String> values = aValues == null ? Map.of() : aValues;
+        String varName = values.get(VARIABLE_NAME);
+        boolean hasName = values.containsKey(VARIABLE_NAME) && varName != null
                 && !varName.isBlank();
-        String combinedValue = null;
-        if (hasName)
-        {
-            for (String candidate : VARIABLE_NAME_PARTNERS)
-            {
-                if (aValues.containsKey(candidate))
-                {
-                    combinedValue = aValues.get(candidate);
-                    break;
-                }
-            }
-        }
+        String partnerKey = hasName ? partnerKeyOf(values) : null;
         for (int i = 0; i < aNames.size(); i++)
         {
             String name = aNames.get(i);
-            if (hasName && name.equals(varName))
+            String value;
+            if (hasName && partnerKey != null && name.equals(varName))
             {
-                out[i] = combinedValue; // partner value, or null when no partner was present
-            }
-            else if (aValues.containsKey(name))
-            {
-                out[i] = aValues.get(name);
+                value = values.get(partnerKey); // the partner's value rides on the varName slot
             }
             else
             {
-                out[i] = null;
+                value = values.get(name);
             }
+            if (value == null)
+            {
+                throw new IllegalStateException("rule " + aCoreId + ", row "
+                        + aViolation.getRowNumber() + ": no value for the schema column " + name
+                        + " in " + values + " — the report model stores no null (5b S7 / S9)");
+            }
+            out[i] = value;
         }
         return out;
     }

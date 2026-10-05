@@ -298,6 +298,75 @@ class XlsxReportWriterTest
         }
     }
 
+
+    /**
+     * PLAN-finding-values-record-level-only (owner Q-B, 2026-10-05): the sheet carries v2's exact
+     * states — a column the finding lists by name without a value is a column of its own, told from
+     * an empty value ({@code null} in {@code values}) and from a missing one ({@code .}).
+     */
+    @Test
+    void issueDetailsRendersNameOnlyColumnsInTheirOwnAppendedColumn() throws Exception
+    {
+        ReportSections sections = new ReportSections(java.util.Map.of("Standard", "SDTMIG"),
+                List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(java.util.Map.of("core_id", "CORE-DS", "message", "dataset verdict",
+                        "executability", "fully executable", "dataset", "dm.xpt", "domain", "DM",
+                        "variables", List.of("$count", "AGE"), "columns",
+                        List.of("RANDFL", "ARMCD"), "rows", List.of(java.util.Map.of("row", 1,
+                                "USUBJID", "", "SEQ", "", "values", List.of("3", "null"))))));
+        try (XSSFWorkbook wb = render(sections, null))
+        {
+            Sheet det = wb.getSheet("Issue Details");
+            Row header = det.getRow(0);
+            assertEquals("Columns (name only)", header.getCell(9).getStringCellValue(),
+                    "the tenth header is appended after the nine template columns");
+            assertEquals(header.getCell(8).getCellStyle().getIndex(),
+                    header.getCell(9).getCellStyle().getIndex(),
+                    "the appended header reuses the last template header's style");
+            Row r = det.getRow(1);
+            assertEquals("$count, AGE", r.getCell(7).getStringCellValue());
+            assertEquals("3, null", r.getCell(8).getStringCellValue(),
+                    "an empty value keeps the token; the name-only columns are not in values");
+            assertEquals("RANDFL, ARMCD", r.getCell(9).getStringCellValue());
+            // Calling the sheet accessor again on the same workbook must not append twice.
+            assertEquals(det, XlsxReportWriter.issueDetailsSheet(wb));
+            assertEquals("Columns (name only)", det.getRow(0).getCell(9).getStringCellValue());
+        }
+    }
+
+
+    @Test
+    void issueDetailsLeavesTheColumnBlankForARecordFindingAndSkipsRowlessFindings() throws Exception
+    {
+        try (XSSFWorkbook wb = render(sampleSections(), 10_000))
+        {
+            Sheet det = wb.getSheet("Issue Details");
+            assertEquals("Columns (name only)", det.getRow(0).getCell(9).getStringCellValue());
+            assertNull(string(det, 1, 9), "a record finding lists nothing");
+            // Three v2 rows in sampleSections (2 AE + 1 DM) — the v1 row set, as before.
+            assertEquals(CORE_002, string(det, 3, 0));
+            assertNull(string(det, 4, 0));
+        }
+    }
+
+
+    @Test
+    void aV1OnlyDocumentIsRefusedRatherThanRenderedFromTheNullToken()
+    {
+        ReportSections v1Only = new ReportSections(java.util.Map.of("Standard", "SDTMIG"),
+                List.of(), List.of(),
+                List.of(java.util.Map.of("core_id", "CORE-001", "message", "m", "dataset", "ae.xpt",
+                        "domain", "AE", "variables", List.of("AETERM"), "values", List.of("null"))),
+                List.of(), List.of(), List.of());
+        IllegalArgumentException e = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class, () -> XlsxReportWriter.issueDetailRows(v1Only));
+        assertEquals(true, e.getMessage().contains("v1-only"), e.getMessage());
+        // A document with neither section is simply empty, not an error.
+        assertEquals(List.of(),
+                XlsxReportWriter.issueDetailRows(new ReportSections(java.util.Map.of(), List.of(),
+                        List.of(), List.of(), List.of(), List.of(), List.of())));
+    }
+
     // ------------------------------------------------------------------
     // Rules Report
     // ------------------------------------------------------------------
@@ -486,6 +555,9 @@ class XlsxReportWriterTest
     @Test
     void rendersASyntheticStudyDomainRow() throws Exception
     {
+        // The Issue Details sheet is fed from the v2 Findings (owner Q-B, 2026-10-05), so the
+        // synthetic row is a v2 finding with one row; the v1 Issue_Details row rides beside it
+        // as every assembled document carries both.
         ReportSections sections = new ReportSections(java.util.Map.of("Standard", "SDTMIG"),
                 List.of(),
                 List.of(java.util.Map.of("dataset", "STUDY", "core_id", "CORE-STUDY-REPORT",
@@ -493,7 +565,11 @@ class XlsxReportWriterTest
                 List.of(java.util.Map.of("core_id", "CORE-STUDY-REPORT", "message",
                         "study-level finding", "dataset", "STUDY", "domain", "STUDY")),
                 List.of(java.util.Map.of("core_id", "CORE-STUDY-REPORT", "status", "SUCCESS")),
-                List.of(), List.of());
+                List.of(),
+                List.of(java.util.Map.of("core_id", "CORE-STUDY-REPORT", "message",
+                        "study-level finding", "dataset", "STUDY", "domain", "STUDY", "variables",
+                        List.of(), "rows", List.of(java.util.Map.of("row", "", "USUBJID", "", "SEQ",
+                                "", "values", List.of("null"))))));
         try (XSSFWorkbook wb = render(sections, null))
         {
             assertEquals("STUDY",

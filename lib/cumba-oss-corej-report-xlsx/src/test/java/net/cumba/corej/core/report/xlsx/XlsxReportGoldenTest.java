@@ -69,6 +69,19 @@ import org.junit.jupiter.api.io.TempDir;
  * </p>
  *
  * <p>
+ * ⚠ <b>Regenerated a fourth time, deliberately, for {@code PLAN-finding-values-record-level-only}
+ * P2 (owner Q-B, 2026-10-05: the XLSX carries v2's exact states)</b>: the {@code Issue Details}
+ * sheet is now fed from the v2 {@code Findings} rows and gained the appended tenth column
+ * {@code Columns (name only)}. Rendered through this class's own {@link #render()} and verified
+ * cell-by-cell against the previous golden (resolved values, every sheet): exactly <b>two</b>
+ * differences — {@code Issue Details!J1}, the new header, and {@code Issue Details!H3}
+ * {@code AESTDY → AESTDY, AESTDTC}: the fixture's hand-made v2 finding declares two variables where
+ * its v1 row listed one, an inconsistency of the fixture that the v1-fed sheet never showed. The
+ * fixture lists no name-only column, so column J stays blank on every data row. The ratchet resumes
+ * from here.
+ * </p>
+ *
+ * <p>
  * ⚠⚠ <b>Compared by per-entry content digest, never by file hash.</b> An XLSX is a zip, and a zip
  * carries a per-entry modification timestamp: two runs of <em>identical</em> code produce files
  * with different bytes and different SHA-256s. A file-hash comparison here would fail every time

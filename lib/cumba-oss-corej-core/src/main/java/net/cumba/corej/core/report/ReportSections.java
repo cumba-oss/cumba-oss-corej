@@ -33,8 +33,11 @@ import org.jspecify.annotations.Nullable;
  * <li>{@code skippedRules} — {@code Skipped_Rules} rows ({@code core_id, dataset, reason}); a Java
  * extension without a Python counterpart.</li>
  * <li>{@code combinedFindings} — the v2 {@code Findings} rows
- * ({@code core_id, message, executability, dataset, domain, location, variables, rows}); the one
- * section with no v1 counterpart, and empty for a v1-only report.</li>
+ * ({@code core_id, message, executability, dataset, domain, location, variables, [columns], rows});
+ * the one section with no v1 counterpart, and empty for a v1-only report. {@code columns} is the
+ * additive, finding-level list of the raw columns the finding lists <em>by name without a
+ * value</em>, present only when non-empty ({@code PLAN-finding-values-record-level-only}, owner Q-B
+ * 2026-10-05) — so a record finding's object is byte-identical to a pre-P2 one.</li>
  * </ul>
  *
  * @param conformanceDetails

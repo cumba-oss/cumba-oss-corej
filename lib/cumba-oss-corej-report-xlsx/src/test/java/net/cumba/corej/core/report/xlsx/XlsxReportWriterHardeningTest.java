@@ -331,20 +331,32 @@ class XlsxReportWriterHardeningTest
     }
 
 
+    /**
+     * {@code aCount} one-row v2 findings — the Issue Details sheet is fed from the v2
+     * {@code Findings} (PLAN-finding-values-record-level-only, owner Q-B 2026-10-05), so the cap is
+     * exercised on the flattened v2 rows.
+     */
     private static ReportSections sectionsWithIssueRows(int aCount)
     {
-        List<Map<String, Object>> details = new ArrayList<>();
+        List<Map<String, Object>> findings = new ArrayList<>();
         for (int i = 0; i < aCount; i++)
         {
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("core_id", "CORE-" + (100 + i));
-            row.put("message", "finding " + i);
-            row.put("dataset", "AE");
-            row.put("domain", "AE");
-            details.add(row);
+            row.put("row", i + 1);
+            row.put("USUBJID", "S" + i);
+            row.put("SEQ", "");
+            row.put("values", List.of("x"));
+            Map<String, Object> finding = new LinkedHashMap<>();
+            finding.put("core_id", "CORE-" + (100 + i));
+            finding.put("message", "finding " + i);
+            finding.put("dataset", "AE");
+            finding.put("domain", "AE");
+            finding.put("variables", List.of("AETERM"));
+            finding.put("rows", List.of(row));
+            findings.add(finding);
         }
-        return new ReportSections(Map.of("Standard", "SDTMIG"), List.of(), List.of(), details,
-                List.of(), List.of(), List.of());
+        return new ReportSections(Map.of("Standard", "SDTMIG"), List.of(), List.of(), List.of(),
+                List.of(), List.of(), findings);
     }
 
 

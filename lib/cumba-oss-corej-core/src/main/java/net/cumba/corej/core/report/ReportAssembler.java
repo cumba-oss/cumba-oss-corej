@@ -74,6 +74,12 @@ import org.jspecify.annotations.Nullable;
  * dataset) pair with its human-readable reason — the failing scope criterion for generation-time
  * skips (including the run's use case, e.g. {@code "use case NONCLIN not in Scope.Use_Case
  * [INDH]"}), the runner's status message for execution-time skips.</li>
+ * <li><b>Name-only columns</b> ({@code PLAN-finding-values-record-level-only}, owner 2026-10-04 /
+ * Q-A, Q-B 2026-10-05): a raw column's value prints only on a record-level finding; every other
+ * finding lists the column by name. v2 carries that list as the additive finding-level
+ * {@link #FIELD_COLUMNS} (present only when non-empty) and blanks a Group finding's anchor
+ * {@code USUBJID} / {@code SEQ} unless the column is a group variable; the frozen v1 appends the
+ * names to {@code variables} with its {@code "null"} token and keeps the anchors.</li>
  * </ul>
  *
  * <h2>Usage</h2>
@@ -533,7 +539,11 @@ public final class ReportAssembler
             for (ValidationFinding finding : member.getFindings())
             {
                 boolean engineError = isEngineError(finding);
-                List<String> outputVars = collectOutputVariables(finding);
+                // v1 has no name-only state: the columns the finding lists by name are appended
+                // to `variables` and print the frozen format's "null" token in `values` (owner
+                // Q-B, 2026-10-05 — V6 waived for v1 only). Appended, not interleaved: the
+                // model separates the two lists, so the effective order between them is gone.
+                List<String> outputVars = v1OutputVariables(finding);
                 RowFindingSlab slab = finding.getRows();
                 List<String> names = finding.getVariableNames();
                 if (slab.rowCount() == 0)
@@ -547,7 +557,7 @@ public final class ReportAssembler
                 String message = engineError && rawMessage == null ? "" : rawMessage;
                 for (int p = 0, rc = slab.rowCount(); p < rc; p++)
                 {
-                    RowCells c = extractRow(slab, p, names, domain, outputVars);
+                    RowCells c = extractRow(slab, p, names, domain, outputVars, true);
                     out.add(new IssueDetail(finding.getRuleId(), message,
                             finding.getExecutability(), datasetLabel, c.usubjid(),
                             c.row() > 0 ? c.row() : "", c.seq(), outputVars, c.values(), domain));
@@ -568,9 +578,15 @@ public final class ReportAssembler
      * Projects one slab row into the per-row cells ({@code row}, {@code USUBJID}, {@code SEQ},
      * positional {@code values}) shared by the v1 {@code Issue_Details} record and the v2
      * {@code Findings} rows. Reuses v1's exact USUBJID/SEQ/values semantics so both outputs agree.
+     *
+     * @param padEmpty
+     *            whether an empty value list becomes {@code ["null"]} (Python parity, the frozen v1
+     *            shape); v2 passes {@code false} when the finding lists name-only columns, where a
+     *            padding token beside a {@code columns} list would read as a value of the first
+     *            listed column — a record finding never lists one, so its rows stay byte-identical
      */
     private static RowCells extractRow(RowFindingSlab slab, int p, List<String> names,
-            String domain, List<String> outputVars)
+            String domain, List<String> outputVars, boolean padEmpty)
     {
         Map<String, @Nullable String> values = slab.rowValues(p, names);
         String usubjid = values.getOrDefault("USUBJID", "");
@@ -593,7 +609,7 @@ public final class ReportAssembler
         {
             rowValues.add(processValue(values.get(v)));
         }
-        if (rowValues.isEmpty())
+        if (rowValues.isEmpty() && padEmpty)
         {
             rowValues = List.of("null");
         }
@@ -641,19 +657,27 @@ public final class ReportAssembler
     {
         RowFindingSlab slab = finding.getRows();
         List<String> names = finding.getVariableNames();
-        List<String> outputVars = collectOutputVariables(finding);
+        List<String> outputVars = valuedOutputVariables(finding);
+        List<String> namedColumns = finding.getNamedColumns();
 
         ValidationFindingLocation loc = finding.getLocation();
         List<String> keyVars = loc.getKeyVariableNames();
+        // Owner Q-A (2026-10-05): a Group finding is located by its group variables; the anchor
+        // row's USUBJID / SEQ describe the block's first flagged row, not the group, so v2 prints
+        // them only when the column is one of the group variables. v1 keeps them (frozen, D66).
+        boolean groupKeyed = loc.isGroupKeyed();
+        boolean usubjidIsGroupKey = groupKeyed && containsIgnoreCase(keyVars, "USUBJID");
+        boolean seqIsGroupKey = groupKeyed
+                && containsIgnoreCase(keyVars, domain.toUpperCase(Locale.ROOT) + "SEQ");
 
         List<Map<String, Object>> rows = new ArrayList<>(slab.rowCount());
         for (int p = 0, rc = slab.rowCount(); p < rc; p++)
         {
-            RowCells c = extractRow(slab, p, names, domain, outputVars);
+            RowCells c = extractRow(slab, p, names, domain, outputVars, namedColumns.isEmpty());
             Map<String, Object> rowMap = new LinkedHashMap<>();
             rowMap.put("row", c.row() > 0 ? c.row() : "");
-            rowMap.put("USUBJID", c.usubjid());
-            rowMap.put("SEQ", c.seq());
+            rowMap.put("USUBJID", groupKeyed && !usubjidIsGroupKey ? "" : c.usubjid());
+            rowMap.put("SEQ", groupKeyed && !seqIsGroupKey ? "" : c.seq());
             // EC-40: the record key, omitted entirely when none resolved so the default
             // corej.findingKeys=off leaves this object byte-identical to a pre-EC-40 build.
             // D29/D66a (phase 5b): a Group-sensitivity finding always resolves a key — its
@@ -687,8 +711,36 @@ public final class ReportAssembler
         f.put("domain", domain);
         f.put("location", locMap);
         f.put("variables", outputVars);
+        // PLAN-finding-values-record-level-only (owner Q-B, 2026-10-05): the raw columns the
+        // finding lists BY NAME WITHOUT A VALUE — a dataset verdict's `RANDFL` beside its
+        // `$RANDFL_Y_COUNT`, a per-variable finding's subject with no partner value. Additive and
+        // finding-level (constant across the rows, so never repeated per row), emitted only when
+        // non-empty: a record finding lists nothing and its object stays byte-identical (the EC-40
+        // `keys` precedent). Never rendered into `values` — that array stays positional with
+        // `variables`, and "name, no value" is a state of its own (V6).
+        if (!namedColumns.isEmpty())
+        {
+            f.put(FIELD_COLUMNS, namedColumns);
+        }
         f.put("rows", rows);
         return f;
+    }
+
+    /**
+     * The v2 finding-level field carrying the name-only columns; see {@link #buildCombinedFinding}.
+     */
+    public static final String FIELD_COLUMNS = "columns";
+
+    private static boolean containsIgnoreCase(List<String> names, String name)
+    {
+        for (String n : names)
+        {
+            if (name.equalsIgnoreCase(n))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
 
@@ -989,7 +1041,11 @@ public final class ReportAssembler
     }
 
 
-    private static List<String> collectOutputVariables(ValidationFinding finding)
+    /**
+     * The finding's variables that carry a value — its schema without the stable row-identity
+     * columns. Positional with every row's {@code values}; what v2 prints as {@code variables}.
+     */
+    private static List<String> valuedOutputVariables(ValidationFinding finding)
     {
         // Schema is on the finding itself now; exclude the stable row-identity columns.
         Set<String> out = new LinkedHashSet<>();
@@ -1001,6 +1057,25 @@ public final class ReportAssembler
             }
             out.add(name);
         }
+        return new ArrayList<>(out);
+    }
+
+
+    /**
+     * v1's {@code variables}: the valued variables, then the columns the finding lists by name
+     * without a value. The frozen format has no name-only state, so {@link #extractRow} prints its
+     * sanctioned {@code "null"} token for them (owner Q-B, 2026-10-05).
+     */
+    private static List<String> v1OutputVariables(ValidationFinding finding)
+    {
+        List<String> valued = valuedOutputVariables(finding);
+        List<String> named = finding.getNamedColumns();
+        if (named.isEmpty())
+        {
+            return valued;
+        }
+        Set<String> out = new LinkedHashSet<>(valued);
+        out.addAll(named);
         return new ArrayList<>(out);
     }
 
@@ -1024,9 +1099,12 @@ public final class ReportAssembler
      * entry, so every value-less cell — {@code null} (an entry the finding omits: an absent column,
      * the deferred present-column state), {@code ""} (a char typed default) and NaN — prints
      * {@code "null"}, and that is kept: a null-key change must not alter this rendering. ⚠ This
-     * method is shared by v1 and v2 ({@link #extractRow}) and feeds the XLSX {@code Issue Details}
-     * sheet; the exact states for v2 (a name-only field) and XLSX come with
-     * {@code PLAN-finding-values-record-level-only}, not here.
+     * method is shared by v1 and v2 ({@link #extractRow}). A column a finding lists <em>by name
+     * without a value</em> never reaches it on v2 — such a column is not in {@code variables} but
+     * in the finding-level {@link #FIELD_COLUMNS} — and reaches it on v1 only through
+     * {@link #v1OutputVariables}, where the {@code "null"} token IS the sanctioned v1 rendering
+     * (owner Q-B, 2026-10-05; V6 waived for v1 only). The XLSX {@code Issue Details} sheet is fed
+     * from the v2 {@code Findings} since the same ruling.
      * </p>
      */
     private static String processValue(@Nullable String value)
