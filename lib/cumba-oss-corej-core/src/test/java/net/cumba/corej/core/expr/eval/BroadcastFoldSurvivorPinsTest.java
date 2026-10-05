@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.cumba.corej.core.exec.BindingValue;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.VariableMetadataResult;
@@ -147,16 +148,17 @@ class BroadcastFoldSurvivorPinsTest
 
     // ------------------------------------------------------------------
     // leafNameColumn / nameSideColumn — which operand is the leaf's NAME side.
-    // Pinned through the one observable consequence: the empty/is_missing broadcast
-    // TRUE over a wholly-absent column (one dataset-level finding).
+    // Pinned through the one observable consequence: the absent-column dataset-level fold of a
+    // leaf over a wholly-absent column (one dataset-level verdict; `empty` folds TRUE).
     // ------------------------------------------------------------------
 
 
     @Test
     void emptyOverAnAbsentColumnBroadcastsTrue_viaTheLeafNameSide()
     {
-        // AEXX is absent from AE and from every join ⇒ empty(AEXX) is TRUE for every row, and
-        // this operator is one of the two that keep the broadcast (EC-43).
+        // AEXX is absent from AE and from every join ⇒ empty(AEXX) is TRUE for every row: `empty`
+        // fires on an absent column (ExprCompiler.FIRES_ON_ABSENT_COLUMN, EC-43), and the D111
+        // level calculus folds the leaf once at dataset level.
         assertEquals(Verdict.TRUE, BroadcastFold.fold(call("empty", col("AEXX")), ctx(), false),
                 "absent column + empty() ⇒ one dataset-level TRUE");
         // D77: a wildcard spelling never reaches the fold any more — specialisation resolved it
@@ -167,9 +169,19 @@ class BroadcastFoldSurvivorPinsTest
                         call("empty", new Expr.Ref("--XX", OperandKind.WILDCARD_COLUMN)), ctx(),
                         false),
                 "an unspecialised --prefixed name side is an error (D77b)");
-        // is_missing is the second broadcasting operator.
+        // is_missing is NOT a second "fires on absent" operator any more: register D50 (owner
+        // 2026-10-05, .claude/docs/rulings/value-semantics.md) made it strict — true only for a
+        // MissingValue — and took it out of FIRES_ON_ABSENT_COLUMN. The absent column still folds
+        // at dataset level (D111), but to its TYPE DEFAULT (D34 #3/#4, D76a), and the fold sees
+        // the position through the context's numericExpectedColumns: untyped / character ⇒ "" ⇒
+        // FALSE; numeric-expected ⇒ MIS ⇒ TRUE.
+        assertEquals(Verdict.FALSE,
+                BroadcastFold.fold(call("is_missing", col("AEXX")), ctx(), false),
+                "D50: an untyped absent column reads \"\", which is not missing");
         assertEquals(Verdict.TRUE,
-                BroadcastFold.fold(call("is_missing", col("AEXX")), ctx(), false));
+                BroadcastFold.fold(call("is_missing", col("AEXX")),
+                        ctx().toBuilder().numericExpectedColumns(Set.of("AEXX")).build(), false),
+                "D50: a numeric-expected absent column reads MIS, which is missing");
         // Negative 1 — the column is PRESENT, so nothing folds and the row path decides.
         assertEquals(Verdict.UNKNOWN,
                 BroadcastFold.fold(call("empty", col("AETERM")), ctx(), false),

@@ -581,7 +581,13 @@ class QualifiedNameUniformityTest
             // The existence test reads the study INVENTORY (DatasetResolver + the SUPP pivot),
             // never the join — the ruled N7 split (plan §2.4): with or without the join the
             // answer is the same, by design, not by fixture.
-            "var_exists/name", "var_not_exists/name");
+            "var_exists/name", "var_not_exists/name",
+            // The strict predicate (register D50, owner 2026-10-05) is true only for a
+            // MissingValue, and the probed character column S carries none ("" is a present
+            // value): through the join every row reads FALSE, and with the join unreachable the
+            // untyped absent J.S reads its "" default (D34 #3, D76a) — FALSE again. The fixture's
+            // data, not the engine, makes the two answers agree; `empty/x` stays sensitive.
+            "is_missing/x");
 
     /**
      * Blind-to-the-join rows that are nevertheless red on C5q, because the channel they DO read —
