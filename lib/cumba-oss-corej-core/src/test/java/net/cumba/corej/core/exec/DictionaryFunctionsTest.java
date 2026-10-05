@@ -94,7 +94,9 @@ class DictionaryFunctionsTest
         {
             String pkg = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"W1-LOUD\"},"
                     + "\"Bindings\":[{\"name\":\"$v\",\"expression\":\"__w1_loud__()\"}],"
-                    + "\"Check\":{\"expression\":\"$v == 1\"}}}}";
+                    + "\"Check\":{\"expression\":\"$v == 1\"},"
+                    // P3 review MED-1: the untyped test probe is not reported
+                    + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"!$v\"]}}}}";
             Rule rule = RulePackageLoader.loadFromString(pkg).getRules().get("x");
             assertNotNull(rule);
             assertNull(rule.getLoadError(), rule.getLoadError());

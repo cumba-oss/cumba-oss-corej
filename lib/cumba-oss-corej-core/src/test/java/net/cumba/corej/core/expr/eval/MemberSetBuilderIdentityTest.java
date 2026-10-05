@@ -203,7 +203,7 @@ class MemberSetBuilderIdentityTest
     {
         IDataTable t = probeTable();
         BitSet fired = ExprCompiler.vlmListMembership(col(t, "X"),
-                ConstVector.of(List.of(MissingValue.MIS, "A")), 3, false, false);
+                ConstVector.of(List.of(MissingValue.MIS, "A")), 3, false, false, false);
         assertEquals(bits(1), fired,
                 "only the present 'A' matches: the present '.' of row 0 must NOT match the MIS"
                         + " member (it did when the member was rendered), and the missing probe of"
@@ -217,7 +217,7 @@ class MemberSetBuilderIdentityTest
     {
         IDataTable t = probeTable();
         BitSet fired = ExprCompiler.vlmListMembership(col(t, "X"), ConstVector.of(List.of(".")), 3,
-                false, false);
+                false, false, false);
         assertEquals(bits(0), fired, "a present '.' member IS matched by a present '.' probe");
     }
 

@@ -812,10 +812,14 @@ public final class RuleRunner
             // BindingValue.reportedHandOver).
             Map<String, net.cumba.corej.core.expr.typed.ExprType> bindingTypes = rule
                     .staticBindingTypes();
+            // P3 review MED-1: and whether a binding's value is the type of a column it reads —
+            // the type source of a binding stage A leaves unknown (read_value, max, …).
+            Set<String> columnTyped = net.cumba.corej.core.expr.typed.StageAChecker
+                    .columnTypedBindings(compiledBindings);
             for (net.cumba.corej.core.model.CompiledBinding compiled : compiledBindings)
             {
-                lazyVars.put(compiled.name(),
-                        new BindingValue(compiled, bindingTypes.get(compiled.name())));
+                lazyVars.put(compiled.name(), new BindingValue(compiled,
+                        bindingTypes.get(compiled.name()), columnTyped.contains(compiled.name())));
             }
             variables = lazyVars;
         }

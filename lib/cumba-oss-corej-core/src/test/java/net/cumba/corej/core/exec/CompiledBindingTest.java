@@ -320,8 +320,10 @@ class CompiledBindingTest
                     "__w0_counter__(AETERM)");
             assertEquals(Set.of(1L), firedRows(run(unread, ae())));
             assertEquals(0, calls.get(), "D-W0-3: a never-read binding never runs");
+            // P3 review MED-1: a test-registered probe has no result type, so the reported
+            // binding wraps it in a typed fold (trim: a string) — the report still reads it.
             Rule twice = loadClean("$c == \"Nausea\" or $c == \"HEADACHE\"", "$c",
-                    "__w0_counter__(AETERM)");
+                    "trim(__w0_counter__(AETERM))");
             assertEquals(Set.of(1L, 2L), firedRows(run(twice, ae())));
             assertEquals(1, calls.get(),
                     "two reads in the Check and the report of two findings evaluate it once");
@@ -339,7 +341,8 @@ class CompiledBindingTest
             // minus(name=$l, subtract=$s): the minuend is a compiled dataset-level list binding.
             // Through the hand-over it is the raw [A, B, C]; bypassed, the executor would read
             // the holder / a Vector as ONE bogus string element and `X in $m` would match no row.
-            Rule rule = loadClean("X in $m", List.of("$m"), "$l", "__w0_list__()", "$s",
+            // P3 review MED-1: $l (an untyped test probe) is not reported.
+            Rule rule = loadClean("X in $m", List.of("$m", "!$l"), "$l", "__w0_list__()", "$s",
                     "distinct(Y)", "$m", "minus($l, subtract=$s)");
             RuleExecutionResult result = run(rule, ae());
             assertEquals(Set.of(1L, 2L), firedRows(result), "[A,B,C] minus [A,Z,Q] = [B,C]");
@@ -438,7 +441,8 @@ class CompiledBindingTest
                 }).aggregating();
         try (var _ = RegistryTestSeam.register(counted))
         {
-            Rule rule = loadClean("varname() == \"X\" and $c == 1", "$c", "__w0_counted__()");
+            // P3 review MED-1: the untyped test probe is reported through num() (a number).
+            Rule rule = loadClean("varname() == \"X\" and $c == 1", "$c", "num(__w0_counted__())");
             RuleExecutionResult result = run(rule, ae());
             assertEquals(1, result.getViolations().size(), "the one column named X fires");
             assertEquals(1, calls.get(), "computed once for the five columns, not once per column");
@@ -465,7 +469,7 @@ class CompiledBindingTest
         try (var _ = RegistryTestSeam.register(counter))
         {
             Rule rule = loadClean("varname() != \"AETERM\" and $c == \"Nausea\"",
-                    List.of("variable_name", "$c"), "$c", "__cfu_row_counter__(AETERM)");
+                    List.of("variable_name", "$c"), "$c", "trim(__cfu_row_counter__(AETERM))");
             assertEquals(Domain.ROW, rule.compiledBinding("$c").domain(), "a ROW-only binding");
             IDataTable ae = RealTables.of("AE").str("USUBJID", "S1", "S1", "S2")
                     .str("AETERM", "headache", "Nausea", "HEADACHE").str("X", "A", "B", "C")
@@ -498,7 +502,9 @@ class CompiledBindingTest
     {
         try (var _ = RegistryTestSeam.register(constList("__w0_set__")))
         {
-            Rule rule = loadClean("Y not in $l", "$l", "__w0_set__()");
+            // P3 review MED-1: a test-registered probe has no ElementTable result type, so a
+            // reported binding over it is a load error; this test is not about the report.
+            Rule rule = loadClean("Y not in $l", List.of("!$l"), "$l", "__w0_set__()");
             assertEquals(Set.of(1L, 2L), firedRows(run(rule, ae())), "Z and Q are not in [A,B,C]");
         }
     }
@@ -722,9 +728,11 @@ class CompiledBindingTest
         {
             // Row r's set is [X[r], "Z"]: row 0 (Y=A ∈ [A,Z]) and row 1 (Y=Z ∈ [B,Z]) are
             // members; row 2 (Y=Q ∉ [C,Z]) is not.
-            Rule in = loadClean("Y in $p", "$p", "__w0_row_list__(X)");
+            // P3 review MED-1: a test-registered probe has no ElementTable result type, so a
+            // reported binding over it is a load error; this test is not about the report.
+            Rule in = loadClean("Y in $p", List.of("!$p"), "$p", "__w0_row_list__(X)");
             assertEquals(Set.of(0L, 1L), firedRows(run(in, ae())));
-            Rule notIn = loadClean("Y not in $p", "$p", "__w0_row_list__(X)");
+            Rule notIn = loadClean("Y not in $p", List.of("!$p"), "$p", "__w0_row_list__(X)");
             assertEquals(Set.of(2L), firedRows(run(notIn, ae())));
         }
     }
@@ -801,7 +809,9 @@ class CompiledBindingTest
     {
         try (var _ = RegistryTestSeam.register(rowReaderWithoutColumnOperand()))
         {
-            Rule rule = loadClean("$v == \"B\"", "$v", "__cfx_row_reader__()");
+            // P3 review MED-1: a test-registered probe has no ElementTable result type, so a
+            // reported binding over it is a load error; this test is not about the report.
+            Rule rule = loadClean("$v == \"B\"", List.of("!$v"), "$v", "__cfx_row_reader__()");
             // P7 decision 2 (no fallback): a native evaluation error PROPAGATES; the upstream
             // contract (LibraryValidator / StudyValidationService) turns it into the rule's
             // ERROR result. Pre-fix: EXECUTED with 0 findings, row 0's "A" compared for every row.
@@ -823,7 +833,9 @@ class CompiledBindingTest
     {
         try (var _ = RegistryTestSeam.register(rowReaderWithoutColumnOperand().readingRows()))
         {
-            Rule rule = loadClean("$v == \"B\"", "$v", "__cfx_row_reader__()");
+            // P3 review MED-1: a test-registered probe has no ElementTable result type, so a
+            // reported binding over it is a load error; this test is not about the report.
+            Rule rule = loadClean("$v == \"B\"", List.of("!$v"), "$v", "__cfx_row_reader__()");
             assertEquals(Set.of(1L), firedRows(run(rule, ae())), "X = A, B, C: row 1 only");
         }
     }

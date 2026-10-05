@@ -76,10 +76,20 @@ public final class BindingValue
     /**
      * The binding's static type (stage A, {@code StageAChecker.bindingTypes}) — the type source of
      * {@link #reportedHandOver} when a missing's carrier lost it; {@code null} when the caller had
-     * none (a test constructing the value directly, or a rule whose binding walk failed), which a
-     * missing then reports as an ERROR, never as an untyped value ({@link #reportedDefault}).
+     * none (a test constructing the value directly; a rule whose binding walk failed and that
+     * reports a binding is refused at load), and {@link #reportedDefault} then has only the
+     * evaluation's carrier and {@code columnTyped} to go by.
      */
     private final @Nullable ExprType staticType;
+
+    /**
+     * Whether the binding's value is the type of a column it reads
+     * ({@code StageAChecker.columnTypedBindings}: {@code read_value}, {@code max}, {@code row_max},
+     * {@code coalesce}, {@code colref}, {@code value()}, a column reference, a case fold or a
+     * {@code $}-reference over one) — then the evaluation's carrier is that column's type and is
+     * the finding's type source when stage A leaves the binding unknown (P3 review MED-1).
+     */
+    private final boolean columnTyped;
 
     private @Nullable Map<String, Object> memoVariables;
 
@@ -111,9 +121,28 @@ public final class BindingValue
 
     public BindingValue(CompiledBinding aBinding, @Nullable ExprType aStaticType)
     {
+        this(aBinding, aStaticType, false);
+    }
+
+
+    /**
+     * A holder for one compiled binding of one (rule × dataset) execution, with its type sources.
+     *
+     * @param aBinding
+     *            the compiled binding (already {@code --}-specialised for the dataset)
+     * @param aStaticType
+     *            the binding's stage-A type, or {@code null} when the caller has none
+     * @param aColumnTyped
+     *            whether the binding's value is the type of a column it reads
+     *            ({@code StageAChecker.columnTypedBindings})
+     */
+    public BindingValue(CompiledBinding aBinding, @Nullable ExprType aStaticType,
+            boolean aColumnTyped)
+    {
         binding = aBinding;
         program = NativeExprEvaluator.bindingProgram(aBinding.expression());
         staticType = aStaticType;
+        columnTyped = aColumnTyped;
     }
 
 
@@ -280,20 +309,27 @@ public final class BindingValue
      * <p>
      * ⛔ <b>No untyped default</b> (owner ruling OPEN-T (c), 2026-10-05: <i>"#3: yes"</i>). Every
      * value function whose semantics pin its result declares it ({@code ElementTable}), so stage A
-     * types the binding. A binding whose type neither the evaluation nor stage A knows — a function
-     * whose result is the type of the column it reads ({@code read_value}, {@code max},
-     * {@code row_max}, {@code coalesce}, {@code colref}, {@code value()}) over a column with no
-     * declared type, or an {@code extract_metadata} key no reader documents — has no type source,
-     * and the finding refuses to print a guessed value: it throws, and the rule ERRORs
-     * ({@code LibraryValidator.executeRule}). Until 2026-10-05 it printed the record path's
-     * historical untyped {@code ""}.
+     * types the binding. A binding stage A leaves unknown whose value is the type of a column it
+     * reads ({@code columnTyped}: {@code read_value}, {@code max}, {@code row_max},
+     * {@code coalesce}, {@code colref}, {@code value()}, …) takes its default from the column the
+     * evaluation carried: {@code ""} for a char column (answered above), {@code MIS} for every
+     * other column type — a number, a COMPLEX (internal datatable), an OTHER (parquet / RDS), a
+     * column with no type at all (MISSING, a SQL {@code NULL} column), as
+     * {@code OutputEntryKind.defaultValue(DataValueType)} spells a column's type (P3 review MED-1,
+     * "their carrier type"). Any other binding with no type source — an {@code extract_metadata}
+     * key no reader documents — is refused at <b>load</b> when it is reported
+     * ({@code RulePackageLoader.validateReportedBindingTypes}), so the throw below is a defensive
+     * assertion no loaded rule reaches. Until 2026-10-05 such a binding printed the record path's
+     * historical untyped {@code ""}; P3 made it a data-dependent run-time ERROR; MED-1 moved the
+     * refusal to the rule text.
      * </p>
      *
      * @param evaluated
      *            the type the evaluation carried
      * @return {@code ""} or {@link MissingValue#MIS}; never {@code null}
      * @throws IllegalStateException
-     *             when neither the evaluation nor stage A types the binding
+     *             when neither the evaluation, nor stage A, nor a read column types the binding —
+     *             unreachable from a loaded rule (the load gate refuses it)
      */
     public Object reportedDefault(DataValueType evaluated)
     {
@@ -316,12 +352,20 @@ public final class BindingValue
         {
             return MissingValue.MIS;
         }
+        if (columnTyped)
+        {
+            // The value is the type of the column it read, and that column is not a char one
+            // (STRING returned above): MIS, whatever the column's non-char type (P3 review MED-1).
+            return MissingValue.MIS;
+        }
         throw new IllegalStateException("binding " + binding.name() + " answered no value and"
                 + " has no type source for the finding's default: its evaluation carried "
-                + evaluated + " and its stage-A type is "
+                + evaluated + ", its stage-A type is "
                 + (staticType == null ? "absent" : staticType.describe())
-                + " — a binding is reported \"\" (char) or MIS, never an untyped value"
-                + " (PLAN-output-variable-null-key-provenance P3, owner OPEN-T (c) 2026-10-05)");
+                + " and it reads no column — unreachable from a loaded rule, whose load gate"
+                + " (RulePackageLoader.validateReportedBindingTypes) refuses a reported binding"
+                + " with no type source; a binding is reported \"\" (char) or MIS, never an"
+                + " untyped value (PLAN-output-variable-null-key-provenance P3 review MED-1)");
     }
 
 

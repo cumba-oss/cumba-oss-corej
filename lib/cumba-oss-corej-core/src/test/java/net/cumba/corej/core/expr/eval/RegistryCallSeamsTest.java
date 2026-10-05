@@ -166,7 +166,13 @@ class RegistryCallSeamsTest
                 (run, args) -> Objects.requireNonNull(args.get(0)));
         try (var _ = RegistryTestSeam.register(probe))
         {
-            Rule rule = bound("__w3w4b_l3_probe__(name_pattern=AETERM)");
+            // P3 review MED-1: the untyped test probe is not reported (!$v).
+            Rule rule = RulePackageLoader.loadFromString("{\"rules\":{\"x\":{\"Core\":{\"Id\":"
+                    + "\"CFX-SEAMS\"},\"Bindings\":[{\"name\":\"$v\",\"expression\":"
+                    + "\"__w3w4b_l3_probe__(name_pattern=AETERM)\"}],\"Check\":{\"expression\":"
+                    + "\"not empty($v)\"},\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":"
+                    + "[\"!$v\"]}}}}").getRules().get("x");
+            assertNotNull(rule);
             assertNull(rule.getLoadError(), String.valueOf(rule.getLoadError()));
         }
         // …while row_max's own name_pattern is still held to a literal (and variable_count's).

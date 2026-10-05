@@ -169,6 +169,41 @@ class VlmAccessorNativeTest
 
 
     @Test
+    void aListValuedProbeAgainstTheVlmCodelistDecidesNothingOnAnUnmatchedRow() throws Exception
+    {
+        // P3 review LOW-2: once vlm_codelist_coded_values is typed list<string> (P3), a
+        // list-valued left side used to skip the VLM branch and reach boundMembership, where a
+        // row with no value-level codelist read an EMPTY set — and `not in` fired on it. The VLM
+        // branch now claims the right-hand side whatever the left side is: a row whose accessor
+        // yields no codelist decides nothing; a list probe is a member when ANY element is (D81d).
+        IDataTable t = MockTable.of().col("LBTESTCD", "GLUC", "GLUC", "HGB")
+                .col("LBORRES", "x", "x", "x").col("LBSTRESC", "mg/dL", "y", "zzz").build();
+        String notIn = "colref([\"LBORRES\", \"LBSTRESC\"]) not in vlm_codelist_coded_values(varname())";
+        BitSet fired = NativeExprEvaluator.evaluate(parse(notIn), ctx(t, resolver()));
+        assertFalse(fired.get(0), "an element (mg/dL) is in the value-level codelist -> no fire");
+        assertTrue(fired.get(1), "no element is in {mg/dL, mmol/L} under GLUC -> fire");
+        assertFalse(fired.get(2), "unmatched (HGB) row has no value-level codelist -> no fire");
+        BitSet in = NativeExprEvaluator.evaluate(parse(
+                "colref([\"LBORRES\", \"LBSTRESC\"]) in vlm_codelist_coded_values(varname())"),
+                ctx(t, resolver()));
+        assertTrue(in.get(0), "the positive form is the complement on a decided row");
+        assertFalse(in.get(1));
+        assertFalse(in.get(2), "and decides nothing on the unmatched row either");
+
+        // Stage A admits the shape (list<unknown> in list<string>, D81d's element check), so the
+        // compile branch is reachable from a loaded rule.
+        net.cumba.corej.core.model.Rule rule = net.cumba.corej.core.RulePackageLoader
+                .loadFromString("""
+                        {"rules":{"R1":{"Core":{"Id":"R1"},"Sensitivity":"Record",
+                         "Check":{"expression": "%s"},
+                         "Outcome":{"Message":"m"}}}}""".formatted(notIn.replace("\"", "\\\"")))
+                .getRules().get("R1");
+        org.junit.jupiter.api.Assertions.assertNotNull(rule);
+        org.junit.jupiter.api.Assertions.assertNull(rule.getLoadError(), rule.getLoadError());
+    }
+
+
+    @Test
     void datatypeConformance()
     {
         // GLUC value-level type is float: "abc" does not conform (fire), "12.5" conforms, HGB

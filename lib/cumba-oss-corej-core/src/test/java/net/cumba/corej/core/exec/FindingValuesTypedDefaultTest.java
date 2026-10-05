@@ -501,22 +501,24 @@ class FindingValuesTypedDefaultTest
 
 
     @Test
-    void aRecordFindingOverAnUntypedNoValueBindingErrorsTheRule() throws Exception
+    void aReportedUntypedNoValueBindingIsRefusedAtLoadNotErroredAtRunTime() throws Exception
     {
         // An extract_metadata key no reader documents is whatever the reader publishes: no
-        // declared type, and a table without the key answers an untyped no-value.
-        Rule rule = load("""
-                {"Core":{"Id":"R1"},"Sensitivity":"Record",
+        // declared type, and a table without the key answers an untyped no-value. P3 ERRORed the
+        // rule at run time — on some readers' data only; the P3 review (MED-1, decision (a))
+        // moved the refusal to the load: the rule text decides
+        // (ReportedBindingTypeSourceGateTest holds the gate's cases).
+        Rule rule = RulePackageLoader.loadFromString("""
+                {"rules":{"R1":{"Core":{"Id":"R1"},"Sensitivity":"Record",
                  "Bindings":[{"name":"$m","expression":"extract_metadata(\\"no_such_key\\")"}],
                  "Check":{"expression": "empty($m)"},
-                 "Outcome":{"Message":"m","Output_Variables":["AETERM","$m"]}}""");
-        IDataTable ae = MockTable.of().name("AE").col("AETERM", "X").build();
+                 "Outcome":{"Message":"m","Output_Variables":["AETERM","$m"]}}}}""").getRules()
+                .get("R1");
 
-        assertEquals(net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN,
-                rule.staticBindingTypes().get("$m"), "precondition: no declared type");
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> RuleRunnerCalls.execute(rule, ae));
-        assertTrue(ex.getMessage().contains("$m"), ex.getMessage());
+        assertNotNull(rule);
+        assertNotNull(rule.getLoadError(), "a reported untyped binding is a load error");
+        assertTrue(rule.getLoadError().contains("$m")
+                && rule.getLoadError().contains("no type source"), rule.getLoadError());
     }
 
 

@@ -13,15 +13,22 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * ⚠ Deliberately partial: phase 2 declares <b>result types</b> for the value functions whose
- * semantics are unambiguous, and leaves everything else {@link Unknown#UNKNOWN} — an unknown result
- * suppresses downstream known-vs-known checks, so partiality can only make the checker
- * <em>quieter</em>, never wrong. Boolean <em>predicates</em> are not declared here: their
- * boolean-ness comes from the {@code FunctionRegistry} descriptor's {@code FunctionKind} and the
- * hardcoded boolean-call set, so it cannot drift from the evaluator. A <b>value</b> function whose
- * value is a boolean ({@code domain_is_custom}, the {@code _matches} accessors) is declared here
- * like any other value function. Full per-element parameter typing is phases 3–6b, per the §1.6
- * mapping rule (the TSV's "accepted types today" is what the engine tolerates positionally, not
- * what semantics require — D91f's 45 positional artifacts are dropped, not ported).
+ * semantics are unambiguous, and leaves everything else {@link Unknown#UNKNOWN}. Inside an
+ * expression an unknown result suppresses downstream known-vs-known checks, so there partiality
+ * only makes the checker <em>quieter</em>. ⚠ <b>Not so for a reported binding</b> (since
+ * {@code PLAN-output-variable-null-key-provenance} P3 review MED-1): a {@code $} binding in a
+ * rule's effective Output_Variables whose type this table leaves unknown, and whose value is not
+ * the type of a column it reads ({@code StageAChecker.columnTypedBindings}), has no type source for
+ * the finding's default, and the rule is a <b>load error</b>
+ * ({@code RulePackageLoader.validateReportedBindingTypes}). So a missing row is no longer only
+ * quieter: it refuses every rule that reports such a binding. Boolean <em>predicates</em> are not
+ * declared here: their boolean-ness comes from the {@code FunctionRegistry} descriptor's
+ * {@code FunctionKind} and the hardcoded boolean-call set, so it cannot drift from the evaluator. A
+ * <b>value</b> function whose value is a boolean ({@code domain_is_custom}, the {@code _matches}
+ * accessors) is declared here like any other value function. Full per-element parameter typing is
+ * phases 3–6b, per the §1.6 mapping rule (the TSV's "accepted types today" is what the engine
+ * tolerates positionally, not what semantics require — D91f's 45 positional artifacts are dropped,
+ * not ported).
  * </p>
  *
  * <p>
@@ -35,8 +42,9 @@ import org.jspecify.annotations.Nullable;
  * ({@link #resultType(String, String)}). The functions still without a row are the ones whose
  * result is the type of the <b>column they read</b> — {@code read_value}, {@code max},
  * {@code row_max}, {@code coalesce}, {@code colref}, {@code value()} — a stage-B fact; their
- * evaluation always carries the column's declared type, and a binding over one that answers an
- * untyped no-value ERRORs the rule instead of printing a guessed default.
+ * evaluation always carries the column's declared type, which is the finding's type source
+ * ({@code ""} for a char column, {@code MIS} for any other). Every other binding stage A leaves
+ * unknown is refused at load when it is reported (MED-1) — never a data-dependent run-time ERROR.
  * </p>
  */
 public final class ElementTable
@@ -214,6 +222,24 @@ public final class ElementTable
             return resultType(name);
         }
         return key == null ? Unknown.UNKNOWN : keyed.getOrDefault(key, Unknown.UNKNOWN);
+    }
+
+
+    /**
+     * The key literals {@link #resultType(String, String)} pins for a keyed value function — what
+     * the load gate's message offers as the typed alternative to a reported binding over an
+     * unpinned key ({@code RulePackageLoader.validateReportedBindingTypes}).
+     *
+     * @param name
+     *            the function name
+     * @return the pinned keys, sorted; empty for a function that is not keyed
+     */
+    public static java.util.SortedSet<String> typedKeys(String name)
+    {
+        Map<String, ExprType> keyed = KEYED_RESULT_TYPES.get(name);
+        return keyed == null ? java.util.Collections.emptySortedSet()
+                : java.util.Collections
+                        .unmodifiableSortedSet(new java.util.TreeSet<>(keyed.keySet()));
     }
 
 }

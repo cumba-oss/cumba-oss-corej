@@ -287,7 +287,11 @@ class CompiledBindingReadersTest
         FunctionDescriptor probe = libraryProbe("__w0_lib_binding__");
         try (var _ = RegistryTestSeam.register(probe))
         {
-            Rule rule = loadClean("AETERM not in $l", "$l", "__w0_lib_binding__(AETERM)");
+            // P3 review MED-1: a test-registered probe has no ElementTable result type, so a
+            // reported binding over it is a load error; this test is not about the report.
+            Rule rule = load("AETERM not in $l", List.of("!$l"), "$l",
+                    "__w0_lib_binding__(AETERM)");
+            assertNull(rule.getLoadError(), rule.getLoadError());
             assertNull(rule.getInjectedPreconditionGates(),
                     "I1 remedy: a $-bound call gets no injected gate — the runner's arms SKIP it");
             assertTrue(ProviderNeeds.ofBindings(rule).library());

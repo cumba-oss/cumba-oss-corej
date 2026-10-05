@@ -786,28 +786,117 @@ public final class StageAChecker
      * {@link ElementTable} row). The <b>type source</b> of a finding's default for a binding that
      * evaluated to a missing whose carrier lost the type ({@code BindingValue.reportedDefault},
      * {@code PLAN-output-variable-null-key-provenance} H3 / P3: {@code model/Binding} has no type
-     * of its own). Empty when the walk fails — a binding of that rule that then answers an untyped
-     * no-value has no type source and ERRORs the rule (P3: the record path's untyped {@code ""} is
-     * retired). Callers read it through {@link Rule#staticBindingTypes()}, which memoises it per
-     * rule.
+     * of its own). Empty when the walk fails — which a rule that <em>reports</em> a binding never
+     * reaches at run time: the load gate ({@code RulePackageLoader.validateReportedBindingTypes},
+     * P3 review MED-1) runs the same walk through {@link #bindingTypesOrThrow} and refuses such a
+     * rule. Callers read it through {@link Rule#staticBindingTypes()}, which memoises it per rule.
      */
     public static Map<String, ExprType> bindingTypes(Rule rule)
     {
         try
         {
-            StageAChecker checker = new StageAChecker(rule);
-            checker.scanBindings(rule.bindingOrder());
-            return Map.copyOf(checker.bindingTypes);
+            return bindingTypesOrThrow(rule);
         }
         catch (RuntimeException ex)
         {
             // T2 LOW-4: WARNING, not TRACE — the result is a finding's type source for a binding
-            // that answers no value, and with an empty map such a binding ERRORs the rule (P3).
+            // that answers no value. A rule reporting a binding cannot get here (the load gate
+            // refused it on the same failure); one reporting none never reads the map.
             // Logged once per rule (Rule.staticBindingTypes memoises).
             LOGGER.log(System.Logger.Level.WARNING, "binding typing failed for {0}: {1}",
                     rule.getId(), ex.toString());
             return Map.of();
         }
+    }
+
+
+    /**
+     * {@link #bindingTypes} without the swallow: the walk's failure propagates. The load gate's
+     * entry ({@code RulePackageLoader.validateReportedBindingTypes}, P3 review MED-1): a rule that
+     * reports a binding needs the binding's static type as the finding's type source, so a walk
+     * that cannot derive it fails the <b>load</b>, loudly, instead of emptying the map and
+     * deferring to a data-dependent run-time ERROR.
+     *
+     * @param rule
+     *            the rule whose bindings to type
+     * @return the static type of every binding, by {@code $}-name, in declaration order
+     * @throws RuntimeException
+     *             whatever the walk throws
+     */
+    public static Map<String, ExprType> bindingTypesOrThrow(Rule rule)
+    {
+        StageAChecker checker = new StageAChecker(rule);
+        checker.scanBindings(rule.bindingOrder());
+        return Map.copyOf(checker.bindingTypes);
+    }
+
+    /**
+     * ⭐ The value functions whose result is the type of the <b>column they read</b>
+     * ({@code read_value}, {@code max}, {@code row_max}, {@code coalesce}, {@code colref},
+     * {@code value()}) — a stage-B fact, so {@link ElementTable} has no row for them and stage A
+     * types them {@link Unknown#UNKNOWN} (or a column reference). Their evaluation always carries
+     * the read column's declared type, which is a finding's type source for such a binding
+     * ({@code BindingValue.reportedDefault}). Pinned against P3's roster ratchet
+     * ({@code FindingValuesTypedDefaultTest.everyValueFunctionWhoseResultItsSemanticsPinHasAResultType}):
+     * the unpinned VALUE functions minus the two keyed ones, plus {@code colref} / {@code value},
+     * which stage A types in their own branches.
+     */
+    public static final Set<String> COLUMN_TYPED_FUNCTIONS = Set.of("read_value", "max", "row_max",
+            "coalesce", "colref", "value");
+
+    /**
+     * The bindings of {@code order} whose value carries the type of a column it reads — a finding's
+     * type source when stage A cannot type them ({@code PLAN-output-variable-null-key-provenance}
+     * P3 review MED-1). A binding qualifies when its root is:
+     * <ul>
+     * <li>a {@link #COLUMN_TYPED_FUNCTIONS column-typed function};</li>
+     * <li>a plain column reference ({@code AETERM}, {@code --TERM}, {@code DM.ARM}) or the current
+     * cell ({@code variable_value}, the operand form of {@code value()});</li>
+     * <li>a case fold ({@code upper} / {@code lower} / {@code upcase} / {@code lowcase}) over a
+     * qualifying argument — a fold hands a missing through unchanged
+     * ({@code BuiltinFunctions.caseFold}), so it has exactly its argument's type source, no more
+     * and no less;</li>
+     * <li>a {@code $}-reference to an earlier qualifying binding (a binding is visible only to
+     * later ones, SPEC §3.2, so one pass in declaration order decides every reference).</li>
+     * </ul>
+     * Anything else — notably an {@code extract_metadata} / {@code cross_dataset_variable_metadata}
+     * key the table does not pin, whose value is whatever a reader publishes — has no column to
+     * take a type from. A pure function of the bindings; it reads no data.
+     *
+     * @param order
+     *            the rule's bindings in declaration order ({@link Rule#bindingOrder()})
+     * @return the qualifying {@code $}-names
+     */
+    public static Set<String> columnTypedBindings(List<CompiledBinding> order)
+    {
+        Set<String> columnTyped = new LinkedHashSet<>();
+        for (CompiledBinding binding : order)
+        {
+            if (hasColumnTypedRoot(binding.expression(), columnTyped))
+            {
+                columnTyped.add(binding.name());
+            }
+        }
+        return Set.copyOf(columnTyped);
+    }
+
+
+    private static boolean hasColumnTypedRoot(Expr root, Set<String> columnTypedEarlier)
+    {
+        return switch (root)
+        {
+        case Expr.Call c -> COLUMN_TYPED_FUNCTIONS.contains(c.name())
+                || (CASE_FOLDS.contains(c.name()) && c.args().size() == 1
+                        && hasColumnTypedRoot(c.args().get(0), columnTypedEarlier));
+        case Expr.Ref r -> switch (r.kind())
+        {
+        case COLUMN, WILDCARD_COLUMN, DOTTED_REF -> true;
+        case OPERATION_REF -> columnTypedEarlier.contains(r.name());
+        case BUILTIN -> "variable_value".equals(r.name());
+        default -> false;
+        };
+        default -> false;
+        };
     }
 
 

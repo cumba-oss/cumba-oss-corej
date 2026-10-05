@@ -1077,7 +1077,11 @@ public final class ExprCompiler
         // is
         // rebuilt per row rather than read once from row 0. A row whose accessor yields null (no
         // condition matched, or no Define-XML) makes no membership decision — it never fires.
-        if (!listLhs && isVlmListAccessor(right))
+        // ⭐ Whatever the left side is (P3 review LOW-2): once P3 typed the two accessors
+        // list<string>, a list-valued left side skipped this branch for the list-valued-call path
+        // (boundMembership), where an unmatched row read an EMPTY set and `not in` fired on it.
+        // A list probe is decided here too, element-wise (any member, D81d).
+        if (isVlmListAccessor(right))
         {
             ValuePlan rightP = operandPlan(right, true);
             return run ->
@@ -1088,7 +1092,7 @@ public final class ExprCompiler
                     return new BitSet();
                 }
                 Vector rv = rightP.eval(run);
-                return vlmListMembership(v, rv, run.rowCount(), negate, caseInsensitive);
+                return vlmListMembership(v, rv, run.rowCount(), negate, caseInsensitive, listLhs);
             };
         }
         if (!listLhs && isListAccessor(right))
@@ -1421,10 +1425,13 @@ public final class ExprCompiler
      * have a matched value-level codelist and a populated value. The per-row set is classified
      * through {@link Primitives.MemberSet}, so a present {@code "."} probe never matches a
      * {@code MissingValue} member rendered to {@code "."}; package-private for
-     * {@code MemberSetBuilderIdentityTest}.
+     * {@code MemberSetBuilderIdentityTest}. A list-valued probe ({@code listLhs}, P3 review LOW-2)
+     * is a member when any of its elements is ({@link Primitives#anyInSet}, D81d) — the same
+     * per-row decision {@link #boundMembership} makes for a list left side; a row with no
+     * value-level codelist still decides nothing.
      */
     static BitSet vlmListMembership(Vector probe, @Nullable Vector listVec, int rowCount,
-            boolean negate, boolean caseInsensitive)
+            boolean negate, boolean caseInsensitive, boolean listLhs)
     {
         BitSet out = new BitSet();
         if (listVec == null)
@@ -1438,6 +1445,15 @@ public final class ExprCompiler
                 // No matched value-level codelist (unmatched row, or a matched ItemDef that
                 // declares
                 // no codelist) ⇒ no codelist constraint applies ⇒ no decision.
+                continue;
+            }
+            if (listLhs)
+            {
+                Primitives.MemberSet set = Primitives.MemberSet.of(list, caseInsensitive);
+                if (negate != Primitives.anyInSet(probe.value(r).resolved(), set, caseInsensitive))
+                {
+                    out.set(r);
+                }
                 continue;
             }
             IDataValue dv = probe.value(r).cell();

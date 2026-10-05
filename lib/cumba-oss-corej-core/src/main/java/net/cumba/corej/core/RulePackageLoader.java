@@ -5504,6 +5504,13 @@ public class RulePackageLoader
             return;
         }
         List<String> effective = OutputVariableDeriver.derive(rule);
+        // P3 review MED-1: a reported binding with no type source is refused here, on the rule
+        // text, before the effective list is installed — never a data-dependent run-time ERROR.
+        validateReportedBindingTypes(rule, effective);
+        if (rule.getLoadError() != null)
+        {
+            return;
+        }
         rule.setEffectiveOutputVariables(effective);
         rule.setExcludedOutputVariables(OutputVariableDeriver.excludedOf(rule));
         List<String> authored = rule.getOutcome() != null
@@ -5523,6 +5530,130 @@ public class RulePackageLoader
             rationale.put("Output_Variables", "derived: " + String.join(", ", delta));
             rule.setDerivationRationale(rationale);
         }
+    }
+
+
+    /**
+     * ⭐ {@code PLAN-output-variable-null-key-provenance} P3 review MED-1 (decision (a), under the
+     * owner's OPEN-T (c) ruling of 2026-10-05) — <b>a reported binding must have a type source</b>.
+     *
+     * <p>
+     * A finding reports a {@code $} binding that answers no value by its typed default: {@code ""}
+     * for a char value, {@code MIS} otherwise ({@code BindingValue.reportedDefault}). The type
+     * comes from the evaluation's carrier, else from the binding's stage-A type
+     * ({@code ElementTable}), else — for a function whose value is the type of the column it reads
+     * — from that column ({@code StageAChecker.columnTypedBindings}). A binding with none of the
+     * three, e.g. {@code $c: extract_metadata("Compression")} (an unpinned key: a value on a
+     * sas7bdat file, nothing on XPT / CSV / DSJ), would ERROR the rule at run time, and only on
+     * some readers' data. So the decision is taken here, on the rule text: such a binding is a
+     * <b>load error</b> when it is in the rule's <em>effective</em> Output_Variables
+     * ({@code effective} — authored or derived, after the {@code !$x} subtraction). A binding that
+     * is not reported is never refused, and neither is a typed or column-typed one.
+     * </p>
+     *
+     * <p>
+     * The bindings' types are derived by {@code StageAChecker.bindingTypesOrThrow}: a walk that
+     * fails for a rule reporting a binding fails the load, naming the failure, instead of emptying
+     * the type map and deferring to run time. A rule that reports no binding never reads the map,
+     * and stage A's own rule holds for it — a checker defect never parks a rule.
+     * </p>
+     *
+     * @param rule
+     *            the rule under load (no load error yet)
+     * @param effective
+     *            its effective Output_Variables ({@code OutputVariableDeriver#derive})
+     */
+    static void validateReportedBindingTypes(Rule rule, List<String> effective)
+    {
+        List<net.cumba.corej.core.model.CompiledBinding> order = rule.bindingOrder();
+        if (order.isEmpty())
+        {
+            return;
+        }
+        Map<String, net.cumba.corej.core.model.CompiledBinding> byName = new LinkedHashMap<>();
+        order.forEach(binding -> byName.put(binding.name(), binding));
+        List<String> reported = effective.stream().filter(byName::containsKey).distinct().toList();
+        if (reported.isEmpty())
+        {
+            return;
+        }
+        Map<String, net.cumba.corej.core.expr.typed.ExprType> types;
+        try
+        {
+            types = net.cumba.corej.core.expr.typed.StageAChecker.bindingTypesOrThrow(rule);
+        }
+        catch (RuntimeException ex)
+        {
+            appendLoadError(rule, "[" + ruleId(rule) + "] Outcome.Output_Variables: the static"
+                    + " types of the rule's bindings could not be derived (" + ex + "), and "
+                    + String.join(", ", reported) + " is reported — a reported binding's type is"
+                    + " the type source of the finding's default (\"\" for char, MIS otherwise),"
+                    + " so the rule is refused at load rather than at run time");
+            return;
+        }
+        java.util.Set<String> columnTyped = net.cumba.corej.core.expr.typed.StageAChecker
+                .columnTypedBindings(order);
+        java.util.Set<String> authored = new java.util.HashSet<>(
+                net.cumba.corej.core.model.OutputVariableToken.includes(
+                        rule.getOutcome() == null ? null : rule.getOutcome().getOutputVariables()));
+        List<String> errors = new ArrayList<>();
+        for (String name : reported)
+        {
+            net.cumba.corej.core.model.CompiledBinding binding = byName.get(name);
+            net.cumba.corej.core.expr.typed.ExprType type = types.get(name);
+            if (binding != null
+                    && (type == null
+                            || type == net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)
+                    && !columnTyped.contains(name))
+            {
+                errors.add(untypedReportedBinding(name, binding.expression(),
+                        authored.contains(name)));
+            }
+        }
+        if (!errors.isEmpty())
+        {
+            appendLoadError(rule, "[" + ruleId(rule) + "] Outcome.Output_Variables: "
+                    + String.join("; ", errors));
+        }
+    }
+
+
+    /** {@link #validateReportedBindingTypes}' message for one refused binding. */
+    private static String untypedReportedBinding(String name,
+            net.cumba.corej.core.expr.ast.Expr expression, boolean authored)
+    {
+        StringBuilder message = new StringBuilder(name)
+                .append(" is reported but has no type source: ")
+                .append(net.cumba.corej.core.expr.ExpressionPrinter.print(expression))
+                .append(" declares no result type and reads no column, so a finding could not"
+                        + " spell its absence (\"\" for char, MIS otherwise) — ")
+                .append(authored ? "remove " + name + " from Output_Variables"
+                        : "exclude it with !" + name)
+                .append(", or bind a function whose result type is declared");
+        net.cumba.corej.core.expr.ast.Expr root = expression;
+        while (root instanceof net.cumba.corej.core.expr.ast.Expr.Call fold
+                && java.util.Set.of("upper", "lower", "upcase", "lowcase").contains(fold.name())
+                && fold.args().size() == 1)
+        {
+            root = fold.args().get(0);
+        }
+        if (root instanceof net.cumba.corej.core.expr.ast.Expr.Call call)
+        {
+            java.util.SortedSet<String> keys = net.cumba.corej.core.expr.typed.ElementTable
+                    .typedKeys(call.name());
+            if (!keys.isEmpty())
+            {
+                message.append(" (").append(call.name()).append("'s typed keys: ")
+                        .append(String.join(", ", keys)).append(')');
+            }
+        }
+        return message.toString();
+    }
+
+
+    private static void appendLoadError(Rule rule, String error)
+    {
+        rule.setLoadError(rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
     }
 
 
