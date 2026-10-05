@@ -6,6 +6,7 @@ import java.util.regex.Pattern;
 import net.cumba.corej.core.expr.eval.ColumnTypeGate;
 import net.cumba.corej.core.expr.eval.ColumnTypeMismatchException;
 import net.cumba.corej.core.expr.eval.ComputedVector;
+import net.cumba.corej.core.expr.eval.ConstVector;
 import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.TypedValue;
 import net.cumba.corej.core.expr.eval.Vector;
@@ -54,10 +55,19 @@ import org.jspecify.annotations.Nullable;
  * <b>No answer</b>: a row whose matched cells are all missing answers their combined missing
  * identity (the first cell carrying it, {@code MIS} when identities differ — the runbook's n-ary
  * hand-through, {@link ArithmeticSemantics#combineIdentities}); a row with populated-but-blank
- * cells only or a table with no matching column answers the computed missing
- * ({@link ScalarSemantics#computedMissing()}) — there is no indeterminate arm since K3. The retired
- * operation omitted those rows' keys (a {@code null}), and every consuming Check guards
- * {@code not empty($trxx_max)}, so both fold alike.
+ * cells only answers the computed missing ({@link ScalarSemantics#computedMissing()}) — there is no
+ * indeterminate arm since K3. The retired operation omitted those rows' keys (a {@code null}), and
+ * every consuming Check guards {@code not empty($trxx_max)}, so both fold alike.
+ * </p>
+ *
+ * <p>
+ * ⭐ <b>A table with no matching column</b> answers the use-derived default of an absent column
+ * ({@code PLAN-column-typed-function-absent-type} A1, §6 H2 — D34 #3/#4): {@code MIS} where the
+ * call site (or, through a binding, its use) stands in a numeric-expected position, {@code ""}
+ * otherwise ({@link ColumnTypedAbsence}). {@link #evaluate} cannot see its call, so it answers
+ * {@link #NO_MATCHING_COLUMN} and the compiler's {@code row_max} arm, which closes over the call,
+ * resolves it once per evaluation ({@link #atSite}). Until 2026-10-05 it answered the computed
+ * missing in every position.
  * </p>
  */
 public final class RowMax
@@ -68,6 +78,15 @@ public final class RowMax
 
     /** Its one parameter. */
     public static final String PATTERN_PARAMETER = "name_pattern";
+
+    /**
+     * The answer of a table with <b>no matching column</b>, before its call site resolves it
+     * ({@link #atSite}): one shared instance, so the resolution is an identity test. Its own value
+     * is the computed missing the function answered before A1 — what a caller that never resolves
+     * it would read.
+     */
+    static final ConstVector NO_MATCHING_COLUMN = new ConstVector(null, DataValueType.STRING,
+            TypedValue.resolved(DataValueType.STRING, null));
 
     private RowMax()
     {
@@ -90,13 +109,38 @@ public final class RowMax
 
 
     /**
+     * The compiler's {@code row_max} arm: {@code evaluated} as {@link #evaluate} answered it, with
+     * {@link #NO_MATCHING_COLUMN} resolved to the call site's use-derived default — {@code MIS} at
+     * a numeric-expected site, {@code ""} otherwise (A1). One identity test and, only for a table
+     * with no matching column, one set lookup per evaluation; never per row.
+     *
+     * @param evaluated
+     *            what the registry function answered ({@code null} propagates)
+     * @param run
+     *            the evaluation run
+     * @param site
+     *            the authored {@code row_max(…)} call
+     * @return the answer
+     */
+    // Identity is the point: one shared instance marks "no matching column", and an equal value
+    // computed any other way must not be mistaken for it.
+    @SuppressWarnings("ReferenceEquality")
+    public static @Nullable Vector atSite(@Nullable Vector evaluated, EvalRun run,
+            net.cumba.corej.core.expr.ast.Expr.Call site)
+    {
+        return evaluated == NO_MATCHING_COLUMN ? ColumnTypedAbsence.answer(run, site) : evaluated;
+    }
+
+
+    /**
      * The {@code EvalFunction} body: {@code args} holds the bound {@code name_pattern} vector.
      *
      * @param run
      *            the evaluation run
      * @param args
      *            the bound argument vectors
-     * @return the per-row maximum
+     * @return the per-row maximum, or {@link #NO_MATCHING_COLUMN} for a table with no matching
+     *         column
      */
     public static Vector evaluate(EvalRun run, List<Vector> args)
     {
@@ -127,6 +171,11 @@ public final class RowMax
             {
                 characterNames.add(name);
             }
+        }
+        if (matched.isEmpty())
+        {
+            // A1: no column to take a type from — the call site decides (atSite).
+            return NO_MATCHING_COLUMN;
         }
         boolean numeric = numericType != null;
         if (!numericNames.isEmpty() && !characterNames.isEmpty())

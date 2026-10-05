@@ -166,7 +166,9 @@ public final class StageBChecker
      * Public since the D76 absent-column default landed in the engine: {@code RuleRunner} computes
      * the rule's {@link TypeExpectations#numericDefaultColumns()} over exactly these roots when it
      * builds the {@code EvaluationContext}, so the checker's <em>report</em> of the default and the
-     * engine's <em>application</em> of it read one and the same root collection.
+     * engine's <em>application</em> of it read one and the same root collection — through the one
+     * factory {@link TypeExpectations#forRule}, which adds the rule's binding map (A2 of
+     * {@code PLAN-column-typed-function-absent-type}).
      * </p>
      */
     public static List<Expr> expressionRoots(Rule rule)
@@ -219,7 +221,10 @@ public final class StageBChecker
         {
             return;
         }
-        TypeExpectations expectations = TypeExpectations.of(roots);
+        // ⭐ The ONE factory the engine's application of the defaults reads too
+        // (RuleRunner.typeExpectations; PLAN-column-typed-function-absent-type §6 M2): the same
+        // roots and the same binding map, so a $-reference's kind (A2) is reported as applied.
+        TypeExpectations expectations = TypeExpectations.forRule(rule);
         boolean hasChildEntry = hasChildEntry(rule);
         for (String column : expectations.valueReadColumns())
         {

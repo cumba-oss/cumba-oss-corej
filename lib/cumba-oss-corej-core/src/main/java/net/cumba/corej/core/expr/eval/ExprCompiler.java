@@ -3906,7 +3906,10 @@ public final class ExprCompiler
     {
         net.cumba.corej.core.exec.GroupedAggregate.Spec spec = net.cumba.corej.core.exec.GroupedAggregate
                 .spec(c);
-        return spec::evaluate;
+        // PLAN-column-typed-function-absent-type A1: the plan closes over its CALL SITE, whose
+        // position decides an absent column's default — read per evaluation, never bound here
+        // (compiled plans are shared across rules).
+        return run -> spec.evaluate(run, c);
     }
 
 
@@ -3947,8 +3950,10 @@ public final class ExprCompiler
     private static ValuePlan compileReadValue(Expr.Call c)
     {
         // ReadValue.spec throws the ExpressionException itself (the reader's own message is the
-        // rule's load error), so nothing is caught and rethrown here.
-        return net.cumba.corej.core.exec.ReadValue.spec(c)::evaluate;
+        // rule's load error), so nothing is caught and rethrown here. The plan closes over its
+        // CALL SITE (PLAN-column-typed-function-absent-type A1, as compileGroupedAggregate).
+        net.cumba.corej.core.exec.ReadValue.Spec spec = net.cumba.corej.core.exec.ReadValue.spec(c);
+        return run -> spec.evaluate(run, c);
     }
 
 
@@ -4889,6 +4894,14 @@ public final class ExprCompiler
             if (DEFINE_VARIABLE_DECODE_MATCHES.equals(c.name()) && c.args().size() <= 1)
             {
                 yield compileDefineVariableDecodeMatches(c);
+            }
+            if (net.cumba.corej.core.exec.RowMax.NAME.equals(c.name()))
+            {
+                // PLAN-column-typed-function-absent-type A1: with no matching column, row_max
+                // answers its call site's use-derived default — the plan closes over the CALL
+                // (colref's shape), and the site's kind is read once per evaluation.
+                ValuePlan plain = valueCallPlan(c);
+                yield run -> net.cumba.corej.core.exec.RowMax.atSite(plain.eval(run), run, c);
             }
             yield valueCallPlan(c);
         }

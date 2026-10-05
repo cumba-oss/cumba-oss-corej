@@ -1872,19 +1872,21 @@ public final class RuleRunner
 
 
     /**
-     * D76 — this rule's own type expectations (the columns, and the {@code colref} call sites,
-     * whose absent-column default is <b>numeric</b>), computed over the same specialised expression
-     * roots stage B walks ({@code StageBChecker.expressionRoots}), so the checker's report of the
-     * default and the engine's application of it cannot disagree. A rule with no native form yields
-     * the empty set, which is the "no expectation ⇒ char" disposition (D76a).
+     * D76 — this rule's own type expectations (the columns, and the column-typed call sites, whose
+     * absent-column default is <b>numeric</b>), computed by the ONE factory stage B reads too
+     * ({@code TypeExpectations.forRule}: the specialised roots of
+     * {@code StageBChecker.expressionRoots} and the rule's binding map), so the checker's report of
+     * the default and the engine's application of it cannot disagree. A rule with no native form
+     * yields the empty set, which is the "no expectation ⇒ char" disposition (D76a).
      */
     private static net.cumba.corej.core.expr.typed.TypeExpectations typeExpectations(Rule rule)
     {
-        // ⭐ Computed ONCE per execution and read for both sets (the named columns and, since
-        // PLAN-dynamic-column-functions §2.3, the numeric-expected colref call sites). An empty
-        // root list walks nothing, so both sets are empty — the "no expectation ⇒ char" default.
-        return net.cumba.corej.core.expr.typed.TypeExpectations
-                .of(net.cumba.corej.core.expr.typed.StageBChecker.expressionRoots(rule));
+        // ⭐ Computed ONCE per execution and read for both sets (the named columns and the
+        // numeric-expected column-typed call sites — colref since PLAN-dynamic-column-functions
+        // §2.3, read_value / max / row_max since PLAN-column-typed-function-absent-type A1, each
+        // also through a $-reference, A2). An empty root list walks nothing, so both sets are empty
+        // — the "no expectation ⇒ char" default. Never in a cache key, never read per row.
+        return net.cumba.corej.core.expr.typed.TypeExpectations.forRule(rule);
     }
 
 

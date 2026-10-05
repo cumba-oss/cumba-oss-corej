@@ -50,10 +50,18 @@ import org.jspecify.annotations.Nullable;
  * (Q3). The answer is one dataset-level value broadcast to every row (R2): the selected row's own
  * cell, identity kept (a missing {@code X} answers that missing, D85c); <b>no qualifying row
  * answers {@code X}'s type default</b> in {@code D} (char {@code ""}, numeric
- * {@code MissingValue.MIS} — D13, D34 #3/#4) and is never an error; an absent {@code D} or an
- * {@code X} that is not a column of {@code D} answers the absent-joined-column default
- * ({@link JoinLookup#absentJoinedColumnValue}, {@code ""} — a binding carries no column-level type
- * expectation to consult, plan §2.2 D-W2-9).
+ * {@code MissingValue.MIS} — D13, D34 #3/#4) and is never an error.
+ * </p>
+ *
+ * <p>
+ * ⭐ <b>An absent {@code D}, or an {@code X} that is not a column of {@code D}, answers the absent
+ * column's use-derived default</b> ({@code PLAN-column-typed-function-absent-type} A1, owner
+ * 2026-10-05): {@code MissingValue.MIS} where the call — or, through a binding, the binding's use
+ * (A2) — stands in a numeric-expected position of the rule, {@code ""} otherwise, exactly as
+ * {@code X} read directly would ({@link ColumnTypedAbsence}). The kind is the call site's
+ * ({@code TypeExpectations.numericDynamicSites()}), read once per evaluation. Until 2026-10-05 it
+ * was always {@code ""} ({@code PLAN-operation-replacements} D-W2-9: <i>"a binding carries no
+ * column-level type expectation to consult"</i>, superseded by the owner's statement).
  * </p>
  */
 public final class ReadValue
@@ -126,14 +134,31 @@ public final class ReadValue
 
 
         /**
-         * Reads the value for this run: one dataset-level cell, broadcast to every row of the
-         * evaluated dataset.
+         * Reads the value for this run with no call site — an absent column answers the untyped
+         * default {@code ""} (a hand-built spec has no position to read).
          *
          * @param run
          *            the evaluation run (its context resolves {@code D})
          * @return the broadcast value
          */
         public Vector evaluate(EvalRun run)
+        {
+            return evaluate(run, null);
+        }
+
+
+        /**
+         * Reads the value for this run: one dataset-level cell, broadcast to every row of the
+         * evaluated dataset.
+         *
+         * @param run
+         *            the evaluation run (its context resolves {@code D})
+         * @param site
+         *            the authored call — its position decides an absent column's default (A1) — or
+         *            {@code null} for the untyped default
+         * @return the broadcast value
+         */
+        public Vector evaluate(EvalRun run, Expr.@Nullable Call site)
         {
             if (!group.isEmpty())
             {
@@ -143,7 +168,7 @@ public final class ReadValue
                 // (D13's no-match answer), never an error.
                 return GroupedAggregate.broadcast(run, NAME,
                         new Expr.Ref(column, OperandKind.COLUMN), dataset, filter, group, policy,
-                        canonical, this::selectWithin, DataValueSupport::defaultForType);
+                        canonical, this::selectWithin, DataValueSupport::defaultForType, site);
             }
             EvaluationContext ctx = run.ctx();
             // F-W8-2: a `--` in the domain= literal resolves as every other dataset-name position
@@ -152,12 +177,13 @@ public final class ReadValue
                     GroupedAggregate.datasetName(dataset, ctx), ctx.getRuleId());
             if (table == null)
             {
-                return broadcast(DataValueType.STRING, JoinLookup.absentJoinedColumnValue(false));
+                // A1: the absent column's use-derived default, decided by the call site.
+                return ColumnTypedAbsence.answer(run, site);
             }
             int colIdx = table.getMetaData().getColumnIndex(column);
             if (colIdx < 0)
             {
-                return broadcast(DataValueType.STRING, JoinLookup.absentJoinedColumnValue(false));
+                return ColumnTypedAbsence.answer(run, site);
             }
             DataValueType type = table.getMetaData().getColumn(colIdx).getType();
             int rowCount = Math.toIntExact(table.getRowCount());

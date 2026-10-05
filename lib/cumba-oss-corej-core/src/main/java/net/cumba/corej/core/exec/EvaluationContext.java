@@ -302,14 +302,17 @@ public class EvaluationContext
     Set<String> numericExpectedColumns = Set.of();
 
     /**
-     * ⭐ {@code PLAN-dynamic-column-functions} §2.3 step 2 (owner Q14 (b)) — the {@code colref(…)}
-     * call sites this rule's expression places in a <b>numeric-expected</b> position
-     * ({@code TypeExpectations.numericDynamicSites()}), carried beside
-     * {@link #numericExpectedColumns} and computed by the same builders from the same
-     * {@code TypeExpectations} walk. A {@code colref} plan reads it <b>once per evaluation</b> —
-     * never at compile time (compiled plans are shared across rules) and never per row — and gives
-     * an absent column named by such a site {@code MissingValue.MIS}, the default the name would
-     * get if it were authored at that position.
+     * ⭐ {@code PLAN-dynamic-column-functions} §2.3 step 2 (owner Q14 (b)) — the <b>column-typed
+     * call sites</b> this rule's expression places in a <b>numeric-expected</b> position
+     * ({@code TypeExpectations.numericDynamicSites()}): {@code colref(…)}, and since
+     * {@code PLAN-column-typed-function-absent-type} A1 / A2 {@code read_value(…)}, {@code max(…)}
+     * over a column and {@code row_max(…)}, each also through the uses of a binding it is the root
+     * of. Carried beside {@link #numericExpectedColumns} and computed by the same builders from the
+     * same {@code TypeExpectations} walk. A site's plan reads it <b>once per evaluation</b> — never
+     * at compile time (compiled plans are shared across rules), never per row, never in a cache key
+     * — and an absent column (or dataset) read by such a site answers {@code MissingValue.MIS}, the
+     * default the column would get if it were read directly at that position
+     * ({@code ColumnTypedAbsence}).
      *
      * <p>
      * Defaults to the empty set: no expectation ⇒ char (D76a), as for

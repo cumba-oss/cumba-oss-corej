@@ -351,12 +351,22 @@ class DynamicColumnFunctionsTest
     }
 
 
-    /** The known limit (phase 0 D3): a $-reference carries no position kind, for either form. */
+    /**
+     * {@code PLAN-column-typed-function-absent-type} A2 (owner 2026-10-05) — a {@code $}-reference
+     * carries its binding's position kind, for either form, exactly as the root written in place
+     * ({@code ZZ < 3}, {@code colref("ZZ") < 3}). Re-expected red-first: it pinned the opposite —
+     * phase 0 D3's "known limit", which the owner's statement superseded (both answered {@code ""}
+     * and fired nowhere).
+     */
     @Test
-    void aBindingCarriesNoPositionKindForEitherForm()
+    void aBindingCarriesItsUsesPositionKindForEitherForm()
     {
-        assertEquals(List.of(), fired("$x < 3", false, "$x", "ZZ"));
-        assertEquals(List.of(), fired("$x < 3", false, "$x", "colref(\"ZZ\")"));
+        assertEquals(List.of(1L, 2L, 3L), fired("$x < 3", false, "$x", "ZZ"));
+        assertEquals(List.of(1L, 2L, 3L), fired("$x < 3", false, "$x", "colref(\"ZZ\")"));
+        assertEquals(fired("ZZ < 3", false), fired("$x < 3", false, "$x", "ZZ"),
+                "the binding answers as its expression written in place (D3 / D16)");
+        assertEquals(List.of(), fired("$x != \"\"", false, "$x", "colref(\"ZZ\")"),
+                "a character use keeps the char default \"\"");
     }
 
 

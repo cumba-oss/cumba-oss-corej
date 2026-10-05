@@ -12,6 +12,8 @@ import net.cumba.corej.core.exec.StudyRuleClassifier;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.BroadcastFold;
+import net.cumba.corej.core.model.CompiledBinding;
+import net.cumba.corej.core.model.Rule;
 
 /**
  * The rule's own <b>type expectations</b>, read off the expression alone — the stage-A fact of
@@ -44,15 +46,35 @@ import net.cumba.corej.core.expr.eval.BroadcastFold;
  * <p>
  * Expectations attach to <b>bare column operands</b> ({@link OperandKind#COLUMN}) and to <b>dotted
  * cross-dataset references</b> ({@link OperandKind#DOTTED_REF}), under the dotted operand's FULL
- * name: a {@code $}-reference, a computed value, a {@code ${...}} template and a
- * {@code num(...)}-wrapped operand never carry one, and a comparison in the {@code date} /
- * {@code time} / {@code date_part} / {@code time_part} families routes past the plain gate entirely
- * and therefore sets no expectation here either. ⭐ A {@code colref(…)} call in one of these
- * positions records its kind under the <b>call expression</b> ({@link #numericDynamicSites()},
- * {@code PLAN-dynamic-column-functions} §2.3, owner Q14 (b)): its column is named per row, so the
- * position — not a name — is what the engine looks up. Presence probes ({@code var_exists} family)
- * are <b>not value reads</b>: their argument names a column whose absence is the question, so it is
+ * name: a computed value, a {@code ${...}} template and a {@code num(...)}-wrapped operand never
+ * carry one, and a comparison in the {@code date} / {@code time} / {@code date_part} /
+ * {@code time_part} families routes past the plain gate entirely and therefore sets no expectation
+ * here either. ⭐ A <b>column-typed call</b> in one of these positions — {@code colref(…)},
+ * {@code read_value(…)}, {@code max(…)} over a column, {@code row_max(…)} — records its kind under
+ * the <b>call expression</b> ({@link #numericDynamicSites()}; {@code PLAN-dynamic-column-functions}
+ * §2.3, owner Q14 (b), widened by {@code PLAN-column-typed-function-absent-type} A1): the column it
+ * reads is named per row or lives in another dataset, so the position — not a name — is what the
+ * engine looks up when that column is absent. Presence probes ({@code var_exists} family) are
+ * <b>not value reads</b>: their argument names a column whose absence is the question, so it is
  * excluded from {@link #valueReadColumns()}.
+ * </p>
+ *
+ * <p>
+ * ⭐⭐ <b>A {@code $}-reference carries its binding's position</b>
+ * ({@code PLAN-column-typed-function-absent-type} A2, owner 2026-10-05: <i>"if X is not available,
+ * but the binding is always applied at positions where it is used as num, can expected to be num
+ * and so on"</i>; precedent D3 / D16, a binding behaves as its expression). With the rule's
+ * bindings supplied ({@link #of(Collection, Map)}, {@link #forRule(Rule)}), a {@code $}-reference
+ * in a typed position records the kind on its binding's <b>root</b>, followed through
+ * {@code $}-chains — a plain or dotted column under its name, a column-typed call under the call —
+ * exactly as the root written in place would. Until 2026-10-05 an expectation did not flow through
+ * a binding reference at all ({@code PLAN-operation-replacements} D-W2-9 and the
+ * {@code PLAN-dynamic-column-functions} §2.3 known limit, both self-ruled and superseded by the
+ * owner's statement), so {@code $x: ZZ; $x < 3} read {@code ""} where {@code ZZ < 3} read
+ * {@code MIS}. {@code coalesce(…)} is <b>not</b> type-losing: its position passes through to every
+ * operand, as {@code str(…)}'s does to its argument, and its own result stays CO1's. A case fold is
+ * not followed: stage A types it {@code STRING}, so a numeric position over one is a
+ * {@code PARAMETER_TYPE} load error and a character position is the default already (D76a).
  * </p>
  *
  * <p>
@@ -163,6 +185,9 @@ public final class TypeExpectations
                     1
             }));
 
+    /** {@code coalesce} — its position passes through to its operands (§6 H2). */
+    private static final String COALESCE = "coalesce";
+
     /** Call names that route a comparison into the temporal families (no plain gate). */
     private static final Set<String> TEMPORAL_CALLS = Set.of("date", "time", "date_part",
             "time_part");
@@ -189,20 +214,78 @@ public final class TypeExpectations
 
     private final Set<String> valueReadColumns = new LinkedHashSet<>();
 
-    private TypeExpectations()
+    /**
+     * The rule's bindings, {@code $}-name → expression: the roots a {@code $}-reference in a typed
+     * position hands its kind to (A2). Empty for a context with no {@code $} variables (a filter, a
+     * computed target).
+     */
+    private final Map<String, Expr> bindings;
+
+    /**
+     * The kinds each {@code $}-name was read in, directly or through a {@code $}-chain or a
+     * {@code coalesce} — what {@link #numericBindings()} answers.
+     */
+    private final Map<String, EnumSet<Expectation>> bindingExpectations = new LinkedHashMap<>();
+
+    private TypeExpectations(Map<String, Expr> aBindings)
     {
+        bindings = aBindings;
     }
 
 
-    /** Computes the expectations of the given expression roots (a rule's levels, precondition). */
+    /**
+     * Computes the expectations of expression roots that read no {@code $} variable (a
+     * {@code filter=}, a computed target, a {@code Match_Datasets} filter) — or a caller that has
+     * no binding map; a {@code $}-reference then carries no kind.
+     */
     public static TypeExpectations of(Collection<Expr> roots)
     {
-        TypeExpectations te = new TypeExpectations();
+        return of(roots, Map.of());
+    }
+
+
+    /**
+     * Computes the expectations of the given expression roots (a rule's levels, precondition,
+     * bindings), a {@code $}-reference handing its position's kind to its binding's root (A2).
+     *
+     * @param roots
+     *            the expression roots
+     * @param bindings
+     *            the rule's bindings, {@code $}-name → expression
+     * @return the expectations
+     */
+    public static TypeExpectations of(Collection<Expr> roots, Map<String, Expr> bindings)
+    {
+        TypeExpectations te = new TypeExpectations(Map.copyOf(bindings));
         for (Expr root : roots)
         {
             te.walk(root);
         }
         return te;
+    }
+
+
+    /**
+     * ⭐ <b>The ONE factory of a rule's expectations</b>
+     * ({@code PLAN-column-typed-function-absent-type} §6 M2): {@code RuleRunner} (the engine's
+     * <em>application</em> of the absent-column defaults) and
+     * {@code StageBChecker.checkColumnTypes} (the checker's <em>report</em> of them) both read it,
+     * over the same specialised roots ({@link StageBChecker#expressionRoots}) and the same binding
+     * map ({@link Rule#bindingOrder()}) — so the two cannot disagree. A pure function of the rule
+     * text; it reads no data and is computed once per (rule × dataset) execution.
+     *
+     * @param rule
+     *            the (specialised) rule
+     * @return its expectations
+     */
+    public static TypeExpectations forRule(Rule rule)
+    {
+        Map<String, Expr> bindings = new LinkedHashMap<>();
+        for (CompiledBinding binding : rule.bindingOrder())
+        {
+            bindings.put(binding.name(), binding.expression());
+        }
+        return of(StageBChecker.expressionRoots(rule), bindings);
     }
 
 
@@ -301,28 +384,53 @@ public final class TypeExpectations
 
 
     /**
-     * ⭐ {@code PLAN-dynamic-column-functions} §2.3 step 1 (owner Q14 (b)): the {@code colref(…)}
-     * call sites standing in a <b>numeric-expected position</b> — the same positions that record
-     * {@link Expectation#NUMERIC} for an authored name ({@link #numericDefaultColumns()}), keyed by
-     * the call expression. The engine reads the set once per evaluation
-     * ({@code EvaluationContext.getNumericExpectedDynamicSites()}) and gives an absent column named
-     * by such a call {@code MissingValue.MIS}, exactly the default the name would get if it were
-     * authored at that position.
+     * ⭐ The <b>column-typed call sites</b> standing in a <b>numeric-expected position</b> — the
+     * same positions that record {@link Expectation#NUMERIC} for an authored name
+     * ({@link #numericDefaultColumns()}), keyed by the call expression: {@code colref(…)}
+     * ({@code PLAN-dynamic-column-functions} §2.3, owner Q14 (b)) and, since
+     * {@code PLAN-column-typed-function-absent-type} A1, {@code read_value(…)}, {@code max(…)} over
+     * a column and {@code row_max(…)}. The engine reads the set once per evaluation
+     * ({@code EvaluationContext.getNumericExpectedDynamicSites()}) and a site whose column (or
+     * dataset) is absent answers {@code MissingValue.MIS}, exactly the default the column would get
+     * if it were read at that position; every other site answers {@code ""} (D76a).
      *
      * <p>
-     * ⚠ A {@code $}-reference carries no kind (an expectation does not flow through a binding
-     * reference), so a {@code colref} bound in {@code Bindings} records nothing — exactly like an
-     * authored name bound the same way (the plan's known limit). The sites join neither
+     * A site bound in {@code Bindings} records the kinds of its binding's uses (A2), followed
+     * through {@code $}-chains and {@code coalesce}. The sites join neither
      * {@link #valueReadColumns()} nor {@link #equalityPairs()}: {@code StageBChecker} cannot probe
-     * a name that is only known per row.
+     * a column that is named per row or lives in another dataset. {@link Expr} records compare
+     * structurally, so two textually identical calls are one site — one kind, as two reads of one
+     * authored name are.
      * </p>
      *
-     * @return the numeric-expected {@code colref} call sites (immutable)
+     * @return the numeric-expected column-typed call sites (immutable)
      */
     public Set<Expr.Call> numericDynamicSites()
     {
         Set<Expr.Call> out = new LinkedHashSet<>();
         for (Map.Entry<Expr.Call, EnumSet<Expectation>> e : dynamicExpectations.entrySet())
+        {
+            if (e.getValue().contains(Expectation.NUMERIC))
+            {
+                out.add(e.getKey());
+            }
+        }
+        return Set.copyOf(out);
+    }
+
+
+    /**
+     * The {@code $}-names read in a <b>numeric-expected position</b> — directly, or through a
+     * {@code $}-chain or a {@code coalesce} — in first-seen order: the bindings whose root, when it
+     * reads an absent column, answers {@code MissingValue.MIS} (A2). The corpus lint over the
+     * MIS-sorts-lowest flood shape (§6 M5) reads it.
+     *
+     * @return the numerically read {@code $}-names (immutable)
+     */
+    public Set<String> numericBindings()
+    {
+        Set<String> out = new LinkedHashSet<>();
+        for (Map.Entry<String, EnumSet<Expectation>> e : bindingExpectations.entrySet())
         {
             if (e.getValue().contains(Expectation.NUMERIC))
             {
@@ -422,14 +530,16 @@ public final class TypeExpectations
 
     private void membership(Expr left, Expr right)
     {
-        if ((expectationKey(left) == null && (dynamicSite(left) == null || listFormColref(left)))
-                || !(right instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.LIST)
+        boolean probes = expectationKey(left) != null || dynamicSite(left) != null
+                || (left instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF)
+                || (left instanceof Expr.Call call && COALESCE.equals(call.name()));
+        if (!probes || !(right instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.LIST)
         {
             // Only a STATIC list literal states an expectation the gate holds a probe to
-            // (mirroring numericMemberSet / isAllStringList's literal-only classification); a
-            // list-LHS membership (D81d) — a colref over a list literal or a list-valued call,
-            // which the compiler runs element-wise (review round 1, lane A L1) — and every
-            // dynamic set stay out.
+            // (mirroring numericMemberSet / isAllStringList's literal-only classification); every
+            // dynamic set stays out. A list-LHS membership (D81d) — a colref over a list literal
+            // or a list-valued call, which the compiler runs element-wise (review round 1, lane A
+            // L1) — is refused by expect's probe arm, written in place or bound.
             return;
         }
         Expr.LitKind element = null;
@@ -445,11 +555,11 @@ public final class TypeExpectations
         }
         if (element == Expr.LitKind.NUMBER)
         {
-            expect(left, Expectation.NUMERIC);
+            expect(left, Expectation.NUMERIC, true, 0);
         }
         else if (element == Expr.LitKind.STRING)
         {
-            expect(left, Expectation.CHARACTER);
+            expect(left, Expectation.CHARACTER, true, 0);
         }
     }
 
@@ -572,11 +682,53 @@ public final class TypeExpectations
      */
     private void expect(Expr e, Expectation expectation)
     {
+        expect(e, expectation, false, 0);
+    }
+
+
+    /**
+     * {@link #expect(Expr, Expectation)} with the two things only some positions know: whether the
+     * position is a membership <b>probe</b> (a list-form {@code colref} there is a list-LHS
+     * membership, D81d, never a scalar read — so it records nothing), and how many {@code $}-hops
+     * the operand is from the position (a guard: stage A refuses a cyclic binding, so a chain is
+     * never longer than the binding map).
+     */
+    private void expect(Expr e, Expectation expectation, boolean probe, int hops)
+    {
         Expr operand = stripStr(e);
+        if (operand instanceof Expr.Call c && COALESCE.equals(c.name()))
+        {
+            // §6 H2: coalesce is not type-losing — its position passes through to every operand
+            // (as str's does to its argument), each defaulting as if read in place; its own result
+            // stays CO1's (every operand skipped ⇒ MIS).
+            for (Expr argument : c.args())
+            {
+                expect(argument, expectation, probe, hops);
+            }
+            return;
+        }
+        if (operand instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF)
+        {
+            // A2: a $-reference hands its position's kind to its binding's root, as the root
+            // written in place would take it (D3 / D16).
+            Expr root = bindings.get(ref.name());
+            if (root != null && hops < bindings.size())
+            {
+                bindingExpectations
+                        .computeIfAbsent(ref.name(), _ -> EnumSet.noneOf(Expectation.class))
+                        .add(expectation);
+                expect(root, expectation, probe, hops + 1);
+            }
+            return;
+        }
         Expr.Call site = dynamicSite(operand);
         if (site != null)
         {
-            // Q14 (b): the call site carries its position's kind, as an authored name would.
+            if (probe && listFormColref(site))
+            {
+                return; // D81d: an element-wise list membership, not a scalar read
+            }
+            // Q14 (b) / A1: the call site carries its position's kind, as an authored name would.
             dynamicExpectations.computeIfAbsent(site, _ -> EnumSet.noneOf(Expectation.class))
                     .add(expectation);
             return;
@@ -608,14 +760,36 @@ public final class TypeExpectations
 
 
     /**
-     * The operand as a dynamic column read — a one-argument {@code colref(…)} call — or
-     * {@code null}. Keyed by the call itself (§2.3 step 1 of
-     * {@code PLAN-dynamic-column-functions}).
+     * The operand as a <b>column-typed call site</b>, or {@code null}: a one-argument
+     * {@code colref(…)} (§2.3 step 1 of {@code PLAN-dynamic-column-functions}), a
+     * {@code read_value(…)}, a {@code max(…)} whose target is a column reference, or a
+     * {@code row_max(…)} ({@code PLAN-column-typed-function-absent-type} A1, A5) — the calls whose
+     * result is the type of a column they read, which the engine cannot see when that column (or
+     * its dataset) is absent. Keyed by the call itself. A {@code max} over a computed target is not
+     * one: its type is the expression's, not a column's ({@code StageAChecker.columnTypedBindings}
+     * asks the same of its target). {@code value()} is not one either: it reads the current
+     * variable, and the variable cursor names the columns of the dataset under evaluation.
      */
     private static Expr.@org.jspecify.annotations.Nullable Call dynamicSite(Expr e)
     {
-        return e instanceof Expr.Call c && "colref".equals(c.name()) && c.args().size() == 1
-                && c.kwargs().isEmpty() ? c : null;
+        if (!(e instanceof Expr.Call c))
+        {
+            return null;
+        }
+        return switch (c.name())
+        {
+        case "colref" -> c.args().size() == 1 && c.kwargs().isEmpty() ? c : null;
+        case "read_value", "row_max" -> c;
+        case "max" -> maxTarget(c) instanceof Expr.Ref ? c : null;
+        default -> null;
+        };
+    }
+
+
+    /** {@code max}'s target: its positional argument, else its {@code name=} keyword. */
+    private static @org.jspecify.annotations.Nullable Expr maxTarget(Expr.Call c)
+    {
+        return c.args().isEmpty() ? c.kwargs().get("name") : c.args().get(0);
     }
 
 
@@ -626,9 +800,13 @@ public final class TypeExpectations
      * compiler decides per row, and a scalar row takes the scalar arms, so its position's kind is
      * recorded as for any scalar probe.
      */
-    private static boolean listFormColref(Expr colref)
+    private static boolean listFormColref(Expr.Call site)
     {
-        Expr arg = ((Expr.Call) colref).args().get(0);
+        if (!"colref".equals(site.name()))
+        {
+            return false;
+        }
+        Expr arg = site.args().get(0);
         return (arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
                 || (arg instanceof Expr.Call call
                         && ElementTable.resultType(call.name()) instanceof ExprType.ListOf);

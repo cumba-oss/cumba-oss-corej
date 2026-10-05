@@ -73,6 +73,20 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
+ * ⭐ <b>An absent target column, or an absent {@code domain=} dataset, of a column target</b> —
+ * {@code max(X, …)} and {@code read_value(X, …, group=)} — answers the absent column's
+ * <b>use-derived default</b> for every row ({@code PLAN-column-typed-function-absent-type} A1):
+ * {@code MIS} where the call site (or, through a binding, its use — A2) stands in a
+ * numeric-expected position, {@code ""} otherwise, as {@code X} read directly would
+ * ({@link ColumnTypedAbsence}). The memoised grouping only knows that the column is absent
+ * ({@code Grouped.absentColumn}); the kind is the evaluating call's and is applied after the memo,
+ * once per evaluation. Until 2026-10-05 the arms answered the no-group default typed
+ * {@code STRING}: {@code MIS} for {@code max} in every position, {@code ""} for {@code read_value}
+ * in every position. A computed target keeps the no-group answer: its type is the expression's, not
+ * a column's.
+ * </p>
+ *
+ * <p>
  * <b>{@code max} ranks candidates by their own type</b> (owner D-W1-2a, {@code D-W3-5}): a numeric
  * target numerically ({@code Long} exact, else {@code Double} with {@code ±0} one value), a textual
  * one through the shared string branch ({@link Extremes#genericStringExtreme}: plain text order —
@@ -219,6 +233,24 @@ public final class GroupedAggregate
          */
         public Vector evaluate(EvalRun run)
         {
+            return evaluate(run, null);
+        }
+
+
+        /**
+         * Evaluates the call for this run at its call site: the per-group values broadcast to every
+         * row of the evaluated dataset; an absent column target answers the site's use-derived
+         * default (A1).
+         *
+         * @param run
+         *            the evaluation run
+         * @param site
+         *            the authored call, or {@code null} — then an absent column keeps the
+         *            function's no-group answer
+         * @return the broadcast vector
+         */
+        public Vector evaluate(EvalRun run, Expr.@Nullable Call site)
+        {
             Aggregator aggregator = switch (function)
             {
             case MAX -> (cellAt, rows, keep, _) -> maxOf(cellAt, rows, keep);
@@ -228,8 +260,11 @@ public final class GroupedAggregate
                     missingIsIndeterminate);
             default -> throw new IllegalStateException("not a grouped aggregate: " + function);
             };
+            // Only max is column-typed (its result is its target column's type); max_date /
+            // min_date answer a date, so an absent column keeps their no-group missing.
             return broadcast(run, function, target, dataset, filter, group, policy, canonical,
-                    aggregator, _ -> ScalarSemantics.computedMissing());
+                    aggregator, _ -> ScalarSemantics.computedMissing(),
+                    MAX.equals(function) ? site : null);
         }
     }
 
@@ -895,8 +930,17 @@ public final class GroupedAggregate
      * PERF 3), else {@code null}.
      */
     record Grouped(Map<Object, IDataValue> byKey, DataValueType type, @Nullable RowKey keyer,
-            @Nullable RowAnswers direct)
+            @Nullable RowAnswers direct, boolean absentColumn)
     {
+
+        /**
+         * The grouping of a column target whose column — or {@code domain=} dataset — is absent: no
+         * group, and a marker the broadcast reads to answer the call site's use-derived default (A1
+         * of {@code PLAN-column-typed-function-absent-type}). The marker, not the kind, is what the
+         * per-execution memo holds.
+         */
+        static final Grouped ABSENT_COLUMN = new Grouped(Map.of(), DataValueType.STRING, null, null,
+                true);
 
         /**
          * The grouping takes <b>ownership</b> of {@code byKey} (every builder hands over a map it
@@ -906,6 +950,13 @@ public final class GroupedAggregate
         Grouped
         {
             byKey = java.util.Collections.unmodifiableMap(byKey);
+        }
+
+
+        Grouped(Map<Object, IDataValue> byKey, DataValueType type, @Nullable RowKey keyer,
+                @Nullable RowAnswers direct)
+        {
+            this(byKey, type, keyer, direct, false);
         }
 
 
@@ -986,16 +1037,20 @@ public final class GroupedAggregate
      *            the block aggregator
      * @param noGroup
      *            the value of a primary row whose key has no group, by the target's type
+     * @param site
+     *            the authored call — an absent column target answers its use-derived default (A1) —
+     *            or {@code null}, when an absent column keeps the {@code noGroup} answer
      * @return the broadcast vector
      */
     static Vector broadcast(EvalRun run, String fn, Expr target, @Nullable String dataset,
             @Nullable Expr filter, List<String> group, GroupKeyPolicy policy, String canonical,
-            Aggregator aggregator, java.util.function.Function<DataValueType, IDataValue> noGroup)
+            Aggregator aggregator, java.util.function.Function<DataValueType, IDataValue> noGroup,
+            Expr.@Nullable Call site)
     {
         EvaluationContext ctx = run.ctx();
         List<String> groupNames = resolvePrefixes(group, ctx);
         return broadcast(run, fn, canonical, groupNames, () -> groupTarget(ctx, fn, target, dataset,
-                filter, groupNames, policy, aggregator, noGroup), noGroup);
+                filter, groupNames, policy, aggregator, noGroup), noGroup, site);
     }
 
 
@@ -1024,6 +1079,21 @@ public final class GroupedAggregate
             java.util.function.Supplier<Grouped> grouping,
             java.util.function.Function<DataValueType, IDataValue> noGroup)
     {
+        return broadcast(run, fn, memoKey, groupNames, grouping, noGroup, null);
+    }
+
+
+    /**
+     * {@link #broadcast(EvalRun, String, String, List, java.util.function.Supplier, java.util.function.Function)}
+     * at a column-typed call site: a grouping that is {@link Grouped#absentColumn() absent} answers
+     * the site's use-derived default ({@link ColumnTypedAbsence}, A1) instead of the no-group
+     * answer.
+     */
+    private static Vector broadcast(EvalRun run, String fn, String memoKey, List<String> groupNames,
+            java.util.function.Supplier<Grouped> grouping,
+            java.util.function.Function<DataValueType, IDataValue> noGroup,
+            Expr.@Nullable Call site)
+    {
         EvaluationContext ctx = run.ctx();
         IDataTable primary = ctx.getTable();
         Object memo = ctx.getAggregateMemo().computeIfAbsent(
@@ -1051,6 +1121,12 @@ public final class GroupedAggregate
         }
         if (byKey.isEmpty())
         {
+            if (grouped.absentColumn() && site != null)
+            {
+                // A1: the absent column's use-derived default, decided by the evaluating call's
+                // site once per evaluation — after the memo, which holds no kind.
+                return ColumnTypedAbsence.answer(run, site);
+            }
             // One answer for every row (XCUT PERF 2): a constant, not a per-row carrier.
             return constantCell(grouped.type(), absent);
         }
@@ -1092,8 +1168,10 @@ public final class GroupedAggregate
         if (table == null)
         {
             // Q17-a: an absent `domain` dataset answers the function's own no-value — every
-            // primary row reads the no-group default.
-            return new Grouped(Map.of(), DataValueType.STRING, null);
+            // primary row reads the no-group default; for a column target, the absent column's
+            // use-derived default (A1), applied by the broadcast at the call site.
+            return target instanceof Expr.Ref ? Grouped.ABSENT_COLUMN
+                    : new Grouped(Map.of(), DataValueType.STRING, null);
         }
         DataTableMeta meta = table.getMetaData();
         IntFunction<IDataValue> cellAt;
@@ -1104,7 +1182,7 @@ public final class GroupedAggregate
             int colIdx = meta.getColumnIndex(resolvePrefix(ref.name(), ctx));
             if (colIdx < 0)
             {
-                return new Grouped(Map.of(), DataValueType.STRING, null);
+                return Grouped.ABSENT_COLUMN; // A1, as an absent dataset
             }
             IDataTableColumn column = table.getColumn(colIdx);
             cellAt = column::getDataValue;

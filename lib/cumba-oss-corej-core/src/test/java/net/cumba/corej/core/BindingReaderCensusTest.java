@@ -73,6 +73,10 @@ class BindingReaderCensusTest
                             + " minus() of a per-row binding, R26 dotted refs"),
             Map.entry("core/expr/typed/StageBChecker.java",
                     "I3 compiled expressions are stage-B roots (R18 via I3)"),
+            Map.entry("core/expr/typed/TypeExpectations.java",
+                    "forRule: the binding map a $-reference's position kind flows through to its"
+                            + " root (PLAN-column-typed-function-absent-type A2); reads the"
+                            + " expressions only"),
             Map.entry("core/gen/ExpansionSurfaces.java",
                     "reads the AUTHORED Bindings' expression text only, as a surface loader"
                             + " gates G2/G3 scan for expansion tokens; never a compiled binding"
