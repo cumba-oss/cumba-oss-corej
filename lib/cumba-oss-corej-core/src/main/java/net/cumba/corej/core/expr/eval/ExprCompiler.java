@@ -3589,7 +3589,7 @@ public final class ExprCompiler
      * @return the table to read the names on
      */
     private static IDataTable groupReadTable(EvaluationContext ctx,
-            List<? extends java.util.Collection<?>> lists, @Nullable String... names)
+            List<? extends Collection<?>> lists, @Nullable String... names)
     {
         List<String> all = new ArrayList<>();
         for (String name : names)
@@ -3599,11 +3599,11 @@ public final class ExprCompiler
                 all.add(name);
             }
         }
-        for (java.util.Collection<?> list : lists)
+        for (Collection<?> list : lists)
         {
             for (Object item : list)
             {
-                if (item instanceof java.util.Collection<?> inner)
+                if (item instanceof Collection<?> inner)
                 {
                     inner.forEach(n -> all.add(String.valueOf(n)));
                 }

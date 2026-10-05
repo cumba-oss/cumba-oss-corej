@@ -220,10 +220,10 @@ class QualifiedNamePhase3FixesTest
         IDataTable j = joined();
         // S repeats "b" on rows 2 and 5, whose J.G differ (g1 / g3): read through the join the
         // pair is unique; with J.G dropped as an absent member it would be a duplicate (2 rows).
-        RuleExecutionResult qualified = QualifiedNameFixture.executed(
+        RuleExecutionResult qualified = executed(
                 withBinding("find_vars(\"J.G\")", "is_not_unique_set([S, $b])"), p,
                 exactInventory(p, j));
-        RuleExecutionResult literal = QualifiedNameFixture.executed(
+        RuleExecutionResult literal = executed(
                 loadClean(ruleJson("Record", QualifiedNameFixture.matchJ("") + ","
                         + check("is_not_unique_set([S, J.G])") + "," + outcome("K")), true),
                 p, exactInventory(p, j));

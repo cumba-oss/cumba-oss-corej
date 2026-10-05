@@ -366,7 +366,8 @@ class GroupedAggregateQualifiedGroupTest
     @Test
     void aQualifiedMemberWithoutDomainIsAColumnOfTheOneTable()
     {
-        loadClean("max(BWSEQ, group=[DM.RPATHCD, RPHASE])", "not empty($v)");
+        assertNull(loadClean("max(BWSEQ, group=[DM.RPATHCD, RPHASE])", "not empty($v)")
+                .getLoadError());
     }
 
 
@@ -497,7 +498,9 @@ class GroupedAggregateQualifiedGroupTest
     @Test
     void aDottedWithinMemberOfAGroupOperatorLoads()
     {
-        loadClean("has_multiple_values_for(BWSEQ, RPHASE, within=[DM.RPATHCD])", "not $v");
+        assertNull(
+                loadClean("has_multiple_values_for(BWSEQ, RPHASE, within=[DM.RPATHCD])", "not $v")
+                        .getLoadError());
     }
 
 }

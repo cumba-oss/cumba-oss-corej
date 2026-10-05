@@ -839,8 +839,7 @@ public final class GroupedAggregate
      */
     static JoinLookup requireSourceLookup(EvaluationContext ctx, String where, String qualifiedName)
     {
-        String qualifier = java.util.Objects
-                .requireNonNull(MatchDataset.qualifierOf(qualifiedName));
+        String qualifier = Objects.requireNonNull(MatchDataset.qualifierOf(qualifiedName));
         String unqualified = qualifiedName.substring(qualifier.length() + 1);
         JoinLookup lookup = ctx.getJoinedDatasets().get(qualifier);
         if (lookup == null)
@@ -1172,8 +1171,7 @@ public final class GroupedAggregate
         Object memo = ctx.getAggregateMemo().computeIfAbsent(
                 DatasetExpressionCache.keyOf(primary, memoKey, ctx.getDomainPrefix()),
                 grouping::get);
-        Grouped grouped = (Grouped) java.util.Objects.requireNonNull(memo,
-                "the memo never stores null");
+        Grouped grouped = (Grouped) Objects.requireNonNull(memo, "the memo never stores null");
         IDataValue absent = noGroup.apply(grouped.type());
         Map<Object, IDataValue> byKey = grouped.byKey();
         // C2: a qualified member's record side is resolved BEFORE the no-group shortcut — D-ABSENT
@@ -1584,7 +1582,7 @@ public final class GroupedAggregate
         }
         // A block turns textual only by admitting a textual candidate, so the text ranking holds
         // at least that one, and plain text order always answers (K3: no indeterminate arm).
-        String winner = java.util.Objects.requireNonNull(Extremes.genericStringExtreme(texts, true),
+        String winner = Objects.requireNonNull(Extremes.genericStringExtreme(texts, true),
                 "a textual block holds the candidate that made it textual");
         return candidates.get(texts.indexOf(winner));
     }
