@@ -1,5 +1,7 @@
 package net.cumba.corej.core.exec;
 
+import java.util.List;
+import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.DataValueType;
@@ -247,6 +249,37 @@ public interface JoinLookup
      * Returns the dataset name this lookup was built from.
      */
     String getDatasetName();
+
+
+    /**
+     * The joined dataset's own column metadata, in its column order — the merged schema's part the
+     * enumerations read ({@code PLAN-merged-evaluation-table} W3d, MQ6: real columns only, never a
+     * SUPP qualifier, never the {@code _matched_} flag); {@code null} when this lookup cannot
+     * enumerate one dataset (a row-dependent RELREC lookup, until W5).
+     *
+     * @return the columns, or {@code null}
+     */
+    default @Nullable List<DataTableColumnMeta> columns()
+    {
+        return null;
+    }
+
+
+    /**
+     * The metadata of one joined column, matched ignoring letter case — the {@code var_*}
+     * accessors' DATA-level read of a qualified name (W3d, N13 per MQ8): its name is the source
+     * column's (unqualified), its index the ordinal within the joined dataset's own columns. A SUPP
+     * qualifier the joined dataset's {@code SUPP<domain>} delivers (MQ5) answers its {@code QLABEL}
+     * as the label.
+     *
+     * @param columnName
+     *            the unqualified column name
+     * @return the metadata, or {@code null} when the joined dataset lacks the column
+     */
+    default @Nullable DataTableColumnMeta columnMeta(String columnName)
+    {
+        return null;
+    }
 
 
     /**

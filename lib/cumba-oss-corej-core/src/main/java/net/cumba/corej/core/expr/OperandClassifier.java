@@ -18,21 +18,25 @@ import java.util.regex.Pattern;
 public final class OperandClassifier
 {
 
-    /** Plain dotted cross-dataset reference {@code DOMAIN.COL} (no wildcard markers). */
-    // ⚑ QNU T2 r1 (engine 2): the COLUMN half matches in any letter case — the datatable lookup
-    // and OperatorRegistry.DOTTED_DATASET_COLUMN (N3) already do, so var_exists(DM.arm) must be
-    // the dotted reference the run time treats it as, not a COLUMN named DM.arm. The QUALIFIER
-    // half stays upper-case only: a Match_Datasets name's case is owner-pending N2, and widening
-    // it here alone would re-create the inconsistency CIT §1's revision clause forbids.
+    /**
+     * Plain dotted cross-dataset reference {@code DOMAIN.COL} (no wildcard markers). ⭐ BOTH halves
+     * match in any letter case: the COLUMN half since QNU T2 r1 (engine 2; the datatable lookup and
+     * {@code OperatorRegistry.DOTTED_DATASET_COLUMN} already did, N3), the QUALIFIER half since
+     * {@code PLAN-merged-evaluation-table} W3d (P-19 / MET #6, register {@code CIT §1}: a dataset
+     * name is case-insensitive, upper case expected) — {@code j.S} is the dotted reference the run
+     * time resolves to the join declared as {@code J}, and the Stage A naming lint
+     * ({@code StageAErrorKind.QUALIFIER_CASE}) reports the lower-case spelling.
+     */
     private static final Pattern DOTTED = Pattern
-            .compile("^[A-Z][A-Z0-9]*\\.[A-Za-z][A-Za-z0-9_]*$");
+            .compile("^[A-Za-z][A-Za-z0-9]*\\.[A-Za-z][A-Za-z0-9_]*$");
 
     /**
-     * The join-match flag {@code <DATASET>._matched_} (spec §3.3, D88). Must be tested before the
-     * built-in test: the token contains {@code _}, so {@link #looksBuiltin} would otherwise demand
-     * a registry entry and throw.
+     * The join-match flag {@code <DATASET>._matched_} (spec §3.3, D88), its qualifier in any letter
+     * case (P-19). Must be tested before the built-in test: the token contains {@code _}, so
+     * {@link #looksBuiltin} would otherwise demand a registry entry and throw.
      */
-    private static final Pattern MATCHED_FLAG = Pattern.compile("^[A-Z][A-Z0-9]*\\._matched_$");
+    private static final Pattern MATCHED_FLAG = Pattern
+            .compile("^[A-Za-z][A-Za-z0-9]*\\._matched_$");
 
     /**
      * ADaM capture-letter wildcard embedded in an otherwise upper-case name, e.g. {@code AyIND}.

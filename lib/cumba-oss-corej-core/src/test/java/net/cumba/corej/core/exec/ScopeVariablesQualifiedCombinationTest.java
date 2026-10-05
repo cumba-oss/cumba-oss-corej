@@ -15,7 +15,6 @@ import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.VariableRequirement;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -76,7 +75,7 @@ class ScopeVariablesQualifiedCombinationTest
     /** The primary dataset under validation: AE, carrying USUBJID + AESTDY (and NOT AESTDTC). */
     private static IDataTable aeTable()
     {
-        return MockTable.of().name("AE").col("USUBJID", "S1").col("AESTDY", "3").build();
+        return RealTables.of("AE").str("USUBJID", "S1").str("AESTDY", "3").build();
     }
 
 
@@ -138,13 +137,13 @@ class ScopeVariablesQualifiedCombinationTest
     // A DM that satisfies both a literal (ARM) and a glob (*) qualified entry.
     private static IDataTable dmWithArm()
     {
-        return MockTable.of().name("DM").col("USUBJID", "S1").col("ARM", "A").build();
+        return RealTables.of("DM").str("USUBJID", "S1").str("ARM", "A").build();
     }
 
 
     private static IDataTable exTable()
     {
-        return MockTable.of().name("EX").col("USUBJID", "S1").col("EXDOSE", "5").build();
+        return RealTables.of("EX").str("USUBJID", "S1").str("EXDOSE", "5").build();
     }
 
     // ==================================================================
@@ -261,13 +260,12 @@ class ScopeVariablesQualifiedCombinationTest
     @Test
     void a3_qualifiedGlob_datasetPresentButNoMatchingColumn_skips()
     {
-        IDataTable dm = MockTable.of().name("DM").col("USUBJID", "S1").build();
+        IDataTable dm = RealTables.of("DM").str("USUBJID", "S1").build();
         RuleExecutionResult res = run(rule(List.of("DM.AGE*"), null), inventory(map("DM", dm)));
         assertSkipped(res, "no variable matching");
 
         // Control: add the column the glob asks for and the same rule runs.
-        IDataTable dmAge = MockTable.of().name("DM").col("USUBJID", "S1").col("AGEU", "YEARS")
-                .build();
+        IDataTable dmAge = RealTables.of("DM").str("USUBJID", "S1").str("AGEU", "YEARS").build();
         assertRan(run(rule(List.of("DM.AGE*"), null), inventory(map("DM", dmAge))));
     }
 
@@ -281,12 +279,11 @@ class ScopeVariablesQualifiedCombinationTest
     @Test
     void a3_qualifiedGlob_resolvesViaSplitDomainUnion()
     {
-        IDataTable dmMember = MockTable.of().name("dm1").col("DOMAIN", "DM").col("ARM", "A")
-                .build();
+        IDataTable dmMember = RealTables.of("dm1").str("DOMAIN", "DM").str("ARM", "A").build();
         assertRan(run(rule(List.of("DM.*"), null), inventory(map("dm1", dmMember))));
 
         // Control: the same member carrying a DIFFERENT domain must not satisfy "DM.*".
-        IDataTable notDm = MockTable.of().name("xx1").col("DOMAIN", "XX").col("ARM", "A").build();
+        IDataTable notDm = RealTables.of("xx1").str("DOMAIN", "XX").str("ARM", "A").build();
         assertSkipped(run(rule(List.of("DM.*"), null), inventory(map("xx1", notDm))), "dataset DM");
     }
 
@@ -300,15 +297,16 @@ class ScopeVariablesQualifiedCombinationTest
     @Test
     void a3_qualifierLongerThanADomainCode_getsNoInventoryWalk()
     {
-        IDataTable adsl = MockTable.of().name("adsl").col("DOMAIN", "ADSL").col("TRT01P", "A")
-                .build();
-        // "adsl" is in the inventory but not under the name ADSL, and ADSL is 4 chars, so the
-        // tablesForDomain fallback is deliberately skipped.
-        assertSkipped(run(rule(List.of("ADSL.*"), null), inventory(map("adsl", adsl))),
-                "dataset ADSL");
-
-        // Control: register it under the exact name and the same rule runs.
+        IDataTable adsl = RealTables.of("adsl").str("DOMAIN", "ADSL").str("TRT01P", "A").build();
+        // "adsl" is in the inventory under its lower-case file name: since W3d of
+        // PLAN-merged-evaluation-table (MET #6, a dataset name is case-insensitive) the
+        // qualifier ADSL names it — through its canonical spellings, never an inventory walk
+        // (SplitDomainResolution.resolveIgnoringCase; the R-4 bound on the walk still holds).
+        assertRan(run(rule(List.of("ADSL.*"), null), inventory(map("adsl", adsl))));
         assertRan(run(rule(List.of("ADSL.*"), null), inventory(map("ADSL", adsl))));
+        // a name that differs by more than case stays absent — no walk resolves ADSL2
+        assertSkipped(run(rule(List.of("ADSL.*"), null), inventory(map("adsl2", adsl))),
+                "dataset ADSL");
     }
 
 
@@ -322,8 +320,8 @@ class ScopeVariablesQualifiedCombinationTest
     @Test
     void a3_suppPivotBackDoorAppliesToLiteralsOnly()
     {
-        IDataTable suppDm = MockTable.of().name("SUPPDM").col("USUBJID", "S1")
-                .col("QNAM", "USUBJID").build();
+        IDataTable suppDm = RealTables.of("SUPPDM").str("USUBJID", "S1").str("QNAM", "USUBJID")
+                .build();
         assertRan(run(rule(List.of("DM.USUBJID"), null), inventory(map("SUPPDM", suppDm))));
         assertSkipped(run(rule(List.of("DM.*"), null), inventory(map("SUPPDM", suppDm))),
                 "dataset DM");

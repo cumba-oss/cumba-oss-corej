@@ -113,14 +113,54 @@ public final class SplitDomainResolution
         {
             return new DomainResolution.Table(exact);
         }
-        if (!(resolver instanceof DatasetResolver.WithInventory inv)
-                || name.length() != DOMAIN_CODE_LENGTH)
+        if (!(resolver instanceof DatasetResolver.WithInventory inv))
+        {
+            return ABSENT;
+        }
+        // ⭐ W3d of PLAN-merged-evaluation-table (P-19 / MET #6): a dataset name is matched
+        // ignoring letter case — the inventory entry that equals the name ignoring case answers
+        // for a resolver whose own policy is exact (the product's upper-case every name already)
+        IDataTable ignoringCase = resolveIgnoringCase(inv, name);
+        if (ignoringCase != null)
+        {
+            return new DomainResolution.Table(ignoringCase);
+        }
+        if (name.length() != DOMAIN_CODE_LENGTH)
         {
             return ABSENT; // the R-4 bound: never walk the inventory for a non-domain-code name
         }
         String key = name.toUpperCase(Locale.ROOT);
         return MEMO.computeIfAbsent(resolver, _ -> new ConcurrentHashMap<>()).computeIfAbsent(key,
                 _ -> unionOf(inv, key, ruleId));
+    }
+
+
+    /**
+     * The inventory entry equal to {@code name} ignoring letter case, resolved — {@code null} when
+     * none differs from {@code name} by case alone (the exact spelling is the caller's).
+     *
+     * @param inv
+     *            the inventory resolver
+     * @param name
+     *            the dataset name as written
+     * @return the table, or {@code null}
+     */
+    static @Nullable IDataTable resolveIgnoringCase(DatasetResolver.WithInventory inv, String name)
+    {
+        // the two canonical spellings only — upper case is what the IG and the product's
+        // resolvers use, lower case what a file-named inventory carries; never an inventory walk
+        // (the R-4 bound: a miss on a non-domain-code name must not touch the inventory)
+        String upper = name.toUpperCase(Locale.ROOT);
+        if (!upper.equals(name))
+        {
+            IDataTable t = inv.resolve(upper);
+            if (t != null)
+            {
+                return t;
+            }
+        }
+        String lower = name.toLowerCase(Locale.ROOT);
+        return lower.equals(name) ? null : inv.resolve(lower);
     }
 
 

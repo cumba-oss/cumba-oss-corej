@@ -134,10 +134,37 @@ public final class SuppPivot
 
 
     /**
+     * The merged schema's metadata of a supplemental qualifier (W3d, MET #7 / §3.9: the QLABEL as
+     * the label, QVAL's type), or {@code null} when {@code name} is no qualifier of the context's
+     * table. On the legacy arm the pivot carries no label: name and type only.
+     *
+     * @param ctx
+     *            the evaluation context
+     * @param name
+     *            the bare column name
+     * @return the column metadata, or {@code null}
+     * @throws MergeErrorReadException
+     *             when the column carries a {@code MERGE_ERROR} (OD-7)
+     */
+    public static net.cumba.datatable.@Nullable DataTableColumnMeta qualifierColumnMeta(
+            EvaluationContext ctx, String name)
+    {
+        MergedEvaluation.Built view = ctx.getMergedView();
+        if (view != null && ctx.getTable() == view.table())
+        {
+            return view.suppColumn(name) == null ? null : view.suppColumnMeta(name);
+        }
+        return pivot(ctx, name) == null ? null
+                : net.cumba.datatable.DataTableColumnMeta.builder().name(name)
+                        .type(DataValueType.STRING).build();
+    }
+
+
+    /**
      * Whether {@code name} is delivered as a supplemental qualifier of the context's table: the
      * primary lacks the column, {@code Supp_Merge} is on and {@code SUPP<domain>} carries the
      * {@code QNAM} (any row — the existence half of the merge, the same reading
-     * {@code OperatorRegistry.existsInSuppQnam} applies on the dotted path).
+     * {@link SuppQualifiers} applies on the dotted path).
      *
      * @param ctx
      *            the evaluation context

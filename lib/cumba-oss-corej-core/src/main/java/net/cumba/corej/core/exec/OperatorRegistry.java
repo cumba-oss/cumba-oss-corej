@@ -17,9 +17,9 @@ import org.jspecify.annotations.Nullable;
  * operators — the legacy per-row operator engine was removed once every shipped rule compiled to a
  * native {@code Expr}. What remains is the set of probes {@code ExprCompiler} calls when compiling
  * {@code exists} / {@code var_exists} / {@code ds_exists} / {@code var_is_null} /
- * {@code max_value_length} plans, plus two helpers shared with {@link ScopeVariableSource} (a third
- * sharer, {@code CohortRunner}, is gone — {@code PLAN-retire-cohort-runner.md}). A rename is
- * deliberately deferred.
+ * {@code max_value_length} plans (the SUPP existence half reads the merged schema's QNAM set,
+ * {@link SuppQualifiers}, shared with {@link ScopeVariableSource} since W3d of
+ * {@code PLAN-merged-evaluation-table}). A rename is deliberately deferred.
  * </p>
  */
 public final class OperatorRegistry
@@ -33,21 +33,23 @@ public final class OperatorRegistry
      * ⭐ The COLUMN part admits any letter case ({@code PLAN-qualified-name-uniformity-review} N3,
      * register {@code CIT §1}: a column name matches ignoring case): {@code "ADSL.trt01p"} used to
      * fall through to a primary-schema lookup of the literal text and answer {@code false} while
-     * {@code "ADSL.TRT01P"} answered {@code true} for the same column. ⚠ The QUALIFIER part stays
-     * upper-case only on purpose — whether {@code CIT §1} covers the dataset qualifier is
-     * owner-pending (plan §2.4, N2), and a lower-case qualifier is pinned as such.
+     * {@code "ADSL.TRT01P"} answered {@code true} for the same column. ⭐ The QUALIFIER part admits
+     * any letter case too since {@code PLAN-merged-evaluation-table} W3d (P-19 / MET #6: a dataset
+     * name is case-insensitive) — {@code "adsl.TRT01P"} is the same question as
+     * {@code "ADSL.TRT01P"}.
      * </p>
      */
     private static final Pattern DOTTED_DATASET_COLUMN = Pattern
-            .compile("^[A-Z][A-Z0-9]*\\.[A-Za-z][A-Za-z0-9_]*$");
+            .compile("^[A-Za-z][A-Za-z0-9]*\\.[A-Za-z][A-Za-z0-9_]*$");
 
     /**
      * Filter form {@code <DOMAIN>.<KEY>=<VALUE>}: does the resolved foreign dataset contain at
      * least one row whose {@code <KEY>} cell equals {@code <VALUE>}? Subsumes CDISC-AD0640's
-     * {@code SUPPAE.QNAM=AETRTEM} (Fix #18).
+     * {@code SUPPAE.QNAM=AETRTEM} (Fix #18). The dataset half in any letter case (P-19); the
+     * {@code <VALUE>} is a cell value and compares exactly ({@code CIT §3}).
      */
     private static final Pattern DOTTED_FILTER = Pattern
-            .compile("^([A-Z][A-Z0-9]*)\\.([A-Z][A-Z0-9_]*)=([A-Z0-9_]+)$");
+            .compile("^([A-Za-z][A-Za-z0-9]*)\\.([A-Z][A-Z0-9_]*)=([A-Z0-9_]+)$");
 
     private OperatorRegistry()
     {
@@ -410,13 +412,14 @@ public final class OperatorRegistry
 
 
     /**
-     * Plain dotted form {@code <DOMAIN>.<col>}. Resolves {@code <DOMAIN>} via the
-     * {@link DatasetResolver} and asks whether {@code <col>} is in its metadata. If the literal
-     * column is absent, falls back to scanning the corresponding {@code SUPP<DOMAIN>} dataset for a
-     * row with {@code QNAM == <col>} — Fix #39's lazy SUPP-pivot lookup. This brings the
-     * dotted-form semantics into alignment with Python's {@code dataset_preprocessor} (which pivots
-     * SUPP qualifiers onto the parent before evaluation): {@code AE.AETRTEM exists} returns true
-     * whether AETRTEM is a literal AE column or surfaces via {@code SUPPAE.QNAM=AETRTEM}.
+     * Plain dotted form {@code <DOMAIN>.<col>}. A DECLARED {@code <DOMAIN>} (a join of the rule,
+     * matched ignoring case) answers from the merged schema — the join's column set, the partner's
+     * SUPP qualifiers included (MQ9 / MQ5, W3d of {@code PLAN-merged-evaluation-table}). An
+     * undeclared one resolves {@code <DOMAIN>} via the {@link DatasetResolver} and asks whether
+     * {@code <col>} is in its metadata; if the literal column is absent, the qualifiers its
+     * {@code SUPP<DOMAIN>} delivers ({@link SuppQualifiers}) answer — Fix #39's SUPP-pivot lookup:
+     * {@code AE.AETRTEM exists} is true whether AETRTEM is a literal AE column or surfaces via
+     * {@code SUPPAE.QNAM=AETRTEM}.
      * <p>
      * If neither the foreign dataset nor its SUPP partner has the column, returns {@code false}.
      * </p>
@@ -429,6 +432,15 @@ public final class OperatorRegistry
         int dot = name.indexOf('.');
         String domain = name.substring(0, dot);
         String col = name.substring(dot + 1);
+        // ⭐ MQ9 (PLAN-merged-evaluation-table W3d): a DECLARED dataset answers from the merged
+        // schema — the join's column set, the partner's SUPP qualifiers included (MQ5) — exactly
+        // what a value read of the same name would find; the inventory arm below serves an
+        // undeclared dataset only (a pure metadata question, no join required).
+        JoinLookup declared = ctx.getJoinedDatasets().get(domain);
+        if (declared != null)
+        {
+            return !declared.lacksColumnOnEveryRow(col);
+        }
         // Fix #358: exact name first, else the split-domain union, so `var_exists(`LB.LBSEQ`)`
         // is true on a submission that ships LB split — the asymmetry against the scope
         // resolver's split handling is gone (CDISC-AD0898's silent no-op, plan §1).
@@ -447,80 +459,18 @@ public final class OperatorRegistry
         // SUPPLB never unions here, matching ScopeVariableSource's literal-half behaviour.)
         // PLAN-operation-replacements §2.3: the pivot is the existence half of the declared SUPP
         // merge, so a rule that declares Supp_Merge: false does not get it either.
-        if (ctx.isSuppMerge() && !domain.startsWith("SUPP"))
+        if (ctx.isSuppMerge() && !domain.toUpperCase(java.util.Locale.ROOT).startsWith("SUPP"))
         {
-            String suppName = "SUPP" + domain;
-            IDataTable supp = SplitDomainResolution.resolveTableOrThrow(ctx.getDatasetResolver(),
-                    suppName, ctx.getRuleId());
-            if (supp != null && existsInSuppQnam(supp, col, ctx.getSharedIndexCache()))
-            {
-                return true;
-            }
+            // the dataset may be absent while its SUPP ships (review H2 of the scope gate): the
+            // SUPP's qualifiers are still the merged schema's answer for the name
+            String domainCode = foreign == null ? domain
+                    : java.util.Objects.requireNonNullElse(
+                            DatasetIdentity.domainOfDataset(domain, ctx.getDatasetResolver()),
+                            domain);
+            return SuppQualifiers.of(foreign, domain, domainCode, ctx.getDatasetResolver(),
+                    ctx.getSharedIndexCache(), ctx.getRuleId()).contains(col);
         }
         return false;
-    }
-
-
-    /**
-     * Returns {@code true} when the SUPP-- table has at least one row whose {@code QNAM} cell
-     * equals {@code col}. Empty / missing QNAM cells don't match.
-     * <p>
-     * ⭐ A {@code QNAM} cell is a <em>value</em>, and a string that holds a column name is still a
-     * string: it compares as every string does, case-sensitively (owner, 2026-09-28,
-     * {@code PLAN-case-insensitive-templates} §1 / register {@code CIT §3}: <i>"a String that
-     * contains a column name is still a string in the engine"</i>). Review round 1 of that plan had
-     * made this comparison ignore case (E5); the owner reverted it. The engine reads the
-     * {@code QNAM} cell here itself — for a qualified {@code Requirements} entry and the
-     * {@code Check}'s dotted {@code exists} alike, as {@link SuppPivot} does for a bare qualifier
-     * read under {@code Supp_Merge} — so a rule has no place to fold it: a lowercase {@code QNAM}
-     * cell does not match an upper-case qualifier name.
-     * </p>
-     * <p>
-     * Fix #124 widened the visibility to package-private so {@link ScopeVariableSource} can reuse
-     * the <em>same</em> implementation for a qualified {@code Scope.Variables} entry. Sharing it
-     * rather than re-implementing is what makes the scope gate and the {@code Check}-side dotted
-     * {@code exists} provably agree (including this method's case-sensitive comparison).
-     * </p>
-     *
-     * @param supp
-     *            the resolved {@code SUPP--} table
-     * @param col
-     *            the qualifier name being looked for
-     * @return whether the table carries the qualifier
-     */
-    static boolean existsInSuppQnam(IDataTable supp, String col)
-    {
-        return existsInSuppQnam(supp, col, null);
-    }
-
-
-    /**
-     * As {@link #existsInSuppQnam(IDataTable, String)}, reading the SUPP table through the run's
-     * shared index when there is one.
-     * <p>
-     * Combined review of runbook W2–W8, W2 L2 / round 2 L2: ONE parse of the SUPP table for
-     * existence and for the pivot — the {@link SuppQnamIndex}, taken from
-     * {@code JoinCache.SharedIndexCache} (built once per table per run, as {@link SuppPivot} takes
-     * it) and parsed afresh only without a cache. Existence is the index's {@code QNAM} set: every
-     * non-blank {@code QNAM} cell the table carries, whether or not one of its rows can qualify a
-     * record — the same answer the QNAM-column scan this replaced gave. No {@code QNAM} column: no
-     * qualifier exists.
-     * </p>
-     *
-     * @param supp
-     *            the resolved {@code SUPP--} table
-     * @param col
-     *            the qualifier name being looked for
-     * @param cache
-     *            the run's shared index cache, or {@code null}
-     * @return whether the table carries the qualifier
-     */
-    static boolean existsInSuppQnam(IDataTable supp, String col,
-            JoinCache.@Nullable SharedIndexCache cache)
-    {
-        SuppQnamIndex index = cache != null ? cache.getOrBuildSuppQnamIndex(supp)
-                : SuppQnamIndex.of(supp);
-        return index != null && index.qnams().contains(col);
     }
 
 

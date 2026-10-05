@@ -305,11 +305,11 @@ class ScopeMatcherQualifiedTest
     {
         // AE has no AETRTEM column, but SUPPAE delivers it as a QNAM qualifier — the same
         // Fix #39 fallback the Check-side dotted `exists` applies.
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").build();
-        IDataTable suppae = MockTable.of().name("SUPPAE").col("QNAM", "AETRTEM").build();
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").build();
+        IDataTable suppae = RealTables.of("SUPPAE").str("QNAM", "AETRTEM").build();
         assertNull(check(include("AE.AETRTEM"), sourceOf(map("AE", ae, "SUPPAE", suppae))));
 
-        IDataTable otherQnam = MockTable.of().name("SUPPAE").col("QNAM", "AESOSP").build();
+        IDataTable otherQnam = RealTables.of("SUPPAE").str("QNAM", "AESOSP").build();
         assertNotNull(check(include("AE.AETRTEM"), sourceOf(map("AE", ae, "SUPPAE", otherQnam))),
                 "a different QNAM must not satisfy the entry");
     }
@@ -321,7 +321,7 @@ class ScopeMatcherQualifiedTest
         // Review H2: `exists AE.AETRTEM` on the Check side falls through to the SUPPAE scan when
         // resolve("AE") is null, so the scope gate must too — otherwise a hoist of that guard
         // would flip a running rule to SKIPPED on a study that ships SUPPAE without AE.
-        IDataTable suppae = MockTable.of().name("SUPPAE").col("QNAM", "AETRTEM").build();
+        IDataTable suppae = RealTables.of("SUPPAE").str("QNAM", "AETRTEM").build();
         Map<String, IDataTable> tables = map("SUPPAE", suppae);
         DatasetResolver.WithInventory resolver = inventory(tables);
         ScopeVariableSource src = ScopeVariableSource.of(resolver, primary());
@@ -366,8 +366,10 @@ class ScopeMatcherQualifiedTest
         ScopeVariableSource src = ScopeVariableSource.of(counting, primary());
         assertNotNull(src);
         assertTrue(src.metasOf("ADSL").isEmpty());
-        assertEquals(1, resolveCalls.get(),
-                "a 4-char absent qualifier must cost exactly one resolve, not an inventory walk");
+        // W3d (MET #6): the exact spelling, then its lower-case canonical spelling
+        // (SplitDomainResolution.resolveIgnoringCase) — two resolves, never an inventory walk
+        assertEquals(2, resolveCalls.get(),
+                "a 4-char absent qualifier costs its two spellings, not an inventory walk");
 
         resolveCalls.set(0);
         assertTrue(src.metasOf("LB").isEmpty());
@@ -543,8 +545,8 @@ class ScopeMatcherQualifiedTest
     void plainQualifiersAgreeWithTheCheckSideDottedExists()
     {
         IDataTable dm = MockTable.of().name("DM").col("ARM", "A").build();
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").build();
-        IDataTable suppae = MockTable.of().name("SUPPAE").col("QNAM", "AETRTEM").build();
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").build();
+        IDataTable suppae = RealTables.of("SUPPAE").str("QNAM", "AETRTEM").build();
         Map<String, IDataTable> tables = map("DM", dm, "AE", ae, "SUPPAE", suppae);
         DatasetResolver.WithInventory resolver = inventory(tables);
         ScopeVariableSource src = ScopeVariableSource.of(resolver, primary());

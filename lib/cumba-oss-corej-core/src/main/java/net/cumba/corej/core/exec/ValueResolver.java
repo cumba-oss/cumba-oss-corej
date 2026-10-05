@@ -53,6 +53,41 @@ public final class ValueResolver
     }
 
 
+    /** The joined dataset's column names matching {@code pattern} (see the call site). */
+    private static List<String> matchingColumnNames(EvaluationContext ctx, JoinLookup lookup,
+            String foreign, java.util.regex.Pattern pattern)
+    {
+        List<net.cumba.datatable.DataTableColumnMeta> columns = lookup.columns();
+        List<String> out = new ArrayList<>();
+        if (columns != null)
+        {
+            for (net.cumba.datatable.DataTableColumnMeta column : columns)
+            {
+                if (pattern.matcher(column.getName()).matches())
+                {
+                    out.add(column.getName());
+                }
+            }
+            return out;
+        }
+        net.cumba.datatable.IDataTable foreignTable = SplitDomainResolution
+                .resolveTableOrThrow(ctx.getDatasetResolver(), foreign, ctx.getRuleId());
+        if (foreignTable == null)
+        {
+            throw new OperandSubstitutor.SubstitutionException(
+                    "wildcard operand could not resolve foreign dataset `" + foreign + "`");
+        }
+        // Phase 7: cache the matching column-name lookup once per (foreignTable, Pattern).
+        int[] matchingColIdx = ctx.getWildcardColumns().matchingColumns(foreignTable, pattern);
+        DataTableMeta meta = foreignTable.getMetaData();
+        for (int c : matchingColIdx)
+        {
+            out.add(meta.getColumn(c).getName());
+        }
+        return out;
+    }
+
+
     private static List<Object> collectWildcardValues(OperandSubstitutor.Wildcard wild,
             java.util.regex.Pattern pattern, EvaluationContext ctx, long row)
     {
@@ -74,24 +109,14 @@ public final class ValueResolver
                         "wildcard operand requires a JoinLookup for foreign dataset `" + foreign
                                 + "` but none was provided (Match_Datasets missing?)");
             }
-            // Fix #358: exact name first, else the split-domain union — without this, fixing the
-            // join alone would merely move the failure from the lookup check above to this
-            // resolve (same exception, new line, still no values).
-            net.cumba.datatable.IDataTable foreignTable = SplitDomainResolution
-                    .resolveTableOrThrow(ctx.getDatasetResolver(), foreign, ctx.getRuleId());
-            if (foreignTable == null)
+            // W3d of PLAN-merged-evaluation-table (MQ6): the joined dataset's REAL columns as the
+            // merged schema lists them — the lookup's own column set; the inventory (Fix #358:
+            // exact name first, else the split-domain union) only for a lookup that cannot
+            // enumerate one dataset.
+            List<String> columnNames = matchingColumnNames(ctx, lookup, foreign, pattern);
+            List<Object> result = new ArrayList<>(columnNames.size());
+            for (String colName : columnNames)
             {
-                throw new OperandSubstitutor.SubstitutionException(
-                        "wildcard operand could not resolve foreign dataset `" + foreign + "`");
-            }
-            // Phase 7: cache the matching column-name lookup once per (foreignTable, Pattern).
-            // Without this we'd regex-match every foreign-dataset column on every row.
-            int[] matchingColIdx = ctx.getWildcardColumns().matchingColumns(foreignTable, pattern);
-            DataTableMeta meta = foreignTable.getMetaData();
-            List<Object> result = new ArrayList<>(matchingColIdx.length);
-            for (int c : matchingColIdx)
-            {
-                String colName = meta.getColumn(c).getName();
                 // JOINED arm — the TYPED channel (PLAN-joined-value-accessor §2a; owner 2026-09-21:
                 // "I rule it's the same kind, so it's empty string or MIS as well"). This used to
                 // read the RAW lookup and drop a null, which was never a semantic — only an

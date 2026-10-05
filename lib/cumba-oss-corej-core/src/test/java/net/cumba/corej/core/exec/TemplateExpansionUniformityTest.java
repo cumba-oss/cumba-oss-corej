@@ -26,15 +26,11 @@ import org.junit.jupiter.api.Test;
  * join exactly as the bare expansion reads the primary.
  *
  * <p>
- * ⚠ Known red <b>N28</b> (measured here, recorded, not fixed): a qualified marker template in a
- * Check is collected as a wildcard name whole ({@code WildcardExpander.isWildcard} sees its
- * lower-case markers), parsed into a regex over the WHOLE dotted text and matched against the
- * PRIMARY's column names ({@code WildcardExpander.expand}: {@code meta.getColumn(i).getName()}),
- * which no primary column can match — so the rule never expands ({@code NoMatch}) and is dropped,
- * while the same template bare expands. The {@code Requirements.Variables} entry grammar handles
- * the qualifier ({@code scopeVariableWildcardPattern} parses the variable half), the Check
- * expansion does not. Zero corpus carriers (phase-0 census, T2 r1: no Check carries a qualified
- * marker template).
+ * N28 — served since {@code PLAN-merged-evaluation-table} W3d (MQ6): the dotted wildcard name is
+ * matched against the {@code J.}-prefixed real columns of the dataset the rule's entry {@code J}
+ * names ({@code WildcardExpander.columnsFor}), so {@code J.TRTxxP} mints {@code J.TRT01P} and the
+ * expansion reads the join. Before W3d it was matched whole against the PRIMARY's names and the
+ * rule was dropped ({@code NoMatch}); zero corpus carriers either way (phase-0 census).
  * </p>
  */
 class TemplateExpansionUniformityTest
@@ -83,21 +79,44 @@ class TemplateExpansionUniformityTest
     }
 
 
-    /** ⚠ Known red N28: the qualified template never expands today. */
+    /**
+     * N28 served ({@code PLAN-merged-evaluation-table} W3d, MQ6): the qualified template expands
+     * over the JOINED dataset's real columns, each expansion reading through the join — the same
+     * rows the bare template fires over a primary carrying J's columns. RED before (the pin this
+     * replaces): {@code NoMatch}, the rule dropped.
+     */
     @Test
-    void aQualifiedTemplateIsMatchedAgainstThePrimaryAndNeverExpandsToday()
+    void aQualifiedTemplateExpandsOverTheJoinedDatasetAndReadsThroughTheJoin()
     {
         IDataTable p = withTreatments("P", "a", "a");
         IDataTable j = withTreatments("J", "x", "y");
-        WildcardExpander.ExpansionResult result = expand("empty(J.TRTxxP)", p, j);
-        assertInstanceOf(WildcardExpander.ExpansionResult.NoMatch.class, result,
-                "N28: the dotted wildcard name is matched whole against P's column names — remove"
-                        + " this pin and assert the two expansions agree when the Check expansion"
-                        + " learns the qualifier");
-        // What uniformity would require, stated as the reference the fix must meet: the bare
-        // template over a primary carrying J's columns.
         IDataTable pLikeJ = withTreatments("P", "x", "y");
-        assertEquals(List.of(List.of(2L), List.of(1L)),
-                firedPerExpansion(expand("empty(TRTxxP)", pLikeJ, j), pLikeJ, j));
+        List<List<Long>> reference = firedPerExpansion(expand("empty(TRTxxP)", pLikeJ, j), pLikeJ,
+                j);
+        assertEquals(List.of(List.of(2L), List.of(1L)), reference);
+        assertEquals(reference, firedPerExpansion(expand("empty(J.TRTxxP)", p, j), p, j),
+                "J.TRT01P and J.TRT02P, read through the join: J's blanks, not P's");
+        // P-19: the qualifier's case is immaterial — j.TRTxxP enumerates the entry J
+        assertEquals(reference, firedPerExpansion(expand("empty(j.TRTxxP)", p, j), p, j));
+    }
+
+
+    /**
+     * A qualifier naming no entry of the rule enumerates nothing (D3 of the absorbed
+     * {@code PLAN-qualified-template-expansion}: Stage A's observe-only
+     * {@code DOTTED_REF_UNDECLARED} judges the spelling, the expansion contributes nothing) — the
+     * template's own no-match, exactly as a bare template over a primary without the columns.
+     */
+    @Test
+    void anUndeclaredQualifierEnumeratesNothing()
+    {
+        IDataTable p = withTreatments("P", "a", "a");
+        IDataTable j = withTreatments("J", "x", "y");
+        assertInstanceOf(WildcardExpander.ExpansionResult.NoMatch.class,
+                expand("empty(Q.TRTxxP)", p, j));
+        // and a bare template never sees the join's columns (MQ6, UVC): P without TRT columns
+        IDataTable pBare = RealTables.of("P").str("K", "k1", "k2", "k3").build();
+        assertInstanceOf(WildcardExpander.ExpansionResult.NoMatch.class,
+                expand("empty(TRTxxP)", pBare, j));
     }
 }

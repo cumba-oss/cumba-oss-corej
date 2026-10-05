@@ -12,6 +12,7 @@ import net.cumba.corej.core.exec.JoinLookup;
 import net.cumba.corej.core.exec.ScalarSemantics;
 import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.datatable.DataTableMeta;
+import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.IDataValue;
@@ -102,7 +103,7 @@ public final class DynamicColumnRead
      * a joined column. Never a {@code null} value (NNL: every value a rule reads is a real value or
      * a {@code MissingValue}).
      */
-    private sealed interface Target permits Constant, Primary, Joined
+    private sealed interface Target permits Constant, Primary, Joined, Qualifier
     {
 
         /** The cell on {@code row}. */
@@ -140,6 +141,26 @@ public final class DynamicColumnRead
                 return ctx.getTable().getColumn(colIdx).getDataValue(row);
             }
             return DataValues.of(text);
+        }
+    }
+
+
+    /**
+     * A supplemental qualifier the declared SUPP merge delivers for a bare name the evaluation
+     * table lacks ({@code PLAN-merged-evaluation-table} W3d, MQ7 — {@code DCF Q8} lifted for this
+     * point; {@code DCF Q12}'s F1 closed with it): the column {@code SuppPivot} hands out — the
+     * merged view's SUPP column, or the legacy pivot — read as the authored name reads it. A
+     * flagged column ({@code MERGE_ERROR}, OD-7) raises {@code MergeErrorReadException} at the
+     * read, the read-time backstop of the static gate.
+     */
+    private record Qualifier(IDataTableColumn column) implements Target
+    {
+
+        @Override
+        public IDataValue read(EvaluationContext ctx, long row)
+        {
+            IDataValue dv = column.getDataValue(row);
+            return dv.isMissingOrInvalid() ? dv : DataValues.of(dv.getValueAsString());
         }
     }
 
@@ -395,6 +416,15 @@ public final class DynamicColumnRead
         {
             DataValueType t = meta.getColumn(colIdx).getType();
             return new Primary(colIdx, t == DataValueType.LONG || t == DataValueType.DOUBLE);
+        }
+        // W3d (MQ7): a bare name the primary lacks may be a SUPP<domain> qualifier of the record
+        // — the column the authored name reads through SuppPivot (the view's SUPP column on the
+        // merged arm; a MERGE_ERROR raises here, at the read).
+        IDataTableColumn qualifier = net.cumba.corej.core.exec.SuppPivot.qualifierColumn(ctx,
+                resolved);
+        if (qualifier != null)
+        {
+            return new Qualifier(qualifier);
         }
         // Absent from the evaluation table: the authored name's D76 default, under the same
         // eligibility nameRefPlan / valueRefPlan / substitutedScalarCell apply — judged on the

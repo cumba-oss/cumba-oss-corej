@@ -14,7 +14,6 @@ import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.VariableRequirement;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -75,15 +74,15 @@ class ScopeMatcherBareSuppQualifierTest
     /** Primary AE WITHOUT an AETRTEM column. */
     private static IDataTable ae()
     {
-        return MockTable.of().name("AE").col("USUBJID", "S1").col("AESEQ", "1").build();
+        return RealTables.of("AE").str("USUBJID", "S1").str("AESEQ", "1").build();
     }
 
 
     /** SUPPAE delivering AETRTEM as a QNAM row. */
     private static IDataTable suppae()
     {
-        return MockTable.of().name("SUPPAE").col("USUBJID", "S1").col("IDVAR", "AESEQ")
-                .col("IDVARVAL", "1").col("QNAM", "AETRTEM").col("QVAL", "Y").build();
+        return RealTables.of("SUPPAE").str("USUBJID", "S1").str("IDVAR", "AESEQ")
+                .str("IDVARVAL", "1").str("QNAM", "AETRTEM").str("QVAL", "Y").build();
     }
 
 

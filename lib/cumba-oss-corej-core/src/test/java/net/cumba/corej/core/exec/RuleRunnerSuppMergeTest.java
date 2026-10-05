@@ -265,15 +265,14 @@ class RuleRunnerSuppMergeTest
 
 
     /**
-     * ⚑ {@code PLAN-dynamic-column-functions} deviation 10, PINNED as it stands (review round 1,
-     * lane B L6; the direction is owner-pending as lane C F1): the authored bare name reads the
-     * merged SUPP qualifier, {@code colref} over the same name does NOT — the pivot is not a column
-     * of the evaluation table ({@code DynamicColumnRead}), and {@code find_vars} does not return
-     * pivoted names either (owner Q12). If the owner rules that {@code colref} reads the pivot,
-     * this pin flips with the fix.
+     * MQ7 ({@code PLAN-merged-evaluation-table} W3d; {@code DCF Q8} lifted for this point,
+     * {@code DCF Q12}'s F1 closed): {@code colref} over a bare name the primary lacks reads the
+     * supplemental qualifier the authored name reads — the pivot IS a column of the merged
+     * evaluation table. RED before (the pin this replaces, {@code PLAN-dynamic-column-functions}
+     * deviation 10): the dynamic read saw no column and fired nothing.
      */
     @Test
-    void colrefDoesNotReadTheMergedQualifierTheAuthoredNameReads()
+    void colrefReadsTheMergedQualifierTheAuthoredNameReads()
     {
         IDataTable pc = pc();
         RuleExecutionResult authored = RuleRunnerCalls.execute(
@@ -285,8 +284,83 @@ class RuleRunnerSuppMergeTest
                 load(pcRule("PCSTRESC == \\\"BLQ\\\" and not empty(colref(\\\"PCCALCN\\\"))", "")),
                 pc, inventory(pc, suppPc()));
         assertEquals(RuleExecutionStatus.EXECUTED, dynamic.getStatus(), dynamic.getStatusMessage());
-        assertEquals(List.of(),
+        assertEquals(List.of(1L),
                 dynamic.getViolations().stream().map(Violation::getRowNumber).toList(),
-                "colref reads the evaluation table only: PCCALCN is no column there");
+                "colref reads the view's SUPP column: PCCALCN = 0.5 on row 1");
+        assertEquals("0.5", dynamic.getViolations().get(0).getValues().get("PCCALCN"));
+        RuleExecutionResult off = RuleRunnerCalls.execute(
+                load(pcRule("PCSTRESC == \\\"BLQ\\\" and not empty(colref(\\\"PCCALCN\\\"))",
+                        "\"Supp_Merge\": false,")),
+                pc, inventory(pc, suppPc()));
+        assertEquals(List.of(), off.getViolations().stream().map(Violation::getRowNumber).toList(),
+                "Supp_Merge: false — no qualifier for colref either");
+    }
+
+
+    /**
+     * The read-time backstop of OD-7 ({@code MergeErrorReadException}) becomes reachable through
+     * {@code colref} (W3d, MQ7): the static gate sees no reference to the flagged qualifier, the
+     * dynamic read reaches the flagged column and the rule ERRORs under the {@code MERGE_ERROR on}
+     * prefix. RED before: {@code colref} read no qualifier and the rule EXECUTED clean over a
+     * duplicate.
+     */
+    @Test
+    void colrefOverAFlaggedQualifierErrorsAtReadTime()
+    {
+        IDataTable pc = pc();
+        IDataTable duplicate = RealTableFixture.of("SUPPPC").str("RDOMAIN", "PC", "PC")
+                .str("USUBJID", "S1", "S1").str("IDVAR", "PCSEQ", "PCSEQ").str("IDVARVAL", "1", "1")
+                .str("QNAM", "PCCALCN", "PCCALCN").str("QVAL", "0.5", "0.7").build();
+        RuleExecutionResult dynamic = RuleRunnerCalls.execute(
+                load("{\"Core\":{\"Id\":\"X-1\"},\"Check\":{\"expression\":"
+                        + "\"not empty(colref(\\\"PCCALCN\\\"))\"},"
+                        + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"PCSTRESC\"]}}"),
+                pc, inventory(pc, duplicate));
+        assertEquals(RuleExecutionStatus.ERROR, dynamic.getStatus(), dynamic.getStatusMessage());
+        assertTrue(
+                dynamic.getStatusMessage()
+                        .startsWith(MergedEvaluation.MERGE_ERROR_MESSAGE_PREFIX + "PCCALCN"),
+                dynamic.getStatusMessage());
+        // control: a rule not reading the qualifier (nor reporting it) runs clean over the
+        // same duplicate
+        RuleExecutionResult other = RuleRunnerCalls.execute(
+                load("{\"Core\":{\"Id\":\"X-1\"},\"Check\":{\"expression\":"
+                        + "\"PCSTRESC == \\\"BLQ\\\"\"},"
+                        + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"PCSTRESC\"]}}"),
+                pc, inventory(pc, duplicate));
+        assertEquals(RuleExecutionStatus.EXECUTED, other.getStatus(), other.getStatusMessage());
+    }
+
+
+    /**
+     * MET #7 / §3.9 (W3d): a supplemental qualifier's DATA-level metadata is the merged schema's —
+     * its {@code QLABEL} as the label, {@code QVAL}'s type — while it stays no variable of the
+     * dataset (no ordinal, MQ6).
+     */
+    @Test
+    void aQualifiersDataLevelMetadataIsTheQlabelAndQvalType()
+    {
+        IDataTable pc = pc();
+        IDataTable supp = RealTableFixture.of("SUPPPC").str("RDOMAIN", "PC").str("USUBJID", "S1")
+                .str("IDVAR", "PCSEQ").str("IDVARVAL", "1").str("QNAM", "PCCALCN")
+                .str("QLABEL", "Numeric Interpretation").str("QVAL", "0.5").build();
+        RuleExecutionResult label = RuleRunnerCalls.execute(
+                load(pcRule(
+                        "var_label(\\\"PCCALCN\\\", \\\"DATA\\\") == \\\"Numeric Interpretation\\\""
+                                + " and var_type(\\\"PCCALCN\\\", \\\"DATA\\\") == \\\"Char\\\""
+                                + " and empty(var_ordinal(\\\"PCCALCN\\\", \\\"DATA\\\"))",
+                        "")),
+                pc, inventory(pc, supp));
+        assertEquals(RuleExecutionStatus.EXECUTED, label.getStatus(), label.getStatusMessage());
+        // metadata is constant over the dataset: one dataset-level finding (D39), not one per row
+        assertEquals(1, label.getViolations().size(), "the QLABEL, Char, and no ordinal");
+        RuleExecutionResult on = RuleRunnerCalls.execute(
+                load(pcRule("empty(var_label(\\\"PCCALCN\\\", \\\"DATA\\\"))", "")), pc,
+                inventory(pc, supp));
+        assertEquals(0, on.getViolations().size(), "the label is there");
+        RuleExecutionResult off = RuleRunnerCalls
+                .execute(load(pcRule("empty(var_label(\\\"PCCALCN\\\", \\\"DATA\\\"))",
+                        "\"Supp_Merge\": false,")), pc, inventory(pc, supp));
+        assertEquals(1, off.getViolations().size(), "no merge, no metadata");
     }
 }

@@ -141,19 +141,22 @@ class OutputVariablesUniformityTest
     }
 
 
-    /** ⚠ Known red N2 (owner-pending, plan §2.4): the QUALIFIER is matched exactly. */
+    /**
+     * P-19 / MET #6 ({@code PLAN-merged-evaluation-table} W3d; was known red N2): the QUALIFIER is
+     * matched ignoring case — a lower-case {@code j.S} is printed as written and reads the join
+     * declared as {@code J}, exactly as the template form {@code adsl.TRTxxA} always did.
+     */
     @Test
-    void aLowerCaseQualifierIsSilentlyOmittedToday()
+    void aLowerCaseQualifierPrintsAsWrittenAndReadsTheJoin()
     {
         IDataTable p = primary();
         IDataTable j = joined();
-        List<Map<String, String>> dotted = report(rule("j.S", "S"), p, j);
-        assertFalse(dotted.get(0).containsKey("j.S"),
-                "RuleRunner.extractOutputValues: ctx.getJoinedDatasets().get(\"j\") is null for a"
-                        + " join declared as J, and the entry is omitted — N2 (the template"
-                        + " form adsl.TRTxxA, through FindVars.declaredQualifier, IS matched"
-                        + " ignoring case). Remove this pin when N2 is ruled and fixed.");
-        assertTrue(dotted.get(0).containsKey("S"));
+        List<Map<String, String>> bare = report(rule("S"), p, j);
+        List<Map<String, String>> dotted = report(rule("j.S"), p, j);
+        assertEquals(List.of("j.S", "K"), List.copyOf(dotted.get(0).keySet()),
+                "the entry as written");
+        assertEquals(bare, renamed(dotted, Map.of("j.S", "S")),
+                "j.S reads the join J, cell for cell the value the bare S reads");
     }
 
 

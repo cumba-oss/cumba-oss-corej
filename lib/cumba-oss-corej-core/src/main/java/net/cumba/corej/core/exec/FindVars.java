@@ -12,6 +12,7 @@ import net.cumba.corej.core.expr.eval.ConstVector;
 import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.TypedValue;
 import net.cumba.corej.core.expr.eval.Vector;
+import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.values.DataValueType;
@@ -161,14 +162,32 @@ public final class FindVars
             {
                 return List.of(); // undeclared or not supplied: no column colref could read
             }
+            prefix = (declaredSpelling ? declared : qualifier) + ".";
+            variable = entry.variable();
+            // W3d (MQ6): the joined dataset's REAL columns as the merged schema lists them — the
+            // lookup's own column set (a SUPP qualifier of the partner and the _matched_ flag
+            // are not enumerated); the inventory only for a lookup that cannot enumerate.
+            List<DataTableColumnMeta> columns = java.util.Objects
+                    .requireNonNull(ctx.getJoinedDatasets().get(declared)).columns();
+            if (columns != null)
+            {
+                Pattern qualifiedPattern = literal ? patternOf(variable) : compile(variable);
+                List<String> out = new ArrayList<>();
+                for (DataTableColumnMeta column : columns)
+                {
+                    if (qualifiedPattern.matcher(column.getName()).matches())
+                    {
+                        out.add(prefix + column.getName());
+                    }
+                }
+                return List.copyOf(out);
+            }
             table = SplitDomainResolution.resolveTableOrThrow(ctx.getDatasetResolver(), declared,
                     ctx.getRuleId());
             if (table == null)
             {
                 return List.of();
             }
-            prefix = (declaredSpelling ? declared : qualifier) + ".";
-            variable = entry.variable();
         }
         else
         {
@@ -383,13 +402,10 @@ public final class FindVars
         }
         String declared = declaredQualifier(ctx,
                 java.util.Objects.requireNonNull(parsed.qualifier()));
-        if (declared == null)
-        {
-            return false;
-        }
-        IDataTable table = SplitDomainResolution.resolveTableOrThrow(ctx.getDatasetResolver(),
-                declared, ctx.getRuleId());
-        return table != null && table.getMetaData().getColumnIndex(parsed.variable()) >= 0;
+        // W3d: the merged schema (the lookup's column set), as colref reads it
+        return declared != null
+                && !java.util.Objects.requireNonNull(ctx.getJoinedDatasets().get(declared))
+                        .lacksColumnOnEveryRow(parsed.variable());
     }
 
 
@@ -400,10 +416,8 @@ public final class FindVars
      */
     private static @Nullable String declaredQualifier(EvaluationContext ctx, String qualifier)
     {
-        if (ctx.getJoinedDatasets().containsKey(qualifier))
-        {
-            return qualifier;
-        }
+        // the entry's OWN spelling (the map matches ignoring case since W3d, so a containsKey
+        // shortcut would hand back the qualifier as written)
         for (String name : ctx.getJoinedDatasets().keySet())
         {
             if (name.equalsIgnoreCase(qualifier))

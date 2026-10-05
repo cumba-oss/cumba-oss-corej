@@ -58,6 +58,24 @@ import org.jspecify.annotations.Nullable;
 public final class GroupReadTable extends AbstractDataTable
 {
 
+    /**
+     * The group operators and extremes whose key / name / members / within readers read a qualified
+     * operand as a merged column ({@code PLAN-merged-evaluation-table} W3c, N5 lifted per MQ8) —
+     * the roster the loader's D-SRC gate judges (owner 2026-10-05: <i>"apply D-SRC to the group
+     * operators too"</i>): a qualifier among their operands must name an ordinary, expandable,
+     * keyed {@code inner} {@code Match_Datasets} entry of the rule
+     * ({@code RulePackageLoader.qualifiedSourceError}). {@code read_value} is not listed: its
+     * {@code domain=} names the dataset itself (W3c), and a call carrying {@code domain=} is not
+     * judged for any member.
+     */
+    public static final java.util.Set<String> GROUP_OPERATORS = java.util.Set.of("is_unique_set",
+            "is_not_unique_set", "has_multiple_values_for", "present_on_multiple_rows_within",
+            "is_inconsistent_across_dataset", "is_not_unique_relationship", "is_not_unique_value",
+            "has_same_values", "empty_within_except_last_row", "has_next_corresponding_record",
+            "is_sorted_by", "is_last_in_group", "has_mixed_emptiness_within_group", "contains_all",
+            "not_contains_all", "inconsistent_enumerated_columns", "max", "max_date", "min_date",
+            "record_count", "distinct");
+
     private final IDataTable base;
 
     private final int baseColumns;

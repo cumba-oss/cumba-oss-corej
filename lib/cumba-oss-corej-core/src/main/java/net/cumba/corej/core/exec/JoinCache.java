@@ -108,6 +108,9 @@ public final class JoinCache
          */
         private final IdentityWeakCache<SuppQnamColumnKey, IDataValue[]> suppQnamColumns;
 
+        /** The merged schema's QNAM set per SUPP table ({@link SuppQualifiers}, W3d). */
+        private final IdentityWeakCache<String, java.util.Set<String>> suppQnams;
+
         /** A cache for one validation run. */
         public SharedIndexCache()
         {
@@ -128,13 +131,32 @@ public final class JoinCache
                     new IdentityWeakCache<>(aIdentityHash));
             suppQnamIndexes = new IdentityWeakCache<>(aIdentityHash);
             suppQnamColumns = new IdentityWeakCache<>(aIdentityHash);
+            suppQnams = new IdentityWeakCache<>(aIdentityHash);
+        }
+
+
+        /**
+         * The merged schema's QNAM set of one SUPP table, built once per table per run
+         * ({@link SuppQualifiers}).
+         */
+        java.util.Set<String> getOrBuildSuppQnams(IDataTable aSupp,
+                java.util.function.Function<IDataTable, java.util.Set<String>> aBuild)
+        {
+            return suppQnams.getOrBuild(aSupp, "", _ -> aBuild.apply(aSupp));
+        }
+
+
+        /** How many QNAM sets were built on this cache (tests: one per SUPP table per run). */
+        int suppQnamsBuildCount()
+        {
+            return suppQnams.buildCount();
         }
 
 
         /**
          * The parsed qualifier rows of one {@code SUPP--} table, built once per table per run for
-         * the declared SUPP merge ({@link SuppPivot}) and the existence probes
-         * ({@code OperatorRegistry.existsInSuppQnam}); {@code null} when the table has no
+         * the declared SUPP merge ({@link SuppPivot}) and the existence probes (the legacy pivot,
+         * until W6; existence reads {@link SuppQualifiers}); {@code null} when the table has no
          * {@code QNAM} column.
          */
         @Nullable

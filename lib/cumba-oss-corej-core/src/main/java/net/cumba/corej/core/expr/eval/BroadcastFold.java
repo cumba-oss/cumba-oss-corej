@@ -1039,10 +1039,13 @@ public final class BroadcastFold
      * {@code J.X}. A column the served join {@code J} does not carry is an absent column of the
      * merged schema and binds at dataset level exactly as a bare absent column does — one
      * dataset-level answer instead of one finding per row (the owner's example:
-     * {@code DM.ARMNRS == "SCREEN FAILURE"} on a DM without ARMNRS). A join that is not served
-     * ({@code lookup == null}: not declared, or declared and not supplied — P-1) keeps the
-     * row-level reading it has today; the {@code _matched_} flag and a non-column shape are never
-     * folded here.
+     * {@code DM.ARMNRS == "SCREEN FAILURE"} on a DM without ARMNRS). ⭐ W3d (P-1, the absent-column
+     * doctrine): a join that is not served ({@code lookup == null} — declared and not supplied, or
+     * not declared) reads the not-supplied marker on EVERY row ({@code D72a-1}), so the column is
+     * absent from the merged schema and folds to dataset level exactly like an absent bare column —
+     * one dataset-level answer, never one finding per row; the rule SKIPs only when the author
+     * declares the dataset in {@code Requirements}. The {@code _matched_} flag and a non-column
+     * shape are never folded here.
      */
     private static BindColumnLevel dottedColumnLevel(String dataset, String column,
             EvaluationContext ctx)
@@ -1052,7 +1055,7 @@ public final class BroadcastFold
             return BindColumnLevel.ROW;
         }
         net.cumba.corej.core.exec.JoinLookup lookup = ctx.getJoinedDatasets().get(dataset);
-        return lookup != null && lookup.lacksColumnOnEveryRow(column)
+        return lookup == null || lookup.lacksColumnOnEveryRow(column)
                 ? BindColumnLevel.DATASET_ABSENT
                 : BindColumnLevel.ROW;
     }

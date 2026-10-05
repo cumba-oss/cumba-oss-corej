@@ -13,6 +13,7 @@ import java.util.regex.PatternSyntaxException;
 import lombok.CustomLog;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.ScopeVariableEntry;
+import net.cumba.corej.core.exec.ScopeVariableSource;
 import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.OperandClassifier;
 import net.cumba.corej.core.expr.OperandKind;
@@ -199,7 +200,39 @@ public final class WildcardExpander
         {
             return TokenExpander.tryExpand(rule, meta, ctx);
         }
-        return tryExpand(rule, meta);
+        return tryExpand(rule, meta, ctx.foreign());
+    }
+
+
+    /**
+     * {@link #tryExpand(Rule, DataTableMeta)} with the foreign-metadata source a QUALIFIED marker
+     * template expands over ({@code PLAN-merged-evaluation-table} W3d, N28 per MQ6): a
+     * {@code J.TRTxxP} enumerates the columns of the dataset the rule's {@code Match_Datasets}
+     * entry {@code J} names (the merged schema's {@code J.} names — its real columns, never a SUPP
+     * qualifier), read through the join; without a source it enumerates nothing.
+     *
+     * @param rule
+     *            the rule to expand
+     * @param meta
+     *            the metadata of the dataset under validation
+     * @param foreign
+     *            the foreign-metadata source, or {@code null}
+     * @return the expansion outcome
+     */
+    public static ExpansionResult tryExpand(Rule rule, DataTableMeta meta,
+            @Nullable ScopeVariableSource foreign)
+    {
+        if (rule.getCheck() == null
+                || rule.checkConditions().stream().noneMatch(WildcardExpander::hasRealWildcards))
+        {
+            return new ExpansionResult.NotApplicable();
+        }
+        List<Rule> expanded = expand(rule, meta, foreign);
+        if (expanded.isEmpty())
+        {
+            return new ExpansionResult.NoMatch("Template did not match any columns in dataset");
+        }
+        return new ExpansionResult.Expanded(expanded);
     }
 
 
@@ -333,6 +366,30 @@ public final class WildcardExpander
      */
     public static List<Rule> expand(Rule templateRule, DataTableMeta meta)
     {
+        return expand(templateRule, meta, null);
+    }
+
+
+    /**
+     * {@link #expand(Rule, DataTableMeta)} with the foreign-metadata source a qualified template
+     * enumerates (W3d, N28): a wildcard name {@code J.TRTxxP} is matched against the
+     * {@code J.}-prefixed column names of the dataset the rule declares as {@code J} (ignoring the
+     * qualifier's case, P-19), a bare name against the primary's own — so the two never see each
+     * other's columns, and the concrete reference minted for the qualified one is the dotted
+     * {@code J.TRT01P} the join serves.
+     *
+     * @param templateRule
+     *            the template rule with wildcard names in its Check
+     * @param meta
+     *            the dataset metadata to match bare names against
+     * @param foreign
+     *            the foreign-metadata source, or {@code null} (a qualified template matches
+     *            nothing)
+     * @return list of expanded rules (may be empty if no columns match)
+     */
+    public static List<Rule> expand(Rule templateRule, DataTableMeta meta,
+            @Nullable ScopeVariableSource foreign)
+    {
         Set<String> wildcardNames = collectWildcardNames(templateRule);
         if (wildcardNames.isEmpty())
         {
@@ -340,11 +397,14 @@ public final class WildcardExpander
         }
 
         // Collect all column names from the dataset
-        List<String> columns = new ArrayList<>(meta.getColumnCount());
+        List<String> primaryColumns = new ArrayList<>(meta.getColumnCount());
         for (int i = 0; i < meta.getColumnCount(); i++)
         {
-            columns.add(meta.getColumn(i).getName());
+            primaryColumns.add(meta.getColumn(i).getName());
         }
+        // W3d (N28): the column list a qualified wildcard name is matched against — the declared
+        // join's real columns under its qualifier — memoised per qualifier
+        Map<String, List<String>> qualifiedColumns = new LinkedHashMap<>();
 
         // Build regex patterns for each wildcard name.
         Map<String, WildcardPattern> patterns = new LinkedHashMap<>();
@@ -438,7 +498,8 @@ public final class WildcardExpander
             // anchored tuple; it never seeds (Step 3), so it can't explode.
             boolean isBareStar = "*".equals(pat.original());
             List<Map.Entry<String, Map<String, String>>> list = new ArrayList<>();
-            for (String col : columns)
+            for (String col : columnsFor(wcName, primaryColumns, qualifiedColumns, templateRule,
+                    foreign))
             {
                 Matcher m = pat.regex().matcher(col);
                 if (m.matches())
@@ -646,6 +707,46 @@ public final class WildcardExpander
         }
 
         return expanded;
+    }
+
+
+    /**
+     * The column names a wildcard name is matched against (W3d, N28): a name with a concrete
+     * qualifier ({@code J.TRTxxP}) enumerates the real columns of the dataset the rule's
+     * {@code Match_Datasets} entry {@code J} names — matched ignoring letter case (P-19), a
+     * {@code --} template instantiated as the entry's own resolution does — each prefixed
+     * {@code J.}; a qualifier naming no entry of the rule, a {@code Child: true} entry (W4) or a
+     * dataset the source cannot see enumerates nothing. Every other name enumerates the primary.
+     */
+    private static List<String> columnsFor(String wcName, List<String> primaryColumns,
+            Map<String, List<String>> qualifiedColumns, Rule rule,
+            @Nullable ScopeVariableSource foreign)
+    {
+        int dot = wcName.indexOf('.');
+        if (dot <= 0 || !wcName.substring(0, dot).matches("[A-Za-z][A-Za-z0-9_]*"))
+        {
+            return primaryColumns;
+        }
+        String qualifier = wcName.substring(0, dot);
+        return qualifiedColumns.computeIfAbsent(qualifier, q ->
+        {
+            net.cumba.corej.core.model.MatchDataset entry = net.cumba.corej.core.model.MatchDataset
+                    .declaredFor(rule.getMatchDatasets(), q);
+            if (foreign == null || entry == null || entry.getName() == null
+                    || Boolean.TRUE.equals(entry.getChild()))
+            {
+                return List.of();
+            }
+            List<String> out = new ArrayList<>();
+            for (DataTableMeta member : foreign.metasOf(entry.getName()))
+            {
+                for (int i = 0; i < member.getColumnCount(); i++)
+                {
+                    out.add(q + "." + member.getColumn(i).getName());
+                }
+            }
+            return out;
+        });
     }
 
 
@@ -973,6 +1074,14 @@ public final class WildcardExpander
         if (name.startsWith("*"))
         {
             return true;
+        }
+        // W3d (N28, P-19): a qualified name is judged by its VARIABLE half — the qualifier may be
+        // spelled in lower case (j.TRTxxP names the entry J) and is never a marker itself
+        int dot = name.indexOf('.');
+        if (dot > 0 && dot < name.length() - 1
+                && name.substring(0, dot).matches("[A-Za-z][A-Za-z0-9_]*"))
+        {
+            return isWildcard(name.substring(dot + 1));
         }
         // Engine metadata/operation names start with lowercase or $
         if (name.charAt(0) == '$' || Character.isLowerCase(name.charAt(0)))

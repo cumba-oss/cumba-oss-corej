@@ -76,9 +76,49 @@ class BindColumnLevelTest
         // `--` reaching the evaluator) stays the evaluator's, and dotted names are join reads.
         EvaluationContext ctx = ctx(Map.of());
         assertEquals(BindColumnLevel.ROW, BroadcastFold.bindColumnLevel("--OCCUR", ctx));
-        assertEquals(BindColumnLevel.ROW, BroadcastFold.bindColumnLevel("DM.ARM", ctx));
+        // W3d (P-1): a dotted name no join serves is an absent column of the merged schema —
+        // dataset-level (aDottedNameOfAnUnservedJoinIsDatasetAbsent); only the flag stays a row
+        // read
+        assertEquals(BindColumnLevel.DATASET_ABSENT, BroadcastFold.bindColumnLevel("DM.ARM", ctx));
+        assertEquals(BindColumnLevel.ROW, BroadcastFold.bindColumnLevel("DM._matched_", ctx));
         assertEquals(BindColumnLevel.ROW, BroadcastFold.bindColumnLevel("$op", ctx));
         assertEquals(BindColumnLevel.ROW, BroadcastFold.bindColumnLevel("lowercase", ctx));
+    }
+
+
+    /**
+     * N24 for a join that is not served ({@code PLAN-merged-evaluation-table} W3d, P-1 / the
+     * absent-column doctrine): a dotted name whose qualifier has no lookup — declared and not
+     * supplied, or not declared — reads the not-supplied marker on every row, so it is an absent
+     * column of the merged schema and binds at dataset level like a bare absent one; a served
+     * join's present column stays a row read, its absent column folds (W3a). RED before: the
+     * unserved join kept the row-level reading (one finding per row). In a corpus rule a keyed
+     * join's key declaration ({@code Requirements}) SKIPs the rule before this fold is reached; the
+     * fold is the engine's backstop for the undeclared and the hand-built shapes.
+     */
+    @Test
+    void aDottedNameOfAnUnservedJoinIsDatasetAbsent()
+    {
+        SyntheticDataTable ex = new SyntheticDataTable("EX", List.of("USUBJID", "EXDOSE"),
+                new String[]
+                {
+                        "S1"
+                }, 1);
+        DatasetLookup lookup = DatasetLookup.build("EX", ex, List.of("USUBJID"));
+        EvaluationContext joined = EvaluationContext.builder()
+                .table(new SyntheticDataTable("AE", List.of("USUBJID", "AETERM"), new String[]
+                {
+                        "S1"
+                }, 1)).joinedDatasets(Map.of("EX", lookup))
+                .datasetResolver(n -> "EX".equals(n) ? ex : null).build();
+        assertEquals(BindColumnLevel.ROW, BroadcastFold.bindColumnLevel("EX.EXDOSE", joined));
+        assertEquals(BindColumnLevel.DATASET_ABSENT,
+                BroadcastFold.bindColumnLevel("EX.NOPE", joined), "W3a: the join lacks it");
+        assertEquals(BindColumnLevel.DATASET_ABSENT,
+                BroadcastFold.bindColumnLevel("DM.AGE", joined),
+                "W3d: no join serves DM — the marker on every row is a dataset-level constant");
+        assertEquals(BindColumnLevel.ROW, BroadcastFold.bindColumnLevel("DM._matched_", joined),
+                "the flag is a condition, never folded here");
     }
 
 

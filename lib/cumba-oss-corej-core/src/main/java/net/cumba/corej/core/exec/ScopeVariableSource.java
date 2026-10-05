@@ -17,8 +17,8 @@ import org.jspecify.annotations.Nullable;
  * {@code ADSL.TRTxxPN}).
  *
  * <h2>Qualifier resolution</h2> Mirrors what {@code exists DM.ARM} already does in a {@code Check}
- * ({@code OperatorRegistry.existsAsDottedDatasetColumn}), with two documented scope-side
- * <b>supersets</b>:
+ * ({@code OperatorRegistry.existsAsDottedDatasetColumn}, undeclared arm), with two documented
+ * scope-side <b>supersets</b>:
  * <ol>
  * <li>a {@code --} in the qualifier is resolved against the primary table
  * ({@link DatasetIdentity#resolveWildcard}), so {@code SUPP--.QVAL} works — the Check side does not
@@ -233,8 +233,9 @@ public final class ScopeVariableSource
         }
         return suppMemo.computeIfAbsent(KEY_SEP + domain + KEY_SEP + column, _ ->
         {
-            IDataTable supp = resolver.resolve("SUPP" + domain);
-            return supp != null && OperatorRegistry.existsInSuppQnam(supp, column, sharedIndex);
+            IDataTable supp = resolveIgnoringCase("SUPP" + domain);
+            return supp != null && supp != primary
+                    && SuppQualifiers.ofSupp(primary, domain, supp, sharedIndex).contains(column);
         });
     }
 
@@ -245,14 +246,14 @@ public final class ScopeVariableSource
      * qualified scope entries into line with the {@code Check}-side dotted {@code exists}.
      *
      * <p>
-     * The scan itself is {@code OperatorRegistry.existsInSuppQnam}, shared verbatim, so the
-     * case-sensitive {@code QNAM} comparison (a {@code QNAM} cell is a string value, register
-     * {@code CIT §3}) and the missing/empty-cell skip are identical on both paths. Review L8 — one
-     * deliberate deviation: the "don't look for {@code SUPPSUPPAE}" guard below is
-     * case-<em>in</em>sensitive, where the Check side tests {@code domain.startsWith("SUPP")}
-     * exactly. That makes a filename-derived lowercase {@code suppae} behave correctly here; it is
-     * unobservable otherwise, since it would take a dataset literally named {@code SUPPsuppae} to
-     * tell the two apart.
+     * The set itself is {@link SuppQualifiers}' — the merged schema's QNAM set, shared with the
+     * Check-side dotted {@code var_exists} — so the case-sensitive {@code QNAM} comparison (a
+     * {@code QNAM} cell is a string value, register {@code CIT §3}) and the blank-cell skip are
+     * identical on both paths. Review L8 — one deliberate deviation: the "don't look for
+     * {@code SUPPSUPPAE}" guard below is case-<em>in</em>sensitive, where the Check side tests
+     * {@code domain.startsWith("SUPP")} exactly. That makes a filename-derived lowercase
+     * {@code suppae} behave correctly here; it is unobservable otherwise, since it would take a
+     * dataset literally named {@code SUPPsuppae} to tell the two apart.
      * </p>
      *
      * @param qualifier
@@ -267,9 +268,14 @@ public final class ScopeVariableSource
         return suppMerge && !resolved.toUpperCase(Locale.ROOT).startsWith("SUPP")
                 && suppMemo.computeIfAbsent(resolved + KEY_SEP + column, _ ->
                 {
-                    IDataTable supp = resolver.resolve("SUPP" + resolved);
-                    return supp != null
-                            && OperatorRegistry.existsInSuppQnam(supp, column, sharedIndex);
+                    // W3d: the merged schema's QNAM set for the foreign dataset (SuppQualifiers,
+                    // the IG's SUPP names for it) — the dataset itself is the base the SUPP
+                    // qualifies; absent, the SUPP stands in (review H2: SUPPAE without AE)
+                    IDataTable foreign = resolveIgnoringCase(resolved);
+                    String domain = java.util.Objects.requireNonNullElse(
+                            DatasetIdentity.domainOfDataset(resolved, resolver), resolved);
+                    return SuppQualifiers.of(foreign, resolved, domain, resolver, sharedIndex, null)
+                            .contains(column);
                 });
     }
 
@@ -334,6 +340,19 @@ public final class ScopeVariableSource
         return resolved != null ? resolved : qualifier;
     }
 
+
+    /**
+     * The dataset {@code name} addresses: the resolver's exact answer, else the inventory entry
+     * that equals it ignoring letter case ({@code PLAN-merged-evaluation-table} W3d, P-19 / MET #6
+     * — a dataset name is case-insensitive; the product's resolvers already upper-case, this makes
+     * the gate independent of the resolver's own policy), else {@code null}.
+     */
+    private @Nullable IDataTable resolveIgnoringCase(String name)
+    {
+        IDataTable exact = resolver.resolve(name);
+        return exact != null ? exact : SplitDomainResolution.resolveIgnoringCase(resolver, name);
+    }
+
     /**
      * Length of an SDTM domain code — the only qualifier for which the split-domain union can
      * possibly match, since {@code tablesForDomain} compares against each table's {@code DOMAIN}
@@ -345,7 +364,7 @@ public final class ScopeVariableSource
     private List<DataTableMeta> resolveMetas(String qualifier)
     {
         String name = resolveQualifierName(qualifier);
-        IDataTable exact = resolver.resolve(name);
+        IDataTable exact = resolveIgnoringCase(name);
         if (exact != null)
         {
             return List.of(exact.getMetaData());

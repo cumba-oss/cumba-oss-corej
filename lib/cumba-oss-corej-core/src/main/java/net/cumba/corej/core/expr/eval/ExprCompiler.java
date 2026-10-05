@@ -43,6 +43,7 @@ import net.cumba.corej.core.metadata.DefineMetadataListCodec;
 import net.cumba.corej.core.metadata.LibraryTemplates;
 import net.cumba.corej.core.metadata.VlmResolver;
 import net.cumba.corej.core.model.NextRecordRelation;
+import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
@@ -6153,6 +6154,7 @@ public final class ExprCompiler
         }
         boolean variableNameRef = false;
         String literalName = null;
+        String qualifier = null;
         if (nameExpr == null)
         {
             // VARIABLE arity-1 (level) defaults the name to the current variable, resolved
@@ -6166,22 +6168,22 @@ public final class ExprCompiler
             int dot = literalName.indexOf('.');
             if (attr.scope() == MetadataAttribute.Scope.VARIABLE && dot > 0)
             {
-                // QNU N13: a var_* accessor reads the metadata of a variable of the dataset under
-                // evaluation, so a qualified "J.X" was looked up verbatim there and answered a
-                // missing — silently, at every level (at LIBRARY a missing compares as "", so
-                // var_core("DM.AGE", "LIBRARY") != "Req" fired). Routing it to dataset= instead
-                // would serve 4 of the 21 accessors at one level only, and read the study
-                // inventory where J.X everywhere else means the declared join — a second meaning
-                // for one spelling. So the qualified spelling is refused at load, naming the bare
-                // one and, where it exists, the dataset= channel.
-                throw new RuleDefinitionException(attr.functionName() + "(\"" + literalName
-                        + "\") names a variable of the dataset under evaluation: write it bare (\""
-                        + literalName.substring(dot + 1) + "\"), never qualified"
-                        + (crossDatasetField(attr) != null
-                                ? " — another dataset's DATA-level " + attr.functionName()
-                                        + " is read with dataset=\"" + literalName.substring(0, dot)
-                                        + "\""
-                                : ""));
+                // W3d of PLAN-merged-evaluation-table (N13 lifted per MQ8; MET #7: a merged
+                // column carries its source metadata): a qualified "J.X" names the column X of
+                // the DECLARED join J — at DATA the merged schema's metadata of J.X (the source
+                // column's label / type / length / format, a SUPP qualifier's QLABEL), at DEFINE
+                // / LIBRARY the named dataset's published metadata for X. A qualifier naming no
+                // join of the rule (undeclared, or declared and not supplied) answers a missing
+                // (decision D4 — the column is absent from the merged schema). The dataset=
+                // keyword stays the inventory channel (another dataset, join-free).
+                if (foreignDataset != null)
+                {
+                    throw new RuleDefinitionException(attr.functionName() + "(\"" + literalName
+                            + "\") is qualified AND carries dataset= — one dataset channel: the"
+                            + " qualifier names the declared join, dataset= the study inventory");
+                }
+                qualifier = literalName.substring(0, dot);
+                literalName = literalName.substring(dot + 1);
             }
         }
         else if (attr.scope() == MetadataAttribute.Scope.VARIABLE
@@ -6202,6 +6204,7 @@ public final class ExprCompiler
         String capturedName = literalName;
         boolean fromVariableName = variableNameRef;
         String foreign = foreignDataset;
+        String joinQualifier = qualifier;
         // The provider-map key: the attribute's own, or the named stem's (R2-3).
         String providerKey = stem == null ? attr.providerKey() : LibraryTemplates.stemKey(stem);
         return run ->
@@ -6216,6 +6219,15 @@ public final class ExprCompiler
                     return ConstVector.of(null);
                 }
                 name = resolved.toString();
+            }
+            if (joinQualifier != null)
+            {
+                String raw = readJoinedMetadata(ctx, attr, level, joinQualifier,
+                        Objects.requireNonNull(name), providerKey);
+                return attr.isList()
+                        ? ConstVector.of(DefineMetadataListCodec.decode(raw),
+                                () -> "list accessor " + attr.functionName())
+                        : ConstVector.of(attr.normalize(raw));
             }
             if (foreign != null)
             {
@@ -6343,10 +6355,38 @@ public final class ExprCompiler
         {
         case DATA -> readDataLevel(ctx, attr, name);
         case DEFINE -> readProviderLevel(ctx.getDefineProvider(), ctx, attr, name,
-                MetadataLevel.DEFINE, providerKey);
+                MetadataLevel.DEFINE, providerKey, null);
         case LIBRARY -> readProviderLevel(ctx.getLibraryProvider(), ctx, attr, name,
-                MetadataLevel.LIBRARY, providerKey);
+                MetadataLevel.LIBRARY, providerKey, null);
         };
+    }
+
+
+    /**
+     * A variable-scope accessor's read of a QUALIFIED name ({@code var_label("J.X", level)}, W3d of
+     * {@code PLAN-merged-evaluation-table}, N13 per MQ8): {@code X} of the join the rule declares
+     * as {@code J} (matched ignoring case, P-19). DATA: the merged schema's metadata of the column
+     * ({@link net.cumba.corej.core.exec.JoinLookup#columnMeta}); DEFINE / LIBRARY: the joined
+     * dataset's published metadata for {@code X}. No such join in this execution ⇒ the column is
+     * absent from the merged schema ⇒ missing (D4).
+     */
+    private static @Nullable String readJoinedMetadata(EvaluationContext ctx,
+            MetadataAttribute attr, MetadataLevel level, String qualifier, String name,
+            String providerKey)
+    {
+        JoinLookup lookup = ctx.getJoinedDatasets().get(qualifier);
+        if (lookup == null)
+        {
+            return null;
+        }
+        if (level == MetadataLevel.DATA)
+        {
+            DataTableColumnMeta col = lookup.columnMeta(name);
+            return col == null ? null : dataLevelAttribute(attr, col, col.getIndex());
+        }
+        return readProviderLevel(
+                level == MetadataLevel.DEFINE ? ctx.getDefineProvider() : ctx.getLibraryProvider(),
+                ctx, attr, name, level, providerKey, lookup.getDatasetName());
     }
 
 
@@ -6470,9 +6510,22 @@ public final class ExprCompiler
         int idx = meta.getColumnIndex(name);
         if (idx < 0)
         {
-            return null;
+            // W3d (MET #7, §3.9): a bare name the primary lacks may be a supplemental qualifier
+            // of the record — the merged schema's SUPP column carries the QLABEL as its label and
+            // QVAL's type; it is no variable of the dataset (MQ6), so it has no ordinal.
+            DataTableColumnMeta qualifier = net.cumba.corej.core.exec.SuppPivot
+                    .qualifierColumnMeta(ctx, name);
+            return qualifier == null || attr == MetadataAttribute.VAR_ORDINAL ? null
+                    : dataLevelAttribute(attr, qualifier, -1);
         }
-        var col = meta.getColumn(idx);
+        return dataLevelAttribute(attr, meta.getColumn(idx), idx);
+    }
+
+
+    /** One DATA-level variable attribute of a column; {@code idx} its ordinal in its dataset. */
+    private static @Nullable String dataLevelAttribute(MetadataAttribute attr,
+            DataTableColumnMeta col, int idx)
+    {
         return switch (attr)
         {
         case VAR_NAME -> col.getName();
@@ -6492,7 +6545,7 @@ public final class ExprCompiler
 
     private static @Nullable String readProviderLevel(@Nullable MetadataProvider provider,
             EvaluationContext ctx, MetadataAttribute attr, @Nullable String name,
-            MetadataLevel level, String providerKey)
+            MetadataLevel level, String providerKey, @Nullable String joinedDataset)
     {
         // Provider absent ⇒ missing, matching the *_variable_* / *_dataset_* operands this family
         // replaces (those resolve to null when their level's provider is not configured).
@@ -6587,13 +6640,25 @@ public final class ExprCompiler
             // ⚠⚠ LIBRARY ONLY, and enforced by the level check below rather than inside the
             // provider: a Define-XML declares one ItemGroupDef per dataset FILE, split members
             // included, so the member name is the CORRECT key at DEFINE.
-            String domain = ctx.getDomainName();
+            // W3d: a qualified name reads the JOINED dataset's published metadata (N13) — its
+            // member name as the key, its own table for the Library's domain fallback.
+            String domain = joinedDataset != null ? joinedDataset : ctx.getDomainName();
             if (domain == null || name == null)
             {
                 return null;
             }
+            IDataTable member = ctx.getTable();
+            if (joinedDataset != null && level == MetadataLevel.LIBRARY)
+            {
+                member = net.cumba.corej.core.exec.SplitDomainResolution.resolveTableOrThrow(
+                        ctx.getDatasetResolver(), joinedDataset, ctx.getRuleId());
+                if (member == null)
+                {
+                    return null;
+                }
+            }
             meta = level == MetadataLevel.LIBRARY
-                    ? libraryVariableMetadata(provider, ctx.getDefineProvider(), ctx.getTable(),
+                    ? libraryVariableMetadata(provider, ctx.getDefineProvider(), member,
                             ctx.getDatasetResolver(), domain, name)
                     : provider.getVariableMetadata(domain, name);
             // F-corej-ct-02 (define-ct plan P1): a variable WITH a bound library codelist whose

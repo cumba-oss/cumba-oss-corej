@@ -110,8 +110,8 @@ class QualifiedNameUniformityTest
             codelist_terms | level | - | static string
             codelist_terms | returntype | - | static string
             colref | x | N | V:colref("@S")
-            column_series_metadata | name | N | X:selector — reads the primary only (plan Q2, ruled: closed by find_vars)
-            column_series_metadata | name_pattern | N | X:selector — a regex over the primary's columns (D92b, plan Q2)
+            column_series_metadata | name | N | X:selector — reads the primary only (plan Q2, ruled: closed by find_vars) ; C4:V:count(column_series_metadata("@S", name_pattern="^S$", min_length=1))
+            column_series_metadata | name_pattern | N | X:selector — a regex over the primary's columns (D92b, plan Q2) ; C4:V:count(column_series_metadata("S", name_pattern="^@S$", min_length=1))
             column_series_metadata | min_length | - | static number
             concat | a | N | V:concat(@S, #S)
             concat | b | N | V:concat(#S, @S)
@@ -139,7 +139,7 @@ class QualifiedNameUniformityTest
             define_variable_decode_matches | name | - | varname() only (compileDefineVariableDecodeMatches refuses any other argument)
             define_variable_names | - | - | nullary
             dictionary_available | type | - | static string
-            dictionary_has_decode | name | N | X:provider — the argument vector is compiled by operandPlan (the probed channel); needs a dictionary fixture
+            dictionary_has_decode | name | N | X:provider — the argument vector is compiled by operandPlan (the probed channel); needs a dictionary fixture ; C4:B:dictionary_has_decode(@S, external_dictionary_type="whodrug")
             dictionary_has_decode | external_dictionary_type | - | static string
             dictionary_has_decode | case_sensitive | - | static boolean
             distinct | name | N | V:distinct(@S)
@@ -174,8 +174,8 @@ class QualifiedNameUniformityTest
             extract_metadata | name | - | a metadata key ("dataset_size"), not a column
             find_vars | entry | N | V:count(find_vars("@S"))
             floor | x | N | V:floor(@N)
-            get_codelist_attributes | name | N | X:provider — operandPlan channel; needs a LIBRARY fixture
-            get_codelist_attributes | version | N | X:provider — operandPlan channel; needs a LIBRARY fixture
+            get_codelist_attributes | name | N | X:provider — operandPlan channel; needs a LIBRARY fixture ; C4:V:count(get_codelist_attributes(@S, #N, ct_attribute="Term CCODE"))
+            get_codelist_attributes | version | N | X:provider — operandPlan channel; needs a LIBRARY fixture ; C4:V:count(get_codelist_attributes(#S, @N, ct_attribute="Term CCODE"))
             get_codelist_attributes | ct_attribute | - | static string
             get_column_order_from_dataset | - | - | nullary
             get_column_order_from_library | - | - | nullary
@@ -185,7 +185,7 @@ class QualifiedNameUniformityTest
             get_model_filtered_variables | key_name | - | a metadata key
             get_model_filtered_variables | key_value | - | a metadata value
             get_model_filtered_variables | model_class | - | static string
-            get_parent_model_column_order | name | N | X:provider — operandPlan channel; needs a LIBRARY fixture
+            get_parent_model_column_order | name | N | X:provider — operandPlan channel; needs a LIBRARY fixture ; C4:V:count(get_parent_model_column_order(@S))
             has_alpha | x | N | B:has_alpha(@S)
             has_digit | x | N | B:has_digit(@D)
             has_equal_length | name | N | B:has_equal_length(@S, 1)
@@ -323,10 +323,10 @@ class QualifiedNameUniformityTest
             record_count | keep_missings | - | static boolean
             record_count | regex | - | static regex
             referenced_dataset_variables | name | N | V:referenced_dataset_variables(@R)
-            referenced_domain_class | name | N | X:provider — operandPlan channel; needs a LIBRARY fixture
+            referenced_domain_class | name | N | X:provider — operandPlan channel; needs a LIBRARY fixture ; C4:V:referenced_domain_class(@S)
             required_variables | - | - | nullary
             round | x | N | V:round(@N)
-            row_max | name_pattern | N | X:selector — a regex over the primary's columns (D92b, plan Q2, ruled: closed by find_vars)
+            row_max | name_pattern | N | X:selector — a regex over the primary's columns (D92b, plan Q2, ruled: closed by find_vars) ; C4:V:row_max(name_pattern="^@S$")
             shares_elements_with | name | - | a $-binding holding a list (compileSharesNoElementsWith), never a column
             shares_elements_with | value | - | a $-binding holding a list, never a column
             shares_elements_with | keys | N | X:list-valued — keyLiterals over a list-valued binding's key columns; needs a binding fixture (runner level)
@@ -362,19 +362,19 @@ class QualifiedNameUniformityTest
             upcase | x | N | V:upcase(@S)
             upper | x | N | V:upper(@S)
             valid_codelist_dates | ct_package_types | - | static strings
-            valid_external_dictionary_code | name | N | X:provider — operandPlan channel; needs a dictionary fixture
+            valid_external_dictionary_code | name | N | X:provider — operandPlan channel; needs a dictionary fixture ; C4:B:valid_external_dictionary_code(@S, external_dictionary_type="unii", dictionary_term_type="code")
             valid_external_dictionary_code | external_dictionary_type | - | static string
             valid_external_dictionary_code | dictionary_term_type | - | static string
             valid_external_dictionary_code | case_sensitive | - | static boolean
-            valid_external_dictionary_code_term_pair | name | N | X:provider — operandPlan channel; needs a dictionary fixture
-            valid_external_dictionary_code_term_pair | external_dictionary_term_variable | N | X:provider — operandPlan channel; needs a dictionary fixture
+            valid_external_dictionary_code_term_pair | name | N | X:provider — operandPlan channel; needs a dictionary fixture ; C4:B:valid_external_dictionary_code_term_pair(@S, #S, external_dictionary_type="unii")
+            valid_external_dictionary_code_term_pair | external_dictionary_term_variable | N | X:provider — operandPlan channel; needs a dictionary fixture ; C4:B:valid_external_dictionary_code_term_pair(#S, @S, external_dictionary_type="unii")
             valid_external_dictionary_code_term_pair | external_dictionary_type | - | static string
             valid_external_dictionary_code_term_pair | case_sensitive | - | static boolean
-            valid_external_dictionary_hierarchy | name | N | X:provider — operandPlan channel; needs a dictionary fixture
-            valid_external_dictionary_hierarchy | dictionary_parent | N | X:provider — operandPlan channel; needs a dictionary fixture
+            valid_external_dictionary_hierarchy | name | N | X:provider — operandPlan channel; needs a dictionary fixture ; C4:B:valid_external_dictionary_hierarchy(@S, dictionary_parent=#S, external_dictionary_type="meddra")
+            valid_external_dictionary_hierarchy | dictionary_parent | N | X:provider — operandPlan channel; needs a dictionary fixture ; C4:B:valid_external_dictionary_hierarchy(#S, dictionary_parent=@S, external_dictionary_type="meddra")
             valid_external_dictionary_hierarchy | external_dictionary_type | - | static string
             valid_external_dictionary_hierarchy | case_sensitive | - | static boolean
-            valid_external_dictionary_value | name | N | X:provider — operandPlan channel; needs a dictionary fixture
+            valid_external_dictionary_value | name | N | X:provider — operandPlan channel; needs a dictionary fixture ; C4:B:valid_external_dictionary_value(@S, external_dictionary_type="unii", dictionary_term_type="code")
             valid_external_dictionary_value | external_dictionary_type | - | static string
             valid_external_dictionary_value | dictionary_term_type | - | static string
             valid_external_dictionary_value | case_sensitive | - | static boolean
@@ -382,8 +382,8 @@ class QualifiedNameUniformityTest
             var_exists | name | N | B:var_exists(@S) ; S:var_exists("@S")
             var_is_null | name | N | B:var_is_null(@S) ; S:var_is_null("@S")
             var_not_exists | name | N | B:var_not_exists(@S) ; S:var_not_exists("@S")
-            variable_count | name | N | X:selector — a template counted across the inventory (D92a, plan Q2)
-            variable_count | name_pattern | N | X:selector — a regex over the primary's columns (D92b, plan Q2)
+            variable_count | name | N | X:selector — a template counted across the inventory (D92a, plan Q2) ; C4:V:variable_count("@S")
+            variable_count | name_pattern | N | X:selector — a regex over the primary's columns (D92b, plan Q2) ; C4:V:variable_count(name_pattern="^@S$")
             variable_names | - | - | nullary
             varname | - | - | nullary (the cursor variable's name)
             vlm_codelist_coded_codes | name | N | X:provider — a VlmResolver (Define-XML); a qualified name is refused at load naming the bare one (N4, QualifiedNamePhase3FixesTest)
@@ -416,37 +416,37 @@ class QualifiedNameUniformityTest
             var_format | name | N | V:var_format("@S", "DATA")
             var_format | level | - | static level
             var_format | dataset | N | V:var_format("#S", "DATA"@DS)
-            var_role | name | N | X:provider — DEFINE / LIBRARY level only; the name is a string literal or varname()
+            var_role | name | N | X:provider — DEFINE / LIBRARY level only; the name is a string literal or varname() ; C4:V:var_role("@S", "LIBRARY")
             var_role | level | - | static level
-            var_core | name | N | X:provider — DEFINE / LIBRARY level only
+            var_core | name | N | X:provider — DEFINE / LIBRARY level only ; C4:V:var_core("@S", "LIBRARY")
             var_core | level | - | static level
-            var_mandatory | name | N | X:provider — DEFINE level only
+            var_mandatory | name | N | X:provider — DEFINE level only ; C4:V:var_mandatory("@S", "DEFINE")
             var_mandatory | level | - | static level
-            var_codelist | name | N | X:provider — DEFINE / LIBRARY level only
+            var_codelist | name | N | X:provider — DEFINE / LIBRARY level only ; C4:V:var_codelist("@S", "DEFINE")
             var_codelist | level | - | static level
             var_ordinal | name | N | V:var_ordinal("@S", "DATA")
             var_ordinal | level | - | static level
-            var_ccode | name | N | X:provider — DEFINE / LIBRARY level only
+            var_ccode | name | N | X:provider — DEFINE / LIBRARY level only ; C4:V:var_ccode("@S", "DEFINE")
             var_ccode | level | - | static level
-            var_codelist_coded_codes | name | N | X:provider — DEFINE / LIBRARY level only
+            var_codelist_coded_codes | name | N | X:provider — DEFINE / LIBRARY level only ; C4:V:count(var_codelist_coded_codes("@S", "DEFINE"))
             var_codelist_coded_codes | level | - | static level
-            var_codelist_coded_values | name | N | X:provider — DEFINE / LIBRARY level only
+            var_codelist_coded_values | name | N | X:provider — DEFINE / LIBRARY level only ; C4:V:count(var_codelist_coded_values("@S", "DEFINE"))
             var_codelist_coded_values | level | - | static level
-            var_codelist_extensible | name | N | X:provider — LIBRARY level only
+            var_codelist_extensible | name | N | X:provider — LIBRARY level only ; C4:V:var_codelist_extensible("@S", "LIBRARY")
             var_codelist_extensible | level | - | static level
-            var_codelist_extended_values | name | N | X:provider — DEFINE level only
+            var_codelist_extended_values | name | N | X:provider — DEFINE level only ; C4:V:count(var_codelist_extended_values("@S", "DEFINE"))
             var_codelist_extended_values | level | - | static level
-            var_origin_type | name | N | X:provider — DEFINE level only
+            var_origin_type | name | N | X:provider — DEFINE level only ; C4:V:var_origin_type("@S", "DEFINE")
             var_origin_type | level | - | static level
-            var_has_comment | name | N | X:provider — DEFINE level only
+            var_has_comment | name | N | X:provider — DEFINE level only ; C4:V:var_has_comment("@S", "DEFINE")
             var_has_comment | level | - | static level
-            var_has_codelist | name | N | X:provider — DEFINE level only
+            var_has_codelist | name | N | X:provider — DEFINE level only ; C4:V:var_has_codelist("@S", "DEFINE")
             var_has_codelist | level | - | static level
-            var_has_method | name | N | X:provider — DEFINE level only
+            var_has_method | name | N | X:provider — DEFINE level only ; C4:V:var_has_method("@S", "DEFINE")
             var_has_method | level | - | static level
-            var_external_dictionary | name | N | X:provider — DEFINE level only
+            var_external_dictionary | name | N | X:provider — DEFINE level only ; C4:V:var_external_dictionary("@S", "DEFINE")
             var_external_dictionary | level | - | static level
-            var_external_dictionary_version | name | N | X:provider — DEFINE level only
+            var_external_dictionary_version | name | N | X:provider — DEFINE level only ; C4:V:var_external_dictionary_version("@S", "DEFINE")
             var_external_dictionary_version | level | - | static level
             ds_name | name | - | a dataset name
             ds_name | level | - | static level
@@ -498,21 +498,16 @@ class QualifiedNameUniformityTest
      */
     static final String EXPECTED_RED = """
             read_value/group | C3 | N6
-            var_format/name | REFUSED | N13
-            var_label/name | REFUSED | N13
-            var_length/name | REFUSED | N13
-            var_name/name | REFUSED | N13
-            var_ordinal/name | REFUSED | N13
-            var_type/name | REFUSED | N13
             """;
 
     /**
-     * C5q (the dataset QUALIFIER matched ignoring case) is owner-pending N2 (plan §2.4): every
-     * probed parameter whose qualified spelling is not REFUSED is expected RED on C5q, EXCEPT the
-     * rows below, which {@code PLAN-dynamic-column-functions} made case-insensitive. An exact set:
-     * a site made insensitive by a fix reds the harness here until it is listed.
+     * C5q (the dataset QUALIFIER matched ignoring case) is RULED — P-19 / MET #6, landed in W3d of
+     * {@code PLAN-merged-evaluation-table}: the context's join map, the classifier, the existence
+     * probes and Stage A match a qualifier ignoring letter case. No probed, sensitive row may red
+     * on C5q except {@link #C5Q_RED_THROUGH_THE_INVENTORY}; a row that reds here is a site that
+     * resolves its qualifier by its own rule, which {@code CIT §1}'s revision clause forbids.
      */
-    static final Set<String> C5Q_INSENSITIVE_TODAY = Set.of("colref/x", "find_vars/entry");
+    static final int C5Q_POPULATION_FLOOR = 100;
 
     /**
      * Probes that cannot SEE the join at all on this fixture (T2 r1 M1, the sensitivity criterion
@@ -523,11 +518,14 @@ class QualifiedNameUniformityTest
      */
     static final Set<String> BLIND_ON_THIS_FIXTURE = Set.of(
             // DATA-level format: an in-memory DataTableColumnMeta carries no format, so the
-            // accessor answers blank for every column of every dataset.
-            "var_format/dataset",
-            // The existence test reads the study INVENTORY (DatasetResolver + the SUPP pivot),
-            // never the join — the ruled N7 split (plan §2.4): with or without the join the
-            // answer is the same, by design, not by fixture.
+            // accessor answers blank for every column of every dataset — through the join (W3d,
+            // N13 served) and through dataset= alike.
+            "var_format/dataset", "var_format/name",
+            // Since W3d (MQ9) a DECLARED qualifier answers from the merged schema — the join's
+            // column set — and an undeclared one from the inventory; on THIS fixture the two
+            // carry the same columns (J is in the inventory with S), so the answer is the same
+            // with and without the join. Their sensitivity (a partner's SUPP qualifier the
+            // inventory table lacks) is QualifiedNamePhase3FixesTest's MQ9 case.
             "var_exists/name", "var_not_exists/name",
             // The strict predicate (register D50, owner 2026-10-05) is true only for a
             // MissingValue, and the probed character column S carries none ("" is a present
@@ -552,12 +550,18 @@ class QualifiedNameUniformityTest
             "is_sorted_by/target", "is_sorted_by/within", "present_on_multiple_rows_within/name");
 
     /**
-     * Blind-to-the-join rows that are nevertheless red on C5q, because the channel they DO read —
-     * the study inventory — is exact-case in this fixture (the N7 pair). Named so the C5q
-     * expectation stays a formula over listed sets, never the measurement itself.
+     * The rows red on C5q because the channel they read is NOT the dotted qualifier but a dataset
+     * name travelling as a STRING to the resolver — {@code read_value(domain=)},
+     * {@code referenced_dataset_variables(name=)}, the {@code var_*} {@code dataset=} kwarg — each
+     * calling {@code resolver.resolve(name)} directly, exact-case in THIS fixture
+     * ({@code exactInventory}; the product's resolvers upper-case every name, and the join-side
+     * resolution goes through {@code SplitDomainResolution}, which falls back ignoring case since
+     * W3d). A named gap (W3d report), not a qualifier-case question; an exact set — a channel made
+     * case-insensitive reds here until its row is removed.
      */
-    static final Set<String> C5Q_RED_THROUGH_THE_INVENTORY = Set.of("var_exists/name",
-            "var_not_exists/name", "read_value/name", "read_value/filter");
+    static final Set<String> C5Q_RED_THROUGH_THE_INVENTORY = Set.of("read_value/name",
+            "read_value/filter", "read_value/group", "referenced_dataset_variables/name",
+            "var_label/dataset", "var_length/dataset", "var_type/dataset");
 
     // ------------------------------------------------------------------
     // Table model
@@ -565,8 +569,15 @@ class QualifiedNameUniformityTest
 
     /** One parameter row of {@link #TABLE}. */
     record Row(String fn, String param, boolean name, @Nullable String probe,
-            @Nullable String stringTwin, @Nullable String reason)
+            @Nullable String stringTwin, @Nullable String reason, @Nullable String c4Probe)
     {
+
+        /** Whether the row is judged at all — fully probed, or C4-only (an {@code X:} row). */
+        boolean judged()
+        {
+            return probe != null || c4Probe != null;
+        }
+
 
         String id()
         {
@@ -610,12 +621,25 @@ class QualifiedNameUniformityTest
             assertTrue("N".equals(cls) || "-".equals(cls), "class is N or -: " + line);
             if ("-".equals(cls))
             {
-                out.add(new Row(fn, param, false, null, null, spec));
+                out.add(new Row(fn, param, false, null, null, spec, null));
                 continue;
             }
             if (spec.startsWith("X:"))
             {
-                out.add(new Row(fn, param, true, null, null, spec.substring(2).trim()));
+                // W3d of PLAN-merged-evaluation-table (the W0 "W3 probes"): an X: row may carry a
+                // `; C4:<expr>` suffix — the one criterion a provider-channel parameter or a
+                // selector can answer without its fixture: the bare name never reaches the join.
+                String reason = spec.substring(2).trim();
+                String c4 = null;
+                int at = reason.indexOf(" ; C4:");
+                if (at >= 0)
+                {
+                    c4 = reason.substring(at + " ; C4:".length()).trim();
+                    reason = reason.substring(0, at).trim();
+                    assertTrue(c4.startsWith("B:") || c4.startsWith("V:"),
+                            "a C4 probe is B: or V: " + line);
+                }
+                out.add(new Row(fn, param, true, null, null, reason, c4));
                 continue;
             }
             String probe = spec;
@@ -628,7 +652,7 @@ class QualifiedNameUniformityTest
             }
             assertTrue(probe.startsWith("B:") || probe.startsWith("V:"),
                     "a probe is B: or V: " + line);
-            out.add(new Row(fn, param, true, probe, twin, null));
+            out.add(new Row(fn, param, true, probe, twin, null, null));
         }
         return out;
     }
@@ -1237,6 +1261,10 @@ class QualifiedNameUniformityTest
     static SequencedMap<String, String> redCriteria(Row row)
     {
         SequencedMap<String, String> red = new LinkedHashMap<>();
+        if (row.probe() == null)
+        {
+            return c4Only(row, red);
+        }
         String t = row.template();
         boolean bool = row.bool();
         char letter = probedLetter(t);
@@ -1332,7 +1360,37 @@ class QualifiedNameUniformityTest
             String twinDotted = spell(row.stringTwin(), dottedName, "");
             compare(red, "C9", bareC1, evaluate(twinBare, bool, ctx(p, j, twinBare)));
             compare(red, "C9", dottedC1, evaluate(twinDotted, bool, joinedCtx(p, j, twinDotted)));
+            // W3d (the W0 "W3 probes"): the string twin's bare name never reaches the join either
+            // — absent from the primary, present in J, the same answer with and without the join
+            compare(red, "C9", evaluate(twinBare, bool, ctx(pAbsent, j, twinBare)),
+                    evaluate(twinBare, bool, joinedCtx(pAbsent, j, twinBare)));
         }
+        return red;
+    }
+
+
+    /**
+     * The C4-only judgement of an {@code X:} row carrying a {@code C4:} probe (W3d): the bare name,
+     * absent from the primary and present in the joined J, answers the same with and without the
+     * join (UVC unqualified — a bare name reaches only the primary and its SUPP qualifiers); the
+     * bare spelling must compile (a load error is a PROBE defect, never a pass).
+     */
+    private static SequencedMap<String, String> c4Only(Row row, SequencedMap<String, String> red)
+    {
+        String t = java.util.Objects.requireNonNull(row.c4Probe()).substring(2);
+        boolean bool = row.c4Probe().startsWith("B:");
+        char letter = probedLetter(t);
+        String bareName = COLUMN.get(letter);
+        String bare = spell(t, bareName, "");
+        IDataTable j = joined('\0', false);
+        IDataTable pAbsent = primary(letter, '\0');
+        Outcome without = evaluate(bare, bool, ctx(pAbsent, j, bare));
+        if ("LOAD".equals(without.kind()))
+        {
+            red.put("PROBE", "the C4 probe does not compile: " + without.detail());
+            return red;
+        }
+        compare(red, "C4", without, evaluate(bare, bool, joinedCtx(pAbsent, j, bare)));
         return red;
     }
 
@@ -1353,7 +1411,7 @@ class QualifiedNameUniformityTest
         SequencedMap<String, SequencedMap<String, String>> out = new TreeMap<>();
         for (Row row : rows)
         {
-            if (!row.probed())
+            if (!row.judged())
             {
                 continue;
             }
@@ -1428,6 +1486,7 @@ class QualifiedNameUniformityTest
         Set<String> blind = new TreeSet<>();
         Set<String> redC5q = new TreeSet<>();
         Set<String> expectedC5q = new TreeSet<>();
+        int judgedC5q = 0;
         for (Row row : rows)
         {
             if (!row.probed())
@@ -1448,22 +1507,24 @@ class QualifiedNameUniformityTest
             {
                 redC5q.add(row.id());
             }
-            if (!C5Q_INSENSITIVE_TODAY.contains(row.id()) && (!red.containsKey("BLIND")
-                    || C5Q_RED_THROUGH_THE_INVENTORY.contains(row.id())))
+            if (C5Q_RED_THROUGH_THE_INVENTORY.contains(row.id()))
             {
                 expectedC5q.add(row.id());
+            }
+            else if (!red.containsKey("BLIND"))
+            {
+                judgedC5q++;
             }
         }
         assertEquals(new TreeSet<>(BLIND_ON_THIS_FIXTURE), blind,
                 "the probes that cannot see the join on this fixture — exactly the listed ones");
         assertEquals(expectedC5q, redC5q,
-                "C5q (qualifier case) reds on every probed, sensitive"
-                        + " row except C5Q_INSENSITIVE_TODAY — owner-pending N2; a site made"
-                        + " case-insensitive is listed there, a listed site that stopped being"
-                        + " insensitive is removed");
-        assertTrue(expectedC5q.size() > 100, "the N2 population is not vacuous");
-        assertTrue(redC5q.stream().noneMatch(C5Q_INSENSITIVE_TODAY::contains),
-                "a site listed as case-insensitive must not red C5q");
+                "C5q (qualifier case) is RULED (P-19 / MET #6, W3d): a lower-case qualifier"
+                        + " resolves the join declared in upper case at every site; only the"
+                        + " inventory-exact rows of this fixture may red (C5Q_RED_THROUGH_THE_"
+                        + "INVENTORY, an exact set)");
+        assertTrue(judgedC5q > C5Q_POPULATION_FLOOR,
+                "the C5q population is not vacuous: " + judgedC5q);
     }
 
     // ------------------------------------------------------------------
@@ -1534,7 +1595,7 @@ class QualifiedNameUniformityTest
         FunctionRegistry.register(primaryOnlyStub());
         try
         {
-            Row stub = new Row(STUB, "x", true, "V:" + STUB + "(@S)", null, null);
+            Row stub = new Row(STUB, "x", true, "V:" + STUB + "(@S)", null, null, null);
             SequencedMap<String, String> red = redCriteria(stub);
             assertTrue(red.containsKey("C1"), "a primary-only function must red C1: " + red);
             assertTrue(red.containsKey("C2"), "… and C2: " + red);
@@ -1554,6 +1615,86 @@ class QualifiedNameUniformityTest
         }
     }
 
+    private static final String JOIN_FALLBACK_STUB = "__join_fallback_probe__";
+
+    /**
+     * A function taking a column name as TEXT that reads a bare name the primary lacks out of the
+     * FIRST join (the deleted 2026-09-21 fallback, {@code UVC unqualified}) — the defect C4 names,
+     * planted so the C4-only rows (W3d) are shown to be judged by a detector that can fire. The
+     * string channel, because a folded absent reference carries no gated name: a function reading
+     * its argument vector can never reach a join for an absent bare name, by construction.
+     */
+    private static FunctionDescriptor joinFallbackStub()
+    {
+        EvalFunction fn = (run, args) ->
+        {
+            // the STRING channel: a folded absent reference carries no gated name (by design),
+            // so only a function taking the name as text can reach a join for an absent one
+            Vector arg = args.get(0);
+            String name = arg == null ? null : arg.asString(0);
+            ColumnVector own = name == null || name.isEmpty() ? null : primaryColumn(run, name);
+            if (own != null || name == null || name.isEmpty()
+                    || run.ctx().getJoinedDatasets().isEmpty())
+            {
+                return own == null ? ConstVector.of("") : own;
+            }
+            JoinLookup lookup = run.ctx().getJoinedDatasets().values().iterator().next();
+            IDataTable table = run.ctx().getTable();
+            net.cumba.datatable.IDataTableColumn column = new net.cumba.datatable.AbstractDataTableColumn(
+                    0)
+            {
+
+                @Override
+                public long getRowCount()
+                {
+                    return table.getRowCount();
+                }
+
+
+                @Override
+                public @Nullable Object getValue(long aRow)
+                {
+                    return getDataValue(aRow).getValue();
+                }
+
+
+                @Override
+                public net.cumba.datatable.values.IDataValue getDataValue(long aRow)
+                {
+                    return lookup.lookupValue(table, aRow, name, false);
+                }
+            };
+            return new ColumnVector(name, column, DataValueType.STRING);
+        };
+        return new FunctionDescriptor(JOIN_FALLBACK_STUB,
+                List.of(Parameter.required("x",
+                        net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)),
+                FunctionKind.VALUE, fn);
+    }
+
+
+    /** W3d: a C4-only row's detector fires — a join fallback for an absent bare name reds C4. */
+    @Test
+    void aJoinFallbackStubRedsC4OnAC4OnlyRow()
+    {
+        FunctionRegistry.register(joinFallbackStub());
+        try
+        {
+            Row stub = new Row(JOIN_FALLBACK_STUB, "x", true, null, null, "X:stub",
+                    "V:" + JOIN_FALLBACK_STUB + "(\"@S\")");
+            SequencedMap<String, String> red = redCriteria(stub);
+            assertEquals(Set.of("C4"), red.keySet(), red.toString());
+            // and the fully probed row of the same stub reds C4 as well (C4 is judged there too)
+            Row probed = new Row(JOIN_FALLBACK_STUB, "x", true,
+                    "V:" + JOIN_FALLBACK_STUB + "(\"@S\")", null, null, null);
+            assertTrue(redCriteria(probed).containsKey("C4"), redCriteria(probed).toString());
+        }
+        finally
+        {
+            FunctionRegistry.unregister(JOIN_FALLBACK_STUB);
+        }
+    }
+
 
     /** H1: a qualified reference resolved against the PRIMARY is caught by C1j alone. */
     @Test
@@ -1562,7 +1703,7 @@ class QualifiedNameUniformityTest
         FunctionRegistry.register(stripQualifierStub());
         try
         {
-            Row stub = new Row(STRIP_STUB, "x", true, "V:" + STRIP_STUB + "(@S)", null, null);
+            Row stub = new Row(STRIP_STUB, "x", true, "V:" + STRIP_STUB + "(@S)", null, null, null);
             SequencedMap<String, String> red = new LinkedHashMap<>(redCriteria(stub));
             // C5q is independent of the stub: under an unreachable join the argument vector
             // carries no authored name at all, so the stub answers "" there as any function does.
@@ -1615,7 +1756,7 @@ class QualifiedNameUniformityTest
         try
         {
             Row stub = new Row(STRIP_LEN_STUB, "x", true, "V:" + STRIP_LEN_STUB + "(@S)", null,
-                    null);
+                    null, null);
             SequencedMap<String, String> red = new LinkedHashMap<>(redCriteria(stub));
             red.remove("C5q");
             assertEquals(Set.of("C1j"), red.keySet(), red.toString());

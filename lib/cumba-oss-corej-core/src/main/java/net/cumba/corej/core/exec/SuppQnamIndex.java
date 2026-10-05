@@ -47,8 +47,8 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * A {@code QNAM} cell is a value and is recorded exactly, case-sensitively (owner 2026-09-28,
  * register CIT §3: <i>"a String that contains a column name is still a string in the engine"</i>) —
- * the same reading {@code OperatorRegistry.existsInSuppQnam} applies on the existence path, so the
- * merged column set and the existence pivot agree by construction.
+ * the same reading {@link SuppQualifiers} applies on the existence path (W3d), so the merged column
+ * set and the existence pivot agree by construction.
  * </p>
  */
 final class SuppQnamIndex

@@ -436,9 +436,10 @@ class ScopeMatcherTypeRequirementTest
         @Test
         void aSuppQnamDeliveryTakesTheQvalType()
         {
-            IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").build();
-            IDataTable suppae = MockTable.of().name("SUPPAE").col("QNAM", "AETRTEM")
-                    .col("QVAL", "Y").build();
+            // real tables: the merged schema's QNAM set comes from the datatable's matching (W3d)
+            IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").build();
+            IDataTable suppae = RealTables.of("SUPPAE").str("QNAM", "AETRTEM").str("QVAL", "Y")
+                    .build();
             Map<String, IDataTable> study = map("AE", ae, "SUPPAE", suppae);
             assertNull(describeWith(ruleAll("AE.AETRTEM"), study), "untagged: presence is enough");
             assertNull(describeWith(ruleAll("AE.AETRTEM:C"), study), "QVAL is character");
@@ -452,8 +453,8 @@ class ScopeMatcherTypeRequirementTest
         @Test
         void aSuppTableWithoutQvalIsUndecidable()
         {
-            IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").build();
-            IDataTable suppae = MockTable.of().name("SUPPAE").col("QNAM", "AETRTEM").build();
+            IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").build();
+            IDataTable suppae = RealTables.of("SUPPAE").str("QNAM", "AETRTEM").build();
             Map<String, IDataTable> study = map("AE", ae, "SUPPAE", suppae);
             assertNull(describeWith(ruleAll("AE.AETRTEM:N"), study));
             assertNull(describeWith(ruleAll("AE.AETRTEM:C"), study));

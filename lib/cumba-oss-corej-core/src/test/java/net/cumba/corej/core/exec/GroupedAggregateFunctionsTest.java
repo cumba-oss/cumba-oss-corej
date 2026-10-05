@@ -574,8 +574,10 @@ class GroupedAggregateFunctionsTest
         expectError("max(AVAL, group=[\\\"USUBJID\\\"])", "a quoted name is a string");
         expectError("max(AVAL, group=[$x])", "plain column reference");
         // W3c (N5 lifted per MQ8): without domain= a qualified name is a column of the one
-        // evaluation table and loads; under domain= only the domain's own qualifier does.
-        loaded("max(DS.AVAL, group=[USUBJID])", "empty($v)");
+        // evaluation table; W3d (D-SRC extended to the group operators, owner 2026-10-05): its
+        // qualifier must name an ordinary inner keyed entry of the rule — none here, a load
+        // error. Under domain= only the domain's own qualifier names a column of it.
+        expectError("max(DS.AVAL, group=[USUBJID])", "names no Match_Datasets entry DS");
         loaded("max(AVAL, group=[USUBJID], filter=(DM.ARM == \\\"A\\\"))", "empty($v)");
         expectError("max(DS.AVAL, domain=ADSL, group=[USUBJID])", "under domain=ADSL");
         expectError("max(AVAL, group=[USUBJID], filter=filter(ABLFL=\\\"Y\\\"))",

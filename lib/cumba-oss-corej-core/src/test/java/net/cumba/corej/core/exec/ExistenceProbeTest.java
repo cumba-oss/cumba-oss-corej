@@ -139,8 +139,10 @@ class ExistenceProbeTest
     @Test
     void dottedDatasetColumnFallsBackToTheSuppQnamPivot()
     {
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").build();
-        IDataTable suppae = MockTable.of().name("SUPPAE").col("QNAM", "AETRTEM", "").build();
+        // real tables: the merged schema's QNAM set is derived by the datatable's matching
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").build();
+        IDataTable suppae = RealTables.of("SUPPAE").str("QNAM", "AETRTEM", "").str("QVAL", "Y", "")
+                .build();
         EvaluationContext c = ctx(primary(), map("AE", ae, "SUPPAE", suppae));
         assertTrue(OperatorRegistry.existsAsVariable(c, "AE.AETRTEM"),
                 "the qualifier surfaces via SUPPAE.QNAM");
@@ -195,45 +197,46 @@ class ExistenceProbeTest
     void nonDottedAndUnmatchedDottedNamesFallThrough()
     {
         EvaluationContext c = ctx(primary(), map());
-        // Leading dot / lowercase do not match either dotted pattern, so the probe falls back to
-        // the plain column lookup (and finds nothing).
+        // A leading dot matches neither dotted pattern, so the probe falls back to the plain
+        // column lookup (and finds nothing); a lower-case dotted name IS the dotted question since
+        // W3d (P-19) — no DM is declared or in the study here, so it answers false too.
         assertFalse(OperatorRegistry.existsAsVariable(c, ".AETERM"));
         assertFalse(OperatorRegistry.existsAsVariable(c, "dm.arm"));
     }
 
-    // ---- existsInSuppQnam (shared with ScopeVariableSource) ----
+    // ---- SuppQualifiers (the merged schema's QNAM set, shared with ScopeVariableSource) ----
 
 
     @Test
-    void existsInSuppQnamHandlesAbsentColumnAndBlankCells()
+    void suppQualifiersHandleAbsentColumnAndBlankCells()
     {
-        IDataTable noQnam = MockTable.of().name("SUPPAE").col("QVAL", "x").build();
-        assertFalse(OperatorRegistry.existsInSuppQnam(noQnam, "AETRTEM"), "no QNAM column");
-
-        IDataTable withBlanks = MockTable.of().name("SUPPAE").col("QNAM", "", null, "AETRTEM")
-                .build();
-        assertTrue(OperatorRegistry.existsInSuppQnam(withBlanks, "AETRTEM"),
-                "blank and missing cells are skipped, the populated one still matches");
-        assertFalse(OperatorRegistry.existsInSuppQnam(withBlanks, "NOSUCH"));
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "01").build();
+        IDataTable noQnam = RealTables.of("SUPPAE").str("QVAL", "x").build();
+        assertEquals(java.util.Set.of(), SuppQualifiers.ofSupp(ae, "AE", noQnam, null),
+                "no QNAM column");
+        IDataTable withBlanks = RealTables.of("SUPPAE").str("QNAM", "", null, "AETRTEM")
+                .str("QVAL", "a", "b", "c").build();
+        assertEquals(java.util.Set.of("AETRTEM"), SuppQualifiers.ofSupp(ae, "AE", withBlanks, null),
+                "blank and missing cells are skipped, the populated one is a qualifier");
     }
 
 
     /**
-     * Combined review of runbook W2–W8, round 2 L2: the existence probe reads the SUPP table
-     * through the run's shared index — one parse for every probe and for the pivot — instead of a
-     * fresh full parse per call. And existence is the QNAM set, even for a QNAM whose rows can
-     * qualify no record (here: no IDVAR, no subject key).
+     * W3d: the existence probe reads the merged schema's QNAM set — one build per SUPP table per
+     * run through the shared index cache, for every probe. And existence is the QNAM set, even for
+     * a QNAM whose rows can qualify no record (here: no IDVAR, no subject key).
      */
     @Test
-    void existsInSuppQnamParsesTheSuppTableOncePerRun()
+    void suppQualifiersAreBuiltOncePerRun()
     {
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "01").build();
         IDataTable supp = RealTables.of("SUPPAE").str("QNAM", "AETRTEM", "AESOSP")
                 .str("QVAL", "Y", "x").build();
         JoinCache.SharedIndexCache cache = new JoinCache.SharedIndexCache();
-        assertTrue(OperatorRegistry.existsInSuppQnam(supp, "AETRTEM", cache));
-        assertTrue(OperatorRegistry.existsInSuppQnam(supp, "AESOSP", cache));
-        assertFalse(OperatorRegistry.existsInSuppQnam(supp, "NOSUCH", cache));
-        assertEquals(1, cache.suppQnamIndexBuildCount(), "one parse for three probes");
+        assertTrue(SuppQualifiers.ofSupp(ae, "AE", supp, cache).contains("AETRTEM"));
+        assertTrue(SuppQualifiers.ofSupp(ae, "AE", supp, cache).contains("AESOSP"));
+        assertFalse(SuppQualifiers.ofSupp(ae, "AE", supp, cache).contains("NOSUCH"));
+        assertEquals(1, cache.suppQnamsBuildCount(), "one build for three probes");
     }
 
     // ---- variableIsNull / maxValueLength ----

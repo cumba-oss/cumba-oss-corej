@@ -111,8 +111,17 @@ final class QualifiedNameFixture
 
     static String matchJ(String extra)
     {
-        return "\"Match_Datasets\":[{\"Name\":\"J\",\"Keys\":[\"K\"],\"Join_Type\":\"left\"" + extra
-                + "}]";
+        return matchJ(extra, "left");
+    }
+
+
+    /**
+     * {@link #matchJ(String)} with the given {@code Join_Type} ({@code inner} for a D-SRC source).
+     */
+    static String matchJ(String extra, String joinType)
+    {
+        return "\"Match_Datasets\":[{\"Name\":\"J\",\"Keys\":[\"K\"],\"Join_Type\":\"" + joinType
+                + "\"" + extra + "}]";
     }
 
 

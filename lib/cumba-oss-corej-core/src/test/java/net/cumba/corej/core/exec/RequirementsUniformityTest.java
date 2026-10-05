@@ -88,15 +88,22 @@ class RequirementsUniformityTest
     }
 
 
-    /** ⚠ Known red N2 (owner-pending, plan §2.4): the qualifier is matched exactly. */
+    /**
+     * P-19 / MET #6 ({@code PLAN-merged-evaluation-table} W3d; was known red N2): the qualifier is
+     * matched ignoring case even against an EXACT-case inventory —
+     * {@code ScopeVariableSource.resolveIgnoringCase} falls back to the inventory entry that equals
+     * it ignoring case, so the gate does not depend on the resolver's own policy.
+     */
     @Test
-    void aLowerCaseQualifierIsNotAvailableToAnExactResolverToday()
+    void aLowerCaseQualifierIsAvailableAgainstAnExactResolver()
     {
         IDataTable p = primary();
         IDataTable j = joined();
-        assertEquals(RuleExecutionStatus.SKIPPED, status(gated("All", "j.S"), p, j),
-                "ScopeVariableSource.resolveMetas → resolver.resolve(\"j\") — exact in this"
-                        + " inventory; the product's resolvers are not traced (findings S9)");
+        assertEquals(RuleExecutionStatus.EXECUTED, status(gated("All", "j.S"), p, j));
+        assertEquals(RuleExecutionStatus.SKIPPED, status(gated("None", "j.S"), p, j));
+        IDataTable jAbsent = table("J", "S");
+        assertEquals(RuleExecutionStatus.SKIPPED, status(gated("All", "j.S"), p, jAbsent),
+                "the column, not the case, decides");
     }
 
 

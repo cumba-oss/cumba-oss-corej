@@ -1295,7 +1295,7 @@ public final class ScopeMatcher
 
     /**
      * Ruling <b>D9</b> — the type of a variable delivered by the SUPP-QNAM pivot rather than by a
-     * column. The pivot ({@code OperatorRegistry.existsInSuppQnam}) answers existence only: the
+     * column. The merged schema's QNAM set ({@code SuppQualifiers}) answers existence only: the
      * variable arrives as a {@code QNAM} <em>row</em>, so it has no column and no
      * {@link DataValueType} of its own. Its values are delivered through {@code QVAL}, so
      * {@code QVAL}'s declared type is the delivered variable's type — read from the SUPP table's

@@ -103,8 +103,29 @@ public final class StageBChecker
     public static StageBReport runAndApply(Rule rule, IDataTable table, boolean concreteContract,
             @Nullable ForeignDatasetInventory foreignInventory, Set<String> suppressedDatasets)
     {
+        return runAndApply(rule, table, concreteContract, foreignInventory, suppressedDatasets,
+                null);
+    }
+
+
+    /**
+     * {@link #runAndApply(Rule, IDataTable, boolean, ForeignDatasetInventory, Set)} binding the
+     * column half against the MERGED SCHEMA ({@code PLAN-merged-evaluation-table} W3d, M8 / §3.9):
+     * {@code schema} is the merged evaluation view's metadata — the primary's columns, the keyed
+     * parts' {@code J.X} names, the SUPP qualifiers as bare columns typed by {@code QVAL} — so a
+     * supplemental qualifier is no longer an absent column, and a dotted reference's absence and
+     * type are judged at bind time exactly as a bare one's. {@code null} binds against
+     * {@code table}'s own metadata (the legacy arm).
+     *
+     * @param schema
+     *            the merged schema, or {@code null}
+     */
+    public static StageBReport runAndApply(Rule rule, IDataTable table, boolean concreteContract,
+            @Nullable ForeignDatasetInventory foreignInventory, Set<String> suppressedDatasets,
+            @Nullable DataTableMeta schema)
+    {
         StageBReport report = check(rule, table, concreteContract, foreignInventory,
-                suppressedDatasets);
+                suppressedDatasets, schema);
         if (!report.observedFindings().isEmpty() && LOGGER.isLoggable(System.Logger.Level.DEBUG))
         {
             LOGGER.log(System.Logger.Level.DEBUG, "stage B observations for {0} on {1}: {2}",
@@ -128,13 +149,27 @@ public final class StageBChecker
     public static StageBReport check(Rule rule, IDataTable table, boolean concreteContract,
             @Nullable ForeignDatasetInventory foreignInventory, Set<String> suppressedDatasets)
     {
+        return check(rule, table, concreteContract, foreignInventory, suppressedDatasets, null);
+    }
+
+
+    /**
+     * {@link #check(Rule, IDataTable, boolean, ForeignDatasetInventory, Set)} against the merged
+     * schema (see
+     * {@link #runAndApply(Rule, IDataTable, boolean, ForeignDatasetInventory, Set, DataTableMeta)}).
+     */
+    public static StageBReport check(Rule rule, IDataTable table, boolean concreteContract,
+            @Nullable ForeignDatasetInventory foreignInventory, Set<String> suppressedDatasets,
+            @Nullable DataTableMeta schema)
+    {
         List<StageBFinding> findings = new ArrayList<>();
         List<String> skips = new ArrayList<>();
         try
         {
             List<Expr> roots = expressionRoots(rule);
             DataTableMeta meta = table.getMetaData();
-            checkColumnTypes(rule, meta, findings);
+            checkColumnTypes(rule, schema != null ? schema : meta, meta.getName(), schema != null,
+                    findings);
             if (concreteContract)
             {
                 checkUnresolvedWildcards(rule, roots, findings);
@@ -219,8 +254,8 @@ public final class StageBChecker
      * ({@code PLAN-column-typed-function-absent-type} fold, LOW-4) — the call site's, which the
      * column's own direct-read default need not equal.
      */
-    private static void checkColumnTypes(Rule rule, DataTableMeta meta,
-            List<StageBFinding> findings)
+    private static void checkColumnTypes(Rule rule, DataTableMeta meta, @Nullable String dataset,
+            boolean mergedSchema, List<StageBFinding> findings)
     {
         // (A rule with no expression roots walks nothing: no value read, no equality pair.)
         // ⭐ The ONE factory the engine's application of the defaults reads too
@@ -228,7 +263,14 @@ public final class StageBChecker
         // roots and the same binding map, so a $-reference's kind (A2) is reported as applied.
         TypeExpectations expectations = TypeExpectations.forRule(rule);
         boolean hasChildEntry = hasChildEntry(rule);
-        for (String column : expectations.valueReadColumns())
+        // W3d (M8): over the merged schema a DOTTED name is a column like a bare one — its
+        // absence (the join lacks it, or is not supplied — P-1) and its type are judged here too.
+        List<String> columns = new ArrayList<>(expectations.valueReadColumns());
+        if (mergedSchema)
+        {
+            columns.addAll(expectations.dottedReadColumns());
+        }
+        for (String column : columns)
         {
             int idx = meta.getColumnIndex(column);
             if (idx < 0)
@@ -241,9 +283,11 @@ public final class StageBChecker
                 String defaultType = expectations.numericExpected(column)
                         ? "number (missing = MissingValue.MIS)"
                         : "string (missing = \"\")";
-                StringBuilder message = new StringBuilder("absent from ").append(meta.getName())
+                StringBuilder message = new StringBuilder("absent from ")
+                        .append(mergedSchema ? "the merged schema of " : "").append(dataset)
                         .append("; D76 default type ").append(defaultType)
-                        .append(hasChildEntry ? " (unless its Child: true parent supplies it)"
+                        .append(hasChildEntry && column.indexOf('.') < 0
+                                ? " (unless its Child: true parent supplies it)"
                                 : "");
                 List<Expr.Call> sites = expectations.primaryTargetSites(column);
                 Set<Expr.Call> numericSites = sites.isEmpty() ? Set.of()

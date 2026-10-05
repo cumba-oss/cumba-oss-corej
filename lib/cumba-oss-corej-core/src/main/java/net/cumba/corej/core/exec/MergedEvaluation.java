@@ -215,6 +215,20 @@ public final class MergedEvaluation
         }
 
 
+        /** The view's metadata of the SUPP qualifier column {@code name} (resolved first). */
+        DataTableColumnMeta suppColumnMeta(String name)
+        {
+            return view.getMetaData().getColumn(view.getColumnIndex(name));
+        }
+
+
+        /** The QNAM set the primary's SUPP parts carry — the merged schema's qualifiers (M8). */
+        public java.util.Set<String> suppQnams()
+        {
+            return view.suppQnams();
+        }
+
+
         private Object resolveSupp(String name)
         {
             int idx = view.getColumnIndex(name);
@@ -307,7 +321,7 @@ public final class MergedEvaluation
             return null;
         }
         List<KeyedMergeSpec> keyed = new ArrayList<>();
-        if (!keyedSpecs(rule, primary, resolver, ruleId, keyed))
+        if (!keyedSpecs(rule, primary, resolver, ruleId, keyed, rule.isSuppMergeEnabled()))
         {
             return null; // a chained qualified key: composed by the engine until its wave
         }
@@ -419,7 +433,7 @@ public final class MergedEvaluation
      * carries a chained qualified key.
      */
     private static boolean keyedSpecs(Rule rule, IDataTable primary, DatasetResolver resolver,
-            @Nullable String ruleId, List<KeyedMergeSpec> out)
+            @Nullable String ruleId, List<KeyedMergeSpec> out, boolean suppMerge)
     {
         List<MatchDataset> entries = rule.getMatchDatasets();
         if (entries == null)
@@ -479,9 +493,41 @@ public final class MergedEvaluation
             out.add(KeyedMergeSpec.builder().qualifier(qualifier).dataset(dsName).keys(keys)
                     .joinType(joinType).joinAsString(md.joinKeysAsString())
                     .keepMissings(md.keepMissingKeys()).typeChecked(expandable).partnerMask(mask)
+                    .supp(suppMerge ? partnerSupp(partner, dsName, resolver, ruleId) : null)
                     .build());
         }
         return true;
+    }
+
+
+    /**
+     * MQ5 ({@code PLAN-merged-evaluation-table} W3d): under the rule's {@code Supp_Merge} a keyed
+     * partner's own {@code SUPP<dataset>} / {@code SUPP<domain>} qualifiers are columns of the view
+     * too, named {@code <Name>.<QNAM>} — the same IG names and the same P-7 choice as the
+     * primary's; {@code null} when no supplemental dataset resolves for the partner.
+     */
+    private static @Nullable SuppMergeSpec partnerSupp(IDataTable partner, String dsName,
+            DatasetResolver resolver, @Nullable String ruleId)
+    {
+        if (neverPivoted(dsName))
+        {
+            return null;
+        }
+        String domain = DatasetIdentity.domainOfDataset(dsName, resolver);
+        if (domain == null || domain.isEmpty())
+        {
+            return null;
+        }
+        List<String> supp = new ArrayList<>(2);
+        for (String name : SuppMergeSpec.defaultSuppNames(dsName, domain))
+        {
+            IDataTable t = SplitDomainResolution.resolveTableOrThrow(resolver, name, ruleId);
+            if (t != null && t != partner)
+            {
+                supp.add(name);
+            }
+        }
+        return supp.isEmpty() ? null : SuppMergeSpec.builder().suppDatasets(supp).build();
     }
 
 

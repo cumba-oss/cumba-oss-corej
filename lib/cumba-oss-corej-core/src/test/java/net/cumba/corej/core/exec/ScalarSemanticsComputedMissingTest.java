@@ -749,7 +749,11 @@ class ScalarSemanticsComputedMissingTest
     // (below, or SuppPivot's qualifier column); and GroupReadTable.JoinedColumn.getDataValue —
     // read: JoinLookup.lookupValue at the evaluated row (a matched row's cell, an unmatched row's
     // type default; an absent partner column is never appended). Never null.
-    private static final int EXPECTED_VALUE_PRODUCERS = 43;
+    // 43 -> 44 (PLAN-merged-evaluation-table W3d): DynamicColumnRead.Qualifier.read — read: the
+    // supplemental qualifier column SuppPivot hands out for a bare name colref names (MQ7): a
+    // missing cell is handed through with its identity, a present one as its text (DataValues.of).
+    // Never null; a flagged column raises MergeErrorReadException at the read.
+    private static final int EXPECTED_VALUE_PRODUCERS = 44;
 
     private static Method declared(Class<?> owner, String name)
     {

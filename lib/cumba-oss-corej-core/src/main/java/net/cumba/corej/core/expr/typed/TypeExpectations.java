@@ -361,6 +361,29 @@ public final class TypeExpectations
 
 
     /**
+     * The DOTTED names carrying an expectation ({@code DM.AGE}) — the merged schema's columns Stage
+     * B probes since {@code PLAN-merged-evaluation-table} W3d (M8: a merged column's type and
+     * absence are known at bind time); never a {@code _matched_} flag, which is a condition.
+     * Disjoint from {@link #valueReadColumns()} by construction (every member carries a
+     * {@code '.'}).
+     *
+     * @return the dotted names, in first-seen order
+     */
+    public Set<String> dottedReadColumns()
+    {
+        Set<String> out = new LinkedHashSet<>();
+        for (String name : expectations.keySet())
+        {
+            if (name.indexOf('.') > 0 && !name.endsWith("._matched_"))
+            {
+                out.add(name);
+            }
+        }
+        return out;
+    }
+
+
+    /**
      * The D76 default type of an absent column under this rule's expectations: {@code number}
      * (missing ⇒ {@code MissingValue.MIS}) when any position expects numeric, otherwise
      * {@code string} (missing ⇒ {@code ""}) — "otherwise" deliberately absorbing

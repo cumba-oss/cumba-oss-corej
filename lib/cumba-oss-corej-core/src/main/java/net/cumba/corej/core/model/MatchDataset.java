@@ -308,6 +308,76 @@ public class MatchDataset
 
 
     /**
+     * The entry a qualifier names — the ONE resolution shared by Stage A, the template expansion
+     * and the loader's D-SRC gate ({@code PLAN-merged-evaluation-table} W3d): the entry whose
+     * {@code Name} equals the qualifier ignoring letter case (P-19 / MET #6), else the entry whose
+     * {@code --} template it instantiates ({@code SUPPAE} names {@code SUPP--}; an exact match wins
+     * over a template match). {@code null} when none is named.
+     *
+     * @param aEntries
+     *            the rule's entries, possibly {@code null}
+     * @param aQualifier
+     *            the qualifier as written
+     * @return the entry, or {@code null}
+     */
+    public static @Nullable MatchDataset declaredFor(@Nullable List<MatchDataset> aEntries,
+            String aQualifier)
+    {
+        if (aEntries == null)
+        {
+            return null;
+        }
+        for (MatchDataset m : aEntries)
+        {
+            if (m != null && aQualifier.equalsIgnoreCase(m.getName()))
+            {
+                return m;
+            }
+        }
+        for (MatchDataset m : aEntries)
+        {
+            if (m != null && instantiatesTemplate(m.getName(), aQualifier))
+            {
+                return m;
+            }
+        }
+        return null;
+    }
+
+
+    /**
+     * Whether {@code aQualifier} is an instance of the {@code --} template {@code aName}: the same
+     * text before and after the {@code --} (ignoring letter case, P-19), with a non-empty domain in
+     * its place — the shape {@code DatasetIdentity.resolveWildcard} produces ({@code SUPP--} →
+     * {@code SUPPAE}). A name with no {@code --} is not a template of anything.
+     *
+     * @param aName
+     *            an entry name, possibly {@code null}
+     * @param aQualifier
+     *            the concrete qualifier
+     * @return whether the qualifier instantiates the template
+     */
+    public static boolean instantiatesTemplate(@Nullable String aName, String aQualifier)
+    {
+        if (aName == null)
+        {
+            return false;
+        }
+        int at = aName.indexOf("--");
+        if (at < 0)
+        {
+            return false;
+        }
+        String prefix = aName.substring(0, at);
+        String suffix = aName.substring(at + 2);
+        return aQualifier.length() > prefix.length() + suffix.length()
+                && aQualifier.regionMatches(true, 0, prefix, 0, prefix.length())
+                && aQualifier.regionMatches(true, aQualifier.length() - suffix.length(), suffix, 0,
+                        suffix.length());
+    }
+
+
+    /**
      * The qualifier of a bare qualified key element — {@code "DM"} for {@code "DM.RPATHCD"} — or
      * {@code null} for an unqualified name. A key is qualified when it carries exactly one
      * {@code .} with text on both sides; nothing else is read into it (a {@code --} or {@code &}

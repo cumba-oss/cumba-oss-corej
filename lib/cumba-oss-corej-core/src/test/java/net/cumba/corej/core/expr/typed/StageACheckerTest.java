@@ -1293,9 +1293,11 @@ class StageACheckerTest
         assertEquals(List.of(), check(
                 withOutputs(ruleJoining("AE", "left", "USUBJID"), "${IDVAR}.X", "SUPP--.QVAL"),
                 "QNAM == \"x\"").findings());
-        assertEquals(List.of(),
-                check(withOutputs(ruleJoining("AE", "left", "USUBJID"), "ae.AETERM"),
-                        "QNAM == \"x\"").findings());
+        // W3d (P-19): a case-only difference names the entry — the naming lint reports it,
+        // observe-only, and the undeclared arm stays silent
+        assertEquals(List.of(StageAErrorKind.QUALIFIER_CASE),
+                kinds(check(withOutputs(ruleJoining("AE", "left", "USUBJID"), "ae.AETERM"),
+                        "QNAM == \"x\"")));
         assertEquals(List.of(),
                 check(withOutputs(ruleJoining("SUPP--", "left", "USUBJID"), "DM.ARM"),
                         "QNAM == \"x\"").findings());
@@ -1346,12 +1348,52 @@ class StageACheckerTest
         // controls: declared, and a -- qualifier resolved later against a concrete entry
         assertEquals(List.of(),
                 check(ruleJoining("DM", "left", "USUBJID"), "DM.**TERM != \"x\"").findings());
-        // T2 r1 (engine 4): a qualifier whose CASE alone differs from an entry's is owner-pending
-        // N2 and not judged — the exemption the Output_Variables arm (N17) already carries.
-        assertEquals(List.of(),
-                check(ruleJoining("dm", "left", "USUBJID"), "X in DM.Q${*}V").findings());
+        // W3d (P-19): a qualifier whose CASE alone differs from an entry's names the entry — the
+        // naming lint reports the spelling (observe-only), the undeclared arm stays silent
+        StageAReport caseOnly = check(ruleJoining("dm", "left", "USUBJID"), "X in DM.Q${*}V");
+        assertEquals(List.of(StageAErrorKind.QUALIFIER_CASE), kinds(caseOnly));
+        assertEquals(List.of(), caseOnly.armedFindings());
         assertEquals(List.of(),
                 check(ruleJoining("SUPPAE", "left", "USUBJID"), "SUPP--.QVAL != \"x\"").findings());
+    }
+
+
+    /**
+     * {@code PLAN-merged-evaluation-table} W3d, P-19 / MET #6 — the naming lint: a qualifier that
+     * names its {@code Match_Datasets} entry by letter case only is reported, observe-only, on
+     * every qualified surface (a dotted operand, a {@code _matched_} flag, a {@code colref} /
+     * {@code find_vars} literal, an {@code Output_Variables} entry); the correctly cased spelling
+     * reports nothing (the planted control), and the entry is still found — no undeclared arm
+     * fires.
+     */
+    @Test
+    void aLowerCaseQualifierIsReportedByTheNamingLintAndStillNamesItsEntry()
+    {
+        for (String expression : List.of("dm.ARM == \"x\"", "not dm._matched_",
+                "colref(\"dm.ARM\") == \"x\"", "count(find_vars(\"dm.AR*\")) > 0"))
+        {
+            StageAReport report = check(ruleJoining("DM", "left", "USUBJID"), expression);
+            assertEquals(List.of(StageAErrorKind.QUALIFIER_CASE), kinds(report), expression);
+            assertEquals(List.of(), report.armedFindings(), expression);
+            String message = report.findings().get(0).toString();
+            assertTrue(message.contains("qualifier dm") && message.contains("named DM"), message);
+        }
+        StageAReport output = check(withOutputs(ruleJoining("DM", "left", "USUBJID"), "dm.ARM"),
+                "QNAM == \"x\"");
+        assertEquals(List.of(StageAErrorKind.QUALIFIER_CASE), kinds(output));
+        // controls: the upper-case spelling reports nothing on every surface
+        for (String expression : List.of("DM.ARM == \"x\"", "not DM._matched_",
+                "colref(\"DM.ARM\") == \"x\"", "count(find_vars(\"DM.AR*\")) > 0"))
+        {
+            assertEquals(List.of(),
+                    check(ruleJoining("DM", "left", "USUBJID"), expression).findings(), expression);
+        }
+        assertEquals(List.of(),
+                check(withOutputs(ruleJoining("DM", "left", "USUBJID"), "DM.ARM"), "QNAM == \"x\"")
+                        .findings());
+        // a template entry name is instantiated, not compared by case
+        assertEquals(List.of(),
+                check(ruleJoining("SUPP--", "left", "USUBJID"), "suppae.QVAL != \"x\"").findings());
     }
 
     // ------------------------------------------------------------------

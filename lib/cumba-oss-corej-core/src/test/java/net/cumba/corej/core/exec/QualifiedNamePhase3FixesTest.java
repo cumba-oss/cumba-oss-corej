@@ -6,13 +6,16 @@ import static net.cumba.corej.core.exec.QualifiedNameFixture.executed;
 import static net.cumba.corej.core.exec.QualifiedNameFixture.joined;
 import static net.cumba.corej.core.exec.QualifiedNameFixture.load;
 import static net.cumba.corej.core.exec.QualifiedNameFixture.loadClean;
+import static net.cumba.corej.core.exec.QualifiedNameFixture.matchJ;
 import static net.cumba.corej.core.exec.QualifiedNameFixture.outcome;
 import static net.cumba.corej.core.exec.QualifiedNameFixture.primary;
 import static net.cumba.corej.core.exec.QualifiedNameFixture.ruleJson;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import org.junit.jupiter.api.Test;
@@ -40,6 +43,24 @@ class QualifiedNamePhase3FixesTest
     }
 
 
+    /** {@link #firesIf}, with {@code J} DECLARED (a keyed left join over K). */
+    private static Rule firesIfJoined(String predicate)
+    {
+        return loadClean(ruleJson("Record",
+                matchJ("") + "," + check("K != \"zz\" and " + predicate) + "," + outcome("K")),
+                true);
+    }
+
+
+    private static int firedJoined(String predicate, IDataTable p, IDataTable... others)
+    {
+        IDataTable[] all = new IDataTable[others.length + 1];
+        all[0] = p;
+        System.arraycopy(others, 0, all, 1, others.length);
+        return executed(firesIfJoined(predicate), p, exactInventory(all)).getViolations().size();
+    }
+
+
     /**
      * N3 (column half, {@code CIT §1}): the COLUMN part of a dotted {@code var_exists} string is
      * matched ignoring case, as every other column lookup is. RED before: the
@@ -56,9 +77,64 @@ class QualifiedNamePhase3FixesTest
         assertEquals(6, fired("var_exists(\"J.s\")", p, j), "CIT §1: the column part");
         assertEquals(0, fired("var_not_exists(\"J.s\")", p, j), "the negation agrees");
         assertEquals(0, fired("var_exists(\"J.nope\")", p, j), "an absent column stays absent");
-        // ⚠ The QUALIFIER half is owner-pending N2 (plan §2.4): a lower-case qualifier is still
-        // matched exactly and answers false. Pinned so this fix cannot widen it silently.
-        assertEquals(0, fired("var_exists(\"j.S\")", p, j), "owner-pending N2: qualifier exact");
+        // ⭐ The QUALIFIER half is RULED (P-19 / MET #6, PLAN-merged-evaluation-table W3d): a
+        // dataset name is matched ignoring case, so the lower-case qualifier finds the join J.
+        assertEquals(6, fired("var_exists(\"j.S\")", p, j), "P-19: the qualifier ignoring case");
+        assertEquals(0, fired("var_not_exists(\"j.s\")", p, j), "both halves at once");
+    }
+
+
+    /**
+     * MQ9 ({@code PLAN-merged-evaluation-table} W3d): {@code var_exists} over a DECLARED dataset
+     * answers from the merged schema — the join's columns and, under {@code Supp_Merge}, the
+     * qualifiers its own {@code SUPP<domain>} delivers (MQ5) — while an undeclared dataset keeps
+     * the inventory arm. RED before: the declared J was answered from the inventory's J table,
+     * which lacks S here, and the partner's SUPP was never a column.
+     */
+    @Test
+    void varExistsOverADeclaredDatasetAnswersFromTheMergedSchema()
+    {
+        IDataTable p = primary();
+        IDataTable jAbsent = QualifiedNameFixture.table("J", "S");
+        IDataTable suppJ = RealTables.of("SUPPJ").str("RDOMAIN", "J").str("K", "k1")
+                .str("IDVAR", "L").str("IDVARVAL", "1").str("QNAM", "S").str("QVAL", "q").build();
+        assertEquals(0, firedJoined("var_exists(\"J.S\")", p, jAbsent), "J lacks S, no SUPPJ");
+        assertEquals(6, firedJoined("var_exists(\"J.S\")", p, jAbsent, suppJ),
+                "SUPPJ delivers S as the merged column J.S (MQ5)");
+        Rule off = loadClean(ruleJson("Record", matchJ("") + ",\"Supp_Merge\":false,"
+                + check("K != \"zz\" and var_exists(\"J.S\")") + "," + outcome("K")), true);
+        assertEquals(0, executed(off, p, exactInventory(p, jAbsent, suppJ)).getViolations().size(),
+                "Supp_Merge: false — the partner's SUPP is no column either");
+        // an UNDECLARED dataset keeps the inventory arm: Q is in the study, not in the rule
+        IDataTable q = QualifiedNameFixture.table("Q", null);
+        assertEquals(6, executed(firesIf("var_exists(\"Q.S\")"), p, exactInventory(p, jAbsent, q))
+                .getViolations().size());
+    }
+
+
+    /**
+     * N13 served ({@code PLAN-merged-evaluation-table} W3d, MQ8 / MET #7): a {@code var_*}
+     * accessor's qualified literal reads the merged schema's metadata of the joined column — the
+     * source column's name, label, type and ordinal, cell for cell what the bare spelling reads on
+     * the primary. RED before: refused at load, naming the bare spelling.
+     */
+    @Test
+    void aQualifiedVarAccessorLiteralReadsTheJoinedColumnsMetadata()
+    {
+        IDataTable p = primary();
+        IDataTable j = joined();
+        assertEquals(6,
+                firedJoined("var_name(\"J.S\", \"DATA\") == var_name(\"S\", \"DATA\")"
+                        + " and var_label(\"J.S\", \"DATA\") == var_label(\"S\", \"DATA\")"
+                        + " and var_type(\"J.N\", \"DATA\") == var_type(\"N\", \"DATA\")"
+                        + " and var_ordinal(\"J.L\", \"DATA\") == var_ordinal(\"L\", \"DATA\")", p,
+                        j));
+        assertEquals(6, firedJoined("var_name(\"j.s\", \"DATA\") == \"S\"", p, j),
+                "both halves ignore case");
+        assertEquals(6, firedJoined("empty(var_label(\"J.NOPE\", \"DATA\"))", p, j),
+                "absent from the join: missing (D4)");
+        assertEquals(6, firedJoined("empty(var_label(\"Q.S\", \"DATA\"))", p, j),
+                "a qualifier naming no join of the rule: missing");
     }
 
 
@@ -74,8 +150,8 @@ class QualifiedNamePhase3FixesTest
     {
         // T2 r1 L5: every one of the ten accessors, in both spellings — a loop over the
         // registry's vlm_ names, so an eleventh accessor is covered without anyone remembering.
-        java.util.List<String> accessors = net.cumba.corej.core.expr.eval.FunctionRegistry.all()
-                .stream().map(net.cumba.corej.core.expr.eval.FunctionDescriptor::name)
+        List<String> accessors = net.cumba.corej.core.expr.eval.FunctionRegistry.all().stream()
+                .map(net.cumba.corej.core.expr.eval.FunctionDescriptor::name)
                 .filter(n -> n.startsWith("vlm_")).toList();
         assertEquals(10, accessors.size(), accessors.toString());
         for (String fn : accessors)
@@ -85,10 +161,8 @@ class QualifiedNamePhase3FixesTest
                     fn + "(J.S)", fn + "(\"J.S\")"
             })
             {
-                Rule r = load(
-                        ruleJson("Record",
-                                QualifiedNameFixture.matchJ("") + ","
-                                        + check(typedComparison(fn, call)) + "," + outcome("K")),
+                Rule r = load(ruleJson("Record",
+                        matchJ("") + "," + check(typedComparison(fn, call)) + "," + outcome("K")),
                         true);
                 String error = r.getLoadError();
                 assertNotNull(error, call + " must not load clean");
@@ -141,63 +215,50 @@ class QualifiedNamePhase3FixesTest
                         + "\"Join_Type\":\"left\"}]," + check("K != \"zz\"") + ","
                         + outcome("SUPPJ.N", "SUPPJ.S")),
                 true);
-        java.util.List<java.util.Map<String, String>> values = QualifiedNameFixture
+        List<java.util.Map<String, String>> values = QualifiedNameFixture
                 .values(executed(r, p, exactInventory(p, suppj)));
         assertEquals(6, values.size());
-        assertEquals(java.util.List.of("SUPPJ.S", "K"),
-                java.util.List.copyOf(values.get(0).keySet()),
+        assertEquals(List.of("SUPPJ.S", "K"), List.copyOf(values.get(0).keySet()),
                 "SUPPJ.N is absent from SUPPJ: omitted, never printed as \"\"");
     }
 
 
     /**
-     * N13: a {@code var_*} accessor names a variable of the dataset under evaluation, so a
-     * qualified {@code "J.S"} was looked up verbatim there and answered a missing at every level —
-     * at LIBRARY a missing compares as {@code ""}, so {@code var_core("J.S", "LIBRARY") != "Req"}
-     * was a FALSE POSITIVE on every row (phase 2 lane 1). Refused at load, naming the bare spelling
-     * and, for the four accessors that have it, the {@code dataset=} channel. RED before: every
-     * rule below loaded clean.
+     * N13 — served since {@code PLAN-merged-evaluation-table} W3d (MQ8): a qualified {@code var_*}
+     * literal loads at every level and names the joined column
+     * ({@code aQualifiedVarAccessorLiteralReadsTheJoinedColumnsMetadata}); what stays refused is a
+     * qualified literal that ALSO carries {@code dataset=} — two dataset channels on one read.
+     * (Until W3d every spelling below was refused at load, naming the bare one.)
      */
     @Test
-    void aQualifiedVarAccessorNameIsRefusedAtLoadAtEveryLevel()
+    void aQualifiedVarAccessorNameLoadsAtEveryLevelAndRefusesADoubleDatasetChannel()
     {
-        String[][] cases =
+        for (String expression : List.of("var_core(\"J.S\", \"LIBRARY\") != \"Req\"",
+                "var_label(\"J.S\", \"DEFINE\") == \"x\"",
+                "var_type(\"J.S\", \"DATA\") == \"Char\"", "var_ordinal(\"J.S\", \"DATA\") == 1"))
         {
-                {
-                        "var_core(\"J.S\", \"LIBRARY\") != \"Req\"", null
-                },
-                {
-                        "var_label(\"J.S\", \"DEFINE\") == \"x\"", null
-                },
-                {
-                        "var_type(\"J.S\", \"DATA\") == \"Char\"", "dataset=\"J\""
-                },
-                {
-                        "var_ordinal(\"J.S\", \"DATA\") == 1", null
-                }
-        };
-        for (String[] c : cases)
-        {
-            Rule r = load(ruleJson("Record",
-                    QualifiedNameFixture.matchJ("") + "," + check(c[0]) + "," + outcome("K")),
+            Rule r = load(
+                    ruleJson("Record", matchJ("") + "," + check(expression) + "," + outcome("K")),
                     true);
-            String error = r.getLoadError();
-            assertNotNull(error, c[0] + " must not load clean");
-            assertTrue(error.contains("write it bare (\"S\")"), error);
-            if (c[1] != null)
-            {
-                assertTrue(error.contains(c[1]), error);
-            }
+            assertNull(r.getLoadError(), expression + ": " + r.getLoadError());
         }
+        Rule both = load(ruleJson("Record",
+                matchJ("") + "," + check("var_type(\"J.S\", \"DATA\", dataset=\"J\") == \"Char\"")
+                        + "," + outcome("K")),
+                true);
+        assertNotNull(both.getLoadError());
+        assertTrue(both.getLoadError().contains("one dataset channel"), both.getLoadError());
     }
 
 
     /** A rule whose Check reads {@code expression} with the binding {@code $b: binding}. */
     private static Rule withBinding(String binding, String expression)
     {
-        return loadClean(ruleJson("Record", QualifiedNameFixture.matchJ("") + ","
-                + "\"Bindings\":[{\"name\":\"$b\",\"expression\":\"" + binding.replace("\"", "\\\"")
-                + "\"}]," + check(expression) + "," + outcome("K")), true);
+        return loadClean(ruleJson("Record",
+                matchJ("") + "," + "\"Bindings\":[{\"name\":\"$b\",\"expression\":\""
+                        + binding.replace("\"", "\\\"") + "\"}]," + check(expression) + ","
+                        + outcome("K")),
+                true);
     }
 
 
@@ -223,8 +284,10 @@ class QualifiedNamePhase3FixesTest
         RuleExecutionResult qualified = executed(
                 withBinding("find_vars(\"J.G\")", "is_not_unique_set([S, $b])"), p,
                 exactInventory(p, j));
+        // D-SRC (extended to the group operators, owner 2026-10-05): the literal member's source
+        // must be an inner join; the spliced $b is no qualified name and is judged by nothing
         RuleExecutionResult literal = executed(
-                loadClean(ruleJson("Record", QualifiedNameFixture.matchJ("") + ","
+                loadClean(ruleJson("Record", matchJ("", "inner") + ","
                         + check("is_not_unique_set([S, J.G])") + "," + outcome("K")), true),
                 p, exactInventory(p, j));
         assertEquals(0, literal.getViolations().size(), "the literal member reads J.G");
@@ -235,8 +298,7 @@ class QualifiedNamePhase3FixesTest
         // list of names); statically unknown (coalesce has no result type) it stays the run-time
         // ERROR of the one splice.
         Rule typed = load(ruleJson("Record",
-                QualifiedNameFixture.matchJ("")
-                        + ",\"Bindings\":[{\"name\":\"$b\",\"expression\":\"5\"}],"
+                matchJ("") + ",\"Bindings\":[{\"name\":\"$b\",\"expression\":\"5\"}],"
                         + check("is_not_unique_set([K, $b])") + "," + outcome("K")),
                 true);
         assertNotNull(typed.getLoadError(), "a statically scalar splice member parks at load");
@@ -253,11 +315,11 @@ class QualifiedNamePhase3FixesTest
         // S holds a duplicate on rows 2 / 5 only (b, b); a DROPPED member would leave the empty
         // tuple, which fires every row (D-4's degenerate contract).
         String check = "K != \"zz\" and is_not_unique_set([$b])";
-        assertEquals(java.util.List.of(2L, 5L),
+        assertEquals(List.of(2L, 5L),
                 QualifiedNameFixture
                         .rows(executed(withBinding("\"S\"", check), p, exactInventory(p, j))),
                 "a String binding is one name");
-        assertEquals(java.util.List.of(2L, 5L),
+        assertEquals(List.of(2L, 5L),
                 QualifiedNameFixture.rows(
                         executed(withBinding("find_vars(\"S\")", check), p, exactInventory(p, j))),
                 "control: a list binding");
@@ -277,7 +339,7 @@ class QualifiedNamePhase3FixesTest
     {
         IDataTable empty = RealTables.of("P").str("K").str("S").dbl("N").build();
         IDataTable j = joined();
-        Rule r = loadClean(ruleJson("Dataset", QualifiedNameFixture.matchJ("") + ","
+        Rule r = loadClean(ruleJson("Dataset", matchJ("") + ","
                 + check("var_not_exists(\"TRTSDT\")") + "," + outcome("S", "N", "J.S", "J.N")),
                 true);
         RuleExecutionResult result = executed(r, empty, exactInventory(empty, j));
@@ -285,7 +347,7 @@ class QualifiedNamePhase3FixesTest
                 "the dataset-level finding fires on the empty dataset");
         Violation v = result.getViolations().get(0);
         assertEquals(java.util.Map.of(), v.getValues(), "no raw column prints a value");
-        assertEquals(java.util.List.of("S", "N", "J.S", "J.N"), v.getNamedColumns(),
+        assertEquals(List.of("S", "N", "J.S", "J.N"), v.getNamedColumns(),
                 "bare and dotted columns alike are listed by name, in effective order");
     }
 

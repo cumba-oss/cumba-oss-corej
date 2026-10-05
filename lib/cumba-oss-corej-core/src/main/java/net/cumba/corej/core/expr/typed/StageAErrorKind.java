@@ -299,6 +299,16 @@ public enum StageAErrorKind
     UNKNOWN_ELEMENT(false),
 
     /**
+     * The naming lint of {@code PLAN-merged-evaluation-table} W3d (P-19 / MET #6): a dotted
+     * operand, a {@code _matched_} flag, an {@code Output_Variables} entry or a {@code colref} /
+     * {@code find_vars} literal whose qualifier names a {@code Match_Datasets} entry <b>ignoring
+     * letter case only</b> ({@code j.S} against an entry {@code J}). The read resolves — a dataset
+     * name is case-insensitive, upper case expected — so this is observe-only by ruling: it reports
+     * the spelling, never parks the rule.
+     */
+    QUALIFIER_CASE(false),
+
+    /**
      * The checker itself failed on this rule. Never armed: a checker defect must not park a rule
      * (that would be an evaluation change caused by the instrument).
      */

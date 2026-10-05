@@ -1,8 +1,12 @@
 package net.cumba.corej.core.exec;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.merge.MergeMeta;
 import net.cumba.datatable.merge.MergedPart;
 import net.cumba.datatable.merge.MergedTable;
 import net.cumba.datatable.values.DataValueSupport;
@@ -63,8 +67,45 @@ final class MergedViewLookup implements JoinLookup
 
     private Integer resolve(String name)
     {
+        // the keyed part's own columns, and (MQ5, W3d) the qualifiers the partner's SUPP<domain>
+        // delivers — a SUPP part under the same qualifier, named <Name>.<QNAM> by the view
         int i = meta.getColumnIndex(part.qualifier() + "." + name);
-        return i >= 0 && part.contains(i) ? i : -1;
+        return i >= 0 && view.partOf(i).qualifier().equals(part.qualifier()) ? i : -1;
+    }
+
+
+    @Override
+    public List<DataTableColumnMeta> columns()
+    {
+        List<DataTableColumnMeta> out = new ArrayList<>(part.columnCount());
+        for (int i = part.firstColumn(); i < part.firstColumn() + part.columnCount(); i++)
+        {
+            if (i != part.matchedColumn())
+            {
+                out.add(sourceMeta(i));
+            }
+        }
+        return out;
+    }
+
+
+    @Override
+    public @Nullable DataTableColumnMeta columnMeta(String columnName)
+    {
+        int idx = column(columnName);
+        return idx < 0 ? null : sourceMeta(idx);
+    }
+
+
+    /** The merged column's metadata under its source name and its ordinal within the part. */
+    private DataTableColumnMeta sourceMeta(int idx)
+    {
+        DataTableColumnMeta merged = meta.getColumn(idx);
+        Object source = merged.getMetaData(MergeMeta.MERGED_SOURCE_COLUMN);
+        String name = source != null ? String.valueOf(source)
+                : merged.getName().substring(part.qualifier().length() + 1);
+        return DataTableColumnMeta.builderFrom(merged).name(name)
+                .index(idx - view.partOf(idx).firstColumn()).build();
     }
 
 

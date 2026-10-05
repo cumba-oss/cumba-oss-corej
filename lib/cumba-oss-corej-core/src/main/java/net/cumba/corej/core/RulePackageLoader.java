@@ -6367,6 +6367,13 @@ public class RulePackageLoader
                 ? List.of()
                 : rule.getMatchDatasets();
         java.util.Set<String> judged = new java.util.LinkedHashSet<>();
+        // ⭐ D-SRC extended to the group operators (owner 2026-10-05, PLAN-merged-evaluation-table
+        // W3d ride-along): every qualified operand of a group operator — a key, a within= / name
+        // / members list, the extremes' name= — is judged by the SAME gate as a group= member,
+        // keyed `operand of <function>`: the record side of such a read is keyed by the join, so
+        // a `left` source (an unmatched row keying on the type default) or a non-ordinary entry
+        // is refused at load. A bare SUPP qualifier is not a qualified name and is unaffected.
+        Map<String, String> operands = new LinkedHashMap<>();
         java.util.function.Consumer<net.cumba.corej.core.expr.ast.Expr> walk = new java.util.function.Consumer<>()
         {
 
@@ -6385,6 +6392,13 @@ public class RulePackageLoader
                 }
                 case net.cumba.corej.core.expr.ast.Expr.Call c ->
                 {
+                    if (net.cumba.corej.core.exec.GroupReadTable.GROUP_OPERATORS.contains(c.name())
+                            && !c.kwargs().containsKey("domain"))
+                    {
+                        c.args().forEach(a -> collectQualifiedOperands(a, c.name(), operands));
+                        c.kwargs().values()
+                                .forEach(v -> collectQualifiedOperands(v, c.name(), operands));
+                    }
                     c.args().forEach(this);
                     c.kwargs().forEach((k, v) ->
                     {
@@ -6439,6 +6453,13 @@ public class RulePackageLoader
         {
             judgeQualifiedMember(rule, matches, member, "group= member", errors);
         }
+        operands.forEach((member, function) ->
+        {
+            if (!judged.contains(member))
+            {
+                judgeQualifiedMember(rule, matches, member, "operand of " + function, errors);
+            }
+        });
         List<String> grouping = rule.effectiveGroupingVariables();
         if (grouping != null)
         {
@@ -6455,6 +6476,34 @@ public class RulePackageLoader
                         continue;
                     }
                     judgeQualifiedMember(rule, matches, member, "Grouping member", errors);
+                }
+            }
+        }
+    }
+
+
+    /**
+     * The qualified operand names of a group operator's argument (a dotted reference, directly or
+     * as a member of a list literal), each with the function that reads it — first function wins
+     * for a name two calls share (one message per name).
+     */
+    private static void collectQualifiedOperands(net.cumba.corej.core.expr.ast.Expr arg,
+            String function, Map<String, String> out)
+    {
+        if (arg instanceof net.cumba.corej.core.expr.ast.Expr.Ref ref
+                && ref.kind() == net.cumba.corej.core.expr.OperandKind.DOTTED_REF)
+        {
+            out.putIfAbsent(ref.name(), function);
+        }
+        else if (arg instanceof net.cumba.corej.core.expr.ast.Expr.Lit lit
+                && lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST
+                && lit.value() instanceof List<?> items)
+        {
+            for (Object item : items)
+            {
+                if (item instanceof net.cumba.corej.core.expr.ast.Expr inner)
+                {
+                    collectQualifiedOperands(inner, function, out);
                 }
             }
         }
@@ -6526,9 +6575,9 @@ public class RulePackageLoader
         for (int j = 0; j < matches.size(); j++)
         {
             net.cumba.corej.core.model.MatchDataset m = matches.get(j);
-            if (m != null && qualifier.equals(m.getName()))
+            if (m != null && qualifier.equalsIgnoreCase(m.getName()))
             {
-                s = j;
+                s = j; // the qualifier ignoring letter case (P-19 / MET #6, W3d)
                 break;
             }
         }

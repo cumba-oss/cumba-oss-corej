@@ -184,8 +184,11 @@ class AbsentDatasetSkipCrossStandardCollapseTest
         RuleExecutionResult after = run(rule, adsl, noDm, Set.of("DM"));
 
         assertEquals(RuleExecutionStatus.EXECUTED, before.getStatus());
-        assertEquals(2, before.getViolations().size(),
-                "an absent column is all-missing, so `empty` is true on every row");
+        // W3d of PLAN-merged-evaluation-table (P-1, N24): DM.USUBJID of a DM the run does not
+        // supply is an absent column of the merged schema — constant on every row, so the
+        // flood is ONE dataset-level finding (it was one per row, 2, until W3d)
+        assertEquals(1, before.getViolations().size(),
+                "an absent joined column folds to one dataset-level finding");
         assertEquals(RuleExecutionStatus.SKIPPED, after.getStatus());
         assertEquals(0, after.getViolations().size(),
                 "the cross-standard arm DOES change findings on an unguarded collapse shape");

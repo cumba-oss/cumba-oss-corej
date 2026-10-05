@@ -60,7 +60,9 @@ class OperandClassifierTest
         // reads (N3); the QUALIFIER half stays upper-case only (owner-pending N2).
         assertSame(OperandKind.DOTTED_REF, kind("DM.arm"));
         assertSame(OperandKind.DOTTED_REF, kind("DM.Arm_1"));
-        assertThrows(ExpressionException.class, () -> kind("dm.ARM"));
+        // P-19 / MET #6 (PLAN-merged-evaluation-table W3d): the qualifier half in any case too
+        assertSame(OperandKind.DOTTED_REF, kind("dm.ARM"));
+        assertSame(OperandKind.DOTTED_REF, kind("Dm.arm"));
     }
 
 
@@ -82,7 +84,7 @@ class OperandClassifierTest
         assertThrows(ExpressionException.class, () -> kind("_matched_"));
         assertThrows(ExpressionException.class, () -> kind("AE._matched"));
         assertThrows(ExpressionException.class, () -> kind("AE._matched_x"));
-        assertThrows(ExpressionException.class, () -> kind("ae._matched_"));
+        assertSame(OperandKind.MATCHED_FLAG, kind("ae._matched_"), "P-19: the qualifier's case");
     }
 
 

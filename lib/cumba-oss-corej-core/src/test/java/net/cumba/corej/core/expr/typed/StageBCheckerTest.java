@@ -229,6 +229,41 @@ class StageBCheckerTest
     }
 
 
+    /**
+     * M8 ({@code PLAN-merged-evaluation-table} W3d): against the MERGED SCHEMA a supplemental
+     * qualifier is a column (no absent-column finding, its {@code QVAL} type judged), and a dotted
+     * reference is probed like a bare one — absent from the schema (the join lacks it, or is not
+     * supplied) ⇒ ABSENT_COLUMN, a declared kind that disagrees ⇒ COLUMN_TYPE_MISMATCH. Without a
+     * schema (the legacy arm) the primary's metadata decides as before.
+     */
+    @Test
+    void theMergedSchemaDecidesAbsenceAndTypeOfQualifiersAndDottedReferences()
+    {
+        IDataTable primary = MockTable.of().col("USUBJID", "S1").build();
+        IDataTable schema = MockTable.of().col("USUBJID", "S1").col("AETRTEM", "Y")
+                .col("DM.AGE", "54").build();
+        String expression = "AETRTEM == \"Y\" and DM.AGE > 50 and DM.SEX == \"F\"";
+        StageBReport legacy = StageBChecker.check(rule(expression), primary, true, null, Set.of());
+        assertEquals(List.of("AETRTEM"),
+                of(legacy, StageBErrorKind.ABSENT_COLUMN).stream().map(StageBFinding::binding)
+                        .toList(),
+                "without a schema the qualifier is absent and the dotted names are not probed");
+        StageBReport merged = StageBChecker.check(rule(expression), primary, true, null, Set.of(),
+                schema.getMetaData());
+        assertEquals(List.of("DM.SEX"),
+                of(merged, StageBErrorKind.ABSENT_COLUMN).stream().map(StageBFinding::binding)
+                        .toList(),
+                "the schema has AETRTEM and DM.AGE; DM.SEX is absent from the merged schema");
+        assertTrue(of(merged, StageBErrorKind.ABSENT_COLUMN).get(0).message()
+                .contains("merged schema"));
+        assertEquals(List.of("DM.AGE"),
+                of(merged, StageBErrorKind.COLUMN_TYPE_MISMATCH).stream()
+                        .map(StageBFinding::binding).toList(),
+                "DM.AGE is a Char column of the schema read at a numeric position");
+        assertEquals(List.of(), merged.armedFindings(), "observe-only, every kind");
+    }
+
+
     @Test
     void aPresenceProbeArgumentIsNotAnAbsentColumnRead()
     {

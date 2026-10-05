@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Objects;
 
 import net.cumba.corej.core.exec.KeyHashing.KeyMatcher;
+import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.databuffer.DataBufferFactory;
@@ -396,6 +397,21 @@ public class DatasetLookup implements JoinLookup
     public boolean lacksColumnOnEveryRow(String columnName)
     {
         return datasetMeta.getColumnIndex(columnName) < 0;
+    }
+
+
+    @Override
+    public List<DataTableColumnMeta> columns()
+    {
+        return List.of(datasetMeta.getColumns());
+    }
+
+
+    @Override
+    public @Nullable DataTableColumnMeta columnMeta(String columnName)
+    {
+        int colIdx = datasetMeta.getColumnIndex(columnName);
+        return colIdx < 0 ? null : datasetMeta.getColumn(colIdx);
     }
 
 

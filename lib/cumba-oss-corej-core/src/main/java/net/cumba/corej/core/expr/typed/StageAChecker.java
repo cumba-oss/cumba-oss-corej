@@ -2556,6 +2556,7 @@ public final class StageAChecker
         {
             String qualifier = flag.substring(0, flag.indexOf('.'));
             MatchDataset entry = entryFor(qualifier, entries);
+            noteQualifierCase(flag, qualifier, entry);
             if (entry == null)
             {
                 if (!templates)
@@ -2612,21 +2613,38 @@ public final class StageAChecker
      */
     private static @Nullable MatchDataset entryFor(String qualifier, List<MatchDataset> entries)
     {
-        for (MatchDataset m : entries)
+        // ⭐ W3d of PLAN-merged-evaluation-table: ONE resolution for every qualifier surface
+        // (MatchDataset.declaredFor — Stage A, the template expansion, the D-SRC gate): the
+        // Name ignoring letter case (P-19 / MET #6), else a -- template instance; the case-only
+        // spelling is the naming lint's (QUALIFIER_CASE, noteQualifierCase).
+        return MatchDataset.declaredFor(entries, qualifier);
+    }
+
+
+    /**
+     * The naming lint (W3d, P-19): {@code ref}'s qualifier names {@code entry} by letter case only
+     * ({@code j.S} against {@code Name: J}) — an observe-only
+     * {@link StageAErrorKind#QUALIFIER_CASE} finding. A template entry name ({@code SUPP--}) is
+     * instantiated, not compared.
+     *
+     * @param ref
+     *            the reference as written (for the message)
+     * @param qualifier
+     *            its qualifier
+     * @param entry
+     *            the entry {@link #entryFor} resolved, or {@code null}
+     */
+    private void noteQualifierCase(String ref, String qualifier, @Nullable MatchDataset entry)
+    {
+        String name = entry == null ? null : entry.getName();
+        if (name != null && !name.contains("--") && !qualifier.equals(name)
+                && qualifier.equalsIgnoreCase(name))
         {
-            if (qualifier.equals(m.getName()))
-            {
-                return m;
-            }
+            find(StageAErrorKind.QUALIFIER_CASE, ref + " spells the qualifier " + qualifier
+                    + " where the Match_Datasets entry is named " + name
+                    + " — a dataset name is matched ignoring case (MET #6), upper case expected:"
+                    + " write " + name + "." + ref.substring(ref.indexOf('.') + 1));
         }
-        for (MatchDataset m : entries)
-        {
-            if (instantiatesTemplate(m.getName(), qualifier))
-            {
-                return m;
-            }
-        }
-        return null;
     }
 
 
@@ -2645,19 +2663,7 @@ public final class StageAChecker
      */
     static boolean instantiatesTemplate(@Nullable String name, String qualifier)
     {
-        if (name == null)
-        {
-            return false;
-        }
-        int at = name.indexOf("--");
-        if (at < 0)
-        {
-            return false;
-        }
-        String prefix = name.substring(0, at);
-        String suffix = name.substring(at + 2);
-        return qualifier.length() > prefix.length() + suffix.length()
-                && qualifier.startsWith(prefix) && qualifier.endsWith(suffix);
+        return MatchDataset.instantiatesTemplate(name, qualifier);
     }
 
 
@@ -2781,6 +2787,7 @@ public final class StageAChecker
         {
             String qualifier = ref.substring(0, ref.indexOf('.'));
             MatchDataset entry = entryFor(qualifier, entries);
+            noteQualifierCase(ref, qualifier, entry);
             if (entry != null && Boolean.TRUE.equals(entry.getChild()))
             {
                 find(StageAErrorKind.DOTTED_REF_CHILD_ENTRY, ref + " reads a Child: true entry"
@@ -2789,12 +2796,9 @@ public final class StageAChecker
                         + " it answers the not-supplied default on every row; the parent row's"
                         + " columns are merged into the primary and are read bare");
             }
-            else if (entry == null && !templates && isConcreteQualifier(qualifier)
-                    && entries.stream().noneMatch(m -> qualifier.equalsIgnoreCase(m.getName())))
+            else if (entry == null && !templates && isConcreteQualifier(qualifier))
             {
                 // QNU N27: a qualified TEMPLATE operand (DM.${V}, ADSL.X${*}, AE.**TERM) reads
-                // (A qualifier whose case alone differs from an entry's is owner-pending N2, not
-                // judged here — the same exemption the Output_Variables arm carries.)
                 // through the join of its CONCRETE qualifier exactly as DM.X does, so an
                 // undeclared one is the same authoring error — judged by the same observe-only
                 // kind. A `--` / `*` qualifier is resolved later (ExprPrefixResolver) and is not
@@ -2814,6 +2818,7 @@ public final class StageAChecker
         {
             String qualifier = name.substring(0, name.indexOf('.'));
             MatchDataset entry = entryFor(qualifier, entries);
+            noteQualifierCase(name, qualifier, entry);
             if (entry != null && Boolean.TRUE.equals(entry.getChild()))
             {
                 find(StageAErrorKind.DOTTED_REF_CHILD_ENTRY, "the column name " + name
@@ -2839,6 +2844,7 @@ public final class StageAChecker
         {
             String qualifier = ref.substring(0, ref.indexOf('.'));
             MatchDataset entry = entryFor(qualifier, entries);
+            noteQualifierCase(ref, qualifier, entry);
             if (entry != null)
             {
                 // ⭐ Owner ruling 2026-09-25 (PLAN-hashed-join-arm-absent-columns §3, follow-up
@@ -2952,6 +2958,7 @@ public final class StageAChecker
                 continue; // a ${…} / &TOKEN& qualifier: judged nowhere, silent at run time (L6)
             }
             MatchDataset entry = entryFor(qualifier, entries);
+            noteQualifierCase(name, qualifier, entry);
             if (entry != null && Boolean.TRUE.equals(entry.getChild()))
             {
                 find(StageAErrorKind.DOTTED_REF_CHILD_ENTRY, "Output_Variables entry " + name
@@ -2962,13 +2969,9 @@ public final class StageAChecker
                         + " never as " + qualifier + ".<column>");
                 continue;
             }
-            if (entry != null || templates || !isConcreteQualifier(qualifier)
-                    || entries.stream().anyMatch(m -> qualifier.equalsIgnoreCase(m.getName())))
+            if (entry != null || templates || !isConcreteQualifier(qualifier))
             {
-                // Declared — or a qualifier whose case alone differs from an entry's, which is
-                // owner-pending N2 (a template entry matches it ignoring case at run time, a
-                // literal one exactly), and is not judged here either way.
-                continue;
+                continue; // declared (ignoring case, P-19), or not yet judgeable
             }
             if (variableDomain == null)
             {

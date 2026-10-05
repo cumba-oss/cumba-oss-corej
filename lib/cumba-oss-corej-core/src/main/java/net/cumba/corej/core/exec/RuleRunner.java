@@ -744,12 +744,12 @@ public final class RuleRunner
                 stageBSuppressed.addAll(levelDecision.suppressedDatasets());
             }
         }
-        RuleExecutionResult stageBOutcome = stageBGate(rule, table, varWildcardPrefix != null,
-                ruleId, message, foreignInventory(resolver, ruleId), stageBSuppressed);
-        if (stageBOutcome != null)
-        {
-            return stageBOutcome;
-        }
+        // ⭐ W3d of PLAN-merged-evaluation-table (M8): the gate runs AFTER the merged evaluation
+        // view is built, binding the column half against the MERGED SCHEMA (stageBGate below the
+        // view build) — a supplemental qualifier and a dotted reference are columns there. The
+        // view build itself raises no bind outcome of its own that the gate would have decided
+        // (a Filter is evaluated with the absent-column default, MatchFilter), and a merge the
+        // datatable refuses is the rule's ERROR on either order.
 
         // Phase 2a.5–2a.7: dataset merges / row expansions run BEFORE the compiled bindings are
         // read (they are lazy — BindingValue evaluates on first read, after this block), so a
@@ -775,6 +775,13 @@ public final class RuleRunner
         KeyMatchRowExpander.KeyMatchExpansion keyExpansion = null;
         MergedEvaluation.Built mergedView = MergedEvaluation.build(rule, evalTable, table, resolver,
                 joinCache, ruleId, domainPrefix);
+        RuleExecutionResult stageBOutcome = stageBGate(rule, table, varWildcardPrefix != null,
+                ruleId, message, foreignInventory(resolver, ruleId), stageBSuppressed,
+                mergedView != null ? mergedView.view().getMetaData() : null);
+        if (stageBOutcome != null)
+        {
+            return stageBOutcome;
+        }
         if (mergedView != null)
         {
             evalTable = mergedView.table();
@@ -1828,9 +1835,23 @@ public final class RuleRunner
             net.cumba.corej.core.expr.typed.@Nullable ForeignDatasetInventory foreignInventory,
             Set<String> suppressedDatasets)
     {
+        return stageBGate(rule, table, concreteContract, ruleId, message, foreignInventory,
+                suppressedDatasets, null);
+    }
+
+
+    /**
+     * {@link #stageBGate(Rule, IDataTable, boolean, String, String, ForeignDatasetInventory, Set)}
+     * binding against the merged schema ({@code schema}, the view's metadata; W3d, M8).
+     */
+    static @Nullable RuleExecutionResult stageBGate(Rule rule, IDataTable table,
+            boolean concreteContract, @Nullable String ruleId, @Nullable String message,
+            net.cumba.corej.core.expr.typed.@Nullable ForeignDatasetInventory foreignInventory,
+            Set<String> suppressedDatasets, @Nullable DataTableMeta schema)
+    {
         return mapStageBReport(
                 net.cumba.corej.core.expr.typed.StageBChecker.runAndApply(rule, table,
-                        concreteContract, foreignInventory, suppressedDatasets),
+                        concreteContract, foreignInventory, suppressedDatasets, schema),
                 table, ruleId, message);
     }
 

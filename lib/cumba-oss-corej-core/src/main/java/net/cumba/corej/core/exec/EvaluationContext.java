@@ -102,11 +102,59 @@ public class EvaluationContext
     String className;
 
     /**
-     * Joined datasets from {@code Match_Datasets}. Keyed by dataset name, each value is a lookup
-     * map from join-key to column-value maps.
+     * Joined datasets from {@code Match_Datasets}. Keyed by the entry's authored {@code Name}, each
+     * value the part's lookup. ⭐ The map matches a qualifier IGNORING letter case
+     * ({@code PLAN-merged-evaluation-table} W3d, P-19 / MET #6: a dataset name is case-insensitive,
+     * upper case expected): the builder copies whatever map it is given into a case-insensitive
+     * one, so every {@code get(qualifier)} site — the compiler's dotted plans, the output
+     * projection, the group readers, the level calculus — resolves {@code j.S}, {@code J.s} and
+     * {@code J.S} to the one join declared as {@code J}. One map, one rule.
      */
     @Builder.Default
     Map<String, JoinLookup> joinedDatasets = Map.of();
+
+    /** The builder half of the case-insensitive join map (see {@link #joinedDatasets}). */
+    public static class EvaluationContextBuilder
+    {
+
+        /**
+         * Sets the joined datasets, keyed ignoring letter case.
+         *
+         * @param aJoinedDatasets
+         *            the lookups by authored entry name
+         * @return this builder
+         */
+        public EvaluationContextBuilder joinedDatasets(Map<String, JoinLookup> aJoinedDatasets)
+        {
+            this.joinedDatasets$value = caseInsensitiveJoins(aJoinedDatasets);
+            this.joinedDatasets$set = true;
+            return this;
+        }
+    }
+
+    /**
+     * A case-insensitive, insertion-ordered copy of a join map (an already case-insensitive map is
+     * reused). Two entries differing only by case keep the last one — Stage A refuses that shape at
+     * load ({@code DUPLICATE_MATCH_DATASET_NAME}).
+     */
+    static Map<String, JoinLookup> caseInsensitiveJoins(Map<String, JoinLookup> aJoins)
+    {
+        if (aJoins instanceof java.util.TreeMap<String, JoinLookup> tree
+                && tree.comparator() == String.CASE_INSENSITIVE_ORDER)
+        {
+            return aJoins;
+        }
+        if (aJoins.isEmpty())
+        {
+            return Map.of();
+        }
+        // the TreeMap itself, not an unmodifiable wrapper: toBuilder() hands it back to this
+        // method on every derived context, and the identity test above keeps that a no-op
+        java.util.TreeMap<String, JoinLookup> out = new java.util.TreeMap<>(
+                String.CASE_INSENSITIVE_ORDER);
+        out.putAll(aJoins);
+        return out;
+    }
 
     /**
      * Optional CDISC Library metadata provider for Library-dependent Operations. May be

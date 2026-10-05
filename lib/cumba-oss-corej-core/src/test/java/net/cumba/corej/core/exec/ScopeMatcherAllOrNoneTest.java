@@ -15,7 +15,6 @@ import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.VariableRequirement;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -65,10 +64,10 @@ class ScopeMatcherAllOrNoneTest
 
     private static IDataTable table(String name, String... columns)
     {
-        MockTable t = MockTable.of().name(name);
+        RealTables t = RealTables.of(name);
         for (String c : columns)
         {
-            t = t.col(c, "");
+            t = t.str(c, "");
         }
         return t.build();
     }
@@ -411,10 +410,8 @@ class ScopeMatcherAllOrNoneTest
         void splitDomainUnionsMembers()
         {
             Rule rule = ruleWithGroups(List.of(List.of("/^TRT0[12]P$/", "LB./^TRT0[12]P$/")));
-            IDataTable lbch = MockTable.of().name("lbch").col("DOMAIN", "LB").col("TRT01P", "a")
-                    .build();
-            IDataTable lbhe = MockTable.of().name("lbhe").col("DOMAIN", "LB").col("TRT02P", "b")
-                    .build();
+            IDataTable lbch = RealTables.of("lbch").str("DOMAIN", "LB").str("TRT01P", "a").build();
+            IDataTable lbhe = RealTables.of("lbhe").str("DOMAIN", "LB").str("TRT02P", "b").build();
             IDataTable ae = table("AE", "TRT01P", "TRT02P");
             assertNull(check(rule, ae, lbch, lbhe),
                     "TRT01P from lbch and TRT02P from lbhe together equal the primary's set");
@@ -486,7 +483,7 @@ class ScopeMatcherAllOrNoneTest
             Rule rule = ruleWithGroups(List.of(List.of("CMTRT", "AE.AETRTEM")));
             IDataTable cm = table("CM", "USUBJID", "CMTRT");
             IDataTable ae = table("AE", "USUBJID");
-            IDataTable suppae = MockTable.of().name("SUPPAE").col("QNAM", "AETRTEM").build();
+            IDataTable suppae = RealTables.of("SUPPAE").str("QNAM", "AETRTEM").build();
             assertNull(check(rule, cm, ae, suppae), "AETRTEM arrives as a QNAM row of SUPPAE");
             String reason = check(rule, cm, ae);
             assertNotNull(reason);
