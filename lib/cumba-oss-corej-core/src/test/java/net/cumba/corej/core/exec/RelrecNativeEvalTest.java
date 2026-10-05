@@ -164,9 +164,13 @@ class RelrecNativeEvalTest
         RuleExecutionResult nativ = RuleRunnerCalls.execute(rule, ae, resolver(), "AE", null, null);
 
         // One-to-many: AE record 0 expands to 3 FA pairs (AETERM != FAOBJ for all three); AE
-        // record 1 (AELNKID=2) has no FA -> excluded by the inner join.
-        assertEquals(3, legacy.getViolations().size(), "legacy: one violation per related FA");
-        assertEquals(3, nativ.getViolations().size(), "native: one violation per related FA");
+        // record 1 (AELNKID=2) has no FA -> excluded by the inner join. ⚑ W3e
+        // (PLAN-merged-evaluation-table §3.8, MET #22): the two ERYTHEMA pairs print the same
+        // values, so they are ONE finding — re-pinned 3 -> 2 (one per distinct related FAOBJ).
+        assertEquals(2, legacy.getViolations().size(),
+                "legacy: one violation per distinct related FA value");
+        assertEquals(2, nativ.getViolations().size(),
+                "native: one violation per distinct related FA value");
         for (Violation v : nativ.getViolations())
         {
             assertEquals(0L, v.getRow(), "every expanded violation maps back to AE record 0");
@@ -219,8 +223,9 @@ class RelrecNativeEvalTest
         RuleExecutionResult legacy = RuleRunnerCalls.execute(rule, ae, resolver(), "AE", null,
                 null);
         RuleExecutionResult nativ = RuleRunnerCalls.execute(rule, ae, resolver(), "AE", null, null);
-        assertEquals(3, legacy.getViolations().size(),
-                "legacy: AETERM differs from every related FAOBJ");
+        // ⚑ W3e (§3.8, MET #22): 3 -> 2 — the two ERYTHEMA pairs are one finding.
+        assertEquals(2, legacy.getViolations().size(),
+                "legacy: AETERM differs from every related FAOBJ (ERYTHEMA once, PAIN once)");
         assertEquals(norm(legacy), norm(nativ), "native RELREC.** verdicts must equal legacy");
 
         RuleExecutionResult ran = RuleRunnerCalls.execute(rule, ae, resolver(), "AE", null, null);

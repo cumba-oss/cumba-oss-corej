@@ -1,12 +1,15 @@
 package net.cumba.corej.core.expr.eval;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
-
 import net.cumba.corej.core.exec.EvaluationContext;
+import net.cumba.corej.core.exec.JoinLookup;
+import net.cumba.corej.core.exec.MergedEvaluation;
 import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.datatable.IDataTable;
 import org.jspecify.annotations.Nullable;
 
@@ -82,8 +85,11 @@ public final class DatasetExpressionCache
     {
         return switch (e)
         {
-        case Expr.Ref r -> r.kind() == OperandKind.COLUMN
-                || r.kind() == OperandKind.WILDCARD_COLUMN;
+        // W3e of PLAN-merged-evaluation-table (P-3, the W2 row): a qualified J.X and a
+        // J._matched_ are columns of the merged evaluation view — candidates too; cacheableAt
+        // admits them only on the dataset's shared view and keys them on it (keyAt).
+        case Expr.Ref r -> r.kind() == OperandKind.COLUMN || r.kind() == OperandKind.WILDCARD_COLUMN
+                || isMergedRef(r);
         case Expr.Lit lit -> isPureLiteral(lit);
         case Expr.Call c -> PURE_FUNCTIONS.contains(c.name()) && c.kwargs().isEmpty()
                 && c.args().stream().allMatch(DatasetExpressionCache::isPure);
@@ -98,6 +104,91 @@ public final class DatasetExpressionCache
         case Expr.Or o -> o.parts().stream().allMatch(DatasetExpressionCache::isPure);
         case Expr.Not n -> isPure(n.inner());
         };
+    }
+
+
+    /** A qualified {@code J.X} or a {@code J._matched_} flag — a column of the merged view. */
+    private static boolean isMergedRef(Expr.Ref r)
+    {
+        return r.kind() == OperandKind.DOTTED_REF || r.kind() == OperandKind.MATCHED_FLAG;
+    }
+
+
+    /**
+     * Whether a candidate reads a merged column ({@link #isMergedRef}) — such a leaf is keyed on
+     * the merged view instead of the evaluation table ({@link #keyAt}). Decided once per compiled
+     * leaf.
+     *
+     * @param e
+     *            the candidate
+     * @return whether some reference of {@code e} is a merged one
+     */
+    public static boolean readsMerged(Expr e)
+    {
+        return switch (e)
+        {
+        case Expr.Ref r -> isMergedRef(r);
+        case Expr.Lit lit -> lit.kind() == Expr.LitKind.LIST && lit.value() instanceof List<?> items
+                && items.stream().anyMatch(i -> i instanceof Expr x && readsMerged(x));
+        case Expr.Call c -> c.args().stream().anyMatch(DatasetExpressionCache::readsMerged);
+        case Expr.Binary b -> readsMerged(b.left()) || readsMerged(b.right());
+        case Expr.And a -> a.parts().stream().anyMatch(DatasetExpressionCache::readsMerged);
+        case Expr.Or o -> o.parts().stream().anyMatch(DatasetExpressionCache::readsMerged);
+        case Expr.Not n -> readsMerged(n.inner());
+        };
+    }
+
+
+    /**
+     * The cross-rule key of a cacheable leaf at {@code ctx} ({@link #cacheableAt} said yes): a leaf
+     * over the evaluation table's own columns keys on that table — so rules with and without a
+     * merge share it whenever their table is the same instance (the dataset itself, or one cached
+     * row-mapped view) — and a leaf that reads a merged column keys on the shared merged view of
+     * its merge signature (P-3: one view instance per signature), whose columns it reads.
+     *
+     * @param merged
+     *            {@link #readsMerged} of the leaf
+     * @param ctx
+     *            the evaluation context
+     * @param exprCanonical
+     *            the canonical expression text
+     * @return the key
+     */
+    public static Key keyAt(boolean merged, EvaluationContext ctx, String exprCanonical)
+    {
+        MergedEvaluation.Built built = ctx.getMergedView();
+        IDataTable keyTable = merged && built != null ? built.view() : ctx.getTable();
+        return keyOf(keyTable, exprCanonical, ctx.getDomainPrefix());
+    }
+
+
+    /**
+     * Whether {@code ctx} evaluates on the dataset's shared merged view (P-3): its table is the
+     * view's evaluation table and every join it carries is one of the view's parts — so a leaf's
+     * value is a function of the view instance and the row, the same for every rule of the
+     * signature.
+     */
+    private static boolean onSharedView(EvaluationContext ctx)
+    {
+        MergedEvaluation.Built built = ctx.getMergedView();
+        if (built == null || !built.isShared() || ctx.getTable() != built.table())
+        {
+            return false;
+        }
+        Map<String, JoinLookup> joins = ctx.getJoinedDatasets();
+        Map<String, JoinLookup> parts = built.lookups();
+        if (joins.size() != parts.size())
+        {
+            return false;
+        }
+        for (Map.Entry<String, JoinLookup> part : parts.entrySet())
+        {
+            if (joins.get(part.getKey()) != part.getValue())
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
 
@@ -142,12 +233,15 @@ public final class DatasetExpressionCache
      * variable, both runtime properties the static classifier cannot see. Cache only when
      * <b>all</b> hold:
      * <ol>
-     * <li><b>No joins</b> — {@code ctx.getJoinedDatasets().isEmpty()}. ⚑ Kept as a conservative
-     * guard. Its original reason — an absent-locally column ref resolving through the join fallback
-     * — is gone (that fallback was removed 2026-09-21, {@code PLAN-unqualified-name-primary-only}),
-     * and rules 3 and 4 already keep every joined read out of the cache — a {@code DOTTED_REF} /
-     * {@code MATCHED_FLAG} ref by rule 3, a {@code ${…}} substitution that may resolve to a dotted
-     * name by rule 4. Relaxing it is a performance change, not made here.</li>
+     * <li><b>No joins, or the dataset's shared merged view</b>
+     * ({@code PLAN-merged-evaluation-table} W3e, P-3, the W2 row "admits merged leaves keyed on the
+     * view instance"): a context whose joins are exactly the keyed parts of the view cached for its
+     * merge signature, and whose table is that view's evaluation table. A join reached any other
+     * way — the legacy arm's per-rule expansions (forward RELREC, a chained key), a view built per
+     * execution (a {@code Child} pre-merge) — still declines: its table or lookups are a fresh
+     * instance per rule, so a key on them could only waste memory. (The original reason for this
+     * guard — an absent-locally column ref resolving through the join fallback — is gone since
+     * 2026-09-21, {@code PLAN-unqualified-name-primary-only}.)</li>
      * <li><b>The {@code {ROW}} evaluation domain</b> — not one with a VAR cursor, whose
      * per-variable loop binds the variable name into the context and re-evaluates per variable (so
      * a leaf's result need not even be constant within one rule), and not the broadcast {@code {}}
@@ -159,6 +253,10 @@ public final class DatasetExpressionCache
      * unresolvable value-position identifier), so that flag need not enter the key.</li>
      * <li><b>Only {@code --}-prefix wildcards</b> — a {@code *} / {@code **} / {@code ${…}}
      * wildcard reads driver cells / joins and is declined.</li>
+     * <li><b>A merged reference reads a part of the shared view</b> — a {@code J.X} whose qualifier
+     * is one of the view's keyed parts and whose partner carries {@code X} (an absent partner
+     * column answers the rule's own absent default, which a shared key must not carry), or a
+     * {@code J._matched_} of such a part; keyed on the view ({@link #keyAt}).</li>
      * </ol>
      * Intended to be called only on a leaf that already passed {@link #isPure}.
      *
@@ -170,7 +268,7 @@ public final class DatasetExpressionCache
      */
     public static boolean cacheableAt(Expr leaf, EvaluationContext ctx)
     {
-        if (!ctx.getJoinedDatasets().isEmpty())
+        if (!ctx.getJoinedDatasets().isEmpty() && !onSharedView(ctx))
         {
             return false;
         }
@@ -209,6 +307,10 @@ public final class DatasetExpressionCache
     private static boolean refResolvesLocally(Expr.Ref r, EvaluationContext ctx)
     {
         OperandKind kind = r.kind();
+        if (isMergedRef(r))
+        {
+            return mergedRefOnSharedView(r, ctx);
+        }
         if (kind != OperandKind.COLUMN && kind != OperandKind.WILDCARD_COLUMN)
         {
             return false;
@@ -229,6 +331,24 @@ public final class DatasetExpressionCache
         // §3.6 #2: must resolve to a column of the local table.
         return !ctx.getVariables().containsKey(name)
                 && ctx.getTable().getMetaData().getColumnIndex(name) >= 0;
+    }
+
+
+    /** Rule 5: a merged reference to a part of the shared view whose column exists. */
+    private static boolean mergedRefOnSharedView(Expr.Ref r, EvaluationContext ctx)
+    {
+        String qualifier = MatchDataset.qualifierOf(r.name());
+        if (qualifier == null || !onSharedView(ctx))
+        {
+            return false;
+        }
+        JoinLookup lookup = ctx.getJoinedDatasets().get(qualifier);
+        if (lookup == null)
+        {
+            return false;
+        }
+        return r.kind() == OperandKind.MATCHED_FLAG
+                || !lookup.lacksColumnOnEveryRow(r.name().substring(qualifier.length() + 1));
     }
 
 

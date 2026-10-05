@@ -165,6 +165,36 @@ public final class GroupReadTable extends AbstractDataTable
 
 
     /**
+     * Whether every name is a column of the evaluated table itself or resolves nowhere — exactly
+     * when {@link #of} would answer the evaluated table: no name reads a merged column (a
+     * {@code SUPP--} qualifier, a qualified {@code J.X}). OD-6
+     * ({@code PLAN-merged-evaluation-table} W3e) counts such an operator by real row.
+     *
+     * @param ctx
+     *            the evaluation context
+     * @param names
+     *            the column names, prefixes resolved
+     * @return whether no name needs a merged column
+     * @throws MergeErrorReadException
+     *             when a SUPP qualifier a name reads carries a {@code MERGE_ERROR} (OD-7), as
+     *             {@link #of} would
+     */
+    public static boolean readsOnlyItsOwnColumns(EvaluationContext ctx, Collection<String> names)
+    {
+        IDataTable table = ctx.getTable();
+        DataTableMeta meta = table.getMetaData();
+        for (String name : names)
+        {
+            if (meta.getColumnIndex(name) < 0 && resolve(ctx, table, name) != null)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+
+    /**
      * {@link #of} over an enumerated family — the base name, then the base name suffixed 1, 2, … up
      * to the first number that resolves nowhere (99 at most), exactly the columns
      * {@code inconsistent_enumerated_columns} reads ({@code GroupSemantics}).

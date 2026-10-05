@@ -429,6 +429,7 @@ public final class ExprCompiler
     private static ExprProgram.BoolPlan cachedBool(Expr e, ExprProgram.BoolPlan inner)
     {
         String canon = ExpressionPrinter.print(e);
+        boolean merged = DatasetExpressionCache.readsMerged(e);
         return run ->
         {
             EvaluationContext ctx = run.ctx();
@@ -458,8 +459,7 @@ public final class ExprCompiler
             {
                 return inner.eval(run);
             }
-            Object stored = cache.computeIfAbsent(
-                    DatasetExpressionCache.keyOf(ctx.getTable(), canon, ctx.getDomainPrefix()),
+            Object stored = cache.computeIfAbsent(DatasetExpressionCache.keyAt(merged, ctx, canon),
                     () -> inner.eval(run));
             if (!(stored instanceof BitSet bits))
             {
@@ -593,51 +593,67 @@ public final class ExprCompiler
         // negative operator-leaf).
         if (n.inner() instanceof Expr.Call call)
         {
-            if ("present_on_multiple_rows_within".equals(call.name()))
+            ExprProgram.BoolPlan negative = compileNegativeGroupOperator(call);
+            if (negative != null)
             {
-                return compileMultipleRowsWithin(call, false);
-            }
-            if ("has_next_corresponding_record".equals(call.name()))
-            {
-                return compileNextCorrespondingRecord(call);
-            }
-            if ("is_sorted_by".equals(call.name()))
-            {
-                return compileTargetIsNotSortedBy(call);
-            }
-            // is_unique_set is the one positive group function that is NOT defined as
-            // invert(<negative>) — compileUniqueSet(c, false) computes uniqueCandidates
-            // independently of duplicates, so the double-inversion identity a structural flip
-            // relies on holds only where the two actually partition the rows.
-            //
-            // ⚠ SINCE EC-53 / Fix #143 THIS BRANCH IS REDUNDANT, and the comment that used to
-            // stand here was wrong about why it was not. It claimed the branch was still needed
-            // because GroupSemantics.uniqueSetViolations returns an empty BitSet for both
-            // polarities on an absent target. That was the pre-EC-53 behaviour: an absent target
-            // is now dropped and the check regroups, so duplicates and uniqueCandidates partition
-            // every row and the mapping computes exactly what a flip would. Nor does the ONE
-            // surviving early-out rescue the claim: `rowCount <= 0` makes the flip a no-op
-            // (flip(0, 0)) anyway. The `nameColName == null` early-out the older text also
-            // invoked no longer exists at all — since the collapsed single-list grammar (Plan A,
-            // 2026-08-23) uniqueSetViolations takes no name parameter, only a keyCols list, and
-            // an absent or null member is dropped inside the key loop rather than short-circuited.
-            //
-            // It is kept anyway, deliberately: it costs nothing, it states the negative the
-            // retired converter actually emitted instead of deriving it, it keeps this path
-            // identical to what the retired ExprLowering's POSITIVE_TO_NEGATIVE mapping and the
-            // legacy leaf did, and
-            // uniqueSetViolations is a public method taking List<? extends @Nullable String> —
-            // so the partition invariant this would otherwise depend on is a property of a
-            // collaborator, not of a private contract. Removing it would trade a free branch for
-            // a dependency on that invariant never regressing; a regression there reintroduces
-            // the whole-table over-firing shape the is_unique_set rules (CDISC-CG0536,
-            // CDISC-CG0562) are exposed to.
-            if ("is_unique_set".equals(call.name()))
-            {
-                return compileUniqueSet(call, true);
+                // OD-6 (W3e): by real row on an expanded table, as compileBoolCall's arms.
+                return RealRowAggregates.bool(call, negative);
             }
         }
         return invert(compileBool(n.inner(), parentPure));
+    }
+
+
+    /**
+     * The Q1 negation pairs of {@link #compileNot}: the negative group semantics a converted
+     * {@code not <positive>(…)} spells, or {@code null} for any other call.
+     */
+    private static ExprProgram.@Nullable BoolPlan compileNegativeGroupOperator(Expr.Call call)
+    {
+        if ("present_on_multiple_rows_within".equals(call.name()))
+        {
+            return compileMultipleRowsWithin(call, false);
+        }
+        if ("has_next_corresponding_record".equals(call.name()))
+        {
+            return compileNextCorrespondingRecord(call);
+        }
+        if ("is_sorted_by".equals(call.name()))
+        {
+            return compileTargetIsNotSortedBy(call);
+        }
+        // is_unique_set is the one positive group function that is NOT defined as
+        // invert(<negative>) — compileUniqueSet(c, false) computes uniqueCandidates
+        // independently of duplicates, so the double-inversion identity a structural flip
+        // relies on holds only where the two actually partition the rows.
+        //
+        // ⚠ SINCE EC-53 / Fix #143 THIS BRANCH IS REDUNDANT, and the comment that used to
+        // stand here was wrong about why it was not. It claimed the branch was still needed
+        // because GroupSemantics.uniqueSetViolations returns an empty BitSet for both
+        // polarities on an absent target. That was the pre-EC-53 behaviour: an absent target
+        // is now dropped and the check regroups, so duplicates and uniqueCandidates partition
+        // every row and the mapping computes exactly what a flip would. Nor does the ONE
+        // surviving early-out rescue the claim: `rowCount <= 0` makes the flip a no-op
+        // (flip(0, 0)) anyway. The `nameColName == null` early-out the older text also
+        // invoked no longer exists at all — since the collapsed single-list grammar (Plan A,
+        // 2026-08-23) uniqueSetViolations takes no name parameter, only a keyCols list, and
+        // an absent or null member is dropped inside the key loop rather than short-circuited.
+        //
+        // It is kept anyway, deliberately: it costs nothing, it states the negative the
+        // retired converter actually emitted instead of deriving it, it keeps this path
+        // identical to what the retired ExprLowering's POSITIVE_TO_NEGATIVE mapping and the
+        // legacy leaf did, and
+        // uniqueSetViolations is a public method taking List<? extends @Nullable String> —
+        // so the partition invariant this would otherwise depend on is a property of a
+        // collaborator, not of a private contract. Removing it would trade a free branch for
+        // a dependency on that invariant never regressing; a regression there reintroduces
+        // the whole-table over-firing shape the is_unique_set rules (CDISC-CG0536,
+        // CDISC-CG0562) are exposed to.
+        if ("is_unique_set".equals(call.name()))
+        {
+            return compileUniqueSet(call, true);
+        }
+        return null;
     }
 
 
@@ -1983,6 +1999,17 @@ public final class ExprCompiler
 
 
     private static ExprProgram.BoolPlan compileBoolCall(Expr.Call c)
+    {
+        ExprProgram.BoolPlan plan = compileBoolCallPlan(c);
+        // OD-6 (PLAN-merged-evaluation-table W3e): a grouped / uniqueness operator over primary
+        // columns counts each primary record once on an expanded table.
+        return RealRowAggregates.BOOLEAN_OPERATORS.contains(c.name())
+                ? RealRowAggregates.bool(c, plan)
+                : plan;
+    }
+
+
+    private static ExprProgram.BoolPlan compileBoolCallPlan(Expr.Call c)
     {
         String name = c.name();
         int arity = c.args().size();
@@ -3981,7 +4008,7 @@ public final class ExprCompiler
         // PLAN-column-typed-function-absent-type A1: the plan closes over its CALL SITE, whose
         // position decides an absent column's default — read per evaluation, never bound here
         // (compiled plans are shared across rules).
-        return run -> spec.evaluate(run, c);
+        return RealRowAggregates.value(c, run -> spec.evaluate(run, c));
     }
 
 
@@ -3993,7 +4020,8 @@ public final class ExprCompiler
      */
     private static ValuePlan compileRecordCount(Expr.Call c)
     {
-        return net.cumba.corej.core.exec.RecordCount.spec(c)::evaluate;
+        // OD-6 (W3e): counts each primary record once on an expanded table.
+        return RealRowAggregates.value(c, net.cumba.corej.core.exec.RecordCount.spec(c)::evaluate);
     }
 
 
@@ -4006,7 +4034,7 @@ public final class ExprCompiler
      */
     private static ValuePlan compileDistinct(Expr.Call c)
     {
-        return net.cumba.corej.core.exec.Distinct.spec(c)::evaluate;
+        return RealRowAggregates.value(c, net.cumba.corej.core.exec.Distinct.spec(c)::evaluate);
     }
 
 
@@ -4025,7 +4053,7 @@ public final class ExprCompiler
         // rule's load error), so nothing is caught and rethrown here. The plan closes over its
         // CALL SITE (PLAN-column-typed-function-absent-type A1, as compileGroupedAggregate).
         net.cumba.corej.core.exec.ReadValue.Spec spec = net.cumba.corej.core.exec.ReadValue.spec(c);
-        return run -> spec.evaluate(run, c);
+        return RealRowAggregates.value(c, run -> spec.evaluate(run, c));
     }
 
 
@@ -5944,6 +5972,7 @@ public final class ExprCompiler
             return inner;
         }
         String canon = ExpressionPrinter.print(e);
+        boolean merged = DatasetExpressionCache.readsMerged(e);
         return run ->
         {
             EvaluationContext ctx = run.ctx();
@@ -5971,8 +6000,7 @@ public final class ExprCompiler
             // memo arrays are not thread-safe, but forcing every row first means the cached
             // instance is never mutated after the map put — and the ConcurrentHashMap store is
             // the happens-before publication point for those array writes (review finding 2).
-            Object stored = cache.computeIfAbsent(
-                    DatasetExpressionCache.keyOf(ctx.getTable(), canon, ctx.getDomainPrefix()),
+            Object stored = cache.computeIfAbsent(DatasetExpressionCache.keyAt(merged, ctx, canon),
                     () ->
                     {
                         Vector v = inner.eval(run);

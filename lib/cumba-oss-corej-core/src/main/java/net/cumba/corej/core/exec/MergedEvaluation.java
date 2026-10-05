@@ -9,7 +9,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Supplier;
 import net.cumba.corej.core.model.JoinType;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
@@ -150,19 +149,37 @@ public final class MergedEvaluation
 
         private final boolean suppShifted;
 
+        /** Whether the view is the dataset's cached one for its merge signature (P-3). */
+        private final boolean shared;
+
         /** name → {@link ViewColumn}, the flag (a String) of a flagged column, or {@link #NONE}. */
         private final ConcurrentHashMap<String, Object> suppColumns = new ConcurrentHashMap<>();
 
         private static final Object NONE = new Object();
 
         private Built(MergedTable aView, IDataTable aTable, Map<String, JoinLookup> aLookups,
-                Map<String, String> aFlagged, boolean aSuppShifted)
+                Map<String, String> aFlagged, boolean aSuppShifted, boolean aShared)
         {
             view = aView;
             table = aTable;
             lookups = Collections.unmodifiableMap(aLookups);
             flagged = Collections.unmodifiableMap(aFlagged);
             suppShifted = aSuppShifted;
+            shared = aShared;
+        }
+
+
+        /**
+         * Whether this is the dataset's cached view of its merge signature (P-3), shared by every
+         * rule of the signature — {@code false} for a view built per execution (a {@code Child}
+         * pre-merge replaced the table, or no cache). The expression cache keys a merged leaf on a
+         * shared view only ({@code DatasetExpressionCache.cacheableAt}).
+         *
+         * @return whether the view is shared
+         */
+        public boolean isShared()
+        {
+            return shared;
         }
 
 
@@ -357,13 +374,13 @@ public final class MergedEvaluation
         String primaryDomain = domain != null ? domain : domainPrefix;
         SuppMergeSpec suppSpec = supp.isEmpty() ? null
                 : SuppMergeSpec.builder().suppDatasets(supp).build();
-        Supplier<Built> construct = () -> construct(primary,
-                request(primary, keyed, suppSpec, primaryDomain, resolver, ruleId));
+        MergeRequest request = request(primary, keyed, suppSpec, primaryDomain, resolver, ruleId);
         if (joinCache != null && primary == original)
         {
-            return joinCache.mergedView(new ViewKey(keyed, supp), construct);
+            return joinCache.mergedView(new ViewKey(keyed, supp),
+                    () -> construct(primary, request, true));
         }
-        return construct.get();
+        return construct(primary, request, false);
     }
 
 
@@ -378,7 +395,7 @@ public final class MergedEvaluation
     }
 
 
-    private static Built construct(IDataTable primary, MergeRequest request)
+    private static Built construct(IDataTable primary, MergeRequest request, boolean shared)
     {
         MergedTable view = MergedTables.build(request);
         MergeKind plant = plantForTests;
@@ -414,7 +431,7 @@ public final class MergedEvaluation
                 flagged.put(column.getName(), String.valueOf(flag));
             }
         }
-        return new Built(view, table, lookups, flagged, plant == MergeKind.SUPP);
+        return new Built(view, table, lookups, flagged, plant == MergeKind.SUPP, shared);
     }
 
 

@@ -442,11 +442,17 @@ class RuleCheckLevelsExecutionTest
 
 
     @Test
-    @DisplayName("⛔ ONE level reporting two units with the SAME key reports BOTH, never one")
-    void oneLevelNeverDeduplicatesAgainstItself() throws IOException
+    @DisplayName("one level reports each distinct finding once — the emit site, not first-claim, decides")
+    void oneLevelReportsEachDistinctFindingOnce() throws IOException
     {
         // A one-entry level map takes the per-level loop (there is no `levels.size() > 1` install
         // boundary), so this is the plain single-level semantics running through executeLevels.
+        // ⚑ Re-pinned in W3e of PLAN-merged-evaluation-table (§3.8, MET #22): the two expanded
+        // rows of primary row 0 print the same values (Output_Variables [USUBJID]) — they report
+        // the same thing, so they are ONE finding, de-duplicated at the emit site. Until W3e this
+        // pinned 2 ("first claim must never deduplicate a level against itself"); that half holds
+        // still — first-claim only ever compares against FINISHED levels — and the next assertion
+        // is its witness: findings that DIFFER on one primary row stay two.
         RuleExecutionResult levelled = runJoined(joinedRule("""
                 Check:
                   ERROR:
@@ -454,13 +460,12 @@ class RuleCheckLevelsExecutionTest
                       AE.AESDTH == "Y"
                 """), Severity.INFO);
 
-        assertEquals(2, levelled.getViolationCount(),
-                "⛔ two expanded join rows of ONE primary row are TWO findings — first claim is a "
-                        + "cross-level rule and must never deduplicate a level against itself");
-        assertEquals(List.of(0L, 0L),
-                levelled.getViolations().stream().map(Violation::getRow).toList(),
-                "both findings sit on the same primary row — that is the colliding unit key");
-        assertEquals(List.of(Severity.ERROR, Severity.ERROR),
+        assertEquals(1, levelled.getViolationCount(),
+                "two expanded join rows of ONE primary row that print the same values are ONE "
+                        + "finding (MET #22)");
+        assertEquals(List.of(0L),
+                levelled.getViolations().stream().map(Violation::getRow).toList());
+        assertEquals(List.of(Severity.ERROR),
                 levelled.getViolations().stream().map(Violation::getLevel).toList());
 
         // ...and the pre-Plan-C path, which has no claimed set at all, agrees exactly. This is the
@@ -474,6 +479,32 @@ class RuleCheckLevelsExecutionTest
                 "the single-level path and a one-entry level map must report the same count");
         assertEquals(plain.getViolations().stream().map(Violation::getRow).toList(),
                 levelled.getViolations().stream().map(Violation::getRow).toList());
+
+        // ⛔ The within-level half of the old pin: two findings on ONE primary row that print
+        // different related values are two findings, and the level loop keeps both.
+        Rule distinct = joinedRule("""
+                Check:
+                  ERROR:
+                    expression: >-
+                      AE.AESDTH == "Y"
+                """);
+        Outcome outcome = distinct.getOutcome();
+        assertNotNull(outcome);
+        outcome.setOutputVariables(List.of("USUBJID", "AE.AESEQ"));
+        RuleExecutionResult two = RuleRunnerCalls.execute(distinct, joinPrimary(), seqChild(), "DM",
+                null, null, null, Integer.MAX_VALUE, null, null, null, Set.of(), Set.of(),
+                Severity.INFO);
+        assertEquals(List.of(0L, 0L), two.getViolations().stream().map(Violation::getRow).toList(),
+                "⛔ a level must never deduplicate its own distinct findings");
+    }
+
+
+    /** {@link #joinChild()} with an {@code AESEQ} that tells P1's two AE records apart. */
+    private static DatasetResolver seqChild()
+    {
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "P1", "P1", "P2")
+                .str("AESEQ", "1", "2", "1").str("AESDTH", "Y", "Y", "N").build();
+        return name -> "AE".equals(name) ? ae : null;
     }
 
 
@@ -495,12 +526,13 @@ class RuleCheckLevelsExecutionTest
 
 
     @Test
-    @DisplayName("N expanded join rows are N findings at the claiming rung, and the weaker rung adds none")
-    void expandedJoinRowsAreNFindingsAndTheWeakerRungAddsNone() throws IOException
+    @DisplayName("expanded join rows are ONE finding at the claiming rung, and the weaker rung adds none")
+    void expandedJoinRowsAreOneFindingAtTheClaimingRungAndTheWeakerRungAddsNone() throws IOException
     {
         // ERROR fires on both expanded rows of primary row 0; INFO's predicate subsumes it, so it
-        // re-derives the SAME unit. The two halves must both hold: two findings within ERROR, and
-        // nothing extra from INFO.
+        // re-derives the SAME unit. ⚑ Re-pinned in W3e (§3.8, MET #22): the two ERROR rows print
+        // the same values (Output_Variables [USUBJID]), so they are one finding — it was 2 ERROR
+        // and 3 in total. The cross-level half is unchanged: INFO adds nothing on row 0.
         RuleExecutionResult r = runJoined(joinedRule("""
                 Check:
                   ERROR:
@@ -512,14 +544,47 @@ class RuleCheckLevelsExecutionTest
                 """), Severity.INFO);
 
         List<Severity> levels = r.getViolations().stream().map(Violation::getLevel).toList();
-        assertEquals(2, levels.stream().filter(l -> l == Severity.ERROR).count(),
-                "\u26D4 both expanded rows of primary row 0 are genuine ERROR findings: " + levels);
+        assertEquals(1, levels.stream().filter(l -> l == Severity.ERROR).count(),
+                "the two expanded rows of primary row 0 report one ERROR finding: " + levels);
         assertEquals(0, infoOnRow(r, 0L),
                 "the INFO rung must not re-report primary row 0 \u2014 ERROR claimed it: "
                         + levels);
-        assertEquals(3, r.getViolationCount(),
-                "two ERROR findings on primary row 0 plus the one INFO finding on primary row 1 "
+        assertEquals(2, r.getViolationCount(),
+                "one ERROR finding on primary row 0 plus the one INFO finding on primary row 1 "
                         + "(P2, AESDTH=N): " + levels);
+    }
+
+
+    @Test
+    @DisplayName("P-5: a weaker rung keeps its finding on a DIFFERENT related record of a claimed row")
+    void aWeakerRungKeepsAFindingOnADifferentRelatedRecord() throws IOException
+    {
+        // P1 has two AE records: AESEQ 1 fires ERROR, AESEQ 2 only INFO. Both sit on primary row
+        // 0, so the unit used to be Row(0) for both and ERROR's claim swallowed INFO's finding on
+        // the other AE record. On an expanded table the unit carries the merged row (P-5): a
+        // different related record is a different finding.
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "P1", "P1").str("AESEQ", "1", "2")
+                .str("AESDTH", "Y", "N").build();
+        Rule rule = joinedRule("""
+                Check:
+                  ERROR:
+                    expression: >-
+                      AE.AESDTH == "Y"
+                  INFO:
+                    expression: >-
+                      AE.AESDTH == "N"
+                """);
+        Outcome outcome = rule.getOutcome();
+        assertNotNull(outcome);
+        outcome.setOutputVariables(List.of("USUBJID", "AE.AESEQ"));
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, joinPrimary(),
+                name -> "AE".equals(name) ? ae : null, "DM", null, null, null, Integer.MAX_VALUE,
+                null, null, null, Set.of(), Set.of(), Severity.INFO);
+        assertEquals(List.of(Severity.ERROR, Severity.INFO),
+                r.getViolations().stream().map(Violation::getLevel).toList(),
+                "ERROR on AESEQ 1 and INFO on AESEQ 2 — both on primary row 0");
+        assertEquals(List.of("1", "2"),
+                r.getViolations().stream().map(v -> v.getValues().get("AE.AESEQ")).toList());
     }
 
 

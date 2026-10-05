@@ -30,11 +30,38 @@ final class RelrecExpandedTable extends AbstractDataTable
     /** Expanded row index -> base (primary) row index. */
     private final IDataBufferNumeric rowMap;
 
+    /**
+     * The real-row projection ({@link RealRows}, W3e of {@code PLAN-merged-evaluation-table}),
+     * computed on first use and kept with the table — the merged view's table is cached per
+     * (dataset, merge signature), so every rule of the signature shares it.
+     */
+    private volatile @Nullable RealRows realRows;
+
     RelrecExpandedTable(IDataTable base, IDataBufferNumeric rowMap)
     {
         this.base = base;
         this.rowMap = rowMap;
         setMetaData(base.getMetaData());
+    }
+
+
+    /** The real-row projection of this table, computed once. */
+    RealRows realRows()
+    {
+        RealRows computed = realRows;
+        if (computed == null)
+        {
+            synchronized (this)
+            {
+                computed = realRows;
+                if (computed == null)
+                {
+                    computed = RealRows.compute(this, rowMap::getValueAsLong, base.getRowCount());
+                    realRows = computed;
+                }
+            }
+        }
+        return computed;
     }
 
 

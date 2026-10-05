@@ -1,7 +1,10 @@
 package net.cumba.corej.core.exec;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Bounded collector for a single rule execution's {@link Violation}s. It materialises at most
@@ -28,6 +31,24 @@ import java.util.List;
  * </pre>
  *
  * <p>
+ * <b>De-duplication on an expanded table</b> ({@code PLAN-merged-evaluation-table} §3.8, MET #22,
+ * P-4, P-18): a record-level site on a table whose rows repeat a primary record asks {@link #claim}
+ * before it builds a finding, with the finding's <em>identity</em> — read from the cells at the
+ * emit site, never from the rendered strings (a missing and a literal {@code "."} render alike). A
+ * finding equal to one already stored is not stored and not counted: two expanded rows that report
+ * the same thing are <b>one</b> finding, the first occurrence kept. {@link #wantsMore()} then
+ * counts <b>distinct</b> findings. Nothing is claimed on a table whose rows are distinct records,
+ * so there the sink is exactly what it always was. The identities kept are those of the stored
+ * findings only (each one is claimed just before it is stored).
+ * </p>
+ *
+ * <p>
+ * ⚠ <b>Past the cap the total is an upper bound</b> on an expanded table (P-6): the rows the loop
+ * no longer visits are counted by {@link #recordSkipped} as they are, duplicates included —
+ * computing every identity past the cap would defeat the cap. Below the cap it is exact.
+ * </p>
+ *
+ * <p>
  * Not thread-safe: a sink belongs to one rule execution running on one thread.
  * </p>
  */
@@ -39,6 +60,9 @@ public final class ViolationSink
     private final List<Violation> stored;
 
     private long total;
+
+    /** The identities claimed so far — {@code null} until the first {@link #claim}. */
+    private @Nullable Set<Object> claimed;
 
     /**
      * @param cap
@@ -68,6 +92,30 @@ public final class ViolationSink
     {
         stored.add(v);
         total++;
+    }
+
+
+    /**
+     * Claims a finding's identity before the caller builds and {@linkplain #store stores} it:
+     * answers {@code true} when no finding with an equal identity was stored yet — the caller then
+     * stores it — and {@code false} for a duplicate, which the caller drops uncounted (§3.8: the
+     * first occurrence is kept). Only the record-level sites of a table whose rows repeat a primary
+     * record call it.
+     *
+     * @param identity
+     *            the finding's identity — equal exactly when the two findings are one (P-4: by
+     *            value identity, P-18: read from the cells)
+     * @return whether the finding is new
+     */
+    public boolean claim(Object identity)
+    {
+        Set<Object> seen = claimed;
+        if (seen == null)
+        {
+            seen = new HashSet<>();
+            claimed = seen;
+        }
+        return seen.add(identity);
     }
 
 

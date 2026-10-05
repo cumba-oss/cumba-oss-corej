@@ -1,6 +1,7 @@
 package net.cumba.corej.core.expr.eval;
 
 import java.util.function.IntFunction;
+import java.util.function.IntUnaryOperator;
 
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.IDataValue;
@@ -37,6 +38,12 @@ public final class ComputedVector implements Vector
      * </p>
      */
     private final @Nullable IntFunction<IDataValue> typedProducer;
+
+    /**
+     * Optional carrier producer ({@code null} for every vector but a {@link #remapped} one): hands
+     * another vector's carrier through unchanged, every channel kept.
+     */
+    private final @Nullable IntFunction<TypedValue> carrierProducer;
 
     /** J7: the authored name this vector stands for, when it is a gated column reference. */
     private final @Nullable String gatedName;
@@ -81,16 +88,18 @@ public final class ComputedVector implements Vector
      */
     public ComputedVector(int rowCount, DataValueType declaredType, IntFunction<Object> producer)
     {
-        this(rowCount, declaredType, producer, null, null);
+        this(rowCount, declaredType, producer, null, null, null);
     }
 
 
     private ComputedVector(int rowCount, DataValueType declaredType, IntFunction<Object> producer,
-            @Nullable IntFunction<IDataValue> typedProducer, @Nullable String gatedName)
+            @Nullable IntFunction<IDataValue> typedProducer, @Nullable String gatedName,
+            @Nullable IntFunction<TypedValue> carrierProducer)
     {
         this.declaredType = declaredType;
         this.producer = producer;
         this.typedProducer = typedProducer;
+        this.carrierProducer = carrierProducer;
         // F8: final and constructor-set. This field decides whether the vector is gated at all, so
         // an unsafely-published instance reading null would silently exit the column-type gate.
         this.gatedName = gatedName;
@@ -157,6 +166,30 @@ public final class ComputedVector implements Vector
     }
 
 
+    /**
+     * A vector whose row {@code row} is {@code inner}'s row {@code rowMap(row)}, the carrier handed
+     * through as it is — the real-row hand-back of an aggregate evaluated once per primary record
+     * ({@code PLAN-merged-evaluation-table} W3e, OD-6): every merged row of a record reads that
+     * record's answer. The gated name and declared type are {@code inner}'s.
+     *
+     * @param inner
+     *            the per-record vector
+     * @param rowCount
+     *            the number of rows the vector spans
+     * @param rowMap
+     *            merged row → the row of {@code inner} that answers for it
+     * @return the mapped vector
+     */
+    static ComputedVector remapped(Vector inner, int rowCount, IntUnaryOperator rowMap)
+    {
+        return new ComputedVector(rowCount, inner.declaredType(), _ ->
+        {
+            throw new IllegalStateException(
+                    "a remapped ComputedVector must produce through its carrier producer");
+        }, null, inner.gatedName(), row -> inner.value(rowMap.applyAsInt(row)));
+    }
+
+
     private static ComputedVector typedInternal(int rowCount, DataValueType declaredType,
             IntFunction<IDataValue> typedProducer, @Nullable String gatedName)
     {
@@ -167,7 +200,7 @@ public final class ComputedVector implements Vector
         {
             throw new IllegalStateException(
                     "a typed ComputedVector must produce through its typed producer");
-        }, typedProducer, gatedName);
+        }, typedProducer, gatedName, null);
     }
 
 
@@ -177,9 +210,16 @@ public final class ComputedVector implements Vector
         TypedValue tv = rowCache[row];
         if (tv == null)
         {
-            tv = typedProducer != null
-                    ? TypedValue.typedCell(declaredType, typedProducer.apply(row))
-                    : carrier(declaredType, producer.apply(row));
+            if (carrierProducer != null)
+            {
+                tv = carrierProducer.apply(row);
+            }
+            else
+            {
+                tv = typedProducer != null
+                        ? TypedValue.typedCell(declaredType, typedProducer.apply(row))
+                        : carrier(declaredType, producer.apply(row));
+            }
             rowCache[row] = tv;
         }
         return tv;

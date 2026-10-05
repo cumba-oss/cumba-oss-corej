@@ -161,8 +161,23 @@ class DatasetExpressionCacheTest
     void nonColumnRefKindsAreImpure()
     {
         assertFalse(DatasetExpressionCache.isPure(OP_REF));
-        assertFalse(DatasetExpressionCache.isPure(DOTTED));
         assertFalse(DatasetExpressionCache.isPure(BUILTIN));
+    }
+
+
+    /**
+     * ⚑ W3e of {@code PLAN-merged-evaluation-table} (P-3, the W2 row "admits merged leaves keyed on
+     * the view instance"): a qualified {@code J.X} is a column of the merged view, so it is a
+     * candidate — until W3e it was impure. Whether it is cached is the eval-time gate's decision
+     * (the dataset's shared view only), and it is keyed on the view ({@code keyAt}).
+     */
+    @Test
+    void aDottedRefIsAMergedCandidate()
+    {
+        assertTrue(DatasetExpressionCache.isPure(DOTTED));
+        assertTrue(DatasetExpressionCache.readsMerged(DOTTED));
+        assertTrue(DatasetExpressionCache.readsMerged(new Expr.Binary(Expr.BinOp.EQ, DOTTED, NUM)));
+        assertFalse(DatasetExpressionCache.readsMerged(new Expr.Binary(Expr.BinOp.EQ, COL, NUM)));
     }
 
 
@@ -238,7 +253,7 @@ class DatasetExpressionCacheTest
     void comparisonWithImpureOperandIsImpure()
     {
         assertFalse(DatasetExpressionCache.isPure(new Expr.Binary(Expr.BinOp.EQ, COL, OP_REF)));
-        assertFalse(DatasetExpressionCache.isPure(new Expr.Binary(Expr.BinOp.EQ, DOTTED, NUM)));
+        assertFalse(DatasetExpressionCache.isPure(new Expr.Binary(Expr.BinOp.EQ, DOTTED, OP_REF)));
     }
 
 

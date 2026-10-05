@@ -19,7 +19,8 @@ import org.junit.jupiter.api.Test;
  * {@code PLAN-qualified-name-uniformity-review} phase 1 — criterion C10 (D32): a one-to-many join
  * expands the iteration domain, and a Check over {@code J.X} on the expanded primary answers
  * exactly as the same Check over {@code X} on a primary that carries those rows itself; a grouped
- * function counts an expanded row the same way.
+ * function over a MERGED key counts an expanded row the same way, while one over primary columns
+ * counts each primary record once (OD-6, W3e).
  */
 class JoinExpansionUniformityTest
 {
@@ -78,17 +79,26 @@ class JoinExpansionUniformityTest
     }
 
 
+    /**
+     * ⚑ Re-pinned in W3e of {@code PLAN-merged-evaluation-table} (OD-6, owner 2026-10-04): an
+     * aggregate whose operands are all PRIMARY columns counts each primary record once, by real
+     * row. Until W3e this pinned the D72 uniformity reading — the two k1 copies of the expanded
+     * primary counted as two, exactly as a primary carrying two k1 records — which is the
+     * {@code CDISC-CG0545} false positive OD-6 rules out. The join's copies are one record, so the
+     * count over the expanded primary is the count over P itself; a primary that really carries two
+     * k1 records still counts two ({@code byHand}).
+     */
     @Test
-    void aGroupedFunctionCountsAnExpandedRowLikeAPrimaryRow()
+    void aGroupedFunctionOverAPrimaryColumnCountsEachRecordOnce()
     {
-        // record_count(group=[G]) over the EXPANDED primary vs over the hand-expanded one: the
-        // two k1 copies both carry P's G = g1 (the bare spelling reads the expanded primary) and
-        // count as two.
         RuleExecutionResult viaJoin = run("record_count(group=[G]) == 2", primaryP(), manyJ(), "K");
+        RuleExecutionResult overP = runBare("record_count(group=[G]) == 2", primaryP(), "K");
         RuleExecutionResult byHand = runBare("record_count(group=[G]) == 2", expandedByHand(), "K");
-        assertEquals(2, byHand.getViolations().size(), "the two k1 copies");
-        assertEquals("k1", QualifiedNameFixture.values(byHand).get(1).get("K"));
-        assertEquals(QualifiedNameFixture.values(byHand), QualifiedNameFixture.values(viaJoin));
+        assertEquals(0, viaJoin.getViolations().size(),
+                "k1's two expanded rows are ONE record of group g1: "
+                        + QualifiedNameFixture.values(viaJoin));
+        assertEquals(QualifiedNameFixture.values(overP), QualifiedNameFixture.values(viaJoin));
+        assertEquals(2, byHand.getViolations().size(), "two real k1 records are two");
     }
 
 

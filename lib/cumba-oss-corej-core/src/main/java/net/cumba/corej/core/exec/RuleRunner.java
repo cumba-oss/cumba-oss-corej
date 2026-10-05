@@ -408,7 +408,7 @@ public final class RuleRunner
         if (rule.getCheck() == null)
         {
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                    .violations(List.of()).totalRows(table.getRowCount()).build();
+                    .violations(List.of()).totalRows(RealRows.count(table)).build();
         }
 
         // D77 — the bind-time specialisation stage. Everything decidable from (rule × dataset
@@ -444,7 +444,7 @@ public final class RuleRunner
             LOGGER.log(System.Logger.Level.DEBUG, "[{0}] {1}", ruleId != null ? ruleId : "?",
                     reason);
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                    .violations(List.of()).totalRows(table.getRowCount())
+                    .violations(List.of()).totalRows(RealRows.count(table))
                     .status(RuleExecutionStatus.SKIPPED).statusMessage(reason).build();
         }
 
@@ -516,7 +516,7 @@ public final class RuleRunner
         if (variableScopeMismatch != null)
         {
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                    .violations(List.of()).totalRows(table.getRowCount())
+                    .violations(List.of()).totalRows(RealRows.count(table))
                     .status(RuleExecutionStatus.SKIPPED)
                     .statusMessage("Rule skipped — " + variableScopeMismatch).build();
         }
@@ -534,7 +534,7 @@ public final class RuleRunner
         if (datasetRequirementMismatch != null)
         {
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                    .violations(List.of()).totalRows(table.getRowCount())
+                    .violations(List.of()).totalRows(RealRows.count(table))
                     .status(RuleExecutionStatus.SKIPPED)
                     .statusMessage("Rule skipped — " + datasetRequirementMismatch).build();
         }
@@ -578,7 +578,7 @@ public final class RuleRunner
             if (structureMismatch != null)
             {
                 return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                        .violations(List.of()).totalRows(table.getRowCount())
+                        .violations(List.of()).totalRows(RealRows.count(table))
                         .status(RuleExecutionStatus.SKIPPED)
                         .statusMessage("Rule skipped — " + structureMismatch).build();
             }
@@ -642,7 +642,7 @@ public final class RuleRunner
             LOGGER.log(System.Logger.Level.DEBUG, "[{0}] {1}", ruleId != null ? ruleId : "?",
                     collapsedDecision.skipReason());
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                    .violations(List.of()).totalRows(table.getRowCount())
+                    .violations(List.of()).totalRows(RealRows.count(table))
                     .status(RuleExecutionStatus.SKIPPED)
                     .statusMessage(collapsedDecision.skipReason()).build();
         }
@@ -694,7 +694,7 @@ public final class RuleRunner
             if (defineProvider == null && referencesOperandPrefix(operandCheck, "define_"))
             {
                 return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                        .violations(List.of()).totalRows(evalTable.getRowCount())
+                        .violations(List.of()).totalRows(RealRows.count(evalTable))
                         .status(RuleExecutionStatus.SKIPPED)
                         .statusMessage("Rule skipped — no Define-XML metadata "
                                 + "(rule requires define_* operands)")
@@ -710,7 +710,7 @@ public final class RuleRunner
                     && referencesOperandPrefix(operandCheck, "library_"))
             {
                 return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                        .violations(List.of()).totalRows(evalTable.getRowCount())
+                        .violations(List.of()).totalRows(RealRows.count(evalTable))
                         .status(RuleExecutionStatus.SKIPPED)
                         .statusMessage(libraryProvider != null
                                 ? "Rule skipped — the CDISC Library could not be consulted for this"
@@ -853,7 +853,7 @@ public final class RuleRunner
                             ruleId != null ? ruleId : "?", comboMsg);
                     Violation sentinel = new Violation(0, Map.of("__error__", comboMsg));
                     return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                            .violations(List.of(sentinel)).totalRows(table.getRowCount())
+                            .violations(List.of(sentinel)).totalRows(RealRows.count(table))
                             .status(RuleExecutionStatus.ERROR).statusMessage(comboMsg).build();
                 }
                 evalTable = keyExpansion.table();
@@ -1010,7 +1010,7 @@ public final class RuleRunner
         if (libraryProvider == null && needs.library())
         {
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                    .violations(List.of()).totalRows(evalTable.getRowCount())
+                    .violations(List.of()).totalRows(RealRows.count(evalTable))
                     .status(RuleExecutionStatus.SKIPPED)
                     .statusMessage("Rule skipped — no Library access").build();
         }
@@ -1022,7 +1022,7 @@ public final class RuleRunner
         if (defineProvider == null && needs.define())
         {
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                    .violations(List.of()).totalRows(evalTable.getRowCount())
+                    .violations(List.of()).totalRows(RealRows.count(evalTable))
                     .status(RuleExecutionStatus.SKIPPED)
                     .statusMessage("Rule skipped — no Define-XML metadata "
                             + "(rule requires define_* operations)")
@@ -1062,7 +1062,7 @@ public final class RuleRunner
                 ? " (the rule needs this external dictionary)"
                 : " (the rule needs these external dictionaries)");
         return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(List.of())
-                .totalRows(evalTable.getRowCount()).status(RuleExecutionStatus.SKIPPED)
+                .totalRows(RealRows.count(evalTable)).status(RuleExecutionStatus.SKIPPED)
                 .statusMessage(skipReason.toString()).build();
     }
 
@@ -1112,7 +1112,7 @@ public final class RuleRunner
                         + unusable.function();
                 };
                 return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                        .violations(List.of()).totalRows(ctx.getTable().getRowCount())
+                        .violations(List.of()).totalRows(RealRows.count(ctx.getTable()))
                         .status(RuleExecutionStatus.SKIPPED).statusMessage(statusMessage).build();
             }
         }
@@ -1157,7 +1157,7 @@ public final class RuleRunner
             if (pre == net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.FALSE)
             {
                 return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                        .violations(List.of()).totalRows(evalTable.getRowCount())
+                        .violations(List.of()).totalRows(RealRows.count(evalTable))
                         .status(RuleExecutionStatus.SKIPPED)
                         .statusMessage("Rule skipped — precondition not met").build();
             }
@@ -1223,12 +1223,23 @@ public final class RuleRunner
      * <p>
      * &#9940;&#9940; <b>First claim is CROSS-level only — it never deduplicates within one
      * level.</b> The claimed set consulted while a level runs holds the units of the levels
-     * <em>already finished</em>; this level's own units join it only once the level completes. A
-     * level's violations are distinct findings by construction, and several of them can share one
-     * unit stamp — every expanded row of a {@code KeyMatchRowExpander} join maps back to the same
-     * primary row, so N genuine findings carry one {@link Violation.Unit.Row}. Consulting a set
-     * this level was still adding to dropped all but the first of them, which the single-level path
-     * (no claimed set at all) had always reported.
+     * <em>already finished</em>; this level's own units join it only once the level completes.
+     * Within one level the de-duplication is the emit sites' ({@code PLAN-merged-evaluation-table}
+     * §3.8, MET #22, W3e): on a table whose rows repeat a primary record, two expanded rows that
+     * report the same thing — equal unit, {@code values} and the identities of the merged cells —
+     * are ONE finding, claimed by {@link ViolationSink#claim} at the site, the first occurrence
+     * kept; findings that differ (a different related record's value printed) stay N findings on
+     * one primary row. So a level's violations are distinct findings by construction, and this loop
+     * must not collapse them a second time.
+     * </p>
+     *
+     * <p>
+     * <b>The unit on an expanded table</b> (P-5): the producing site stamps today's unit plus the
+     * merged row it was read on ({@link Violation.Unit.Row#onMergedRow}) — a weaker level's finding
+     * on a <em>different related record</em> of a primary row a stricter level claimed is a
+     * different finding and survives; the same merged row is the same unit and is claimed. Never
+     * the level, never the whole {@code values} map (grouped anchors differ per level, see
+     * {@link FindingUnit}).
      * </p>
      *
      * <p>
@@ -1253,7 +1264,7 @@ public final class RuleRunner
         List<Violation> merged = new ArrayList<>();
         Set<FindingUnit> claimed = new LinkedHashSet<>();
         long total = 0;
-        long totalRows = ctx.getTable().getRowCount();
+        long totalRows = RealRows.count(ctx.getTable());
         RecordKeyResolver.KeySource keySource = RecordKeyResolver.KeySource.NONE;
         String skipReason = null;
         int evaluated = 0;
@@ -1296,14 +1307,14 @@ public final class RuleRunner
             long dropped = 0;
             // ⛔⛔ First-claim is a CROSS-level rule and NOTHING ELSE. The set consulted below is
             // the set of units claimed by the levels ALREADY DONE; this level's own units are
-            // accumulated into `claimedHere` and folded in only once the level completes. Adding
-            // them as they are seen would deduplicate a level against ITSELF, and a level's own
-            // violations are distinct findings by construction — two expanded rows of one
-            // KeyMatchRowExpander join share a primary row index, hence one Unit.Row stamp, and
-            // the second was being silently dropped. Pinned by RuleCheckLevelsExecutionTest's
-            // oneLevelNeverDeduplicatesAgainstItself,
-            // aWeakerRungStillDoesNotReReportAStricterRungsUnit and
-            // expandedJoinRowsAreNFindingsAndTheWeakerRungAddsNone.
+            // accumulated into `claimedHere` and folded in only once the level completes. A
+            // level's own violations are distinct findings by construction — the emit sites
+            // already collapsed equal findings of an expanded table (§3.8, W3e), and the ones left
+            // carry distinct units (an expanded row's unit names its merged row, P-5). Pinned by
+            // RuleCheckLevelsExecutionTest's oneLevelReportsEachDistinctFindingOnce,
+            // aWeakerRungStillDoesNotReReportAStricterRungsUnit,
+            // expandedJoinRowsAreOneFindingAtTheClaimingRungAndTheWeakerRungAddsNone and
+            // aWeakerRungKeepsAFindingOnADifferentRelatedRecord.
             List<FindingUnit> claimedHere = new ArrayList<>();
             for (Violation v : result.getViolations())
             {
@@ -1713,7 +1724,7 @@ public final class RuleRunner
         if (checkExprOf(rule, ctx) == null)
         {
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                    .violations(List.of()).totalRows(ctx.getTable().getRowCount())
+                    .violations(List.of()).totalRows(RealRows.count(ctx.getTable()))
                     .status(RuleExecutionStatus.ERROR)
                     .statusMessage("Rule error — the Check has no native expression form; the "
                             + "legacy evaluator has been retired")
@@ -1764,22 +1775,36 @@ public final class RuleRunner
             // Per-row findings: count every violating row (cardinality) but materialise at most the
             // cap, so a high-cardinality rule cannot exhaust the heap (see ViolationSink).
             int card = violationBits.cardinality();
-            int taken = 0;
+            int visited = 0;
+            // §3.8 (MET #22, P-18): on a table whose rows repeat a primary record, a finding equal
+            // to one already stored is the same finding — claimed by identity before anything else
+            // is built, dropped uncounted; null (nothing claimed) on every other table.
+            FindingIdentity identity = RealRows.ofRepeating(ctx.getTable()) == null ? null
+                    : FindingIdentity.of(ctx, outputVars);
             for (int r = violationBits.nextSetBit(0); r >= 0
                     && violations.wantsMore(); r = violationBits.nextSetBit(r + 1))
             {
+                visited++;
                 Map<String, String> values = extractOutputValues(ctx.getTable(), ctx, outputVars,
                         r);
-                RowIdentity ri = readRowIdentity(ctx.getTable(), ctx.getDomainName(), r);
                 long realRow = ctx.getTable().getRealRowIndex(r);
+                if (identity != null
+                        && !violations.claim(identity.at(ctx.getTable(), r, realRow, null, values)))
+                {
+                    continue;
+                }
+                RowIdentity ri = readRowIdentity(ctx.getTable(), ctx.getDomainName(), r);
+                long mergedRow = identity != null ? r : Violation.Unit.NO_MERGED_ROW;
                 // A RECORD-level site (Unit.Row): the raw columns' cells are the finding's values
                 // and nothing is listed by name (V1; the shared empty list, no per-row allocation).
                 violations.store(new Violation(realRow, values, ri.usubjid(), ri.seq(),
                         RecordKeyResolver.readRowKeys(ctx.getTable(), keySpec, r), null,
-                        stamp(ctx, () -> new Violation.Unit.Row(realRow)), null, List.of()));
-                taken++;
+                        stamp(ctx, () -> new Violation.Unit.Row(realRow).onMergedRow(mergedRow)),
+                        null, List.of()));
             }
-            violations.recordSkipped(card - taken);
+            // P-6: past the cap the unvisited rows are counted as they are — an upper bound on an
+            // expanded table (duplicates included), exact below the cap.
+            violations.recordSkipped(card - visited);
         }
         else
         {
@@ -1806,7 +1831,7 @@ public final class RuleRunner
 
         return RuleExecutionResult.builder().ruleId(ruleId).message(message)
                 .violations(violations.stored()).totalViolationCount(violations.total())
-                .totalRows(ctx.getTable().getRowCount()).keySource(keySpec.source()).build();
+                .totalRows(RealRows.count(ctx.getTable())).keySource(keySpec.source()).build();
     }
 
 
@@ -1911,7 +1936,7 @@ public final class RuleRunner
             LOGGER.log(System.Logger.Level.DEBUG, "[{0}] {1}", ruleId != null ? ruleId : "?",
                     reason);
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                    .violations(List.of()).totalRows(table.getRowCount())
+                    .violations(List.of()).totalRows(RealRows.count(table))
                     .status(RuleExecutionStatus.SKIPPED).statusMessage(reason).build();
         }
         if (!stageB.armedFindings().isEmpty())
@@ -1922,7 +1947,7 @@ public final class RuleRunner
                     errorMsg);
             Violation sentinel = new Violation(0, Map.of("__error__", errorMsg));
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                    .violations(List.of(sentinel)).totalRows(table.getRowCount())
+                    .violations(List.of(sentinel)).totalRows(RealRows.count(table))
                     .status(RuleExecutionStatus.ERROR).statusMessage(errorMsg).build();
         }
         return null;
@@ -2297,7 +2322,7 @@ public final class RuleRunner
                     stamp(ctx, () -> Violation.Unit.DATASET), null, projected.namedColumns()));
         }
         return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(violations)
-                .totalRows(ctx.getTable().getRowCount())
+                .totalRows(RealRows.count(ctx.getTable()))
                 .bindings(perVariable ? bindings.build() : null).build();
     }
 
@@ -2329,7 +2354,7 @@ public final class RuleRunner
                     stamp(ctx, () -> Violation.Unit.DATASET), null, projected.namedColumns()));
         }
         return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(violations)
-                .totalRows(ctx.getTable().getRowCount()).build();
+                .totalRows(RealRows.count(ctx.getTable())).build();
     }
 
 
@@ -2511,7 +2536,7 @@ public final class RuleRunner
             @Nullable String message, EvaluationContext ctx, String reason)
     {
         return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(List.of())
-                .totalRows(ctx.getTable().getRowCount()).status(RuleExecutionStatus.SKIPPED)
+                .totalRows(RealRows.count(ctx.getTable())).status(RuleExecutionStatus.SKIPPED)
                 .statusMessage("Rule skipped — " + reason).build();
     }
 
@@ -3122,7 +3147,8 @@ public final class RuleRunner
     {
         if ("record_count".equals(ov))
         {
-            out.put(ov, Long.toString(ctx.getTable().getRowCount()));
+            // OD-6: the primary records the execution evaluates, each once (RealRows).
+            out.put(ov, Long.toString(RealRows.count(ctx.getTable())));
             return;
         }
         String resolved = ExprCompiler.datasetScopeOperandValue(ctx, ov);
@@ -3419,11 +3445,16 @@ public final class RuleRunner
         // the dataset-level branch in executeUnified, not here. Count every set bit but materialise
         // at most the per-rule cap, shared across this rule's variables (see ViolationSink).
         int card = rowBits.cardinality();
-        int taken = 0;
+        int visited = 0;
         OperandColumnReads operandReads = new OperandColumnReads(ctx);
+        // §3.8 (MET #22, P-18): the per-(column, row) site de-duplicates like the row path — on a
+        // table whose rows repeat a primary record only.
+        FindingIdentity identity = RealRows.ofRepeating(ctx.getTable()) == null ? null
+                : FindingIdentity.of(ctx, outputVars);
         for (int r = rowBits.nextSetBit(0); r >= 0
                 && violations.wantsMore(); r = rowBits.nextSetBit(r + 1))
         {
+            visited++;
             Map<String, String> values = new LinkedHashMap<>();
             if (!outputVars.isEmpty())
             {
@@ -3499,14 +3530,21 @@ public final class RuleRunner
             // exclude variable_name — without it, two columns firing on one row materialise the
             // same values map and first-claim would collapse them into one unit.
             long realRow = ctx.getTable().getRealRowIndex(r);
+            if (identity != null && !violations
+                    .claim(identity.at(ctx.getTable(), r, realRow, colMeta.getName(), values)))
+            {
+                continue;
+            }
+            long mergedRow = identity != null ? r : Violation.Unit.NO_MERGED_ROW;
             // A RECORD-level site (a (column, row) unit WITH a row): cells are values, nothing is
             // listed by name (V1 — the shared empty list, no per-row allocation).
             violations.store(new Violation(realRow, values, null, null, Map.of(), null,
-                    stamp(ctx, () -> new Violation.Unit.Column(colMeta.getName(), realRow)), null,
-                    List.of()));
-            taken++;
+                    stamp(ctx, () -> new Violation.Unit.Column(colMeta.getName(), realRow)
+                            .onMergedRow(mergedRow)),
+                    null, List.of()));
         }
-        violations.recordSkipped(card - taken);
+        // P-6: an upper bound past the cap on an expanded table (see the row path).
+        violations.recordSkipped(card - visited);
     }
 
 
@@ -3615,7 +3653,7 @@ public final class RuleRunner
         }
         return RuleExecutionResult.builder().ruleId(ruleId).message(message)
                 .violations(violations.stored()).totalViolationCount(violations.total())
-                .totalRows(ctx.getTable().getRowCount()).bindings(bindings.build()).build();
+                .totalRows(RealRows.count(ctx.getTable())).bindings(bindings.build()).build();
     }
 
 
@@ -3679,7 +3717,7 @@ public final class RuleRunner
         if (checkExprOf(rule, ctx) == null)
         {
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                    .violations(List.of()).totalRows(ctx.getTable().getRowCount())
+                    .violations(List.of()).totalRows(RealRows.count(ctx.getTable()))
                     .status(RuleExecutionStatus.ERROR)
                     .statusMessage("Rule error — the Check has no native expression form; the "
                             + "legacy evaluator has been retired")
@@ -3727,7 +3765,7 @@ public final class RuleRunner
             }
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
                     .violations(violations.stored()).totalViolationCount(violations.total())
-                    .totalRows(rowCount).keySource(keySpec.source()).build();
+                    .totalRows(RealRows.count(table)).keySource(keySpec.source()).build();
         }
 
         int[] keyColIndices = IndexHelper.resolveColumnIndices(keyMeta, presentGroupVars);
@@ -3737,7 +3775,7 @@ public final class RuleRunner
         {
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
                     .violations(violations.stored()).totalViolationCount(violations.total())
-                    .totalRows(rowCount).keySource(keySpec.source()).build();
+                    .totalRows(RealRows.count(table)).keySource(keySpec.source()).build();
         }
 
         long blockCount = index.getBlockCount();
@@ -3785,7 +3823,7 @@ public final class RuleRunner
         }
         return RuleExecutionResult.builder().ruleId(ruleId).message(message)
                 .violations(violations.stored()).totalViolationCount(violations.total())
-                .totalRows(rowCount).keySource(keySpec.source()).build();
+                .totalRows(RealRows.count(table)).keySource(keySpec.source()).build();
     }
 
 
@@ -3860,7 +3898,7 @@ public final class RuleRunner
         }
         return RuleExecutionResult.builder().ruleId(ruleId).message(message)
                 .violations(violations.stored()).totalViolationCount(violations.total())
-                .totalRows(rowCount).keySource(keySpec.source()).build();
+                .totalRows(RealRows.count(table)).keySource(keySpec.source()).build();
     }
 
     /** A growable list of row indices — one per qualified-grouping block, no boxing. */
@@ -4387,7 +4425,7 @@ public final class RuleRunner
                 errorMsg);
         Violation sentinel = new Violation(0, Map.of("__error__", errorMsg));
         return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                .violations(List.of(sentinel)).totalRows(table.getRowCount())
+                .violations(List.of(sentinel)).totalRows(RealRows.count(table))
                 .status(RuleExecutionStatus.ERROR).statusMessage(errorMsg).build();
     }
 
@@ -5258,7 +5296,9 @@ public final class RuleRunner
             // builtin regardless of a like-named column.
             if ("record_count".equals(varName))
             {
-                values.put(varName, Long.toString(table.getRowCount()));
+                // OD-6 (PLAN-merged-evaluation-table W3e): the primary records evaluated, each
+                // once — an expanded row is not a record of its own (RealRows).
+                values.put(varName, Long.toString(RealRows.count(table)));
                 continue;
             }
             String datasetFact = ExprCompiler.datasetScopeOperandValue(ctx, varName);
@@ -5420,7 +5460,7 @@ public final class RuleRunner
      * matcher ({@code PLAN-dynamic-column-functions} §2.6, owner Q6 (a); the {@code ${*}} step is
      * unchanged, Q8). Each step returns its input list when it has nothing to do.
      */
-    private static List<String> resolveOutputEntries(List<String> outputVars, EvaluationContext ctx)
+    static List<String> resolveOutputEntries(List<String> outputVars, EvaluationContext ctx)
     {
         // EC-36: Output_Variables are variable names -> variable prefix (AP suffix / "" for SUPP),
         // so the reported column matches the one the Check actually read.

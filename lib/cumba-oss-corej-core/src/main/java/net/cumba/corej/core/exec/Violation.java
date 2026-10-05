@@ -198,15 +198,59 @@ public class Violation
         {
         }
 
+        /**
+         * The {@code mergedRow} of a unit read on a table whose rows are distinct records — every
+         * unit of a non-expanded table carries it, so its stamps are exactly the pre-W3e ones.
+         */
+        long NO_MERGED_ROW = -1L;
 
         /**
-         * One data row, identified by its real (uncollapsed) row index.
+         * One data row, identified by its real (uncollapsed) row index — and, on an expanded table
+         * only, by the merged row it was read on (P-5).
+         *
+         * <p>
+         * &#9733; <b>The merged-part discriminator</b> ({@code PLAN-merged-evaluation-table} §3.8,
+         * P-5, MET #22): on a table whose one-to-many merge gives a primary record several rows,
+         * those rows are the record with <em>different related records</em>, and a weaker level's
+         * finding on a different related record is a different finding — so first-claim must not
+         * let a stricter level's claim on one of them suppress it. The merged row is that
+         * discriminator: within one execution every level evaluates the same merged table, and a
+         * merged row is exactly one combination of part rows. It is {@link #NO_MERGED_ROW} on every
+         * other table, never the level and never the {@code values} map.
+         * </p>
          *
          * @param row
          *            the real row index
+         * @param mergedRow
+         *            the merged row on an expanded table, else {@link #NO_MERGED_ROW}
          */
-        record Row(long row) implements Unit
+        record Row(long row, long mergedRow) implements Unit
         {
+
+            /**
+             * A row of a table whose rows are distinct records.
+             *
+             * @param row
+             *            the real row index
+             */
+            public Row(long row)
+            {
+                this(row, NO_MERGED_ROW);
+            }
+
+
+            /**
+             * This unit read on merged row {@code aMergedRow} ({@link #NO_MERGED_ROW} keeps it as
+             * it is).
+             *
+             * @param aMergedRow
+             *            the merged row, or {@link #NO_MERGED_ROW}
+             * @return the discriminated unit
+             */
+            public Row onMergedRow(long aMergedRow)
+            {
+                return aMergedRow == mergedRow ? this : new Row(row, aMergedRow);
+            }
         }
 
 
@@ -220,9 +264,40 @@ public class Violation
          *            the column (or Define ItemDef) name
          * @param row
          *            the real row index, or the site's row-key convention where no row exists
+         * @param mergedRow
+         *            the merged row of a per-(column, row) finding on an expanded table (P-5, see
+         *            {@link Row}), else {@link #NO_MERGED_ROW}
          */
-        record Column(String column, long row) implements Unit
+        record Column(String column, long row, long mergedRow) implements Unit
         {
+
+            /**
+             * A (column, row) unit of a table whose rows are distinct records, or a column-level
+             * unit.
+             *
+             * @param column
+             *            the column (or Define ItemDef) name
+             * @param row
+             *            the real row index, or the site's row-key convention
+             */
+            public Column(String column, long row)
+            {
+                this(column, row, NO_MERGED_ROW);
+            }
+
+
+            /**
+             * This unit read on merged row {@code aMergedRow} ({@link #NO_MERGED_ROW} keeps it as
+             * it is).
+             *
+             * @param aMergedRow
+             *            the merged row, or {@link #NO_MERGED_ROW}
+             * @return the discriminated unit
+             */
+            public Column onMergedRow(long aMergedRow)
+            {
+                return aMergedRow == mergedRow ? this : new Column(column, row, aMergedRow);
+            }
         }
 
 
