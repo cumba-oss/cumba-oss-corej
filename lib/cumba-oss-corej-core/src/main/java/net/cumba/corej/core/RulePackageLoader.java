@@ -5548,7 +5548,11 @@ public class RulePackageLoader
      * some readers' data. So the decision is taken here, on the rule text: such a binding is a
      * <b>load error</b> when it is in the rule's <em>effective</em> Output_Variables
      * ({@code effective} — authored or derived, after the {@code !$x} subtraction). A binding that
-     * is not reported is never refused, and neither is a typed or column-typed one.
+     * is not reported is never refused, and neither is a typed or column-typed one. The effective
+     * list is the whole of what a finding can report: the run-time {@code Fix #15} inference, which
+     * projects a rule whose effective list is empty, drops every binding the derivation does not
+     * derive ({@code RuleRunner.inferredOutputVariables}, confirmation look MED-1), so no
+     * projection reports a binding this gate has not judged.
      * </p>
      *
      * <p>
@@ -5632,7 +5636,7 @@ public class RulePackageLoader
                 .append(", or bind a function whose result type is declared");
         net.cumba.corej.core.expr.ast.Expr root = expression;
         while (root instanceof net.cumba.corej.core.expr.ast.Expr.Call fold
-                && java.util.Set.of("upper", "lower", "upcase", "lowcase").contains(fold.name())
+                && net.cumba.corej.core.expr.typed.StageAChecker.CASE_FOLDS.contains(fold.name())
                 && fold.args().size() == 1)
         {
             root = fold.args().get(0);

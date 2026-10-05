@@ -319,9 +319,15 @@ public final class BindingValue
      * "their carrier type"). Any other binding with no type source — an {@code extract_metadata}
      * key no reader documents — is refused at <b>load</b> when it is reported
      * ({@code RulePackageLoader.validateReportedBindingTypes}), so the throw below is a defensive
-     * assertion no loaded rule reaches. Until 2026-10-05 such a binding printed the record path's
-     * historical untyped {@code ""}; P3 made it a data-dependent run-time ERROR; MED-1 moved the
-     * refusal to the rule text.
+     * assertion no loaded rule reaches. That holds because the gate judges <em>every</em> list a
+     * finding projects: the effective list it is given, and the run-time {@code Fix #15} inference
+     * — the only other projection, for a rule whose effective list is empty — projects no binding
+     * the derivation does not derive ({@code RuleRunner.inferredOutputVariables}, confirmation look
+     * MED-1; before it, {@code $c: extract_metadata("Compression")} read only in the Check reached
+     * this throw past the gate). A hand-built rule that never went through the loader is not a
+     * loaded rule. Until 2026-10-05 such a binding printed the record path's historical untyped
+     * {@code ""}; P3 made it a data-dependent run-time ERROR; MED-1 moved the refusal to the rule
+     * text.
      * </p>
      *
      * @param evaluated
@@ -329,7 +335,8 @@ public final class BindingValue
      * @return {@code ""} or {@link MissingValue#MIS}; never {@code null}
      * @throws IllegalStateException
      *             when neither the evaluation, nor stage A, nor a read column types the binding —
-     *             unreachable from a loaded rule (the load gate refuses it)
+     *             unreachable from a loaded rule (the load gate refuses it when reported, and no
+     *             projection reports a binding the gate did not judge)
      */
     public Object reportedDefault(DataValueType evaluated)
     {
@@ -364,7 +371,8 @@ public final class BindingValue
                 + (staticType == null ? "absent" : staticType.describe())
                 + " and it reads no column — unreachable from a loaded rule, whose load gate"
                 + " (RulePackageLoader.validateReportedBindingTypes) refuses a reported binding"
-                + " with no type source; a binding is reported \"\" (char) or MIS, never an"
+                + " with no type source and whose inference projects no binding the gate did not"
+                + " judge; a binding is reported \"\" (char) or MIS, never an"
                 + " untyped value (PLAN-output-variable-null-key-provenance P3 review MED-1)");
     }
 

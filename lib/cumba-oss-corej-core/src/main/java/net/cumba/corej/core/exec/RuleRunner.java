@@ -1417,14 +1417,8 @@ public final class RuleRunner
         List<String> outputVars = rule.effectiveOutputVariablesOrAuthored();
         if (outputVars.isEmpty())
         {
-            java.util.SequencedSet<String> inferred = new LinkedHashSet<>();
-            for (CheckCondition condition : conditions.values())
-            {
-                inferred.addAll(collectCheckLeafColumns(condition, ctx.getTable().getMetaData()));
-            }
-            List<String> projected = new ArrayList<>(inferred);
-            projected.removeAll(rule.excludedOutputVariablesOrAuthored());
-            outputVars = List.copyOf(projected);
+            outputVars = inferredOutputVariables(rule, conditions.values(),
+                    ctx.getTable().getMetaData());
         }
 
         Domain domain = null;
@@ -4331,9 +4325,11 @@ public final class RuleRunner
      * dataset column matching {@code ^<name>\d+$} (e.g. {@code TSVAL1, TSVAL2, …}).</li>
      * </ol>
      * <p>
-     * Preserves first-encounter order, deduplicates. {@code $}-prefixed scalar references are kept
-     * (resolved via the {@code $}-branch of {@link #extractOutputValues}); leaves with a null name
-     * (e.g. {@code get_dataset} operators) contribute nothing.
+     * Preserves first-encounter order, deduplicates. {@code $}-prefixed references are collected
+     * here; the projection ({@link #inferredOutputVariables}) then drops every binding the
+     * load-time derivation does not derive (confirmation look MED-1), so a binding reaches the
+     * {@code $}-branch of {@link #extractOutputValues} only when the load gate has judged it;
+     * leaves with a null name (e.g. {@code get_dataset} operators) contribute nothing.
      */
     static java.util.SequencedSet<String> collectCheckLeafColumns(CheckCondition check,
             DataTableMeta meta)
@@ -4347,7 +4343,8 @@ public final class RuleRunner
     /**
      * The output-variable list every projection path must use for {@code rule}: the effective
      * (authored + derived) list, or — when that list is empty — the {@code Fix #15} inference from
-     * {@code check}'s leaves minus every name the author excluded.
+     * {@code check}'s leaves minus every name the author excluded and every binding the derivation
+     * does not derive ({@link #inferredOutputVariables}).
      *
      * <p>
      * EC-37 keeps the inference alive for the legacy {@code additional_columns_*} shape, whose
@@ -4375,9 +4372,45 @@ public final class RuleRunner
         {
             return outputVars;
         }
-        List<String> inferred = new ArrayList<>(collectCheckLeafColumns(check, meta));
+        return inferredOutputVariables(rule, List.of(check), meta);
+    }
+
+
+    /**
+     * The {@code Fix #15} inference over {@code checks} (every level's condition on a multi-level
+     * rule, the one condition otherwise), minus the author's exclusions and minus every binding the
+     * load-time derivation does not derive ({@link OutputVariableDeriver#underivedBindingIds}). The
+     * one inference both projection sites ({@link #projectedOutputVariables} and the level-plan
+     * builder) read.
+     *
+     * <p>
+     * ⭐ {@code PLAN-output-variable-null-key-provenance} confirmation look MED-1, decision (b): a
+     * leaf's subject slot may be a {@code $}-reference, and the walk adds it. A binding the deriver
+     * never derives — a bulk result such as {@code $c: extract_metadata("Compression")} read only
+     * in the Check, or one read only under negated existence (D3) — was therefore projected here,
+     * past the load gate that judges the effective list
+     * ({@code RulePackageLoader.validateReportedBindingTypes}), and an untyped one ERRORed the rule
+     * at run time on a reader that did not publish the key. Subtracting the deriver's own decision
+     * makes the two projections agree: since D4a derives every other binding, and a derived,
+     * unexcluded binding makes the effective list non-empty (so this inference never runs), the
+     * inference now projects <b>no</b> binding at all, and every binding any path projects is one
+     * the load gate has judged.
+     * </p>
+     */
+    private static List<String> inferredOutputVariables(Rule rule,
+            java.util.Collection<CheckCondition> checks, DataTableMeta meta)
+    {
+        java.util.SequencedSet<String> inferred = new LinkedHashSet<>();
+        for (CheckCondition check : checks)
+        {
+            inferred.addAll(collectCheckLeafColumns(check, meta));
+        }
         inferred.removeAll(rule.excludedOutputVariablesOrAuthored());
-        return inferred;
+        if (!inferred.isEmpty() && !rule.bindingOrder().isEmpty())
+        {
+            inferred.removeAll(OutputVariableDeriver.underivedBindingIds(rule));
+        }
+        return List.copyOf(inferred);
     }
 
 

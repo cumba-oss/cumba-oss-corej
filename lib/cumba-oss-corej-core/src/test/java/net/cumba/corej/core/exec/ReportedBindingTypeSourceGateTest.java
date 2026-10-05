@@ -339,6 +339,127 @@ class ReportedBindingTypeSourceGateTest
 
 
     @Test
+    void aBulkBindingReadOnlyInTheCheckOfARuleWithNoOutputVariablesRuns() throws Exception
+    {
+        // Confirmation look MED-1 (b): with no Output_Variables the effective list is empty (the
+        // bulk-result $c is never derived), so the run time projects the Fix #15 inference. That
+        // inference added $c — a binding the load gate never judged — and the rule ERRORed on a
+        // reader that does not publish "Compression" (IllegalStateException from
+        // BindingValue.reportedDefault). The inference now drops every binding the derivation
+        // does not derive: the rule runs, and its finding does not carry $c.
+        Rule rule = load("""
+                {"Core":{"Id":"R1"},"Sensitivity":"Dataset",
+                 "Bindings":[{"name":"$c","expression":"extract_metadata(\\"Compression\\")"}],
+                 "Check":{"expression": "empty($c)"},
+                 "Outcome":{"Message":"m"}}""");
+        assertEquals(List.of(), rule.effectiveOutputVariablesOrAuthored(),
+                "precondition: nothing derived, so the inference projects");
+        assertEquals(Set.of("$c"), OutputVariableDeriver.underivedBindingIds(rule));
+        IDataTable ae = MockTable.of().name("AE").col("AETERM", "X").build();
+
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae);
+
+        assertEquals(1, result.getViolationCount(),
+                result.getStatus() + " " + result.getStatusMessage());
+        assertFalse(result.getViolations().get(0).getValues().containsKey("$c"),
+                "an underived binding is never projected: "
+                        + result.getViolations().get(0).getValues());
+    }
+
+
+    @Test
+    void aBindingReadOnlyUnderNegatedExistenceIsNotInferredEither() throws Exception
+    {
+        // The second divergence the check of MED-1 found: D3 does not derive a name the Check
+        // reads only under negated existence, and the inference took a `not var_exists(...)`
+        // subject all the same. $v (a fold over an unpinned key) is untyped and not bulk.
+        Rule rule = load("""
+                {"Core":{"Id":"R1"},"Sensitivity":"Dataset",
+                 "Bindings":[{"name":"$m","expression":"extract_metadata(\\"Compression\\")"},
+                             {"name":"$v","expression":"upper($m)"}],
+                 "Check":{"expression": "not var_exists($v)"},
+                 "Outcome":{"Message":"m"}}""");
+        assertEquals(List.of(), rule.effectiveOutputVariablesOrAuthored(),
+                "precondition: $m is bulk, $v is D3-suppressed");
+        assertEquals(Set.of("$m", "$v"), OutputVariableDeriver.underivedBindingIds(rule));
+        IDataTable ae = MockTable.of().name("AE").col("AETERM", "X").build();
+
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae);
+
+        assertEquals(1, result.getViolationCount(),
+                result.getStatus() + " " + result.getStatusMessage());
+        assertFalse(result.getViolations().get(0).getValues().containsKey("$v"),
+                result.getViolations().get(0).getValues().toString());
+    }
+
+
+    @Test
+    void aCoalesceOfTwoUnpinnedKeysIsNotColumnTyped() throws Exception
+    {
+        // Confirmation look LOW-1: coalesce answers whichever argument has a value, so it has a
+        // type source only when an argument does. Two unpinned extract_metadata keys read no
+        // column: reported, the binding is a load error.
+        Rule refused = loadRaw(
+                """
+                        {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                         "Bindings":[{"name":"$x","expression":"coalesce(extract_metadata(\\"Compression\\"), extract_metadata(\\"Encoding\\"))"}],
+                         "Check":{"expression": "AETERM != \\"zz\\" and empty($x)"},
+                         "Outcome":{"Message":"m","Output_Variables":["AETERM","$x"]}}""");
+
+        assertNotNull(refused.getLoadError(), "a coalesce of untyped arguments has no type source");
+        assertTrue(
+                refused.getLoadError().contains("$x")
+                        && refused.getLoadError().contains("no type source"),
+                refused.getLoadError());
+    }
+
+
+    @Test
+    void coalesceAndMaxQualifyThroughATypeSourceArgument() throws Exception
+    {
+        // The positive half of LOW-1: one column argument makes coalesce column-typed; max is
+        // column-typed through its target — a column, or a call whose result type ElementTable
+        // pins (max(record_count(...)), CDISC-SEND-0305 / -0306) — and not through an unpinned
+        // key. A scalar literal is a type source too (a present one is always the answer).
+        // read_value takes a bare column by contract (ReadValue.spec), so its root alone still
+        // qualifies.
+        Rule rule = load(
+                """
+                        {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                         "Bindings":[{"name":"$co","expression":"coalesce(extract_metadata(\\"Compression\\"), AETERM)"},
+                                     {"name":"$cc","expression":"coalesce(extract_metadata(\\"Compression\\"), extract_metadata(\\"Encoding\\"))"},
+                                     {"name":"$mr","expression":"max(record_count(domain=\\"EX\\", group=[USUBJID]), domain=\\"DM\\", group=[USUBJID])"},
+                                     {"name":"$mc","expression":"max(AESEQ, group=[USUBJID])"},
+                                     {"name":"$mk","expression":"max(extract_metadata(\\"Compression\\"), group=[USUBJID])"},
+                                     {"name":"$cl","expression":"coalesce(extract_metadata(\\"Compression\\"), \\"NONE\\")"}],
+                         "Check":{"expression": "AETERM != \\"zz\\" and not empty($co) and not empty($cc) and $mr > 0 and not empty($mc) and not empty($mk) and not empty($cl)"},
+                         "Outcome":{"Message":"m","Output_Variables":["AETERM","$co","$mr","$mc","$cl","!$cc","!$mk"]}}""");
+
+        assertEquals(Set.of("$co", "$mr", "$mc", "$cl"),
+                StageAChecker.columnTypedBindings(rule.bindingOrder()));
+    }
+
+
+    @Test
+    void theLoadGatesFoldMessageUnwrapsEveryCaseFold() throws Exception
+    {
+        // Confirmation look LOW-2: the message's fold unwrap reads StageAChecker.CASE_FOLDS, so a
+        // lowcase over an unpinned key still names extract_metadata's typed keys.
+        Rule refused = loadRaw(
+                """
+                        {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                         "Bindings":[{"name":"$l","expression":"lowcase(extract_metadata(\\"Compression\\"))"}],
+                         "Check":{"expression": "AETERM != \\"zz\\" and empty($l)"},
+                         "Outcome":{"Message":"m","Output_Variables":["AETERM","$l"]}}""");
+
+        assertNotNull(refused.getLoadError());
+        assertTrue(refused.getLoadError().contains("extract_metadata's typed keys"),
+                refused.getLoadError());
+        assertEquals(Set.of("upper", "upcase", "lower", "lowcase"), StageAChecker.CASE_FOLDS);
+    }
+
+
+    @Test
     void aReportedTypedKeyStillReportsItsDefault() throws Exception
     {
         // Control: a pinned key is typed, loads, and reports its typed default (P3).

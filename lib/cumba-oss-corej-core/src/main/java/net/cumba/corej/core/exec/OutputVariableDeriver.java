@@ -308,6 +308,51 @@ public final class OutputVariableDeriver
 
 
     /**
+     * The compiled bindings of {@code rule} that the derivation does <b>not</b> derive, in
+     * declaration order: a bulk-result binding ({@link #bulkOperationIds} — an
+     * {@code extract_metadata} / {@code cross_dataset_variable_metadata} /
+     * {@code column_series_metadata} root or a list-valued one, honoured only when authored) and a
+     * binding the Check reads only under negated existence (D3). Every other binding is in
+     * {@link #derivedSet} (D4a contributes every binding id).
+     *
+     * <p>
+     * ⭐ {@code PLAN-output-variable-null-key-provenance} confirmation look MED-1, decision (b):
+     * {@code RuleRunner}'s {@code Fix #15} inference — the projection of a rule whose effective
+     * list is empty — subtracts exactly this set, so the two projections agree on which bindings a
+     * finding may report, and the load gate
+     * ({@code RulePackageLoader#validateReportedBindingTypes}, which judges the effective list)
+     * covers every binding any path projects. The inference used to add every {@code $}-reference
+     * in a leaf's subject slot, so {@code $c: extract_metadata("Compression")} read only in the
+     * Check reached the run-time throw of {@code BindingValue#reportedDefault} on a reader that
+     * does not publish the key, past the gate. This is the deriver's own decision read back, not a
+     * copy of its predicate.
+     * </p>
+     *
+     * @param rule
+     *            the rule
+     * @return the underived binding ids; empty when every binding is derived or there is none
+     */
+    static Set<String> underivedBindingIds(Rule rule)
+    {
+        List<net.cumba.corej.core.model.CompiledBinding> order = rule.bindingOrder();
+        if (order.isEmpty())
+        {
+            return Set.of();
+        }
+        Set<String> derived = derivedSet(rule);
+        Set<String> underived = new LinkedHashSet<>();
+        for (net.cumba.corej.core.model.CompiledBinding binding : order)
+        {
+            if (!derived.contains(binding.name()))
+            {
+                underived.add(binding.name());
+            }
+        }
+        return Collections.unmodifiableSet(underived);
+    }
+
+
+    /**
      * Whether the Check reads the Define-XML value-level metadata — a {@code vlm_*} accessor or a
      * bare {@code define_vlm_*} operand — the CERTAIN content signal that used to be the
      * {@code Value Check against Define XML VLM} type (leaf-scope phase 7: the VLM output-variable

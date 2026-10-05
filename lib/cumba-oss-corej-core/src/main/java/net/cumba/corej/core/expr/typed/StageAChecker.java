@@ -839,7 +839,9 @@ public final class StageAChecker
      * ({@code BindingValue.reportedDefault}). Pinned against P3's roster ratchet
      * ({@code FindingValuesTypedDefaultTest.everyValueFunctionWhoseResultItsSemanticsPinHasAResultType}):
      * the unpinned VALUE functions minus the two keyed ones, plus {@code colref} / {@code value},
-     * which stage A types in their own branches.
+     * which stage A types in their own branches. ⚠ Membership is necessary, not sufficient:
+     * {@code coalesce} and {@code max} take any VALUE expression, so {@link #columnTypedBindings}
+     * also asks their arguments (confirmation look LOW-1).
      */
     public static final Set<String> COLUMN_TYPED_FUNCTIONS = Set.of("read_value", "max", "row_max",
             "coalesce", "colref", "value");
@@ -849,7 +851,12 @@ public final class StageAChecker
      * type source when stage A cannot type them ({@code PLAN-output-variable-null-key-provenance}
      * P3 review MED-1). A binding qualifies when its root is:
      * <ul>
-     * <li>a {@link #COLUMN_TYPED_FUNCTIONS column-typed function};</li>
+     * <li>a {@link #COLUMN_TYPED_FUNCTIONS column-typed function} — {@code read_value},
+     * {@code row_max}, {@code colref} and {@code value()} by their root alone (each reads a column
+     * by contract), {@code coalesce} only when at least one argument is itself a type source and
+     * {@code max} only when its target is (a column-typed root, a scalar literal, or a call whose
+     * result type {@link ElementTable} pins — confirmation look LOW-1: both accept any VALUE
+     * expression, so the root alone proved nothing);</li>
      * <li>a plain column reference ({@code AETERM}, {@code --TERM}, {@code DM.ARM}) or the current
      * cell ({@code variable_value}, the operand form of {@code value()});</li>
      * <li>a case fold ({@code upper} / {@code lower} / {@code upcase} / {@code lowcase}) over a
@@ -885,6 +892,15 @@ public final class StageAChecker
     {
         return switch (root)
         {
+        case Expr.Call c when "coalesce".equals(c.name()) -> c.args().stream()
+                .anyMatch(argument -> isTypeSourceArgument(argument, columnTypedEarlier));
+        case Expr.Call c when net.cumba.corej.core.exec.GroupedAggregate.MAX.equals(c.name()) ->
+        {
+            Expr target = c.args().isEmpty()
+                    ? c.kwargs().get(net.cumba.corej.core.exec.GroupedAggregate.NAME_PARAMETER)
+                    : c.args().get(0);
+            yield target != null && isTypeSourceArgument(target, columnTypedEarlier);
+        }
         case Expr.Call c -> COLUMN_TYPED_FUNCTIONS.contains(c.name())
                 || (CASE_FOLDS.contains(c.name()) && c.args().size() == 1
                         && hasColumnTypedRoot(c.args().get(0), columnTypedEarlier));
@@ -897,6 +913,36 @@ public final class StageAChecker
         };
         default -> false;
         };
+    }
+
+
+    /**
+     * Whether an argument of {@code coalesce} or the target of {@code max} hands the call a type
+     * source (confirmation look LOW-1): a column-typed root ({@link #hasColumnTypedRoot}), a scalar
+     * literal (its type is the literal's, and a present literal makes {@code coalesce} answer a
+     * value), or a call whose result type {@link ElementTable} pins
+     * ({@code max(record_count(…), …)} — {@code CDISC-SEND-0305} / {@code -0306}).
+     * {@code read_value}, {@code row_max}, {@code colref} and {@code value()} read a column by
+     * contract ({@code ReadValue.spec} admits only a bare column reference, {@code row_max} only
+     * the columns its pattern matches), so their root alone qualifies; {@code coalesce} answers
+     * whichever argument has a value, and {@code max} accepts any VALUE expression as its target
+     * ({@code GroupedAggregate.readTarget}, D14 / D119c) — so
+     * {@code coalesce(extract_metadata("Compression"), extract_metadata("Encoding"))} or
+     * {@code max(extract_metadata("Compression"))} reads no column to take a type from.
+     */
+    private static boolean isTypeSourceArgument(Expr argument, Set<String> columnTypedEarlier)
+    {
+        if (hasColumnTypedRoot(argument, columnTypedEarlier))
+        {
+            return true;
+        }
+        if (argument instanceof Expr.Lit lit)
+        {
+            return lit.kind() == Expr.LitKind.STRING || lit.kind() == Expr.LitKind.NUMBER
+                    || lit.kind() == Expr.LitKind.BOOL;
+        }
+        return argument instanceof Expr.Call call
+                && !(ElementTable.resultType(call.name(), staticKey(call)) instanceof Unknown);
     }
 
 
@@ -1574,8 +1620,13 @@ public final class StageAChecker
         return new TypedExpr(c, type, level, children);
     }
 
-    /** The case-folds, which fold a list argument element-wise (G2). */
-    private static final Set<String> CASE_FOLDS = Set.of("upper", "upcase", "lower", "lowcase");
+    /**
+     * The case-folds, which fold a list argument element-wise (G2) and hand a missing through
+     * unchanged ({@code BuiltinFunctions.caseFold}) — so a fold has exactly its argument's type
+     * source ({@link #columnTypedBindings}; the load gate's message,
+     * {@code RulePackageLoader.untypedReportedBinding}, reads the same set).
+     */
+    public static final Set<String> CASE_FOLDS = Set.of("upper", "upcase", "lower", "lowcase");
 
     /**
      * The result type of a registered value call: the {@link ElementTable} row, except that a
