@@ -54,7 +54,8 @@ class MatchDatasetBoundKeysRosterTest
             "net.cumba.corej.core.exec.KeyMatchRowExpander", "Join_As_String",
             "net.cumba.corej.core.exec.KeyMatchRowExpander", "keep_missings",
             "net.cumba.corej.core.exec.KeyMatchRowExpander", "Filter",
-            "net.cumba.corej.core.exec.MatchFilter");
+            "net.cumba.corej.core.exec.MatchFilter", "Cardinality",
+            "net.cumba.corej.core.exec.MergedEvaluation");
 
     /**
      * The JSON names Jackson itself binds on {@link MatchDataset}, taken from the <b>built</b> bean

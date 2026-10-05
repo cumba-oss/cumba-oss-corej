@@ -1446,6 +1446,9 @@ public final class WildcardExpander
         // `new Rule()`, so a template's `Supp_Merge: false` was silently dropped and every expanded
         // child pivoted SUPP-- qualifiers the template had switched off (combined review W2 M2).
         rule.setSuppMerge(template.getSuppMerge());
+        // Supp_Keys rides with it (PLAN-merged-evaluation-table W3f), verbatim like the
+        // Match_Datasets keys above: a fresh Rule would drop it and key the SUPP merge on the IG.
+        rule.setSuppKeys(template.getSuppKeys());
         rule.setGrouping(template.getGrouping());
         // The expanded rule inherits the template's Check, so its Sensitivity is derivable from the
         // rule body like any other (PLAN-derive-rule-type-sensitivity phase 7). The old blanket

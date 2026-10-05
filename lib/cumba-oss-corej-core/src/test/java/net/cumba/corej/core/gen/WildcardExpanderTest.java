@@ -677,6 +677,9 @@ class WildcardExpanderTest
         Rule template = buildTemplateRule("SUPPMERGE-WC", expr("not empty(TRTxxP)"),
                 List.of("TRTxxP"));
         template.setSuppMerge(Boolean.FALSE);
+        // W3f (PLAN-merged-evaluation-table): Supp_Keys rides with it, verbatim
+        template.setSuppKeys(com.fasterxml.jackson.databind.node.JsonNodeFactory.instance
+                .arrayNode().add("USUBJID"));
         IDataTable table = MockTable.withColumns("TRT01P", "TRT02P");
 
         List<Rule> expanded = WildcardExpander.expand(template, table.getMetaData());
@@ -686,6 +689,7 @@ class WildcardExpanderTest
         {
             assertEquals(false, child.getSuppMerge(), child.effectiveId());
             assertFalse(child.isSuppMergeEnabled(), child.effectiveId());
+            assertEquals(template.getSuppKeys(), child.getSuppKeys(), child.effectiveId());
         }
         template.setSuppMerge(null);
         for (Rule child : WildcardExpander.expand(template, table.getMetaData()))

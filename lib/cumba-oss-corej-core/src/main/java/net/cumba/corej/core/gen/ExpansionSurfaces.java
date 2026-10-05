@@ -31,16 +31,17 @@ import org.jspecify.annotations.Nullable;
  * every Check level and of the Precondition, each level's own {@code Message}, the authored
  * {@code Bindings} expressions, Description, {@code Outcome.Message}, {@code Output_Variables},
  * every text node of each {@code Match_Datasets} entry's JSON tree (walked as
- * {@code substituteTree} walks it: Name, Keys on both sides, Filter, Join_As_String, Join_Type),
- * {@code Grouping.Variables} and {@code Grouping_Variables} — plus the surfaces that are gated but
- * copied verbatim ({@link #gatedOnly}): {@code Requirements.Variables},
- * {@code Requirements.Datasets} (K11, {@code PLAN-scalar-date-extremes}) and the {@code Scope} name
- * lists, which are matched BEFORE expansion and where gate R6 looks. Prose that is never
- * substituted (ExecutabilityHint, Source, Standards, Authorities, Core) is not a surface, so prose
- * like {@code R&D} there is never gated. {@code ExpansionSurfacesTest} keeps this in lockstep with
- * the expander: a distinct declared token in every String leaf of a maximal rule's Jackson tree
- * must be substituted exactly where this class looks, and every leaf it does not look at is listed
- * there with the reason it is not a surface.
+ * {@code substituteTree} walks it: Name, Keys on both sides, Filter, Join_As_String, Join_Type,
+ * Cardinality), {@code Grouping.Variables}, {@code Grouping_Variables} and every text node of
+ * {@code Supp_Keys} (both sides) — plus the surfaces that are gated but copied verbatim
+ * ({@link #gatedOnly}): {@code Requirements.Variables}, {@code Requirements.Datasets} (K11,
+ * {@code PLAN-scalar-date-extremes}) and the {@code Scope} name lists, which are matched BEFORE
+ * expansion and where gate R6 looks. Prose that is never substituted (ExecutabilityHint, Source,
+ * Standards, Authorities, Core) is not a surface, so prose like {@code R&D} there is never gated.
+ * {@code ExpansionSurfacesTest} keeps this in lockstep with the expander: a distinct declared token
+ * in every String leaf of a maximal rule's Jackson tree must be substituted exactly where this
+ * class looks, and every leaf it does not look at is listed there with the reason it is not a
+ * surface.
  * </p>
  *
  * <p>
@@ -161,6 +162,10 @@ public final class ExpansionSurfaces
             addAll(out, "Grouping.Variables", rule.getGrouping().getVariables());
         }
         addAll(out, "Grouping_Variables", rule.getGroupingVariables());
+        if (rule.getSuppKeys() != null)
+        {
+            collectTree(rule.getSuppKeys(), "Supp_Keys", out);
+        }
         out.addAll(gatedOnly(rule));
         return List.copyOf(out);
     }

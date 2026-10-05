@@ -749,6 +749,11 @@ public final class TokenExpander
         // `new Rule()`, so a template's `Supp_Merge: false` was silently dropped and every expanded
         // child pivoted SUPP-- qualifiers the template had switched off (combined review W2 M2).
         rule.setSuppMerge(template.getSuppMerge());
+        // Supp_Keys (PLAN-merged-evaluation-table W3f) beside it, for the same reason, and
+        // substituted like the Match_Datasets keys it shares its shape with (a token surface,
+        // ExpansionSurfaces).
+        rule.setSuppKeys(template.getSuppKeys() == null ? null
+                : substituteTree(template.getSuppKeys(), substitutions));
         // PLAN-binding-expressions R21: the compiled bindings get the Check's substitution — this
         // method builds a fresh Rule, so a binding list it did not name would be dropped silently
         // from every expanded rule and its $-references would dangle.

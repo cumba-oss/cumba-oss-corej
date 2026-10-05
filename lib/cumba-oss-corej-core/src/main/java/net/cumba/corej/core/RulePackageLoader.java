@@ -3560,6 +3560,14 @@ public class RulePackageLoader
                 }
             }
         }
+        // Supp_Keys has the Match_Datasets.Keys element shape (W3f of
+        // PLAN-merged-evaluation-table): a stray key beside left / right is the same silence.
+        for (net.cumba.corej.core.model.MatchDataset.StrayElementKey stray : net.cumba.corej.core.model.MatchDataset
+                .strayElementKeysOf(rule.getSuppKeys()))
+        {
+            reportUnknown(rule, "Supp_Keys[" + stray.index() + "]", stray.present(),
+                    List.of(stray.key()), BoundRuleKeys.MATCH_KEY_ELEMENT, errors);
+        }
     }
 
 
@@ -4690,6 +4698,8 @@ public class RulePackageLoader
         // too.
         List<String> warnings = new ArrayList<>();
         checkDomainWildcardPrefix(rule, warnings);
+        checkCardinality(rule, errors, warnings);
+        checkSuppKeys(rule, errors);
         checkGroupSensitivityConsistency(rule, errors);
         // Gate R5 — Requirements.Library/.Define/.Dictionary ⟺ the DERIVED dependency. A
         // value-agreement gate, so it belongs beside gate 3b and not with the shape gates; being
@@ -6098,7 +6108,7 @@ public class RulePackageLoader
      * {@code Wildcard} defect again.
      */
     static final List<String> MATCH_DATASET_KEYS = List.of("Name", "Keys", "Child", "Join_Type",
-            "Join_As_String", "keep_missings", "Filter");
+            "Join_As_String", "keep_missings", "Filter", "Cardinality");
 
     /**
      * {@code Match_Datasets.Wildcard}: bound since the monorepo and read by nothing; retired
@@ -6178,6 +6188,188 @@ public class RulePackageLoader
                             + String.join(", ", MATCH_DATASET_KEYS) + ")");
                 }
             }
+        }
+    }
+
+    /** The plan the two W3f gates below cite in their messages. */
+    private static final String MERGED_TABLE_PLAN = "PLAN-merged-evaluation-table";
+
+    /**
+     * The {@code Cardinality} gates ({@code PLAN-merged-evaluation-table} W3f; §3.4, MET #12, OD-5,
+     * OD-9, P-13).
+     *
+     * <ul>
+     * <li><b>Spelling</b> — {@code 1:1}, {@code 1:n}, {@code n:1} or {@code n:m} (letter case
+     * ignored); anything else is a load error, never a silent {@code n:m}.</li>
+     * <li><b>The IG-disagreement WARNING</b> (MET #12 (c): <i>"authoring wins, but a WARNING should
+     * be given to the log, that the authored value disagrees with IG"</i>) — on an entry whose
+     * cardinality the IG states statically: a {@code Child: true} entry is {@code n:m} (P-13; IDVAR
+     * may name a grouping variable addressing many parent records). A RELREC relationship's RELTYPE
+     * is data, so its disagreement is the merge's own run-time WARNING (OD-5 / OD-9), not this
+     * one.</li>
+     * <li><b>Not served yet</b> — an authored cardinality that would check something (anything but
+     * {@code n:m}) on an entry the merged evaluation table does not build yet: a {@code Child:
+     * true} entry (merged by the pre-merge until W4), a keyless entry (forward RELREC until W5),
+     * and every entry of a rule that runs the legacy arm ({@code MergedEvaluation#legacyArmed}: a
+     * forward RELREC entry or a chained qualified key). Those paths never check a cardinality, so
+     * the value would be silently ignored; a load error says so instead. {@code n:m} checks nothing
+     * and is accepted everywhere. Zero corpus entries are affected (W3f census).</li>
+     * </ul>
+     *
+     * @param rule
+     *            the rule to check.
+     * @param errors
+     *            the load-error collector.
+     * @param warnings
+     *            the load-warning collector.
+     */
+    private static void checkCardinality(Rule rule, List<String> errors, List<String> warnings)
+    {
+        List<net.cumba.corej.core.model.MatchDataset> matches = rule.getMatchDatasets();
+        if (matches == null)
+        {
+            return;
+        }
+        boolean legacyArmed = net.cumba.corej.core.exec.MergedEvaluation.legacyArmed(matches);
+        for (net.cumba.corej.core.model.MatchDataset md : matches)
+        {
+            if (md == null || md.getCardinality() == null)
+            {
+                continue;
+            }
+            net.cumba.datatable.merge.Cardinality c;
+            try
+            {
+                c = md.cardinality();
+            }
+            catch (IllegalArgumentException e)
+            {
+                errors.add("[" + ruleId(rule) + "] Invalid Cardinality '" + md.getCardinality()
+                        + "' on Match_Datasets entry '" + md.getName()
+                        + "' — expected one of: 1:1, 1:n, n:1, n:m");
+                continue;
+            }
+            if (c == null || c == net.cumba.datatable.merge.Cardinality.MANY_TO_MANY)
+            {
+                continue;
+            }
+            boolean child = Boolean.TRUE.equals(md.getChild());
+            if (child)
+            {
+                warnings.add("[" + ruleId(rule) + "] the authored Cardinality " + c.text()
+                        + " of Child entry '" + md.getName()
+                        + "' disagrees with the IG's n:m (a SUPP-- / RELREC IDVAR may name a"
+                        + " grouping variable addressing many parent records); the authored"
+                        + " value wins");
+            }
+            String notServed = child
+                    ? "a Child: true entry is merged by the pre-merge until " + MERGED_TABLE_PLAN
+                            + " W4"
+                    : !net.cumba.corej.core.exec.MergedEvaluation.servedAsKeyedPart(md)
+                            ? "a keyless entry (forward RELREC) runs its own expansion until "
+                                    + MERGED_TABLE_PLAN + " W5"
+                            : legacyArmed
+                                    ? "the rule carries a forward RELREC entry or a chained"
+                                            + " qualified key, so it runs the legacy join pipeline"
+                                    : null;
+            if (notServed != null)
+            {
+                errors.add("[" + ruleId(rule) + "] Cardinality " + c.text()
+                        + " on Match_Datasets entry '" + md.getName() + "' would not be checked: "
+                        + notServed + ", which checks no cardinality — only n:m (no check) is"
+                        + " accepted there");
+            }
+        }
+    }
+
+
+    /**
+     * The {@code Supp_Keys} gates ({@code PLAN-merged-evaluation-table} W3f; §3.5.1, MET #18, MET
+     * #19, P-15) — each shape that would make the authored key silently mean something else:
+     *
+     * <ul>
+     * <li>a list in the {@code Match_Datasets.Keys} shape (a column name, or {@code {left,
+     * right}}), not empty — an empty key would qualify every record by every row;</li>
+     * <li><b>{@code Supp_Merge: false}</b> — there is no merge for the key to key (MET #18);</li>
+     * <li><b>half of the {@code IDVAR} / {@code IDVARVAL} pair</b> (P-15: the half has no meaning),
+     * recognised by the right-side name as the merge does, and the pair takes no differing left
+     * side (IDVAR names the evaluated column itself);</li>
+     * <li>a qualified name ({@code DM.USUBJID}) — the key reads the evaluated dataset and its SUPP
+     * dataset only;</li>
+     * <li>a rule on the legacy arm ({@code MergedEvaluation#legacyArmed}), whose SUPP pivot reads
+     * the IG key only — the authored key would be silently ignored.</li>
+     * </ul>
+     * A stray key inside a sided element is the unknown-key gate's ({@code validateUnknownKeys}).
+     *
+     * @param rule
+     *            the rule to check.
+     * @param errors
+     *            the load-error collector.
+     */
+    private static void checkSuppKeys(Rule rule, List<String> errors)
+    {
+        com.fasterxml.jackson.databind.JsonNode keys = rule.getSuppKeys();
+        if (keys == null || keys.isNull())
+        {
+            return;
+        }
+        String id = "[" + ruleId(rule) + "] Supp_Keys";
+        if (!keys.isArray())
+        {
+            errors.add(id + " must be a list of key columns (a name, or {left, right})");
+            return;
+        }
+        if (!rule.isSuppMergeEnabled())
+        {
+            errors.add(
+                    id + " has no effect under Supp_Merge: false — there is no SUPP merge to key;"
+                            + " delete one of the two");
+        }
+        if (keys.isEmpty())
+        {
+            errors.add(id + " is empty — omit it for the IG's key, or name the key columns");
+            return;
+        }
+        String malformed = net.cumba.corej.core.model.MatchDataset.malformedKeyElementOf(keys);
+        if (malformed != null)
+        {
+            errors.add(id + " has a malformed element: " + malformed);
+            return;
+        }
+        boolean idvar = false;
+        boolean idvarval = false;
+        for (net.cumba.datatable.merge.KeyColumn k : java.util.Objects
+                .requireNonNull(rule.suppKeyColumns()))
+        {
+            String right = k.right().strip().toUpperCase(java.util.Locale.ROOT);
+            boolean pair = "IDVAR".equals(right) || "IDVARVAL".equals(right);
+            idvar |= "IDVAR".equals(right);
+            idvarval |= "IDVARVAL".equals(right);
+            if (pair && !k.left().equalsIgnoreCase(k.right()))
+            {
+                errors.add(id + " names " + right + " with the left side '" + k.left()
+                        + "': the IDVAR / IDVARVAL pair compares the evaluated column IDVAR names"
+                        + " with IDVARVAL and takes no left side — write it bare");
+            }
+            if (k.left().indexOf('.') >= 0 || k.right().indexOf('.') >= 0)
+            {
+                errors.add(id + " names the qualified column '"
+                        + (k.left().indexOf('.') >= 0 ? k.left() : k.right())
+                        + "': the key reads the evaluated dataset (left) and its SUPP dataset"
+                        + " (right) only — write the column unqualified");
+            }
+        }
+        if (idvar != idvarval)
+        {
+            errors.add(
+                    id + " names " + (idvar ? "IDVAR without IDVARVAL" : "IDVARVAL without IDVAR")
+                            + ": the pair is one key component and is named whole or not at all");
+        }
+        if (net.cumba.corej.core.exec.MergedEvaluation.legacyArmed(rule.getMatchDatasets()))
+        {
+            errors.add(id + " would not be read: the rule carries a forward RELREC entry or a"
+                    + " chained qualified key, so it runs the legacy join pipeline, whose SUPP"
+                    + " pivot keys on the IG's key only (" + MERGED_TABLE_PLAN + " W5 / W6)");
         }
     }
 

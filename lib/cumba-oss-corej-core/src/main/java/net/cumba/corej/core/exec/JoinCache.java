@@ -350,10 +350,11 @@ public final class JoinCache
     /**
      * The merged evaluation views of this dataset, one per merge signature (P-3 of
      * {@code PLAN-merged-evaluation-table}): every rule whose keyed entries and SUPP flag agree
-     * reads the same view, its row maps and its qualifier columns. Released with this cache when
-     * the dataset finishes.
+     * reads the same view, its row maps and its qualifier columns — or the
+     * {@link net.cumba.datatable.merge.MergeException} the datatable refused the signature with.
+     * Released with this cache when the dataset finishes.
      */
-    private final ConcurrentHashMap<MergedEvaluation.ViewKey, MergedEvaluation.Built> views = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<MergedEvaluation.ViewKey, Object> views = new ConcurrentHashMap<>();
 
     /** Shared index cache (may be null if no cross-dataset sharing is desired). */
     private final @Nullable SharedIndexCache sharedIndex;
@@ -394,15 +395,42 @@ public final class JoinCache
     /**
      * The merged view of one merge signature, built once per dataset by {@code construct} under the
      * map's lock so concurrent rule threads asking for the same signature share one build.
+     *
+     * <p>
+     * ⭐ <b>A refusal is a fact of the signature too</b> ({@code PLAN-merged-evaluation-table} W3f,
+     * P-16): the datatable decides a {@code Cardinality} violation — a key posting longer than one
+     * on a side declared {@code 1} — from the data and the signature alone, so the
+     * {@link net.cumba.datatable.merge.MergeException} is memoised beside the views and every rule
+     * of the signature re-raises it. Without the memo each of them would rebuild the partner's
+     * index to find the same duplicate (113 DM joins author {@code n:1}).
+     * </p>
+     *
+     * @throws net.cumba.datatable.merge.MergeException
+     *             the signature's refusal, the same instance for every rule asking
      */
     MergedEvaluation.Built mergedView(MergedEvaluation.ViewKey key,
             Supplier<MergedEvaluation.Built> construct)
     {
-        return views.computeIfAbsent(key, _ -> construct.get());
+        Object built = views.computeIfAbsent(key, _ ->
+        {
+            try
+            {
+                return construct.get();
+            }
+            catch (net.cumba.datatable.merge.MergeException refused)
+            {
+                return refused;
+            }
+        });
+        if (built instanceof net.cumba.datatable.merge.MergeException refused)
+        {
+            throw refused;
+        }
+        return (MergedEvaluation.Built) built;
     }
 
 
-    /** The merged views built on this cache so far, one per merge signature (tests). */
+    /** The merge signatures decided on this cache so far, built or refused (tests). */
     int mergedViewCount()
     {
         return views.size();
@@ -412,7 +440,8 @@ public final class JoinCache
     /** The merged views built on this cache so far (tests). */
     java.util.Collection<MergedEvaluation.Built> mergedViews()
     {
-        return views.values();
+        return views.values().stream().filter(MergedEvaluation.Built.class::isInstance)
+                .map(MergedEvaluation.Built.class::cast).toList();
     }
 
 

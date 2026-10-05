@@ -52,6 +52,27 @@ public class MatchDataset
     private @Nullable String joinType;
 
     /**
+     * The declared shape of this merge ({@code PLAN-merged-evaluation-table} §3.4, MET #12):
+     * {@code 1:1}, {@code 1:n}, {@code n:1} or {@code n:m}, left = the evaluated dataset, right =
+     * this entry's dataset. A side declared {@code 1} must carry each participating key once, over
+     * the WHOLE side (P-16: a duplicate DM key whose subject never appears in the evaluated dataset
+     * still counts); a duplicate there is a rule ERROR naming the dataset, the key and the first
+     * two duplicate rows — never a silent expansion. Orthogonal to {@link #joinType}.
+     *
+     * <p>
+     * ⭐ <b>{@code null} means {@code n:m}</b>: nothing is checked and a repeating partner key
+     * expands the record, which is what every unauthored keyed entry did before the field existed
+     * (§2.5). The IG states the cardinality of some entries — a {@code Child: true} entry is
+     * {@code n:m} (P-13), a dataset-level RELREC relationship takes RELTYPE's (OD-5, OD-9); an
+     * authored value wins there with a log WARNING when it disagrees (MET #12 (c)). The text is
+     * kept as authored and parsed by {@link #cardinality()}; an unknown spelling is a load error
+     * ({@code RulePackageLoader.checkCardinality}). JSON key {@code "Cardinality"}.
+     * </p>
+     */
+    @JsonProperty("Cardinality")
+    private @Nullable String cardinality;
+
+    /**
      * Whether this entry's join keys are compared as <b>text</b> rather than by the sealed
      * {@code KeyPart} type identity ({@code PLAN-join-key-type-identity}; ruling {@code D4-R3}).
      *
@@ -148,6 +169,23 @@ public class MatchDataset
     public boolean keepMissingKeys()
     {
         return keepMissings == null || keepMissings;
+    }
+
+
+    /**
+     * The parsed {@code Cardinality} ({@code PLAN-merged-evaluation-table} §3.4).
+     *
+     * @return the authored cardinality, or {@code null} when the entry authors none (the IG's
+     *         default applies: {@code n:m} for a keyed entry)
+     * @throws IllegalArgumentException
+     *             for a spelling other than {@code 1:1}, {@code 1:n}, {@code n:1}, {@code n:m} —
+     *             the loader turns this into a load error before any execution
+     */
+    @JsonIgnore
+    public net.cumba.datatable.merge.@Nullable Cardinality cardinality()
+    {
+        return cardinality == null ? null
+                : net.cumba.datatable.merge.Cardinality.parse(cardinality);
     }
 
 
@@ -499,11 +537,27 @@ public class MatchDataset
     @JsonIgnore
     public @Nullable String malformedKeyElement()
     {
-        if (keysNode == null || keysNode.isNull() || !keysNode.isArray())
+        return malformedKeyElementOf(keysNode);
+    }
+
+
+    /**
+     * {@link #malformedKeyElement()} over any key list in the {@code Keys} shape — shared with the
+     * rule-level {@code Supp_Keys} ({@code Rule.getSuppKeys()},
+     * {@code PLAN-merged-evaluation-table} W3f), so the two sided-key lists cannot judge an element
+     * differently.
+     *
+     * @param aKeys
+     *            the raw list, possibly {@code null}
+     * @return the offending element's description, or {@code null} when the list is well formed
+     */
+    public static @Nullable String malformedKeyElementOf(@Nullable JsonNode aKeys)
+    {
+        if (aKeys == null || aKeys.isNull() || !aKeys.isArray())
         {
             return null;
         }
-        for (JsonNode n : keysNode)
+        for (JsonNode n : aKeys)
         {
             if (n.isTextual())
             {
@@ -550,13 +604,27 @@ public class MatchDataset
     @JsonIgnore
     public List<StrayElementKey> strayElementKeys()
     {
+        return strayElementKeysOf(keysNode);
+    }
+
+
+    /**
+     * {@link #strayElementKeys()} over any key list in the {@code Keys} shape (shared with
+     * {@code Supp_Keys}, W3f).
+     *
+     * @param aKeys
+     *            the raw list, possibly {@code null}
+     * @return the stray keys in element order, empty for a well-formed list
+     */
+    public static List<StrayElementKey> strayElementKeysOf(@Nullable JsonNode aKeys)
+    {
         List<StrayElementKey> out = new ArrayList<>();
-        if (keysNode == null || !keysNode.isArray())
+        if (aKeys == null || !aKeys.isArray())
         {
             return out;
         }
         int index = 0;
-        for (JsonNode n : keysNode)
+        for (JsonNode n : aKeys)
         {
             if (n.isObject())
             {

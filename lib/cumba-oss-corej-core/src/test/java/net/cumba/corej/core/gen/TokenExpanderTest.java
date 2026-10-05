@@ -290,6 +290,10 @@ class TokenExpanderTest
                 .col("AGE", "51").col("TRT01P", "A").build();
         Rule template = ad0591Template();
         template.setSuppMerge(Boolean.FALSE);
+        // W3f (PLAN-merged-evaluation-table): Supp_Keys rides with it — a fresh Rule would drop
+        // it and key every child's SUPP merge on the IG
+        template.setSuppKeys(com.fasterxml.jackson.databind.node.JsonNodeFactory.instance
+                .arrayNode().add("USUBJID"));
 
         List<Rule> rules = expanded(TokenExpander.tryExpand(template, adae.getMetaData(),
                 ctx(adae, map("ADSL", adsl), List.of())));
@@ -299,6 +303,7 @@ class TokenExpanderTest
         {
             assertEquals(false, child.getSuppMerge(), child.effectiveId());
             assertFalse(child.isSuppMergeEnabled(), child.effectiveId());
+            assertEquals(template.getSuppKeys(), child.getSuppKeys(), child.effectiveId());
         }
     }
 

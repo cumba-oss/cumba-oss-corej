@@ -56,7 +56,7 @@ public final class BoundRuleKeys
             "Grouping_Variables", "Grouping", "Precondition", "Expansion", "skipIfLibraryDefined",
             "wildcards", "wildcardExclude", "wildcardPairCatalogue", "Check", "Rule_Type",
             "Sensitivity", "Severity", "Executability", "Variable_Universe", "Operations",
-            "Supp_Merge");
+            "Supp_Merge", "Supp_Keys");
 
     /** A package — {@link RulePackage}. */
     public static final Set<String> RULE_PACKAGE = Set.of("rules", "standards");

@@ -202,7 +202,9 @@ class UnknownKeyCollectorCoverageTest
                 "MatchDataset.hasMalformedJoinAsString (a boolean or a rejected shape)",
                 "RulePackage.standards",
                 "RulePackage.setStandardsJson (entry extras collected, record bound per entry)",
-                "Rule.Operations", "Rule.rejectRetiredOperationsKey (throws)",
+                "Rule.Operations", "Rule.rejectRetiredOperationsKey (throws)", "Rule.Supp_Keys",
+                "RulePackageLoader.checkSuppKeys + MatchDataset.strayElementKeysOf (the Keys"
+                        + " shape, W3f)",
                 "VariableRequirement.Any", "VariableRequirement.readAny (flat or grouped lists)",
                 "VariableRequirement.All_Or_None",
                 "VariableRequirement.readAllOrNone (grouped lists)");

@@ -18,6 +18,7 @@ import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.impl.databuffer.DataBufferFactory;
 import net.cumba.datatable.impl.databuffer.IDataBufferNumeric;
+import net.cumba.datatable.merge.Cardinality;
 import net.cumba.datatable.merge.KeyColumn;
 import net.cumba.datatable.merge.KeyedMergeSpec;
 import net.cumba.datatable.merge.MergeKind;
@@ -122,15 +123,19 @@ public final class MergedEvaluation
 
     /**
      * The merge signature of one execution (P-3): every field that changes the merge — the keyed
-     * specs and the supplemental datasets that resolve for the primary.
+     * specs (their {@code Cardinality} and their partner's SUPP key included), the supplemental
+     * datasets that resolve for the primary and the authored {@code Supp_Keys} ({@code null} for
+     * the IG's).
      */
-    record ViewKey(List<KeyedMergeSpec> keyed, List<String> supp)
+    record ViewKey(List<KeyedMergeSpec> keyed, List<String> supp,
+            @Nullable List<KeyColumn> suppKeys)
     {
 
         ViewKey
         {
             keyed = List.copyOf(keyed);
             supp = List.copyOf(supp);
+            suppKeys = suppKeys == null ? null : List.copyOf(suppKeys);
         }
     }
 
@@ -331,8 +336,7 @@ public final class MergedEvaluation
             DatasetResolver resolver, @Nullable JoinCache joinCache, @Nullable String ruleId,
             @Nullable String domainPrefix)
     {
-        if (legacyForTests || resolver == null
-                || RelrecRowExpander.findForwardRelrec(rule.getMatchDatasets()) != null)
+        if (legacyForTests || resolver == null || legacyArmed(rule.getMatchDatasets()))
         {
             // (a hand-built execution without a resolver has nothing to merge)
             return null;
@@ -372,15 +376,66 @@ public final class MergedEvaluation
             return null;
         }
         String primaryDomain = domain != null ? domain : domainPrefix;
+        // Supp_Keys (MET #18): the authored key, else the IG's (SuppMergeSpec.DEFAULT_KEYS)
+        List<KeyColumn> suppKeys = rule.suppKeyColumns();
         SuppMergeSpec suppSpec = supp.isEmpty() ? null
-                : SuppMergeSpec.builder().suppDatasets(supp).build();
+                : SuppMergeSpec.builder().suppDatasets(supp).keys(suppKeys).build();
         MergeRequest request = request(primary, keyed, suppSpec, primaryDomain, resolver, ruleId);
         if (joinCache != null && primary == original)
         {
-            return joinCache.mergedView(new ViewKey(keyed, supp),
+            return joinCache.mergedView(new ViewKey(keyed, supp, suppKeys),
                     () -> construct(primary, request, true));
         }
         return construct(primary, request, false);
+    }
+
+
+    /**
+     * Whether a rule runs today's pipeline rather than the merged view, whatever the data: it
+     * carries a forward RELREC entry (W5; MQ11's ERROR when combined with a key expansion) or a
+     * keyed entry with a chained qualified key ({@code DM.RPATHCD}, composed by the engine; the
+     * datatable refuses it). The one statement of the legacy arm's population, read by
+     * {@link #build} and by the loader's gates on the fields only the view serves
+     * ({@code Cardinality}, {@code Supp_Keys} — {@code RulePackageLoader.checkCardinality} /
+     * {@code checkSuppKeys}).
+     *
+     * @param entries
+     *            the rule's {@code Match_Datasets}, possibly {@code null}
+     * @return whether the rule stays on the legacy arm
+     */
+    public static boolean legacyArmed(@Nullable List<MatchDataset> entries)
+    {
+        if (entries == null)
+        {
+            return false;
+        }
+        if (RelrecRowExpander.findForwardRelrec(entries) != null)
+        {
+            return true;
+        }
+        for (MatchDataset md : entries)
+        {
+            if (md != null && servedAsKeyedPart(md) && md.hasQualifiedKeys())
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    /**
+     * Whether an entry becomes a keyed part of the view: named, not {@code Child: true} (W4), with
+     * keys.
+     *
+     * @param md
+     *            the entry
+     * @return whether the view builds a keyed part for it
+     */
+    public static boolean servedAsKeyedPart(MatchDataset md)
+    {
+        return md.getName() != null && !Boolean.TRUE.equals(md.getChild()) && md.getKeys() != null
+                && !md.getKeys().isEmpty();
     }
 
 
@@ -452,6 +507,7 @@ public final class MergedEvaluation
     private static boolean keyedSpecs(Rule rule, IDataTable primary, DatasetResolver resolver,
             @Nullable String ruleId, List<KeyedMergeSpec> out, boolean suppMerge)
     {
+        List<KeyColumn> suppKeys = rule.suppKeyColumns();
         List<MatchDataset> entries = rule.getMatchDatasets();
         if (entries == null)
         {
@@ -460,8 +516,7 @@ public final class MergedEvaluation
         for (MatchDataset md : entries)
         {
             String name = md.getName();
-            if (name == null || Boolean.TRUE.equals(md.getChild()) || md.getKeys() == null
-                    || md.getKeys().isEmpty())
+            if (name == null || !servedAsKeyedPart(md))
             {
                 continue; // a Child parent (W4) or a keyless entry: no keyed part
             }
@@ -487,7 +542,7 @@ public final class MergedEvaluation
             {
                 KeyMatchRowExpander.checkKeys(primary, partner, md);
             }
-            List<String> left = md.getKeys();
+            List<String> left = Objects.requireNonNull(md.getKeys()); // servedAsKeyedPart
             List<String> right = md.getRightKeys();
             List<KeyColumn> keys = new ArrayList<>();
             for (int i = 0; i < left.size(); i++)
@@ -510,7 +565,10 @@ public final class MergedEvaluation
             out.add(KeyedMergeSpec.builder().qualifier(qualifier).dataset(dsName).keys(keys)
                     .joinType(joinType).joinAsString(md.joinKeysAsString())
                     .keepMissings(md.keepMissingKeys()).typeChecked(expandable).partnerMask(mask)
-                    .supp(suppMerge ? partnerSupp(partner, dsName, resolver, ruleId) : null)
+                    .cardinality(
+                            Objects.requireNonNullElse(md.cardinality(), Cardinality.MANY_TO_MANY))
+                    .supp(suppMerge ? partnerSupp(partner, dsName, resolver, ruleId, suppKeys)
+                            : null)
                     .build());
         }
         return true;
@@ -524,7 +582,7 @@ public final class MergedEvaluation
      * primary's; {@code null} when no supplemental dataset resolves for the partner.
      */
     private static @Nullable SuppMergeSpec partnerSupp(IDataTable partner, String dsName,
-            DatasetResolver resolver, @Nullable String ruleId)
+            DatasetResolver resolver, @Nullable String ruleId, @Nullable List<KeyColumn> suppKeys)
     {
         if (neverPivoted(dsName))
         {
@@ -544,7 +602,8 @@ public final class MergedEvaluation
                 supp.add(name);
             }
         }
-        return supp.isEmpty() ? null : SuppMergeSpec.builder().suppDatasets(supp).build();
+        return supp.isEmpty() ? null
+                : SuppMergeSpec.builder().suppDatasets(supp).keys(suppKeys).build();
     }
 
 

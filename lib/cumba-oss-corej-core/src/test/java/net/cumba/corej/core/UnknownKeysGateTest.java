@@ -768,7 +768,9 @@ class UnknownKeysGateTest
                         "Datasets":["DM"]},
                       "Bindings":[{"name":"$n","expression":"record_count(group=[USUBJID])"}],
                       "Match_Datasets":[{"Name":"DM","Keys":["USUBJID",{"left":"AESEQ","right":"DMSEQ"}],
-                        "Join_Type":"left","Join_As_String":true,"keep_missings":false,"Filter":"not empty(ARM)"}],
+                        "Join_Type":"left","Join_As_String":true,"keep_missings":false,"Filter":"not empty(ARM)",
+                        "Cardinality":"n:1"}],
+                      "Supp_Keys":["STUDYID",{"left":"DOMAIN","right":"RDOMAIN"},"USUBJID","IDVAR","IDVARVAL"],
                       "Grouping":{"Variables":["USUBJID"],"keep_missings":true},
                       "Precondition":{"expression":"library_available()"},
                       "Outcome":{"Message":"m","Output_Variables":["AESEQ"]},
@@ -923,6 +925,8 @@ class UnknownKeysGateTest
         assertNotNull(fullRule.getGrouping().getKeepMissings());
         assertNotNull(fullRule.getCheckLevels());
         assertEquals(2, fullRule.getCheckLevels().size());
+        assertEquals("n:1", fullRule.getMatchDatasets().get(0).getCardinality());
+        assertEquals(5, java.util.Objects.requireNonNull(fullRule.suppKeyColumns()).size());
         Rule wild = pkg.getRules().get("wild");
         assertNotNull(wild);
         assertEquals(List.of("TRT01P"), wild.getWildcardExclude());

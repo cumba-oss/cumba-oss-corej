@@ -916,6 +916,64 @@ public class Rule
     }
 
     /**
+     * The key of the SUPP merge ({@code PLAN-merged-evaluation-table} §3.5.1, MET #13 / MET #18):
+     * flat and optional next to {@link #suppMerge}, in the {@code Match_Datasets.Keys} shape — a
+     * bare column name both sides carry, or a sided {@code {left: <evaluated>, right: <SUPP>}}
+     * element ({@code {left: DOMAIN, right: RDOMAIN}}). {@code IDVAR} / {@code IDVARVAL} is the
+     * indirect pair ("the column IDVAR names equals IDVARVAL") and is named whole or not at all.
+     *
+     * <p>
+     * ⭐ <b>Absent means the IG's key</b> — {@code STUDYID}, {@code {left: DOMAIN, right: RDOMAIN}},
+     * the subject keys {@code USUBJID} / {@code POOLID} / {@code APID} / {@code SPDEVID}, and the
+     * pair (SDTMIG 3.4 §8.4.1, SENDIG 3.1.1 §8.3; {@code SuppMergeSpec.DEFAULT_KEYS}) — so the key
+     * is named, never hidden magic (owner 2026-10-04). A component present on both sides is used,
+     * on one side only ignored with a log WARNING, on neither ignored (MET #19). It keys the
+     * evaluated dataset's qualifiers and a joined dataset's ({@code <Name>.<QNAM>}, MQ5) alike. The
+     * SUPP side's cardinality is {@code n:1} per (key, QNAM) by construction and is not authorable
+     * (OD-8).
+     * </p>
+     *
+     * <p>
+     * Held raw, like {@code MatchDataset}'s keys, so both element shapes round-trip and a malformed
+     * element can be named; the loader's gates ({@code RulePackageLoader.checkSuppKeys}) refuse a
+     * {@code Supp_Keys} under {@code Supp_Merge: false}, half of the pair, an empty list, a
+     * qualified name and a malformed element. Read through {@link #suppKeyColumns()}. JSON key
+     * {@code "Supp_Keys"}.
+     * </p>
+     */
+    @JsonProperty("Supp_Keys")
+    private com.fasterxml.jackson.databind.@Nullable JsonNode suppKeys;
+
+    /**
+     * The authored {@code Supp_Keys} in sided form, or {@code null} when the rule authors none (the
+     * IG's default key applies). A bare element names the same column on both sides.
+     *
+     * @return the key components in authored order, or {@code null}
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public @Nullable List<net.cumba.datatable.merge.KeyColumn> suppKeyColumns()
+    {
+        if (suppKeys == null || suppKeys.isNull() || !suppKeys.isArray())
+        {
+            return null;
+        }
+        List<net.cumba.datatable.merge.KeyColumn> out = new java.util.ArrayList<>();
+        for (com.fasterxml.jackson.databind.JsonNode n : suppKeys)
+        {
+            if (n.isTextual())
+            {
+                out.add(net.cumba.datatable.merge.KeyColumn.of(n.asText()));
+            }
+            else if (n.isObject() && n.path("left").isTextual() && n.path("right").isTextual())
+            {
+                out.add(net.cumba.datatable.merge.KeyColumn.sided(n.get("left").asText(),
+                        n.get("right").asText()));
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    /**
      * Fix #24: numeric range filters applied to wildcard capture groups during expansion. Map key
      * is the capture-group token ({@code xx}, {@code zz}, {@code y}, {@code w}); value is a
      * {@link WildcardFilter} carrying inclusive {@code min} / {@code max} bounds.
