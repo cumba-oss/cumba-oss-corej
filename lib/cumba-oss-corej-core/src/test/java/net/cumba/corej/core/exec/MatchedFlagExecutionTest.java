@@ -94,8 +94,9 @@ class MatchedFlagExecutionTest
 
     private static IDataTable adae()
     {
-        return MockTable.of().name("ADAE").col("USUBJID", "P1", "P2", "P3")
-                .col("DTHFL", "", "", "Y").build();
+        // W3a: real tables - the merged view copies column metadata, which a mock cannot give.
+        return RealTables.of("ADAE").str("USUBJID", "P1", "P2", "P3").str("DTHFL", "", "", "Y")
+                .build();
     }
 
     // ------------------------------------------------------------------
@@ -110,7 +111,7 @@ class MatchedFlagExecutionTest
         Rule r = rule("DM", "left", "[\"USUBJID\"]", "not DM._matched_");
         assertNull(r.getLoadError(), "flag rule must load cleanly");
         IDataTable primary = adae();
-        IDataTable dm = MockTable.of().name("DM").col("USUBJID", "P1", "P3").build();
+        IDataTable dm = RealTables.of("DM").str("USUBJID", "P1", "P3").build();
         RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
                 inventory(study(primary, dm)), "ADAE", null, null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
@@ -124,7 +125,7 @@ class MatchedFlagExecutionTest
     {
         Rule r = rule("DM", "left", "[\"USUBJID\"]", "not DM._matched_");
         IDataTable primary = adae();
-        IDataTable dm = MockTable.of().name("DM").col("USUBJID", "P1", "P2", "P3").build();
+        IDataTable dm = RealTables.of("DM").str("USUBJID", "P1", "P2", "P3").build();
         RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
                 inventory(study(primary, dm)), "ADAE", null, null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
@@ -138,7 +139,7 @@ class MatchedFlagExecutionTest
     {
         Rule r = rule("DM", "left", "[\"USUBJID\"]", "not DM._matched_");
         IDataTable primary = adae();
-        IDataTable dm = MockTable.of().name("DM").col("USUBJID", new String[0]).build();
+        IDataTable dm = RealTables.of("DM").str("USUBJID").build();
         RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
                 inventory(study(primary, dm)), "ADAE", null, null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
@@ -153,8 +154,8 @@ class MatchedFlagExecutionTest
         // P1's DM row exists but carries a blank ARM; empty(DM.ARM) would fire, the flag must not.
         Rule r = rule("DM", "left", "[\"USUBJID\"]", "not DM._matched_");
         IDataTable primary = adae();
-        IDataTable dm = MockTable.of().name("DM").col("USUBJID", "P1", "P2", "P3")
-                .col("ARM", "", "A", "B").build();
+        IDataTable dm = RealTables.of("DM").str("USUBJID", "P1", "P2", "P3")
+                .str("ARM", "", "A", "B").build();
         RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
                 inventory(study(primary, dm)), "ADAE", null, null, null);
         assertEquals(List.of(), result.getViolations(),
@@ -168,10 +169,10 @@ class MatchedFlagExecutionTest
     {
         // DM side: P1 has two AE partners, P2 none, P3 one (but DTHFL=Y so the conjunct blocks).
         Rule r = rule("AE", "left", "[\"USUBJID\"]", "AE._matched_ and DTHFL != \"Y\"");
-        IDataTable primary = MockTable.of().name("DM").col("USUBJID", "P1", "P2", "P3")
-                .col("DTHFL", "", "", "Y").build();
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "P1", "P1", "P3")
-                .col("AEDECOD", "H", "N", "F").build();
+        IDataTable primary = RealTables.of("DM").str("USUBJID", "P1", "P2", "P3")
+                .str("DTHFL", "", "", "Y").build();
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "P1", "P1", "P3")
+                .str("AEDECOD", "H", "N", "F").build();
         RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
                 inventory(study(primary, ae)), "DM", null, null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
@@ -191,9 +192,8 @@ class MatchedFlagExecutionTest
     void datasetLookupPathAnswersTheFlag() throws IOException
     {
         Rule r = rule("SUPPAE", "left", "[\"USUBJID\"]", "not SUPPAE._matched_");
-        IDataTable primary = MockTable.of().name("AE").col("USUBJID", "P1", "P2").build();
-        IDataTable supp = MockTable.of().name("SUPPAE").col("USUBJID", "P2").col("QNAM", "X")
-                .build();
+        IDataTable primary = RealTables.of("AE").str("USUBJID", "P1", "P2").build();
+        IDataTable supp = RealTables.of("SUPPAE").str("USUBJID", "P2").str("QNAM", "X").build();
         RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
                 inventory(study(primary, supp)), "AE", null, null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());

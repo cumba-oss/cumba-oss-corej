@@ -61,8 +61,12 @@ class ViolationConstructionSitesTest
     private static final Path RULE_RUNNER = Path.of(System.getProperty("projectBasedir"), "src",
             "main", "java", "net", "cumba", "corej", "core", "exec", "RuleRunner.java");
 
-    /** The {@code __error__} sentinel sites (2-arg form). */
-    private static final int SENTINEL_SITES = 7;
+    /**
+     * The {@code __error__} sentinel sites (2-arg form). 7 -> 9 (PLAN-merged-evaluation-table W3a):
+     * {@code RuleRunner.mergeErrorGate} (a rule references a merged column carrying MERGE_ERROR,
+     * OD-7) and the {@code MergeException | MergeErrorReadException} catch.
+     */
+    private static final int SENTINEL_SITES = 9;
 
     /** Record-level and Group sites: the shared empty constant. */
     private static final int EMPTY_LIST_SITES = 5;

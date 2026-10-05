@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.DatasetResolver;
+import net.cumba.corej.core.exec.RealTables;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.model.MatchDataset;
@@ -13,7 +14,6 @@ import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -77,11 +77,11 @@ class OperandTemplateScalarIntegrationTest
     @Test
     void scalarSubstitution_perRowExistence()
     {
-        IDataTable adsl = MockTable.of().col("USUBJID", "S1").col("AP01SDT", "2024-01-01")
-                .col("AP02SDT", "2024-02-01").name("ADSL").build();
+        IDataTable adsl = RealTables.of("ADSL").str("USUBJID", "S1").str("AP01SDT", "2024-01-01")
+                .str("AP02SDT", "2024-02-01").build();
         // Primary dataset rows — APERIOD drives the substituted column name.
-        IDataTable adae = MockTable.of().col("USUBJID", "S1", "S1", "S1")
-                .colLong("APERIOD", 1L, 2L, 3L).name("ADAE").build();
+        IDataTable adae = RealTables.of("ADAE").str("USUBJID", "S1", "S1", "S1")
+                .lng("APERIOD", 1L, 2L, 3L).build();
         Map<String, IDataTable> tables = new HashMap<>();
         tables.put("ADSL", adsl);
         tables.put("ADAE", adae);

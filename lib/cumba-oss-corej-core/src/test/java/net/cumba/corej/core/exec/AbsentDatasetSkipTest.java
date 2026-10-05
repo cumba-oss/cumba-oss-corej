@@ -15,7 +15,6 @@ import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -36,14 +35,14 @@ class AbsentDatasetSkipTest
 
     private static IDataTable ds(String name, String... cols)
     {
-        MockTable mt = MockTable.of().name(name);
+        RealTables mt = RealTables.of(name);
         for (String c : cols)
         {
-            mt.col(c, "1");
+            mt.str(c, "1");
         }
         if (cols.length == 0)
         {
-            mt.col("X", "1");
+            mt.str("X", "1");
         }
         return mt.build();
     }
@@ -167,7 +166,7 @@ class AbsentDatasetSkipTest
     void absentAndReported_collapsesToSkipped_notToASilentPass() throws Exception
     {
         Rule rule = load(DM_DEPENDENT);
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1", "S2").col("AGE", "31", "32")
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "S1", "S2").str("AGE", "31", "32")
                 .build();
         DatasetResolver noDm = resolverOf(Map.of("AE", ae));
 
@@ -191,8 +190,8 @@ class AbsentDatasetSkipTest
     void presentDataset_isNeverSuppressed() throws Exception
     {
         Rule rule = load(DM_DEPENDENT_KEYED);
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AGE", "31").build();
-        IDataTable dm = MockTable.of().name("DM").col("USUBJID", "S1").col("AGE", "99").build();
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").str("AGE", "31").build();
+        IDataTable dm = RealTables.of("DM").str("USUBJID", "S1").str("AGE", "99").build();
         // DM is covered by a presence rule AND present ⇒ the rule evaluates exactly as before.
         // (An inventory-aware resolver: the declared key's All_Or_None group is decided against
         // the inventory, which a plain lambda cannot enumerate.)
@@ -221,8 +220,8 @@ class AbsentDatasetSkipTest
     {
         Rule rule = load(LOCAL_SIBLING);
         // row 0 fires on the LOCAL disjunct; rows 1/2 only ever fire through the DM disjunct.
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1", "S2", "S3")
-                .col("FLAG", "X", "Z", "Z").col("DY", "1", "1", "").build();
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "S1", "S2", "S3")
+                .str("FLAG", "X", "Z", "Z").str("DY", "1", "1", "").build();
         DatasetResolver noDm = resolverOf(Map.of("AE", ae));
 
         // CONTROL — uncovered DM: empty(DM.RFSTDTC) is true for every row, so the DM disjunct
@@ -374,7 +373,7 @@ class AbsentDatasetSkipTest
     @Test
     void intentOptOutRulesAreNeverSilenced() throws Exception
     {
-        IDataTable dm = MockTable.of().name("DM").col("STUDYID", "S").col("SPECIES", "").build();
+        IDataTable dm = RealTables.of("DM").str("STUDYID", "S").str("SPECIES", "").build();
         DatasetResolver noTs = resolverOf(Map.of("DM", dm));
 
         // A rule of the SAME SHAPE but outside the opt-out collapses, as it should.
@@ -446,7 +445,7 @@ class AbsentDatasetSkipTest
                 + "\"Check\":{\"expression\":"
                 + "\"not ds_exists(\\\"EX\\\") or not empty(EX.EXDOSE)\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}");
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").build();
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").build();
         RuleExecutionResult r = run(rule, ae, resolverOf(Map.of("AE", ae)), Set.of("EX"));
         assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(),
                 "the ds_not_exists disjunct survives, so the rule is not skipped");
@@ -464,7 +463,7 @@ class AbsentDatasetSkipTest
                 + "\"Bindings\":[{\"name\": \"$ta_armcd\", \"expression\": \"distinct(ARMCD, domain=\\\"TA\\\")\"}],"
                 + "\"Check\":{\"expression\":\"ARMCD not in $ta_armcd\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"ARMCD\"]}}");
-        IDataTable dm = MockTable.of().name("DM").col("ARMCD", "A", "B").build();
+        IDataTable dm = RealTables.of("DM").str("ARMCD", "A", "B").build();
         DatasetResolver noTa = resolverOf(Map.of("DM", dm));
 
         // CONTROL — uncovered TA: the reference set is empty, so every row "does not match".
@@ -492,7 +491,7 @@ class AbsentDatasetSkipTest
                 + "\"Sensitivity\":\"Record\",\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
                 + "\"Check\":{\"expression\":\"not empty(DM.RFSTDTC)\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}");
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1", "S2").build();
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "S1", "S2").build();
         RuleExecutionResult r = run(rule, ae, resolverOf(Map.of("AE", ae)), Set.of("DM"));
         assertEquals(RuleExecutionStatus.SKIPPED, r.getStatus());
         assertEquals(0, r.getViolations().size());
@@ -505,7 +504,7 @@ class AbsentDatasetSkipTest
         // The precondition is the whole design: a dataset whose absence NOTHING reports must keep
         // today's behaviour, whatever it is. (§0.5 stratum C — every intent case sits here.)
         Rule rule = load(DM_DEPENDENT);
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AGE", "31").build();
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").str("AGE", "31").build();
         AbsentDatasetSkip.Decision d = ExecCalls.decide(rule, resolverOf(Map.of("AE", ae)),
                 Set.of("TS", "EX"), "AE", "AE");
         assertFalse(d.applies());
@@ -529,7 +528,7 @@ class AbsentDatasetSkipTest
                 + "\"Match_Datasets\":[{\"Name\":\"DM\"}],"
                 + "\"Check\":{\"expression\":\"not empty(AGE)\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AGE\"]}}");
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AGE", "31").build();
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").str("AGE", "31").build();
         AbsentDatasetSkip.Decision d = ExecCalls.decide(rule, resolverOf(Map.of("AE", ae)),
                 Set.of("DM"), "AE", "AE");
         assertFalse(d.applies(), "DM is named but never read: " + d.suppressedDatasets());
@@ -548,7 +547,7 @@ class AbsentDatasetSkipTest
                 // dotted-only, see DM_DEPENDENT
                 + "\"Check\":{\"expression\":\"empty(DM.AGE) and empty(TS.TSVAL)\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}");
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("STUDYID", "S").build();
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").str("STUDYID", "S").build();
         RuleExecutionResult r = run(rule, ae, resolverOf(Map.of("AE", ae)), Set.of("DM", "TS"));
         assertEquals(RuleExecutionStatus.SKIPPED, r.getStatus());
         String reason = r.getStatusMessage();
@@ -562,7 +561,7 @@ class AbsentDatasetSkipTest
     void anEmptyCoverageSetIsBehaviourIdenticalToThePreFixEngine() throws Exception
     {
         Rule rule = load(DM_DEPENDENT);
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1", "S2").col("AGE", "31", "32")
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "S1", "S2").str("AGE", "31", "32")
                 .build();
         DatasetResolver noDm = resolverOf(Map.of("AE", ae));
         Map<Long, Map<String, String>> withCoverage = valuesOf(run(rule, ae, noDm, Set.of()));

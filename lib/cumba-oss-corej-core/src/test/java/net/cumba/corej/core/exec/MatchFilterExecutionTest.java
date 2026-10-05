@@ -15,7 +15,6 @@ import net.cumba.corej.core.KeyedJoinFixtures;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -94,7 +93,7 @@ class MatchFilterExecutionTest
 
     private static IDataTable dm()
     {
-        return MockTable.of().name("DM").col("USUBJID", "P1", "P2", "P3").col("DTHFL", "", "Y", "")
+        return RealTables.of("DM").str("USUBJID", "P1", "P2", "P3").str("DTHFL", "", "Y", "")
                 .build();
     }
 
@@ -102,8 +101,8 @@ class MatchFilterExecutionTest
     private static IDataTable ae()
     {
         // P1: MILD + FATAL; P2: FATAL; P3: MILD only.
-        return MockTable.of().name("AE").col("USUBJID", "P1", "P1", "P2", "P3")
-                .col("AEOUT", "MILD", "FATAL", "FATAL", "MILD").build();
+        return RealTables.of("AE").str("USUBJID", "P1", "P1", "P2", "P3")
+                .str("AEOUT", "MILD", "FATAL", "FATAL", "MILD").build();
     }
 
 
@@ -170,10 +169,10 @@ class MatchFilterExecutionTest
         String join = "{\"Name\":\"SUPPAE\",\"Keys\":[\"USUBJID\"],\"Join_Type\":\"left\","
                 + "\"Filter\":\"QNAM == \\\"AESI\\\"\"}";
         Rule r = rule(join, "not SUPPAE._matched_");
-        IDataTable primary = MockTable.of().name("AE").col("USUBJID", "P1", "P2").build();
+        IDataTable primary = RealTables.of("AE").str("USUBJID", "P1", "P2").build();
         // P1 has only a non-AESI qualifier row -> filtered away -> unmatched; P2 has AESI.
-        IDataTable supp = MockTable.of().name("SUPPAE").col("USUBJID", "P1", "P2")
-                .col("QNAM", "OTHER", "AESI").build();
+        IDataTable supp = RealTables.of("SUPPAE").str("USUBJID", "P1", "P2")
+                .str("QNAM", "OTHER", "AESI").build();
         RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
                 inventory(study(primary, supp)), "AE", null, null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());

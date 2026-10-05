@@ -40,13 +40,26 @@ public final class RealTables
     }
 
 
-    static RealTables of(String aName)
+    public static RealTables of(String aName)
     {
         return new RealTables(aName);
     }
 
+    private boolean unlabelled;
 
-    RealTables str(String aName, String... aValues)
+    /**
+     * Columns without a label ({@code ""} instead of the column's name) — what a Mockito-backed
+     * {@code MockTable} column answered; for the per-variable metadata fixtures that read
+     * {@code variable_label}.
+     */
+    public RealTables unlabelled()
+    {
+        unlabelled = true;
+        return this;
+    }
+
+
+    public RealTables str(String aName, String... aValues)
     {
         colNames.add(aName);
         colTypes.add(DataValueType.STRING);
@@ -55,7 +68,7 @@ public final class RealTables
     }
 
 
-    RealTables lng(String aName, Long... aValues)
+    public RealTables lng(String aName, Long... aValues)
     {
         colNames.add(aName);
         colTypes.add(DataValueType.LONG);
@@ -70,7 +83,7 @@ public final class RealTables
      * — the way a real numeric buffer carries a SAS special missing, and the one fixture shape that
      * can put a {@code MIS_A} into a key column ({@code MockTable} has no such column).
      */
-    RealTables dbl(String aName, Double... aValues)
+    public RealTables dbl(String aName, Double... aValues)
     {
         colNames.add(aName);
         colTypes.add(DataValueType.DOUBLE);
@@ -79,7 +92,7 @@ public final class RealTables
     }
 
 
-    IDataTable build()
+    public IDataTable build()
     {
         int colCount = colNames.size();
         int rowCount = colData.isEmpty() ? 0 : colData.get(0).length;
@@ -89,7 +102,7 @@ public final class RealTables
         {
             cols[c] = new CachedDataTableColumn(c, colTypes.get(c));
             metas[c] = DataTableColumnMeta.builder().index(c).name(colNames.get(c))
-                    .label(colNames.get(c)).type(colTypes.get(c)).build();
+                    .label(unlabelled ? "" : colNames.get(c)).type(colTypes.get(c)).build();
             Object[] data = colData.get(c);
             for (int r = 0; r < rowCount; r++)
             {
@@ -111,7 +124,7 @@ public final class RealTables
      * never entered. A raw {@code -0.0} is the shape of a computed key, which that handling is kept
      * for ({@code NZL Q2}).
      */
-    IDataTable buildRaw()
+    public IDataTable buildRaw()
     {
         int colCount = colNames.size();
         int rowCount = colData.isEmpty() ? 0 : colData.get(0).length;

@@ -12,7 +12,6 @@ import java.util.Map;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -255,12 +254,11 @@ class RuleRunnerQualifiedGroupingTest
     {
         Rule rule = loadClean("\"Grouping\":{\"Variables\":[\"DM.RPATHCD\",\"RPHASE\"],"
                 + "\"keep_missings\":true}");
-        // ⚠ The one Mockito-backed fixture left in this class, on purpose: a real STRING buffer
-        // stores a null cell as "" (DataBufferString.setValue), so no real table can hold the
-        // character MIS this test needs beside a present "" — MockTable.colSasMissing is the one
-        // fixture that carries one.
-        IDataTable dmWithMissing = MockTable.of().name("DM").col("USUBJID", "S1", "S2", "S3")
-                .colSasMissing("RPATHCD", "A", "", ".").build();
+        // A real STRING buffer reads a null cell as the character MIS (DataBufferString, the
+        // 2026-09-18 owner ruling), so the fixture is a real table: the merged view (W3a) copies
+        // column metadata, which the Mockito-backed MockTable.colSasMissing could not give.
+        IDataTable dmWithMissing = RealTables.of("DM").str("USUBJID", "S1", "S2", "S3")
+                .str("RPATHCD", "A", "", null).build();
         RuleExecutionResult res = run(rule, bw("S1/P1/BAD", "S2/P1/BAD", "S3/P1/BAD"),
                 dmWithMissing);
         // "" and MIS are distinct groups (D11), each its own finding.

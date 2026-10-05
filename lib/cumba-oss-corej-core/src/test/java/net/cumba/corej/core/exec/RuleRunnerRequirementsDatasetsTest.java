@@ -14,7 +14,6 @@ import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Requirements;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -96,7 +95,7 @@ class RuleRunnerRequirementsDatasetsTest
 
     private static IDataTable ae()
     {
-        return MockTable.of().name("AE").col("AETERM", "", "headache").build();
+        return RealTables.of("AE").str("AETERM", "", "headache").build();
     }
 
 
@@ -105,7 +104,7 @@ class RuleRunnerRequirementsDatasetsTest
     void declaredAndPresentRuns() throws IOException
     {
         Rule rule = ruleRequiring("empty(AETERM)", "EX");
-        IDataTable ex = MockTable.of().name("EX").col("EXDOSE", "1").build();
+        IDataTable ex = RealTables.of("EX").str("EXDOSE", "1").build();
         RuleExecutionResult r = run(rule, ae(), inventory(study(ae(), ex)));
         assertNotEquals(RuleExecutionStatus.SKIPPED, r.getStatus(), r.getStatusMessage());
         assertEquals(1, r.getViolations().size(), "row 0 has an empty AETERM");
@@ -266,7 +265,7 @@ class RuleRunnerRequirementsDatasetsTest
         RuleExecutionResult absent = run(rule, ae(), inventory(study(ae(), adsl1)));
         assertEquals(RuleExecutionStatus.SKIPPED, absent.getStatus());
 
-        IDataTable adsl = MockTable.of().name("ADSL").col("USUBJID", "S1").build();
+        IDataTable adsl = RealTables.of("ADSL").str("USUBJID", "S1").build();
         RuleExecutionResult present = run(rule, ae(), inventory(study(ae(), adsl)));
         assertNotEquals(RuleExecutionStatus.SKIPPED, present.getStatus(),
                 present.getStatusMessage());
@@ -278,7 +277,7 @@ class RuleRunnerRequirementsDatasetsTest
     void dashDashEntryResolvesAgainstThePrimary() throws IOException
     {
         Rule rule = ruleRequiring("empty(AETERM)", "SUPP--");
-        IDataTable suppae = MockTable.of().name("SUPPAE").col("QNAM", "X").build();
+        IDataTable suppae = RealTables.of("SUPPAE").str("QNAM", "X").build();
         RuleExecutionResult present = run(rule, ae(), inventory(study(ae(), suppae)));
         assertNotEquals(RuleExecutionStatus.SKIPPED, present.getStatus(),
                 present.getStatusMessage());

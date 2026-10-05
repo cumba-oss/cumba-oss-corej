@@ -276,7 +276,9 @@ public final class BroadcastFold
     {
         return switch (r.kind())
         {
-        case COLUMN -> switch (bindColumnLevel(r.name(), ctx))
+        // N24 (PLAN-merged-evaluation-table W3a): a dotted reference is classified by the same
+        // primitive — an absent column of a served join is an absent column of the merged schema.
+        case COLUMN, DOTTED_REF -> switch (bindColumnLevel(r.name(), ctx))
         {
         case ROW -> AbsentLeafLevel.ROW;
         case DATASET_CONTEXT_SCALAR -> AbsentLeafLevel.DATASET;
@@ -994,6 +996,11 @@ public final class BroadcastFold
      */
     public static BindColumnLevel bindColumnLevel(String name, EvaluationContext ctx)
     {
+        int dot = name.indexOf('.');
+        if (dot > 0)
+        {
+            return dottedColumnLevel(name.substring(0, dot), name.substring(dot + 1), ctx);
+        }
         Object v = ctx.resolveVariable(name);
         if (v instanceof String || v instanceof Number || v instanceof Boolean)
         {
@@ -1024,6 +1031,30 @@ public final class BroadcastFold
         // absentColumnLeafLevel -> foldLeaf -> DATASET_WITH_ABSENT), not just what a leaf reads.
         // ⇒ A bare name the primary lacks is a DATASET-LEVEL ABSENT column, full stop.
         return BindColumnLevel.DATASET_ABSENT;
+    }
+
+
+    /**
+     * N24 ({@code PLAN-merged-evaluation-table} §3.3, W3a): the level of a dotted reference
+     * {@code J.X}. A column the served join {@code J} does not carry is an absent column of the
+     * merged schema and binds at dataset level exactly as a bare absent column does — one
+     * dataset-level answer instead of one finding per row (the owner's example:
+     * {@code DM.ARMNRS == "SCREEN FAILURE"} on a DM without ARMNRS). A join that is not served
+     * ({@code lookup == null}: not declared, or declared and not supplied — P-1) keeps the
+     * row-level reading it has today; the {@code _matched_} flag and a non-column shape are never
+     * folded here.
+     */
+    private static BindColumnLevel dottedColumnLevel(String dataset, String column,
+            EvaluationContext ctx)
+    {
+        if (!isFoldableColumnReference(column))
+        {
+            return BindColumnLevel.ROW;
+        }
+        net.cumba.corej.core.exec.JoinLookup lookup = ctx.getJoinedDatasets().get(dataset);
+        return lookup != null && lookup.lacksColumnOnEveryRow(column)
+                ? BindColumnLevel.DATASET_ABSENT
+                : BindColumnLevel.ROW;
     }
 
 }

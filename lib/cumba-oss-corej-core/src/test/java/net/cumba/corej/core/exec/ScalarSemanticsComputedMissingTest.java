@@ -737,7 +737,14 @@ class ScalarSemanticsComputedMissingTest
     // 38 -> 39 (review round 2, engine 1): Resolver.memberCell — the member re-carry moved out of
     // Joined.read so an ABSENT member is keyed by its text too. Read: it answers its input cell,
     // or DataValues.of(the input's text) for a present character cell; never null.
-    private static final int EXPECTED_VALUE_PRODUCERS = 39;
+    // 39 -> 41 (PLAN-merged-evaluation-table W3a): MergedViewLookup.lookupValue — read: an absent
+    // partner column answers JoinLookup.absentJoinedColumnValue (the rule-expected default), an
+    // unmatched row the partner column's type default (the not-supplied marker), a matched row the
+    // view's cell handed through; and MergedEvaluation.ViewColumn.getDataValue — read: the view's
+    // cell at the evaluation row, which for a record no SUPP row qualifies is the column's type
+    // default (SuppPart.unavailable). Never null; the legacy producers (SuppQnamColumn,
+    // KeyMatchExpandedLookup, DatasetLookup) stay until W6.
+    private static final int EXPECTED_VALUE_PRODUCERS = 41;
 
     private static Method declared(Class<?> owner, String name)
     {

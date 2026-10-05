@@ -22,7 +22,6 @@ import net.cumba.corej.core.report.ValidationReportBuilder;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.report.Severity;
 import net.cumba.datatable.report.ValidationFinding;
-import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -44,7 +43,7 @@ class RuleCheckLevelsExecutionTest
     /** A four-row table whose single column separates the four ladder rungs. */
     private static IDataTable table()
     {
-        return MockTable.of().name("AE").col("A", "a", "b", "c", "d").build();
+        return RealTables.of("AE").str("A", "a", "b", "c", "d").build();
     }
 
 
@@ -297,8 +296,8 @@ class RuleCheckLevelsExecutionTest
         rule.setSensitivity(Sensitivity.GROUP);
         // Group g1 = rows 0+1: the INFO rung's first flagged row is 0, the ERROR rung's is 1 —
         // two DIFFERENT anchor rows for the SAME group. Group g2 (row 2) fires nothing.
-        IDataTable grouped = MockTable.of().name("AE").col("G", "g1", "g1", "g2")
-                .col("A", "x", "a", "n").build();
+        IDataTable grouped = RealTables.of("AE").str("G", "g1", "g1", "g2").str("A", "x", "a", "n")
+                .build();
         RuleExecutionResult r = run(rule, grouped, Severity.INFO);
 
         assertEquals(1, r.getViolationCount(),
@@ -359,7 +358,7 @@ class RuleCheckLevelsExecutionTest
                 """);
         // No USUBJID, no <DOMAIN>SEQ: the row rung's violation has null identity, and both rungs
         // project the same Output_Variables at row 0 — the materialised tuples are identical.
-        IDataTable bare = MockTable.of().name("AE").col("A", "a").build();
+        IDataTable bare = RealTables.of("AE").str("A", "a").build();
         RuleExecutionResult r = run(rule, bare, Severity.INFO);
 
         assertEquals(2, r.getViolationCount(),
@@ -386,7 +385,7 @@ class RuleCheckLevelsExecutionTest
                 """);
         // Output_Variables is ["A"] (the rule() fixture), so variable_name is NOT projected and
         // the violations of columns B and C materialise identical values maps.
-        IDataTable threeCols = MockTable.of().name("AE").col("A", "a").col("B", "x").col("C", "x")
+        IDataTable threeCols = RealTables.of("AE").str("A", "a").str("B", "x").str("C", "x")
                 .build();
         RuleExecutionResult r = run(rule, threeCols, Severity.INFO);
 
@@ -408,14 +407,14 @@ class RuleCheckLevelsExecutionTest
      */
     private static IDataTable joinPrimary()
     {
-        return MockTable.of().name("DM").col("USUBJID", "P1", "P2").build();
+        return RealTables.of("DM").str("USUBJID", "P1", "P2").build();
     }
 
 
     private static DatasetResolver joinChild()
     {
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "P1", "P1", "P2")
-                .col("AESDTH", "Y", "Y", "N").build();
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "P1", "P1", "P2")
+                .str("AESDTH", "Y", "Y", "N").build();
         return name -> "AE".equals(name) ? ae : null;
     }
 

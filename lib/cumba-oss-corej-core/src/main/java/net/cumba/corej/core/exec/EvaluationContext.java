@@ -261,13 +261,15 @@ public class EvaluationContext
     CheckLevelPlan levelPlan;
 
     /**
-     * The W2 merged-table shadow of this execution ({@code PLAN-merged-evaluation-table}), or
-     * {@code null} — always {@code null} outside a test that installed a
-     * {@link MergedTableShadow.Observer}. {@link SuppPivot#qualifierColumn} hands its answer
-     * through it so every qualifier read is compared with the merged view; {@code toBuilder}
-     * carries it into every derived context. Deleted in W6.
+     * The merged evaluation view of this execution ({@code PLAN-merged-evaluation-table} W3a,
+     * {@link MergedEvaluation}), or {@code null} on the legacy arm (a forward RELREC rule, a
+     * chained qualified key, nothing to merge). Its {@link MergedEvaluation.Built#table()} is
+     * {@link #table}; {@link SuppPivot#qualifierColumn} serves a bare {@code QNAM} from it, and
+     * {@link #joinedDatasets} holds its keyed parts. {@code toBuilder} carries it into every
+     * derived context; a derived context over another table (a {@code Filter} sub-context) does not
+     * read it, because its table is not the view's.
      */
-    MergedTableShadow.@Nullable Session mergedShadow;
+    MergedEvaluation.@Nullable Built mergedView;
 
     public int rowCount()
     {

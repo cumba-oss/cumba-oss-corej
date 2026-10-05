@@ -9,13 +9,13 @@ import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.DatasetResolver;
+import net.cumba.corej.core.exec.RealTables;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
 import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.exec.Violation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -53,17 +53,17 @@ class SubstitutedJoinedCellTest
     @Test
     void theRowsDriverPicksTheJoinedColumnItIsComparedWith() throws IOException
     {
-        IDataTable adsl = MockTable.of().name("ADSL").col("USUBJID", "S1", "S2")
-                .col("PH1SDT", "2024-01-01", "2024-03-01").col("PH2SDT", "2024-02-01", "2024-04-01")
+        IDataTable adsl = RealTables.of("ADSL").str("USUBJID", "S1", "S2")
+                .str("PH1SDT", "2024-01-01", "2024-03-01").str("PH2SDT", "2024-02-01", "2024-04-01")
                 .build();
         // row 0: phase 1, equals ADSL.PH1SDT -> no fire
         // row 1: phase 2, differs from ADSL.PH2SDT -> fires
         // row 2: phase 2 of S2, equals S2's ADSL.PH2SDT -> no fire (the join picks S2's row)
         // row 3: APHASEN missing -> the template names no column (a computed MIS), and the
         // guard keeps the row quiet; the run must neither error nor read a wrong column
-        IDataTable adae = MockTable.of().name("ADAE").col("USUBJID", "S1", "S1", "S2", "S2")
-                .colLong("APHASEN", 1L, 2L, 2L, null)
-                .col("PHSDT", "2024-01-01", "2024-02-09", "2024-04-01", "2024-05-05").build();
+        IDataTable adae = RealTables.of("ADAE").str("USUBJID", "S1", "S1", "S2", "S2")
+                .lng("APHASEN", 1L, 2L, 2L, null)
+                .str("PHSDT", "2024-01-01", "2024-02-09", "2024-04-01", "2024-05-05").build();
         Map<String, IDataTable> tables = Map.of("ADSL", adsl, "ADAE", adae);
         // An inventory-aware resolver, as production's and the scenario harness's are: the
         // All_Or_None key group naming ADSL is decidable only against the study's inventory.

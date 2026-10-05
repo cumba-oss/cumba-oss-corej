@@ -12,7 +12,6 @@ import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -136,8 +135,8 @@ class RuleRunnerDateDiffKeyAbsenceTest
      */
     private static IDataTable tf(String s1Detect, String s2Detect)
     {
-        return MockTable.of().name("TF").col("USUBJID", "S1", "S2")
-                .col("TFDTC", "2020-01-11", "2020-01-06").col("TFDETECT", s1Detect, s2Detect)
+        return RealTables.of("TF").str("USUBJID", "S1", "S2")
+                .str("TFDTC", "2020-01-11", "2020-01-06").str("TFDETECT", s1Detect, s2Detect)
                 .build();
     }
 
@@ -164,8 +163,8 @@ class RuleRunnerDateDiffKeyAbsenceTest
     @Test
     void conformantStudyFiresNothing()
     {
-        IDataTable ex = MockTable.of().name("EX").col("USUBJID", "S1", "S2")
-                .col("EXSTDTC", "2020-01-01", "2020-01-01").build();
+        IDataTable ex = RealTables.of("EX").str("USUBJID", "S1", "S2")
+                .str("EXSTDTC", "2020-01-01", "2020-01-01").build();
         RuleExecutionResult res = run(send0202(List.of("USUBJID")), study(tf("11", "6"), ex));
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
         assertEquals(List.of(), firedSubjects(res));
@@ -176,8 +175,8 @@ class RuleRunnerDateDiffKeyAbsenceTest
     @Test
     void wrongIntervalFires()
     {
-        IDataTable ex = MockTable.of().name("EX").col("USUBJID", "S1", "S2")
-                .col("EXSTDTC", "2020-01-01", "2020-01-01").build();
+        IDataTable ex = RealTables.of("EX").str("USUBJID", "S1", "S2")
+                .str("EXSTDTC", "2020-01-01", "2020-01-01").build();
         RuleExecutionResult res = run(send0202(List.of("USUBJID")), study(tf("99", "6"), ex));
         assertEquals(List.of("S1"), firedSubjects(res));
     }
@@ -196,8 +195,8 @@ class RuleRunnerDateDiffKeyAbsenceTest
     @Test
     void b1_blankReferenceDateOnThePartnerRow_firesForThatSubjectOnly()
     {
-        IDataTable ex = MockTable.of().name("EX").col("USUBJID", "S1", "S2")
-                .col("EXSTDTC", "", "2020-01-01").build();
+        IDataTable ex = RealTables.of("EX").str("USUBJID", "S1", "S2")
+                .str("EXSTDTC", "", "2020-01-01").build();
         RuleExecutionResult res = run(send0202(List.of("USUBJID")), study(tf("11", "6"), ex));
         assertEquals(List.of("S1"), firedSubjects(res));
     }
@@ -210,8 +209,8 @@ class RuleRunnerDateDiffKeyAbsenceTest
     @Test
     void b2_partialReferenceDate_firesForThatSubjectOnly()
     {
-        IDataTable ex = MockTable.of().name("EX").col("USUBJID", "S1", "S2")
-                .col("EXSTDTC", "2020-01", "2020-01-01").build();
+        IDataTable ex = RealTables.of("EX").str("USUBJID", "S1", "S2")
+                .str("EXSTDTC", "2020-01", "2020-01-01").build();
         RuleExecutionResult res = run(send0202(List.of("USUBJID")), study(tf("11", "6"), ex));
         assertEquals(List.of("S1"), firedSubjects(res));
     }
@@ -227,11 +226,11 @@ class RuleRunnerDateDiffKeyAbsenceTest
     @Test
     void ownRowDefectIsMaskedByTheAuthoredCompleteDateGuard()
     {
-        IDataTable tf = MockTable.of().name("TF").col("USUBJID", "S1", "S2")
-                .col("TFDTC", "2020-01", "2020-01-06") // S1's OWN date is partial
-                .col("TFDETECT", "11", "6").build();
-        IDataTable ex = MockTable.of().name("EX").col("USUBJID", "S1", "S2")
-                .col("EXSTDTC", "2020-01-01", "2020-01-01").build();
+        IDataTable tf = RealTables.of("TF").str("USUBJID", "S1", "S2")
+                .str("TFDTC", "2020-01", "2020-01-06") // S1's OWN date is partial
+                .str("TFDETECT", "11", "6").build();
+        IDataTable ex = RealTables.of("EX").str("USUBJID", "S1", "S2")
+                .str("EXSTDTC", "2020-01-01", "2020-01-01").build();
         assertEquals(List.of(), firedSubjects(run(send0202(List.of("USUBJID")), study(tf, ex))));
     }
 
@@ -249,7 +248,7 @@ class RuleRunnerDateDiffKeyAbsenceTest
     @Test
     void b4_referenceColumnAbsentFromTheForeignDataset_firesEveryPopulatedRow()
     {
-        IDataTable ex = MockTable.of().name("EX").col("USUBJID", "S1", "S2").build();
+        IDataTable ex = RealTables.of("EX").str("USUBJID", "S1", "S2").build();
         RuleExecutionResult res = run(send0202(List.of("USUBJID")), study(tf("11", "6"), ex));
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(), "unresolvable is not SKIPPED");
         assertEquals(List.of("S1", "S2"), firedSubjects(res));
@@ -290,8 +289,8 @@ class RuleRunnerDateDiffKeyAbsenceTest
     @Test
     void groupColumnAbsentFromBothSidesCancelsAndTheJoinProceeds()
     {
-        IDataTable ex = MockTable.of().name("EX").col("USUBJID", "S1", "S2")
-                .col("EXSTDTC", "2020-01-01", "2020-01-01").build();
+        IDataTable ex = RealTables.of("EX").str("USUBJID", "S1", "S2")
+                .str("EXSTDTC", "2020-01-01", "2020-01-01").build();
         RuleExecutionResult res = run(send0202(List.of("USUBJID", "RPHASE")),
                 study(tf("99", "6"), ex));
         assertEquals(List.of("S1"), firedSubjects(res), "only the wrong one fires");
@@ -307,8 +306,8 @@ class RuleRunnerDateDiffKeyAbsenceTest
     @Test
     void groupColumnPresentOnOneSideOnlyMatchesNothing()
     {
-        IDataTable ex = MockTable.of().name("EX").col("USUBJID", "S1", "S2")
-                .col("RPHASE", "P1", "P1").col("EXSTDTC", "2020-01-01", "2020-01-01").build();
+        IDataTable ex = RealTables.of("EX").str("USUBJID", "S1", "S2").str("RPHASE", "P1", "P1")
+                .str("EXSTDTC", "2020-01-01", "2020-01-01").build();
         RuleExecutionResult res = run(send0202(List.of("USUBJID", "RPHASE")),
                 study(tf("11", "6"), ex));
         assertEquals(List.of("S1", "S2"), firedSubjects(res));
@@ -335,10 +334,10 @@ class RuleRunnerDateDiffKeyAbsenceTest
     @Test
     void noGroupColumnOnTheForeignDatasetFormsOneWholeTableGroup()
     {
-        IDataTable tf = MockTable.of().name("TF").col("USUBJID", "", "")
-                .col("TFDTC", "2020-01-11", "2020-01-06").col("TFDETECT", "11", "6").build();
-        IDataTable ex = MockTable.of().name("EX").col("SPARE", "x", "y")
-                .col("EXSTDTC", "2020-01-01", "2020-01-01").build();
+        IDataTable tf = RealTables.of("TF").str("USUBJID", "", "")
+                .str("TFDTC", "2020-01-11", "2020-01-06").str("TFDETECT", "11", "6").build();
+        IDataTable ex = RealTables.of("EX").str("SPARE", "x", "y")
+                .str("EXSTDTC", "2020-01-01", "2020-01-01").build();
         // no Match_Datasets: the inner join would otherwise empty the evaluation table
         RuleExecutionResult res = run(send0202(List.of("USUBJID"), false), study(tf, ex));
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
@@ -371,10 +370,10 @@ class RuleRunnerDateDiffKeyAbsenceTest
     @Test
     void aBlankKeyComponentJoinsTheCollapsedForeignBucket()
     {
-        IDataTable tf = MockTable.of().name("TF").col("USUBJID", "S1", "S2").col("RPHASE", "P1", "")
-                .col("TFDTC", "2020-01-11", "2020-01-06").col("TFDETECT", "11", "6").build();
-        IDataTable ex = MockTable.of().name("EX").col("USUBJID", "S1", "S2")
-                .col("EXSTDTC", "2020-01-01", "2020-01-01").build();
+        IDataTable tf = RealTables.of("TF").str("USUBJID", "S1", "S2").str("RPHASE", "P1", "")
+                .str("TFDTC", "2020-01-11", "2020-01-06").str("TFDETECT", "11", "6").build();
+        IDataTable ex = RealTables.of("EX").str("USUBJID", "S1", "S2")
+                .str("EXSTDTC", "2020-01-01", "2020-01-01").build();
         assertEquals(List.of("S1"),
                 firedSubjects(run(send0202(List.of("USUBJID", "RPHASE")), study(tf, ex))));
     }
@@ -391,10 +390,10 @@ class RuleRunnerDateDiffKeyAbsenceTest
     @Test
     void aPopulatedKeyMeetsNoGroupWhenTheForeignDatasetLacksTheGroupColumn()
     {
-        IDataTable tf = MockTable.of().name("TF").col("USUBJID", "S1", "")
-                .col("TFDTC", "2020-01-11", "2020-01-06").col("TFDETECT", "11", "6").build();
-        IDataTable ex = MockTable.of().name("EX").col("SPARE", "x", "y")
-                .col("EXSTDTC", "2020-01-01", "2020-01-01").build();
+        IDataTable tf = RealTables.of("TF").str("USUBJID", "S1", "")
+                .str("TFDTC", "2020-01-11", "2020-01-06").str("TFDETECT", "11", "6").build();
+        IDataTable ex = RealTables.of("EX").str("SPARE", "x", "y")
+                .str("EXSTDTC", "2020-01-01", "2020-01-01").build();
         RuleExecutionResult res = run(send0202(List.of("USUBJID"), false), study(tf, ex));
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
         assertEquals(List.of("S1"), firedSubjects(res),

@@ -343,6 +343,36 @@ public final class RuleRunner
                     .totalRows(table != null ? table.getRowCount() : 0L)
                     .status(RuleExecutionStatus.ERROR).statusMessage(errorMsg).build());
         }
+        catch (net.cumba.datatable.merge.MergeException e)
+        {
+            // W3a of PLAN-merged-evaluation-table: the datatable refused the merge (a degenerate
+            // or clashing key, a Cardinality violation, ...) while the merged evaluation view was
+            // built - the rule's ERROR under its fixed prefix (MERGE_REFUSED_MESSAGE_PREFIX, the
+            // classifier's key in the rules repository), on the same sentinel channel.
+            return mergeFailure(rule, table,
+                    MergedEvaluation.MERGE_REFUSED_MESSAGE_PREFIX + e.getMessage());
+        }
+        catch (MergeErrorReadException e)
+        {
+            // W3a (OD-7): a read reached a merged column carrying MERGE_ERROR that the static gate
+            // did not see (a dynamic read) - the rule's ERROR, the exception's message already
+            // carries the fixed prefix (MERGE_ERROR_MESSAGE_PREFIX).
+            return mergeFailure(rule, table, String.valueOf(e.getMessage()));
+        }
+    }
+
+
+    /** The ERROR result of a merged-evaluation failure (W3a), on the sentinel channel. */
+    private static RuleExecutionResult mergeFailure(Rule rule, @Nullable IDataTable table,
+            String errorMsg)
+    {
+        LOGGER.log(System.Logger.Level.WARNING, "[{0}] {1}",
+                rule.effectiveId() != null ? rule.effectiveId() : "?", errorMsg);
+        Violation sentinel = new Violation(0, Map.of("__error__", errorMsg));
+        return stampSeverity(rule, RuleExecutionResult.builder().ruleId(rule.effectiveId())
+                .message(rule.getOutcome() != null ? rule.getOutcome().getMessage() : null)
+                .violations(List.of(sentinel)).totalRows(table != null ? table.getRowCount() : 0L)
+                .status(RuleExecutionStatus.ERROR).statusMessage(errorMsg).build());
     }
 
 
@@ -731,64 +761,101 @@ public final class RuleRunner
         evalTable = ChildMatchPreMerger.preMerge(evalTable, rule.getMatchDatasets(), resolver,
                 ruleId, joinCache);
 
-        // Phase 2a.6: Forward RELREC row expansion (dataset-level + one-to-many). Replaces the
-        // primary eval table with one expanded row per (primary record, related record) pair
-        // (inner-join), mirroring the Python engine's merge_relrec_datasets preprocessing. The
-        // related columns are reached via an expanded-row-aware RELREC JoinLookup (below).
+        // Phases 2a.6–2b (W3a of PLAN-merged-evaluation-table): the merged evaluation view — the
+        // keyed Match_Datasets parts and the primary's SUPP<domain> qualifiers as columns of ONE
+        // table (§3.1) — replaces the key-match row expansion (2a.7), the key-join lookups (2b)
+        // and the SUPP pivot's reader sites. Its primary part is the evaluation table, its keyed
+        // parts are the context's JoinLookups, its qualifier columns are what SuppPivot hands out;
+        // built once per (dataset, merge signature) through the JoinCache (P-3). The legacy arm
+        // below stays for a forward RELREC rule (W5; MQ11's ERROR when combined with a key
+        // expansion) and for a chained qualified key (composed by the engine), and is what the
+        // corpus differential compares the view against (MergedEvaluation.setLegacyForTests).
         List<MatchDataset> joinMatchDatasets = rule.getMatchDatasets();
         RelrecRowExpander.RelrecExpansion relrecExpansion = null;
-        MatchDataset forwardRelrec = RelrecRowExpander.findForwardRelrec(rule.getMatchDatasets());
-        if (forwardRelrec != null)
+        KeyMatchRowExpander.KeyMatchExpansion keyExpansion = null;
+        MergedEvaluation.Built mergedView = MergedEvaluation.build(rule, evalTable, table, resolver,
+                joinCache, ruleId, domainPrefix);
+        if (mergedView != null)
         {
-            relrecExpansion = RelrecRowExpander.expand(evalTable, rule.getMatchDatasets(), resolver,
-                    ruleId);
-            if (relrecExpansion != null)
+            evalTable = mergedView.table();
+            // OD-7 / MET #15: a rule that references a merged column the data cannot supply
+            // (a MERGE_ERROR on the column) ERRORs; every other rule on the dataset runs.
+            RuleExecutionResult flagged = mergeErrorGate(rule, mergedView, ruleId, message, table);
+            if (flagged != null)
             {
-                evalTable = relrecExpansion.table();
-                // Exclude the forward RELREC entry; its columns are served by the expanded RELREC
-                // lookup.
-                joinMatchDatasets = new ArrayList<>(rule.getMatchDatasets());
-                joinMatchDatasets.remove(relrecExpansion.forwardEntry());
+                return flagged;
             }
         }
-
-        // Phase 2a.7: key-based Match_Datasets row expansion (mirrors Python merge_datasets). One
-        // expanded row per (primary, matched child) pair, honoring the entry's Join_Type (the
-        // loader stamps `inner` where none is authored — S2; the expander has no default); each
-        // expanded row binds its matching child, served by the KeyMatchExpandedLookup added below —
-        // so a dot-qualified AE.AESDTH predicate sees the matching child, not a first-wins guess.
-        // ⭐ PLAN-keymatch-shared-join-index: the child indexes come from the run's shared cache, so
-        // DM's USUBJID index is built once per DM table rather than once per rule and dataset.
-        KeyMatchRowExpander.KeyMatchExpansion keyExpansion = KeyMatchRowExpander.expand(evalTable,
-                joinMatchDatasets, resolver, ruleId,
-                joinCache != null ? joinCache.getSharedIndexCache() : null);
-        if (keyExpansion != null)
+        else
         {
-            if (relrecExpansion != null)
+            // Phase 2a.6: Forward RELREC row expansion (dataset-level + one-to-many). Replaces the
+            // primary eval table with one expanded row per (primary record, related record) pair
+            // (inner-join), mirroring the Python engine's merge_relrec_datasets preprocessing. The
+            // related columns are reached via an expanded-row-aware RELREC JoinLookup (below).
+            MatchDataset forwardRelrec = RelrecRowExpander
+                    .findForwardRelrec(rule.getMatchDatasets());
+            if (forwardRelrec != null)
             {
-                // A forward RELREC expansion and a key-based row expansion on the same rule would
-                // each re-index the eval table independently: the RELREC JoinLookup is built
-                // against the RELREC-expanded row indices, but the key-match expansion replaces the
-                // table with its own (further-expanded) indices, so the RELREC lookup would be read
-                // with the wrong row index and serve corrupted related-record values. No bundled
-                // rule combines the two; surface a rule-execution ERROR ("virtual finding") rather
-                // than silently producing a wrong result — same sentinel pattern as the load-error
-                // path above.
-                String comboMsg = "forward RELREC join combined with a key-based Match_Datasets row "
-                        + "expansion is not supported on the same rule";
-                LOGGER.log(System.Logger.Level.WARNING, "[{0}] {1}", ruleId != null ? ruleId : "?",
-                        comboMsg);
-                Violation sentinel = new Violation(0, Map.of("__error__", comboMsg));
-                return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                        .violations(List.of(sentinel)).totalRows(table.getRowCount())
-                        .status(RuleExecutionStatus.ERROR).statusMessage(comboMsg).build();
+                relrecExpansion = RelrecRowExpander.expand(evalTable, rule.getMatchDatasets(),
+                        resolver, ruleId);
+                if (relrecExpansion != null)
+                {
+                    evalTable = relrecExpansion.table();
+                    // Exclude the forward RELREC entry; its columns are served by the expanded
+                    // RELREC
+                    // lookup.
+                    joinMatchDatasets = new ArrayList<>(rule.getMatchDatasets());
+                    joinMatchDatasets.remove(relrecExpansion.forwardEntry());
+                }
             }
-            evalTable = keyExpansion.table();
-            // Expanded entries are served by the bound-child lookups; drop them from key-join
-            // build.
-            List<MatchDataset> remaining = new ArrayList<>(joinMatchDatasets);
-            remaining.removeAll(keyExpansion.expandedEntries());
-            joinMatchDatasets = remaining;
+
+            // Phase 2a.7: key-based Match_Datasets row expansion (mirrors Python merge_datasets).
+            // One
+            // expanded row per (primary, matched child) pair, honoring the entry's Join_Type (the
+            // loader stamps `inner` where none is authored — S2; the expander has no default); each
+            // expanded row binds its matching child, served by the KeyMatchExpandedLookup added
+            // below —
+            // so a dot-qualified AE.AESDTH predicate sees the matching child, not a first-wins
+            // guess.
+            // ⭐ PLAN-keymatch-shared-join-index: the child indexes come from the run's shared
+            // cache, so
+            // DM's USUBJID index is built once per DM table rather than once per rule and dataset.
+            keyExpansion = KeyMatchRowExpander.expand(evalTable, joinMatchDatasets, resolver,
+                    ruleId, joinCache != null ? joinCache.getSharedIndexCache() : null);
+            if (keyExpansion != null)
+            {
+                if (relrecExpansion != null)
+                {
+                    // A forward RELREC expansion and a key-based row expansion on the same rule
+                    // would
+                    // each re-index the eval table independently: the RELREC JoinLookup is built
+                    // against the RELREC-expanded row indices, but the key-match expansion replaces
+                    // the
+                    // table with its own (further-expanded) indices, so the RELREC lookup would be
+                    // read
+                    // with the wrong row index and serve corrupted related-record values. No
+                    // bundled
+                    // rule combines the two; surface a rule-execution ERROR ("virtual finding")
+                    // rather
+                    // than silently producing a wrong result — same sentinel pattern as the
+                    // load-error
+                    // path above.
+                    String comboMsg = "forward RELREC join combined with a key-based Match_Datasets row "
+                            + "expansion is not supported on the same rule";
+                    LOGGER.log(System.Logger.Level.WARNING, "[{0}] {1}",
+                            ruleId != null ? ruleId : "?", comboMsg);
+                    Violation sentinel = new Violation(0, Map.of("__error__", comboMsg));
+                    return RuleExecutionResult.builder().ruleId(ruleId).message(message)
+                            .violations(List.of(sentinel)).totalRows(table.getRowCount())
+                            .status(RuleExecutionStatus.ERROR).statusMessage(comboMsg).build();
+                }
+                evalTable = keyExpansion.table();
+                // Expanded entries are served by the bound-child lookups; drop them from key-join
+                // build.
+                List<MatchDataset> remaining = new ArrayList<>(joinMatchDatasets);
+                remaining.removeAll(keyExpansion.expandedEntries());
+                joinMatchDatasets = remaining;
+            }
         }
 
         // ⭐ Wave 0 (PLAN-binding-expressions R10): every binding sits in the variables map, in
@@ -833,29 +900,27 @@ public final class RuleRunner
         // context variable, and the SD0004 DOMAIN-column shape evaluates identically with and
         // without the injection.)
 
-        // Phase 2b: Build joined dataset lookups from Match_Datasets
-        Map<String, JoinLookup> joinedDatasets = buildJoinedDatasets(joinMatchDatasets, evalTable,
-                resolver, joinCache, ruleId);
-        if (relrecExpansion != null)
+        // Phase 2b: the joined dataset lookups — the view's keyed parts, or (legacy arm) built
+        // from Match_Datasets plus the RELREC / key-expansion lookups.
+        Map<String, JoinLookup> joinedDatasets;
+        if (mergedView != null)
         {
-            joinedDatasets = new LinkedHashMap<>(joinedDatasets);
-            joinedDatasets.put(RELREC, relrecExpansion.lookup());
+            joinedDatasets = mergedView.lookups();
         }
-        if (keyExpansion != null)
+        else
         {
-            joinedDatasets = new LinkedHashMap<>(joinedDatasets);
-            joinedDatasets.putAll(keyExpansion.lookups());
-        }
-
-        // W2 of PLAN-merged-evaluation-table — the merged view built BESIDE this pipeline, every
-        // join / SUPP read compared with it. `null` (one volatile read) unless a test installed a
-        // MergedTableShadow.Observer; it changes no answer either way.
-        MergedTableShadow.Session shadow = MergedTableShadow.open(rule, table, evalTable,
-                keyExpansion, forwardRelrec != null, joinedDatasets, resolver, ruleId,
-                domainPrefix);
-        if (shadow != null)
-        {
-            joinedDatasets = shadow.joinedDatasets(joinedDatasets);
+            joinedDatasets = buildJoinedDatasets(joinMatchDatasets, evalTable, resolver, joinCache,
+                    ruleId);
+            if (relrecExpansion != null)
+            {
+                joinedDatasets = new LinkedHashMap<>(joinedDatasets);
+                joinedDatasets.put(RELREC, relrecExpansion.lookup());
+            }
+            if (keyExpansion != null)
+            {
+                joinedDatasets = new LinkedHashMap<>(joinedDatasets);
+                joinedDatasets.putAll(keyExpansion.lookups());
+            }
         }
 
         // Phase 2c is gone (D77): the Check tree — every level of it — was resolved by the
@@ -879,7 +944,7 @@ public final class RuleRunner
                 // PLAN-identity-safe-join-caches D4: the run's wildcard column cache, so every rule
                 // of a validation run shares it; without a run cache the context's own default is
                 // used (per-execute scope, still cached).
-                .wildcardColumns(runWildcardColumns(joinCache)).mergedShadow(shadow).build();
+                .wildcardColumns(runWildcardColumns(joinCache)).mergedView(mergedView).build();
         try
         {
             // The rule's joins and its context are built BEFORE the eager "answered but unusable"
@@ -904,10 +969,6 @@ public final class RuleRunner
             // EC-43: exactly one aggregated INFO line per (rule, dataset), whatever the outcome
             // (finding, SKIPPED, or a propagating evaluation error). See logAbsentColumnFolds.
             logAbsentColumnFolds(ruleId, evalTable, ctx);
-            if (shadow != null)
-            {
-                shadow.close();
-            }
         }
     }
 
@@ -4231,6 +4292,124 @@ public final class RuleRunner
             }
         }
         return out;
+    }
+
+
+    /**
+     * OD-7 / MET #15 ({@code PLAN-merged-evaluation-table} W3a): a rule whose referenced names
+     * include a merged column carrying a {@code MERGE_ERROR} — a supplemental qualifier two rows
+     * qualify for one record, a subject- and a record-level row for one subject, an {@code IDVAR}
+     * the primary lacks (§3.5.3 cases 2, 3, 5, 6, 9-overlap) — is the rule's ERROR, quoting the
+     * flag; a rule that does not reference the column runs normally. The names are the rule's
+     * static reads: every level's Check, the compiled bindings, {@code Output_Variables} and the
+     * grouping variables. A dynamic read ({@code colref}) of a flagged column errors at read time
+     * ({@link MergeErrorReadException}).
+     */
+    private static @Nullable RuleExecutionResult mergeErrorGate(Rule rule,
+            MergedEvaluation.Built view, @Nullable String ruleId, @Nullable String message,
+            IDataTable table)
+    {
+        if (view.flagged().isEmpty())
+        {
+            return null;
+        }
+        Set<String> referenced = referencedNames(rule);
+        Map.Entry<String, String> read = null;
+        for (Map.Entry<String, String> flag : view.flagged().entrySet())
+        {
+            if (read == null
+                    && referenced.contains(flag.getKey().toUpperCase(java.util.Locale.ROOT)))
+            {
+                read = flag;
+            }
+        }
+        if (read == null)
+        {
+            return null;
+        }
+        String errorMsg = MergedEvaluation.flagMessage(read.getKey(), read.getValue());
+        LOGGER.log(System.Logger.Level.WARNING, "[{0}] {1}", ruleId != null ? ruleId : "?",
+                errorMsg);
+        Violation sentinel = new Violation(0, Map.of("__error__", errorMsg));
+        return RuleExecutionResult.builder().ruleId(ruleId).message(message)
+                .violations(List.of(sentinel)).totalRows(table.getRowCount())
+                .status(RuleExecutionStatus.ERROR).statusMessage(errorMsg).build();
+    }
+
+
+    /**
+     * The column names a rule reads statically, upper-cased: the {@code COLUMN} and
+     * {@code DOTTED_REF} operands of every level's Check and of every compiled binding, its
+     * {@code Output_Variables} and its grouping variables.
+     */
+    static Set<String> referencedNames(Rule rule)
+    {
+        Set<String> out = new java.util.HashSet<>();
+        for (CheckCondition condition : rule.checkConditions())
+        {
+            collectNames(net.cumba.corej.core.expr.CheckToExpr.toExpr(condition), out);
+        }
+        for (net.cumba.corej.core.model.CompiledBinding binding : rule.bindingOrder())
+        {
+            collectNames(binding.expression(), out);
+        }
+        if (rule.getOutcome() != null && rule.getOutcome().getOutputVariables() != null)
+        {
+            for (String name : rule.getOutcome().getOutputVariables())
+            {
+                out.add(name.toUpperCase(java.util.Locale.ROOT));
+            }
+        }
+        if (rule.getGrouping() != null && rule.getGrouping().getVariables() != null)
+        {
+            for (String name : rule.getGrouping().getVariables())
+            {
+                out.add(name.toUpperCase(java.util.Locale.ROOT));
+            }
+        }
+        return out;
+    }
+
+
+    private static void collectNames(Expr expr, Set<String> out)
+    {
+        switch (expr)
+        {
+        case Expr.Lit lit ->
+        {
+            if (lit.value() instanceof List<?> elements)
+            {
+                for (Object element : elements)
+                {
+                    if (element instanceof Expr nested)
+                    {
+                        collectNames(nested, out);
+                    }
+                }
+            }
+        }
+        case Expr.Ref ref ->
+        {
+            if (ref.kind() == net.cumba.corej.core.expr.OperandKind.COLUMN
+                    || ref.kind() == net.cumba.corej.core.expr.OperandKind.DOTTED_REF)
+            {
+                out.add(ref.name().toUpperCase(java.util.Locale.ROOT));
+            }
+        }
+        case Expr.Not not -> collectNames(not.inner(), out);
+        case Expr.And and -> and.parts().forEach(p -> collectNames(p, out));
+        case Expr.Or or -> or.parts().forEach(p -> collectNames(p, out));
+        case Expr.Binary binary ->
+        {
+            collectNames(binary.left(), out);
+            collectNames(binary.right(), out);
+        }
+        case Expr.Call call ->
+        {
+            call.args().forEach(arg -> collectNames(arg, out));
+            call.kwargs().values().forEach(arg -> collectNames(arg, out));
+        }
+        }
     }
 
 

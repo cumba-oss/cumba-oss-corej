@@ -123,6 +123,23 @@ class JoinLookupProductionOverrideGuardTest
         {
                 0
         }), primary, 0));
+        // W3a: the merged-view lookup reads a built view (real tables: the view copies column
+        // metadata), its keyed part DM left-joined on USUBJID.
+        IDataTable viewPrimary = RealTables.of("AE").str("USUBJID", "S1").build();
+        IDataTable viewChild = RealTables.of("DM").str("USUBJID", "S1").str("ARM", "A").build();
+        net.cumba.datatable.merge.MergedTable view = net.cumba.datatable.merge.MergedTables
+                .build(net.cumba.datatable.merge.MergeRequest.builder().primary(viewPrimary)
+                        .keyed(net.cumba.datatable.merge.KeyedMergeSpec.builder().qualifier("DM")
+                                .dataset("DM")
+                                .key(net.cumba.datatable.merge.KeyColumn.of("USUBJID"))
+                                .joinType(net.cumba.datatable.merge.JoinType.LEFT).build())
+                        .resolver(n -> "DM".equalsIgnoreCase(n) ? viewChild : null)
+                        .matchedFlags(true).build());
+        net.cumba.datatable.merge.MergedPart keyedPart = view.parts().stream()
+                .filter(p -> p.kind() == net.cumba.datatable.merge.MergeKind.KEYED).findFirst()
+                .orElseThrow();
+        out.put("MergedViewLookup",
+                new Probe(new MergedViewLookup(view, keyedPart, false), viewPrimary, 0));
         return out;
     }
 

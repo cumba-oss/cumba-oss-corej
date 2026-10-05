@@ -274,7 +274,15 @@ class EngineErrorMessageContractTest
         // already folds, so no ErrorReason branch is owed and this count is unchanged.
         long sites = source("RuleRunner.java").lines()
                 .filter(l -> l.contains("RuleExecutionStatus.ERROR")).count();
-        Assertions.assertEquals(9, sites,
+        // Sites 10 and 11 are PLAN-merged-evaluation-table W3a (OD-7 / MET #15): the static gate
+        // on a rule's referenced names (RuleRunner.mergeErrorGate - a merged column carrying
+        // MERGE_ERROR) and the MergeException | MergeErrorReadException catch (a merge the
+        // datatable refuses; a read-time MERGE_ERROR). Their messages start with the fixed
+        // prefixes MergedEvaluation.MERGE_ERROR_MESSAGE_PREFIX / MERGE_REFUSED_MESSAGE_PREFIX
+        // (pinned below), the classifier's keys: ViolationNormaliser carries MERGE_ERROR and
+        // MERGE_REFUSED, and MergeErrorReasonReachabilityTest in the rules repository drives the
+        // engine to both.
+        Assertions.assertEquals(11, sites,
                 "RuleRunner's ERROR-producing sites changed. Re-derive the ErrorReason vocabulary "
                         + "in the rules repository's ViolationNormaliser before accepting this.");
     }
@@ -310,6 +318,26 @@ class EngineErrorMessageContractTest
                 "the \"column-type mismatch: \" message prefix no longer appears at exactly the "
                         + "three ColumnTypeGate builder sites — a reworded prefix would classify "
                         + "every such ERROR as OTHER in the rules repository");
+    }
+
+
+    @Test
+    void theMergeErrorPrefixesAreStillTheEngineSWording() throws IOException
+    {
+        // W3a's two merged-table ERROR messages are built from constants in MergedEvaluation
+        // (flagMessage, and RuleRunner's MergeException catch), each defined at exactly one
+        // site - the stable keys of ViolationNormaliser's MERGE_ERROR / MERGE_REFUSED branches.
+        String text = source("MergedEvaluation.java");
+        Assertions.assertEquals(1,
+                text.lines().filter(l -> l.contains("\"MERGE_ERROR on \"")).count(),
+                "the \"MERGE_ERROR on \" prefix no longer appears at exactly its one definition"
+                        + " site - a reworded prefix would classify every such ERROR as OTHER in"
+                        + " the rules repository");
+        Assertions.assertEquals(1,
+                text.lines().filter(l -> l.contains("\"merged evaluation table: \"")).count(),
+                "the \"merged evaluation table: \" prefix no longer appears at exactly its one"
+                        + " definition site - a reworded prefix would classify every such ERROR"
+                        + " as OTHER in the rules repository");
     }
 
 

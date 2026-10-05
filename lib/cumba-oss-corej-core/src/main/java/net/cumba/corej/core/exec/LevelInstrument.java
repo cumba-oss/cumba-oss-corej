@@ -443,7 +443,9 @@ public final class LevelInstrument
         @Override
         public @Nullable Level resolve(Expr.Ref ref)
         {
-            if (ref.kind() != OperandKind.COLUMN)
+            // N24 (PLAN-merged-evaluation-table W3a): a dotted reference is refined by the same
+            // primitive as a bare one — an absent column of a served join is dataset-level.
+            if (ref.kind() != OperandKind.COLUMN && ref.kind() != OperandKind.DOTTED_REF)
             {
                 return null;
             }

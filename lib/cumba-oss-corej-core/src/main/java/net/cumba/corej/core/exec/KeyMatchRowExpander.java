@@ -797,6 +797,29 @@ final class KeyMatchRowExpander
     }
 
     /**
+     * The key gates of one expandable, unchained entry without the expansion — the same checks,
+     * exceptions and messages {@link #keySpec} raises (a malformed sided key, the D4 key-type
+     * identity, a degenerate key), for the merged-view arm that builds its row maps in the
+     * datatable ({@code MergedEvaluation}).
+     *
+     * @throws MalformedSidedKeyException
+     *             a sided key element names one side only
+     * @throws JoinKeyTypeMismatchException
+     *             a key compares a numeric column with a character one (D4)
+     * @throws DegenerateJoinKeyException
+     *             no key column exists on either side
+     */
+    static void checkKeys(IDataTable primary, IDataTable child, MatchDataset md)
+    {
+        keySpec(primary, child, Objects.requireNonNull(md.getKeys()), md, List.of(md), 0,
+                new IDataTable[]
+                {
+                        child
+                });
+    }
+
+
+    /**
      * @param entries
      *            the rule's expandable entries, in order — a qualified component's source is an
      *            EARLIER one

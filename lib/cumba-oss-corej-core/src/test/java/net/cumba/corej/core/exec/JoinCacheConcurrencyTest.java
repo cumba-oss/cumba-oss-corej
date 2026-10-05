@@ -2,7 +2,6 @@ package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -156,8 +155,11 @@ class JoinCacheConcurrencyTest
         }
         // The counter, not identity observed after the race — but best-effort here (see the class
         // javadoc): the deterministic race check is in KeyMatchSharedIndexTest.
-        assertEquals(1, shared.keyMatchIndexBuildCount(),
-                "the shared ADSL index must be built once, however many threads race for it");
+        // W3a of PLAN-merged-evaluation-table: the join is a part of the merged view, built once
+        // per merge signature on the dataset's JoinCache (P-3) - the view cache is the structure
+        // the race is on now (the legacy key-match index is not built on this arm).
+        assertEquals(1, cache.mergedViewCount(),
+                "the merged view must be built once, however many threads race for it");
     }
 
 
@@ -205,8 +207,8 @@ class JoinCacheConcurrencyTest
         // KeyMatchRowExpander's row expansion, which removes it from the lookup build, so this
         // rule shape never populates that cache (measured 2026-09-24: empty after 16 waves).
         // It does populate the shared key-match index — once, for both rules and all waves.
-        assertEquals(1, shared.keyMatchIndexBuildCount(),
-                "two rules with the same {ADSL, [USUBJID]} entry share one key-match index");
+        assertEquals(1, cache.mergedViewCount(),
+                "two rules with the same {ADSL, [USUBJID]} entry share one merged view");
     }
 
 
@@ -228,8 +230,10 @@ class JoinCacheConcurrencyTest
                 + " row: " + baseline.getStatus() + " " + baseline.getStatusMessage());
         // Non-vacuity of the path itself: had the entry gone to the key-match expander instead,
         // this cache would be empty.
-        assertNotNull(baselineCache.get(ADSL_LOOKUP_KEY),
-                "the SUPP-named entry must be served by the JoinCache's key-join branch");
+        // W3a: the SUPP-named keyed entry is a keyed part of the merged view (left: a first-wins
+        // lookup never dropped a row), built once per signature on the JoinCache.
+        assertEquals(1, baselineCache.mergedViewCount(),
+                "the SUPP-named entry must be served by the merged view");
 
         JoinCache.SharedIndexCache shared = new JoinCache.SharedIndexCache();
         JoinCache cache = new JoinCache(shared);
@@ -240,8 +244,8 @@ class JoinCacheConcurrencyTest
         {
             assertResultsEqual(baseline, r);
         }
-        JoinLookup built = cache.get(ADSL_LOOKUP_KEY);
-        assertNotNull(built, "the cold-start wave must populate the JoinCache");
+        assertEquals(1, cache.mergedViewCount(), "the cold-start wave must build the one view");
+        MergedEvaluation.Built built = cache.mergedViews().iterator().next();
 
         List<RuleExecutionResult> secondWave = runParallel(THREADS, RULES_PER_THREAD,
                 () -> RuleRunnerCalls.execute(rule, primary, resolver, "AD", null, cache));
@@ -250,11 +254,10 @@ class JoinCacheConcurrencyTest
         {
             assertResultsEqual(baseline, r);
         }
-        assertSame(built, cache.get(ADSL_LOOKUP_KEY),
-                "a warm JoinCache must keep serving the lookup the cold-start wave built");
-        // Best-effort, and blind to a duplicate DatasetLookup over the one index (class javadoc).
-        assertEquals(1, shared.lookupIndexBuildCount(),
-                "the shared SUPPADSL lookup index must be built once across both waves");
+        assertEquals(1, cache.mergedViewCount(),
+                "the merged view must be built once across both waves");
+        assertSame(built, cache.mergedViews().iterator().next(),
+                "a warm JoinCache must keep serving the view the cold-start wave built");
     }
 
 
@@ -281,7 +284,7 @@ class JoinCacheConcurrencyTest
                 resolver, "AD", null, new JoinCache(new JoinCache.SharedIndexCache()));
         assertEquals(64 / 4, baseline.getViolationCount(), "the fixture fires once per SUBJ02 row");
 
-        JoinLookup first = null;
+        MergedEvaluation.Built first = null;
         for (int i = 0; i < 16; i++)
         {
             List<List<RuleExecutionResult>> pairs = runParallel(2, 1,
@@ -297,17 +300,14 @@ class JoinCacheConcurrencyTest
                             "violation count");
                 }
             }
-            JoinLookup current = cache.get(ADSL_LOOKUP_KEY);
-            assertNotNull(current, "wave " + i + " must leave the lookup cached");
+            assertEquals(1, cache.mergedViewCount(), "wave " + i + " must leave the view cached");
+            MergedEvaluation.Built current = cache.mergedViews().iterator().next();
             if (first == null)
             {
                 first = current;
             }
-            assertSame(first, current, "wave " + i + " must reuse the one cached DatasetLookup");
+            assertSame(first, current, "wave " + i + " must reuse the one cached merged view");
         }
-        // Best-effort, and blind to a duplicate DatasetLookup over the one index (class javadoc).
-        assertEquals(1, shared.lookupIndexBuildCount(),
-                "two rules with the same {SUPPADSL, [USUBJID]} entry share one lookup index");
     }
 
     // ------------------------------------------------------------------
@@ -321,7 +321,6 @@ class JoinCacheConcurrencyTest
     private static final String CACHED_JOIN_DATASET = "SUPPADSL";
 
     /** {@code JoinCache}'s lookup key for that dataset joined on {@code USUBJID}. */
-    private static final String ADSL_LOOKUP_KEY = CACHED_JOIN_DATASET + "|USUBJID";
 
     private static IDataTable makePrimary(int rows)
     {

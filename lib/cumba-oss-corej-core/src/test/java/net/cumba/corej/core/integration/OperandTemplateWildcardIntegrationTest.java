@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.DatasetResolver;
+import net.cumba.corej.core.exec.RealTables;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.model.CheckConditionAll;
@@ -14,7 +15,6 @@ import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -78,13 +78,13 @@ class OperandTemplateWildcardIntegrationTest
     @Test
     void wildcard_inSet_doesNotFire_outOfSetFires_missingGuarded()
     {
-        IDataTable adsl = MockTable.of().col("USUBJID", "S1").col("PH1SDT", "2024-01-01")
-                .col("PH2SDT", "2024-02-01").name("ADSL").build();
+        IDataTable adsl = RealTables.of("ADSL").str("USUBJID", "S1").str("PH1SDT", "2024-01-01")
+                .str("PH2SDT", "2024-02-01").build();
         // Row 0: PHSDT in set → no fire.
         // Row 1: PHSDT not in set → fires.
         // Row 2: PHSDT missing → guarded by non_empty → no fire.
-        IDataTable adae = MockTable.of().col("USUBJID", "S1", "S1", "S1")
-                .col("PHSDT", "2024-02-01", "1999-12-31", null).name("ADAE").build();
+        IDataTable adae = RealTables.of("ADAE").str("USUBJID", "S1", "S1", "S1")
+                .str("PHSDT", "2024-02-01", "1999-12-31", null).build();
         Map<String, IDataTable> tables = new HashMap<>();
         tables.put("ADSL", adsl);
         tables.put("ADAE", adae);
@@ -100,9 +100,9 @@ class OperandTemplateWildcardIntegrationTest
     void wildcard_emptyMatch_firesOnEveryPopulatedRow()
     {
         // ADSL with no matching PH<digit>SDT columns at all.
-        IDataTable adsl = MockTable.of().col("USUBJID", "S1").col("AGE", "42").name("ADSL").build();
-        IDataTable adae = MockTable.of().col("USUBJID", "S1", "S1")
-                .col("PHSDT", "2024-02-01", "1999-12-31").name("ADAE").build();
+        IDataTable adsl = RealTables.of("ADSL").str("USUBJID", "S1").str("AGE", "42").build();
+        IDataTable adae = RealTables.of("ADAE").str("USUBJID", "S1", "S1")
+                .str("PHSDT", "2024-02-01", "1999-12-31").build();
         Map<String, IDataTable> tables = new HashMap<>();
         tables.put("ADSL", adsl);
         tables.put("ADAE", adae);

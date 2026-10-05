@@ -325,6 +325,14 @@ public final class JoinCache
      */
     private final ConcurrentHashMap<String, JoinLookup> lookupCache = new ConcurrentHashMap<>();
 
+    /**
+     * The merged evaluation views of this dataset, one per merge signature (P-3 of
+     * {@code PLAN-merged-evaluation-table}): every rule whose keyed entries and SUPP flag agree
+     * reads the same view, its row maps and its qualifier columns. Released with this cache when
+     * the dataset finishes.
+     */
+    private final ConcurrentHashMap<MergedEvaluation.ViewKey, MergedEvaluation.Built> views = new ConcurrentHashMap<>();
+
     /** Shared index cache (may be null if no cross-dataset sharing is desired). */
     private final @Nullable SharedIndexCache sharedIndex;
 
@@ -358,6 +366,31 @@ public final class JoinCache
     SharedIndexCache getSharedIndexCache()
     {
         return sharedIndex;
+    }
+
+
+    /**
+     * The merged view of one merge signature, built once per dataset by {@code construct} under the
+     * map's lock so concurrent rule threads asking for the same signature share one build.
+     */
+    MergedEvaluation.Built mergedView(MergedEvaluation.ViewKey key,
+            Supplier<MergedEvaluation.Built> construct)
+    {
+        return views.computeIfAbsent(key, _ -> construct.get());
+    }
+
+
+    /** The merged views built on this cache so far, one per merge signature (tests). */
+    int mergedViewCount()
+    {
+        return views.size();
+    }
+
+
+    /** The merged views built on this cache so far (tests). */
+    java.util.Collection<MergedEvaluation.Built> mergedViews()
+    {
+        return views.values();
     }
 
 

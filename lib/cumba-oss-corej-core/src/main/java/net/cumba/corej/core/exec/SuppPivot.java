@@ -92,9 +92,16 @@ public final class SuppPivot
      */
     public static @Nullable IDataTableColumn qualifierColumn(EvaluationContext ctx, String name)
     {
-        IDataTableColumn column = pivot(ctx, name);
-        MergedTableShadow.Session shadow = ctx.getMergedShadow();
-        return shadow == null ? column : shadow.suppColumn(ctx.getTable(), name, column);
+        // W3a of PLAN-merged-evaluation-table: on the merged-view arm the qualifier is a column
+        // of the view (its SUPP part, bare QNAM), read at the evaluation row; a flagged column
+        // (MERGE_ERROR, OD-7) is a MergeErrorReadException. The pivot below serves the legacy arm
+        // (a forward RELREC rule, a chained qualified key) and every context over another table.
+        MergedEvaluation.Built view = ctx.getMergedView();
+        if (view != null && ctx.getTable() == view.table())
+        {
+            return view.suppColumn(name);
+        }
+        return pivot(ctx, name);
     }
 
 

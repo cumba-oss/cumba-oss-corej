@@ -22,7 +22,6 @@ import net.cumba.corej.core.report.ReportAssembler;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.IMetadataLibrary;
 import net.cumba.datatable.report.ValidationReport;
-import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.testkit.TestMetadataFixtures;
 import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.Test;
@@ -164,8 +163,7 @@ class AbsentDatasetSkipCrossStandardTest
     /** {@code adsl} — two subjects, both with a populated AGE that differs from any DM. */
     private static IDataTable adsl()
     {
-        return MockTable.of().name("ADSL").col("USUBJID", "S1", "S2").col("AGE", "31", "32")
-                .build();
+        return RealTables.of("ADSL").str("USUBJID", "S1", "S2").str("AGE", "31", "32").build();
     }
 
 
@@ -226,7 +224,7 @@ class AbsentDatasetSkipCrossStandardTest
     {
         Rule rule = load(AD0204_KEYED);
         IDataTable adsl = adsl();
-        IDataTable dm = MockTable.of().name("DM").col("USUBJID", "S1", "S2").col("AGE", "99", "32")
+        IDataTable dm = RealTables.of("DM").str("USUBJID", "S1", "S2").str("AGE", "99", "32")
                 .build();
         // DM IS in the cross-standard catalogue and IS supplied ⇒ the rule really runs, and finds
         // the genuine mismatch on row 0. This is the neuter control for the test above: remove the
@@ -264,7 +262,7 @@ class AbsentDatasetSkipCrossStandardTest
         // must be "was it loaded at all". Proven here through a real LibraryValidator: DM is a
         // REFERENCE (it never appears as a report member) and the rule still evaluates.
         Rule rule = load(AD0204_KEYED);
-        IDataTable dm = MockTable.of().name("DM").col("USUBJID", "S1", "S2").col("AGE", "99", "32")
+        IDataTable dm = RealTables.of("DM").str("USUBJID", "S1", "S2").str("AGE", "99", "32")
                 .build();
         ValidationReport report = LibraryValidator.builder().provider(adamProvider())
                 .rules(List.of(rule)).crossStandardDatasets(Set.of("DM"))
@@ -323,8 +321,8 @@ class AbsentDatasetSkipCrossStandardTest
     void aNonCollapsingCrossStandardRuleIsLeftCompletelyAlone() throws Exception
     {
         Rule rule = load(NON_COLLAPSING);
-        IDataTable adsl = MockTable.of().name("ADSL").col("USUBJID", "S1", "S2", "S3")
-                .col("FLAG", "X", "Z", "Z").col("DY", "1", "1", "").build();
+        IDataTable adsl = RealTables.of("ADSL").str("USUBJID", "S1", "S2", "S3")
+                .str("FLAG", "X", "Z", "Z").str("DY", "1", "1", "").build();
         DatasetResolver noDm = resolverOf(Map.of("ADSL", adsl));
 
         RuleExecutionResult before = run(rule, adsl, noDm, Set.of(), Set.of());
@@ -350,8 +348,7 @@ class AbsentDatasetSkipCrossStandardTest
         // Fix #222's wording is reproduced verbatim so nothing downstream that reads it breaks.
         Rule rule = load(BOTH_KINDS);
         IDataTable adsl = adsl();
-        IDataTable dm = MockTable.of().name("DM").col("USUBJID", "S1", "S2").col("AGE", "1", "2")
-                .build();
+        IDataTable dm = RealTables.of("DM").str("USUBJID", "S1", "S2").str("AGE", "1", "2").build();
         RuleExecutionResult r = run(rule, adsl, resolverOf(Map.of("ADSL", adsl, "DM", dm)),
                 Set.of("TS"), Set.of("DM"));
         assertEquals(RuleExecutionStatus.SKIPPED, r.getStatus());
@@ -443,8 +440,8 @@ class AbsentDatasetSkipCrossStandardTest
     void aCrossStandardRuleOfTheJoinedEqualityShapeSkips() throws Exception
     {
         Rule a = joinedEquality("R-A", "AGE");
-        IDataTable adsl = MockTable.of().name("ADSL").col("USUBJID", "S1").col("AGE", "31")
-                .col("SEX", "M").build();
+        IDataTable adsl = RealTables.of("ADSL").str("USUBJID", "S1").str("AGE", "31")
+                .str("SEX", "M").build();
         DatasetResolver noDm = resolverOf(Map.of("ADSL", adsl));
 
         // CONTROL — without the cross-standard fact the rule really does produce a verdict, or the

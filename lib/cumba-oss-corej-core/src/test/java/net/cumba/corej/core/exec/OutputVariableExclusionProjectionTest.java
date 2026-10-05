@@ -13,7 +13,6 @@ import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -34,6 +33,9 @@ import org.junit.jupiter.api.Test;
  */
 class OutputVariableExclusionProjectionTest
 {
+
+    // W3a: real tables (the merged view copies column metadata), unlabelled as the former
+    // MockTable fixtures were - the per-variable projections below read variable_label.
 
     private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
     {
@@ -71,8 +73,8 @@ class OutputVariableExclusionProjectionTest
                  "Check":{"expression":"not empty(AETERM) and empty(AEDECOD) and not empty(AESEV)"},
                  "Outcome":{"Message":"m","Output_Variables":["!AEDECOD"]}}""");
         assertEquals(List.of("AETERM", "AESEV"), rule.getEffectiveOutputVariables());
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AETERM", "H")
-                .col("AEDECOD", "").col("AESEV", "MILD").build();
+        IDataTable ae = RealTables.of("AE").unlabelled().str("USUBJID", "S1").str("AETERM", "H")
+                .str("AEDECOD", "").str("AESEV", "MILD").build();
 
         Map<String, String> values = singleViolationValues(RuleRunnerCalls.execute(rule, ae));
 
@@ -98,7 +100,7 @@ class OutputVariableExclusionProjectionTest
                          "Outcome":{"Message":"m","Output_Variables":["variable_name","variable_label","!variable_format"]}}""");
         assertEquals(List.of("variable_name", "variable_label"),
                 rule.getEffectiveOutputVariables());
-        IDataTable table = MockTable.of().name("AE").col("AETERM", "X", "Y").build();
+        IDataTable table = RealTables.of("AE").unlabelled().str("AETERM", "X", "Y").build();
 
         Map<String, String> values = singleViolationValues(RuleRunnerCalls.execute(rule, table));
 
@@ -121,7 +123,7 @@ class OutputVariableExclusionProjectionTest
                          "Check":{"all":[{"expression": "ends_with(varname(), \\"AETERM\\")"},
                                          {"expression": "empty(var_format(\\"DATA\\"))"}]},
                          "Outcome":{"Message":"m","Output_Variables":["variable_name","variable_format"]}}""");
-        IDataTable table = MockTable.of().name("AE").col("AETERM", "X", "Y").build();
+        IDataTable table = RealTables.of("AE").unlabelled().str("AETERM", "X", "Y").build();
 
         Map<String, String> values = singleViolationValues(RuleRunnerCalls.execute(rule, table));
 
@@ -148,7 +150,7 @@ class OutputVariableExclusionProjectionTest
                 Map.of("name", "SEX", "role", "Qualifier"));
         MetadataProvider library = new StubMetadataProvider().variable("DM",
                 Map.of("name", "SEX", "role", "Identifier"));
-        IDataTable dm = MockTable.of().name("DM").col("SEX", "F").build();
+        IDataTable dm = RealTables.of("DM").unlabelled().str("SEX", "F").build();
 
         Map<String, String> values = singleViolationValues(
                 RuleRunnerCalls.execute(rule, dm, _ -> null, "DM", library, null, define));
@@ -177,8 +179,8 @@ class OutputVariableExclusionProjectionTest
                          "Outcome":{"Message":"m","Output_Variables":["variable_name","variable_value","!variable_label"]}}""");
         assertEquals(List.of("variable_name", "variable_value"),
                 rule.getEffectiveOutputVariables());
-        IDataTable table = MockTable.of().name("ADSL").col("USUBJID", "S1", "S2")
-                .col("DESC", "abcdef", "ab").build();
+        IDataTable table = RealTables.of("ADSL").unlabelled().str("USUBJID", "S1", "S2")
+                .str("DESC", "abcdef", "ab").build();
 
         Map<String, String> values = singleViolationValues(
                 RuleRunnerCalls.execute(rule, table, _ -> null, "ADSL", null, null, null));
@@ -256,15 +258,15 @@ class OutputVariableExclusionProjectionTest
     /** The ADLB primary / ADSL foreign pair the {@code T-OV-P5} family runs against. */
     private static IDataTable adlb()
     {
-        return MockTable.of().name("ADLB").col("USUBJID", "S1", "S2").col("AGE", "45", "67")
-                .col("TRTSDT", "2020-01-01", "2020-01-01").build();
+        return RealTables.of("ADLB").unlabelled().str("USUBJID", "S1", "S2").str("AGE", "45", "67")
+                .str("TRTSDT", "2020-01-01", "2020-01-01").build();
     }
 
 
     private static DatasetResolver adslResolver()
     {
-        IDataTable adsl = MockTable.of().name("ADSL").col("USUBJID", "S1", "S2")
-                .col("AGE", "45", "30").build();
+        IDataTable adsl = RealTables.of("ADSL").unlabelled().str("USUBJID", "S1", "S2")
+                .str("AGE", "45", "30").build();
         return name -> "ADSL".equalsIgnoreCase(name) ? adsl : null;
     }
 
@@ -348,8 +350,8 @@ class OutputVariableExclusionProjectionTest
                  "Check":{"expression":"not empty(AETERM) and empty(AEDECOD)"},
                  "Outcome":{"Message":"m","Output_Variables":["!AETERM","!AEDECOD"]}}""");
         assertEquals(List.of(), rule.getEffectiveOutputVariables());
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AETERM", "H")
-                .col("AEDECOD", "").build();
+        IDataTable ae = RealTables.of("AE").unlabelled().str("USUBJID", "S1").str("AETERM", "H")
+                .str("AEDECOD", "").build();
         // The vacuity control: the inference the empty list falls back to WOULD re-project both.
         assertEquals(List.of("AETERM", "AEDECOD"),
                 List.copyOf(RuleRunner.collectCheckLeafColumns(rule.getCheck(), ae.getMetaData())));
@@ -377,7 +379,7 @@ class OutputVariableExclusionProjectionTest
                                          {"expression": "empty(var_label(\\"DATA\\"))"}]},
                          "Outcome":{"Message":"m","Output_Variables":["!variable_name","!variable_label"]}}""");
         assertEquals(List.of(), rule.getEffectiveOutputVariables());
-        IDataTable table = MockTable.of().name("AE").col("AETERM", "X").build();
+        IDataTable table = RealTables.of("AE").unlabelled().str("AETERM", "X").build();
 
         Map<String, String> values = singleViolationValues(RuleRunnerCalls.execute(rule, table));
 
@@ -399,8 +401,8 @@ class OutputVariableExclusionProjectionTest
                                          {"expression": "len(value()) > 3"}]},
                          "Outcome":{"Message":"m","Output_Variables":["!variable_name","!variable_value"]}}""");
         assertEquals(List.of(), rule.getEffectiveOutputVariables());
-        IDataTable table = MockTable.of().name("ADSL").col("USUBJID", "S1", "S2")
-                .col("DESC", "abcdef", "ab").build();
+        IDataTable table = RealTables.of("ADSL").unlabelled().str("USUBJID", "S1", "S2")
+                .str("DESC", "abcdef", "ab").build();
 
         Map<String, String> values = singleViolationValues(
                 RuleRunnerCalls.execute(rule, table, _ -> null, "ADSL", null, null, null));
@@ -421,8 +423,8 @@ class OutputVariableExclusionProjectionTest
                          "Check":{"expression":"not is_unique_set([USUBJID, AETERM]) and not empty(AETERM)"},
                          "Outcome":{"Message":"m","Output_Variables":["!AETERM"]}}""");
         assertEquals(List.of(), rule.getEffectiveOutputVariables());
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1", "S1").col("AETERM", "H", "H")
-                .build();
+        IDataTable ae = RealTables.of("AE").unlabelled().str("USUBJID", "S1", "S1")
+                .str("AETERM", "H", "H").build();
 
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae);
 

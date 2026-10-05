@@ -10,7 +10,6 @@ import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.VariableRequirement;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -53,10 +52,10 @@ class RuleRunnerVariableScopeTest
 
     private static IDataTable aeTable(String... columns)
     {
-        MockTable mt = MockTable.of().name("AE");
+        RealTables mt = RealTables.of("AE");
         for (String c : columns)
         {
-            mt.col(c, "x");
+            mt.str(c, "x");
         }
         return mt.build();
     }
