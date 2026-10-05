@@ -76,7 +76,8 @@ public final class BindingValue
     /**
      * The binding's static type (stage A, {@code StageAChecker.bindingTypes}) — the type source of
      * {@link #reportedHandOver} when a missing's carrier lost it; {@code null} when the caller had
-     * none (a test constructing the value directly).
+     * none (a test constructing the value directly, or a rule whose binding walk failed), which a
+     * missing then reports as an ERROR, never as an untyped value ({@link #reportedDefault}).
      */
     private final @Nullable ExprType staticType;
 
@@ -229,11 +230,14 @@ public final class BindingValue
      * function result that answered nothing) for every other type. A per-row binding is still its
      * {@link Vector} (the caller renders the finding's row). {@code handOver} itself keeps
      * answering {@code null} for a missing: it is the <em>evaluation</em> accessor, and a verdict
-     * must not move because the report learnt to spell absence.
+     * must not move because the report learnt to spell absence. When the carrier lost the type, the
+     * binding's stage-A type decides ({@link #reportedDefault}); with neither, it throws (P3).
      *
      * @param ctx
      *            the reading context
      * @return the hand-over value or the typed default; never {@code null}
+     * @throws IllegalStateException
+     *             when a missing has no type source ({@link #reportedDefault})
      */
     public Object reportedHandOver(EvaluationContext ctx)
     {
@@ -265,15 +269,31 @@ public final class BindingValue
     /**
      * The typed default absence value a finding reports for this binding when it has no value,
      * given the type the evaluation carried ({@code PLAN-output-variable-null-key-provenance} §2.1
-     * / H3) — the one decision {@link #reportedHandOver} and the record path's empty-table arm
+     * / H3 / P3) — the one decision {@link #reportedHandOver} and the record path's empty-table arm
      * share (T2 LOW-5): {@code ""} for a string; {@link MissingValue#MIS} for a number or a
      * boolean; for an untyped carrier ({@code ConstVector.of(null)} — a metadata accessor with no
      * cell, a function that answered nothing — or a per-row binding with no row to read) the
-     * binding's <em>static</em> type decides.
+     * binding's <em>static</em> type decides: {@code ""} for a string or a date / time (a temporal
+     * value's carrier is its ISO-8601 text, SPEC §1.2 — a char value), {@code MIS} for a number, a
+     * boolean or a list.
+     *
+     * <p>
+     * ⛔ <b>No untyped default</b> (owner ruling OPEN-T (c), 2026-10-05: <i>"#3: yes"</i>). Every
+     * value function whose semantics pin its result declares it ({@code ElementTable}), so stage A
+     * types the binding. A binding whose type neither the evaluation nor stage A knows — a function
+     * whose result is the type of the column it reads ({@code read_value}, {@code max},
+     * {@code row_max}, {@code coalesce}, {@code colref}, {@code value()}) over a column with no
+     * declared type, or an {@code extract_metadata} key no reader documents — has no type source,
+     * and the finding refuses to print a guessed value: it throws, and the rule ERRORs
+     * ({@code LibraryValidator.executeRule}). Until 2026-10-05 it printed the record path's
+     * historical untyped {@code ""}.
+     * </p>
      *
      * @param evaluated
      *            the type the evaluation carried
      * @return {@code ""} or {@link MissingValue#MIS}; never {@code null}
+     * @throws IllegalStateException
+     *             when neither the evaluation nor stage A types the binding
      */
     public Object reportedDefault(DataValueType evaluated)
     {
@@ -286,7 +306,8 @@ public final class BindingValue
         {
             return MissingValue.MIS;
         }
-        if (staticType == ExprType.Primitive.STRING)
+        if (staticType == ExprType.Primitive.STRING || staticType == ExprType.Primitive.DATE
+                || staticType == ExprType.Primitive.TIME)
         {
             return "";
         }
@@ -295,15 +316,12 @@ public final class BindingValue
         {
             return MissingValue.MIS;
         }
-        // ⚑ OPEN (PLAN-output-variable-null-key-provenance, reported 2026-10-04): neither the
-        // evaluation nor stage A knows this binding's type — a registered function with no
-        // ElementTable result type (dataset_class_from_library) or a read typed by a column the
-        // walk cannot see (read_value(TSVAL, domain=TS, …)) that answered nothing. The plan
-        // names no default to invent for an entry without a type source, so the spelling the
-        // record path has always printed for it is KEPT ("" — a preservation, not a decision)
-        // until the owner rules; a MissingValue here would print "." for a value that may well
-        // be a string.
-        return "";
+        throw new IllegalStateException("binding " + binding.name() + " answered no value and"
+                + " has no type source for the finding's default: its evaluation carried "
+                + evaluated + " and its stage-A type is "
+                + (staticType == null ? "absent" : staticType.describe())
+                + " — a binding is reported \"\" (char) or MIS, never an untyped value"
+                + " (PLAN-output-variable-null-key-provenance P3, owner OPEN-T (c) 2026-10-05)");
     }
 
 

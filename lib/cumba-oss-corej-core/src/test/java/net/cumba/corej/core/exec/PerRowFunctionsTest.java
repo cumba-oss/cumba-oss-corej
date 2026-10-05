@@ -601,9 +601,12 @@ class PerRowFunctionsTest
 
     private static Rule load(String binding) throws IOException
     {
+        // empty($v), not `$v == false`: since PLAN-output-variable-null-key-provenance P3 a
+        // value function carries its declared result type (referenced_domain_class a string), so
+        // a boolean comparand is a stage-A type error for some spellings; empty() takes any type.
         String pkg = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"W3-FN\"},"
                 + "\"Bindings\":[{\"name\":\"$v\",\"expression\":\"" + binding + "\"}],"
-                + "\"Check\":{\"expression\":\"$v == false\"}}}}";
+                + "\"Check\":{\"expression\":\"empty($v)\"}}}}";
         Rule rule = RulePackageLoader.loadFromString(pkg).getRules().get("x");
         assertNotNull(rule, "the rule loads");
         return rule;

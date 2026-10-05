@@ -1016,6 +1016,18 @@ public final class ReportAssembler
      * the finding would be useless to investigate). Trailing whitespace is fixed-width padding from
      * the source format and is safe to strip for report-display purposes.
      * </p>
+     *
+     * <p>
+     * ⭐ <b>The {@code "null"} token is the sanctioned v1 spelling</b> (owner, 2026-10-05,
+     * {@code PLAN-output-variable-null-key-provenance} Q-new: <i>"#2: yes"</i>). v1
+     * {@code Issue_Details} is a frozen external format whose positional value array cannot omit an
+     * entry, so every value-less cell — {@code null} (an entry the finding omits: an absent column,
+     * the deferred present-column state), {@code ""} (a char typed default) and NaN — prints
+     * {@code "null"}, and that is kept: a null-key change must not alter this rendering. ⚠ This
+     * method is shared by v1 and v2 ({@link #extractRow}) and feeds the XLSX {@code Issue Details}
+     * sheet; the exact states for v2 (a name-only field) and XLSX come with
+     * {@code PLAN-finding-values-record-level-only}, not here.
+     * </p>
      */
     private static String processValue(@Nullable String value)
     {

@@ -781,13 +781,15 @@ public final class StageAChecker
 
     /**
      * The static type of every binding of {@code rule}, in declaration order — what the walk types
-     * each binding expression as ({@code var_label(…)} a string, {@code max(AVAL)} a number,
-     * {@code var_exists(…)} a boolean, a codelist read a list). The <b>type source</b> of a
-     * finding's default for a binding that evaluated to a missing whose carrier lost the type
-     * ({@code BindingValue.reportedHandOver}, {@code PLAN-output-variable-null-key-provenance} H3:
-     * {@code model/Binding} has no type of its own). Empty when the walk fails — the finding then
-     * has no type source and says so. Callers read it through {@link Rule#staticBindingTypes()},
-     * which memoises it per rule.
+     * each binding expression as ({@code var_label(…)} a string, {@code record_count()} a number,
+     * {@code var_exists(…)} a boolean, a codelist read a list; a value function's result is its
+     * {@link ElementTable} row). The <b>type source</b> of a finding's default for a binding that
+     * evaluated to a missing whose carrier lost the type ({@code BindingValue.reportedDefault},
+     * {@code PLAN-output-variable-null-key-provenance} H3 / P3: {@code model/Binding} has no type
+     * of its own). Empty when the walk fails — a binding of that rule that then answers an untyped
+     * no-value has no type source and ERRORs the rule (P3: the record path's untyped {@code ""} is
+     * retired). Callers read it through {@link Rule#staticBindingTypes()}, which memoises it per
+     * rule.
      */
     public static Map<String, ExprType> bindingTypes(Rule rule)
     {
@@ -800,8 +802,8 @@ public final class StageAChecker
         catch (RuntimeException ex)
         {
             // T2 LOW-4: WARNING, not TRACE — the result is a finding's type source for a binding
-            // that answers no value, and an empty map silently degrades it to the record path's
-            // untyped default. Logged once per rule (Rule.staticBindingTypes memoises).
+            // that answers no value, and with an empty map such a binding ERRORs the rule (P3).
+            // Logged once per rule (Rule.staticBindingTypes memoises).
             LOGGER.log(System.Logger.Level.WARNING, "binding typing failed for {0}: {1}",
                     rule.getId(), ex.toString());
             return Map.of();
@@ -987,7 +989,10 @@ public final class StageAChecker
         }
         if (name.startsWith("vlm_"))
         {
-            return new TypedExpr(c, Unknown.UNKNOWN, Level.VARIABLE_VALUE, children);
+            // P3 (OPEN-T (c), owner 2026-10-05): a VLM accessor's result type is its ElementTable
+            // row — the carrier type ExprCompiler.compileVlmAccessor declares — so a binding over
+            // one that answers nothing (no Define-XML VLM) reports its typed default.
+            return new TypedExpr(c, ElementTable.resultType(name), Level.VARIABLE_VALUE, children);
         }
         if (VARNAME_ANCHORED_CALLS.contains(name))
         {
@@ -1509,7 +1514,22 @@ public final class StageAChecker
                 return Unknown.UNKNOWN;
             }
         }
-        return ElementTable.resultType(c.name());
+        return ElementTable.resultType(c.name(), staticKey(c));
+    }
+
+
+    /**
+     * The static key literal of a keyed value call ({@code extract_metadata("dataset_size")},
+     * {@code cross_dataset_variable_metadata("label", domain=…)}): its first positional argument or
+     * its {@code name=} keyword, when that is a string literal (the compile seam holds both
+     * functions' keys to literals, D-W4b-6); {@code null} otherwise.
+     */
+    private static @Nullable String staticKey(Expr.Call c)
+    {
+        Expr key = c.args().isEmpty() ? c.kwargs().get("name") : c.args().get(0);
+        return key instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
+                ? (String) lit.value()
+                : null;
     }
 
 

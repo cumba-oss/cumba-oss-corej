@@ -4,6 +4,7 @@ import java.util.Map;
 import net.cumba.corej.core.expr.typed.ExprType.ListOf;
 import net.cumba.corej.core.expr.typed.ExprType.Primitive;
 import net.cumba.corej.core.expr.typed.ExprType.Unknown;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The phase-2 seed of the per-element type table
@@ -14,11 +15,28 @@ import net.cumba.corej.core.expr.typed.ExprType.Unknown;
  * ⚠ Deliberately partial: phase 2 declares <b>result types</b> for the value functions whose
  * semantics are unambiguous, and leaves everything else {@link Unknown#UNKNOWN} — an unknown result
  * suppresses downstream known-vs-known checks, so partiality can only make the checker
- * <em>quieter</em>, never wrong. Boolean-ness is not declared here at all: it comes from the
- * {@code FunctionRegistry} descriptor's {@code FunctionKind} and the hardcoded boolean-call set, so
- * it cannot drift from the evaluator. Full per-element parameter typing is phases 3–6b, per the
- * §1.6 mapping rule (the TSV's "accepted types today" is what the engine tolerates positionally,
- * not what semantics require — D91f's 45 positional artifacts are dropped, not ported).
+ * <em>quieter</em>, never wrong. Boolean <em>predicates</em> are not declared here: their
+ * boolean-ness comes from the {@code FunctionRegistry} descriptor's {@code FunctionKind} and the
+ * hardcoded boolean-call set, so it cannot drift from the evaluator. A <b>value</b> function whose
+ * value is a boolean ({@code domain_is_custom}, the {@code _matches} accessors) is declared here
+ * like any other value function. Full per-element parameter typing is phases 3–6b, per the §1.6
+ * mapping rule (the TSV's "accepted types today" is what the engine tolerates positionally, not
+ * what semantics require — D91f's 45 positional artifacts are dropped, not ported).
+ * </p>
+ *
+ * <p>
+ * ⭐ <b>The result type is also a finding's type source</b> ({@code PLAN-output-variable-null-key-
+ * provenance} P3, owner ruling OPEN-T (c), 2026-10-05: <i>"#3: yes"</i>). A {@code $} binding that
+ * answers no value reports its typed default — {@code ""} for a string, {@code MIS} otherwise — and
+ * when the evaluation's carrier lost the type ({@code ConstVector.of(null)}: a library or
+ * Define-XML lookup that answered nothing) the binding's stage-A type, which is this table's row,
+ * decides ({@code BindingValue.reportedDefault}). So every value function whose result type its
+ * semantics pin carries a row here, including the ones that answer a <em>keyed</em> attribute
+ * ({@link #resultType(String, String)}). The functions still without a row are the ones whose
+ * result is the type of the <b>column they read</b> — {@code read_value}, {@code max},
+ * {@code row_max}, {@code coalesce}, {@code colref}, {@code value()} — a stage-B fact; their
+ * evaluation always carries the column's declared type, and a binding over one that answers an
+ * untyped no-value ERRORs the rule instead of printing a guessed default.
  * </p>
  */
 public final class ElementTable
@@ -110,7 +128,52 @@ public final class ElementTable
             Map.entry("distinct", new ListOf(Unknown.UNKNOWN)),
             Map.entry("referenced_dataset_variables", new ListOf(Primitive.STRING)),
             // §1.5: tuple(…) is sugar for a list<column-reference> composite key
-            Map.entry("tuple", new ListOf(Primitive.COLUMN_REFERENCE)));
+            Map.entry("tuple", new ListOf(Primitive.COLUMN_REFERENCE)),
+            // PLAN-output-variable-null-key-provenance P3 (OPEN-T (c), owner 2026-10-05): the
+            // value functions that had no row although their semantics pin the result —
+            // each typed from its implementation's answer.
+            // count(x) is size(x) (BuiltinFunctions registers one function under both names);
+            // dy answers the SDTM study day, a LONG (StudyDay); variable_count a column count.
+            Map.entry("count", Primitive.NUMBER), Map.entry("dy", Primitive.NUMBER),
+            Map.entry("variable_count", Primitive.NUMBER),
+            // a class name is a string (ScalarMetadataFunctions, ReferencedDomainClass)
+            Map.entry("dataset_class_from_library", Primitive.STRING),
+            Map.entry("referenced_domain_class", Primitive.STRING),
+            // boolean-valued VALUE functions (a Boolean broadcast / carrier, not a predicate)
+            Map.entry("domain_is_custom", Primitive.BOOLEAN),
+            Map.entry("column_series_metadata", Primitive.BOOLEAN),
+            Map.entry("library_variable_code_pair_matches", Primitive.BOOLEAN),
+            Map.entry("define_variable_decode_matches", Primitive.BOOLEAN),
+            // the per-record Define-XML VLM accessors: exactly the carrier types
+            // ExprCompiler.compileVlmAccessor declares (LONG / BOOLEAN / STRING), the two codelist
+            // accessors a list of strings (VlmResolver.VlmMatch.codedValues / codedCodes)
+            Map.entry("vlm_length", Primitive.NUMBER),
+            Map.entry("vlm_value_length", Primitive.NUMBER),
+            Map.entry("vlm_data_type", Primitive.STRING),
+            Map.entry("vlm_mandatory", Primitive.STRING),
+            Map.entry("vlm_type_conforms", Primitive.BOOLEAN),
+            Map.entry("vlm_codelist_extensible", Primitive.BOOLEAN),
+            Map.entry("vlm_has_codelist", Primitive.BOOLEAN),
+            Map.entry("vlm_decode_matches", Primitive.BOOLEAN),
+            Map.entry("vlm_codelist_coded_values", new ListOf(Primitive.STRING)),
+            Map.entry("vlm_codelist_coded_codes", new ListOf(Primitive.STRING)));
+
+    /**
+     * Result types of the value functions whose answer is the attribute their static key literal
+     * names (P3, OPEN-T (c)): {@code extract_metadata(name)} — the keys its implementation
+     * documents ({@code ScalarMetadataFunctions.extractMetadata}; {@code dataset_size} is the byte
+     * count, a {@code Long}) and {@code file_format} ({@code DataTableMetaSupport}); any other key
+     * is whatever the dataset's reader publishes, so it stays unknown — and
+     * {@code cross_dataset_variable_metadata(name, domain=)}, per variable, one of the four
+     * attributes its loader admits ({@code ScalarMetadataFunctions.VARIABLE_METADATA_FIELDS}).
+     */
+    private static final Map<String, Map<String, ExprType>> KEYED_RESULT_TYPES = Map.of(
+            "extract_metadata",
+            Map.of("dataset_name", Primitive.STRING, "dataset_label", Primitive.STRING,
+                    "dataset_location", Primitive.STRING, "filename", Primitive.STRING,
+                    "file_format", Primitive.STRING, "dataset_size", Primitive.NUMBER),
+            "cross_dataset_variable_metadata", Map.of("label", Primitive.STRING, "data_type",
+                    Primitive.STRING, "format", Primitive.STRING, "length", Primitive.NUMBER));
 
     private ElementTable()
     {
@@ -127,6 +190,30 @@ public final class ElementTable
     public static ExprType resultType(String name)
     {
         return RESULT_TYPES.getOrDefault(name, Unknown.UNKNOWN);
+    }
+
+
+    /**
+     * The declared result type of a value function whose answer is the attribute a static key
+     * literal names ({@link #KEYED_RESULT_TYPES}: {@code extract_metadata},
+     * {@code cross_dataset_variable_metadata}), or {@link #resultType(String)} for every other
+     * function.
+     *
+     * @param name
+     *            the function name
+     * @param key
+     *            the static key literal ({@code name} argument), or {@code null} when the call
+     *            carries none
+     * @return the result type; {@link Unknown#UNKNOWN} for a key the table does not pin
+     */
+    public static ExprType resultType(String name, @Nullable String key)
+    {
+        Map<String, ExprType> keyed = KEYED_RESULT_TYPES.get(name);
+        if (keyed == null)
+        {
+            return resultType(name);
+        }
+        return key == null ? Unknown.UNKNOWN : keyed.getOrDefault(key, Unknown.UNKNOWN);
     }
 
 }

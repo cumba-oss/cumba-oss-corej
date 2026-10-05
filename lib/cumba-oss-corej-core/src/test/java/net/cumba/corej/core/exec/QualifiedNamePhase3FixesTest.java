@@ -85,13 +85,41 @@ class QualifiedNamePhase3FixesTest
                     fn + "(J.S)", fn + "(\"J.S\")"
             })
             {
-                Rule r = load(ruleJson("Record", QualifiedNameFixture.matchJ("") + ","
-                        + check(call + " == \"text\"") + "," + outcome("K")), true);
+                Rule r = load(
+                        ruleJson("Record",
+                                QualifiedNameFixture.matchJ("") + ","
+                                        + check(typedComparison(fn, call)) + "," + outcome("K")),
+                        true);
                 String error = r.getLoadError();
                 assertNotNull(error, call + " must not load clean");
                 assertTrue(error.contains("write it bare (S)"), call + ": " + error);
             }
         }
+    }
+
+
+    /**
+     * A comparison the accessor's declared result type admits (its {@code ElementTable} row since
+     * {@code PLAN-output-variable-null-key-provenance} P3), so the load error is the qualified
+     * name's and never a stage-A type disagreement.
+     */
+    private static String typedComparison(String fn, String call)
+    {
+        net.cumba.corej.core.expr.typed.ExprType type = net.cumba.corej.core.expr.typed.ElementTable
+                .resultType(fn);
+        if (type instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf)
+        {
+            return "\"text\" in " + call;
+        }
+        if (type == net.cumba.corej.core.expr.typed.ExprType.Primitive.NUMBER)
+        {
+            return call + " == 1";
+        }
+        if (type == net.cumba.corej.core.expr.typed.ExprType.Primitive.BOOLEAN)
+        {
+            return call + " == true";
+        }
+        return call + " == \"text\"";
     }
 
 

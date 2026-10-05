@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.InvocationHandler;
@@ -343,11 +344,13 @@ class FindingValuesTypedDefaultTest
                 net.cumba.corej.core.expr.typed.ExprType.Primitive.STRING);
         BindingValue numBinding = new BindingValue(binding,
                 net.cumba.corej.core.expr.typed.ExprType.Primitive.NUMBER);
-        BindingValue untyped = new BindingValue(binding, null);
+        BindingValue dateBinding = new BindingValue(binding,
+                net.cumba.corej.core.expr.typed.ExprType.Primitive.DATE);
 
         assertEquals("", charBinding.reportedDefault(DataValueType.MISSING));
         assertEquals(MissingValue.MIS, numBinding.reportedDefault(DataValueType.MISSING));
-        assertEquals("", untyped.reportedDefault(DataValueType.MISSING), "OPEN-T: kept \"\"");
+        assertEquals("", dateBinding.reportedDefault(DataValueType.MISSING),
+                "a date's carrier is its ISO-8601 text: the char default");
         assertEquals("", numBinding.reportedDefault(DataValueType.STRING),
                 "an evaluated string wins over the static type");
         assertEquals(MissingValue.MIS, charBinding.reportedDefault(DataValueType.DOUBLE),
@@ -475,13 +478,54 @@ class FindingValuesTypedDefaultTest
 
 
     @Test
-    void aBindingWithoutAnyTypeSourceKeepsTheRecordPathsEmptyStringUntilRuled() throws Exception
+    void aBindingWithNoTypeSourceErrorsInsteadOfPrintingAnUntypedValue()
     {
-        // ⚑ OPEN question for the owner (reported 2026-10-04, not decided here): a binding whose
-        // type neither the evaluation nor stage A knows (dataset_class_from_library has no
-        // ElementTable result type) and that answers nothing. The record path has always printed
-        // "" for it; that spelling is kept — never null, never a MissingValue invented for a
-        // value that may be a string.
+        // P3 (owner OPEN-T (c), 2026-10-05): the untyped "" fallback is retired. A binding whose
+        // type neither the evaluation nor stage A knows has no type source, and the finding
+        // refuses to guess — the rule ERRORs (LibraryValidator.executeRule maps the throw).
+        CompiledBinding binding = new CompiledBinding("$u",
+                new net.cumba.corej.core.expr.ast.Expr.Lit(
+                        net.cumba.corej.core.expr.ast.Expr.LitKind.STRING, "x"),
+                List.of(), null);
+        BindingValue untyped = new BindingValue(binding, null);
+        BindingValue unknown = new BindingValue(binding,
+                net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN);
+
+        IllegalStateException noStatic = assertThrows(IllegalStateException.class,
+                () -> untyped.reportedDefault(DataValueType.MISSING));
+        assertTrue(noStatic.getMessage().contains("$u")
+                && noStatic.getMessage().contains("no type source"), noStatic.getMessage());
+        assertThrows(IllegalStateException.class,
+                () -> unknown.reportedDefault(DataValueType.MISSING));
+    }
+
+
+    @Test
+    void aRecordFindingOverAnUntypedNoValueBindingErrorsTheRule() throws Exception
+    {
+        // An extract_metadata key no reader documents is whatever the reader publishes: no
+        // declared type, and a table without the key answers an untyped no-value.
+        Rule rule = load("""
+                {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                 "Bindings":[{"name":"$m","expression":"extract_metadata(\\"no_such_key\\")"}],
+                 "Check":{"expression": "empty($m)"},
+                 "Outcome":{"Message":"m","Output_Variables":["AETERM","$m"]}}""");
+        IDataTable ae = MockTable.of().name("AE").col("AETERM", "X").build();
+
+        assertEquals(net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN,
+                rule.staticBindingTypes().get("$m"), "precondition: no declared type");
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> RuleRunnerCalls.execute(rule, ae));
+        assertTrue(ex.getMessage().contains("$m"), ex.getMessage());
+    }
+
+
+    @Test
+    void aClassNameFunctionIsTypedAStringAndReportsTheCharDefault() throws Exception
+    {
+        // OPEN-T (c): dataset_class_from_library answers a class name — a string — so stage A
+        // types the binding and an empty Library's no-answer reports "" by that type (it was the
+        // untyped fallback's "" before; the value is the same, the type source is not).
         Rule rule = load("""
                 {"Core":{"Id":"R1"},"Sensitivity":"Record",
                  "Bindings":[{"name":"$c","expression":"dataset_class_from_library()"}],
@@ -490,11 +534,104 @@ class FindingValuesTypedDefaultTest
         IDataTable ae = MockTable.of().name("AE").col("AETERM", "X").build();
         MetadataProvider library = new StubMetadataProvider();
 
+        assertEquals(net.cumba.corej.core.expr.typed.ExprType.Primitive.STRING,
+                rule.staticBindingTypes().get("$c"), "a class name is a string");
         Map<String, String> v = single(
                 RuleRunnerCalls.execute(rule, ae, _ -> null, "AE", library, null, null));
 
-        assertEquals("", v.get("$c"), "no type source: the record path's \"\" is kept — " + v);
+        assertEquals("", v.get("$c"), "the char default — " + v);
         assertNullFree(v);
+    }
+
+
+    @Test
+    void aNumericMetadataKeyReportsTheMissingMarkerByItsDeclaredType() throws Exception
+    {
+        // extract_metadata("dataset_size") is the byte count (a Long): a table without the key
+        // reports MIS, where the untyped fallback printed "".
+        Rule rule = load("""
+                {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                 "Bindings":[{"name":"$size","expression":"extract_metadata(\\"dataset_size\\")"},
+                             {"name":"$name","expression":"extract_metadata(\\"file_format\\")"}],
+                 "Check":{"expression": "empty($size)"},
+                 "Outcome":{"Message":"m","Output_Variables":["AETERM","$size","$name"]}}""");
+        IDataTable ae = MockTable.of().name("AE").col("AETERM", "X").build();
+
+        assertEquals(net.cumba.corej.core.expr.typed.ExprType.Primitive.NUMBER,
+                rule.staticBindingTypes().get("$size"));
+        Map<String, String> v = single(RuleRunnerCalls.execute(rule, ae));
+
+        assertEquals(MIS, v.get("$size"), "a numeric key with no value: MIS — " + v);
+        assertEquals("", v.get("$name"), "a char key with no value: \"\" — " + v);
+        assertNullFree(v);
+    }
+
+
+    @Test
+    void aKeyedAttributeReportsItsTypedDefaultWhenTheSourceIsAbsent() throws Exception
+    {
+        // cross_dataset_variable_metadata("length", domain="ADSL") with no ADSL in the study
+        // answers an untyped no-value (ConstVector.of(null)); "length" is a number, "label" a
+        // string — typed by the key literal.
+        Rule rule = load(
+                """
+                        {"Core":{"Id":"R1"},"Sensitivity":"Dataset",
+                         "Bindings":[{"name":"$len","expression":"cross_dataset_variable_metadata(\\"length\\", domain=\\"ADSL\\")"},
+                                     {"name":"$lbl","expression":"cross_dataset_variable_metadata(\\"label\\", domain=\\"ADSL\\")"}],
+                         "Check":{"expression": "empty($len) and empty($lbl)"},
+                         "Outcome":{"Message":"m","Output_Variables":["$len","$lbl"]}}""");
+        IDataTable ae = MockTable.of().name("AE").col("AETERM", "X").build();
+
+        assertEquals(net.cumba.corej.core.expr.typed.ExprType.Primitive.NUMBER,
+                rule.staticBindingTypes().get("$len"));
+        assertEquals(net.cumba.corej.core.expr.typed.ExprType.Primitive.STRING,
+                rule.staticBindingTypes().get("$lbl"));
+        Map<String, String> v = single(RuleRunnerCalls.execute(rule, ae));
+
+        assertEquals(MIS, v.get("$len"), "numeric attribute, no source: MIS — " + v);
+        assertEquals("", v.get("$lbl"), "char attribute, no source: \"\" — " + v);
+        assertNullFree(v);
+    }
+
+
+    @Test
+    void everyValueFunctionWhoseResultItsSemanticsPinHasAResultType()
+    {
+        // P3 roster (OPEN-T (c)): every registered VALUE function that stage A types by name has
+        // an ElementTable row, except the ones whose result is the type of the column they read
+        // (a stage-B fact, typed by the evaluation's carrier) and the two keyed functions (typed
+        // by their key literal). A new value function without a row reds here, so a binding over
+        // it cannot silently become a binding with no type source.
+        java.util.Set<String> byStageABranch = java.util.Set.of("colref", "value", "varname",
+                "date", "time", "earliest_possible", "latest_possible");
+        java.util.Set<String> unpinned = new java.util.TreeSet<>();
+        for (net.cumba.corej.core.expr.eval.FunctionDescriptor d : net.cumba.corej.core.expr.eval.FunctionRegistry
+                .all())
+        {
+            String name = d.name();
+            if (d.kind() == net.cumba.corej.core.expr.eval.FunctionKind.VALUE
+                    && net.cumba.corej.core.expr.eval.MetadataAttribute.fromFunction(name) == null
+                    && !byStageABranch.contains(name)
+                    && net.cumba.corej.core.expr.typed.ElementTable.resultType(
+                            name) == net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)
+            {
+                unpinned.add(name);
+            }
+        }
+        assertEquals(
+                java.util.Set.of("coalesce", "max", "read_value", "row_max", "extract_metadata",
+                        "cross_dataset_variable_metadata"),
+                unpinned,
+                "column-typed (coalesce, max, read_value, row_max) and keyed functions only");
+        assertEquals(net.cumba.corej.core.expr.typed.ExprType.Primitive.NUMBER,
+                net.cumba.corej.core.expr.typed.ElementTable.resultType("extract_metadata",
+                        "dataset_size"));
+        assertEquals(net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN,
+                net.cumba.corej.core.expr.typed.ElementTable.resultType("extract_metadata", "Rows"),
+                "a reader-published key is the reader's, not pinned");
+        assertEquals(net.cumba.corej.core.expr.typed.ExprType.Primitive.NUMBER,
+                net.cumba.corej.core.expr.typed.ElementTable
+                        .resultType("cross_dataset_variable_metadata", "length"));
     }
 
 
