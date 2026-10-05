@@ -473,7 +473,7 @@ class RecordCountFunctionTest
                 "must be a plain column reference");
         expectError("record_count(domain=TS, group=[--TESTCD])", "does not resolve `--`");
         expectError("record_count(domain=TS, filter=(DM.USUBJID == " + q("S1") + "))",
-                "written bare, not dotted");
+                "write it bare (USUBJID) or qualified by TS");
         expectError("record_count(group=" + q("USUBJID") + ")",
                 "takes a list of column references");
         expectError("record_count(group=[USUBJID], keep_missings=" + q("yes") + ")",
@@ -577,24 +577,26 @@ class RecordCountFunctionTest
     /**
      * Review round 1 of {@code PLAN-rprfdy-offset-tp-join} (lane 2, SPECULATIVE): a qualified
      * {@code group=} member is judged at load (D-DOMAIN / D-SRC / D-REGEX), and a spliced one never
-     * reaches those gates — so a {@code $} list that yields a qualified name ERRORs the rule, with
-     * or without {@code domain=}. RED before: the name was spliced and keyed through the join.
+     * reaches those gates — so under {@code domain=} a {@code $} list that yields a qualified name
+     * ERRORs the rule. RED before: the name was spliced and keyed through the join. ⭐ W3c of
+     * {@code PLAN-merged-evaluation-table} (N5 lifted per MQ8): WITHOUT {@code domain=} a qualified
+     * name is a column of the one evaluation table, so the spliced member answers exactly as the
+     * literal {@code group=[USUBJID, DM.USUBJID]} does (here no DM join: the member resolves
+     * nowhere and EC-44 drops it on both spellings).
      */
     @Test
-    void aSplicedQualifiedNameErrorsTheRule()
+    void aSplicedQualifiedNameErrorsTheRuleUnderDomain()
     {
         DatasetResolver study = resolver(dm(), ds());
-        for (String call : List.of("record_count(domain=DS, group=[USUBJID, $K])",
-                "record_count(group=[USUBJID, $K])"))
-        {
-            EvaluationContext spliced = EvaluationContext.builder().table(dm())
-                    .datasetResolver(study).variables(Map.of("$K", List.of("DM.USUBJID")))
-                    .ruleId("X-1").build();
-            IllegalStateException ex = assertThrows(IllegalStateException.class,
-                    () -> values(call, spliced));
-            assertTrue(ex.getMessage().contains("splices the qualified name DM.USUBJID"),
-                    call + ": " + ex.getMessage());
-        }
+        EvaluationContext spliced = EvaluationContext.builder().table(dm()).datasetResolver(study)
+                .variables(Map.of("$K", List.of("DM.USUBJID"))).ruleId("X-1").build();
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> values("record_count(domain=DS, group=[USUBJID, $K])", spliced));
+        assertTrue(ex.getMessage().contains("splices the qualified name DM.USUBJID"),
+                ex.getMessage());
+        assertEquals(values("record_count(group=[USUBJID, DM.USUBJID])", spliced),
+                values("record_count(group=[USUBJID, $K])", spliced),
+                "without domain= the spliced qualified member reads as the literal one");
     }
 
 

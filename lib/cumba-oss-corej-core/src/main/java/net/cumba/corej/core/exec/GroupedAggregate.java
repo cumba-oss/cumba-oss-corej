@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.IntFunction;
 import net.cumba.corej.core.expr.ExpressionException;
@@ -297,10 +298,10 @@ public final class GroupedAggregate
         List<Parameter> params = descriptor.parameters();
         Expr targetExpr = slot(bound, params, NAME_PARAMETER);
         String dataset = readDataset(fn, slot(bound, params, DOMAIN_PARAMETER));
-        boolean foreign = dataset != null;
-        Expr target = readTarget(fn, targetExpr, foreign);
-        Expr filter = readFilter(fn, slot(bound, params, FILTER_PARAMETER), foreign);
-        List<String> group = readGroup(fn, slot(bound, params, GROUP_PARAMETER), foreign, true);
+        Expr target = stripQualifier(readTarget(fn, targetExpr, dataset), dataset);
+        Expr filter = readFilter(fn, slot(bound, params, FILTER_PARAMETER), dataset);
+        filter = filter == null ? null : stripQualifier(filter, dataset);
+        List<String> group = readGroup(fn, slot(bound, params, GROUP_PARAMETER), dataset, true);
         GroupKeyPolicy policy = readPolicy(fn, slot(bound, params, KEEP_MISSINGS_PARAMETER));
         boolean indeterminate = readMissingValues(fn,
                 slot(bound, params, MISSING_VALUES_PARAMETER));
@@ -360,8 +361,10 @@ public final class GroupedAggregate
     /**
      * The target: a bare column of the target table, a {@code --}-prefix column (primary only — the
      * prefix resolves against the primary's domain), or any VALUE expression over the target
-     * table's own columns. A quoted name is a string, never a column (R1); a dotted or {@code $}
-     * reference names another table or binding and is refused. ⚠ Every reference <em>outside</em> a
+     * table's own columns. A quoted name is a string, never a column (R1); a {@code $} reference
+     * names a binding and is refused; a dotted one is a merged column of the one evaluation table
+     * without {@code domain=}, and under {@code domain=D} names D's own column when qualified by
+     * {@code D} (refused otherwise — W3c, N5 lifted per MQ8). ⚠ Every reference <em>outside</em> a
      * nested grouped call is a column of the target table. Inside a nested call
      * ({@code min_date(min_date(EXSTDTC, domain="EX", group=[POOLID], …), domain="POOLDEF",
      * group=[USUBJID])} — the pool's first dose per POOLDEF row, {@code PLAN-scalar-date-extremes})
@@ -370,7 +373,7 @@ public final class GroupedAggregate
      * nested call without {@code domain=} reads the target table itself. {@link #checkRefs} checks
      * only their shape.
      */
-    static Expr readTarget(String fn, @Nullable Expr target, boolean foreign)
+    static Expr readTarget(String fn, @Nullable Expr target, @Nullable String dataset)
     {
         if (target == null)
         {
@@ -384,7 +387,7 @@ public final class GroupedAggregate
         }
         if (target instanceof Expr.Ref ref)
         {
-            columnName(fn, NAME_PARAMETER, ref, foreign);
+            columnName(fn, NAME_PARAMETER, ref, dataset);
             return target;
         }
         // D14 / D119c: an expression target — every reference outside a nested grouped call is a
@@ -392,7 +395,7 @@ public final class GroupedAggregate
         // filter columns are its own domain='s; its group= columns are read on both its domain=
         // and the target table (the broadcast key); a nested call without domain= reads the
         // target table itself. Only their shape is checked here.
-        checkRefs(fn, NAME_PARAMETER, target, foreign);
+        checkRefs(fn, NAME_PARAMETER, target, dataset);
         return target;
     }
 
@@ -403,8 +406,9 @@ public final class GroupedAggregate
      * @throws ExpressionException
      *             for anything else
      */
-    static String columnName(String fn, String parameter, Expr e, boolean foreign)
+    static String columnName(String fn, String parameter, Expr e, @Nullable String dataset)
     {
+        boolean foreign = dataset != null;
         if (e instanceof Expr.Ref ref)
         {
             return switch (ref.kind())
@@ -424,10 +428,7 @@ public final class GroupedAggregate
                 }
                 yield ref.name();
             }
-            case DOTTED_REF -> throw new ExpressionException("argument '" + parameter + "' of '"
-                    + fn + "' names a column of " + (foreign ? "domain" : "the dataset")
-                    + ", so it is written bare, not dotted (" + ref.name() + ") — write it bare ("
-                    + ref.name().substring(ref.name().indexOf('.') + 1) + ")");
+            case DOTTED_REF -> qualifiedColumnName(fn, parameter, ref.name(), dataset);
             default -> throw new ExpressionException("argument '" + parameter + "' of '" + fn
                     + "' must be a plain column reference; " + ref.name() + " is not one");
             };
@@ -440,6 +441,85 @@ public final class GroupedAggregate
         }
         throw new ExpressionException(
                 "argument '" + parameter + "' of '" + fn + "' must be a plain column reference");
+    }
+
+
+    /**
+     * A qualified column reference in a name position (W3c, N5 lifted per MQ8): without
+     * {@code domain=} the name as written — a merged column of the rule's one evaluation table
+     * ({@link GroupReadTable}); under {@code domain=D} a qualifier that names {@code D} itself
+     * names {@code D}'s own column, so the bare name is answered (and {@link #stripQualifier}
+     * rewrites the expression to it); any other qualifier names no column of {@code D} — refused.
+     */
+    private static String qualifiedColumnName(String fn, String parameter, String name,
+            @Nullable String dataset)
+    {
+        String qualifier = Objects.requireNonNull(MatchDataset.qualifierOf(name));
+        String bare = name.substring(qualifier.length() + 1);
+        if (dataset == null)
+        {
+            return name;
+        }
+        if (qualifier.equals(dataset))
+        {
+            return bare;
+        }
+        throw new ExpressionException("argument '" + parameter + "' of '" + fn + "' names " + name
+                + " under domain=" + dataset + ", which reads the columns of " + dataset
+                + " only — write it bare (" + bare + ") or qualified by " + dataset);
+    }
+
+
+    /**
+     * Under {@code domain=D}, every {@code D.X} reference of {@code e} rewritten to the bare
+     * {@code X} it names ({@link #qualifiedColumnName}); a nested call that names its own
+     * {@code domain=} is left alone (its own reader judges its references). Without {@code domain=}
+     * — or with no such reference — {@code e} itself.
+     *
+     * @param e
+     *            the target or filter
+     * @param dataset
+     *            the {@code domain=} dataset, or {@code null}
+     * @return the rewritten expression
+     */
+    static Expr stripQualifier(Expr e, @Nullable String dataset)
+    {
+        if (dataset == null)
+        {
+            return e;
+        }
+        Expr out = strip(e, dataset);
+        return out.equals(e) ? e : out;
+    }
+
+
+    private static Expr strip(Expr e, String dataset)
+    {
+        return switch (e)
+        {
+        case Expr.Ref ref when ref.kind() == OperandKind.DOTTED_REF
+                && dataset.equals(MatchDataset.qualifierOf(ref.name())) -> new Expr.Ref(
+                        ref.name().substring(dataset.length() + 1), OperandKind.COLUMN);
+        case Expr.Call call when !call.kwargs().containsKey(DOMAIN_PARAMETER) ->
+        {
+            List<Expr> args = new ArrayList<>(call.args().size());
+            call.args().forEach(a -> args.add(strip(a, dataset)));
+            Map<String, Expr> kwargs = new java.util.LinkedHashMap<>();
+            call.kwargs().forEach((k, v) -> kwargs.put(k, strip(v, dataset)));
+            yield new Expr.Call(call.name(), args, kwargs);
+        }
+        case Expr.Binary binary -> new Expr.Binary(binary.op(), strip(binary.left(), dataset),
+                strip(binary.right(), dataset));
+        case Expr.And and -> new Expr.And(
+                and.parts().stream().map(p -> strip(p, dataset)).toList());
+        case Expr.Or or -> new Expr.Or(or.parts().stream().map(p -> strip(p, dataset)).toList());
+        case Expr.Not not -> new Expr.Not(strip(not.inner(), dataset));
+        case Expr.Lit lit when lit.kind() == Expr.LitKind.LIST
+                && lit.value() instanceof List<?> items -> new Expr.Lit(Expr.LitKind.LIST,
+                        items.stream().map(i -> i instanceof Expr inner ? strip(inner, dataset) : i)
+                                .toList());
+        default -> e;
+        };
     }
 
 
@@ -470,8 +550,9 @@ public final class GroupedAggregate
      * {@code filter(K="v")} call form is refused with the spelling named, and every reference
      * inside is a bare column of the target table.
      */
-    static @Nullable Expr readFilter(String fn, @Nullable Expr filter, boolean foreign)
+    static @Nullable Expr readFilter(String fn, @Nullable Expr filter, @Nullable String dataset)
     {
+        boolean foreign = dataset != null;
         if (filter == null)
         {
             return null;
@@ -487,7 +568,7 @@ public final class GroupedAggregate
             throw new ExpressionException(
                     fn + "'s filter= is a boolean expression, e.g. filter=(COLUMN == \"value\")");
         }
-        checkRefs(fn, FILTER_PARAMETER, filter, foreign);
+        checkRefs(fn, FILTER_PARAMETER, filter, dataset);
         return filter;
     }
 
@@ -499,24 +580,24 @@ public final class GroupedAggregate
      * broadcast key; a nested call without {@code domain=} reads the target table itself). The
      * shape is what is checked; the column's home is resolved when the nested call is evaluated.
      */
-    private static void checkRefs(String fn, String parameter, Expr e, boolean foreign)
+    private static void checkRefs(String fn, String parameter, Expr e, @Nullable String dataset)
     {
         switch (e)
         {
-        case Expr.Ref ref -> columnName(fn, parameter, ref, foreign);
+        case Expr.Ref ref -> columnName(fn, parameter, ref, dataset);
         case Expr.Call call ->
         {
-            call.args().forEach(a -> checkRefs(fn, parameter, a, foreign));
-            call.kwargs().values().forEach(a -> checkRefs(fn, parameter, a, foreign));
+            call.args().forEach(a -> checkRefs(fn, parameter, a, dataset));
+            call.kwargs().values().forEach(a -> checkRefs(fn, parameter, a, dataset));
         }
         case Expr.Binary binary ->
         {
-            checkRefs(fn, parameter, binary.left(), foreign);
-            checkRefs(fn, parameter, binary.right(), foreign);
+            checkRefs(fn, parameter, binary.left(), dataset);
+            checkRefs(fn, parameter, binary.right(), dataset);
         }
-        case Expr.And and -> and.parts().forEach(p -> checkRefs(fn, parameter, p, foreign));
-        case Expr.Or or -> or.parts().forEach(p -> checkRefs(fn, parameter, p, foreign));
-        case Expr.Not not -> checkRefs(fn, parameter, not.inner(), foreign);
+        case Expr.And and -> and.parts().forEach(p -> checkRefs(fn, parameter, p, dataset));
+        case Expr.Or or -> or.parts().forEach(p -> checkRefs(fn, parameter, p, dataset));
+        case Expr.Not not -> checkRefs(fn, parameter, not.inner(), dataset);
         case Expr.Lit lit ->
         {
             if (lit.kind() == Expr.LitKind.LIST && lit.value() instanceof List<?> items)
@@ -525,7 +606,7 @@ public final class GroupedAggregate
                 {
                     if (item instanceof Expr inner)
                     {
-                        checkRefs(fn, parameter, inner, foreign);
+                        checkRefs(fn, parameter, inner, dataset);
                     }
                 }
             }
@@ -539,24 +620,24 @@ public final class GroupedAggregate
      * one-column key. Required and non-empty when {@code required} (D-W5-1: the three extremes),
      * optional for {@code read_value} (an empty result means "ungrouped"). No {@code $} member.
      */
-    static List<String> readGroup(String fn, @Nullable Expr group, boolean foreign,
+    static List<String> readGroup(String fn, @Nullable Expr group, @Nullable String dataset,
             boolean required)
     {
-        return readGroup(fn, group, foreign, required, false);
+        return readGroup(fn, group, dataset, required, false);
     }
 
 
     /**
-     * {@link #readGroup(String, Expr, boolean, boolean)}, optionally admitting a {@code $}
-     * reference as a member (runbook W6, {@link RecordCount}): the member is kept as its raw
-     * {@code $name} and spliced at evaluation into the column names the binding holds
+     * {@link #readGroup(String, Expr, String, boolean)}, optionally admitting a {@code $} reference
+     * as a member (runbook W6, {@link RecordCount}): the member is kept as its raw {@code $name}
+     * and spliced at evaluation into the column names the binding holds
      * ({@code group=[USUBJID, --TESTCD, $TIMING_VARIABLES]}, the retired the retired executor's
      * {@code expandGroupRefs}).
      *
      * @param allowSplice
      *            whether a {@code $} reference is a legal member
      */
-    static List<String> readGroup(String fn, @Nullable Expr group, boolean foreign,
+    static List<String> readGroup(String fn, @Nullable Expr group, @Nullable String dataset,
             boolean required, boolean allowSplice)
     {
         if (group == null)
@@ -575,12 +656,12 @@ public final class GroupedAggregate
             List<Expr> items = (List<Expr>) lit.value();
             for (Expr item : items)
             {
-                out.add(groupMember(fn, item, foreign, allowSplice));
+                out.add(groupMember(fn, item, dataset, allowSplice));
             }
         }
         else if (group instanceof Expr.Ref)
         {
-            out.add(groupMember(fn, group, foreign, allowSplice));
+            out.add(groupMember(fn, group, dataset, allowSplice));
         }
         else
         {
@@ -595,7 +676,8 @@ public final class GroupedAggregate
     }
 
 
-    private static String groupMember(String fn, Expr item, boolean foreign, boolean allowSplice)
+    private static String groupMember(String fn, Expr item, @Nullable String dataset,
+            boolean allowSplice)
     {
         if (allowSplice && item instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF)
         {
@@ -603,24 +685,15 @@ public final class GroupedAggregate
         }
         if (item instanceof Expr.Ref ref && ref.kind() == OperandKind.DOTTED_REF)
         {
-            // ⭐ C2 of PLAN-rprfdy-offset-tp-join (owner 2026-09-29: "use qualified variables in
-            // a group key … group=[DM.RPATHCD, RPHASE] as it is clear that DM.RPATHCD joins to
-            // RPATHCD"): a qualified member names where the RECORD-side value comes from — the
-            // rule's own Match_Datasets entry DM, read at the row's bound DM record — and the
-            // unqualified RPATHCD is the same column of the grouped dataset. It needs an "other
-            // side", so it is admitted under domain= only (D-DOMAIN): grouping the evaluated
-            // dataset by a joined value is the rule-level Grouping's job (C3).
-            if (!foreign)
-            {
-                throw new ExpressionException("argument '" + GROUP_PARAMETER + "' of '" + fn
-                        + "' names the qualified " + ref.name() + ", which requires domain=: a"
-                        + " qualified group member keys the record side through the join and the"
-                        + " grouped dataset by the unqualified name, so there must be a grouped"
-                        + " dataset — group the evaluated dataset by a joined value with the"
-                        + " rule-level Grouping instead, or write it bare ("
-                        + ref.name().substring(ref.name().indexOf('.') + 1)
-                        + ") to group by the evaluated dataset's own column");
-            }
+            // ⭐ Under domain=, C2 of PLAN-rprfdy-offset-tp-join (owner 2026-09-29: "use
+            // qualified variables in a group key … group=[DM.RPATHCD, RPHASE] as it is clear that
+            // DM.RPATHCD joins to RPATHCD"): a qualified member names where the RECORD-side value
+            // comes from — the rule's own Match_Datasets entry DM, read at the row's bound DM
+            // record — and the unqualified RPATHCD is the same column of the grouped dataset.
+            // ⭐ Without domain= (N5 lifted, MQ8, PLAN-merged-evaluation-table W3c) the grouped
+            // dataset IS the evaluated one and DM.RPATHCD is a column of its one evaluation
+            // table: the member groups the evaluated rows by the row's DM.RPATHCD
+            // (GroupReadTable), exactly as the rule-level Grouping does (C3) — no other side.
             return ref.name();
         }
         if (item instanceof Expr.Ref ref && ref.kind() == OperandKind.WILDCARD_COLUMN
@@ -633,7 +706,7 @@ public final class GroupedAggregate
                     + " sides of a qualified group member resolve against different datasets,"
                     + " so name the column explicitly");
         }
-        return columnName(fn, GROUP_PARAMETER, item, foreign);
+        return columnName(fn, GROUP_PARAMETER, item, dataset);
     }
 
 
@@ -1049,8 +1122,8 @@ public final class GroupedAggregate
     {
         EvaluationContext ctx = run.ctx();
         List<String> groupNames = resolvePrefixes(group, ctx);
-        return broadcast(run, fn, canonical, groupNames, () -> groupTarget(ctx, fn, target, dataset,
-                filter, groupNames, policy, aggregator, noGroup), noGroup, site);
+        return broadcast(run, fn, canonical, groupNames, dataset != null, () -> groupTarget(ctx, fn,
+                target, dataset, filter, groupNames, policy, aggregator, noGroup), noGroup, site);
     }
 
 
@@ -1076,21 +1149,21 @@ public final class GroupedAggregate
      * @return the broadcast vector
      */
     static Vector broadcast(EvalRun run, String fn, String memoKey, List<String> groupNames,
-            java.util.function.Supplier<Grouped> grouping,
+            boolean foreign, java.util.function.Supplier<Grouped> grouping,
             java.util.function.Function<DataValueType, IDataValue> noGroup)
     {
-        return broadcast(run, fn, memoKey, groupNames, grouping, noGroup, null);
+        return broadcast(run, fn, memoKey, groupNames, foreign, grouping, noGroup, null);
     }
 
 
     /**
-     * {@link #broadcast(EvalRun, String, String, List, java.util.function.Supplier, java.util.function.Function)}
+     * {@link #broadcast(EvalRun, String, String, List, boolean, java.util.function.Supplier, java.util.function.Function)}
      * at a column-typed call site: a grouping that is {@link Grouped#absentColumn() absent} answers
      * the site's use-derived default ({@link ColumnTypedAbsence}, A1) instead of the no-group
      * answer.
      */
     private static Vector broadcast(EvalRun run, String fn, String memoKey, List<String> groupNames,
-            java.util.function.Supplier<Grouped> grouping,
+            boolean foreign, java.util.function.Supplier<Grouped> grouping,
             java.util.function.Function<DataValueType, IDataValue> noGroup,
             Expr.@Nullable Call site)
     {
@@ -1107,7 +1180,7 @@ public final class GroupedAggregate
         // is a fact of the study's columns, not of whether the grouped side formed a group (review
         // round 1, lane 2 L2: an empty TP used to EXECUTE where a populated one ERRORed).
         RowKey qualifiedKeyer = null;
-        if (hasQualifiedMember(groupNames))
+        if (keysRecordSide(foreign, groupNames))
         {
             // The record side reads a qualified member through the join, from THIS context —
             // never a keyer the memoised grouping carries (a regex= keyer is refused with a
@@ -1163,8 +1236,8 @@ public final class GroupedAggregate
             GroupKeyPolicy policy, Aggregator aggregator,
             java.util.function.Function<DataValueType, IDataValue> noGroup)
     {
-        IDataTable primary = ctx.getTable();
-        IDataTable table = resolveTarget(ctx, dataset);
+        boolean foreign = dataset != null;
+        IDataTable table = resolveTarget(ctx, dataset, targetNames(target, groupNames));
         if (table == null)
         {
             // Q17-a: an absent `domain` dataset answers the function's own no-value — every
@@ -1195,7 +1268,7 @@ public final class GroupedAggregate
             // decide the
             // absent-column default).
             Vector v = ExprCompiler.evaluateValueExpression(target,
-                    tableContext(ctx, table, List.of(target)));
+                    targetContext(ctx, table, foreign, List.of(target)));
             if (v == null)
             {
                 return new Grouped(Map.of(), DataValueType.STRING, null);
@@ -1203,11 +1276,13 @@ public final class GroupedAggregate
             cellAt = row -> v.value(row).cell();
             type = v.declaredType();
         }
-        BitSet keep = filterMask(ctx, table, filter);
-        // C2: a qualified member groups the target by its UNQUALIFIED name (absent ⇒ ERROR).
-        boolean qualified = hasQualifiedMember(groupNames);
+        BitSet keep = filterMask(ctx, table, filter, foreign);
+        // C2: under domain= a qualified member groups the target by its UNQUALIFIED name (absent
+        // ⇒ ERROR); without domain= it is a column of the evaluated rows' one table (W3c).
+        boolean qualified = keysRecordSide(foreign, groupNames);
         IndexHelper.Grouping grouping = IndexHelper.groupByPresent(table,
-                groupedSideNames(fn, table, groupNames), logContext(ctx, fn), policy);
+                qualified ? groupedSideNames(fn, table, groupNames) : groupNames,
+                logContext(ctx, fn), policy);
         if (grouping == null)
         {
             // an unexpanded $-ref in the group list — the reader refuses those, so unreachable
@@ -1224,16 +1299,16 @@ public final class GroupedAggregate
             blockValues[b] = aggregator.aggregate(cellAt, block.rows(), keep, type);
             results.put(block, blockValues[b]);
         }
-        if (table == primary && !qualified)
+        if (!foreign)
         {
-            // The groups are the evaluated dataset's own: every row's answer is written straight
-            // from its block (XCUT PERF 3); the key map stays for the empty-grouping test. Never
-            // for a qualified member: its record side is the bound source record, not the row.
+            // The groups are the evaluated dataset's own (its rows, GroupReadTable's merged
+            // columns beside them): every row's answer is written straight from its block (XCUT
+            // PERF 3); the key map stays for the empty-grouping test.
             Map<Object, IDataValue> byKey = new java.util.LinkedHashMap<>(
                     Math.max(16, blockValues.length * 2));
             results.results().forEach((key, value) -> byKey.put(key, (IDataValue) value));
             return new Grouped(byKey, type, null,
-                    Grouped.perRow(Math.toIntExact(primary.getRowCount()), noGroup.apply(type),
+                    Grouped.perRow(Math.toIntExact(table.getRowCount()), noGroup.apply(type),
                             blocks, b -> blockValues[b]));
         }
         // GKI Q2 (owner 2026-09-27): a Char/Num key pair between the grouped table and the
@@ -1252,6 +1327,45 @@ public final class GroupedAggregate
      * The target table: the primary for no {@code domain=}, else the named dataset through
      * {@link SplitDomainResolution} (a split family unions, an un-unionable split ERRORs — the
      * {@code read_value} route), or {@code null} when the study lacks it.
+     */
+    static @Nullable IDataTable resolveTarget(EvaluationContext ctx, @Nullable String dataset,
+            List<String> names)
+    {
+        return dataset == null ? GroupReadTable.of(ctx, names) : resolveTarget(ctx, dataset);
+    }
+
+
+    /**
+     * The column names a call reads on its target table by name: the target when it is a column
+     * reference, and the group names.
+     */
+    static List<String> targetNames(@Nullable Expr target, List<String> groupNames)
+    {
+        if (!(target instanceof Expr.Ref ref))
+        {
+            return groupNames;
+        }
+        List<String> out = new ArrayList<>(groupNames.size() + 1);
+        out.add(ref.name());
+        out.addAll(groupNames);
+        return out;
+    }
+
+
+    /**
+     * C2's record side: only under {@code domain=} does a qualified {@code group=} member key the
+     * evaluated row through the join and the grouped dataset by its unqualified name; without it a
+     * qualified member is a column of the one evaluation table (W3c).
+     */
+    static boolean keysRecordSide(boolean foreign, List<String> groupNames)
+    {
+        return foreign && hasQualifiedMember(groupNames);
+    }
+
+
+    /**
+     * The target table: the primary for no {@code domain=} (as it is — callers that read names on
+     * it take {@link #resolveTarget(EvaluationContext, String, List)}), else the named dataset.
      */
     static @Nullable IDataTable resolveTarget(EvaluationContext ctx, @Nullable String dataset)
     {
@@ -1284,12 +1398,45 @@ public final class GroupedAggregate
     }
 
 
-    /** The {@code filter=} mask over {@code table}, or {@code null} for no filter. */
+    /**
+     * The {@code filter=} mask over {@code table}, or {@code null} for no filter: under
+     * {@code domain=} over the target table's own context, without it over the evaluated record's
+     * ({@link #targetContext}).
+     */
     static @Nullable BitSet filterMask(EvaluationContext ctx, IDataTable table,
-            @Nullable Expr filter)
+            @Nullable Expr filter, boolean foreign)
     {
         return filter == null ? null
-                : NativeExprEvaluator.evaluate(filter, tableContext(ctx, table, List.of(filter)));
+                : NativeExprEvaluator.evaluate(filter,
+                        targetContext(ctx, table, foreign, List.of(filter)));
+    }
+
+
+    /**
+     * The context a filter or a computed target is evaluated on. Under {@code domain=} the target
+     * table's own ({@link #tableContext}: no joins, no SUPP merge — its references are columns of
+     * that dataset). Without it the target table is the evaluated dataset itself, and its
+     * references read exactly as the Check's do (W3c, N16 and N5 per MQ8): a qualified {@code J.X}
+     * through the rule's join, a bare SUPP qualifier through the merge — the evaluated table with
+     * the joins, the merged view, the SUPP flag and memo of {@code ctx}, under the expression's own
+     * type expectations (D76).
+     */
+    static EvaluationContext targetContext(EvaluationContext ctx, IDataTable table, boolean foreign,
+            List<Expr> roots)
+    {
+        if (foreign)
+        {
+            return tableContext(ctx, table, roots);
+        }
+        TypeExpectations expectations = TypeExpectations.of(roots);
+        IDataTable primary = ctx.getTable();
+        return EvaluationContext.builder().table(primary).ruleId(ctx.getRuleId())
+                .suppMerge(ctx.isSuppMerge()).suppPivot(ctx.getSuppPivot())
+                .sharedIndexCache(ctx.getSharedIndexCache()).mergedView(ctx.getMergedView())
+                .joinedDatasets(ctx.getJoinedDatasets()).domainName(primary.getMetaData().getName())
+                .datasetResolver(ctx.getDatasetResolver())
+                .numericExpectedColumns(expectations.numericDefaultColumns())
+                .numericExpectedDynamicSites(expectations.numericDynamicSites()).build();
     }
 
 

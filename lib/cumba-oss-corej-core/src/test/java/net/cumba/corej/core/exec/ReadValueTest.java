@@ -262,7 +262,10 @@ class ReadValueTest
     {
         String tail = ", domain=TS, " + SPECIES_FILTER + ", mode=\\\"FIRST\\\")";
         expectError("read_value(\\\"TSVAL\\\"" + tail, "column reference");
-        expectError("read_value(TS.TSVAL" + tail, "not dotted");
+        // W3c (N5 lifted per MQ8): TS.TSVAL under domain=TS names TS's own TSVAL and loads; a
+        // qualifier naming another dataset names no column of TS.
+        loaded("read_value(TS.TSVAL" + tail, "$v == \\\"x\\\"");
+        expectError("read_value(DM.TSVAL" + tail, "under domain=TS");
         expectError("read_value(--VAL" + tail, "--");
         // A $-reference is refused before the reader sees it: the loader's dangling-reference gate
         // (no binding defines $x) — loud either way; the reader's own arm covers a defined one.
@@ -281,7 +284,7 @@ class ReadValueTest
                 "$x");
         expectError(
                 "read_value(TSVAL, domain=TS, filter=(DM.SPECIES == \\\"RAT\\\"), mode=\\\"FIRST\\\")",
-                "filter= reads the columns of domain only");
+                "which reads the columns of TS only");
         expectError(
                 "read_value(TSVAL, domain=TS, filter=(--PARMCD == \\\"SPECIES\\\"), mode=\\\"FIRST\\\")",
                 "filter= reads the columns of domain only");

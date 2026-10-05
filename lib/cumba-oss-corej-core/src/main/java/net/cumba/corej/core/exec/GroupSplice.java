@@ -17,10 +17,12 @@ import net.cumba.corej.core.model.MatchDataset;
  * spliced element by element as column names ({@link ListValueGuard#elements}: the list was born at
  * a guard site, register NNL §1), a {@code String} is one name. Anything else — a scalar, a per-row
  * binding, an unresolvable name — is a rule {@code ERROR}, never a silent answer. So is a spliced
- * <b>qualified</b> name: a qualified member is judged at load (D-DOMAIN / D-SRC / D-REGEX for
- * {@code group=}; "written bare" for a uniqueness member, N5), and a spliced one never reaches
- * those gates. Serving it would need those gates at run time; the join type D-SRC requires is not
- * on the evaluation context, so it is refused instead.
+ * <b>qualified</b> name under {@code domain=}: there a qualified {@code group=} member keys the
+ * record side through the join (C2) and is judged at load (D-DOMAIN / D-SRC / D-REGEX), and a
+ * spliced one never reaches those gates — the join type D-SRC requires is not on the evaluation
+ * context, so it is refused. Without {@code domain=} a qualified name is a column of the rule's one
+ * evaluation table like any other ({@code PLAN-merged-evaluation-table} W3c, N5 lifted per MQ8): it
+ * splices through and is read by {@link GroupReadTable}.
  * </p>
  *
  * <p>
@@ -100,7 +102,7 @@ public final class GroupSplice
     private static String splicedName(String fn, String where, String member, String name,
             EvaluationContext ctx, boolean foreign, String qualifiedAdvice)
     {
-        if (MatchDataset.qualifierOf(name) != null)
+        if (foreign && MatchDataset.qualifierOf(name) != null)
         {
             throw new GroupSpliceException(
                     "[" + ctx.getRuleId() + "] " + fn + ": the " + where + " " + member

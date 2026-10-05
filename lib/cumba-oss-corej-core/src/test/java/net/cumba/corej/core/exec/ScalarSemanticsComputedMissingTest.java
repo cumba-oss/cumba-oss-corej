@@ -744,7 +744,12 @@ class ScalarSemanticsComputedMissingTest
     // cell at the evaluation row, which for a record no SUPP row qualifies is the column's type
     // default (SuppPart.unavailable). Never null; the legacy producers (SuppQnamColumn,
     // KeyMatchExpandedLookup, DatasetLookup) stay until W6.
-    private static final int EXPECTED_VALUE_PRODUCERS = 41;
+    // 41 -> 43 (PLAN-merged-evaluation-table W3c): GroupReadTable.getDataValue — read: a column of
+    // the evaluated table answers that table's own cell, a merged column the column's own read
+    // (below, or SuppPivot's qualifier column); and GroupReadTable.JoinedColumn.getDataValue —
+    // read: JoinLookup.lookupValue at the evaluated row (a matched row's cell, an unmatched row's
+    // type default; an absent partner column is never appended). Never null.
+    private static final int EXPECTED_VALUE_PRODUCERS = 43;
 
     private static Method declared(Class<?> owner, String name)
     {

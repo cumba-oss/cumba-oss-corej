@@ -147,6 +147,65 @@ class GroupingUniformityTest
 
 
     /**
+     * ⭐ N16 (W3c of {@code PLAN-merged-evaluation-table}): a bare {@code Grouping} member the
+     * primary lacks and its {@code SUPP--} delivers is a key column of the one evaluation table —
+     * it partitions exactly as the same column carried by the record itself. RED before W3c: the
+     * member was dropped as absent (EC-44) and AE's two records were one group. The full reader
+     * population, both arms and the SUPP plant: {@code MergedColumnKeyReadersTest}.
+     */
+    @Test
+    void aSuppDeliveredBareKeyPartitionsLikeTheColumnTheRecordCarries()
+    {
+        Rule rule = loadClean(
+                ruleJson("Group", "\"Grouping\":{\"Variables\":[\"USUBJID\",\"AEXCAT\"]},"
+                        + check("AESEQ > 0") + "," + outcome("AESEQ")),
+                false);
+        RealTables base = RealTables.of("AE").str("STUDYID", "S", "S").str("DOMAIN", "AE", "AE")
+                .str("USUBJID", "S1", "S1").lng("AESEQ", 1L, 2L);
+        IDataTable carrying = base.str("AEXCAT", "A", "B").build();
+        IDataTable ae = RealTables.of("AE").str("STUDYID", "S", "S").str("DOMAIN", "AE", "AE")
+                .str("USUBJID", "S1", "S1").lng("AESEQ", 1L, 2L).build();
+        IDataTable suppAe = RealTables.of("SUPPAE").str("STUDYID", "S", "S")
+                .str("RDOMAIN", "AE", "AE").str("USUBJID", "S1", "S1")
+                .str("IDVAR", "AESEQ", "AESEQ").str("IDVARVAL", "1", "2")
+                .str("QNAM", "AEXCAT", "AEXCAT").str("QLABEL", "x", "x").str("QVAL", "A", "B")
+                .build();
+        RuleExecutionResult reference = executed(rule, carrying, exactInventory(carrying));
+        RuleExecutionResult merged = executed(rule, ae, exactInventory(ae, suppAe));
+        assertEquals(2, reference.getViolations().size(), "two AEXCATs, two groups");
+        assertEquals(QualifiedNameFixture.values(reference), QualifiedNameFixture.values(merged));
+        assertEquals(groupKeys(reference), groupKeys(merged), "the key slab names the qualifier");
+    }
+
+
+    /**
+     * W3c (N5 lifted per MQ8): WITHOUT {@code domain=} a qualified {@code group=} member is a
+     * column of the one evaluation table, so a {@code find_vars} binding holding it splices into
+     * {@code record_count(group=[$b])} and answers exactly as the literal {@code group=[J.G]};
+     * under {@code domain=} the splice stays the rule's ERROR (N15, the pin below).
+     */
+    @Test
+    void aFindVarsBindingOfQualifiedNamesSplicedWithoutDomainReadsLikeTheLiteral()
+    {
+        IDataTable p = primary();
+        IDataTable j = RealTables.of("J").str("K", "k1", "k2", "k3", "k4", "k5", "k6")
+                .str("S", "a", "b", "", "A", "b", "c").str("G", "h1", "h1", "h1", "h1", "h2", "h2")
+                .build();
+        String literal = ruleJson("Record", INNER_J + ","
+                + "\"Bindings\":[{\"name\":\"$c\",\"expression\":\"record_count(group=[J.G])\"}],"
+                + check("$c == 4") + "," + outcome("K", "$c"));
+        String spliced = ruleJson("Record", INNER_J + ","
+                + "\"Bindings\":[{\"name\":\"$b\",\"expression\":\"find_vars(\\\"J.G\\\")\"},"
+                + "{\"name\":\"$c\",\"expression\":\"record_count(group=[$b])\"}],"
+                + check("$c == 4") + "," + outcome("K", "$c"));
+        RuleExecutionResult lit = executed(loadClean(literal, true), p, exactInventory(p, j));
+        assertEquals(4, lit.getViolations().size(), "J's h1 holds four of P's records");
+        assertEquals(QualifiedNameFixture.values(lit), QualifiedNameFixture
+                .values(executed(loadClean(spliced, true), p, exactInventory(p, j))));
+    }
+
+
+    /**
      * The row the plan shares with {@code PLAN-stage-a-parameter-type-arming} (plan §3 phase 1),
      * MEASURED: a {@code find_vars} binding holding a QUALIFIED name cannot be spliced into
      * {@code record_count(group=[$b])} — {@code GroupSplice} refuses the splice by design ("a

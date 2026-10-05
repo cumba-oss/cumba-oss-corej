@@ -497,60 +497,7 @@ class QualifiedNameUniformityTest
      * silent divergence). The harness asserts the measured red set EQUALS this table.
      */
     static final String EXPECTED_RED = """
-            contains_all/source | REFUSED | N5
-            not_contains_all/source | REFUSED | N5
-            distinct/filter | REFUSED | N5
-            distinct/group | REFUSED | N5
-            distinct/name | REFUSED | N5
-            empty_within_except_last_row/group | REFUSED | N5
-            empty_within_except_last_row/name | REFUSED | N5
-            empty_within_except_last_row/ordering | REFUSED | N5
-            has_mixed_emptiness_within_group/group | REFUSED | N5
-            has_mixed_emptiness_within_group/name | REFUSED | N5
-            has_mixed_emptiness_within_group/qualifying_any_populated | REFUSED | N5
-            has_multiple_values_for/key | REFUSED | N5
-            has_multiple_values_for/name | REFUSED | N5
-            has_multiple_values_for/within | REFUSED | N5
-            has_next_corresponding_record/name | REFUSED | N5
-            has_next_corresponding_record/ordering | REFUSED | N5
-            has_next_corresponding_record/value | REFUSED | N5
-            has_next_corresponding_record/within | REFUSED | N5
-            has_same_values/name | REFUSED | N5
-            inconsistent_enumerated_columns/name | REFUSED | N5
-            is_inconsistent_across_dataset/key | REFUSED | N5
-            is_inconsistent_across_dataset/keys | REFUSED | N5
-            is_inconsistent_across_dataset/name | REFUSED | N5
-            is_last_in_group/group | REFUSED | N5
-            is_last_in_group/ordering | REFUSED | N5
-            is_not_unique_relationship/keys | REFUSED | N5
-            is_not_unique_relationship/name | REFUSED | N5
-            is_not_unique_relationship/value | REFUSED | N5
-            is_not_unique_set/members | REFUSED | N5
-            is_not_unique_value/name | REFUSED | N5
-            is_sorted_by/by | REFUSED | N5
-            is_sorted_by/target | REFUSED | N5
-            is_sorted_by/within | REFUSED | N5
-            is_unique_relationship/keys | REFUSED | N5
-            is_unique_relationship/name | REFUSED | N5
-            is_unique_relationship/value | REFUSED | N5
-            is_unique_set/members | REFUSED | N5
-            is_unique_value/name | REFUSED | N5
-            max/filter | REFUSED | N5
-            max/group | REFUSED | N5
-            max/name | REFUSED | N5
-            max_date/filter | REFUSED | N5
-            max_date/group | REFUSED | N5
-            max_date/name | REFUSED | N5
-            min_date/filter | REFUSED | N5
-            min_date/group | REFUSED | N5
-            min_date/name | REFUSED | N5
-            present_on_multiple_rows_within/name | REFUSED | N5
-            present_on_multiple_rows_within/within | REFUSED | N5
-            read_value/filter | REFUSED | N5
             read_value/group | C3 | N6
-            read_value/name | REFUSED | N5
-            record_count/filter | REFUSED | N5
-            record_count/group | REFUSED | N5
             var_format/name | REFUSED | N13
             var_label/name | REFUSED | N13
             var_length/name | REFUSED | N13
@@ -587,7 +534,22 @@ class QualifiedNameUniformityTest
             // value): through the join every row reads FALSE, and with the join unreachable the
             // untyped absent J.S reads its "" default (D34 #3, D76a) — FALSE again. The fixture's
             // data, not the engine, makes the two answers agree; `empty/x` stays sensitive.
-            "is_missing/x");
+            "is_missing/x",
+            // Under domain="J" the qualifier names the domain itself (W3c, N5 lifted per MQ8):
+            // J.S is J's own S, read through the INVENTORY like the bare S, never the join.
+            "read_value/name", "read_value/filter",
+            // A group operator over this fixture (a 1:1 join carrying P's data; unique K, ID and
+            // S partner values; no enumerated S1) answers the same verdict through the join as
+            // with J.X resolving nowhere — the operator's absent-column bail. Their sensitivity
+            // is MergedColumnKeyReadersTest's JOINED arm and its KEYED plant (W3c), on data
+            // built to discriminate.
+            "contains_all/source", "not_contains_all/source", "empty_within_except_last_row/group",
+            "has_mixed_emptiness_within_group/qualifying_any_populated",
+            "has_multiple_values_for/key", "has_multiple_values_for/name",
+            "has_multiple_values_for/within", "has_same_values/name",
+            "inconsistent_enumerated_columns/name", "is_inconsistent_across_dataset/name",
+            "is_not_unique_set/members", "is_unique_set/members", "is_sorted_by/by",
+            "is_sorted_by/target", "is_sorted_by/within", "present_on_multiple_rows_within/name");
 
     /**
      * Blind-to-the-join rows that are nevertheless red on C5q, because the channel they DO read —
@@ -595,7 +557,7 @@ class QualifiedNameUniformityTest
      * expectation stays a formula over listed sets, never the measurement itself.
      */
     static final Set<String> C5Q_RED_THROUGH_THE_INVENTORY = Set.of("var_exists/name",
-            "var_not_exists/name");
+            "var_not_exists/name", "read_value/name", "read_value/filter");
 
     // ------------------------------------------------------------------
     // Table model

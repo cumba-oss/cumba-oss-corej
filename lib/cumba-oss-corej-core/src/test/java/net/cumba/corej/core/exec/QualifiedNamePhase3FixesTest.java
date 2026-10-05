@@ -205,22 +205,31 @@ class QualifiedNamePhase3FixesTest
      * N29: {@code is_unique_set} / {@code is_not_unique_set} spliced a {@code $} member through a
      * private copy of the splice that had drifted from {@code record_count}'s three ways — a
      * qualified name, a {@code String} binding and a non-list binding all passed RAW and were then
-     * dropped as an absent member, silently. One splice now ({@code GroupSplice}): a qualified name
-     * or a non-list binding is the rule's ERROR, a {@code String} binding is one name. RED before:
-     * the qualified splice EXECUTED (J.G dropped as an absent primary member).
+     * dropped as an absent member, silently. One splice now ({@code GroupSplice}): a non-list
+     * binding is the rule's ERROR, a {@code String} binding is one name. RED before: the qualified
+     * splice EXECUTED (J.G dropped as an absent primary member). ⭐ W3c of
+     * {@code PLAN-merged-evaluation-table} (N5 lifted per MQ8): a qualified uniqueness member is a
+     * column of the one evaluation table, so the spliced J.G is read through the join exactly as
+     * the literal member is — the ERROR this test pinned from N29 to W3c is now the literal's
+     * answer.
      */
     @Test
     void aUniqueSetSpliceIsTheRecordCountSplice()
     {
         IDataTable p = primary();
         IDataTable j = joined();
-        RuleExecutionResult qualified = QualifiedNameFixture.run(
-                withBinding("find_vars(\"J.G\")", "is_not_unique_set([K, $b])"), p,
+        // S repeats "b" on rows 2 and 5, whose J.G differ (g1 / g3): read through the join the
+        // pair is unique; with J.G dropped as an absent member it would be a duplicate (2 rows).
+        RuleExecutionResult qualified = QualifiedNameFixture.executed(
+                withBinding("find_vars(\"J.G\")", "is_not_unique_set([S, $b])"), p,
                 exactInventory(p, j));
-        assertEquals(RuleExecutionStatus.ERROR, qualified.getStatus(),
-                qualified.getStatusMessage());
-        assertTrue(String.valueOf(qualified.getStatusMessage())
-                .contains("splices the qualified name J.G"), qualified.getStatusMessage());
+        RuleExecutionResult literal = QualifiedNameFixture.executed(
+                loadClean(ruleJson("Record", QualifiedNameFixture.matchJ("") + ","
+                        + check("is_not_unique_set([S, J.G])") + "," + outcome("K")), true),
+                p, exactInventory(p, j));
+        assertEquals(0, literal.getViolations().size(), "the literal member reads J.G");
+        assertEquals(QualifiedNameFixture.values(literal), QualifiedNameFixture.values(qualified),
+                "the spliced qualified member reads as the literal one");
         // A scalar binding: statically typed (`5` is a number) it is refused at LOAD — stage A's
         // PARAMETER_TYPE, armed since PLAN-stage-a-parameter-type-arming (the splice shape is a
         // list of names); statically unknown (coalesce has no result type) it stays the run-time

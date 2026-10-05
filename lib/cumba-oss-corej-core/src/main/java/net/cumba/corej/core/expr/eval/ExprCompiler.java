@@ -25,6 +25,7 @@ import net.cumba.corej.core.exec.DatasetIdentity;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.ExpressionResultCache;
+import net.cumba.corej.core.exec.GroupReadTable;
 import net.cumba.corej.core.exec.GroupSemantics;
 import net.cumba.corej.core.exec.JoinLookup;
 import net.cumba.corej.core.exec.MetadataProvider;
@@ -2382,7 +2383,7 @@ public final class ExprCompiler
             String name = resolveDomainPrefix(rawName, ctx);
             String key = resolveDomainPrefix(rawKey, ctx);
             List<List<String>> withinComps = resolveDomainPrefixComponents(rawWithin, ctx);
-            IDataTable table = ctx.getTable();
+            IDataTable table = groupReadTable(ctx, withinComps, name, key);
             DataTableMeta meta = table.getMetaData();
             int nameIdx = meta.getColumnIndex(name);
             int keyIdx = meta.getColumnIndex(key);
@@ -2441,7 +2442,7 @@ public final class ExprCompiler
         {
             String name = resolveDomainPrefix(rawName, run.ctx());
             String withinCol = resolveDomainPrefix(rawWithinCol, run.ctx());
-            IDataTable table = run.ctx().getTable();
+            IDataTable table = GroupReadTable.of(run.ctx(), name, withinCol);
             DataTableMeta meta = table.getMetaData();
             // EC-44 (Fix #134): an absent `within` is dropped by partition() and the composite
             // key falls back to NAME alone — "this NAME value appears on more than one row",
@@ -2484,9 +2485,10 @@ public final class ExprCompiler
         return run ->
         {
             EvaluationContext ctx = run.ctx();
-            return net.cumba.corej.core.exec.GroupedPredicates.isLastInGroup(ctx.getTable(),
-                    resolveDomainPrefixes(rawGroup, ctx), resolveDomainPrefix(rawOrder, ctx),
-                    policy);
+            List<String> group = resolveDomainPrefixes(rawGroup, ctx);
+            String order = resolveDomainPrefix(rawOrder, ctx);
+            return net.cumba.corej.core.exec.GroupedPredicates.isLastInGroup(
+                    groupReadTable(ctx, List.of(group), order), group, order, policy);
         };
     }
 
@@ -2512,9 +2514,12 @@ public final class ExprCompiler
         return run ->
         {
             EvaluationContext ctx = run.ctx();
-            return net.cumba.corej.core.exec.GroupedPredicates.hasMixedEmptiness(ctx.getTable(),
-                    resolveDomainPrefix(rawName, ctx), resolveDomainPrefixes(rawGroup, ctx),
-                    resolveDomainPrefixes(rawQualifiers, ctx), policy, c.name());
+            String name = resolveDomainPrefix(rawName, ctx);
+            List<String> group = resolveDomainPrefixes(rawGroup, ctx);
+            List<String> qualifiers = resolveDomainPrefixes(rawQualifiers, ctx);
+            return net.cumba.corej.core.exec.GroupedPredicates.hasMixedEmptiness(
+                    groupReadTable(ctx, List.of(group, qualifiers), name), name, group, qualifiers,
+                    policy, c.name());
         };
     }
 
@@ -2560,11 +2565,9 @@ public final class ExprCompiler
         }
         if (e instanceof Expr.Ref r && r.kind() == OperandKind.DOTTED_REF)
         {
-            // QNU N5 (T2 M2): name the bare spelling, as the registry functions' readers do.
-            throw unsupported("argument '" + parameter + "' of '" + function
-                    + "' names the qualified " + r.name() + " — write it bare ("
-                    + r.name().substring(r.name().indexOf('.') + 1)
-                    + "): the operand is a column of the evaluated dataset, never a joined one");
+            // ⭐ N5 lifted (MQ8, W3c): a merged column of the one evaluation table, read through
+            // GroupReadTable at run time.
+            return r.name();
         }
         throw unsupported("argument '" + parameter + "' of '" + function
                 + "' must be a plain column or --prefix reference");
@@ -2645,7 +2648,7 @@ public final class ExprCompiler
             String name = resolveDomainPrefix(rawName, run.ctx());
             String group = resolveDomainPrefix(rawGroup, run.ctx());
             String order = resolveDomainPrefix(rawOrder, run.ctx());
-            IDataTable table = run.ctx().getTable();
+            IDataTable table = GroupReadTable.of(run.ctx(), name, group, order);
             DataTableMeta meta = table.getMetaData();
             int nameIdx = meta.getColumnIndex(name);
             int orderIdx = meta.getColumnIndex(order);
@@ -2704,7 +2707,7 @@ public final class ExprCompiler
             String value = resolveDomainPrefix(rawValue, run.ctx());
             String withinCol = resolveDomainPrefix(rawWithinCol, run.ctx());
             String order = resolveDomainPrefix(rawOrder, run.ctx());
-            IDataTable table = run.ctx().getTable();
+            IDataTable table = GroupReadTable.of(run.ctx(), name, value, withinCol, order);
             DataTableMeta meta = table.getMetaData();
             int nameIdx = meta.getColumnIndex(name);
             int valueIdx = meta.getColumnIndex(value);
@@ -2847,9 +2850,12 @@ public final class ExprCompiler
         return run ->
         {
             EvaluationContext ctx = run.ctx();
-            return GroupSemantics.targetIsNotSortedByViolations(ctx.getTable(), run.rowCount(),
-                    resolveDomainPrefix(rawTarget, ctx), resolveDomainPrefixes(rawSortVars, ctx),
-                    rawWithinCol == null ? null : resolveDomainPrefix(rawWithinCol, ctx), policy);
+            String target = resolveDomainPrefix(rawTarget, ctx);
+            List<String> sortVars = resolveDomainPrefixes(rawSortVars, ctx);
+            String withinCol = rawWithinCol == null ? null : resolveDomainPrefix(rawWithinCol, ctx);
+            return GroupSemantics.targetIsNotSortedByViolations(
+                    groupReadTable(ctx, List.of(sortVars), target, withinCol), run.rowCount(),
+                    target, sortVars, withinCol, policy);
         };
     }
 
@@ -2894,8 +2900,8 @@ public final class ExprCompiler
         {
             String name = resolveDomainPrefix(rawName, run.ctx());
             List<String> values = resolveDomainPrefixes(rawValues, run.ctx());
-            return GroupSemantics.relationshipNotUniqueViolations(run.ctx().getTable(),
-                    run.rowCount(), name, values);
+            return GroupSemantics.relationshipNotUniqueViolations(
+                    groupReadTable(run.ctx(), List.of(values), name), run.rowCount(), name, values);
         };
     }
 
@@ -2929,8 +2935,9 @@ public final class ExprCompiler
             List<String> members = net.cumba.corej.core.exec.GroupSplice.splice(fn, "member",
                     rawMembers, run.ctx(), false, "a member of " + fn
                             + " is a column of the dataset under evaluation, written" + " bare");
-            return GroupSemantics.uniqueSetViolations(run.ctx().getTable(), run.rowCount(),
-                    resolveDomainPrefixes(members, run.ctx()), regex, flagDuplicates, policy);
+            List<String> resolved = resolveDomainPrefixes(members, run.ctx());
+            return GroupSemantics.uniqueSetViolations(GroupReadTable.of(run.ctx(), resolved),
+                    run.rowCount(), resolved, regex, flagDuplicates, policy);
         };
     }
 
@@ -3027,9 +3034,14 @@ public final class ExprCompiler
         List<String> rawKeys = keyColumns(c);
         boolean includeEmpty = includeEmptyKwarg(c);
         GroupKeyPolicy policy = groupKeyPolicy(c, GroupKeyPolicy.DROP_MISSING_KEYS);
-        return run -> GroupSemantics.inconsistentAcrossDatasetViolations(run.ctx().getTable(),
-                resolveDomainPrefix(rawName, run.ctx()), resolveDomainPrefixes(rawKeys, run.ctx()),
-                run.rowCount(), includeEmpty, policy);
+        return run ->
+        {
+            String name = resolveDomainPrefix(rawName, run.ctx());
+            List<String> keys = resolveDomainPrefixes(rawKeys, run.ctx());
+            return GroupSemantics.inconsistentAcrossDatasetViolations(
+                    groupReadTable(run.ctx(), List.of(keys), name), name, keys, run.rowCount(),
+                    includeEmpty, policy);
+        };
     }
 
 
@@ -3166,8 +3178,12 @@ public final class ExprCompiler
             throw unsupported("inconsistent_enumerated_columns requires a name operand");
         }
         String rawName = groupOperandName(c.args().get(0));
-        return run -> GroupSemantics.inconsistentEnumeratedColumnsViolations(run.ctx().getTable(),
-                resolveDomainPrefix(rawName, run.ctx()), run.rowCount());
+        return run ->
+        {
+            String name = resolveDomainPrefix(rawName, run.ctx());
+            return GroupSemantics.inconsistentEnumeratedColumnsViolations(
+                    GroupReadTable.ofEnumerated(run.ctx(), name), name, run.rowCount());
+        };
     }
 
 
@@ -3243,8 +3259,8 @@ public final class ExprCompiler
                 }
                 Set<Object> allowed = nameIsOperation
                         ? GroupSemantics.distinctOperationValues(ctx.resolveVariable(sourceName))
-                        : GroupSemantics.distinctColumnValues(ctx.getTable(),
-                                resolveDomainPrefix(sourceName, ctx), run.rowCount());
+                        : distinctSourceValues(ctx, resolveDomainPrefix(sourceName, ctx),
+                                run.rowCount());
                 Vector tokens = tokensPlan.eval(run);
                 if (tokens == null || allowed == null)
                 {
@@ -3273,8 +3289,7 @@ public final class ExprCompiler
             }
             Set<Object> distinct = nameIsOperation
                     ? GroupSemantics.distinctOperationValues(ctx.resolveVariable(name))
-                    : GroupSemantics.distinctColumnValues(ctx.getTable(),
-                            resolveDomainPrefix(name, ctx), run.rowCount());
+                    : distinctSourceValues(ctx, resolveDomainPrefix(name, ctx), run.rowCount());
             List<?> required = requiredRef != null
                     ? GroupSemantics.operationStringList(ctx.resolveVariable(requiredRef))
                     : resolveDomainPrefixes(requiredCols, ctx);
@@ -3294,8 +3309,12 @@ public final class ExprCompiler
             throw unsupported("has_same_values requires a name operand");
         }
         String rawName = groupOperandName(c.args().get(0));
-        return run -> GroupSemantics.hasSameValuesViolations(run.ctx().getTable(),
-                resolveDomainPrefix(rawName, run.ctx()), run.rowCount());
+        return run ->
+        {
+            String name = resolveDomainPrefix(rawName, run.ctx());
+            return GroupSemantics.hasSameValuesViolations(GroupReadTable.of(run.ctx(), name), name,
+                    run.rowCount());
+        };
     }
 
 
@@ -3546,16 +3565,66 @@ public final class ExprCompiler
         }
         if (e instanceof Expr.Ref r && r.kind() == OperandKind.DOTTED_REF)
         {
-            // QNU N5 (T2 M2): a loud refusal names the bare spelling, as every other refusal
-            // of a qualified name does — a group operator reads a column of the evaluated
-            // dataset, never a joined one.
-            throw unsupported("group operator operand names the qualified " + r.name()
-                    + " — write it bare (" + r.name().substring(r.name().indexOf('.') + 1)
-                    + "): a group operator reads a column of the evaluated dataset, never a"
-                    + " joined one");
+            // ⭐ N5 lifted (MQ8, PLAN-merged-evaluation-table W3c): a qualified J.X is a column of
+            // the rule's one evaluation table like any other — the run-time read goes through
+            // GroupReadTable (the row's bound J record, the view's cell on the merged arm).
+            return r.name();
         }
         throw unsupported("group operator operand must be a plain column or --prefix reference"
                 + " (got " + e.getClass().getSimpleName() + ")");
+    }
+
+
+    /**
+     * The table a group operator reads its names on ({@link GroupReadTable}, W3c): the evaluated
+     * table itself, plus the merged columns (a qualified {@code J.X}, a {@code SUPP--} qualifier)
+     * the names need.
+     *
+     * @param ctx
+     *            the evaluation context
+     * @param lists
+     *            name lists (within components, group lists, key lists)
+     * @param names
+     *            single names ({@code null} entries ignored)
+     * @return the table to read the names on
+     */
+    private static IDataTable groupReadTable(EvaluationContext ctx,
+            List<? extends java.util.Collection<?>> lists, @Nullable String... names)
+    {
+        List<String> all = new ArrayList<>();
+        for (String name : names)
+        {
+            if (name != null)
+            {
+                all.add(name);
+            }
+        }
+        for (java.util.Collection<?> list : lists)
+        {
+            for (Object item : list)
+            {
+                if (item instanceof java.util.Collection<?> inner)
+                {
+                    inner.forEach(n -> all.add(String.valueOf(n)));
+                }
+                else if (item != null)
+                {
+                    all.add(String.valueOf(item));
+                }
+            }
+        }
+        return GroupReadTable.of(ctx, all);
+    }
+
+
+    /**
+     * The distinct values of a column-named {@code contains_all} / {@code not_contains_all} source,
+     * read on the rule's one evaluation table (W3c: a qualified or a SUPP-delivered source too).
+     */
+    private static @Nullable Set<Object> distinctSourceValues(EvaluationContext ctx, String name,
+            int rowCount)
+    {
+        return GroupSemantics.distinctColumnValues(GroupReadTable.of(ctx, name), name, rowCount);
     }
 
 

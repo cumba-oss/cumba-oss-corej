@@ -541,7 +541,10 @@ class DistinctFunctionTest
                 "filter=(COLUMN == \"value\")");
         expectError("distinct(ARMCD, domain=TA, filter=ARM)", "boolean expression");
         expectError("distinct(--BLFL, domain=TA)", "does not resolve `--`");
-        expectError("distinct(DM.USUBJID)", "written bare, not dotted");
+        // W3c (N5 lifted per MQ8): without domain= DM.USUBJID is a column of the one evaluation
+        // table and loads; under domain= only the domain's own qualifier names a column of it.
+        loaded("distinct(DM.USUBJID)", "USUBJID not in $v");
+        expectError("distinct(DM.USUBJID, domain=TA)", "under domain=TA");
         expectError("distinct($x)", "must be a plain column reference");
         expectError("distinct(ARMCD, group=" + q("USUBJID") + ")",
                 "takes a list of column references");

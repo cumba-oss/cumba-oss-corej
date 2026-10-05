@@ -167,8 +167,11 @@ public final class Distinct
      * spelling the author must use): no target or a second positional (the binder); a string
      * literal target (R1); a list target holding anything but column references; a {@code group=}
      * beside a list target (the operation ignored it silently — P-Q8); {@code keep_missings}
-     * without {@code group=}; a {@code --} reference under {@code domain=}; a dotted or {@code $}
-     * reference anywhere; the retired {@code filter(K="v")} call form; an unknown keyword (D19a).
+     * without {@code group=}; a {@code --} reference under {@code domain=}; a {@code $} reference
+     * anywhere, and under {@code domain=D} a dotted reference whose qualifier is not {@code D}
+     * (W3c: without {@code domain=} a dotted name is a merged column of the one evaluation table,
+     * under {@code domain=D} a {@code D.X} is D's own {@code X}); the retired {@code filter(K="v")}
+     * call form; an unknown keyword (D19a).
      *
      * @param c
      *            the authored call
@@ -207,16 +210,18 @@ public final class Distinct
         }
         if (targetArg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
         {
-            tupleColumns = readTupleColumns(lit, foreign);
+            tupleColumns = readTupleColumns(lit, dataset);
         }
         else
         {
-            target = GroupedAggregate.readTarget(NAME, targetArg, foreign);
+            target = GroupedAggregate
+                    .stripQualifier(GroupedAggregate.readTarget(NAME, targetArg, dataset), dataset);
         }
         Expr filter = GroupedAggregate.readFilter(NAME,
-                GroupedAggregate.slot(bound, params, GroupedAggregate.FILTER_PARAMETER), foreign);
+                GroupedAggregate.slot(bound, params, GroupedAggregate.FILTER_PARAMETER), dataset);
+        filter = filter == null ? null : GroupedAggregate.stripQualifier(filter, dataset);
         List<String> group = GroupedAggregate.readGroup(NAME,
-                GroupedAggregate.slot(bound, params, GroupedAggregate.GROUP_PARAMETER), foreign,
+                GroupedAggregate.slot(bound, params, GroupedAggregate.GROUP_PARAMETER), dataset,
                 false);
         if (tupleColumns != null && !group.isEmpty())
         {
@@ -240,7 +245,7 @@ public final class Distinct
 
 
     /** The tuple shape's columns: a non-empty list of bare column references. */
-    private static List<String> readTupleColumns(Expr.Lit lit, boolean foreign)
+    private static List<String> readTupleColumns(Expr.Lit lit, @Nullable String dataset)
     {
         List<String> out = new ArrayList<>();
         if (lit.value() instanceof List<?> items)
@@ -253,7 +258,7 @@ public final class Distinct
                             + "' of '" + NAME + "' must be a list of column references");
                 }
                 out.add(GroupedAggregate.columnName(NAME, GroupedAggregate.NAME_PARAMETER, e,
-                        foreign));
+                        dataset));
             }
         }
         if (out.isEmpty())
@@ -290,7 +295,8 @@ public final class Distinct
         // C2: a qualified member's record side is read through the join, from THIS context, never
         // memoised — and resolved BEFORE the no-group shortcut, so D-ABSENT does not depend on
         // whether the target formed a group (review round 1, lane 2 L2).
-        GroupedAggregate.RowKey keyer = GroupedAggregate.hasQualifiedMember(names)
+        boolean foreign = spec.dataset() != null;
+        GroupedAggregate.RowKey keyer = GroupedAggregate.keysRecordSide(foreign, names)
                 ? GroupedAggregate.recordKeyer(ctx, NAME, names)
                 : null;
         if (byKey.isEmpty())
@@ -307,32 +313,40 @@ public final class Distinct
             return new ComputedVector(run.rowCount(), DataValueType.STRING,
                     row -> byKey.getOrDefault(keyer.of(meta, primary, row), EMPTY));
         }
-        int[] keyColumns = GroupKeyIdentity.columnIndices(primary.getMetaData(), names);
+        // Without domain= the row's key is read on the evaluated rows' one table, where a merged
+        // member (a qualified J.X, a SUPP qualifier) is a column too (W3c) — the very table the
+        // blocks were keyed on; else on the primary.
+        IDataTable keyTable = foreign ? primary : GroupReadTable.of(ctx, names);
+        int[] keyColumns = GroupKeyIdentity.columnIndices(keyTable.getMetaData(), names);
         return new ComputedVector(run.rowCount(), DataValueType.STRING, row -> byKey
-                .getOrDefault(GroupKeyIdentity.identityKey(primary, keyColumns, row), EMPTY));
+                .getOrDefault(GroupKeyIdentity.identityKey(keyTable, keyColumns, row), EMPTY));
     }
 
 
     /** The ungrouped answer: the value set or the tuple set over the whole target table. */
     private static Vector datasetLevel(EvaluationContext ctx, Spec spec)
     {
-        IDataTable table = GroupedAggregate.resolveTarget(ctx, spec.dataset());
+        boolean foreign = spec.dataset() != null;
+        List<String> columns = spec.isTuple()
+                ? GroupedAggregate
+                        .resolvePrefixes(java.util.Objects.requireNonNull(spec.tupleColumns()), ctx)
+                : List.of();
+        IDataTable table = GroupedAggregate.resolveTarget(ctx, spec.dataset(),
+                spec.isTuple() ? columns : GroupedAggregate.targetNames(spec.target(), List.of()));
         if (table == null)
         {
             return ConstVector.of(EMPTY, () -> NAME); // Q17-a: an absent dataset matched nothing
         }
-        BitSet keep = GroupedAggregate.filterMask(ctx, table, spec.filter());
+        BitSet keep = GroupedAggregate.filterMask(ctx, table, spec.filter(), foreign);
         int rowCount = (int) Math.min(Integer.MAX_VALUE, table.getRowCount());
         if (spec.isTuple())
         {
-            List<String> columns = GroupedAggregate
-                    .resolvePrefixes(java.util.Objects.requireNonNull(spec.tupleColumns()), ctx);
             return ConstVector.of(
                     tupleSet(table, columns, keep, rowCount, ctx.getNumericExpectedColumns()),
                     () -> NAME);
         }
         IntFunction<IDataValue> cellAt = targetCells(ctx, table,
-                java.util.Objects.requireNonNull(spec.target()));
+                java.util.Objects.requireNonNull(spec.target()), foreign);
         int[] rows = new int[rowCount];
         for (int r = 0; r < rowCount; r++)
         {
@@ -351,7 +365,7 @@ public final class Distinct
      * 0..N producer contract of {@code ScalarSemanticsComputedMissingTest}).
      */
     private static IntFunction<IDataValue> targetCells(EvaluationContext ctx, IDataTable table,
-            Expr target)
+            Expr target, boolean foreign)
     {
         DataTableMeta meta = table.getMetaData();
         if (target instanceof Expr.Ref ref)
@@ -365,7 +379,7 @@ public final class Distinct
             return column::getDataValue;
         }
         Vector v = ExprCompiler.evaluateValueExpression(target,
-                GroupedAggregate.tableContext(ctx, table, List.of(target)));
+                GroupedAggregate.targetContext(ctx, table, foreign, List.of(target)));
         if (v == null)
         {
             return ignored -> ScalarSemantics.computedMissing();
@@ -465,19 +479,22 @@ public final class Distinct
     private static Map<Object, List<Object>> perGroup(EvaluationContext ctx, Spec spec,
             List<String> names)
     {
-        IDataTable primary = ctx.getTable();
-        IDataTable table = GroupedAggregate.resolveTarget(ctx, spec.dataset());
+        boolean foreign = spec.dataset() != null;
+        IDataTable table = GroupedAggregate.resolveTarget(ctx, spec.dataset(),
+                GroupedAggregate.targetNames(spec.target(), names));
         if (table == null)
         {
             return Map.of();
         }
         IntFunction<IDataValue> cellAt = targetCells(ctx, table,
-                java.util.Objects.requireNonNull(spec.target()));
-        BitSet keep = GroupedAggregate.filterMask(ctx, table, spec.filter());
+                java.util.Objects.requireNonNull(spec.target()), foreign);
+        BitSet keep = GroupedAggregate.filterMask(ctx, table, spec.filter(), foreign);
         // EC-44: absent PLAIN group columns are ignored; all absent ⇒ the dataset is one group.
-        // C2: a qualified member groups the target by its UNQUALIFIED name (absent ⇒ ERROR).
+        // C2: under domain= a qualified member groups the target by its UNQUALIFIED name (absent
+        // ⇒ ERROR); without it the member is a column of the one evaluation table (W3c).
+        boolean qualified = GroupedAggregate.keysRecordSide(foreign, names);
         IndexHelper.Grouping grouping = IndexHelper.groupByPresent(table,
-                GroupedAggregate.groupedSideNames(NAME, table, names),
+                qualified ? GroupedAggregate.groupedSideNames(NAME, table, names) : names,
                 GroupedAggregate.logContext(ctx, NAME), spec.policy());
         if (grouping == null)
         {
@@ -493,7 +510,7 @@ public final class Distinct
             ListValueGuard.requireNoNullElement(values, () -> NAME + " group " + block.key());
             results.put(block, values);
         }
-        if (table != primary || GroupedAggregate.hasQualifiedMember(names))
+        if (foreign)
         {
             // GKI Q2: a Char/Num key pair between the grouped table and the evaluated one ERRORs
             // the rule instead of silently matching no row. Once per evaluation, never per row.

@@ -93,6 +93,31 @@ class JoinExpansionUniformityTest
 
 
     /**
+     * W3c (N5 lifted per MQ8): a group OPERATOR keyed by the qualified {@code J.G} over the
+     * expanded join counts an expanded row like the hand-expanded primary carrying J's G — the two
+     * k1 copies split h1 / h2. (D-SRC, ruled: a qualified {@code group=} member's source is an
+     * INNER join, so k3, unmatched, is dropped on both sides.)
+     */
+    @Test
+    void aGroupOperatorOverADottedKeyCountsAnExpandedRowLikeAPrimaryRow()
+    {
+        IDataTable byHandInner = RealTables.of("P").str("K", "k1", "k1", "k2")
+                .str("S", "a", "a", "b").str("G", "h1", "h2", "h1").build();
+        String inner = "\"Match_Datasets\":[{\"Name\":\"J\",\"Keys\":[\"K\"],"
+                + "\"Join_Type\":\"inner\"}]";
+        Rule dotted = loadClean(
+                ruleJson("Record",
+                        inner + "," + check("record_count(group=[J.G]) == 2") + "," + outcome("K")),
+                true);
+        IDataTable p = primaryP();
+        RuleExecutionResult viaJoin = executed(dotted, p, exactInventory(p, manyJ()));
+        RuleExecutionResult hand = runBare("record_count(group=[G]) == 2", byHandInner, "K");
+        assertEquals(2, hand.getViolations().size(), "h1: one k1 copy and k2");
+        assertEquals(QualifiedNameFixture.values(hand), QualifiedNameFixture.values(viaJoin));
+    }
+
+
+    /**
      * The grouped half with the QUALIFIED key (T2 r1 M6): Grouping [J.G] over the expanded join.
      */
     @Test

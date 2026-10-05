@@ -3619,7 +3619,6 @@ public final class RuleRunner
         GroupKeyPolicy groupingPolicy = GroupKeyPolicy.DROP_MISSING_KEYS
                 .withDeclared(rule.groupingKeepMissings());
         IDataTable table = ctx.getTable();
-        DataTableMeta meta = table.getMetaData();
         long rowCount = table.getRowCount();
 
         ViolationSink violations = new ViolationSink(ctx.getMaxErrorsPerRule());
@@ -3634,10 +3633,18 @@ public final class RuleRunner
         // comment justified the drop by Python parity, retired 2026-09-17; the behaviour is
         // EC-44's — PLAN-rprfdy-offset-tp-join F1.) ⚠ A QUALIFIED member is never dropped: an
         // unresolvable source is an ERROR (D-ABSENT), see executeGroupedQualified.
+        //
+        // ⭐ N16 (PLAN-merged-evaluation-table W3c): the key is read on the rule's ONE evaluation
+        // table — a bare member the primary lacks that its SUPP-- delivers (CDISC-CG0536's DSSCAT
+        // held in SUPPDS) is a key column like any other, exactly as the Check reads it; until
+        // W3c it was dropped as absent and two records differing only in it were one group.
+        // keyTable IS the evaluated table whenever every member is its own column or absent.
+        IDataTable keyTable = GroupReadTable.of(ctx, unqualifiedMembers(groupVars));
+        DataTableMeta keyMeta = keyTable.getMetaData();
         List<String> presentGroupVars = new ArrayList<>(groupVars.size());
         for (String g : groupVars)
         {
-            if (g != null && meta.getColumnIndex(g) >= 0)
+            if (g != null && keyMeta.getColumnIndex(g) >= 0)
             {
                 presentGroupVars.add(g);
             }
@@ -3702,8 +3709,8 @@ public final class RuleRunner
                     .totalRows(rowCount).keySource(keySpec.source()).build();
         }
 
-        int[] keyColIndices = IndexHelper.resolveColumnIndices(meta, presentGroupVars);
-        net.cumba.datatable.index.IDataTableIndex index = IndexHelper.createIndex(table,
+        int[] keyColIndices = IndexHelper.resolveColumnIndices(keyMeta, presentGroupVars);
+        net.cumba.datatable.index.IDataTableIndex index = IndexHelper.createIndex(keyTable,
                 presentGroupVars.toArray(String[]::new));
         if (index == null)
         {
@@ -3720,8 +3727,8 @@ public final class RuleRunner
             // The rule-level grouping surface. Its shipped default discards a block whose key
             // carries a genuine missing marker; an authored `Grouping.keep_missings: true` keeps
             // it.
-            if (keyColIndices != null && !groupingPolicy.keepMissings()
-                    && IndexHelper.isBlockKeyMissing(block, table, keyColIndices, groupingPolicy))
+            if (keyColIndices != null && !groupingPolicy.keepMissings() && IndexHelper
+                    .isBlockKeyMissing(block, keyTable, keyColIndices, groupingPolicy))
             {
                 continue;
             }
@@ -3732,17 +3739,19 @@ public final class RuleRunner
             // majority comes first reported nothing, making the outcome depend on physical
             // record order. Anchor the single group-level violation at the first flagged row
             // (an actually-offending record).
-            long blockRows = block.getRowCount(table);
+            // The block's rows are rows of keyTable, which are the evaluated table's rows one
+            // for one (GroupReadTable): the key cells are read there, the finding on `table`.
+            long blockRows = block.getRowCount(keyTable);
             for (long i = 0; i < blockRows; i++)
             {
-                long row = block.getRealRow(table, i);
+                long row = block.getRealRow(keyTable, i);
                 if (result.get((int) row))
                 {
                     net.cumba.datatable.view.IDataTableView flaggedBlock = block;
                     storeGroupedViolation(table, ctx, outputVars, row, violations, keySpec,
-                            groupUnitOf(ctx, table, keyColIndices, row),
-                            groupKeyOf(table, presentGroupVars, keyColIndices, row),
-                            () -> blockFlaggedIterator(table, flaggedBlock, blockRows, result),
+                            groupUnitOf(ctx, keyTable, keyColIndices, row),
+                            groupKeyOf(keyTable, presentGroupVars, keyColIndices, row),
+                            () -> blockFlaggedIterator(keyTable, flaggedBlock, blockRows, result),
                             nonConstantOutputs);
                     break;
                 }
@@ -3786,12 +3795,13 @@ public final class RuleRunner
             GroupKeyPolicy groupingPolicy, ViolationSink violations, List<String> outputVars)
     {
         IDataTable table = ctx.getTable();
-        DataTableMeta meta = table.getMetaData();
         long rowCount = table.getRowCount();
         // The key's components, resolved once: a present plain member by column, a qualified
         // member through its lookup (ERROR here when unresolvable), an absent plain member
         // dropped (EC-44).
-        QualifiedGroupKey key = QualifiedGroupKey.of(ctx, meta, groupVars);
+        // N16 (W3c): a bare member delivered by the SUPP merge is a key column here too.
+        IDataTable keyTable = GroupReadTable.of(ctx, unqualifiedMembers(groupVars));
+        QualifiedGroupKey key = QualifiedGroupKey.of(ctx, keyTable, groupVars);
         BitSet result = evaluateRowLevel(rule, ctx);
         RecordKeyResolver.RowKeySpec keySpec = result.isEmpty() ? RecordKeyResolver.RowKeySpec.NONE
                 : keySpecFor(ctx);
@@ -3876,9 +3886,13 @@ public final class RuleRunner
 
         private final String[] unqualified;
 
-        private QualifiedGroupKey(List<String> aNames, List<Integer> aColumns,
+        /** The table a plain member's column is read on (the evaluated one, or it plus SUPP). */
+        private final IDataTable keyTable;
+
+        private QualifiedGroupKey(IDataTable aKeyTable, List<String> aNames, List<Integer> aColumns,
                 List<@Nullable JoinLookup> aLookups, List<String> aUnqualified)
         {
+            keyTable = aKeyTable;
             names = aNames.toArray(String[]::new);
             columns = aColumns.stream().mapToInt(Integer::intValue).toArray();
             lookups = aLookups.toArray(JoinLookup[]::new);
@@ -3886,9 +3900,10 @@ public final class RuleRunner
         }
 
 
-        private static QualifiedGroupKey of(EvaluationContext ctx, DataTableMeta meta,
+        private static QualifiedGroupKey of(EvaluationContext ctx, IDataTable keyTable,
                 List<String> groupVars)
         {
+            DataTableMeta meta = keyTable.getMetaData();
             List<String> names = new ArrayList<>();
             List<Integer> columns = new ArrayList<>();
             List<@Nullable JoinLookup> lookups = new ArrayList<>();
@@ -3918,14 +3933,14 @@ public final class RuleRunner
                 lookups.add(GroupedAggregate.requireSourceLookup(ctx, "Grouping", g));
                 unqualified.add(g.substring(qualifier.length() + 1));
             }
-            return new QualifiedGroupKey(names, columns, lookups, unqualified);
+            return new QualifiedGroupKey(keyTable, names, columns, lookups, unqualified);
         }
 
 
         private IDataValue cell(IDataTable table, long row, int c)
         {
             JoinLookup lookup = lookups[c];
-            return lookup == null ? table.getColumn(columns[c]).getDataValue(row)
+            return lookup == null ? keyTable.getColumn(columns[c]).getDataValue(row)
                     : lookup.lookupValue(table, row, unqualified[c], false);
         }
 
@@ -4258,6 +4273,25 @@ public final class RuleRunner
         }
         // Group's compact constructor takes the defensive unmodifiable copy.
         return new Violation.Unit.Group(key);
+    }
+
+
+    /**
+     * The bare members of a rule-level {@code Grouping} — the names {@link GroupReadTable} may
+     * serve from the SUPP merge (N16, W3c); a qualified member keeps its own lookup and D-ABSENT
+     * ERROR.
+     */
+    private static List<String> unqualifiedMembers(List<String> groupVars)
+    {
+        List<String> out = new ArrayList<>(groupVars.size());
+        for (String g : groupVars)
+        {
+            if (g != null && MatchDataset.qualifierOf(g) == null)
+            {
+                out.add(g);
+            }
+        }
+        return out;
     }
 
 

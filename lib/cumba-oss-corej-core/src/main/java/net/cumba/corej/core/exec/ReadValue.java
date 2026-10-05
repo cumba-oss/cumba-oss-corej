@@ -30,14 +30,15 @@ import org.jspecify.annotations.Nullable;
  * {@code max_value_length} shape): its arguments name columns of {@code D}, never of the dataset
  * under evaluation, so they are read from the call by {@link #spec} at load time rather than
  * compiled as vectors of the primary. {@code X} is a bare column reference of {@code D} (a quoted
- * name is a string, never a column — R1; a dotted or {@code $} reference and a {@code --} name are
- * load errors, {@code domain=} already names the dataset); {@code domain=} is the bare dataset
- * reference {@code TS} or the quoted {@code "TS"} (D10, both spellings); {@code filter=} is a
- * boolean expression over {@code D}'s own columns (right-side only, spec §3.3's choice — a dotted,
- * {@code $} or {@code --} reference inside it is a load error), evaluated against a
- * {@code D}-scoped context exactly as {@code Match_Datasets.Filter} is ({@code MatchFilter});
- * {@code mode=} is a required string literal, because the row-selection policy is authored, never
- * inferred (D13).
+ * name is a string, never a column — R1; a {@code $} reference and a {@code --} name are load
+ * errors, {@code domain=} already names the dataset, and a dotted {@code D.X} is {@code D}'s own
+ * {@code X} — W3c, any other qualifier a load error); {@code domain=} is the bare dataset reference
+ * {@code TS} or the quoted {@code "TS"} (D10, both spellings); {@code filter=} is a boolean
+ * expression over {@code D}'s own columns (right-side only, spec §3.3's choice — a {@code $} or
+ * {@code --} reference or a dotted one not qualified by {@code D} inside it is a load error, a
+ * {@code D.X} is read as {@code X}), evaluated against a {@code D}-scoped context exactly as
+ * {@code Match_Datasets.Filter} is ({@code MatchFilter}); {@code mode=} is a required string
+ * literal, because the row-selection policy is authored, never inferred (D13).
  * </p>
  *
  * <p>
@@ -355,7 +356,6 @@ public final class ReadValue
                     + " takes exactly one positional argument, the column of domain to read; got "
                     + c.args().size());
         }
-        String column = columnName(c.args().get(0));
         Map<String, Expr> kwargs = c.kwargs();
         for (String key : kwargs.keySet())
         {
@@ -372,6 +372,7 @@ public final class ReadValue
                     NAME + " requires domain=, the dataset the column is read from (TS or \"TS\")");
         }
         String dataset = datasetName(domainExpr);
+        String column = columnName(c.args().get(0), dataset);
         Expr modeExpr = kwargs.get("mode");
         if (modeExpr == null)
         {
@@ -383,11 +384,13 @@ public final class ReadValue
         Expr filter = kwargs.get("filter");
         if (filter != null)
         {
-            checkFilterRefs(filter);
+            checkFilterRefs(filter, dataset);
+            // D.X under domain=D names D's own X (W3c, N5 lifted per MQ8): read as the bare X.
+            filter = GroupedAggregate.stripQualifier(filter, dataset);
         }
         // W5: group= is the grouped aggregates' reader (bare columns of D, at least one when
         // given); keep_missings= from the same reader.
-        List<String> group = GroupedAggregate.readGroup(NAME, kwargs.get("group"), true, false);
+        List<String> group = GroupedAggregate.readGroup(NAME, kwargs.get("group"), dataset, false);
         GroupKeyPolicy policy = GroupedAggregate.readPolicy(NAME, kwargs.get("keep_missings"));
         if (group.isEmpty() && kwargs.containsKey("keep_missings"))
         {
@@ -399,7 +402,7 @@ public final class ReadValue
     }
 
 
-    private static String columnName(Expr arg)
+    private static String columnName(Expr arg, String dataset)
     {
         return switch (arg)
         {
@@ -408,11 +411,8 @@ public final class ReadValue
                 .kind() == OperandKind.WILDCARD_COLUMN -> throw new ExpressionException(
                         NAME + " does not resolve `--` (" + ref.name()
                                 + "): name the column of domain explicitly");
-        case Expr.Ref ref when ref
-                .kind() == OperandKind.DOTTED_REF -> throw new ExpressionException(NAME
-                        + " reads a column of domain, so its column is written bare, not dotted ("
-                        + ref.name() + ") — write it bare ("
-                        + ref.name().substring(ref.name().indexOf('.') + 1) + ")");
+        case Expr.Ref ref when ref.kind() == OperandKind.DOTTED_REF -> GroupedAggregate
+                .columnName(NAME, "name", ref, dataset);
         case Expr.Ref ref -> throw new ExpressionException(
                 NAME + " reads a column of domain; " + ref.name() + " is not one");
         case Expr.Lit lit -> throw new ExpressionException(
@@ -455,11 +455,16 @@ public final class ReadValue
     }
 
 
-    /** Right-side columns only (spec §3.3, Q4): a reference outside {@code D} is a load error. */
-    private static void checkFilterRefs(Expr e)
+    /**
+     * Right-side columns only (spec §3.3, Q4): a reference outside {@code D} is a load error; a
+     * {@code D.X} names {@code D}'s own {@code X} (W3c) and is read bare.
+     */
+    private static void checkFilterRefs(Expr e, String dataset)
     {
         switch (e)
         {
+        case Expr.Ref ref when ref.kind() == OperandKind.DOTTED_REF -> GroupedAggregate
+                .columnName(NAME, "filter", ref, dataset);
         case Expr.Ref ref ->
         {
             if (ref.kind() != OperandKind.COLUMN)
@@ -474,17 +479,17 @@ public final class ReadValue
         }
         case Expr.Call call ->
         {
-            call.args().forEach(ReadValue::checkFilterRefs);
-            call.kwargs().values().forEach(ReadValue::checkFilterRefs);
+            call.args().forEach(f -> checkFilterRefs(f, dataset));
+            call.kwargs().values().forEach(f -> checkFilterRefs(f, dataset));
         }
         case Expr.Binary binary ->
         {
-            checkFilterRefs(binary.left());
-            checkFilterRefs(binary.right());
+            checkFilterRefs(binary.left(), dataset);
+            checkFilterRefs(binary.right(), dataset);
         }
-        case Expr.And and -> and.parts().forEach(ReadValue::checkFilterRefs);
-        case Expr.Or or -> or.parts().forEach(ReadValue::checkFilterRefs);
-        case Expr.Not not -> checkFilterRefs(not.inner());
+        case Expr.And and -> and.parts().forEach(f -> checkFilterRefs(f, dataset));
+        case Expr.Or or -> or.parts().forEach(f -> checkFilterRefs(f, dataset));
+        case Expr.Not not -> checkFilterRefs(not.inner(), dataset);
         case Expr.Lit lit ->
         {
             if (lit.kind() == Expr.LitKind.LIST && lit.value() instanceof List<?> items)
@@ -493,7 +498,7 @@ public final class ReadValue
                 {
                     if (item instanceof Expr inner)
                     {
-                        checkFilterRefs(inner);
+                        checkFilterRefs(inner, dataset);
                     }
                 }
             }

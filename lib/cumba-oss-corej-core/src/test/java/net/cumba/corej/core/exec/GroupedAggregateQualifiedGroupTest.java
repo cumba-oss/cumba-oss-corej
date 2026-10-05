@@ -356,12 +356,17 @@ class GroupedAggregateQualifiedGroupTest
     // -----------------------------------------------------------------------
 
 
+    /**
+     * ⭐ W3c of {@code PLAN-merged-evaluation-table} (N5 lifted per MQ8): WITHOUT {@code domain=} a
+     * qualified member is no record-side key — the grouped dataset is the evaluated one, and
+     * {@code DM.RPATHCD} is a column of its one evaluation table (read per row through the DM
+     * join). Until W3c it was refused here ("requires domain="). The reading itself is measured by
+     * {@code MergedColumnKeyReadersTest} (JOINED arm, KEYED plant).
+     */
     @Test
-    void aQualifiedMemberRequiresDomain()
+    void aQualifiedMemberWithoutDomainIsAColumnOfTheOneTable()
     {
-        String error = loadError(DM_ENTRY, DM_REQUIREMENTS,
-                "max(BWSEQ, group=[DM.RPATHCD, RPHASE])");
-        assertTrue(error.contains("DM.RPATHCD") && error.contains("domain="), error);
+        loadClean("max(BWSEQ, group=[DM.RPATHCD, RPHASE])", "not empty($v)");
     }
 
 
@@ -486,16 +491,13 @@ class GroupedAggregateQualifiedGroupTest
 
 
     /**
-     * A compiler-dispatched group operator has no other side: a dotted {@code within=} is refused.
+     * A compiler-dispatched group operator has no other side: a dotted {@code within=} is a column
+     * of the one evaluation table (W3c, N5 lifted per MQ8 — refused until then, "write it bare").
      */
     @Test
-    void aDottedWithinMemberOfAGroupOperatorIsRefused()
+    void aDottedWithinMemberOfAGroupOperatorLoads()
     {
-        String error = loadError(DM_ENTRY, DM_REQUIREMENTS,
-                "has_multiple_values_for(BWSEQ, RPHASE, within=[DM.RPATHCD])");
-        // QNU T2 r1 M2: the refusal names the qualified spelling AND the bare remedy.
-        assertTrue(error.contains("group operator operand names the qualified DM.RPATHCD"), error);
-        assertTrue(error.contains("write it bare (RPATHCD)"), error);
+        loadClean("has_multiple_values_for(BWSEQ, RPHASE, within=[DM.RPATHCD])", "not $v");
     }
 
 }

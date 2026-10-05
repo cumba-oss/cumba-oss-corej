@@ -573,10 +573,15 @@ class GroupedAggregateFunctionsTest
         expectError("max(AVAL, group=[])", "at least one column");
         expectError("max(AVAL, group=[\\\"USUBJID\\\"])", "a quoted name is a string");
         expectError("max(AVAL, group=[$x])", "plain column reference");
-        expectError("max(DS.AVAL, group=[USUBJID])", "not dotted");
+        // W3c (N5 lifted per MQ8): without domain= a qualified name is a column of the one
+        // evaluation table and loads; under domain= only the domain's own qualifier does.
+        loaded("max(DS.AVAL, group=[USUBJID])", "empty($v)");
+        loaded("max(AVAL, group=[USUBJID], filter=(DM.ARM == \\\"A\\\"))", "empty($v)");
+        expectError("max(DS.AVAL, domain=ADSL, group=[USUBJID])", "under domain=ADSL");
         expectError("max(AVAL, group=[USUBJID], filter=filter(ABLFL=\\\"Y\\\"))",
                 "written filter=(COLUMN == ");
-        expectError("max(AVAL, group=[USUBJID], filter=(DM.ARM == \\\"A\\\"))", "not dotted");
+        expectError("max(AVAL, domain=ADSL, group=[USUBJID], filter=(DM.ARM == \\\"A\\\"))",
+                "write it bare (ARM) or qualified by ADSL");
         expectError("max(AVAL, group=[USUBJID], keep_missings=\\\"no\\\")", "boolean literal");
         expectError("max(AVAL, group=[USUBJID], missing_values=\\\"skip\\\")", "missing_values");
         expectError("max_date(DSSTDTC, group=[USUBJID], missing_values=\\\"indeterminant\\\")",

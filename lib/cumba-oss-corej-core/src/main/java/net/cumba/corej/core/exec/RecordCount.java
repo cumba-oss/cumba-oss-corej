@@ -165,10 +165,11 @@ public final class RecordCount
     /**
      * Reads the call at load time, refusing every shape the plan cannot mean (the messages name the
      * spelling the author must use): a positional argument (the binder — the function declares no
-     * target), a {@code --} reference under {@code domain=}, a dotted or {@code $} reference in
-     * {@code filter=}, the retired {@code filter(K="v")} call form, a {@code group=} that is not a
-     * list of column / {@code $} references, a non-boolean {@code keep_missings}, a {@code regex=}
-     * that is not a string literal or does not compile, an unknown keyword (D19a).
+     * target), a {@code --} reference under {@code domain=}, a {@code $} reference in
+     * {@code filter=} (and under {@code domain=D} a dotted one not qualified by {@code D} — W3c),
+     * the retired {@code filter(K="v")} call form, a {@code group=} that is not a list of column /
+     * {@code $} references, a non-boolean {@code keep_missings}, a {@code regex=} that is not a
+     * string literal or does not compile, an unknown keyword (D19a).
      *
      * @param c
      *            the authored call
@@ -198,14 +199,15 @@ public final class RecordCount
                 GroupedAggregate.slot(bound, params, GroupedAggregate.DOMAIN_PARAMETER));
         boolean foreign = dataset != null;
         Expr filter = GroupedAggregate.readFilter(NAME,
-                GroupedAggregate.slot(bound, params, GroupedAggregate.FILTER_PARAMETER), foreign);
+                GroupedAggregate.slot(bound, params, GroupedAggregate.FILTER_PARAMETER), dataset);
+        filter = filter == null ? null : GroupedAggregate.stripQualifier(filter, dataset);
         List<String> group = GroupedAggregate.readGroup(NAME,
-                GroupedAggregate.slot(bound, params, GroupedAggregate.GROUP_PARAMETER), foreign,
+                GroupedAggregate.slot(bound, params, GroupedAggregate.GROUP_PARAMETER), dataset,
                 false, true);
         GroupKeyPolicy policy = GroupedAggregate.readPolicy(NAME,
                 GroupedAggregate.slot(bound, params, GroupedAggregate.KEEP_MISSINGS_PARAMETER));
         Pattern regex = readRegex(GroupedAggregate.slot(bound, params, REGEX_PARAMETER));
-        if (regex != null && GroupedAggregate.hasQualifiedMember(group))
+        if (regex != null && GroupedAggregate.keysRecordSide(foreign, group))
         {
             // D-REGEX (PLAN-rprfdy-offset-tp-join): regex= normalises the group-column VALUES read
             // from the grouped dataset, and with a qualified member the two sides would normalise
@@ -274,7 +276,7 @@ public final class RecordCount
                     () -> countAll(ctx, spec));
             return (Vector) java.util.Objects.requireNonNull(memo, "the memo never stores null");
         }
-        return GroupedAggregate.broadcast(run, NAME, memoKey, names,
+        return GroupedAggregate.broadcast(run, NAME, memoKey, names, spec.dataset() != null,
                 () -> countPerGroup(ctx, spec, names), _ -> ZERO);
     }
 
@@ -296,9 +298,10 @@ public final class RecordCount
      */
     private static List<String> splice(List<String> group, EvaluationContext ctx, boolean foreign)
     {
-        // A qualified member (C2, PLAN-rprfdy-offset-tp-join) is judged at load — D-DOMAIN, D-SRC,
-        // D-REGEX — and a spliced one never reaches those gates, so it would key the record side
-        // through a join nobody checked (review round 1, lane 2 SPECULATIVE).
+        // Under domain= a qualified member (C2, PLAN-rprfdy-offset-tp-join) is judged at load —
+        // D-DOMAIN, D-SRC, D-REGEX — and a spliced one never reaches those gates, so it would key
+        // the record side through a join nobody checked (review round 1, lane 2 SPECULATIVE).
+        // Without domain= it is a column of the one evaluation table and splices through (W3c).
         return GroupSplice.splice(NAME, "group= member", group, ctx, foreign,
                 "a qualified group= member is judged at load, so author it in the group= list"
                         + " itself");
@@ -313,7 +316,8 @@ public final class RecordCount
         {
             return ConstVector.of(0L); // Q17-a: an absent dataset counted zero records
         }
-        BitSet keep = GroupedAggregate.filterMask(ctx, table, spec.filter());
+        BitSet keep = GroupedAggregate.filterMask(ctx, table, spec.filter(),
+                spec.dataset() != null);
         long count = keep == null ? table.getRowCount() : keep.cardinality();
         return ConstVector.of(count);
     }
@@ -324,17 +328,20 @@ public final class RecordCount
             List<String> names)
     {
         IDataTable primary = ctx.getTable();
-        IDataTable table = GroupedAggregate.resolveTarget(ctx, spec.dataset());
+        boolean foreign = spec.dataset() != null;
+        IDataTable table = GroupedAggregate.resolveTarget(ctx, spec.dataset(), names);
         if (table == null)
         {
             return new GroupedAggregate.Grouped(Map.of(), DataValueType.LONG, null);
         }
-        BitSet keep = GroupedAggregate.filterMask(ctx, table, spec.filter());
-        // C2: a qualified member groups the counted table by its UNQUALIFIED name (absent ⇒
-        // ERROR); the record side is keyed through the join by GroupedAggregate.broadcast.
-        boolean qualified = GroupedAggregate.hasQualifiedMember(names);
+        BitSet keep = GroupedAggregate.filterMask(ctx, table, spec.filter(), foreign);
+        // C2: under domain= a qualified member groups the counted table by its UNQUALIFIED name
+        // (absent ⇒ ERROR); the record side is keyed through the join by
+        // GroupedAggregate.broadcast. Without domain= it is a column of the one evaluation table
+        // (W3c), read on `table` (GroupReadTable) like any other member.
+        boolean qualified = GroupedAggregate.keysRecordSide(foreign, names);
         IndexHelper.Grouping grouping = IndexHelper.groupByPresent(table,
-                GroupedAggregate.groupedSideNames(NAME, table, names),
+                qualified ? GroupedAggregate.groupedSideNames(NAME, table, names) : names,
                 GroupedAggregate.logContext(ctx, NAME), spec.policy());
         if (grouping == null)
         {
@@ -384,19 +391,29 @@ public final class RecordCount
         if (normalise)
         {
             merged.forEach((key, count) -> byKey.put(key, new DataValueLong(count[0])));
-            int[] primaryColumns = GroupKeyIdentity.columnIndices(primary.getMetaData(), names);
-            keyer = (_, t, row) -> normalisedKey(t, primaryColumns, patterns, policy, row);
+            if (foreign)
+            {
+                int[] primaryColumns = GroupKeyIdentity.columnIndices(primary.getMetaData(), names);
+                keyer = (_, t, row) -> normalisedKey(t, primaryColumns, patterns, policy, row);
+            }
+            else
+            {
+                // The evaluated rows ARE the counted table's rows: each row's key is read on that
+                // table, where a merged member is a column too (W3c).
+                IDataTable counted = table;
+                keyer = (_, _, row) -> normalisedKey(counted, targetColumns, patterns, policy, row);
+            }
         }
-        else if (table == primary && !qualified)
+        else if (!foreign)
         {
             // The groups are the evaluated dataset's own: every row's count is written straight
             // from its block, with no key derived per row (XCUT PERF 3). Never for a qualified
             // member: its record side is the bound source record, not the row.
             return new GroupedAggregate.Grouped(byKey, DataValueType.LONG, null,
-                    GroupedAggregate.Grouped.perRow(Math.toIntExact(primary.getRowCount()), ZERO,
+                    GroupedAggregate.Grouped.perRow(Math.toIntExact(table.getRowCount()), ZERO,
                             blocks, b -> blockCounts[b]));
         }
-        if (table != primary || qualified)
+        if (foreign)
         {
             // GKI Q2: a Char/Num key pair between the counted table and the evaluated one ERRORs
             // the rule instead of silently matching no row. Once per evaluation, never per row.
