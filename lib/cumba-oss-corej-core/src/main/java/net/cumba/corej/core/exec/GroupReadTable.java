@@ -74,8 +74,8 @@ public final class GroupReadTable extends AbstractDataTable
 
 
     /**
-     * The table to read {@code names} on — {@link EvaluationContext#getTable()} itself when every
-     * name is its own column or resolves nowhere.
+     * The table to read {@code names} on — the context's evaluated table itself when every name is
+     * its own column or resolves nowhere.
      *
      * @param ctx
      *            the evaluation context
