@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import net.cumba.corej.core.exec.FindVars;
 import net.cumba.corej.core.model.Authority;
 import net.cumba.corej.core.model.AuthorityStandard;
 import net.cumba.corej.core.model.Reference;
@@ -122,6 +123,9 @@ public final class ReportAssembler
 
     private Collection<Rule> rules = List.of();
 
+    /** {@link #ruleByCoreId}'s memo; reset whenever {@link #rules} is set. */
+    private @Nullable Map<String, Rule> rulesByCoreId;
+
     /**
      * CORE ids of SDTM {@code --}-prefix expansions. Findings whose {@code core_id} is in this set
      * are bundled across datasets into a single {@code Issue_Summary} row (keyed by core id +
@@ -159,6 +163,7 @@ public final class ReportAssembler
     public ReportAssembler rules(Collection<Rule> aRules)
     {
         rules = aRules != null ? aRules : List.of();
+        rulesByCoreId = null;
         return this;
     }
 
@@ -539,10 +544,10 @@ public final class ReportAssembler
             for (ValidationFinding finding : member.getFindings())
             {
                 boolean engineError = isEngineError(finding);
-                // v1 has no name-only state: the columns the finding lists by name are appended
-                // to `variables` and print the frozen format's "null" token in `values` (owner
-                // Q-B, 2026-10-05 — V6 waived for v1 only). Appended, not interleaved: the
-                // model separates the two lists, so the effective order between them is gone.
+                // v1 has no name-only state: the columns the finding lists by name go into
+                // `variables` and print the frozen format's "null" token in `values` (owner
+                // Q-B, 2026-10-05 — V6 waived for v1 only), at the rule's authored positions
+                // (P2 review LOW-1) — see v1OutputVariables.
                 List<String> outputVars = v1OutputVariables(finding);
                 RowFindingSlab slab = finding.getRows();
                 List<String> names = finding.getVariableNames();
@@ -1062,21 +1067,128 @@ public final class ReportAssembler
 
 
     /**
-     * v1's {@code variables}: the valued variables, then the columns the finding lists by name
+     * v1's {@code variables}: the valued variables and the columns the finding lists by name
      * without a value. The frozen format has no name-only state, so {@link #extractRow} prints its
      * sanctioned {@code "null"} token for them (owner Q-B, 2026-10-05).
+     *
+     * <p>
+     * <b>Shape-stable</b> (P2 review LOW-1; coordinator decision, under Q-B's "v1 frozen, the name
+     * kept with its token"): a non-record finding's {@code variables} read in the order the last
+     * release printed — the rule's {@code Output_Variables} order — so the name-only names are
+     * interleaved at the position of the authored / effective entry that names them
+     * ({@link FindVars#entryNames}: the name itself, a {@code --} entry, a template / glob), not
+     * appended after the valued ones. Each list keeps its own order; a name no entry names stays
+     * behind its predecessor in its own list, and a leading one behind every valued name. The
+     * finding model carries the two lists separately, so the order comes from the supplied
+     * {@link #rules} (by CORE id); without the rule the names are appended (the pre-LOW-1 form).
+     * And the identity columns v1 strips from the valued ones ({@code USUBJID}, {@code SEQ}) are
+     * stripped from the named ones too — v1 never printed {@code USUBJID} in {@code variables}, so
+     * it never prints it with {@code "null"} either. A record finding lists nothing by name: its
+     * {@code variables} are unchanged.
+     * </p>
      */
-    private static List<String> v1OutputVariables(ValidationFinding finding)
+    private List<String> v1OutputVariables(ValidationFinding finding)
     {
         List<String> valued = valuedOutputVariables(finding);
-        List<String> named = finding.getNamedColumns();
+        List<String> named = new ArrayList<>(finding.getNamedColumns().size());
+        for (String name : finding.getNamedColumns())
+        {
+            if (!isV1Identity(name) && !valued.contains(name) && !named.contains(name))
+            {
+                named.add(name);
+            }
+        }
         if (named.isEmpty())
         {
             return valued;
         }
-        Set<String> out = new LinkedHashSet<>(valued);
-        out.addAll(named);
-        return new ArrayList<>(out);
+        Rule rule = finding.getRuleId() != null ? ruleByCoreId().get(finding.getRuleId()) : null;
+        List<String> effective = rule != null ? rule.effectiveOutputVariablesOrAuthored() : null;
+        if (effective == null || effective.isEmpty())
+        {
+            List<String> out = new ArrayList<>(valued);
+            out.addAll(named);
+            return out;
+        }
+        return interleaveByEntryOrder(valued, named, effective);
+    }
+
+
+    /** The identity columns v1 prints in their own fields, never in {@code variables}. */
+    private static boolean isV1Identity(String name)
+    {
+        return "USUBJID".equalsIgnoreCase(name) || "SEQ".equalsIgnoreCase(name);
+    }
+
+
+    /**
+     * Merges two lists, each in its own order, by the position of the first {@code effective} entry
+     * naming each element ({@link FindVars#entryNames}). An element no entry names takes its
+     * predecessor's position in its own list (a leading one of {@code first}: before everything; a
+     * leading one of {@code second}: after everything); on equal positions {@code first} wins.
+     */
+    static List<String> interleaveByEntryOrder(List<String> first, List<String> second,
+            List<String> effective)
+    {
+        int[] firstRank = carriedRanks(first, effective, -1);
+        int[] secondRank = carriedRanks(second, effective, Integer.MAX_VALUE);
+        List<String> out = new ArrayList<>(first.size() + second.size());
+        int i = 0;
+        int j = 0;
+        while (i < first.size() || j < second.size())
+        {
+            boolean takeFirst = j >= second.size()
+                    || (i < first.size() && firstRank[i] <= secondRank[j]);
+            out.add(takeFirst ? first.get(i++) : second.get(j++));
+        }
+        return out;
+    }
+
+
+    private static int[] carriedRanks(List<String> names, List<String> effective, int leading)
+    {
+        int[] ranks = new int[names.size()];
+        int carried = leading;
+        for (int k = 0; k < names.size(); k++)
+        {
+            int rank = rankOf(names.get(k), effective);
+            carried = rank >= 0 ? rank : carried;
+            ranks[k] = carried;
+        }
+        return ranks;
+    }
+
+
+    private static int rankOf(String name, List<String> effective)
+    {
+        for (int k = 0; k < effective.size(); k++)
+        {
+            if (FindVars.entryNames(effective.get(k), name))
+            {
+                return k;
+            }
+        }
+        return -1;
+    }
+
+
+    /** The supplied rules by CORE id (the first of a duplicated id), built on first use. */
+    private Map<String, Rule> ruleByCoreId()
+    {
+        if (rulesByCoreId == null)
+        {
+            Map<String, Rule> m = new java.util.HashMap<>();
+            for (Rule r : rules)
+            {
+                String id = coreIdOf(r);
+                if (id != null)
+                {
+                    m.putIfAbsent(id, r);
+                }
+            }
+            rulesByCoreId = m;
+        }
+        return rulesByCoreId;
     }
 
 

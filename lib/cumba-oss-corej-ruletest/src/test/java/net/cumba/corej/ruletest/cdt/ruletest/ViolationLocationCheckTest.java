@@ -529,6 +529,57 @@ class ViolationLocationCheckTest
     }
 
 
+    /**
+     * ⛔⛔ PLANTED SENSITIVITY TEST (P1 review L-3). A dataset verdict at row 1 lists USUBJID by
+     * name; the table cell AESER at row 1 IS "Y". Before L-3 the {@code AESER=Y} pin — a column the
+     * finding neither values nor lists — fell back to that cell and PASSED: a fixture's row, not a
+     * fact of the finding (CDISC-AD0661's {@code DOSEDURU=HOURS}). On a finding that lists columns
+     * by name it is a named failure; the row anchors (USUBJID, --SEQ) still locate the row.
+     */
+    @Test
+    void tableFallbackPin_onANonRecordFinding_failsButRowAnchorsStillLocate()
+    {
+        RuleTestScenario s = scn("#expectViolationAt nameOnly=USUBJID AESER=Y");
+        ViolationLocationCheck.Result r = ViolationLocationCheck.verify(s,
+                List.of(nameOnly("USUBJID")), 1, false, primary(s));
+        assertFalse(r.pass(), "a table-fallback value pin on a non-record finding must fail");
+        assertTrue(r.detail().contains("pins a VALUE for [AESER]")
+                && r.detail().contains("no observed violation carries"), r.detail());
+
+        // The anchors: AESEQ=1 is row 1's --SEQ cell, still read from the table.
+        RuleTestScenario anchored = scn("#expectViolationAt nameOnly=AESER AESEQ=1");
+        assertTrue(ViolationLocationCheck
+                .verify(anchored, List.of(nameOnly("AESER")), 1, false, primary(anchored)).pass());
+        RuleTestScenario subject = scn("#expectViolationAt nameOnly=AESER USUBJID=001");
+        assertTrue(ViolationLocationCheck
+                .verify(subject, List.of(nameOnly("AESER")), 1, false, primary(subject)).pass());
+
+        // Control — the same AESER=Y pin on a RECORD finding (nothing listed by name) still falls
+        // back to the table cell: the documented, unchanged path for an excluded column.
+        RuleTestScenario record = scn("#expectViolationAt AESER=Y");
+        assertTrue(ViolationLocationCheck.verify(record, List.of(row(0)), 1, false, primary(record))
+                .pass());
+    }
+
+
+    @Test
+    void tableFallbackPin_isPerViolation_inTheBijection()
+    {
+        // Pre-check silent (one observed violation is a record finding); the per-violation
+        // non-match in matches() decides: the AESER=Y pin may claim only the record finding.
+        RuleTestScenario s = scn("#expectViolationAt AESER=Y\n#expectViolationAt nameOnly=USUBJID");
+        Violation dataset = nameOnly("USUBJID");
+        assertTrue(ViolationLocationCheck.verify(s, List.of(dataset, row(0)), 2, false, primary(s))
+                .pass());
+        RuleTestScenario both = scn(
+                "#expectViolationAt nameOnly=USUBJID AESER=Y\n#expectViolationAt AESER=Y");
+        assertFalse(
+                ViolationLocationCheck
+                        .verify(both, List.of(dataset, row(0)), 2, false, primary(both)).pass(),
+                "the dataset verdict cannot be matched through the table cell at its row");
+    }
+
+
     @Test
     void emptyValuePin_onANameOnlyKey_failsToo()
     {

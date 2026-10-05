@@ -63,9 +63,12 @@ class RuleRunnerNameOnlyProjectionTest
             assertFalse(v.getValues().containsKey(name),
                     name + " is listed by name and must not carry a value: " + describe(v));
         }
+        assertEquals(new java.util.LinkedHashSet<>(v.getNamedColumns()).size(),
+                v.getNamedColumns().size(), "each name once (L-1): " + describe(v));
         for (String name : v.getNamedColumns())
         {
-            assertFalse(name.startsWith("$"), "a binding is never name-only: " + describe(v));
+            // A $ name is listed only as a per-row binding (owner Q-C); the tests that list one
+            // name it in expectedNames.
             assertFalse(OutputEntryKind.isMetadataOrVirtual(name),
                     "a metadata / virtual entry is never name-only: " + describe(v));
         }
@@ -307,7 +310,7 @@ class RuleRunnerNameOnlyProjectionTest
     void n20APresentColumnOnAnEmptyPrimaryIsListedByNameNotPrintedEmpty() throws Exception
     {
         // N20 printed "" for a present column with no row to read; "no value" is a state, not a
-        // value (V6). The binding's typed default (5b M4) is unchanged.
+        // value (V6).
         Rule rule = load("""
                 {"Core":{"Id":"R1"},"Sensitivity":"Dataset",
                  "Bindings":[{"name":"$n","expression":"AENUM + 1"}],
@@ -317,10 +320,137 @@ class RuleRunnerNameOnlyProjectionTest
 
         Violation v = single(RuleRunnerCalls.execute(rule, empty));
 
-        // AENUM is derived from the binding ($n reads it): a projected raw column too.
-        assertNameOnly(v, List.of("AETERM", "AENUM"));
-        assertEquals(".", v.getValues().get("$n"), describe(v));
+        // AENUM is derived from the binding ($n reads it): a projected raw column too. $n is a
+        // per-row binding: owner Q-C lists it by name on a non-record finding — on an empty
+        // primary too (its typed default "." was 5b's M4; there is no row to belong to).
+        assertNameOnly(v, List.of("AETERM", "$n", "AENUM"));
         assertEquals("0", v.getValues().get("record_count"), describe(v));
+    }
+
+    // ------------------------------------------------------------------ Q-C — a per-row binding
+
+
+    @Test
+    void qcAPerRowBindingOnADatasetVerdictIsListedByNameAScalarOneKeepsItsValue() throws Exception
+    {
+        // Owner Q-C (2026-10-05, "agree, name only"). A Record rule whose Check the
+        // missing-column fold decides at dataset level (AESTDY absent): a dataset verdict at row
+        // 0. $end (AEENDY per row) at row 0 is a record's value through the binding channel —
+        // listed by name; $n (record_count) is the finding's own value and prints (V2).
+        Rule rule = load("""
+                {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                 "Bindings":[{"name":"$end","expression":"AEENDY"},
+                             {"name":"$n","expression":"record_count()"}],
+                 "Check":{"expression":"not var_exists(\\"AESTDY\\") or $end < AESTDY"},
+                 "Outcome":{"Message":"m","Output_Variables":["$end","$n"]}}""");
+        IDataTable folded = MockTable.of().name("AE").col("USUBJID", "S1", "S2")
+                .colDouble("AEENDY", 2.0, 30.0).build();
+        IDataTable perRow = MockTable.of().name("AE").col("USUBJID", "S1", "S2")
+                .colDouble("AEENDY", 2.0, 30.0).colDouble("AESTDY", 1.0, 40.0).build();
+
+        Violation verdict = single(RuleRunnerCalls.execute(rule, folded));
+        Violation record = single(RuleRunnerCalls.execute(rule, perRow));
+
+        assertNull(verdict.getUsubjid(), "a dataset verdict: " + describe(verdict));
+        assertNameOnly(verdict, List.of("$end", "AEENDY"));
+        assertEquals("2", verdict.getValues().get("$n"), describe(verdict));
+
+        // Control — the same binding on a record finding prints its row's value.
+        assertEquals("S2", record.getUsubjid(), describe(record));
+        assertEquals("30.0", record.getValues().get("$end"), describe(record));
+        assertEquals("2", record.getValues().get("$n"), describe(record));
+        assertSame(List.of(), record.getNamedColumns(), describe(record));
+    }
+
+    // ------------------------------------------------------------------ P1 review L-1 / L-4 / L-5
+    // / L-2
+
+
+    @Test
+    void l1AColumnTwoEntriesResolveToIsListedOnce() throws Exception
+    {
+        // `--TERM` resolves to AETERM, which the rule also names: one column of the finding, one
+        // key of the values map — listed once.
+        Rule rule = load("""
+                {"Core":{"Id":"R1"},"Sensitivity":"Dataset",
+                 "Check":{"expression":"var_exists(\\"AETERM\\")"},
+                 "Outcome":{"Message":"m","Output_Variables":["AETERM","--TERM"]}}""");
+        IDataTable ae = MockTable.of().name("AE").col("AETERM", "H").build();
+
+        Violation v = single(RuleRunnerCalls.execute(rule, ae, _ -> null, "AE"));
+
+        assertNameOnly(v, List.of("AETERM"));
+    }
+
+
+    @Test
+    void l4AFix18IdentifierNoJoinServesIsAbsentOnANonRecordFinding()
+    {
+        // A {VAR}-domain context, no join for SUPPAE: the dotted identifier names no column the
+        // finding can see — omitted as absent; a present raw column beside it is listed. The
+        // record-level arm keeps the name-as-value spelling.
+        IDataTable ae = MockTable.of().name("AE").col("AETERM", "H").build();
+        EvaluationContext ctx = EvaluationContext.builder().table(ae)
+                .evaluationDomain(net.cumba.corej.core.expr.eval.Domain.VARIABLE).build();
+        List<String> ovs = List.of("SUPPAE.QNAM", "AETERM");
+
+        RuleRunner.NameOnlyProjection nonRecord = RuleRunner.extractNameOnlyOutputValues(ae, ctx,
+                ovs, 0);
+        Map<String, String> recordLevel = RuleRunner.extractOutputValues(ae, ctx, ovs, 0);
+
+        assertEquals(List.of("AETERM"), nonRecord.namedColumns());
+        assertTrue(nonRecord.values().isEmpty(), nonRecord.toString());
+        assertEquals("SUPPAE.QNAM", recordLevel.get("SUPPAE.QNAM"));
+        assertEquals("H", recordLevel.get("AETERM"));
+    }
+
+
+    @Test
+    void l5ASuppDeliveredQualifierIsListedByNameOnANonRecordFinding()
+    {
+        // W2a: AETRTEM is no AE column — SUPPAE delivers it through the pivot. On a non-record
+        // finding it is a raw column like any other: listed by name; on a record-level
+        // projection it reports the record's qualifier value.
+        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AESEQ", "1").build();
+        IDataTable suppae = MockTable.of().name("SUPPAE").col("RDOMAIN", "AE").col("USUBJID", "S1")
+                .col("IDVAR", "AESEQ").col("IDVARVAL", "1").col("QNAM", "AETRTEM").col("QVAL", "Y")
+                .build();
+        EvaluationContext ctx = EvaluationContext.builder().table(ae).ruleId("R1")
+                .datasetResolver(name -> "SUPPAE".equalsIgnoreCase(name) ? suppae
+                        : "AE".equalsIgnoreCase(name) ? ae : null)
+                .build();
+        List<String> ovs = List.of("AETRTEM", "AENOSUCH");
+
+        RuleRunner.NameOnlyProjection nonRecord = RuleRunner.extractNameOnlyOutputValues(ae, ctx,
+                ovs, 0);
+        Map<String, String> recordLevel = RuleRunner.extractOutputValues(ae, ctx, ovs, 0);
+
+        assertEquals(List.of("AETRTEM"), nonRecord.namedColumns(),
+                "the SUPP qualifier listed, the absent column in neither channel");
+        assertTrue(nonRecord.values().isEmpty(), nonRecord.toString());
+        assertEquals(Map.of("AETRTEM", "Y"), recordLevel);
+    }
+
+
+    @Test
+    void l2AColumnLevelFindingExpandsAPatternEntry() throws Exception
+    {
+        // CG0349's shape with the raw column spelled as a glob: the column-level path now
+        // resolves its entries as the row / dataset projections do (L-2: `--`, ${*}, patterns) —
+        // AETER? names the present AETERM, so it is listed by name. Before, the unexpanded
+        // spelling named no column and was omitted. (A `--` entry is already specialised before
+        // the runner on this path — measured: no `--` reaches it — so the glob is the probe.)
+        Rule rule = load("""
+                {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                 "Check":{"all":[{"expression": "ends_with(varname(), \\"AESEV\\")"},
+                                 {"expression": "empty(var_format(\\"DATA\\"))"}]},
+                 "Outcome":{"Message":"m","Output_Variables":["variable_name","AETER?"]}}""");
+        IDataTable ae = MockTable.of().name("AE").col("AETERM", "X").col("AESEV", "MILD").build();
+
+        Violation v = single(RuleRunnerCalls.execute(rule, ae, _ -> null, "AE"));
+
+        assertEquals("AESEV", v.getValues().get("variable_name"), describe(v));
+        assertNameOnly(v, List.of("AETERM"));
     }
 
     // ------------------------------------------------------------------ the record path never

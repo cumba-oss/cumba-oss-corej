@@ -2822,7 +2822,9 @@ public final class RuleRunner
         {
             Map<String, String> filtered = new LinkedHashMap<>();
             List<String> named = new ArrayList<>();
-            for (String ov : outputVars)
+            // P1 review L-2: the same entry resolution as the row / dataset projections — a
+            // `--` entry, a ${*} wildcard and a pattern entry name the columns they resolve to.
+            for (String ov : resolveOutputEntries(outputVars, ctx))
             {
                 if (varMeta.containsKey(ov))
                 {
@@ -2857,11 +2859,18 @@ public final class RuleRunner
 
 
     /**
-     * The immutable name-only list of a finding: the shared empty constant when nothing is listed.
+     * The immutable name-only list of a finding: the shared empty constant when nothing is listed,
+     * else each name ONCE in first-listed order (P1 review L-1) — two entries resolving to one
+     * column ({@code --TERM} and {@code AETERM}, a pattern overlapping a literal) are one column of
+     * the finding, as they are one key of the values map.
      */
     private static List<String> namedColumns(List<String> named)
     {
-        return named.isEmpty() ? List.of() : List.copyOf(named);
+        if (named.isEmpty())
+        {
+            return List.of();
+        }
+        return named.size() == 1 ? List.copyOf(named) : List.copyOf(new LinkedHashSet<>(named));
     }
 
 
@@ -3230,7 +3239,9 @@ public final class RuleRunner
         }
         Map<String, String> filtered = new LinkedHashMap<>();
         List<String> named = new ArrayList<>();
-        for (String ov : outputVars)
+        // P1 review L-2: the same entry resolution as the row / dataset projections — a
+        // `--` entry, a ${*} wildcard and a pattern entry name the columns they resolve to.
+        for (String ov : resolveOutputEntries(outputVars, ctx))
         {
             if (ov.startsWith("$") && contextVariables != null && contextVariables.containsKey(ov))
             {
@@ -4824,11 +4835,11 @@ public final class RuleRunner
      * V8 (b)): the entries that carry a value, and the raw columns listed by name without one.
      *
      * @param values
-     *            the valued entries in effective order — bindings, dataset facts, metadata; never a
-     *            raw column's cell
+     *            the valued entries in effective order — dataset-scope bindings, dataset facts,
+     *            metadata; never a raw column's cell, never a per-row binding's value (Q-C)
      * @param namedColumns
-     *            the raw columns the dataset carries, in effective order; {@code List.of()} when
-     *            none
+     *            the raw columns the dataset carries and the per-row bindings (Q-C), in effective
+     *            order, each once; {@code List.of()} when none
      */
     record NameOnlyProjection(Map<String, String> values, List<String> namedColumns)
     {
@@ -4854,12 +4865,16 @@ public final class RuleRunner
     /**
      * The <b>non-record</b> projection (V1, V5): the same resolution as
      * {@link #extractOutputValues} — the same wildcard / pattern expansion, the same omission of an
-     * absent column, the same values for bindings, dataset facts and the Fix #18 identifier's
-     * sibling — except that a raw column the dataset carries (bare, {@code --}-resolved,
-     * SUPP-delivered, dotted joined; the Fix #18 identifier too) is <em>listed by name</em> instead
-     * of reporting the cell at {@code row}, which belongs to an arbitrary record of a finding that
-     * is about the dataset. On an empty primary the column is listed the same way (QNU N20's
-     * {@code ""} is gone — V6: "no value" is a state, not a value).
+     * absent column, the same values for dataset-scope bindings and dataset facts — except that a
+     * raw column the dataset carries (bare, {@code --}-resolved, SUPP-delivered, dotted joined) is
+     * <em>listed by name</em> instead of reporting the cell at {@code row}, which belongs to an
+     * arbitrary record of a finding that is about the dataset; a <b>per-row binding</b> (a
+     * {@code Vector}, e.g. {@code $end: AEENDTC}) is listed by name for the same reason (owner Q-C,
+     * 2026-10-05: <i>"agree, name only"</i>), while a dataset-scope binding keeps its value (V2).
+     * On an empty primary both are listed the same way (QNU N20's {@code ""} is gone — V6: "no
+     * value" is a state, not a value). A Fix #18 dotted identifier no join serves names no column
+     * the finding can see, so it is omitted as absent (P1 review L-4). Each name is listed once
+     * (L-1).
      */
     static NameOnlyProjection extractNameOnlyOutputValues(IDataTable table, EvaluationContext ctx,
             List<String> outputVars, long row)
@@ -4882,17 +4897,7 @@ public final class RuleRunner
         {
             return new LinkedHashMap<>();
         }
-        // EC-36: Output_Variables are variable names -> variable prefix (AP suffix / "" for SUPP),
-        // so the reported column matches the one the Check actually read.
-        outputVars = resolveOutputVarWildcards(outputVars,
-                ctx.getVariableWildcardPrefix() != null ? ctx.getVariableWildcardPrefix()
-                        : ctx.getDomainPrefix(),
-                ctx.getDomainPrefix());
-        outputVars = expandOutputVarWildcards(outputVars, ctx);
-        // PLAN-dynamic-column-functions §2.6 (owner Q6 (a)): a Requirements.Variables PATTERN
-        // entry (template, glob, DS./regex/) expands to every existing matching column through
-        // find_vars' matcher. The ${*} step above is unchanged (Q8).
-        outputVars = FindVars.expandOutputVariables(outputVars, ctx);
+        outputVars = resolveOutputEntries(outputVars, ctx);
         DataTableMeta meta = table.getMetaData();
         Map<String, String> values = new LinkedHashMap<>();
         for (String varName : outputVars)
@@ -4917,6 +4922,18 @@ public final class RuleRunner
                             + " finding has no type source for its default"
                             + " (PLAN-output-variable-null-key-provenance §2.1)");
                 }
+                if (val instanceof net.cumba.corej.core.expr.eval.Vector && named != null)
+                {
+                    // Owner Q-C (2026-10-05, "agree, name only"): a PER-ROW binding on a
+                    // non-record finding is a raw record value through the binding channel — its
+                    // value at `row` (row 0 of a dataset verdict, a {ROW} dataset rule's first
+                    // firing row) belongs to an arbitrary record, exactly like a raw column's
+                    // cell (V1). So it is listed by name, never valued; on an empty primary too.
+                    // A dataset-scope binding is not a Vector here (reportedHandOver hands over
+                    // its raw value) and keeps printing below — the finding's own value (V2).
+                    named.add(varName);
+                    continue;
+                }
                 if (val instanceof net.cumba.corej.core.expr.eval.Vector perRow)
                 {
                     // Wave 0 (PLAN-binding-expressions §5.2): a per-row COMPILED binding reports
@@ -4925,19 +4942,11 @@ public final class RuleRunner
                     // prints its marker, never ""). A dataset-level compiled binding is not a
                     // Vector here — reportedHandOver hands over its raw value, which takes the
                     // arm below and renders exactly as the operation it replaces.
-                    if (row >= ctx.rowCount())
-                    {
-                        // A dataset-level finding on an empty table has no row to read: the
-                        // binding's typed default (§6.2 M4), never an untyped "" — by the
-                        // Vector's declared type, else the binding's stage-A static type, the
-                        // one decision reportedHandOver makes (T2 LOW-5).
-                        values.put(varName,
-                                raw instanceof BindingValue compiled
-                                        ? scalarToString(
-                                                compiled.reportedDefault(perRow.declaredType()))
-                                        : OutputEntryKind.defaultValue(perRow.declaredType()));
-                        continue;
-                    }
+                    // Only a record-level projection reaches here (the name-only one listed the
+                    // binding above, Q-C), and every record-level site reads a real row — so the
+                    // empty-table typed default this arm carried (5b §6.2 M4) has no caller left;
+                    // a row beyond the table is a programming error, as for a raw column.
+                    requireRow(table, row, varName);
                     net.cumba.corej.core.expr.eval.TypedValue cell = perRow.value((int) row);
                     values.put(varName,
                             cell.resolved() instanceof java.util.Collection<?> c
@@ -5037,19 +5046,16 @@ public final class RuleRunner
                 // domain instead of the plan the rung actually evaluated under.
                 Domain evalDomain = ctx.getLevelPlan() != null ? ctx.getLevelPlan().domain()
                         : ctx.getEvaluationDomain();
-                if (Domain.VARIABLE.equals(evalDomain))
+                // §7 M7 + P1 review L-4: on a non-record finding the name-only list holds only
+                // columns the dataset CARRIES (NK §1 case 1: an absent one is in neither
+                // channel). A dotted identifier reaching this arm has no join lookup — the arm
+                // above took every joined one — so no column of that name is visible to the
+                // finding (columnPresent's own definition for a dotted name): it is absent, and
+                // omitted. The record-level arm keeps the name-as-value spelling (unreachable in
+                // practice: a {VAR} rule has no row cursor).
+                if (Domain.VARIABLE.equals(evalDomain) && named == null)
                 {
-                    // §7 M7: the identifier IS a name — on a non-record finding it is listed as
-                    // one; the record-level arm keeps the name-as-value spelling (unreachable
-                    // in practice: a {VAR} rule has no row cursor).
-                    if (named != null)
-                    {
-                        named.add(varName);
-                    }
-                    else
-                    {
-                        values.put(varName, varName);
-                    }
+                    values.put(varName, varName);
                 }
                 continue;
             }
@@ -5109,6 +5115,29 @@ public final class RuleRunner
             // not the engine's.
         }
         return values;
+    }
+
+
+    /**
+     * The entry resolution every projection shares — the row and dataset projections
+     * ({@link #projectOutputValues}) and, since P1 review L-2, the column-level per-variable paths
+     * ({@link #buildVariableViolation}, {@link #buildDefineVariableViolation}): {@code --} resolved
+     * against the variable prefix (EC-36: the AP suffix, {@code ""} for SUPP), driver-free
+     * {@code ${*}} wildcards expanded (EC-12), then the pattern entries (template, glob,
+     * {@code DS./regex/}) expanded to the existing matching columns through {@code find_vars}'
+     * matcher ({@code PLAN-dynamic-column-functions} §2.6, owner Q6 (a); the {@code ${*}} step is
+     * unchanged, Q8). Each step returns its input list when it has nothing to do.
+     */
+    private static List<String> resolveOutputEntries(List<String> outputVars, EvaluationContext ctx)
+    {
+        // EC-36: Output_Variables are variable names -> variable prefix (AP suffix / "" for SUPP),
+        // so the reported column matches the one the Check actually read.
+        List<String> resolved = resolveOutputVarWildcards(outputVars,
+                ctx.getVariableWildcardPrefix() != null ? ctx.getVariableWildcardPrefix()
+                        : ctx.getDomainPrefix(),
+                ctx.getDomainPrefix());
+        resolved = expandOutputVarWildcards(resolved, ctx);
+        return FindVars.expandOutputVariables(resolved, ctx);
     }
 
 

@@ -333,9 +333,10 @@ class FindingValuesTypedDefaultTest
     @Test
     void s5TheReportedDefaultFallsBackToTheStaticTypeForAnUntypedCarrier()
     {
-        // T2 LOW-5: one decision for reportedHandOver and the record path's empty-table arm — an
-        // evaluated type that is neither a string nor a number / boolean (a missing, a
-        // carrier of no evaluated type) defers to the binding's stage-A static type.
+        // T2 LOW-5: one decision in reportedHandOver (the record path's empty-table arm that
+        // shared it is gone with owner Q-C) — an evaluated type that is neither a string nor a
+        // number / boolean (a missing, a carrier of no evaluated type) defers to the binding's
+        // stage-A static type.
         CompiledBinding binding = new CompiledBinding("$b",
                 new net.cumba.corej.core.expr.ast.Expr.Lit(
                         net.cumba.corej.core.expr.ast.Expr.LitKind.STRING, "x"),
@@ -455,12 +456,13 @@ class FindingValuesTypedDefaultTest
 
 
     @Test
-    void s5APerRowNumericBindingOnAnEmptyTableReportsTheMissingMarker() throws Exception
+    void s5APerRowBindingOnAnEmptyTableIsListedByName() throws Exception
     {
-        // M4: the empty-table arm printed an untyped "" for every binding; a numeric one now
-        // prints MIS, a char one still "". The PRESENT column is N20's: it printed "" until
-        // PLAN-finding-values-record-level-only listed it by name (V8 (b)) — "no value" is a
-        // state, not a value (V6).
+        // M4 gave a per-row binding on an empty table its typed default (MIS for $n, "" for $s)
+        // instead of an untyped "". Owner Q-C (2026-10-05) supersedes it: a per-row binding on a
+        // non-record finding is listed by name — an empty primary has no row it could belong to
+        // either. The PRESENT column is N20's: it printed "" until
+        // PLAN-finding-values-record-level-only listed it by name (V8 (b)).
         Rule rule = load("""
                 {"Core":{"Id":"R1"},"Sensitivity":"Dataset",
                  "Bindings":[{"name":"$n","expression":"AENUM + 1"},
@@ -472,12 +474,12 @@ class FindingValuesTypedDefaultTest
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, empty);
         Map<String, String> v = single(result);
 
-        assertFalse(v.containsKey("AETERM"), "N20: a present column on an empty table is listed"
-                + " by name, never printed \"\" — " + v);
+        assertEquals(Map.of("record_count", "0"), v,
+                "only the dataset fact the Check reads is valued — every other entry is a column"
+                        + " or a per-row binding");
         // AENUM is derived from the binding ($n reads it), so it is a projected raw column too.
-        assertEquals(List.of("AETERM", "AENUM"), result.getViolations().get(0).getNamedColumns());
-        assertEquals(MIS, v.get("$n"), "a per-row numeric binding with no row: MIS — " + v);
-        assertEquals("", v.get("$s"), "a per-row char binding with no row: \"\" — " + v);
+        assertEquals(List.of("AETERM", "$n", "$s", "AENUM"),
+                result.getViolations().get(0).getNamedColumns());
         assertNullFree(v);
     }
 

@@ -132,7 +132,25 @@ public final class ValidationReportBuilder
             return this;
         }
         MemberAccumulator acc = accumulatorFor(aDomain, aFileName);
-        for (ValidationFinding f : buildRuleFindings(aDomain, aRule, aResult))
+        List<ValidationFinding> findings;
+        try
+        {
+            findings = buildRuleFindings(aDomain, aRule, aResult);
+        }
+        catch (IllegalStateException e)
+        {
+            // P2 review MED-1: the report model refuses a null cell / a missing key value (5b S7
+            // / S8 / S9) by throwing — a producer defect. The report build runs OUTSIDE every
+            // per-rule containment (LibraryValidator.executeRule catches per rule; the merge into
+            // this builder does not), so an uncaught throw here lost the whole run's report.
+            // Loud, but scoped: this rule × dataset reports one ENGINE_ERROR finding naming the
+            // defect, and every other rule's findings survive.
+            acc.add(buildEngineErrorFinding(aDomain, aRule,
+                    "Report model defect — the rule's findings could not be reported: "
+                            + e.getMessage()));
+            return this;
+        }
+        for (ValidationFinding f : findings)
         {
             acc.add(f);
         }
@@ -516,8 +534,11 @@ public final class ValidationReportBuilder
      *
      * <p>
      * Every violation in a group comes from the same rule × dataset and therefore the same
-     * {@code RowKeySpec}, so the names are identical across the group; taking the first non-empty
-     * one is enough, and tolerates a group that mixes key-carrying and key-less violations.
+     * {@code RowKeySpec}, so the names are identical across the group and the first non-empty key
+     * map names them. A group that mixes key-carrying and key-less violations is a producer defect:
+     * the key slab refuses the key-less row ({@code IllegalStateException}, 5b S8), which
+     * {@link #add} reports as one {@code ENGINE_ERROR} finding for the rule × dataset (P2 review
+     * MED-1).
      * </p>
      */
     private static List<String> keyNamesOf(List<Violation> aGroup)
@@ -649,6 +670,14 @@ public final class ValidationReportBuilder
         {
             message = "Rule engine error";
         }
+        return buildEngineErrorFinding(aDomain, aRule, message);
+    }
+
+
+    /** The dataset-scoped {@code ENGINE_ERROR} finding of one rule × dataset, with its message. */
+    private static ValidationFinding buildEngineErrorFinding(String aDomain, Rule aRule,
+            String message)
+    {
         return ValidationFinding.builder().source(SOURCE).ruleId(coreIdOf(aRule))
                 .kind(FindingKind.ENGINE_ERROR).severity(Severity.ERROR)
                 .executability(executabilityOf(aRule)).scope(FindingScope.DATASET).message(message)

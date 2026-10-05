@@ -220,6 +220,51 @@ public final class FindVars
 
 
     /**
+     * Whether the reported name {@code name} is what the authored / effective
+     * {@code Output_Variables} entry {@code entry} resolves to — without a table: the same name
+     * ignoring case (owner 2026-09-28), a {@code --} entry whose prefix is any variable prefix (the
+     * domain code, an AP parent suffix, {@code ""} for SUPP — EC-36), or a pattern entry
+     * ({@link #isOutputVariablePattern}) whose matcher — the one {@code find_vars} uses — accepts
+     * it. Used to put a finding's names back into the rule's authored order where the finding
+     * itself no longer carries it (v1's {@code variables}, {@code PLAN-finding-values-record-
+     * level-only} P2 review LOW-1).
+     */
+    public static boolean entryNames(String entry, String name)
+    {
+        if (entry.equalsIgnoreCase(name))
+        {
+            return true;
+        }
+        if (entry.contains("--"))
+        {
+            return WILDCARD_ENTRIES.computeIfAbsent(entry, FindVars::wildcardEntryPattern)
+                    .matcher(name).matches();
+        }
+        if (isOutputVariablePattern(entry) && !ScopeVariableEntry.parse(entry).isQualified())
+        {
+            return patternOf(ScopeVariableEntry.parse(entry).variable()).matcher(name).matches();
+        }
+        return false;
+    }
+
+
+    private static Pattern wildcardEntryPattern(String entry)
+    {
+        StringBuilder regex = new StringBuilder();
+        String[] parts = entry.split("--", -1);
+        for (int i = 0; i < parts.length; i++)
+        {
+            if (i > 0)
+            {
+                regex.append("[A-Za-z0-9]{0,4}");
+            }
+            regex.append(Pattern.quote(parts[i]));
+        }
+        return Pattern.compile(regex.toString(), Pattern.CASE_INSENSITIVE);
+    }
+
+
+    /**
      * ⭐ {@code PLAN-dynamic-column-functions} §2.6 (owner Q6 (a)): whether an
      * {@code Output_Variables} entry is a {@code Requirements.Variables} PATTERN entry — a
      * template, a glob or a {@code /regex/}, bare or qualified — that the step expands into every
@@ -371,6 +416,9 @@ public final class FindVars
 
     /** {@link #patternOf}'s JVM-wide memo, keyed by the variable half's text. */
     private static final java.util.concurrent.ConcurrentHashMap<String, Pattern> PATTERNS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** The {@code --} entries of {@link #entryNames}, compiled once per distinct text. */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Pattern> WILDCARD_ENTRIES = new java.util.concurrent.ConcurrentHashMap<>();
 
     /** {@link #isOutputVariablePattern}'s JVM-wide memo. */
     private static final java.util.concurrent.ConcurrentHashMap<String, Boolean> OUTPUT_PATTERN = new java.util.concurrent.ConcurrentHashMap<>();

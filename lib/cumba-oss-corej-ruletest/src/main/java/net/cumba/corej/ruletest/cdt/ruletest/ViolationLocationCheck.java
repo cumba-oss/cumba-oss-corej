@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -81,6 +82,14 @@ import org.jspecify.annotations.Nullable;
  * ({@link ExpectedViolation#nameOnly}) is how a scenario asserts the state. {@link #toExpectations}
  * emits it, so the back-fill cannot erase it (the same self-deleting shape as the {@code $} and
  * {@code severity=} pins below).
+ * </p>
+ * <p>
+ * And on such a finding the table is not read for <em>any</em> other column either (P1 review L-3):
+ * a violation that lists a column by name is a non-record finding, its row (row 0 of a dataset
+ * verdict, a {@code {ROW}} dataset rule's first firing row) is no record of it, so a
+ * {@code COL=value} pin the finding does not carry is a non-match —
+ * {@link #verifyNoTableFallbackOnNameOnlyFindings} names it. Only the row anchors ({@code USUBJID},
+ * {@code --SEQ}) may still locate that row through the table.
  * </p>
  */
 public final class ViolationLocationCheck
@@ -160,6 +169,12 @@ public final class ViolationLocationCheck
         if (unbackedNameOnlyPin != null)
         {
             return unbackedNameOnlyPin;
+        }
+        Result tableFallbackOnNameOnly = verifyNoTableFallbackOnNameOnlyFindings(prefix, wantAt,
+                aObserved);
+        if (tableFallbackOnNameOnly != null)
+        {
+            return tableFallbackOnNameOnly;
         }
         DataTableMeta meta = aPrimary.getMetaData();
         if (aObserved.size() != wantAt.size())
@@ -252,6 +267,15 @@ public final class ViolationLocationCheck
                 // and letting the bijection try the rest is the correct, per-violation answer.
                 ok = false;
             }
+            else if (!named.isEmpty() && !isRowAnchor(c.getKey()))
+            {
+                // ⛔ P1 review L-3: a finding that lists columns by name is a NON-RECORD finding
+                // (V1), so the table cell at its row is no fact about it — a value pin resolved
+                // there passes on a fixture's row, not on the finding (CDISC-AD0661's
+                // DOSEDURU=HOURS did). Only the row anchors (USUBJID, --SEQ) may still locate
+                // the firing row of a Dataset {ROW} finding through the table.
+                ok = false;
+            }
             else
             {
                 // Table cell: compare by the cell's runtime type so a Char "002" only matches the
@@ -304,6 +328,16 @@ public final class ViolationLocationCheck
     private static boolean isDollarPin(String aKey)
     {
         return aKey.startsWith("$");
+    }
+
+
+    /**
+     * A row-anchor key — {@code USUBJID} or a {@code --SEQ} column — which may locate a finding's
+     * row through the table even on a finding that lists columns by name (P1 review L-3).
+     */
+    static boolean isRowAnchor(String aKey)
+    {
+        return "USUBJID".equalsIgnoreCase(aKey) || aKey.toUpperCase(Locale.ROOT).endsWith("SEQ");
     }
 
 
@@ -461,6 +495,57 @@ public final class ViolationLocationCheck
                 + " as nameOnly=, which NO observed violation lists by name — the engine prints"
                 + " a value for it (then pin COL=value), or omits it (an absent column is in"
                 + " neither channel). Listed by name: " + listed + "; valued: " + valued);
+    }
+
+
+    /**
+     * Fail loudly, naming the pins, when every observed violation lists columns by name (a
+     * non-record finding, V1) and a {@code COL=value} pin names a key that no observed violation
+     * carries a value for and that is no row anchor ({@link #isRowAnchor}): the only place such a
+     * pin could match is the table cell at the finding's row, which is no fact about a non-record
+     * finding (P1 review L-3). The per-violation non-match in {@link #matches} stays the authority;
+     * this names the cause.
+     */
+    private static @Nullable Result verifyNoTableFallbackOnNameOnlyFindings(String aPrefix,
+            List<ExpectedViolation> aExpected, List<Violation> aObserved)
+    {
+        if (aObserved.isEmpty())
+        {
+            return null;
+        }
+        Set<String> valued = new TreeSet<>();
+        for (Violation v : aObserved)
+        {
+            if (v.getNamedColumns().isEmpty())
+            {
+                return null;
+            }
+            if (v.getValues() != null)
+            {
+                valued.addAll(v.getValues().keySet());
+            }
+        }
+        Set<String> offending = new TreeSet<>();
+        for (ExpectedViolation e : aExpected)
+        {
+            for (String key : e.getConstraints().keySet())
+            {
+                if (!valued.contains(key) && !isDollarPin(key) && !isRowAnchor(key))
+                {
+                    offending.add(key);
+                }
+            }
+        }
+        if (offending.isEmpty())
+        {
+            return null;
+        }
+        return new Result(false, aPrefix + "#expectViolationAt pins a VALUE for " + offending
+                + ", which no observed violation carries — the pin could only match the table"
+                + " cell at the finding's row, and every observed violation lists columns by name"
+                + " (a non-record finding, PLAN-finding-values-record-level-only V1), whose row is"
+                + " no record of it. Drop the pin (say it in #note), or pin nameOnly=COL if the"
+                + " finding lists it. Valued: " + valued);
     }
 
 

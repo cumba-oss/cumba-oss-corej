@@ -2,7 +2,7 @@ package net.cumba.corej.core.exec;
 
 import java.util.List;
 import java.util.Map;
-import lombok.AllArgsConstructor;
+import java.util.Objects;
 import lombok.Value;
 import lombok.With;
 import net.cumba.datatable.report.Severity;
@@ -35,7 +35,6 @@ import org.jspecify.annotations.Nullable;
  * </p>
  */
 @Value
-@AllArgsConstructor
 public class Violation
 {
 
@@ -162,9 +161,12 @@ public class Violation
      * <p>
      * <b>Empty</b> ({@code List.of()}, the shared constant — no per-row allocation) on every
      * record-level finding, every Group finding (D94c sets stay, Q-A), every {@code __error__}
-     * sentinel, and whenever no raw column is projected. Never {@code null}, never a {@code $} or
-     * metadata name, never a name that is also a key of {@link #values}; an absent column is in
-     * neither (NK §1 case 1).
+     * sentinel, and whenever no raw column is projected. Never {@code null}, immutable, each name
+     * once (P1 review L-1), never a metadata name, never a name that is also a key of
+     * {@link #values}; an absent column is in neither (NK §1 case 1). A {@code $} name appears only
+     * as a <b>per-row binding</b> on a non-record finding (owner Q-C, 2026-10-05: <i>"agree, name
+     * only"</i>) — its value at the finding's row is a record's value through the binding channel;
+     * a dataset-scope binding always carries its value (V2).
      * </p>
      *
      * <p>
@@ -248,6 +250,59 @@ public class Violation
             }
         }
     }
+
+    /**
+     * The canonical constructor, which refuses the states the report model cannot store, at the
+     * producer — inside {@code LibraryValidator.executeRule}'s per-rule containment, so a defect
+     * ERRORs one rule instead of surfacing in the report build (P2 review MED-1 (b)):
+     * <ul>
+     * <li>{@code values} holds no {@code null} value (NK §1, 5b §2.1: <i>"nothing can be
+     * null"</i>);</li>
+     * <li>{@code namedColumns} is required and stored as an immutable copy ({@code List.copyOf}:
+     * the shared {@code List.of()} constant and an already-immutable list are kept as they are, so
+     * a record-level finding allocates nothing — and a {@code null} element is refused); P1 review
+     * L-4.</li>
+     * </ul>
+     *
+     * @throws NullPointerException
+     *             naming the key, when a value of {@code values} is {@code null}, or when
+     *             {@code namedColumns} is {@code null}
+     */
+    public Violation(long row, Map<String, String> values, @Nullable String usubjid,
+            @Nullable String seq, Map<String, String> keys, @Nullable Severity level,
+            @Nullable Unit unit, @Nullable Map<String, String> groupKey, List<String> namedColumns)
+    {
+        requireNoNullValue(row, values);
+        this.row = row;
+        this.values = values;
+        this.usubjid = usubjid;
+        this.seq = seq;
+        this.keys = keys;
+        this.level = level;
+        this.unit = unit;
+        this.groupKey = groupKey;
+        this.namedColumns = List.copyOf(Objects.requireNonNull(namedColumns, "namedColumns"));
+    }
+
+
+    /**
+     * Refuses a {@code null} value in {@code values} (a {@code null} map is tolerated — the report
+     * builder's {@code withIdentity} reads it as empty).
+     */
+    private static void requireNoNullValue(long row, Map<String, String> values)
+    {
+        if (values == null)
+        {
+            return;
+        }
+        for (Map.Entry<String, String> e : values.entrySet())
+        {
+            Objects.requireNonNull(e.getValue(), () -> "Violation value of " + e.getKey()
+                    + " is null at row " + row + " — an entry with no value is omitted, carries"
+                    + " its typed default, or is listed by name (NK §1, 5b §2.1): " + values);
+        }
+    }
+
 
     /**
      * Compatibility constructor for sites with no per-row identity — the {@code __error__}

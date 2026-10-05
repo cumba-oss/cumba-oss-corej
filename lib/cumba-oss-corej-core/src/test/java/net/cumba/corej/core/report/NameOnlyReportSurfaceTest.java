@@ -15,6 +15,7 @@ import net.cumba.corej.core.exec.Violation;
 import net.cumba.corej.core.expr.eval.Domain;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
+import net.cumba.datatable.report.FindingKind;
 import net.cumba.datatable.report.FindingScope;
 import net.cumba.datatable.report.ValidationFinding;
 import net.cumba.datatable.report.ValidationFindingLocation;
@@ -36,8 +37,9 @@ import org.junit.jupiter.api.Test;
  * when non-empty (owner Q-B, 2026-10-05); no {@code ["null"]} padding beside it; a Group finding's
  * anchor {@code USUBJID} / {@code SEQ} blank unless the column is a group variable (owner
  * Q-A);</li>
- * <li>v1: frozen — the names are appended to {@code variables} with the {@code "null"} token, and a
- * Group finding keeps its anchors.</li>
+ * <li>v1: frozen — the names go into {@code variables} with the {@code "null"} token, at the rule's
+ * authored positions when the rule is known (else appended), never the identity column; a Group
+ * finding keeps its anchors.</li>
  * </ul>
  */
 class NameOnlyReportSurfaceTest
@@ -240,31 +242,50 @@ class NameOnlyReportSurfaceTest
 
 
     @Test
-    void theSlabRefusesANullCell()
+    void aNullCellIsRefusedAtTheProducerInsideThePerRuleContainment()
     {
-        Rule rule = rule("T-NULL", Domain.ROW);
+        // P2 review MED-1 (b): the report model stores no null (5b S7 / S9), and the refusal now
+        // happens when the Violation is BUILT — inside LibraryValidator.executeRule's per-rule
+        // catch, so a producer defect ERRORs one rule instead of reaching the report build.
         Map<String, String> withNull = new HashMap<>();
         withNull.put("AETERM", null);
-        IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> new ValidationReportBuilder().add("AE", "ae.xpt", rule,
-                        result("T-NULL", List.of(record(2, "S1", "1", withNull)))));
-        assertTrue(e.getMessage().contains("AETERM") && e.getMessage().contains("T-NULL"),
-                e.getMessage());
+        NullPointerException e = assertThrows(NullPointerException.class,
+                () -> record(2, "S1", "1", withNull));
+        assertTrue(e.getMessage().contains("AETERM"), e.getMessage());
+        assertThrows(NullPointerException.class,
+                () -> new Violation(0, Map.of(), null, null, Map.of(), null, null, null, null),
+                "namedColumns is required (P1 review L-4)");
     }
 
 
     @Test
-    void theKeySlabRefusesAKeyColumnTheRowDoesNotCarry()
+    void theKeySlabRefusalIsOneEngineErrorFindingNotALostReport()
     {
+        // P2 review MED-1 (a): a key COLUMN the row's key map lacks is a producer defect the key
+        // slab refuses (5b S8). The report build has no per-rule containment, so the refusal
+        // used to throw out of ValidationReportBuilder.add and lose the whole run's report; it is
+        // now ONE ENGINE_ERROR finding for that rule × dataset, naming the defect — and another
+        // rule's findings in the same report survive.
         Rule rule = rule("T-KEY", Domain.ROW);
         Violation a = new Violation(0, values("AETERM", "x"), "S1", "1", values("IDVAR", "AESEQ"),
                 null, new Violation.Unit.Row(0));
         Violation b = new Violation(1, values("AETERM", "y"), "S2", "2", values("QNAM", "AESOSP"),
                 null, new Violation.Unit.Row(1));
-        IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> new ValidationReportBuilder().add("AE", "ae.xpt", rule,
-                        result("T-KEY", List.of(a, b))));
-        assertTrue(e.getMessage().contains("IDVAR"), e.getMessage());
+        Rule other = rule("T-OK", Domain.ROW);
+        ValidationReport report = new ValidationReportBuilder()
+                .add("AE", "ae.xpt", rule, result("T-KEY", List.of(a, b)))
+                .add("AE", "ae.xpt", other,
+                        result("T-OK", List.of(record(3, "S3", "3", values("AETERM", "z")))))
+                .build();
+        List<ValidationFinding> findings = report.getMembers().get(0).getFindings();
+        assertEquals(2, findings.size(), findings.toString());
+        ValidationFinding error = findings.get(0);
+        assertEquals("T-KEY", error.getRuleId());
+        assertEquals(FindingKind.ENGINE_ERROR, error.getKind());
+        assertTrue(error.getMessage().contains("Report model defect")
+                && error.getMessage().contains("IDVAR"), error.getMessage());
+        assertEquals("T-OK", findings.get(1).getRuleId());
+        assertEquals(FindingKind.RULE_VIOLATION, findings.get(1).getKind());
     }
 
 
@@ -328,6 +349,35 @@ class NameOnlyReportSurfaceTest
         assertEquals(List.of("3", "null", "null"), v1.get(0).get("values"),
                 "the frozen format's sanctioned token (owner Q-B)");
         assertFalse(v1.get(0).containsKey("columns"), "v1 is frozen");
+    }
+
+
+    /**
+     * P2 review LOW-1 (coordinator decision under Q-B, "v1 frozen, the name kept with its token"):
+     * v1's {@code variables} read in the rule's {@code Output_Variables} order, as the last release
+     * printed them — the name-only names interleaved at their authored positions (a {@code --}
+     * entry too), not appended — and the identity column v1 strips from the valued ones
+     * ({@code USUBJID}) never appears there with {@code "null"}. v2 is unchanged.
+     */
+    @Test
+    void v1InterleavesTheNameOnlyColumnsInAuthoredOrderAndStripsTheIdentity()
+    {
+        Rule rule = rule("T-ORD", Domain.ROW);
+        net.cumba.corej.core.model.Outcome outcome = new net.cumba.corej.core.model.Outcome();
+        outcome.setOutputVariables(List.of("RANDFL", "$count", "USUBJID", "--ARMCD", "$tail"));
+        rule.setOutcome(outcome);
+        ReportSections s = sections(rule, result("T-ORD", List.of(
+                nameOnly(0, values("$count", "3", "$tail", "t"), "RANDFL", "USUBJID", "AEARMCD"))));
+
+        List<Map<String, Object>> v1 = v1Rows(s);
+        assertEquals(List.of("RANDFL", "$count", "AEARMCD", "$tail"), v1.get(0).get("variables"),
+                "the authored order, USUBJID stripped");
+        assertEquals(List.of("null", "3", "null", "t"), v1.get(0).get("values"));
+
+        Map<String, Object> v2 = onlyV2Finding(s);
+        assertEquals(List.of("$count", "$tail"), v2.get("variables"));
+        assertEquals(List.of("RANDFL", "USUBJID", "AEARMCD"), v2.get("columns"),
+                "v2 lists every name-only column, its own field");
     }
 
 

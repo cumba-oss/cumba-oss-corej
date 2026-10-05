@@ -44,6 +44,19 @@
     <!--    one Match (filter has no line-level scope).                   -->
     <!-- ================================================================ -->
 
+    <!-- Violation's canonical constructor (PLAN-finding-values-record-level-only,
+         P1 review L-4 / P2 review MED-1): hand-written so it can refuse a null
+         value and copy namedColumns, where Lombok's @AllArgsConstructor stood —
+         which SpotBugs never saw (Lombok marks it @Generated). values / keys /
+         groupKey are stored as the producing site built them, exactly as before:
+         a copy per finding is an allocation on the engine's hottest path (owner:
+         performance first), and no producer touches a map after handing it over. -->
+    <Match>
+        <Class name="net.cumba.corej.core.exec.Violation" />
+        <Method name="&lt;init&gt;" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+
     <!-- J5 IDVARVAL coercion: an exact integral test (d == Math.floor(d))
          is intentional and correct here — it canonicalises a numeric join
          token to its long form only when the double is EXACTLY integral
