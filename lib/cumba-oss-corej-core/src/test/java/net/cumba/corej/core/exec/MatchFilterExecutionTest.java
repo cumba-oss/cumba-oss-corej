@@ -234,6 +234,53 @@ class MatchFilterExecutionTest
     }
 
 
+    /**
+     * T2 L3 (D40, "cannot run beats is wrong"): a rule whose Stage B would SKIP by declaration —
+     * the filter column AEBOGUS is absent and declared (an {@code Any} leg, so the upstream
+     * Requirements gate is satisfied by DTHFL and does not skip first) — while the datatable
+     * refuses its merge ({@code Cardinality: n:1}, P1 has two AE records the filter keeps). The
+     * declared skip wins; the refusal is the answer only where nothing declares a skip (control).
+     */
+    @Test
+    @DisplayName("a declared Stage B skip beats a merge refusal (D40, T2 L3)")
+    void aDeclaredStageBSkipBeatsAMergeRefusal() throws IOException
+    {
+        RuleExecutionResult declared = runRefused("AEBOGUS != \"X\"",
+                "\"Any\":[\"AE.AEBOGUS\",\"DTHFL\"]");
+        assertEquals(RuleExecutionStatus.SKIPPED, declared.getStatus(),
+                String.valueOf(declared.getStatusMessage()));
+        assertTrue(String.valueOf(declared.getStatusMessage()).contains("AE.AEBOGUS"),
+                declared.getStatusMessage());
+        RuleExecutionResult refused = runRefused("AEOUT != \"X\"",
+                "\"Any\":[\"AE.AEBOGUS\",\"DTHFL\"]");
+        assertEquals(RuleExecutionStatus.ERROR, refused.getStatus(),
+                String.valueOf(refused.getStatusMessage()));
+        assertTrue(String.valueOf(refused.getStatusMessage()).startsWith(
+                MergedEvaluation.MERGE_REFUSED_MESSAGE_PREFIX), refused.getStatusMessage());
+    }
+
+
+    /** DM over AE {@code n:1} with {@code filter} — refused on P1's two AE records. */
+    private static RuleExecutionResult runRefused(String filter, String variables)
+        throws IOException
+    {
+        String body = "{\"rules\":{\"R1\":{\"Core\":{\"Id\":\"TEST-FLT\"},"
+                + "\"Sensitivity\":\"Record\"," + "\"Requirements\":{\"Variables\":{" + variables
+                + "}}," + "\"Match_Datasets\":[{\"Name\":\"AE\",\"Keys\":[\"USUBJID\"],"
+                + "\"Join_Type\":\"left\",\"Cardinality\":\"n:1\",\"Filter\":\""
+                + filter.replace("\"", "\\\"") + "\"}],"
+                + "\"Check\":{\"expression\":\"not AE._matched_\"},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}";
+        Rule r = RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(body)).getRules()
+                .get("R1");
+        assertNotNull(r);
+        assertNull(r.getLoadError());
+        IDataTable primary = dm();
+        return RuleRunnerCalls.execute(r, primary, inventory(study(primary, ae())), "DM", null,
+                null, null);
+    }
+
+
     @Test
     @DisplayName("a filter reading the study inventory sees the run's datasets (W4 L3)")
     void aFilterReadingTheStudyInventorySeesTheRunsDatasets() throws IOException

@@ -745,8 +745,8 @@ public final class RuleRunner
         // view is built, binding the column half against the MERGED SCHEMA (stageBGate below the
         // view build) — a supplemental qualifier and a dotted reference are columns there. The
         // view build itself raises no bind outcome of its own that the gate would have decided
-        // (a Filter is evaluated with the absent-column default, MatchFilter), and a merge the
-        // datatable refuses is the rule's ERROR on either order.
+        // (a Filter is evaluated with the absent-column default, MatchFilter); a merge the
+        // datatable refuses is the rule's ERROR unless Stage B declares a skip (T2 L3, below).
 
         // Phase 2a.5–2a.7: dataset merges / row expansions run BEFORE the compiled bindings are
         // read (they are lazy — BindingValue evaluates on first read, after this block), so a
@@ -764,8 +764,31 @@ public final class RuleRunner
         // (2b) and the SUPP pivot (all retired in W6): its primary part is the evaluation table,
         // its parts are the context's joins, its qualifier columns the context's SUPP
         // qualifiers; built once per (dataset, merge signature) through the JoinCache (P-3).
-        MergedEvaluation.Built mergedView = MergedEvaluation.build(rule, evalTable, table, resolver,
-                joinCache, ruleId, domainPrefix);
+        MergedEvaluation.Built mergedView;
+        try
+        {
+            mergedView = MergedEvaluation.build(rule, evalTable, table, resolver, joinCache, ruleId,
+                    domainPrefix);
+        }
+        catch (net.cumba.datatable.merge.MergeException e)
+        {
+            // T2 L3 (D40, "cannot run beats is wrong"): the gate below runs after the view build,
+            // so a merge the datatable refuses (a Cardinality violation, a degenerate key) would
+            // pre-empt Stage B's DECLARED skip — reachable: a Match_Datasets Filter column the
+            // partner lacks, declared in an Any leg the upstream Requirements gate sees satisfied
+            // by a present sibling, on an entry whose Cardinality the data violates
+            // (MatchFilterExecutionTest.aDeclaredStageBSkipBeatsAMergeRefusal). Stage B's skips
+            // read the run's inventory, not the merged schema, so they are decided here without
+            // one; only a SKIPPED answer is taken (a bind finding decided without the merged
+            // schema is not trusted) — otherwise the refusal stands as the rule's ERROR.
+            RuleExecutionResult declaredSkip = stageBGate(rule, table, varWildcardPrefix != null,
+                    ruleId, message, foreignInventory(resolver, ruleId), stageBSuppressed, null);
+            if (declaredSkip != null && declaredSkip.getStatus() == RuleExecutionStatus.SKIPPED)
+            {
+                return declaredSkip;
+            }
+            throw e;
+        }
         RuleExecutionResult stageBOutcome = stageBGate(rule, table, varWildcardPrefix != null,
                 ruleId, message, foreignInventory(resolver, ruleId), stageBSuppressed,
                 mergedView != null ? mergedView.view().getMetaData() : null);
