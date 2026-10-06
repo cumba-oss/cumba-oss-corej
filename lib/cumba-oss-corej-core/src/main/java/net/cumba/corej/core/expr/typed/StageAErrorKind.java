@@ -288,6 +288,19 @@ public enum StageAErrorKind
     QUALIFIER_CASE(false),
 
     /**
+     * The OD-6 gap lint of {@code PLAN-merged-evaluation-table} (T2 review, lane 3): a counting
+     * operator ({@code GroupReadTable.REAL_ROW_OPERATORS} — a uniqueness / grouped operator or a
+     * grouped aggregate) with an operand that is a {@code $} reference, a {@code ${…}} splice or a
+     * {@code *} / {@code **} pattern, on a rule whose merged view can repeat a record's row (a
+     * {@code Child: true} entry, a forward {@code RELREC} entry, or a keyed entry whose
+     * {@code Cardinality} lets the partner repeat — {@code n:m} / {@code 1:n}, or none authored).
+     * Such an operand is never judged primary-only, so the operator counts every merged row instead
+     * of each primary record once (OD-6 is not served). Observe-only: it reports the shape, never
+     * parks the rule and changes no verdict.
+     */
+    AGGREGATE_OVER_REPEATED_ROWS(false),
+
+    /**
      * The checker itself failed on this rule. Never armed: a checker defect must not park a rule
      * (that would be an evaluation change caused by the instrument).
      */

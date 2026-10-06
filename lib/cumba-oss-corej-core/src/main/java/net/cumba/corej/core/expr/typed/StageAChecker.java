@@ -367,6 +367,10 @@ public final class StageAChecker
             checker.checkBindingOrder();
             checker.checkListFunctionReads(roots);
             checker.checkMatchDatasets(roots.stream().map(Root::expr).toList());
+            // the bindings' aggregates count over the same view as the Check's (once, here: the
+            // Precondition pass drops the bindings' findings)
+            checker.checkAggregatesOverRepeatedRows(
+                    rule.bindingOrder().stream().map(CompiledBinding::expression).toList());
             checker.fileUnclaimedBindingElements();
         }
         catch (RuntimeException ex)
@@ -2342,6 +2346,7 @@ public final class StageAChecker
         {
             return;
         }
+        checkAggregatesOverRepeatedRows(roots);
         // ⭐ Phase 6b (D110g(iii) — the ambiguity load-error D88b routed to the binding model):
         // the merged view keys its parts' lookups BY NAME (EvaluationContext.joins), so a rule
         // declaring two entries under one Name silently reads only the surviving entry — with the
@@ -2381,6 +2386,140 @@ public final class StageAChecker
                 }
             }
         }
+    }
+
+
+    /**
+     * {@link StageAErrorKind#AGGREGATE_OVER_REPEATED_ROWS} (observe-only, T2 review lane 3): on a
+     * rule whose merged view can repeat a record's row ({@link #repeatingEntry}), a counting
+     * operator ({@code GroupReadTable.REAL_ROW_OPERATORS}) whose operands include a {@code $}
+     * reference, a {@code ${…}} splice or a {@code *} / {@code **} pattern — the operands OD-6
+     * never judges primary-only, so the operator counts merged rows. A call carrying
+     * {@code domain=} reads another dataset and is not judged; its operands are not this view's.
+     */
+    private void checkAggregatesOverRepeatedRows(java.util.Collection<Expr> roots)
+    {
+        String repeating = repeatingEntry(rule.getMatchDatasets());
+        if (repeating == null)
+        {
+            return;
+        }
+        Set<String> reported = new LinkedHashSet<>();
+        for (Expr root : roots)
+        {
+            collectAggregatesOverRepeatedRows(root, null, reported);
+        }
+        for (String finding : reported)
+        {
+            find(StageAErrorKind.AGGREGATE_OVER_REPEATED_ROWS, finding + ", and " + repeating
+                    + " can repeat a record's row: the operator counts every merged row, not each"
+                    + " record once (OD-6 cannot judge the operand; observe-only)");
+        }
+    }
+
+
+    /**
+     * Walks {@code e}; {@code operator} is the innermost enclosing counting operator, else
+     * {@code null}.
+     */
+    private static void collectAggregatesOverRepeatedRows(Expr e, @Nullable String operator,
+            Set<String> out)
+    {
+        switch (e)
+        {
+        case Expr.Ref r ->
+        {
+            String name = r.name();
+            if (operator != null
+                    && (name.startsWith("$") || name.contains("*") || name.contains("${")))
+            {
+                out.add(operator + "(…) reads " + name);
+            }
+        }
+        case Expr.Lit lit ->
+        {
+            if (lit.kind() == Expr.LitKind.LIST && lit.value() instanceof List<?> items)
+            {
+                for (Object item : items)
+                {
+                    if (item instanceof Expr x)
+                    {
+                        collectAggregatesOverRepeatedRows(x, operator, out);
+                    }
+                }
+            }
+        }
+        case Expr.Call c ->
+        {
+            if (c.kwargs().containsKey("domain"))
+            {
+                return; // another dataset's operands
+            }
+            String inner = net.cumba.corej.core.exec.GroupReadTable.REAL_ROW_OPERATORS
+                    .contains(c.name()) ? c.name() : operator;
+            c.args().forEach(a -> collectAggregatesOverRepeatedRows(a, inner, out));
+            c.kwargs().values().forEach(v -> collectAggregatesOverRepeatedRows(v, inner, out));
+        }
+        case Expr.Binary b ->
+        {
+            collectAggregatesOverRepeatedRows(b.left(), operator, out);
+            collectAggregatesOverRepeatedRows(b.right(), operator, out);
+        }
+        case Expr.And a -> a.parts()
+                .forEach(p -> collectAggregatesOverRepeatedRows(p, operator, out));
+        case Expr.Or o -> o.parts()
+                .forEach(p -> collectAggregatesOverRepeatedRows(p, operator, out));
+        case Expr.Not n -> collectAggregatesOverRepeatedRows(n.inner(), operator, out);
+        }
+    }
+
+
+    /**
+     * The first entry whose merge can give a record several rows — a {@code Child: true} parent,
+     * the forward {@code RELREC} entry, or a keyed entry whose {@code Cardinality} lets the partner
+     * repeat ({@code 1:n} / {@code n:m}, or none authored: {@code null} means {@code n:m}) — named
+     * for the message, or {@code null}. A {@code SUPP} pivot never repeats a record and is no
+     * entry.
+     */
+    private static @Nullable String repeatingEntry(@Nullable List<MatchDataset> matches)
+    {
+        if (matches == null)
+        {
+            return null;
+        }
+        for (MatchDataset md : matches)
+        {
+            if (md == null || md.getName() == null)
+            {
+                continue;
+            }
+            if (Boolean.TRUE.equals(md.getChild()))
+            {
+                return "the Child entry " + md.getName();
+            }
+            if (net.cumba.corej.core.exec.RelrecEntries.isForwardEntry(md))
+            {
+                return "the RELREC entry";
+            }
+            if (net.cumba.corej.core.exec.MergedEvaluation.servedAsKeyedPart(md))
+            {
+                net.cumba.datatable.merge.Cardinality cardinality;
+                try
+                {
+                    cardinality = md.cardinality();
+                }
+                catch (IllegalArgumentException ex)
+                {
+                    continue; // an unknown spelling is the loader's error, not this lint's
+                }
+                if (cardinality == null || !cardinality.rightUnique())
+                {
+                    return "the keyed entry " + md.getName() + " ("
+                            + (cardinality == null ? "n:m" : cardinality.text()) + ")";
+                }
+            }
+        }
+        return null;
     }
 
 

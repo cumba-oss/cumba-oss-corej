@@ -1559,8 +1559,12 @@ class StageACheckerTest
         Rule rule = withBindings("$nk", "natural_key_variables()", "$fv", "find_vars(\"J.G\")",
                 "$cl", "colref([\"A\", \"B\"])", "$scalar", "upper(AETERM)", "$one", "\"S\"",
                 "$num", "len(AETERM)");
-        // J is a declared join, so the qualified find_vars entry is not an undeclared qualifier
+        // J is a declared join, so the qualified find_vars entry is not an undeclared qualifier;
+        // declared n:1 — a view that cannot repeat a record — so the OD-6 gap lint
+        // (AGGREGATE_OVER_REPEATED_ROWS, which these $ splices would trip on an n:m view) stays
+        // out of this typing pin
         rule.setMatchDatasets(ruleJoining("J", "left", "USUBJID").getMatchDatasets());
+        rule.getMatchDatasets().get(0).setCardinality("n:1");
         for (String expression : List.of("is_unique_set([USUBJID, --TESTCD, $nk])",
                 "not is_not_unique_set([USUBJID, $nk])",
                 "record_count(group=[USUBJID, --TESTCD, $nk]) > 1", "record_count(group=$nk) > 1",
@@ -1971,5 +1975,61 @@ class StageACheckerTest
         // runAndApply never parks on it either
         StageAChecker.runAndApply(rule, levels(CheckExpressionParser.parse("empty(AETERM)")));
         assertNull(rule.getLoadError());
+    }
+
+
+    /** The {@code AGGREGATE_OVER_REPEATED_ROWS} findings of a report. */
+    private static long repeatedRowsLints(StageAReport report)
+    {
+        return report.findings().stream()
+                .filter(f -> f.kind() == StageAErrorKind.AGGREGATE_OVER_REPEATED_ROWS).count();
+    }
+
+
+    /**
+     * T2 review (lane 3) — the OD-6 gap lint, observe-only: a counting operator reading a {@code $}
+     * reference or a {@code *} / {@code **} pattern on a rule whose view can repeat a record's row
+     * counts merged rows, and is reported; never parked. The planted controls: the same operands
+     * over a view that cannot repeat ({@code n:1}), a primary-only operand, a {@code domain=}
+     * aggregate and a {@code $} outside any aggregate report nothing.
+     */
+    @Test
+    void anAggregateOverASplicedOrPatternOperandOnARepeatingViewIsObserved()
+    {
+        List<String> tripping = List.of(
+                "record_count(group=[USUBJID], filter=($flag == \"Y\")) > 1",
+                "not is_unique_set([USUBJID, $key])", "not is_unique_set([USUBJID, **DECOD])",
+                "max(*DTC, group=[USUBJID]) == \"\"");
+        Rule child = ruleJoining("AE", null, "USUBJID", "IDVAR", "IDVARVAL");
+        child.getMatchDatasets().get(0).setChild(Boolean.TRUE);
+        for (Rule repeating : List.of(ruleJoining("CM", "left", "USUBJID"), child,
+                ruleJoining("RELREC", "left")))
+        {
+            for (String expression : tripping)
+            {
+                StageAReport report = check(repeating, expression);
+                assertEquals(1, repeatedRowsLints(report), expression + ": " + report.findings());
+                assertTrue(
+                        report.armedFindings().stream().noneMatch(
+                                f -> f.kind() == StageAErrorKind.AGGREGATE_OVER_REPEATED_ROWS),
+                        "observe-only");
+            }
+        }
+        // controls: a view that cannot repeat a record (the partner side declared unique)
+        Rule unique = ruleJoining("DM", "left", "USUBJID");
+        unique.getMatchDatasets().get(0).setCardinality("n:1");
+        for (String expression : tripping)
+        {
+            assertEquals(0, repeatedRowsLints(check(unique, expression)), expression);
+        }
+        Rule repeating = ruleJoining("CM", "left", "USUBJID");
+        for (String expression : List.of("not is_unique_set([USUBJID, AESEQ])",
+                "record_count(domain=\"EX\", group=[USUBJID], filter=($flag == \"Y\")) > 1",
+                "$flag == \"Y\" and not is_unique_set([USUBJID, AESEQ])"))
+        {
+            assertEquals(0, repeatedRowsLints(check(repeating, expression)), expression);
+        }
+        // and nothing without a join at all
+        assertEquals(0, repeatedRowsLints(check(new Rule(), tripping.get(1))));
     }
 }
