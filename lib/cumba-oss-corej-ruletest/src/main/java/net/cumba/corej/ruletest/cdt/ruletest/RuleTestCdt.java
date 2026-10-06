@@ -575,16 +575,40 @@ public final class RuleTestCdt
 
 
     /**
-     * Load a scenario from a file path. Strict entry point. {@code #library-include} sidecars are
-     * resolved relative to {@code aPath}'s parent directory.
+     * Load a scenario from a file path. Strict entry point. {@code #library-include} /
+     * {@code #define-include} sidecars resolve <b>beside the scenario</b>: the resolver is
+     * {@link SidecarResolver} confined to {@code aPath}'s own directory, so {@code ..}, an absolute
+     * path and a link are refused (pack-2 review 8a-B M2 — the default used to be an unconfined
+     * {@code base.resolve(rel)}). Every corpus sidecar sits beside its scenario; a caller whose
+     * sidecars live elsewhere in a tree passes that tree's resolver to
+     * {@link #load(Path, SidecarResolver)}.
      */
     public static RuleTestScenario load(Path aPath) throws IOException
     {
-        String content = Files.readString(aPath, StandardCharsets.UTF_8);
         Path base = aPath.toAbsolutePath().getParent();
-        IncludeResolver resolver = rel -> Files
-                .newInputStream(base == null ? Path.of(rel) : base.resolve(rel));
-        return parse(content, aPath.toString(), resolver);
+        if (base == null)
+        {
+            throw new IOException("scenario file has no parent directory: " + aPath);
+        }
+        return load(aPath, SidecarResolver.rootedAt(base));
+    }
+
+
+    /**
+     * Load a scenario from a file path, its includes resolved through {@code aSidecars}.
+     *
+     * @param aPath
+     *            the scenario file
+     * @param aSidecars
+     *            the confined resolver its sidecars resolve through
+     * @return the scenario
+     * @throws IOException
+     *             when the file cannot be read
+     */
+    public static RuleTestScenario load(Path aPath, SidecarResolver aSidecars) throws IOException
+    {
+        String content = Files.readString(aPath, StandardCharsets.UTF_8);
+        return parse(content, aPath.toString(), aSidecars.includeResolver(aPath));
     }
 
 

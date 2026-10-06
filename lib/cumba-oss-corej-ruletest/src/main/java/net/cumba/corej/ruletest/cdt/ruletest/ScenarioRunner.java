@@ -45,7 +45,11 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * The test-tree harness <em>aborted</em> through JUnit {@code Assumptions} and <em>failed</em>
  * through {@code Assertions}; here every one of those is an explicit {@link Outcome}. The mapping
- * (review H1, tabulated as the plan asked):
+ * (review H1, tabulated as the plan asked). ⚠ The detail is the old assertion's <em>message</em>,
+ * not JUnit's rendering of it: no {@code ==> expected …} suffix, no {@code Assumption failed:}
+ * prefix; and the three stops the old harness reached through an <em>exception</em>
+ * ({@code NO_CARRIER}, {@code SIDECAR}, {@code DICTIONARIES}) were JUnit ERRORs and are
+ * {@link Outcome#FAIL}s here — the verdict is the same, a red scenario (pack-2 review 8a-B L6):
  * </p>
  * <table>
  * <caption>JUnit state of the old harness → outcome of the runner</caption>
@@ -87,7 +91,8 @@ import org.jspecify.annotations.Nullable;
  * <td>{@link Outcome#FAIL} {@code NO_CARRIER}</td>
  * </tr>
  * <tr>
- * <td>{@code parseDefineXml} UncheckedIOException</td>
+ * <td>{@code parseDefineXml} UncheckedIOException (now the resolver's refusal, or the parse
+ * failure)</td>
  * <td>the {@code #define-xml} sidecar cannot be read or parsed</td>
  * <td>{@link Outcome#FAIL} {@code SIDECAR}</td>
  * </tr>
@@ -106,7 +111,26 @@ import org.jspecify.annotations.Nullable;
  * <td>the verdict or a location assertion fails</td>
  * <td>{@link Outcome#FAIL} {@code VERDICT} / {@code LOCATION}</td>
  * </tr>
+ * <tr>
+ * <td>— (editor entry only, {@link #runText})</td>
+ * <td>the scenario text does not parse, or names a sidecar the tree refuses</td>
+ * <td>{@link Outcome#FAIL} {@code PARSE}</td>
+ * </tr>
+ * <tr>
+ * <td>— (editor entries only, {@link #run} / {@link #runText})</td>
+ * <td>a store, the expander or the engine throws</td>
+ * <td>{@link Outcome#FAIL} {@code INTERNAL}, a generic message; the cause goes to the log</td>
+ * </tr>
  * </table>
+ *
+ * <p>
+ * ⛔ <b>Sidecars are confined</b> ({@link SidecarResolver}): {@code #define-xml} resolves through
+ * {@link RunEnvironment#sidecars()} here, and {@code #library-include} / {@code #define-include},
+ * which the parser resolves, are confined by {@link #runText} — the entry a host holding scenario
+ * <em>text</em> uses, so the confinement is the runner's and never left to its caller (pack-2
+ * review 8a-B M2). A caller that parses for itself passes the same resolver's
+ * {@link SidecarResolver#includeResolver}, as the corpus factory does.
+ * </p>
  *
  * <p>
  * The rule to run is the caller's: the corpus resolves the declared standard's view through its
@@ -118,7 +142,14 @@ import org.jspecify.annotations.Nullable;
 public final class ScenarioRunner
 {
 
-    /** Loaded once per directory: the dummy dictionary bundle a scenario names. */
+    private static final System.Logger LOGGER = System.getLogger(ScenarioRunner.class.getName());
+
+    /**
+     * Loaded once per directory: the dummy dictionary bundle a scenario names. ⚠ Never evicted, by
+     * design — a host keeps one bundle directory for its lifetime (the corpus its
+     * {@code DUMMY_DICTIONARIES_DIR}); a host that rewrites the bundle in place at runtime keeps
+     * the first load of that path until it restarts (pack-2 review 8a-B L7).
+     */
     private static final ConcurrentHashMap<Path, RuntimeDictionaryProvider> DICTIONARIES = new ConcurrentHashMap<>();
 
     private ScenarioRunner()
@@ -334,7 +365,7 @@ public final class ScenarioRunner
      * @param code
      *            {@code OK}, or the mapping table's code of the failure / abort
      * @param detail
-     *            the message the old harness produced, verbatim
+     *            the old assertion's message (see the class javadoc: without JUnit's decoration)
      * @param scopeGate
      *            the pre-gate
      * @param evaluation
@@ -371,7 +402,9 @@ public final class ScenarioRunner
     // ---- the run ----------------------------------------------------------------------------
 
     /**
-     * Run and judge: {@link #evaluate} then {@link #judge}.
+     * Run and judge: {@link #evaluate} then {@link #judge}. Never throws for what the run raises —
+     * a store, the expander or the engine failing is a {@link Outcome#FAIL} {@code INTERNAL} with a
+     * generic message, the cause logged (the editor host's contract; pack-2 review 8a-B L7).
      *
      * @param aRule
      *            the rule to run (the scenario's declared view)
@@ -387,6 +420,77 @@ public final class ScenarioRunner
      * @return the judged run
      */
     public static ScenarioRunResult run(Rule aRule, RuleTestScenario aScenario,
+            @Nullable Path aScenarioFile, RunEnvironment aEnvironment,
+            @Nullable ExecutionObserver aObserver)
+    {
+        try
+        {
+            return runUnguarded(aRule, aScenario, aScenarioFile, aEnvironment, aObserver);
+        }
+        catch (RuntimeException e)
+        {
+            return internal(aScenario.getCoreId(), e);
+        }
+    }
+
+
+    /**
+     * Parse and run a scenario held as <em>text</em> — the editor's entry: its
+     * {@code #library-include} / {@code #define-include} sidecars resolve through the environment's
+     * confined {@link SidecarResolver} (no resolver: an include is a parse error), and so does its
+     * {@code #define-xml}. A scenario that does not parse is a {@link Outcome#FAIL} {@code PARSE};
+     * messages name the scenario relative to the sidecar tree, never by an absolute path.
+     *
+     * @param aRule
+     *            the rule to run
+     * @param aCdtText
+     *            the scenario's {@code .cdt} text
+     * @param aScenarioFile
+     *            the file the scenario is (or would be saved as) — the base its sidecars are
+     *            relative to; its directory must exist inside the sidecar tree
+     * @param aEnvironment
+     *            the host's store, dictionaries and sidecar resolver
+     * @param aObserver
+     *            sees every execution, or {@code null}
+     * @return the judged run
+     */
+    public static ScenarioRunResult runText(Rule aRule, String aCdtText, Path aScenarioFile,
+            RunEnvironment aEnvironment, @Nullable ExecutionObserver aObserver)
+    {
+        SidecarResolver sidecars = aEnvironment.sidecars();
+        String label = sidecars == null ? String.valueOf(aScenarioFile.getFileName())
+                : sidecars.label(aScenarioFile);
+        RuleTestScenario scenario;
+        try
+        {
+            scenario = RuleTestCdt.parse(aCdtText, label,
+                    sidecars == null ? null : sidecars.includeResolver(aScenarioFile));
+        }
+        catch (RuleTestCdtException e)
+        {
+            return stopped(new Stop(Outcome.FAIL, "PARSE", String.valueOf(e.getMessage())),
+                    ScopeGate.IN);
+        }
+        catch (RuntimeException e)
+        {
+            return internal(label, e);
+        }
+        return run(aRule, scenario, aScenarioFile, aEnvironment, aObserver);
+    }
+
+
+    /** A FAIL {@code INTERNAL}: a generic message for the reader, the cause for the log. */
+    private static ScenarioRunResult internal(String aWhat, RuntimeException aCause)
+    {
+        LOGGER.log(System.Logger.Level.WARNING, "scenario " + aWhat + " could not be run", aCause);
+        return stopped(new Stop(Outcome.FAIL, "INTERNAL",
+                "the scenario " + aWhat + " could not be run: an internal error ("
+                        + aCause.getClass().getSimpleName() + ") — the host's log has the cause"),
+                ScopeGate.IN);
+    }
+
+
+    private static ScenarioRunResult runUnguarded(Rule aRule, RuleTestScenario aScenario,
             @Nullable Path aScenarioFile, RunEnvironment aEnvironment,
             @Nullable ExecutionObserver aObserver)
     {
@@ -508,7 +612,7 @@ public final class ScenarioRunner
             slots = ScenarioDeclaredScopeProvider.install(aPrimary, library, defineProvider,
                     aScenario.getSource(), ScenarioScopeGate.readsDeclaredAdamTier(aRule));
         }
-        catch (IllegalStateException e)
+        catch (ScenarioDeclaredScopeProvider.MissingCarrierException e)
         {
             return new ScenarioEvaluation(ScopeGate.IN, null, List.of(),
                     new Stop(Outcome.FAIL, "NO_CARRIER", String.valueOf(e.getMessage())));
@@ -846,7 +950,12 @@ public final class ScenarioRunner
     // ---- sidecars and dictionaries -------------------------------------------------------
 
 
-    /** Parse a {@code #define-xml} sidecar, resolved against the scenario file's directory. */
+    /**
+     * Parse a {@code #define-xml} sidecar, resolved against the scenario file's directory. A
+     * refusal of the resolver passes through in its own words (why, tree-relative); a sidecar that
+     * resolves but does not parse is named by its payload, never by an absolute path (pack-2 review
+     * 8a-B L5).
+     */
     private static OdmDefineXMLProvider parseDefineXml(@Nullable Path aScenarioFile,
             String aRelative, @Nullable SidecarResolver aSidecars)
         throws IOException
@@ -856,14 +965,15 @@ public final class ScenarioRunner
             throw new IOException("#define-xml " + aRelative
                     + " cannot be resolved: the scenario has no file or no sidecar tree");
         }
-        try (InputStream in = aSidecars.open(aScenarioFile, aRelative))
+        InputStream opened = aSidecars.open(aScenarioFile, aRelative);
+        try (InputStream in = opened)
         {
             return new OdmDefineXMLProvider(new DefineXmlParser().parse(in));
         }
-        catch (IOException e)
+        catch (IOException | RuntimeException e)
         {
-            throw new UncheckedIOException("could not parse #define-xml sidecar "
-                    + aScenarioFile.resolveSibling(aRelative), e);
+            throw new IOException("could not parse #define-xml sidecar " + aRelative + ": "
+                    + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()), e);
         }
     }
 
@@ -889,8 +999,8 @@ public final class ScenarioRunner
             }
             catch (IOException e)
             {
-                throw new UncheckedIOException("could not load the dummy dictionaries from " + dir,
-                        e);
+                throw new UncheckedIOException(
+                        "could not load the dummy dictionaries from " + dir.getFileName(), e);
             }
         });
     }

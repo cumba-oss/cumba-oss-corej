@@ -120,6 +120,23 @@ public final class ScenarioDeclaredScopeProvider implements MetadataProvider
     }
 
     /**
+     * {@link #install}'s one refusal: a declared ADaM axis with no provider block to carry it. A
+     * type of its own so {@code ScenarioRunner} maps exactly this onto {@code NO_CARRIER}, and any
+     * other {@link IllegalStateException} stays what it is (pack-2 review 8a-B L7).
+     */
+    public static final class MissingCarrierException extends IllegalStateException
+    {
+
+        private static final long serialVersionUID = 1L;
+
+        MissingCarrierException(String aMessage)
+        {
+            super(aMessage);
+        }
+    }
+
+
+    /**
      * The two {@code RuleRunner} metadata slots after {@link #install} has placed the decorator, in
      * the order the factory passes them on. Either may still be {@code null} — {@code install}
      * never fills an empty slot, it only decorates one that the scenario already declared.
@@ -323,7 +340,7 @@ public final class ScenarioDeclaredScopeProvider implements MetadataProvider
      *            whether the scenario's rule carries {@code Scope.Data_Structures} /
      *            {@code Scope.Subclasses} — the only gates that read the declared tier
      * @return the slots to hand to {@code RuleRunner}
-     * @throws IllegalStateException
+     * @throws MissingCarrierException
      *             when the scenario declares an axis but carries no provider block to deliver it
      */
     public static Slots install(OverlayDataTable aPrimary, @Nullable MetadataProvider aLibrary,
@@ -341,7 +358,7 @@ public final class ScenarioDeclaredScopeProvider implements MetadataProvider
         {
             return new Slots(wrap(aPrimary, aLibrary), null);
         }
-        throw new IllegalStateException(aSource + ": dataset " + aPrimary.getMetaData().getName()
+        throw new MissingCarrierException(aSource + ": dataset " + aPrimary.getMetaData().getName()
                 + " declares structure= / subclass= (or a class= that names an ADaM data structure"
                 + " and contradicts the columns) but the"
                 + " scenario has no #define, #define-xml, #library or #library-ref block to carry"

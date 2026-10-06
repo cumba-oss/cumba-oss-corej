@@ -12,7 +12,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import net.cumba.corej.core.RulePackageLoader;
+import net.cumba.corej.core.metadata.store.MetadataStore;
+import net.cumba.corej.core.metadata.store.Presence;
+import net.cumba.corej.core.metadata.store.StoreManifest;
+import net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory;
+import net.cumba.corej.core.metadata.store.StoredClass;
+import net.cumba.corej.core.metadata.store.StoredCtPackage;
+import net.cumba.corej.core.metadata.store.StoredDataStructure;
+import net.cumba.corej.core.metadata.store.StoredDataset;
+import net.cumba.corej.core.metadata.store.StoredProduct;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.ruletest.cdt.ruletest.RunEnvironment.StoreAvailability;
 import net.cumba.corej.ruletest.cdt.ruletest.ScenarioRunner.Outcome;
@@ -211,6 +221,257 @@ class ScenarioRunnerTest
         assertEquals(Outcome.FAIL, absent.outcome());
         assertEquals("SIDECAR", absent.code());
         assertTrue(absent.detail().contains("define.xml"), absent.detail());
+    }
+
+
+    /**
+     * Review 8a-B L5: a refused {@code #define-xml} sidecar used to surface as "could not parse
+     * #define-xml sidecar /abs/path" — the refusal's reason hidden, a server path shown. The
+     * resolver's own words pass through now, tree-relative.
+     */
+    @Test
+    void aRefusedDefineXmlSidecarSaysWhyAndNamesNoAbsolutePath(@TempDir Path aDir)
+        throws IOException
+    {
+        Path dir = Files.createDirectories(aDir.resolve("suites").resolve("fam").resolve("R1"));
+        Files.writeString(aDir.resolve("define.xml"), "<ODM/>", StandardCharsets.UTF_8);
+        RuleTestScenario s = scenario("#test CDISC-XX0001 expect=violation domain=AE\n"
+                + "#define-xml ../../../define.xml\n", AE);
+        ScenarioRunResult r = ScenarioRunner.run(rule(), s, dir.resolve("s.cdt"),
+                new RunEnvironment(NO_STORE, null,
+                        SidecarResolver.rootedAt(aDir.resolve("suites"))),
+                null);
+        assertEquals(Outcome.FAIL, r.outcome());
+        assertEquals("SIDECAR", r.code());
+        assertTrue(r.detail().contains("escapes the scenario tree"), r.detail());
+        assertFalse(r.detail().contains(aDir.toString()), r.detail());
+        assertFalse(r.detail().contains(aDir.toRealPath().toString()), r.detail());
+    }
+
+    /** A store that serves one SDTMIG product (no datasets) and no CT package. */
+    private static final class OneProductStore implements MetadataStore
+    {
+
+        private final boolean failing;
+
+        OneProductStore(boolean aFailing)
+        {
+            failing = aFailing;
+        }
+
+
+        @Override
+        public Optional<StoredProduct> product(String aKey)
+        {
+            if (failing)
+            {
+                throw new IllegalStateException("store defect in this test");
+            }
+            if (!"standards/sdtmig/3-4".equals(aKey))
+            {
+                return Optional.empty();
+            }
+            return Optional.of(StoredProduct.builder().key(aKey).name("SDTMIG").version("3.4")
+                    .classes(List.<StoredClass> of()).datasets(List.<StoredDataset> of())
+                    .dataStructures(List.<StoredDataStructure> of()).build());
+        }
+
+
+        @Override
+        public Optional<StoredCtPackage> ctPackage(String aId)
+        {
+            return Optional.empty();
+        }
+
+
+        @Override
+        public List<String> publishedCtPackages()
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public Presence presence(String aCtPackageId)
+        {
+            return Presence.ABSENT;
+        }
+
+
+        @Override
+        public List<String> productCatalogue()
+        {
+            return List.of("standards/sdtmig/3-4");
+        }
+
+
+        @Override
+        public StoreManifest manifest()
+        {
+            throw new UnsupportedOperationException("no manifest in the fake");
+        }
+
+
+        @Override
+        public void close()
+        {
+            // nothing to release
+        }
+    }
+
+    private static StoreAvailability store(boolean aFailing)
+    {
+        return StoreAvailability.of(new StoreMetadataProviderFactory(new OneProductStore(aFailing)),
+                "the test store");
+    }
+
+
+    /** Review 8a-B L6: the library-axis stops, each one reached. */
+    @Test
+    void theLibraryAxisStopsAreEachReached() throws IOException
+    {
+        ScenarioRunResult notServed = ScenarioRunner.run(rule(),
+                scenario("#test CDISC-XX0001 expect=violation domain=AE\n"
+                        + "#library-ref standard=sdtmig version=3-3\n", AE),
+                null, environment(store(false)), null);
+        assertEquals(Outcome.ABORTED, notServed.outcome(), notServed.detail());
+        assertEquals("PRODUCT_NOT_SERVED", notServed.code());
+        assertTrue(notServed.detail().contains("the test store does not serve sdtmig 3-3"),
+                notServed.detail());
+
+        ScenarioRunResult ct = ScenarioRunner.run(rule(),
+                scenario(
+                        "#test CDISC-XX0001 expect=violation domain=AE\n"
+                                + "#library-ref standard=sdtmig version=3-4 ct=sdtmct-2024-09-27\n",
+                        AE),
+                null, environment(store(false)), null);
+        assertEquals(Outcome.FAIL, ct.outcome(), ct.detail());
+        assertEquals("CT_PACKAGE", ct.code());
+        assertTrue(ct.detail().contains("pins ct=sdtmct-2024-09-27"), ct.detail());
+    }
+
+
+    /**
+     * Review 8a-B L6: a {@code #library-ref} scenario whose rule does not execute aborts
+     * ({@code REF_NOT_EXECUTED}) — and, review 8a-B's observation for
+     * {@code PLAN-scenario-scope-gate-execution-error}, so does one whose rule ERRORED: the rescue
+     * does not look at {@code errored()}.
+     */
+    @Test
+    void aLibraryRefScenarioWhoseRuleDidNotRunAborts() throws IOException
+    {
+        Rule needsAbsent = RulePackageLoader
+                .loadFromString(PACKAGE.replace("\"Check\":",
+                        "\"Requirements\":{\"Variables\":{\"All\":[\"AEXXX\"]}},\"Check\":"))
+                .getRules().get("CDISC-XX0001");
+        assertNull(needsAbsent.getLoadError(), needsAbsent.getLoadError());
+        ScenarioRunResult r = ScenarioRunner.run(needsAbsent,
+                scenario("#test CDISC-XX0001 expect=violation domain=AE\n"
+                        + "#library-ref standard=sdtmig version=3-4\n", AE),
+                null, environment(store(false)), null);
+        assertEquals(Outcome.ABORTED, r.outcome(), r.detail());
+        assertEquals("REF_NOT_EXECUTED", r.code());
+        assertNotNull(r.skip());
+        assertEquals(SkipReason.Kind.REQUIREMENTS, r.skip().kind(), r.skip().text());
+    }
+
+
+    /** Review 8a-B L6: an ADaM axis declared with no carrier block is a NO_CARRIER failure. */
+    @Test
+    void aDeclaredStructureWithoutACarrierFails() throws IOException
+    {
+        ScenarioRunResult r = ScenarioRunner.run(rule(),
+                scenario("#test CDISC-XX0001 expect=violation domain=AE\n",
+                        AE.replace("label=\"Adverse Events\"",
+                                "label=\"Adverse Events\" structure=OCCDS")),
+                null, environment(NO_STORE), null);
+        assertEquals(Outcome.FAIL, r.outcome(), r.detail());
+        assertEquals("NO_CARRIER", r.code());
+        assertTrue(r.detail().contains("Add a carrier block"), r.detail());
+    }
+
+
+    /** Review 8a-B L6: a location assertion that does not hold is a LOCATION failure. */
+    @Test
+    void aWrongLocationAssertionFails() throws IOException
+    {
+        ScenarioRunResult r = ScenarioRunner
+                .run(rule(),
+                        scenario("#test CDISC-XX0001 expect=violation domain=AE\n"
+                                + "#expectViolationCount 2\n", AE),
+                        null, environment(NO_STORE), null);
+        assertEquals(Outcome.FAIL, r.outcome(), r.detail());
+        assertEquals("LOCATION", r.code());
+        assertNotNull(r.locations());
+        assertFalse(r.locations().pass());
+        assertNotNull(r.verdict());
+        assertTrue(r.verdict().pass(), "the verdict held; the location did not");
+    }
+
+
+    /**
+     * Review 8a-B L7: {@code run} is the editor host's entry and never throws for what a store, the
+     * expander or the engine raises — a FAIL {@code INTERNAL} with a generic message instead (the
+     * cause goes to the log, not to the anonymous reader).
+     */
+    @Test
+    void aRuntimeFailureInsideTheRunIsAnInternalFailure() throws IOException
+    {
+        ScenarioRunResult r = ScenarioRunner.run(rule(),
+                scenario("#test CDISC-XX0001 expect=violation domain=AE\n"
+                        + "#library-ref standard=sdtmig version=3-4\n", AE),
+                null, environment(store(true)), null);
+        assertEquals(Outcome.FAIL, r.outcome(), r.detail());
+        assertEquals("INTERNAL", r.code());
+        assertFalse(r.detail().contains("store defect in this test"), r.detail());
+    }
+
+
+    /**
+     * Review 8a-B M2: the runner's text entry confines the includes the PARSER resolves, so a host
+     * holding scenario text never has to remember to — an include that climbs out of the tree is a
+     * PARSE failure naming no absolute path; one beside the scenario runs.
+     */
+    @Test
+    void runTextConfinesTheIncludesItParses(@TempDir Path aDir) throws IOException
+    {
+        Path dir = Files.createDirectories(aDir.resolve("suites").resolve("fam").resolve("R1"));
+        Files.writeString(aDir.resolve("outside.yaml"), "standard: sdtmig\nversion: \"3-4\"\n",
+                StandardCharsets.UTF_8);
+        Files.writeString(dir.resolve("lib.yaml"), "standard: sdtmig\nversion: \"3-4\"\n",
+                StandardCharsets.UTF_8);
+        RunEnvironment env = new RunEnvironment(NO_STORE, null,
+                SidecarResolver.rootedAt(aDir.resolve("suites")));
+        Path file = dir.resolve("s.cdt");
+
+        ScenarioRunResult escaped = ScenarioRunner.runText(rule(),
+                "#!RuleTest\n#test CDISC-XX0001 expect=violation domain=AE\n"
+                        + "#library-include ../../../outside.yaml\n" + AE,
+                file, env, null);
+        assertEquals(Outcome.FAIL, escaped.outcome(), escaped.detail());
+        assertEquals("PARSE", escaped.code());
+        assertTrue(escaped.detail().contains("escapes the scenario tree"), escaped.detail());
+        assertTrue(escaped.detail().startsWith("fam/R1/s.cdt:"), escaped.detail());
+        assertFalse(escaped.detail().contains(aDir.toString()), escaped.detail());
+
+        ScenarioRunResult beside = ScenarioRunner.runText(rule(),
+                "#!RuleTest\n#test CDISC-XX0001 expect=violation domain=AE\n"
+                        + "#library-include lib.yaml\n" + AE,
+                file, env, null);
+        assertEquals(Outcome.PASS, beside.outcome(), beside.detail());
+
+        ScenarioRunResult unconfined = ScenarioRunner
+                .runText(rule(),
+                        "#!RuleTest\n#test CDISC-XX0001 expect=violation domain=AE\n"
+                                + "#library-include lib.yaml\n" + AE,
+                        file, environment(NO_STORE), null);
+        assertEquals("PARSE", unconfined.code(), "no resolver: an include cannot be resolved");
+        assertTrue(unconfined.detail().contains("requires loading from a file"),
+                unconfined.detail());
+
+        ScenarioRunResult broken = ScenarioRunner.runText(rule(), "not a scenario", file, env,
+                null);
+        assertEquals("PARSE", broken.code());
     }
 
 

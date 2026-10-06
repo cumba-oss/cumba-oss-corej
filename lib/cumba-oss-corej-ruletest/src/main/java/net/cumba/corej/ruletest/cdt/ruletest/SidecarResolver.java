@@ -3,8 +3,11 @@ package net.cumba.corej.ruletest.cdt.ruletest;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
 
 /**
@@ -16,14 +19,38 @@ import java.util.Objects;
  * ({@code PLAN-rule-authoring-api} §3.1, editor review H1). Until this class the two directives
  * resolved {@code base.resolve(rel)} with no containment — an absolute path won, {@code ..} climbed
  * — which was harmless for a corpus checked out by its own developers and is not for an editor that
- * runs user-edited buffers, also anonymously. So: a relative path only, normalised, its real path
- * ({@code NOFOLLOW_LINKS}) inside the root, never a symbolic link, and no file content in any
- * message. The corpus passes a resolver rooted at its suites tree (every corpus sidecar sits beside
- * its scenario), so its behaviour is unchanged.
+ * runs user-edited buffers, also anonymously. The corpus passes a resolver rooted at its suites
+ * tree (every corpus sidecar sits beside its scenario), so its behaviour is unchanged.
  * </p>
+ *
+ * <h2>The rules (pack-2 review 8a-B H1 / M3 / L4 / L5)</h2>
+ *
+ * <ul>
+ * <li>the payload is a <b>valid, relative</b> path — an invalid one (a NUL, on Windows one of
+ * {@code *?<>|"}) is an {@link IOException} like every other refusal, never an
+ * {@code InvalidPathException};</li>
+ * <li>both sides are <b>real paths</b>: the root once, the scenario's directory per call — so a
+ * checkout reached through a link resolves its own sidecars (M3), and a scenario directory that is
+ * itself a link out of the tree is refused;</li>
+ * <li>the lexically normalised candidate must lie under the root, and <b>every component</b> from
+ * the root down to it is checked: no symbolic link (read without following), and its real path
+ * (links, junctions and other reparse points followed) must be the very path that was walked — a
+ * junction is no symbolic link to {@code isSymbolicLink}, but it is caught by the second test
+ * (H1);</li>
+ * <li>the sidecar is a regular file, opened with {@link LinkOption#NOFOLLOW_LINKS}, and the walk is
+ * repeated after the open: a component swapped for a link between the check and the open is refused
+ * rather than read. ⚠ That narrows the race, it cannot close it — Java offers no
+ * {@code openat}-style handle on every platform. A host whose tree is writable by the people whose
+ * buffers it runs must not rely on path checks alone;</li>
+ * <li>no message names file content or an absolute path — paths are shown relative to the root
+ * (L5).</li>
+ * </ul>
  */
 public final class SidecarResolver
 {
+
+    /** The prefix of the one refusal {@link #includeResolver} turns into "absent". */
+    static final String NOT_FOUND = "sidecar not found";
 
     private final Path root;
 
@@ -47,7 +74,7 @@ public final class SidecarResolver
         Path real = aRoot.toRealPath();
         if (!Files.isDirectory(real))
         {
-            throw new IOException("sidecar root is not a directory: " + aRoot);
+            throw new IOException("sidecar root is not a directory: " + aRoot.getFileName());
         }
         return new SidecarResolver(real);
     }
@@ -65,53 +92,172 @@ public final class SidecarResolver
      *
      * @param aScenarioFile
      *            the scenario's own file (its parent is the base the sidecar is relative to); a
-     *            scenario held in memory passes the file it would have been saved as
+     *            scenario held in memory passes the file it would have been saved as — its
+     *            directory must exist
      * @param aRelative
      *            the directive's payload
-     * @return the sidecar's path, inside the root
+     * @return the sidecar's real path, inside the root
      * @throws IOException
-     *             when the payload is absolute, escapes the root, is a symbolic link, or does not
-     *             exist
+     *             when the payload is no valid relative path, escapes the root, passes through a
+     *             link, is not a regular file, or does not exist
      */
     public Path resolve(Path aScenarioFile, String aRelative) throws IOException
     {
         Objects.requireNonNull(aRelative, "sidecar path");
-        Path rel = Path.of(aRelative);
-        if (rel.isAbsolute() || aRelative.startsWith("/") || aRelative.startsWith("\\"))
+        Path rel;
+        try
+        {
+            rel = Path.of(aRelative);
+        }
+        catch (InvalidPathException _)
+        {
+            throw new IOException(
+                    "sidecar path is not a valid path: " + aRelative.replace('\0', '?'));
+        }
+        if (aRelative.isEmpty() || rel.isAbsolute() || rel.getRoot() != null
+                || aRelative.startsWith("/") || aRelative.startsWith("\\"))
         {
             throw new IOException("sidecar path must be relative: " + aRelative);
         }
-        Path base = aScenarioFile.toAbsolutePath().getParent();
-        if (base == null)
-        {
-            throw new IOException("scenario file has no parent directory: " + aScenarioFile);
-        }
+        Path base = realBase(aScenarioFile, aRelative);
         Path candidate = base.resolve(rel).normalize();
         if (!candidate.startsWith(root))
         {
             throw new IOException("sidecar path escapes the scenario tree: " + aRelative + " (from "
-                    + base + ")");
+                    + shown(base) + ")");
         }
-        if (!Files.exists(candidate, LinkOption.NOFOLLOW_LINKS))
+        verifyWalk(candidate, aRelative, base);
+        return candidate;
+    }
+
+
+    /** The scenario's directory as a real path inside the root. */
+    private Path realBase(Path aScenarioFile, String aRelative) throws IOException
+    {
+        Path parent = aScenarioFile.toAbsolutePath().getParent();
+        if (parent == null)
         {
-            throw new IOException("sidecar not found: " + aRelative + " (from " + base + ")");
+            throw new IOException(
+                    "scenario file has no parent directory: " + aScenarioFile.getFileName());
         }
-        if (Files.isSymbolicLink(candidate))
+        Path base;
+        try
         {
-            throw new IOException("sidecar must not be a symbolic link: " + aRelative);
+            base = parent.toRealPath();
         }
-        Path real = candidate.toRealPath(LinkOption.NOFOLLOW_LINKS);
-        if (!real.startsWith(root))
+        catch (NoSuchFileException _)
         {
-            throw new IOException("sidecar path escapes the scenario tree: " + aRelative);
+            throw new IOException(
+                    "the scenario's directory does not exist: " + aScenarioFile.getFileName());
         }
-        return real;
+        if (!base.startsWith(root))
+        {
+            throw new IOException("sidecar path escapes the scenario tree: " + aRelative
+                    + " (the scenario's directory is outside it)");
+        }
+        return base;
+    }
+
+
+    /**
+     * Every component from the root down to {@code aCandidate}: present, no link, and its real path
+     * the walked one; the last a regular file.
+     */
+    private void verifyWalk(Path aCandidate, String aRelative, Path aBase) throws IOException
+    {
+        Path current = root;
+        Path tail = root.relativize(aCandidate);
+        int count = tail.getNameCount();
+        for (int i = 0; i < count; i++)
+        {
+            current = current.resolve(tail.getName(i));
+            BasicFileAttributes attrs;
+            try
+            {
+                attrs = Files.readAttributes(current, BasicFileAttributes.class,
+                        LinkOption.NOFOLLOW_LINKS);
+            }
+            catch (NoSuchFileException _)
+            {
+                throw new IOException(
+                        NOT_FOUND + ": " + aRelative + " (from " + shown(aBase) + ")");
+            }
+            if (attrs.isSymbolicLink())
+            {
+                throw new IOException("sidecar path must not pass through a symbolic link: "
+                        + aRelative + " (" + shown(current) + ")");
+            }
+            Path real = current.toRealPath();
+            if (!current.equals(real))
+            {
+                Path realParent = real.getParent();
+                boolean caseOnly = realParent != null && realParent.equals(current.getParent())
+                        && String.valueOf(real.getFileName())
+                                .equalsIgnoreCase(String.valueOf(current.getFileName()));
+                throw new IOException(caseOnly
+                        ? "sidecar path differs in case from the file on disk: " + aRelative + " ("
+                                + shown(real) + ")"
+                        : "sidecar path must not pass through a symbolic link, junction or"
+                                + " other redirection: " + aRelative + " (" + shown(current) + ")");
+            }
+            if (i == count - 1 && !attrs.isRegularFile())
+            {
+                throw new IOException("sidecar is not a regular file: " + aRelative);
+            }
+        }
+        if (count == 0)
+        {
+            throw new IOException("sidecar is not a regular file: " + aRelative);
+        }
+    }
+
+
+    /** A path inside the root, shown relative to it ({@code .} for the root itself). */
+    private String shown(Path aPath)
+    {
+        if (!aPath.startsWith(root))
+        {
+            return String.valueOf(aPath.getFileName());
+        }
+        String rel = root.relativize(aPath).toString().replace('\\', '/');
+        return rel.isEmpty() ? "." : rel;
+    }
+
+
+    /**
+     * The scenario's path for messages: relative to the root when it lies inside it, else its file
+     * name — never an absolute server path.
+     *
+     * @param aScenarioFile
+     *            the scenario's file
+     * @return the label
+     */
+    public String label(Path aScenarioFile)
+    {
+        Path abs = aScenarioFile.toAbsolutePath().normalize();
+        Path parent = abs.getParent();
+        if (parent != null)
+        {
+            try
+            {
+                Path real = parent.toRealPath().resolve(abs.getFileName());
+                if (real.startsWith(root))
+                {
+                    return shown(real);
+                }
+            }
+            catch (IOException _)
+            {
+                // fall through to the bare name
+            }
+        }
+        return String.valueOf(abs.getFileName());
     }
 
 
     /**
      * The {@code #library-include} resolver for a scenario at {@code aScenarioFile}: opens the
-     * sidecar through {@link #resolve}; a missing sidecar answers {@code null} as the parser's
+     * sidecar through {@link #open}; a missing sidecar answers {@code null} as the parser's
      * contract says, every other refusal is an {@link IOException}.
      *
      * @param aScenarioFile
@@ -122,26 +268,25 @@ public final class SidecarResolver
     {
         return rel ->
         {
-            Path file;
             try
             {
-                file = resolve(aScenarioFile, rel);
+                return open(aScenarioFile, rel);
             }
             catch (IOException e)
             {
-                if (e.getMessage() != null && e.getMessage().startsWith("sidecar not found"))
+                if (e.getMessage() != null && e.getMessage().startsWith(NOT_FOUND))
                 {
                     return null;
                 }
                 throw e;
             }
-            return Files.newInputStream(file);
         };
     }
 
 
     /**
-     * The sidecar's bytes.
+     * The sidecar's bytes: resolved, opened without following a final link, and the path verified
+     * again once the stream is open.
      *
      * @param aScenarioFile
      *            the scenario's file
@@ -153,7 +298,19 @@ public final class SidecarResolver
      */
     public InputStream open(Path aScenarioFile, String aRelative) throws IOException
     {
-        return Files.newInputStream(resolve(aScenarioFile, aRelative));
+        Path file = resolve(aScenarioFile, aRelative);
+        InputStream in = Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS);
+        try
+        {
+            Path parent = file.getParent();
+            verifyWalk(file, aRelative, parent == null ? root : parent);
+        }
+        catch (IOException e)
+        {
+            in.close();
+            throw e;
+        }
+        return in;
     }
 
 
