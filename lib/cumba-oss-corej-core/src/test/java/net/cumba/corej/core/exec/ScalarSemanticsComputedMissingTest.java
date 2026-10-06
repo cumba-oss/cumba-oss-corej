@@ -518,7 +518,13 @@ class ScalarSemanticsComputedMissingTest
     // the pivot — SuppQnamColumn.materialise, resolve, Materialised.values and
     // SharedIndexCache.getOrBuildSuppQnamColumn (-4); the merged view's SUPP part serves every
     // qualifier. Left: Distinct.targetCells and GroupedAggregate.Grouped.byKey.
-    private static final int EXPECTED_MULTI_VALUE_PRODUCERS = 2;
+    // 2 -> 4 (PLAN-merged-evaluation-table T1, READ): JoinLookup.columnReader and its
+    // MergedViewLookup override, a LongFunction<IDataValue> -- lookupValue with the column
+    // resolved once per group reader. Both halves hold: the reader is built on every path (never
+    // null), and every value it answers is lookupValue's -- a cell, the not-supplied default of
+    // the column's type, or the ruled absent-joined-column value -- so no element is null
+    // (MergedViewLookupColumnReaderTest compares it with lookupValue row by row).
+    private static final int EXPECTED_MULTI_VALUE_PRODUCERS = 4;
 
     /**
      * ⛔ The permanent positive control for the element detector — a declaration carrying a
