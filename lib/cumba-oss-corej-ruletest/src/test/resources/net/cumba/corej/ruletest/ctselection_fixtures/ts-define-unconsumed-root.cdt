@@ -1,6 +1,6 @@
 #!RuleTest
 #test CT-RUN-1 expect=violation domain=VS
-#note CQ5 (a) + fold F1 — the define declares CT only for a root this SDTM run never consumes (define-xmlct): it does not put the define in play, so the Trial Summary supplies the CT. Define and TS ids are never mixed, and the ignored declaration is not flagged as a mismatch against the TS set (the note opens with the TS text, no "define declares" part).
+#note CQ5 (a) + fold F1 — the define declares CT only for a root this SDTM run never consumes (define-xmlct): it does not put the define in play, so the Trial Summary supplies the CT. Define and TS ids are never mixed. Pinned here: the TS package is the run's CT and the note contains the TS text (#expect-ct-mismatch is a contains match); that the note has no "define declares" part is pinned by TrialSummaryCtServiceTest.
 #define-xml define-21-define-xmlct-only.xml
 #ct-available sdtmct-2024-09-27
 #expect-ct-mismatch "CT Packages is blank and no Define-XML declares CT for this run; CT taken from the Trial Summary: sdtmct-2024-09-27"

@@ -1,6 +1,7 @@
 package net.cumba.corej.core.run;
 
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.List;
 import java.util.function.Function;
 import net.cumba.corej.core.metadata.store.Presence;
@@ -34,6 +35,10 @@ public final class CtPresence
      *
      * @param aPresence
      *            the store's presence answer
+     * @param aPublished
+     *            the store's published CT enumeration ({@code PUBLISHED_CT_PACKAGES}): an absent
+     *            DEFINE- or TS-named id it lacks is no CDISC release at all (a typo), so the
+     *            message does not advise seeding it (5e review LOW-2); empty means "unknown"
      * @param aStoreFile
      *            the store, for the message
      * @param aNamedCtIds
@@ -43,22 +48,27 @@ public final class CtPresence
      * @throws StudyValidationException
      *             on the first id that is not present, naming it
      */
-    static void requireNamedPresent(Function<String, Presence> aPresence, Path aStoreFile,
-            List<String> aNamedCtIds, CtSelection.Source aSource)
+    static void requireNamedPresent(Function<String, Presence> aPresence,
+            Collection<String> aPublished, Path aStoreFile, List<String> aNamedCtIds,
+            CtSelection.Source aSource)
     {
-        requireNamedPresent(aPresence, aStoreFile, aNamedCtIds, aSource, null);
+        requireNamedPresent(aPresence, aPublished, aStoreFile, aNamedCtIds, aSource, null);
     }
 
 
     /**
-     * As {@link #requireNamedPresent(Function, Path, List, CtSelection.Source)}, with the Trial
-     * Summary evidence a {@link CtSelection.Source#TS} message cites per package
+     * As {@link #requireNamedPresent(Function, Collection, Path, List, CtSelection.Source)}, with
+     * the Trial Summary evidence a {@link CtSelection.Source#TS} message cites per package
      * (PLAN-ct-packages-default-and-ts-source CTD-2: a TS-derived package the store does not hold
      * is treated like a define-declared one — abort, naming it and its TS row, with the same escape
      * hatch).
      *
      * @param aPresence
      *            the store's presence answer
+     * @param aPublished
+     *            the store's published CT enumeration ({@code PUBLISHED_CT_PACKAGES}): an absent
+     *            DEFINE- or TS-named id it lacks is no CDISC release at all (a typo), so the
+     *            message does not advise seeding it (5e review LOW-2); empty means "unknown"
      * @param aStoreFile
      *            the store, for the message
      * @param aNamedCtIds
@@ -70,9 +80,9 @@ public final class CtPresence
      * @throws StudyValidationException
      *             on the first id that is not present, naming it
      */
-    static void requireNamedPresent(Function<String, Presence> aPresence, Path aStoreFile,
-            List<String> aNamedCtIds, CtSelection.Source aSource,
-            CtSelection.@Nullable TrialSummaryEvidence aTrialSummary)
+    static void requireNamedPresent(Function<String, Presence> aPresence,
+            Collection<String> aPublished, Path aStoreFile, List<String> aNamedCtIds,
+            CtSelection.Source aSource, CtSelection.@Nullable TrialSummaryEvidence aTrialSummary)
     {
         for (String id : aNamedCtIds)
         {
@@ -84,11 +94,18 @@ public final class CtPresence
             String problem = presence == Presence.MALFORMED
                     ? "is not a valid CT package id (expected <family>ct-<yyyy-mm-dd>)"
                     : "is not held by the metadata store at " + aStoreFile;
+            // LOW-2: a well-formed id the published enumeration lacks is no CDISC CT release at
+            // all (a mistyped date) — seeding cannot help. An empty enumeration says nothing.
+            String remedy = presence == Presence.ABSENT && !aPublished.isEmpty()
+                    && !aPublished.contains(id)
+                            ? "; no CDISC CT release of that date is known to the store. Correct"
+                                    + " the date, or "
+                            : ". Seed the store with it, or ";
             if (aSource == CtSelection.Source.DEFINE)
             {
                 throw new StudyValidationException("The Define-XML declares "
                         + "controlled-terminology package '" + id + "' (def:Standards), which "
-                        + problem + ". Seed the store with it, or " + CT_FIELD_HATCH
+                        + problem + remedy + CT_FIELD_HATCH
                         + " - an explicit selection takes the define's declaration out of play.");
             }
             if (aSource == CtSelection.Source.TS)
@@ -97,7 +114,7 @@ public final class CtPresence
                 throw new StudyValidationException(
                         "The Trial Summary (TS) states " + "controlled-terminology package '" + id
                                 + "'" + (evidence != null ? " (" + evidence + ")" : "") + ", which "
-                                + problem + ". Seed the store with it, or " + CT_FIELD_HATCH
+                                + problem + remedy + CT_FIELD_HATCH
                                 + " - an explicit selection takes the Trial Summary out of play.");
             }
             throw new StudyValidationException("Controlled-terminology package '" + id

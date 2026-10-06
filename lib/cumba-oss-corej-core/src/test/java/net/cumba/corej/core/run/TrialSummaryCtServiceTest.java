@@ -2,6 +2,7 @@ package net.cumba.corej.core.run;
 
 import static net.cumba.corej.core.run.TsTestSupport.row;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -97,8 +98,11 @@ class TrialSummaryCtServiceTest
     void t1_trialSummaryCtIsAdoptedAndNoted() throws IOException
     {
         configureStore("sdtmig", "3-4", "sdtmct-2023-12-15");
-        StudyValidationResult result = run("sdtmig", "3-4", null, List.of(), () -> TsTestSupport
-                .sdtmTs(List.of(row("S1", "TCNTRL", "PLACEBO", "CDISC CT", "2023-12-15"))));
+        // 5e review L1: the member is named as a file ("ts.xpt"), so the TS lookup must match it
+        // the way the dataset filter does (extension stripped, upper-cased).
+        StudyValidationResult result = run("sdtmig", "3-4", null, List.of(), "ts.xpt",
+                () -> TsTestSupport
+                        .sdtmTs(List.of(row("S1", "TCNTRL", "PLACEBO", "CDISC CT", "2023-12-15"))));
 
         assertEquals("sdtmct-2023-12-15", result.sections().conformanceDetails().get("CT_Version"));
         String note = result.conformance().ctDeclarationMismatch();
@@ -124,6 +128,63 @@ class TrialSummaryCtServiceTest
                 e.getMessage());
         assertTrue(e.getMessage().contains(CtPresence.CT_FIELD_HATCH), e.getMessage());
         assertTrue(e.getMessage().contains("takes the Trial Summary out of play"), e.getMessage());
+    }
+
+
+    /**
+     * 5e review LOW-2: a TS date no CDISC CT release carries (absent from the store's published
+     * enumeration) is a typo — the abort says so instead of advising to seed it; a published date
+     * the store merely lacks keeps the seeding advice.
+     */
+    @Test
+    void t2_aDateNoReleaseCarriesIsNamedAsSuch_aPublishedOneIsSeedable() throws IOException
+    {
+        configureStore("sdtmig", "3-4", List.of("sdtmct-2024-09-27"),
+                List.of("sdtmct-2024-09-27", "sdtmct-2023-12-15"));
+        Supplier<IDataTable> typo = () -> TsTestSupport
+                .sdtmTs(List.of(row("S1", "A", "x", "CDISC CT", "2023-12-16")));
+        StudyValidationException unknown = assertThrows(StudyValidationException.class,
+                () -> run("sdtmig", "3-4", null, List.of(), typo));
+        assertTrue(unknown.getMessage().contains("'sdtmct-2023-12-16'"), unknown.getMessage());
+        assertTrue(
+                unknown.getMessage()
+                        .contains("no CDISC CT release of that date is known to the store"),
+                unknown.getMessage());
+        assertFalse(unknown.getMessage().contains("Seed the store"), unknown.getMessage());
+        assertTrue(unknown.getMessage().contains(CtPresence.CT_FIELD_HATCH), unknown.getMessage());
+
+        Supplier<IDataTable> published = () -> TsTestSupport
+                .sdtmTs(List.of(row("S1", "A", "x", "CDISC CT", "2023-12-15")));
+        StudyValidationException seedable = assertThrows(StudyValidationException.class,
+                () -> run("sdtmig", "3-4", null, List.of(), published));
+        assertTrue(seedable.getMessage().contains("Seed the store with it"), seedable.getMessage());
+        assertFalse(seedable.getMessage().contains("no CDISC CT release"), seedable.getMessage());
+    }
+
+
+    /** LOW-2, DEFINE branch: the same wording for a declared date no CDISC CT release carries. */
+    @Test
+    void define_aDateNoReleaseCarriesIsNamedAsSuch() throws IOException
+    {
+        configureStore("sdtmig", "3-4", List.of("sdtmct-2024-09-27"),
+                List.of("sdtmct-2024-09-27", "sdtmct-2023-12-15"));
+        Path typo = writeDefine("SDTM", "2023-12-16");
+        StudyValidationException unknown = assertThrows(StudyValidationException.class,
+                () -> run("sdtmig", "3-4", typo, List.of(), () -> TsTestSupport.sdtmTs(List.of())));
+        assertTrue(unknown.getMessage().startsWith("The Define-XML declares"),
+                unknown.getMessage());
+        assertTrue(
+                unknown.getMessage()
+                        .contains("no CDISC CT release of that date is known to the store"),
+                unknown.getMessage());
+        assertFalse(unknown.getMessage().contains("Seed the store"), unknown.getMessage());
+
+        Path published = tempDir.resolve("published-define.xml");
+        Files.move(writeDefine("SDTM", "2023-12-15"), published);
+        StudyValidationException seedable = assertThrows(StudyValidationException.class,
+                () -> run("sdtmig", "3-4", published, List.of(),
+                        () -> TsTestSupport.sdtmTs(List.of())));
+        assertTrue(seedable.getMessage().contains("Seed the store with it"), seedable.getMessage());
     }
 
 
@@ -247,10 +308,18 @@ class TrialSummaryCtServiceTest
             List<String> aUserCts, Supplier<IDataTable> aTs)
         throws IOException
     {
+        return run(aStandard, aVersion, aDefine, aUserCts, "TS", aTs);
+    }
+
+
+    private StudyValidationResult run(String aStandard, String aVersion, @Nullable Path aDefine,
+            List<String> aUserCts, String aTsMember, Supplier<IDataTable> aTs)
+        throws IOException
+    {
         Map<String, Supplier<IDataTable>> members = new LinkedHashMap<>();
         members.put("DM", () -> TsTestSupport.table("DM", false, List.of("USUBJID"),
                 List.of(row("SUBJ-001"))));
-        members.put("TS", aTs);
+        members.put(aTsMember, aTs);
         IDataTableManager manager = TsTestSupport.manager(members, null);
         StudyValidationParams.Builder params = StudyValidationParams.builder().manager(manager)
                 .dataLibrary(tempDir.toString()).datasetFilter(Set.of("DM"))
@@ -318,6 +387,15 @@ class TrialSummaryCtServiceTest
     private void configureStore(String aStandard, String aVersion, String... aCtIds)
         throws IOException
     {
+        configureStore(aStandard, aVersion, List.of(aCtIds), List.of(aCtIds));
+    }
+
+
+    /** As above, with a published enumeration that may name packages the store does not hold. */
+    private void configureStore(String aStandard, String aVersion, List<String> aCtIds,
+            List<String> aPublished)
+        throws IOException
+    {
         String key = "standards/" + aStandard + "/" + aVersion;
         StoredVariable usubjid = StoredVariable.builder().name("USUBJID").ordinal("1").core("Req")
                 .simpleDatatype("Char").build();
@@ -336,7 +414,7 @@ class TrialSummaryCtServiceTest
                                     new StoredTerm("Y", "C49488", "Yes", null, null))))));
         }
         Path file = tempDir.resolve("store-" + aStandard + ".zip");
-        writer.publishedCtPackages(List.of(aCtIds)).productCatalogue(List.of(key)).write(file);
+        writer.publishedCtPackages(aPublished).productCatalogue(List.of(key)).write(file);
         System.setProperty(StoreMetadataProviderFactory.STORE_PROPERTY, file.toString());
     }
 }

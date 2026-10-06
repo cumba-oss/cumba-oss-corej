@@ -100,6 +100,19 @@ public final class StoreMetadataProviderFactory
 
 
     /**
+     * The store's whole published CT enumeration ({@link MetadataStore#publishedCtPackages()}),
+     * exposed so a D3 abort can tell a package the store merely lacks from an id no CDISC release
+     * carries (PLAN-ct-packages-default-and-ts-source review LOW-2).
+     *
+     * @return the published CT package ids; never {@code null}
+     */
+    public List<String> publishedCtPackages()
+    {
+        return store.publishedCtPackages();
+    }
+
+
+    /**
      * Resolves the configured store file with explicit-first precedence: a non-blank
      * {@code aExplicit} wins, otherwise the {@link #STORE_ENV} environment variable, then the
      * {@link #STORE_PROPERTY} system property. Returns {@code null} when nothing resolves to an

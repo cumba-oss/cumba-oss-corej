@@ -30,8 +30,8 @@ import net.cumba.datatable.values.IDataValue;
  * {@code <root>-<TSVCDVER>}.</li>
  * <li><b>{@code TSPARMCD = "SNDCTVER"}</b> (CQ1 (a)): a SEND Trial Summary has no {@code TSVCDREF}
  * / {@code TSVCDVER}; it states its CT version as that row's {@code TSVAL}. For a {@code sendct}
- * root the one ISO date found in {@code TSVAL} — spelled bare ({@code 2023-12-15}) or with a prefix
- * ({@code SEND CT 2024-09-27}) — yields {@code sendct-<date>}.</li>
+ * root the one distinct ISO date found in {@code TSVAL} — spelled bare ({@code 2023-12-15}) or with
+ * a prefix ({@code SEND CT 2024-09-27}) — yields {@code sendct-<date>}.</li>
  * <li><b>Dates parse strictly</b> (CQ4 (a), fold F3): a value that is not exactly one valid ISO
  * date ({@code 2023-12}, {@code Dec 2023}, {@code 2023-02-30}) is never taken and never aborted on;
  * it is listed in {@link CtSelection.TrialSummaryEvidence#ignored()} for the run note — the data
@@ -55,9 +55,13 @@ final class TrialSummaryCt
     /** Exactly a {@code YYYY-MM-DD} shape; the calendar check is {@link #STRICT_DATE}'s. */
     private static final Pattern ISO_DATE = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
 
-    /** An ISO date token inside a longer {@code TSVAL}, not part of a longer digit run. */
+    /**
+     * An ISO date token inside a longer {@code TSVAL}, not part of a longer digit run: only digit
+     * adjacency (directly, or across one hyphen) disqualifies, so {@code sendct-2024-09-27} and
+     * {@code SEND-CT-2024-09-27} still name their date (5e review LOW-1).
+     */
     private static final Pattern ISO_DATE_TOKEN = Pattern
-            .compile("(?<![0-9-])\\d{4}-\\d{2}-\\d{2}(?![0-9-])");
+            .compile("(?<!\\d)(?<!\\d-)\\d{4}-\\d{2}-\\d{2}(?!-?\\d)");
 
     /** ISO_LOCAL_DATE with its STRICT resolver stated explicitly: 2023-02-30 does not parse. */
     private static final DateTimeFormatter STRICT_DATE = DateTimeFormatter.ISO_LOCAL_DATE
@@ -154,9 +158,15 @@ final class TrialSummaryCt
             return;
         }
         String evidence = "TSPARMCD \"" + SNDCTVER + "\", TSVAL \"" + value + "\"";
+        // Exactly one DISTINCT date: the same date spelled twice is one statement (LOW-1).
+        Set<String> dates = new LinkedHashSet<>(2);
         Matcher m = ISO_DATE_TOKEN.matcher(value);
-        String date = m.find() ? m.group() : null;
-        if (date != null && !m.find() && isCalendarDate(date))
+        while (m.find())
+        {
+            dates.add(m.group());
+        }
+        String date = dates.size() == 1 ? dates.iterator().next() : null;
+        if (date != null && isCalendarDate(date))
         {
             aEvidenceById.putIfAbsent(aCtRoot + "-" + date, evidence);
         }

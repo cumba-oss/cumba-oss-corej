@@ -1,6 +1,6 @@
 #!RuleTest
 #test CT-RUN-1 expect=violation domain=VS
-#note §4.2 row 2 with a contradicting Trial Summary — the define declares SDTM CT 2024-09-27 (a consumed root), so the define is the source and the TS (naming 1999-01-01, absent from the store) is not read: no abort, no note.
+#note §4.2 row 2 with a contradicting Trial Summary — the define declares SDTM CT 2024-09-27 (a consumed root), so the define is the source and the TS (naming 1999-01-01, absent from the store) does not decide the selection: no abort, no note. Only that precedence is observable here; that the TS is not even loaded is pinned by TrialSummaryCtServiceTest.
 #define-xml define-21-sdtm-2024-09-27.xml
 #ct-available sdtmct-2024-09-27
 #expectViolationCount 1

@@ -158,8 +158,8 @@ public final class DefineStoreBinding implements AutoCloseable
         // StudyValidationService.requireNamedCtPackagesPresent.
         try
         {
-            CtPresence.requireNamedPresent(opened::presence, aStoreFile, selection.packageIds(),
-                    selection.source());
+            CtPresence.requireNamedPresent(opened::presence, opened.publishedCtPackages(),
+                    aStoreFile, selection.packageIds(), selection.source());
         }
         catch (StudyValidationException e)
         {

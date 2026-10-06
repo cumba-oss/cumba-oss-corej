@@ -1,6 +1,6 @@
 #!RuleTest
 #test CT-RUN-1 expect=violation domain=VS
-#note §4.2 row 4 with a Trial Summary present — the populated field wins outright: the TS (which names 1999-01-01, a package the store does not hold) is not read at all, so nothing aborts and no TS note appears. The escape hatch is total.
+#note §4.2 row 4 with a Trial Summary present — the populated field wins outright: the TS (which names 1999-01-01, a package the store does not hold) does not decide the selection, so nothing aborts and no TS note appears. Only that precedence is observable here; that the TS is not even loaded is pinned by TrialSummaryCtServiceTest.
 #ct-packages sdtmct-2024-09-27
 #ct-available sdtmct-2024-09-27
 #expectViolationCount 1

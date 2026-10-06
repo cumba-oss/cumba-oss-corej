@@ -146,6 +146,28 @@ class TrialSummaryCtTest
     }
 
 
+    /**
+     * 5e review LOW-1: only digit adjacency disqualifies a date, so a hyphenated prefix
+     * ({@code sendct-}, {@code SEND-CT-}) still names it; the same date twice is one statement; a
+     * date glued to a further digit run across a hyphen is still no date.
+     */
+    @Test
+    void hyphenPrefixedDatesAndARepeatedDateAreTaken()
+    {
+        IDataTable ts = sendTs(List.of(row("S1", "SNDCTVER", "sendct-2024-09-27"),
+                row("S1", "SNDCTVER", "SEND-CT-2023-12-15"),
+                row("S1", "SNDCTVER", "SEND CT 2022-12-16 (2022-12-16)"),
+                row("S1", "SNDCTVER", "SEND CT 2021-06-25-01")));
+
+        CtSelection.TrialSummaryEvidence ev = TrialSummaryCt.read(ts, "sendct");
+
+        assertEquals(List.of("sendct-2024-09-27", "sendct-2023-12-15", "sendct-2022-12-16"),
+                ids(ev));
+        assertEquals(List.of("TSPARMCD \"SNDCTVER\", TSVAL \"SEND CT 2021-06-25-01\""),
+                ev.ignored());
+    }
+
+
     /** CQ4 on the SEND family: no date, two dates, or an impossible one — ignored and listed. */
     @Test
     void sndctverWithoutExactlyOneValidDateIsIgnored()

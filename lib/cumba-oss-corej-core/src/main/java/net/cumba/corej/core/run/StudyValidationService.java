@@ -1772,8 +1772,8 @@ public final class StudyValidationService
     {
         // One loop and one wording for both runs (PLAN-define-ct-evaluation T1-2 a): the
         // Define-XML conformance run applies D3 through the same helper.
-        CtPresence.requireNamedPresent(aFactory::presence, aStoreFile, aNamedCtIds, aSource,
-                aTrialSummary);
+        CtPresence.requireNamedPresent(aFactory::presence, aFactory.publishedCtPackages(),
+                aStoreFile, aNamedCtIds, aSource, aTrialSummary);
     }
 
     /**
