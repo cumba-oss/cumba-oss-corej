@@ -12,6 +12,7 @@ import net.cumba.corej.core.run.RunStandard;
 import net.cumba.corej.core.run.StudyValidationService;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.merge.MergeStandard;
+import net.cumba.datatable.report.ValidationFinding;
 import net.cumba.datatable.report.ValidationReport;
 import net.cumba.datatable.report.ValidationReportMember;
 import org.jspecify.annotations.Nullable;
@@ -136,7 +137,7 @@ class MergeStandardPlumbingTest
         ValidationReportMember cl = report.getMembers().get(0);
         assertEquals("CL", cl.getDomain());
         // one finding per rule, its rows the records that fired
-        return cl.getFindings().stream().mapToInt(f -> f.getRowCount()).sum();
+        return cl.getFindings().stream().mapToInt(ValidationFinding::getRowCount).sum();
     }
 
 
