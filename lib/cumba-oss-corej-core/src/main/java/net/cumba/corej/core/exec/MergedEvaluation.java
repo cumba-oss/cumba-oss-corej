@@ -3,6 +3,7 @@ package net.cumba.corej.core.exec;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -44,13 +45,15 @@ import org.jspecify.annotations.Nullable;
  * <li>the evaluation table is the view's <b>primary part</b> — the primary itself when no merge
  * drops or expands a row, else the primary row-mapped exactly as the view maps it, so evaluation
  * row {@code i} is merged row {@code i};</li>
- * <li>every keyed part is a {@link MergedViewLookup} in the context's joined-dataset map, under the
- * entry's authored name — the {@link JoinLookup} readers (the compiler's dotted plans, the
- * {@code _matched_} flag, the output projection, the group readers) read the view through it;</li>
- * <li>a {@code SUPP<domain>} qualifier is a view column handed out by {@link SuppPivot} as a bare
- * name of the record ({@link Built#suppColumn}) — the type default where no row qualifies the
- * record, and a {@link MergeErrorReadException} where the column carries a {@code MERGE_ERROR}
- * (OD-7);</li>
+ * <li>every keyed part is a {@link MergedViewLookup} under the entry's authored name
+ * ({@link Built#lookups}, matched ignoring letter case — P-19 / MET #6), the one join map of the
+ * execution ({@link EvaluationContext#joins}) — the {@link JoinLookup} readers (the compiler's
+ * dotted plans, the {@code _matched_} flag, the output projection, the group readers) read the view
+ * through it;</li>
+ * <li>a {@code SUPP<domain>} qualifier is a view column handed out as a bare name of the record
+ * ({@link Built#suppColumn}, read through {@link EvaluationContext#suppQualifier}) — the type
+ * default where no row qualifies the record, and a {@link MergeErrorReadException} where the column
+ * carries a {@code MERGE_ERROR} (OD-7);</li>
  * <li>every {@code Child: true} parent domain is a part qualified with that domain (W4, MQ1 —
  * {@link ChildEntries}), a {@link MergedViewLookup} under the domain like a keyed part, supplied on
  * the rows whose parent is that domain;</li>
@@ -64,30 +67,32 @@ import org.jspecify.annotations.Nullable;
  * </ul>
  *
  * <p>
- * <b>What stays on today's pipeline until W6</b> (the legacy arm in {@code RuleRunner}): a rule
- * with a chained qualified key (composed by the engine; the datatable refuses it) — a {@code Child}
- * or a forward RELREC entry on such a rule is a load error ({@code RulePackageLoader}), the view
- * being their only reader. {@link #setLegacyForTests} routes every execution without a
- * {@code Child} or forward RELREC entry to that arm, which is what the corpus differential compares
- * the view against; a {@code Child} or RELREC rule reads those parts through the view on both arms
- * (the pre-merge and the expander they replaced are gone), so the differential's subjects are the
- * keyed and SUPP parts.
+ * <b>A chained qualified key</b> ({@code Keys: [DM.RPATHCD, RPHASE]} on entry {@code TP} — the
+ * record side read from the row's bound {@code DM} record, {@code PLAN-rprfdy-offset-tp-join} C1)
+ * is composed here (W6, the datatable's §4 contract): the view is built in <b>stages</b>, a new
+ * stage at each entry carrying a qualified key, over the previous stage's merged table as its
+ * primary — which carries {@code DM.RPATHCD} as a column, so the datatable keys on it directly (W1
+ * fold M3). Every part keeps its column range in the final table (a stage's primary columns are the
+ * previous table's, in order), the evaluation row is the final table's row, and the rows keep the
+ * entry order of the retired expander (an earlier entry the major factor). The engine's own key
+ * gates run first ({@link KeyGates}: D-ABSENT, the D4 kinds of the source column), so a chained
+ * key's errors keep their messages. There is no other pipeline: the view is the only reader of
+ * every part ({@code PLAN-merged-evaluation-table} W6 retired the key-match expander, the
+ * first-wins lookups and the SUPP pivot).
  * </p>
  *
  * <p>
  * Performance: no per-row work on a cache hit — the key is the list of {@link KeyedMergeSpec}s
  * (every field that changes a merge, P-3) plus the SUPP flag; the row maps live in the datatable's
  * compact int buffers; the primary-part row map is copied into one int buffer per cached view so
- * the hot path of a primary read stays one buffer read ({@link RelrecExpandedTable}, retired with
- * the legacy expander in W6). The {@code Child} parts are cached like every other part: the
- * pointer-token view of the primary ({@link ChildEntries#withPointerTokens}) is built inside the
- * cached construction, so the rules of one signature share it.
+ * the hot path of a primary read stays one buffer read ({@link RowMappedTable}). The {@code Child}
+ * parts are cached like every other part: the pointer-token view of the primary
+ * ({@link ChildEntries#withPointerTokens}) is built inside the cached construction, so the rules of
+ * one signature share it.
  * </p>
  */
 public final class MergedEvaluation
 {
-
-    private static volatile boolean legacyForTests;
 
     private static volatile @Nullable MergeKind plantForTests;
 
@@ -97,22 +102,9 @@ public final class MergedEvaluation
 
 
     /**
-     * Test hook: with {@code true} every execution runs today's pipeline (the key-match expander,
-     * the first-wins lookups, the SUPP pivot) instead of the view — the base of the corpus
-     * differential. Production never sets it.
-     *
-     * @param aLegacy
-     *            whether to force the legacy arm.
-     */
-    public static void setLegacyForTests(boolean aLegacy)
-    {
-        legacyForTests = aLegacy;
-    }
-
-
-    /**
      * Test hook — the sensitivity plant: every read of a part of {@code aKind} answers the next
-     * merged row's cell, so a differential that cannot see the view's reads stays green under it.
+     * merged row's cell, so a uniformity test that cannot see the view's reads stays green under
+     * it.
      *
      * @param aKind
      *            {@link MergeKind#KEYED} or {@link MergeKind#SUPP}, or {@code null} to remove the
@@ -166,6 +158,12 @@ public final class MergedEvaluation
 
         private final Map<String, JoinLookup> lookups;
 
+        /** Every part but the primary, in column order, across the stages (a chained key). */
+        private final List<MergedPart> parts;
+
+        /** The QNAM set the primary's SUPP parts carry (the base stage's, M8). */
+        private final java.util.Set<String> suppQnams;
+
         private final Map<String, String> flagged;
 
         private final boolean suppShifted;
@@ -181,14 +179,28 @@ public final class MergedEvaluation
 
         private static final Object NONE = new Object();
 
+        /**
+         * Package-private so a test of the readers can stand a view over its own lookups (the
+         * {@code ExecCalls} fixtures); production builds through {@link MergedEvaluation#build}.
+         */
         @SuppressWarnings("checkstyle:ParameterNumber")
-        private Built(MergedTable aView, IDataTable aTable, Map<String, JoinLookup> aLookups,
+        Built(MergedTable aView, IDataTable aTable, Map<String, JoinLookup> aLookups,
+                List<MergedPart> aParts, java.util.Set<String> aSuppQnams,
                 Map<String, String> aFlagged, boolean aSuppShifted, boolean aShared,
                 boolean aRelrecDeclared)
         {
             view = aView;
             table = aTable;
-            lookups = Collections.unmodifiableMap(aLookups);
+            // the one join map of the execution, matched ignoring letter case (P-19 / MET #6): a
+            // dataset name is case-insensitive, upper case expected — j.S, J.s and J.S resolve to
+            // the one join declared as J; two names differing only by case keep the last one
+            // (Stage A refuses that shape at load, DUPLICATE_MATCH_DATASET_NAME)
+            java.util.TreeMap<String, JoinLookup> joins = new java.util.TreeMap<>(
+                    String.CASE_INSENSITIVE_ORDER);
+            joins.putAll(aLookups);
+            lookups = Collections.unmodifiableMap(joins);
+            parts = List.copyOf(aParts);
+            suppQnams = Collections.unmodifiableSet(new java.util.LinkedHashSet<>(aSuppQnams));
             flagged = Collections.unmodifiableMap(aFlagged);
             suppShifted = aSuppShifted;
             shared = aShared;
@@ -240,7 +252,10 @@ public final class MergedEvaluation
         }
 
 
-        /** One {@link MergedViewLookup} per keyed part, under the entry's authored name. */
+        /**
+         * One {@link MergedViewLookup} per keyed, {@code Child} and RELREC part, under the entry's
+         * authored name (the parent domain, the related domain) — matched ignoring letter case.
+         */
         public Map<String, JoinLookup> lookups()
         {
             return lookups;
@@ -283,14 +298,31 @@ public final class MergedEvaluation
         /** The QNAM set the primary's SUPP parts carry — the merged schema's qualifiers (M8). */
         public java.util.Set<String> suppQnams()
         {
-            return view.suppQnams();
+            return suppQnams;
+        }
+
+
+        /**
+         * The part a merged column belongs to — {@code null} for a column of the primary — across
+         * the stages of a chained key, whose final table carries an earlier stage's parts as
+         * primary columns at the same indices.
+         *
+         * @param column
+         *            a column of {@link #view()}
+         * @return its part, or {@code null}
+         */
+        @Nullable
+        MergedPart partOf(int column)
+        {
+            return partContaining(parts, column);
         }
 
 
         private Object resolveSupp(String name)
         {
             int idx = view.getColumnIndex(name);
-            if (idx < 0 || view.partOf(idx).kind() != MergeKind.SUPP)
+            MergedPart part = idx < 0 ? null : partOf(idx);
+            if (part == null || part.kind() != MergeKind.SUPP)
             {
                 return NONE;
             }
@@ -299,6 +331,18 @@ public final class MergedEvaluation
         }
     }
 
+    /** The part of {@code parts} whose column range holds {@code column}, or {@code null}. */
+    static @Nullable MergedPart partContaining(List<MergedPart> parts, int column)
+    {
+        for (MergedPart part : parts)
+        {
+            if (part.contains(column))
+            {
+                return part;
+            }
+        }
+        return null;
+    }
 
     /** One merged column as a column of the evaluation table (same rows by construction). */
     private static final class ViewColumn extends AbstractDataTableColumn
@@ -348,7 +392,8 @@ public final class MergedEvaluation
 
     /**
      * Builds (or takes from the dataset's cache) the view of one execution, or answers {@code null}
-     * when the execution stays on the legacy arm.
+     * when there is nothing to merge (no resolver, no part a declared entry or SUPP dataset
+     * supplies) — the execution then reads the primary alone.
      *
      * @param rule
      *            the rule (its {@code Match_Datasets} and {@code Supp_Merge})
@@ -364,7 +409,7 @@ public final class MergedEvaluation
      *            for messages
      * @param domainPrefix
      *            the dataset's domain code, the SUPP name's fallback
-     * @return the built view, or {@code null} for the legacy arm
+     * @return the built view, or {@code null} when nothing is merged
      * @throws net.cumba.datatable.merge.MergeException
      *             when the datatable refuses the merge (mapped to the rule's ERROR)
      */
@@ -375,19 +420,12 @@ public final class MergedEvaluation
         ChildMergeSpec child = resolver == null ? null
                 : ChildEntries.spec(rule.getMatchDatasets(), primary);
         RelrecPartSpec relrec = RelrecEntries.spec(rule.getMatchDatasets());
-        if ((legacyForTests && child == null && relrec == null) || resolver == null
-                || legacyArmed(rule.getMatchDatasets()))
+        if (resolver == null)
         {
-            // (a hand-built execution without a resolver has nothing to merge; a Child parent and
-            // a RELREC related domain are read through the view on either arm — the bare pre-merge
-            // and the row expander are gone)
-            return null;
+            return null; // a hand-built execution without a resolver has nothing to merge
         }
         List<KeyedMergeSpec> keyed = new ArrayList<>();
-        if (!keyedSpecs(rule, primary, resolver, ruleId, keyed, rule.isSuppMergeEnabled()))
-        {
-            return null; // a chained qualified key: composed by the engine until its wave
-        }
+        keyedSpecs(rule, primary, resolver, ruleId, keyed, rule.isSuppMergeEnabled());
         String dataset = Objects.requireNonNullElse(primary.getMetaData().getName(), "");
         String domain = null;
         List<String> supp = List.of();
@@ -413,8 +451,7 @@ public final class MergedEvaluation
         }
         if (keyed.isEmpty() && supp.isEmpty() && child == null && relrec == null)
         {
-            // nothing to merge: the legacy arm expands nothing, joins nothing and pivots nothing,
-            // so the execution is the same on either and no empty view is built
+            // nothing to merge: no empty view is built, the execution reads the primary alone
             return null;
         }
         String primaryDomain = domain != null ? domain : domainPrefix;
@@ -431,37 +468,6 @@ public final class MergedEvaluation
                             datasets, true));
         }
         return construct(primary, keyed, suppSpec, child, relrec, primaryDomain, datasets, false);
-    }
-
-
-    /**
-     * Whether a rule runs today's pipeline rather than the merged view, whatever the data: it
-     * carries a keyed entry with a chained qualified key ({@code DM.RPATHCD}, composed by the
-     * engine; the datatable refuses it). The one statement of the legacy arm's population, read by
-     * {@link #build} and by the loader's gates on the fields and entries only the view serves
-     * ({@code Cardinality}, {@code Supp_Keys}, a {@code Child} or forward RELREC entry —
-     * {@code RulePackageLoader.checkCardinality} / {@code checkSuppKeys} /
-     * {@code checkChildEntryServed} / {@code checkRelrecEntryServed}). Empty once W6 serves the
-     * chained key.
-     *
-     * @param entries
-     *            the rule's {@code Match_Datasets}, possibly {@code null}
-     * @return whether the rule stays on the legacy arm
-     */
-    public static boolean legacyArmed(@Nullable List<MatchDataset> entries)
-    {
-        if (entries == null)
-        {
-            return false;
-        }
-        for (MatchDataset md : entries)
-        {
-            if (md != null && servedAsKeyedPart(md) && md.hasQualifiedKeys())
-            {
-                return true;
-            }
-        }
-        return false;
     }
 
 
@@ -489,13 +495,28 @@ public final class MergedEvaluation
         // J5 (ChildEntries): a Child primary's IDVARVAL reads as the pointer's join token
         IDataTable primary = child == null ? dataset
                 : ChildEntries.withPointerTokens(dataset, child, datasets);
+        List<List<KeyedMergeSpec>> stages = stages(keyed);
         MergedTable view = MergedTables.build(MergeRequest.builder().primary(primary)
-                .primaryDomain(primaryDomain).keyed(keyed).supp(supp).child(child).relrec(relrec)
-                .resolver(datasets).matchedFlags(true).build());
+                .primaryDomain(primaryDomain).keyed(stages.get(0)).supp(supp).child(child)
+                .relrec(relrec).resolver(datasets).matchedFlags(true).build());
+        List<MergedPart> parts = new ArrayList<>(view.parts().subList(1, view.parts().size()));
+        java.util.Set<String> suppQnams = view.suppQnams();
+        boolean rowMapped = view.isRowMapped();
+        for (int s = 1; s < stages.size(); s++)
+        {
+            // a chained key (W6): the next stage keys on a column of the table built so far
+            // (DM.RPATHCD), which is that stage's primary; its columns keep their indices
+            view = MergedTables
+                    .build(MergeRequest.builder().primary(view).primaryDomain(primaryDomain)
+                            .keyed(stages.get(s)).resolver(datasets).matchedFlags(true).build());
+            parts.addAll(view.parts().subList(1, view.parts().size()));
+            rowMapped |= view.isRowMapped();
+        }
         MergeKind plant = plantForTests;
         IDataTable table = primary;
-        if (view.isRowMapped())
+        if (rowMapped)
         {
+            // the final table's real row chains through every stage to the primary's own row
             int rows = Math.toIntExact(view.getRowCount());
             int primaryRows = Math.toIntExact(primary.getRowCount());
             IDataBufferNumeric rowMap = DataBufferFactory.get().createForRange(0,
@@ -505,10 +526,13 @@ public final class MergedEvaluation
             {
                 rowMap.addValue(view.getRealRowIndex(i));
             }
-            table = new RelrecExpandedTable(primary, rowMap);
+            table = new RowMappedTable(primary, rowMap);
         }
+        List<MergedPart> flat = List.copyOf(parts);
+        java.util.function.IntFunction<@Nullable MergedPart> partOf = column -> partContaining(flat,
+                column);
         Map<String, JoinLookup> lookups = new LinkedHashMap<>();
-        for (MergedPart part : view.parts())
+        for (MergedPart part : flat)
         {
             // a keyed partner, a Child parent domain, a RELREC related domain — and the RELREC
             // entry's own flag part (qualifier RELREC, one column: "has any relationship", P-14)
@@ -516,7 +540,7 @@ public final class MergedEvaluation
                     || part.kind() == MergeKind.RELREC)
             {
                 lookups.put(part.qualifier(),
-                        new MergedViewLookup(view, part, plant == part.kind()));
+                        new MergedViewLookup(view, part, partOf, plant == part.kind()));
             }
         }
         Map<String, String> flagged = new LinkedHashMap<>();
@@ -533,12 +557,50 @@ public final class MergedEvaluation
                 flagged.put(column.getName(), String.valueOf(flag));
             }
         }
-        return new Built(view, table, lookups, flagged, plant == MergeKind.SUPP, shared,
-                relrec != null);
+        return new Built(view, table, lookups, flat, suppQnams, flagged, plant == MergeKind.SUPP,
+                shared, relrec != null);
     }
 
 
-    /** {@code SuppPivot}'s rule: a SUPP / SQ / RELREC primary has no supplemental dataset. */
+    /**
+     * The stages of the keyed parts (W6, a chained key): the entries up to the first one that
+     * carries a qualified left key form the base stage, and every such entry opens a new stage with
+     * the entries after it — so its source (an EARLIER entry, the loader's D-SRC) is a column of
+     * the stage's primary, and the entry order of the retired expander is kept.
+     */
+    private static List<List<KeyedMergeSpec>> stages(List<KeyedMergeSpec> keyed)
+    {
+        List<List<KeyedMergeSpec>> out = new ArrayList<>();
+        List<KeyedMergeSpec> current = new ArrayList<>();
+        for (KeyedMergeSpec spec : keyed)
+        {
+            if (chained(spec) && !current.isEmpty())
+            {
+                out.add(current);
+                current = new ArrayList<>();
+            }
+            current.add(spec);
+        }
+        out.add(current);
+        return out;
+    }
+
+
+    /** Whether a spec keys on a column of an earlier part ({@code DM.RPATHCD}). */
+    private static boolean chained(KeyedMergeSpec spec)
+    {
+        for (KeyColumn key : spec.getKeys())
+        {
+            if (key.leftQualifier() != null)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    /** A SUPP / SQ / RELREC primary has no supplemental dataset (the IG's rule). */
     private static boolean neverPivoted(String dataset)
     {
         String upper = dataset.toUpperCase(Locale.ROOT);
@@ -548,29 +610,28 @@ public final class MergedEvaluation
 
     /**
      * Fills {@code out} with one spec per keyed entry whose partner resolves, running the engine's
-     * own key gates first (a malformed sided key, the D4 key-type identity, a degenerate key — the
-     * same exceptions and messages the expander raised); answers {@code false} when an entry
-     * carries a chained qualified key.
+     * own key gates first ({@link KeyGates}: a malformed sided key, the D4 key-type identity, a
+     * degenerate key, a chained key's D-ABSENT — the exceptions and messages the retired expander
+     * raised). A chained qualified key ({@code DM.RPATHCD}) becomes a sided key component whose
+     * left name is the source part's column, composed by the stages of {@link #construct}.
      */
-    private static boolean keyedSpecs(Rule rule, IDataTable primary, DatasetResolver resolver,
+    private static void keyedSpecs(Rule rule, IDataTable primary, DatasetResolver resolver,
             @Nullable String ruleId, List<KeyedMergeSpec> out, boolean suppMerge)
     {
         List<KeyColumn> suppKeys = rule.suppKeyColumns();
         List<MatchDataset> entries = rule.getMatchDatasets();
         if (entries == null)
         {
-            return true;
+            return;
         }
+        // the resolved partner of every ordinary keyed entry so far — a chained key's source
+        IdentityHashMap<MatchDataset, IDataTable> resolved = new IdentityHashMap<>();
         for (MatchDataset md : entries)
         {
             String name = md.getName();
             if (name == null || !servedAsKeyedPart(md))
             {
                 continue; // a Child parent (its own part) or a keyless entry: no keyed part
-            }
-            if (md.hasQualifiedKeys())
-            {
-                return false;
             }
             String malformedKey = md.malformedKeyElement();
             if (malformedKey != null)
@@ -592,7 +653,8 @@ public final class MergedEvaluation
             boolean expandable = JoinKeyTypes.governedByKeyTypeCheck(md);
             if (expandable)
             {
-                KeyMatchRowExpander.checkKeys(primary, partner, md);
+                KeyGates.check(primary, partner, md, entries, resolved);
+                resolved.put(md, partner);
             }
             List<String> left = Objects.requireNonNull(md.getKeys()); // servedAsKeyedPart
             List<String> right = md.getRightKeys();
@@ -623,7 +685,6 @@ public final class MergedEvaluation
                             : null)
                     .build());
         }
-        return true;
     }
 
 

@@ -115,7 +115,7 @@ public final class StageBChecker
      * parts' {@code J.X} names, the SUPP qualifiers as bare columns typed by {@code QVAL} — so a
      * supplemental qualifier is no longer an absent column, and a dotted reference's absence and
      * type are judged at bind time exactly as a bare one's. {@code null} binds against
-     * {@code table}'s own metadata (the legacy arm).
+     * {@code table}'s own metadata (nothing is merged).
      *
      * @param schema
      *            the merged schema, or {@code null}

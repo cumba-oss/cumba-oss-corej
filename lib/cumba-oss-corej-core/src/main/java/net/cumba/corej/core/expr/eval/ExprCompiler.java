@@ -503,7 +503,7 @@ public final class ExprCompiler
         return run ->
         {
             EvaluationContext ctx = run.ctx();
-            JoinLookup lookup = ctx.getJoinedDatasets().get(dataset);
+            JoinLookup lookup = ctx.joins().get(dataset);
             int rc = run.rowCount();
             if (lookup == null)
             {
@@ -5259,7 +5259,7 @@ public final class ExprCompiler
         int dot = name.indexOf('.');
         if (dot > 0)
         {
-            JoinLookup lookup = ctx.getJoinedDatasets().get(name.substring(0, dot));
+            JoinLookup lookup = ctx.joins().get(name.substring(0, dot));
             // ⭐⭐ No such joined dataset is D72a-1's third not-supplied case, and the value is
             // the DOTTED OPERAND'S OWN rule-expected default — see dottedNotSuppliedDefault,
             // which the authored form (dottedVector) reads from the same set. The computed MIS
@@ -5405,10 +5405,10 @@ public final class ExprCompiler
      * </p>
      *
      * <p>
-     * ⭐ <b>The sibling not-supplied arms now apply the SAME rule, by a different channel</b> —
-     * {@code DatasetLookup.lookupValue}, {@code KeyMatchExpandedLookup.lookupValue} (and, until W5
-     * of {@code PLAN-merged-evaluation-table}, the RELREC expansion's) each read the expectation
-     * through
+     * ⭐ <b>The sibling not-supplied arm now applies the SAME rule, by a different channel</b> —
+     * {@code MergedViewLookup.lookupValue} (and, until W5 / W6 of
+     * {@code PLAN-merged-evaluation-table}, the retired key-join and expanded lookups) reads the
+     * expectation through
      * {@link JoinLookup#lookupValue(net.cumba.datatable.IDataTable, long, String, boolean)}, whose
      * {@code numericExpected} flag carries the one fact that seam previously could not see (it
      * landed as a four-argument overload beside a three-argument form; the three-argument form is
@@ -5584,8 +5584,7 @@ public final class ExprCompiler
             // primary does not carry may be a SUPP<domain> qualifier of the record — readable
             // per record through the pivot, never a variable of the dataset (the table's column
             // set is untouched, so the variable-metadata surface does not see it).
-            IDataTableColumn qualifier = net.cumba.corej.core.exec.SuppPivot.qualifierColumn(ctx,
-                    name);
+            IDataTableColumn qualifier = ctx.suppQualifier(name);
             if (qualifier != null)
             {
                 return new ColumnVector(name, qualifier, DataValueType.STRING);
@@ -5681,8 +5680,7 @@ public final class ExprCompiler
             // primary does not carry may be a SUPP<domain> qualifier of the record — readable
             // per record through the pivot, never a variable of the dataset (the table's column
             // set is untouched, so the variable-metadata surface does not see it).
-            IDataTableColumn qualifier = net.cumba.corej.core.exec.SuppPivot.qualifierColumn(ctx,
-                    name);
+            IDataTableColumn qualifier = ctx.suppQualifier(name);
             if (qualifier != null)
             {
                 return new ColumnVector(name, qualifier, DataValueType.STRING);
@@ -6416,7 +6414,7 @@ public final class ExprCompiler
             MetadataAttribute attr, MetadataLevel level, String qualifier, String name,
             String providerKey)
     {
-        JoinLookup lookup = ctx.getJoinedDatasets().get(qualifier);
+        JoinLookup lookup = ctx.joins().get(qualifier);
         if (lookup == null)
         {
             return null;
@@ -6555,8 +6553,7 @@ public final class ExprCompiler
             // W3d (MET #7, §3.9): a bare name the primary lacks may be a supplemental qualifier
             // of the record — the merged schema's SUPP column carries the QLABEL as its label and
             // QVAL's type; it is no variable of the dataset (MQ6), so it has no ordinal.
-            DataTableColumnMeta qualifier = net.cumba.corej.core.exec.SuppPivot
-                    .qualifierColumnMeta(ctx, name);
+            DataTableColumnMeta qualifier = ctx.suppQualifierMeta(name);
             return qualifier == null || attr == MetadataAttribute.VAR_ORDINAL ? null
                     : dataLevelAttribute(attr, qualifier, -1);
         }
@@ -7190,7 +7187,7 @@ public final class ExprCompiler
             throw new RuleDefinitionException(name + " is a boolean condition, not a value — "
                     + "write it bare (e.g. `not " + name + "`), never in a comparison");
         }
-        JoinLookup lookup = ctx.getJoinedDatasets().get(ds);
+        JoinLookup lookup = ctx.joins().get(ds);
         if (lookup == null)
         {
             // ⭐⭐ D72a-1 — "no joined dataset" is one of the three not-supplied cases and takes

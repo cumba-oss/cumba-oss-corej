@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.EvaluationContext;
+import net.cumba.corej.core.exec.ExecCalls;
 import net.cumba.corej.core.exec.JoinLookup;
 import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.OperandKind;
@@ -365,8 +366,8 @@ class DatasetExpressionCacheTest
         }
         IDataTable table = mock(IDataTable.class);
         when(table.getMetaData()).thenReturn(meta);
-        return EvaluationContext.builder().table(table).joinedDatasets(joins).variables(vars)
-                .domainPrefix(domainPrefix).evaluationDomain(domain).build();
+        return EvaluationContext.builder().table(table).mergedView(ExecCalls.joinsView(joins))
+                .variables(vars).domainPrefix(domainPrefix).evaluationDomain(domain).build();
     }
 
 

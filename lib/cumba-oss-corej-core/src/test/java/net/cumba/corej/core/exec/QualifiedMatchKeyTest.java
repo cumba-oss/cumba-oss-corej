@@ -18,7 +18,6 @@ import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -137,16 +136,34 @@ class QualifiedMatchKeyTest
     }
 
 
+    /** The merged evaluation view of a BW record set over {@code entries} (W6: chained keys). */
+    private static MergedEvaluation.@Nullable Built view(IDataTable bw, List<MatchDataset> entries,
+            DatasetResolver resolver)
+    {
+        return ExecCalls.expand(bw, entries, resolver, "R");
+    }
+
+
     /**
-     * The expansion, described one line per expanded row as
+     * The view's rows, described one line per merged row as
      * {@code USUBJID:DM.RPATHCD->TP.RPATHCD/TP.TPSTGORD} — sorted, so the assertion reads as a set.
      */
-    private static List<String> bindings(KeyMatchRowExpander.@Nullable KeyMatchExpansion exp)
+    private static List<String> bindings(MergedEvaluation.@Nullable Built built)
     {
-        assertNotNull(exp);
-        IDataTable t = exp.table();
-        JoinLookup dm = exp.lookups().get("DM");
-        JoinLookup tp = exp.lookups().get("TP");
+        assertNotNull(built, "the chained key is served by the merged view (W6)");
+        List<String> out = new ArrayList<>(ordered(built));
+        out.sort(null);
+        return out;
+    }
+
+
+    /** {@link #bindings} in the view's row order. */
+    private static List<String> ordered(MergedEvaluation.@Nullable Built built)
+    {
+        assertNotNull(built, "the chained key is served by the merged view (W6)");
+        IDataTable t = built.table();
+        JoinLookup dm = built.lookups().get("DM");
+        JoinLookup tp = built.lookups().get("TP");
         List<String> out = new ArrayList<>();
         for (long i = 0; i < t.getRowCount(); i++)
         {
@@ -155,47 +172,13 @@ class QualifiedMatchKeyTest
             out.add(subject + ":" + dm.lookup(t, i, "RPATHCD") + "->" + (tp == null ? "-"
                     : tp.lookup(t, i, "RPATHCD") + "/" + tp.lookup(t, i, "TPSTGORD")));
         }
-        out.sort(null);
         return out;
     }
 
-
-    @AfterEach
-    void restoreDirectReads()
-    {
-        KeyCellReader.DirectReads.setEnabledForTest(true);
-    }
-
     // -----------------------------------------------------------------------
-    // The join itself
+    // The join itself — composed by the merged view (W6 of PLAN-merged-evaluation-table: the
+    // source entry's part is built first, the chained entry keys on its qualified column)
     // -----------------------------------------------------------------------
-
-
-    /**
-     * Review round 1 (lane 1 M1): the fixtures are REAL tables, so the chained record side reads
-     * {@code DM.RPATHCD} through {@link KeyCellReader}'s {@code Direct} arm — which no Mockito
-     * table can reach (the dispatcher keys on the exact class) — and it answers exactly what the
-     * old per-cell path answers.
-     */
-    @Test
-    void theChainedRecordSideReadsThroughTheDirectArmAndAgreesWithTheOldPath()
-    {
-        IDataTable dmTable = dm("S1/A", "S2/B");
-        assertTrue(
-                KeyCellReader.of(dmTable,
-                        dmTable.getMetaData()
-                                .getColumnIndex("RPATHCD")) instanceof KeyCellReader.Direct,
-                "the DM fixture must reach the Direct arm, or this test proves nothing about it");
-        List<String> direct = bindings(
-                ExecCalls.expand(bw("S1/P1", "S2/P1"), List.of(dmEntry(), tpEntry("inner")),
-                        resolver(dmTable, tp("A/1/P1/0", "A/2/P1/0", "B/1/P1/1")), "R"));
-        KeyCellReader.DirectReads.setEnabledForTest(false);
-        List<String> old = bindings(
-                ExecCalls.expand(bw("S1/P1", "S2/P1"), List.of(dmEntry(), tpEntry("inner")),
-                        resolver(dm("S1/A", "S2/B"), tp("A/1/P1/0", "A/2/P1/0", "B/1/P1/1")), "R"));
-        assertEquals(old, direct);
-        assertEquals(List.of("S1:A->A/1", "S1:A->A/2", "S2:B->B/1"), direct);
-    }
 
 
     /**
@@ -207,10 +190,10 @@ class QualifiedMatchKeyTest
     @Test
     void theChainedKeyBindsEachRecordToItsOwnPathsStages()
     {
-        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(bw("S1/P1", "S2/P1"),
+        MergedEvaluation.Built built = view(bw("S1/P1", "S2/P1"),
                 List.of(dmEntry(), tpEntry("inner")),
-                resolver(dm("S1/A", "S2/B"), tp("A/1/P1/0", "A/2/P1/0", "B/1/P1/1")), "R");
-        assertEquals(List.of("S1:A->A/1", "S1:A->A/2", "S2:B->B/1"), bindings(exp));
+                resolver(dm("S1/A", "S2/B"), tp("A/1/P1/0", "A/2/P1/0", "B/1/P1/1")));
+        assertEquals(List.of("S1:A->A/1", "S1:A->A/2", "S2:B->B/1"), bindings(built));
     }
 
 
@@ -218,31 +201,30 @@ class QualifiedMatchKeyTest
     @Test
     void thePlainComponentStillKeysBesideTheQualifiedOne()
     {
-        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(bw("S1/P1", "S1/P2"),
+        MergedEvaluation.Built built = view(bw("S1/P1", "S1/P2"),
                 List.of(dmEntry(), tpEntry("inner")),
-                resolver(dm("S1/A"), tp("A/1/P1/0", "A/2/P2/1", "B/1/P1/1")), "R");
-        assertEquals(List.of("S1:A->A/1", "S1:A->A/2"), bindings(exp));
+                resolver(dm("S1/A"), tp("A/1/P1/0", "A/2/P2/1", "B/1/P1/1")));
+        assertEquals(List.of("S1:A->A/1", "S1:A->A/2"), bindings(built));
     }
 
 
     /**
      * ⛔ Probe purity (§2.1): DM duplicates S1 on two paths, so the DM join makes two copies of the
-     * one BW record; each copy must probe TP with ITS OWN bound DM row. A probe memoised on the
-     * primary row alone would hand the second copy the first copy's TP rows.
+     * one BW record; each copy must key TP with ITS OWN bound DM row.
      */
     @Test
     void eachCopyOfARecordProbesWithItsOwnSourceRow()
     {
-        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(bw("S1/P1"),
-                List.of(dmEntry(), tpEntry("inner")),
-                resolver(dm("S1/A", "S1/B"), tp("A/1/P1/0", "B/1/P1/1")), "R");
-        assertEquals(List.of("S1:A->A/1", "S1:B->B/1"), bindings(exp));
+        MergedEvaluation.Built built = view(bw("S1/P1"), List.of(dmEntry(), tpEntry("inner")),
+                resolver(dm("S1/A", "S1/B"), tp("A/1/P1/0", "B/1/P1/1")));
+        assertEquals(List.of("S1:A->A/1", "S1:B->B/1"), bindings(built));
     }
 
 
     /**
-     * The memo may still short-cut a REPEATED source row: a record fanned out by an entry between
-     * DM and TP probes TP once per distinct (primary row, DM row), and every copy binds right.
+     * A record fanned out by an entry between DM and TP keys TP once per copy, and every copy binds
+     * right — in the order the retired expander produced (entry order, the earlier entry major):
+     * DM, then SJ, then TP.
      */
     @Test
     void aRecordFannedOutBetweenTheSourceAndTheChainedEntryStillBindsRight()
@@ -251,10 +233,45 @@ class QualifiedMatchKeyTest
                 .build();
         MatchDataset sjEntry = md(
                 "{\"Name\":\"SJ\",\"Keys\":[\"USUBJID\"],\"Join_Type\":\"inner\"}");
-        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(bw("S1/P1"),
+        MergedEvaluation.Built built = view(bw("S1/P1"),
                 List.of(dmEntry(), sjEntry, tpEntry("inner")),
-                resolver(dm("S1/A", "S1/B"), sj, tp("A/1/P1/0", "B/1/P1/1")), "R");
-        assertEquals(List.of("S1:A->A/1", "S1:A->A/1", "S1:B->B/1", "S1:B->B/1"), bindings(exp));
+                resolver(dm("S1/A", "S1/B"), sj, tp("A/1/P1/0", "B/1/P1/1")));
+        assertEquals(List.of("S1:A->A/1", "S1:A->A/1", "S1:B->B/1", "S1:B->B/1"), ordered(built));
+        JoinLookup sjLookup = java.util.Objects.requireNonNull(built).lookups().get("SJ");
+        IDataTable t = built.table();
+        List<String> seq = new ArrayList<>();
+        for (long i = 0; i < t.getRowCount(); i++)
+        {
+            seq.add(sjLookup.lookup(t, i, "SJSEQ"));
+        }
+        assertEquals(List.of("1", "2", "1", "2"), seq, "DM major, SJ minor — entry order");
+    }
+
+
+    /**
+     * An entry AFTER the chained one keeps entry order too: DM, then TP (chained), then SJ — the
+     * chained entry's matches are the major factor over the later entry's.
+     */
+    @Test
+    void anEntryAfterTheChainedOneKeepsEntryOrder()
+    {
+        IDataTable sj = RealTables.of("SJ").str("USUBJID", "S1", "S1").str("SJSEQ", "1", "2")
+                .build();
+        MatchDataset sjEntry = md(
+                "{\"Name\":\"SJ\",\"Keys\":[\"USUBJID\"],\"Join_Type\":\"inner\"}");
+        MergedEvaluation.Built built = java.util.Objects
+                .requireNonNull(view(bw("S1/P1"), List.of(dmEntry(), tpEntry("inner"), sjEntry),
+                        resolver(dm("S1/A"), sj, tp("A/1/P1/0", "A/2/P1/0"))));
+        IDataTable t = built.table();
+        JoinLookup tp = built.lookups().get("TP");
+        JoinLookup sjLookup = built.lookups().get("SJ");
+        List<String> rows = new ArrayList<>();
+        for (long i = 0; i < t.getRowCount(); i++)
+        {
+            rows.add(tp.lookup(t, i, "TPSTGORD") + "/" + sjLookup.lookup(t, i, "SJSEQ"));
+            assertEquals(0L, t.getRealRowIndex(i), "every merged row is BW record 0");
+        }
+        assertEquals(List.of("1/1", "1/2", "2/1", "2/2"), rows);
     }
 
 
@@ -262,18 +279,17 @@ class QualifiedMatchKeyTest
     @Test
     void aLeftChainedEntryKeepsAnUnmatchedRecordUnbound()
     {
-        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(bw("S1/P1", "S2/P1"),
-                List.of(dmEntry(), tpEntry("left")), resolver(dm("S1/A", "S2/B"), tp("A/1/P1/0")),
-                "R");
-        assertEquals(List.of("S1:A->A/1", "S2:B->null/null"), bindings(exp));
-        JoinLookup tp = exp.lookups().get("TP");
-        IDataTable t = exp.table();
+        MergedEvaluation.Built built = view(bw("S1/P1", "S2/P1"),
+                List.of(dmEntry(), tpEntry("left")), resolver(dm("S1/A", "S2/B"), tp("A/1/P1/0")));
+        assertEquals(List.of("S1:A->A/1", "S2:B->null/null"), bindings(built));
+        JoinLookup tp = java.util.Objects.requireNonNull(built).lookups().get("TP");
+        IDataTable t = built.table();
         int matched = 0;
         for (long i = 0; i < t.getRowCount(); i++)
         {
             matched += tp.matchedRow(t, i) ? 1 : 0;
         }
-        assertEquals(1, matched, "exactly one expanded row found a TP partner");
+        assertEquals(1, matched, "exactly one merged row found a TP partner");
     }
 
 
@@ -286,7 +302,7 @@ class QualifiedMatchKeyTest
         DatasetResolver inv = resolver(dm("S1/1"), numericTp);
         List<MatchDataset> entries = List.of(dmEntry(), tpEntry("inner"));
         JoinKeyTypeMismatchException ex = assertThrows(JoinKeyTypeMismatchException.class,
-                () -> ExecCalls.expand(bw("S1/P1"), entries, inv, "R"));
+                () -> view(bw("S1/P1"), entries, inv));
         String msg = ex.getMessage();
         assertTrue(msg.contains("DM.RPATHCD"), msg);
         assertTrue(msg.contains("Character in DM"), msg);
@@ -298,15 +314,14 @@ class QualifiedMatchKeyTest
     @Test
     void joinAsStringOnTheChainedEntryComparesAsText()
     {
-        // Two paths in P1, so the R7 drop (TP on RPHASE alone) would bind both — the pre-change
-        // engine passed this test with one TP row, vacuously.
+        // Two paths in P1, so the R7 drop (TP on RPHASE alone) would bind both.
         IDataTable numericTp = RealTables.of("TP").str("RPHASE", "P1", "P1").lng("RPATHCD", 1L, 2L)
                 .str("TPSTGORD", "1", "1").build();
         MatchDataset asText = md("{\"Name\":\"TP\",\"Keys\":[\"DM.RPATHCD\",\"RPHASE\"],"
                 + "\"Join_Type\":\"inner\",\"Join_As_String\":true}");
-        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(bw("S1/P1"),
-                List.of(dmEntry(), asText), resolver(dm("S1/1"), numericTp), "R");
-        assertEquals(List.of("S1:1->1/1"), bindings(exp));
+        MergedEvaluation.Built built = view(bw("S1/P1"), List.of(dmEntry(), asText),
+                resolver(dm("S1/1"), numericTp));
+        assertEquals(List.of("S1:1->1/1"), bindings(built));
     }
 
 
@@ -320,14 +335,14 @@ class QualifiedMatchKeyTest
     {
         IDataTable blankPathDm = dm("S1/", "S2/B");
         IDataTable tpWithBlankPath = tp("/1/P1/0", "B/1/P1/1");
-        KeyMatchRowExpander.KeyMatchExpansion keep = ExecCalls.expand(bw("S1/P1", "S2/P1"),
-                List.of(dmEntry(), tpEntry("inner")), resolver(blankPathDm, tpWithBlankPath), "R");
+        MergedEvaluation.Built keep = view(bw("S1/P1", "S2/P1"),
+                List.of(dmEntry(), tpEntry("inner")), resolver(blankPathDm, tpWithBlankPath));
         assertEquals(List.of("S1:->/1", "S2:B->B/1"), bindings(keep));
 
         MatchDataset drop = md("{\"Name\":\"TP\",\"Keys\":[\"DM.RPATHCD\",\"RPHASE\"],"
                 + "\"Join_Type\":\"inner\",\"keep_missings\":false}");
-        KeyMatchRowExpander.KeyMatchExpansion dropped = ExecCalls.expand(bw("S1/P1", "S2/P1"),
-                List.of(dmEntry(), drop), resolver(blankPathDm, tpWithBlankPath), "R");
+        MergedEvaluation.Built dropped = view(bw("S1/P1", "S2/P1"), List.of(dmEntry(), drop),
+                resolver(blankPathDm, tpWithBlankPath));
         assertEquals(List.of("S2:B->B/1"), bindings(dropped));
     }
 
@@ -336,49 +351,36 @@ class QualifiedMatchKeyTest
     @Test
     void aMissingSourceValueDoesNotPairWithAnEmptyJoinedValue()
     {
-        // ⚠ The one Mockito-backed fixture left in this class, on purpose: a real STRING buffer
-        // stores a null cell as "" (DataBufferString.setValue), so no real table can hold the
-        // character MIS this test needs beside a present "" — MockTable.colSasMissing is the one
-        // fixture that carries one.
+        // ⚠ The one Mockito-free MockTable fixture left in this class, on purpose: a real STRING
+        // buffer stores a null cell as "" (DataBufferString.setValue), so no real table can hold
+        // the character MIS this test needs beside a present "" — MockTable.colSasMissing is the
+        // one fixture that carries one.
         IDataTable dmWithMissing = MockTable.of().name("DM").col("USUBJID", "S1", "S2")
                 .colSasMissing("RPATHCD", ".", "B").build();
-        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(bw("S1/P1", "S2/P1"),
+        MergedEvaluation.Built built = view(bw("S1/P1", "S2/P1"),
                 List.of(dmEntry(), tpEntry("inner")),
-                resolver(dmWithMissing, tp("/1/P1/0", "B/1/P1/1")), "R");
-        assertEquals(List.of("S2:B->B/1"), bindings(exp));
+                resolver(dmWithMissing, tp("/1/P1/0", "B/1/P1/1")));
+        assertEquals(List.of("S2:B->B/1"), bindings(built));
     }
 
 
-    /**
-     * {@code KeyMatchIndex.SpecKey} is the child-side half only, so a chained join and a plain join
-     * over the same TP columns share ONE index (§2.1, §5.1): the plain rule builds it, the chained
-     * rule reuses it, and both answer right.
-     */
+    /** A chained rule's view is the dataset's cached one for its signature, like any other. */
     @Test
-    void aChainedAndAPlainJoinOverTheSameColumnsShareOneIndex()
+    void aChainedViewIsCachedPerSignature()
     {
-        JoinCache.SharedIndexCache shared = new JoinCache.SharedIndexCache();
-        IDataTable tpTable = tp("A/1/P1/0", "B/1/P1/1");
-        IDataTable dmTable = dm("S1/A", "S2/B");
-        // The plain rule: the primary carries RPATHCD itself.
-        IDataTable bwWithPath = RealTables.of("BW").str("USUBJID", "S1", "S2")
-                .str("RPATHCD", "B", "A").str("RPHASE", "P1", "P1").build();
-        MatchDataset plain = md(
-                "{\"Name\":\"TP\",\"Keys\":[\"RPATHCD\",\"RPHASE\"]," + "\"Join_Type\":\"inner\"}");
-        KeyMatchRowExpander.KeyMatchExpansion plainExp = ExecCalls.expand(bwWithPath,
-                List.of(plain), resolver(dmTable, tpTable), "PLAIN", shared);
-        assertNotNull(plainExp);
-        assertEquals(1, shared.keyMatchIndexBuildCount(), "the plain join built TP's index");
-        JoinLookup plainTp = plainExp.lookups().get("TP");
-        assertEquals("B", plainTp.lookup(plainExp.table(), 0, "RPATHCD"));
-        assertEquals("A", plainTp.lookup(plainExp.table(), 1, "RPATHCD"));
-
-        KeyMatchRowExpander.KeyMatchExpansion chained = ExecCalls.expand(bw("S1/P1", "S2/P1"),
-                List.of(dmEntry(), tpEntry("inner")), resolver(dmTable, tpTable), "CHAINED",
-                shared);
-        assertEquals(List.of("S1:A->A/1", "S2:B->B/1"), bindings(chained));
-        assertEquals(2, shared.keyMatchIndexBuildCount(),
-                "the chained join built DM's index and REUSED TP's — one build, not two");
+        IDataTable bwTable = bw("S1/P1", "S2/P1");
+        DatasetResolver inv = resolver(dm("S1/A", "S2/B"), tp("A/1/P1/0", "B/1/P1/1"));
+        JoinCache cache = new JoinCache(new JoinCache.SharedIndexCache());
+        Rule rule = new Rule();
+        rule.setMatchDatasets(List.of(dmEntry(), tpEntry("inner")));
+        MergedEvaluation.Built first = MergedEvaluation.build(rule, bwTable, bwTable, inv, cache,
+                "R", "BW");
+        MergedEvaluation.Built second = MergedEvaluation.build(rule, bwTable, bwTable, inv, cache,
+                "R", "BW");
+        assertNotNull(first);
+        assertTrue(first == second, "one view per (dataset, merge signature)");
+        assertTrue(first.isShared());
+        assertEquals(List.of("S1:A->A/1", "S2:B->B/1"), bindings(first));
     }
 
     // -----------------------------------------------------------------------
@@ -389,9 +391,11 @@ class QualifiedMatchKeyTest
     private static String unresolvedMessage(List<MatchDataset> entries, DatasetResolver inv)
     {
         RuntimeException ex = assertThrows(RuntimeException.class,
-                () -> ExecCalls.expand(bw("S1/P1"), entries, inv, "R"));
+                () -> view(bw("S1/P1"), entries, inv));
         assertFalse(ex instanceof IllegalStateException,
                 "a diagnosis, not a bypass refusal: " + ex);
+        assertTrue(ex instanceof UnresolvedQualifiedKeyException,
+                "the engine's D-ABSENT diagnosis, never the datatable's: " + ex);
         String msg = String.valueOf(ex.getMessage());
         assertTrue(msg.contains("DM.RPATHCD"), msg);
         return msg;
@@ -403,7 +407,7 @@ class QualifiedMatchKeyTest
     {
         String msg = unresolvedMessage(List.of(dmEntry(), tpEntry("inner")),
                 resolver(tp("A/1/P1/0")));
-        assertTrue(msg.contains("DM"), msg);
+        assertTrue(msg.contains("the study has no DM dataset to read RPATHCD from"), msg);
     }
 
 
@@ -428,6 +432,21 @@ class QualifiedMatchKeyTest
     }
 
 
+    /**
+     * The chained entry's own dataset absent: no part, no error — exactly as an absent partner of
+     * an unchained entry (its dotted reads take the not-supplied default).
+     */
+    @Test
+    void theChainedEntrysOwnDatasetAbsentBuildsNoPart()
+    {
+        MergedEvaluation.Built built = view(bw("S1/P1"), List.of(dmEntry(), tpEntry("inner")),
+                resolver(dm("S1/A")));
+        assertNotNull(built);
+        assertNull(built.lookups().get("TP"));
+        assertEquals(List.of("S1:A->-"), bindings(built));
+    }
+
+
     /** A qualifier naming no earlier entry never came through the loader: refused as such. */
     @Test
     void aQualifierNamingNoEarlierEntryIsALoaderBypass()
@@ -435,35 +454,8 @@ class QualifiedMatchKeyTest
         List<MatchDataset> entries = List.of(tpEntry("inner"));
         DatasetResolver inv = resolver(dm("S1/A"), tp("A/1/P1/0"));
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> ExecCalls.expand(bw("S1/P1"), entries, inv, "R"));
+                () -> view(bw("S1/P1"), entries, inv));
         assertTrue(ex.getMessage().contains("DM.RPATHCD"), ex.getMessage());
-    }
-
-
-    /**
-     * Review round 1 (lane 1 L3): a qualified key never reaches {@code buildJoinedDatasets} for a
-     * loaded rule — the loader admits it on an expandable entry only, and
-     * {@code KeyMatchRowExpander} consumes every such entry first. A hand-built call is refused as
-     * {@code keySpec} refuses its own bypass, never built into a lookup that would look the
-     * qualified name up on the primary.
-     */
-    @Test
-    void aQualifiedKeyReachingTheLookupBuilderIsALoaderBypass()
-    {
-        DatasetResolver inv = resolver(dm("S1/A"), tp("A/1/P1/0"));
-        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> RuleRunnerCalls
-                .buildJoinedDatasets(List.of(tpEntry("inner")), bw("S1/P1"), inv, null, "R"));
-        assertTrue(ex.getMessage().contains("DM.RPATHCD") && ex.getMessage().contains("TP"),
-                ex.getMessage());
-        // The same with a pre-merge Filter, the arm that sits before the sided one.
-        MatchDataset filtered = md("{\"Name\":\"TP\",\"Keys\":[\"DM.RPATHCD\",\"RPHASE\"],"
-                + "\"Join_Type\":\"inner\",\"Filter\":\"RPRFDY == \\\"0\\\"\"}");
-        assertThrows(IllegalStateException.class, () -> RuleRunnerCalls
-                .buildJoinedDatasets(List.of(filtered), bw("S1/P1"), inv, null, "R"));
-        // CONTROL: an entry whose dataset is absent is left unexpanded by the expander and gets no
-        // lookup here either — the one way a qualified entry legitimately reaches this method.
-        assertEquals(Map.of(), RuleRunnerCalls.buildJoinedDatasets(List.of(tpEntry("inner")),
-                bw("S1/P1"), resolver(dm("S1/A")), null, "R"));
     }
 
     // -----------------------------------------------------------------------
@@ -582,6 +574,30 @@ class QualifiedMatchKeyTest
         RuleExecutionResult res = RuleRunnerCalls.execute(rule, bwTable,
                 RealTables.inventoryOf(bwTable, dm("S1/A"), tpWithoutPath));
         assertEquals(RuleExecutionStatus.SKIPPED, res.getStatus(), res.getStatusMessage());
+    }
+
+
+    /**
+     * W6: the four load gates that kept every view-only field off a chained-key rule are gone with
+     * the legacy arm — a {@code Cardinality} on such a rule loads and is CHECKED by the view (a
+     * duplicate DM subject under {@code n:1} is the merge's refusal, the rule's ERROR).
+     */
+    @Test
+    void aChainedRuleDeclaresACardinalityThatTheViewChecks()
+    {
+        String entries = "[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"],\"Cardinality\":\"n:1\"},"
+                + "{\"Name\":\"TP\",\"Keys\":[\"DM.RPATHCD\",\"RPHASE\"]}]";
+        Rule rule = loadClean(ruleJson(entries, CHAINED_REQUIREMENTS, "TP.RPRFDY == \"1\""));
+        IDataTable bwTable = bw("S1/P1", "S2/P1");
+        RuleExecutionResult ok = RuleRunnerCalls.execute(rule, bwTable,
+                RealTables.inventoryOf(bwTable, dm("S1/A", "S2/B"), tp("A/1/P1/0", "B/1/P1/1")));
+        assertEquals(RuleExecutionStatus.EXECUTED, ok.getStatus(), ok.getStatusMessage());
+        assertEquals(1, ok.getViolations().size(), ok.getViolations().toString());
+        RuleExecutionResult dup = RuleRunnerCalls.execute(rule, bwTable, RealTables
+                .inventoryOf(bwTable, dm("S1/A", "S1/B", "S2/B"), tp("A/1/P1/0", "B/1/P1/1")));
+        assertEquals(RuleExecutionStatus.ERROR, dup.getStatus(), String.valueOf(dup));
+        assertTrue(String.valueOf(dup.getStatusMessage())
+                .startsWith(MergedEvaluation.MERGE_REFUSED_MESSAGE_PREFIX), dup.getStatusMessage());
     }
 
     // -----------------------------------------------------------------------

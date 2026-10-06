@@ -147,14 +147,14 @@ public class MatchDataset
      * </p>
      *
      * <p>
-     * ⛔ <b>Read by the ordinary keyed join only</b> ({@code KeyMatchRowExpander.keySpec}, through
-     * {@code expandableEntries}). The text-carried family — {@code Child: true}, {@code RELREC},
-     * {@code SUPP--} / {@code SQ*} — and the hashed {@code DatasetLookup} those keyed non-Child
-     * shapes reach keep a blank key unconditionally and never consult the flag, so authoring it on
-     * such an entry (or on a nameless or keyless one) with the non-default {@code false} is a
-     * <b>load error</b> saying it has no effect — an authored {@code true} states what they do and
-     * is accepted — ({@code RulePackageLoader.checkKeepMissingsOnUngovernedEntry}, the sibling of
-     * the {@code Join_As_String} gate on the same predicate). Zero corpus entries author the flag.
+     * ⛔ <b>Honoured by the ordinary keyed join only</b> (the merged view's keyed part,
+     * {@code MergedEvaluation}; the D4 entries {@code JoinKeyTypes.governedByKeyTypeCheck} admits).
+     * The text-carried family — {@code Child: true}, {@code RELREC}, {@code SUPP--} / {@code SQ*} —
+     * keeps a blank key unconditionally, so authoring the flag on such an entry (or on a nameless
+     * or keyless one) with the non-default {@code false} is a <b>load error</b> saying it has no
+     * effect — an authored {@code true} states what they do and is accepted —
+     * ({@code RulePackageLoader.checkKeepMissingsOnUngovernedEntry}, the sibling of the
+     * {@code Join_As_String} gate on the same predicate). Zero corpus entries author the flag.
      * </p>
      */
     @JsonProperty("keep_missings")
@@ -309,8 +309,8 @@ public class MatchDataset
      * Left/primary-side join key names. A bare-string entry contributes its own name; a sided
      * {@code {left, right}} entry contributes its {@code left} name. Returns {@code null} when no
      * keys are declared, matching the historical field accessor so existing callers
-     * ({@code RelrecEntries}, {@code KeyMatchRowExpander}, {@code ChildEntries},
-     * {@code RuleRunner.buildJoinedDatasets}) stay byte-identical for the bare-string shape.
+     * ({@code RelrecEntries}, {@code MergedEvaluation}, {@code ChildEntries}) stay byte-identical
+     * for the bare-string shape.
      */
     @JsonIgnore
     public @Nullable List<String> getKeys()

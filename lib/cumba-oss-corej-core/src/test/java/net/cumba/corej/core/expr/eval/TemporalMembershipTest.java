@@ -179,7 +179,7 @@ class TemporalMembershipTest
         return ExprCompiler.compile(CheckExpressionParser.parse(expression))
                 .evaluate(EvalRun.fullRange(EvaluationContext.builder().table(T)
                         .variables(new java.util.LinkedHashMap<>(variables))
-                        .joinedDatasets(Map.of()).evaluationDomain(Domain.ROW).build()));
+                        .evaluationDomain(Domain.ROW).build()));
     }
 
 

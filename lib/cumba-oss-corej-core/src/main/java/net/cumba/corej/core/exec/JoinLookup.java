@@ -9,10 +9,13 @@ import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Common interface for cross-dataset lookup strategies used by Match_Datasets. Implementations
- * include key-based joins ({@link DatasetLookup}) and, since W3a of
- * {@code PLAN-merged-evaluation-table}, the parts of the merged evaluation view
- * ({@link MergedViewLookup} — keyed, Child, RELREC).
+ * The read interface of one joined part of the merged evaluation view — keyed, {@code Child},
+ * RELREC — by the evaluation row ({@link EvaluationContext#joins}). Since W6 of
+ * {@code PLAN-merged-evaluation-table} its one production implementation is
+ * {@link MergedViewLookup} (the key-join, the key-match and the RELREC expansions' lookups retired
+ * with the legacy pipeline); it stays an interface because every reader — the compiler's dotted
+ * plans, the {@code _matched_} flag, the output projection, the group readers — and their tests'
+ * hand-built doubles speak it.
  */
 public interface JoinLookup
 {
@@ -123,15 +126,11 @@ public interface JoinLookup
      * </p>
      *
      * <p>
-     * ⭐ <b>All three production implementations override it</b> and rule those cases properly (D72
-     * / D72a-1 / D75a / §9c): {@link DatasetLookup}, {@code KeyMatchExpandedLookup} and (until W5
-     * of {@code PLAN-merged-evaluation-table}) the RELREC expansion's. ⚠ That last one deliberately
-     * did NOT also override {@link #declaredTypeOf}: it bound a different target table per expanded
-     * row, so no single declared type was correct and {@code MISSING} ("unknown") the honest
-     * publication — while the numeric EXPECTATION passed here is a property of the RULE and is
-     * constant for the whole vector, so it stays well defined per row. ⛔ So this default is reached
-     * by TEST doubles only — keep it, but treat a new production implementation that relies on it
-     * as a defect.
+     * ⭐ <b>The production implementation overrides it</b> and rules those cases properly (D72 /
+     * D72a-1 / D75a / §9c): {@link MergedViewLookup} (the retired key-join and expanded lookups did
+     * too, until W5 / W6 of {@code PLAN-merged-evaluation-table}). ⛔ So this default is reached by
+     * TEST doubles only — keep it, but treat a new production implementation that relies on it as a
+     * defect ({@code JoinLookupProductionOverrideGuardTest}).
      * </p>
      *
      * @param primaryTable
@@ -226,11 +225,11 @@ public interface JoinLookup
      * "partner with a missing cell" — conflating those is exactly the {@code empty()} proxy this
      * flag replaces). A silently-wrong default (always {@code true}, or derived from a cell read)
      * would make {@code not D._matched_} quietly mis-fire, so an implementation that has not
-     * answered fails LOUD on the rule's ERROR channel instead. Every production implementation
-     * answers from the join structure it already holds — {@link DatasetLookup} from its
-     * per-primary-row join map, the row-expanded lookups from their bound-row arrays — so the
-     * verdict is a by-product of the map the runner already builds (D88 §3.3), an O(1) array read
-     * per row, never a repeated per-row key lookup at evaluation time.
+     * answered fails LOUD on the rule's ERROR channel instead. The production implementation
+     * answers from the join structure it already holds — {@link MergedViewLookup} from the part's
+     * {@code _matched_} column (its supplied marker) — so the verdict is a by-product of the row
+     * maps the view already built (D88 §3.3), an O(1) read per row, never a repeated per-row key
+     * lookup at evaluation time.
      * </p>
      *
      * @param primaryTable
@@ -311,10 +310,12 @@ public interface JoinLookup
      *
      * <p>
      * ⭐ <b>Extracted 2026-09-21</b> ({@code PLAN-join-key-missing-semantics} phase 6b(3)). It had
-     * THREE production implementations — {@link DatasetLookup}, {@code KeyMatchExpandedLookup} and
-     * the RELREC expansion's (retired in W5) — and the third one's own comment recorded the reason
-     * to extract: <i>"THIS SITE WAS MISSED TWICE … ⛔ When this arm changes again, change all three
-     * or none."</i> Now there is nothing to keep in step.
+     * THREE production implementations then — the key-join, the key-match expansion's and the
+     * RELREC expansion's lookups, all retired since (W5 / W6 of
+     * {@code PLAN-merged-evaluation-table}; {@link MergedViewLookup} is the one left) — and the
+     * third one's own comment recorded the reason to extract: <i>"THIS SITE WAS MISSED TWICE … ⛔
+     * When this arm changes again, change all three or none."</i> Now there is nothing to keep in
+     * step.
      * </p>
      *
      * @param numericExpected

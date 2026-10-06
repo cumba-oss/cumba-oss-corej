@@ -363,16 +363,21 @@ class GroupedResultKeyIdentityTest
     void theSuppPivotMatchesAsText()
     {
         // The SUPP join's text-key identity, on its successor: runbook W2a retired the
-        // supp_qnam_present operation and a qualifier is read through SuppPivot — IDVARVAL "1"
-        // (text) must still find the parent whose AESEQ is the NUMBER 1 (J5 / D4-R5).
+        // supp_qnam_present operation and a qualifier is read through the declared SUPP merge —
+        // since W6 the merged view's SUPP part only — IDVARVAL "1" (text) must still find the
+        // parent whose AESEQ is the NUMBER 1 (J5 / D4-R5).
         IDataTable ae = RealTables.of("AE").str("USUBJID", "S1", "S1").dbl("AESEQ", 1.0, 2.0)
                 .build();
         IDataTable supp = RealTables.of("SUPPAE").str("USUBJID", "S1").str("RDOMAIN", "AE")
                 .str("IDVAR", "AESEQ").str("IDVARVAL", "1").str("QNAM", "AETRTEM").str("QVAL", "Y")
                 .build();
-        EvaluationContext ctx = EvaluationContext.builder().table(ae)
-                .datasetResolver(d -> "SUPPAE".equals(d) ? supp : null).build();
-        IDataTableColumn column = SuppPivot.qualifierColumn(ctx, "AETRTEM");
+        DatasetResolver resolver = d -> "SUPPAE".equals(d) ? supp : null;
+        MergedEvaluation.Built view = MergedEvaluation.build(new net.cumba.corej.core.model.Rule(),
+                ae, ae, resolver, null, "R", "AE");
+        assertNotNull(view, "SUPPAE is merged");
+        EvaluationContext ctx = EvaluationContext.builder().table(view.table())
+                .datasetResolver(resolver).mergedView(view).build();
+        IDataTableColumn column = ctx.suppQualifier("AETRTEM");
         assertNotNull(column, "SUPPAE delivers AETRTEM");
         assertEquals("Y", column.getDataValue(0).getValueAsString());
         assertEquals("", column.getDataValue(1).getValueAsString());

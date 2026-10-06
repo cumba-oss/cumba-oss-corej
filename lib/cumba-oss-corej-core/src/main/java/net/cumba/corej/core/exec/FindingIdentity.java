@@ -180,7 +180,7 @@ final class FindingIdentity
         String qualifier = MatchDataset.qualifierOf(name);
         if (qualifier != null)
         {
-            JoinLookup lookup = ctx.getJoinedDatasets().get(qualifier);
+            JoinLookup lookup = ctx.joins().get(qualifier);
             return lookup == null ? null
                     : new Joined(lookup, name.substring(qualifier.length() + 1));
         }
@@ -188,7 +188,7 @@ final class FindingIdentity
         {
             return null; // a primary column: decided by the real row
         }
-        IDataTableColumn column = SuppPivot.qualifierColumn(ctx, name);
+        IDataTableColumn column = ctx.suppQualifier(name);
         return column == null ? null : new Qualifier(column);
     }
 

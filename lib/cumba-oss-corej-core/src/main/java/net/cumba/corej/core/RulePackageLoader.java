@@ -450,22 +450,22 @@ public class RulePackageLoader
      * per dataset, which never came through here (that generator is now deleted:
      * {@code plans/PLAN-remove-rule-generator.md}). ⚑ That grouper is retired
      * ({@code PLAN-retire-cohort-runner.md}); the example stands as the clearest illustration of
-     * this pass's reach, and the reach itself is unchanged. The engine's
-     * {@code KeyMatchRowExpander} refuses an entry that reaches it without a {@code Join_Type} (U15
-     * of {@code PLAN-retire-dead-multi-match-lookup}), so a loader-bypassing rule cannot run.
+     * this pass's reach, and the reach itself is unchanged. The engine's merged view runs an entry
+     * that reaches it without a {@code Join_Type} as {@code inner} — the S2 default this pass
+     * stamps — never as {@code left} (the retired key-match expander refused it outright, U15 of
+     * {@code PLAN-retire-dead-multi-match-lookup}).
      * </p>
      *
      * <p>
      * ⚑ <b>That family no longer exists.</b> Fix #366 stopped {@code CROSS_DATASET_METADATA} — the
      * sole minter of those rules — from firing, and {@code plans/PLAN-remove-rule-generator.md}
      * deleted the generator itself. No production path mints a rule that bypasses this loader; test
-     * fixtures that build a {@code Rule} by hand do, and since U15 of
-     * {@code PLAN-retire-dead-multi-match-lookup} they must stamp {@code Join_Type} themselves —
-     * {@code KeyMatchRowExpander}'s former {@code left} fallback for an absent value is gone, and
-     * an entry without one is refused at execution. ⚑ Its former companion, the
-     * {@code getJoinType() != null} rejection, is already <b>deleted</b> rather than merely
-     * unreachable — it lived in the retired {@code RuleCohortGrouper}
-     * ({@code PLAN-retire-cohort-runner.md}).
+     * fixtures that build a {@code Rule} by hand do, and stamp {@code Join_Type} themselves since
+     * U15 of {@code PLAN-retire-dead-multi-match-lookup} — the retired key-match expander's former
+     * {@code left} fallback for an absent value is gone, and the merged view reads an absent one as
+     * the S2 {@code inner}. ⚑ Its former companion, the {@code getJoinType() != null} rejection, is
+     * already <b>deleted</b> rather than merely unreachable — it lived in the retired
+     * {@code RuleCohortGrouper} ({@code PLAN-retire-cohort-runner.md}).
      * </p>
      */
     private static void normalizeJoinTypes(RulePackage pkg)
@@ -499,9 +499,9 @@ public class RulePackageLoader
      * ⚑ <b>History.</b> {@code DatasetRuleResolver} bypasses {@link #load} and does not call this
      * method. That mattered while it <em>generated</em> rules: the
      * {@code CDISC-AD0591-}/{@code GEN-XDVAL-} family it minted kept a null {@code Join_Type} and
-     * ran as a <b>left</b> join via {@code KeyMatchRowExpander}'s fallback ({@code Fix #233}). Fix
-     * #366 stopped that family and {@code PLAN-remove-rule-generator} deleted the generator; the
-     * resolver now delivers only the rules its caller hands it — in production, rules from
+     * ran as a <b>left</b> join via the (retired) key-match expander's fallback ({@code Fix #233}).
+     * Fix #366 stopped that family and {@code PLAN-remove-rule-generator} deleted the generator;
+     * the resolver now delivers only the rules its caller hands it — in production, rules from
      * {@link #load}, which this pass has already normalised.
      * </p>
      */
@@ -3950,9 +3950,9 @@ public class RulePackageLoader
 
     /**
      * Whether an ORDINARY entry (neither Child nor template) of the rule joins on the bare key. A
-     * nameless ordinary entry is exempt from the gate AND inert at run time
-     * ({@code RuleRunner.buildJoinedDatasets} skips it), so it licenses nothing (review round 5,
-     * F1) — the lint's {@code keysAnOrdinaryEntry} reads it the same way.
+     * nameless ordinary entry is exempt from the gate AND inert at run time (the merged view builds
+     * no part for it, {@code MergedEvaluation.servedAsKeyedPart}), so it licenses nothing (review
+     * round 5, F1) — the lint's {@code keysAnOrdinaryEntry} reads it the same way.
      */
     private static boolean keysAnOrdinaryEntry(List<net.cumba.corej.core.model.MatchDataset> joins,
             String bareKey)
@@ -4688,7 +4688,6 @@ public class RulePackageLoader
         checkKeepMissingsOnUngovernedEntry(rule, errors);
         checkChildEntryNames(rule, errors);
         checkChildEntryServed(rule, errors);
-        checkRelrecEntryServed(rule, errors);
         checkSidedKeys(rule, errors);
         checkQualifiedKeys(rule, errors);
         checkQualifiedGroupMembers(rule, errors);
@@ -6041,14 +6040,14 @@ public class RulePackageLoader
      * {@code Match_Datasets[].Join_Type}.
      *
      * <p>
-     * ⚠⚠ <b>Why this is a gate rather than a fallback.</b> The engine's only value comparison is a
-     * <em>negation</em> — {@code KeyMatchRowExpander}'s
-     * {@code !"inner".equalsIgnoreCase(getJoinType())} — so <b>every</b> value that is not
-     * {@code inner} runs as a <b>left</b> join. An authored typo, a case error or a value from
-     * another vocabulary ({@code outer}, {@code full}, {@code right}) therefore produced
-     * plausible-but-wrong rows and reported nothing at all. Filing a {@code loadError} makes the
-     * rule report ERROR through the {@code RuleRunner.execute} sentinel — the same channel a
-     * malformed operation expression uses — rather than failing the whole load.
+     * ⚠⚠ <b>Why this is a gate rather than a fallback.</b> The retired key-match expander's only
+     * value comparison was a <em>negation</em> — {@code !"inner".equalsIgnoreCase(getJoinType())} —
+     * so <b>every</b> value that was not {@code inner} ran as a <b>left</b> join. An authored typo,
+     * a case error or a value from another vocabulary ({@code outer}, {@code full}, {@code right})
+     * therefore produced plausible-but-wrong rows and reported nothing at all. Filing a
+     * {@code loadError} makes the rule report ERROR through the {@code RuleRunner.execute} sentinel
+     * — the same channel a malformed operation expression uses — rather than failing the whole
+     * load.
      * </p>
      *
      * <p>
@@ -6193,8 +6192,6 @@ public class RulePackageLoader
         }
     }
 
-    /** The plan the two W3f gates below cite in their messages. */
-    private static final String MERGED_TABLE_PLAN = "PLAN-merged-evaluation-table";
 
     /**
      * The {@code Cardinality} gates ({@code PLAN-merged-evaluation-table} W3f; §3.4, MET #12, OD-5,
@@ -6212,11 +6209,10 @@ public class RulePackageLoader
      * <li><b>Not served</b> — an authored cardinality that would check something (anything but
      * {@code n:m}) on an entry the merged evaluation table builds no part for: a keyless entry
      * other than the forward RELREC entry (W5 serves that one: the authored value overrides every
-     * relationship's RELTYPE default, OD-9), and every keyed entry of a rule that runs the legacy
-     * arm ({@code MergedEvaluation#legacyArmed}: a chained qualified key, until W6). Those paths
-     * never check a cardinality, so the value would be silently ignored; a load error says so
-     * instead. {@code n:m} checks nothing and is accepted everywhere. Zero corpus entries are
-     * affected (W3f census).</li>
+     * relationship's RELTYPE default, OD-9). Such an entry never checks a cardinality, so the value
+     * would be silently ignored; a load error says so instead. {@code n:m} checks nothing and is
+     * accepted everywhere. Zero corpus entries are affected (W3f census). (A keyed entry of a rule
+     * with a chained qualified key is served since W6, which composes the key in the view.)</li>
      * </ul>
      *
      * @param rule
@@ -6233,7 +6229,6 @@ public class RulePackageLoader
         {
             return;
         }
-        boolean legacyArmed = net.cumba.corej.core.exec.MergedEvaluation.legacyArmed(matches);
         for (net.cumba.corej.core.model.MatchDataset md : matches)
         {
             if (md == null || md.getCardinality() == null)
@@ -6267,16 +6262,11 @@ public class RulePackageLoader
             }
             // A Child entry's cardinality is checked by the merged view (P-16, W4), a forward
             // RELREC entry's too (W5: the authored value overrides every relationship's RELTYPE
-            // default, OD-9); either on a legacy-armed rule is its own load error
-            // (checkChildEntryServed / checkRelrecEntryServed).
+            // default, OD-9).
             boolean relrec = net.cumba.corej.core.exec.RelrecEntries.isForwardEntry(md);
-            String notServed = child || relrec ? null
-                    : !net.cumba.corej.core.exec.MergedEvaluation.servedAsKeyedPart(md)
-                            ? "a keyless entry builds no part"
-                            : legacyArmed
-                                    ? "the rule carries a chained qualified key, so it runs the"
-                                            + " legacy join pipeline"
-                                    : null;
+            String notServed = child || relrec
+                    || net.cumba.corej.core.exec.MergedEvaluation.servedAsKeyedPart(md) ? null
+                            : "a keyless entry builds no part";
             if (notServed != null)
             {
                 errors.add("[" + ruleId(rule) + "] Cardinality " + c.text()
@@ -6300,9 +6290,7 @@ public class RulePackageLoader
      * recognised by the right-side name as the merge does, and the pair takes no differing left
      * side (IDVAR names the evaluated column itself);</li>
      * <li>a qualified name ({@code DM.USUBJID}) — the key reads the evaluated dataset and its SUPP
-     * dataset only;</li>
-     * <li>a rule on the legacy arm ({@code MergedEvaluation#legacyArmed}), whose SUPP pivot reads
-     * the IG key only — the authored key would be silently ignored.</li>
+     * dataset only.</li>
      * </ul>
      * A stray key inside a sided element is the unknown-key gate's ({@code validateUnknownKeys}).
      *
@@ -6369,12 +6357,6 @@ public class RulePackageLoader
             errors.add(
                     id + " names " + (idvar ? "IDVAR without IDVARVAL" : "IDVARVAL without IDVAR")
                             + ": the pair is one key component and is named whole or not at all");
-        }
-        if (net.cumba.corej.core.exec.MergedEvaluation.legacyArmed(rule.getMatchDatasets()))
-        {
-            errors.add(id + " would not be read: the rule carries a chained qualified key, so it"
-                    + " runs the legacy join pipeline, whose SUPP pivot keys on the IG's key only ("
-                    + MERGED_TABLE_PLAN + " W6)");
         }
     }
 
@@ -6873,16 +6855,16 @@ public class RulePackageLoader
      * {@link #checkJoinAsStringOnExcludedEntry}, on the same predicate).
      *
      * <p>
-     * ⭐⭐ <b>A load error, not silence.</b> The flag is read at exactly one site,
-     * {@code KeyMatchRowExpander.keySpec}, reached only through {@code expandableEntries} — i.e.
-     * only for an entry {@link net.cumba.corej.core.exec.JoinKeyTypes#governedByKeyTypeCheck}
-     * admits. The text-carried family's own merge ({@code ChildEntries}, {@code RelrecEntries}) and
-     * the hashed {@code DatasetLookup} the remaining keyed non-Child shapes reach KEEP a blank key
-     * unconditionally ({@code JKM R4}'s default) and never consult the flag — and since
-     * {@code JKM R7}'s one-side rule landed on the hashed arm too, an absent key column there is
-     * present-but-blank on every row, exactly the rows an authored {@code false} claims to drop. An
-     * author who writes the flag there believes they have chosen DROP and has not. An authored
-     * {@code true} is accepted: it states the default those paths already implement.
+     * ⭐⭐ <b>A load error, not silence.</b> The flag means something only for an entry
+     * {@link net.cumba.corej.core.exec.JoinKeyTypes#governedByKeyTypeCheck} admits (the ordinary
+     * keyed join). The text-carried family's own merge ({@code ChildEntries},
+     * {@code RelrecEntries}) and the keyed non-Child shapes outside the type check (a
+     * {@code SUPP--} / {@code SQ*} or template name, served by the merged view as {@code left}
+     * parts that never dropped a row) KEEP a blank key unconditionally ({@code JKM R4}'s default) —
+     * and since {@code JKM R7}'s one-side rule holds for every keyed part, an absent key column
+     * there is present-but-blank on every row, exactly the rows an authored {@code false} claims to
+     * drop. An author who writes the flag there believes they have chosen DROP and has not. An
+     * authored {@code true} is accepted: it states the default those paths already implement.
      * </p>
      *
      * <p>
@@ -6956,13 +6938,10 @@ public class RulePackageLoader
      * <ul>
      * <li>an authored {@code Join_Type} other than {@code left} — an {@code inner} Child entry
      * would still keep every record. Judged on the AUTHORED value (this gate runs before
-     * {@code normalizeJoinTypes} stamps {@code inner} onto an absent one);</li>
-     * <li>a rule that runs the legacy arm ({@code MergedEvaluation#legacyArmed}: a forward RELREC
-     * entry or a chained qualified key) — that arm builds no Child part, so every parent column
-     * would read the not-supplied default on every row.</li>
+     * {@code normalizeJoinTypes} stamps {@code inner} onto an absent one).</li>
      * </ul>
-     * Corpus exposure of both: 0 (the 11 Child entries author no {@code Join_Type}; none shares a
-     * rule with a forward RELREC entry or a chained key).
+     * Corpus exposure: 0 (the 11 Child entries author no {@code Join_Type}). (A Child entry beside
+     * a chained qualified key was a second load error until W6, which serves both in one view.)
      *
      * @param rule
      *            the rule to check.
@@ -6991,42 +6970,6 @@ public class RulePackageLoader
                         + " parent's columns as not supplied (guard with <D>._matched_); remove"
                         + " the Join_Type or author \"left\"");
             }
-        }
-        if (net.cumba.corej.core.exec.MergedEvaluation.legacyArmed(matches))
-        {
-            errors.add("[" + ruleId(rule) + "] a Child: true Match_Datasets entry on a rule that"
-                    + " carries a chained qualified key: such a rule runs the legacy join"
-                    + " pipeline, which builds no Child part, so every parent column would read"
-                    + " the not-supplied default — split the rule (" + MERGED_TABLE_PLAN
-                    + " W6 serves both shapes)");
-        }
-    }
-
-
-    /**
-     * Tags a forward RELREC entry ({@code Name: RELREC}, no {@code Keys}) on a rule the legacy arm
-     * still runs ({@code MergedEvaluation#legacyArmed}: a chained qualified key) with a load error
-     * ({@code PLAN-merged-evaluation-table} W5): the related domains are parts of the merged
-     * evaluation view only, so on that arm every {@code <D>.<column>} would read the not-supplied
-     * default and every {@code <D>._matched_} would be false — a silent PASS. Exposure 0 in both
-     * corpora (no chained-key rule); retires with the arm in W6.
-     *
-     * @param rule
-     *            the rule to check.
-     * @param errors
-     *            the collector to append to.
-     */
-    private static void checkRelrecEntryServed(Rule rule, List<String> errors)
-    {
-        List<net.cumba.corej.core.model.MatchDataset> matches = rule.getMatchDatasets();
-        if (matches != null && net.cumba.corej.core.exec.RelrecEntries.hasForwardEntry(matches)
-                && net.cumba.corej.core.exec.MergedEvaluation.legacyArmed(matches))
-        {
-            errors.add("[" + ruleId(rule) + "] a forward RELREC Match_Datasets entry on a rule"
-                    + " that carries a chained qualified key: such a rule runs the legacy join"
-                    + " pipeline, which builds no RELREC part, so every related-domain column"
-                    + " would read the not-supplied default — split the rule (" + MERGED_TABLE_PLAN
-                    + " W6 serves both shapes)");
         }
     }
 

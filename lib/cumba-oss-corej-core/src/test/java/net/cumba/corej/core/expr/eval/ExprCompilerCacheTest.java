@@ -7,6 +7,7 @@ import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.EvaluationContext;
+import net.cumba.corej.core.exec.ExecCalls;
 import net.cumba.corej.core.exec.ExpressionResultCache;
 import net.cumba.corej.core.exec.JoinLookup;
 import net.cumba.corej.core.expr.OperandKind;
@@ -42,7 +43,7 @@ class ExprCompilerCacheTest
             Domain domain, Map<String, JoinLookup> joins)
     {
         return EvaluationContext.builder().table(table).exprCache(cache).evaluationDomain(domain)
-                .joinedDatasets(joins).build();
+                .mergedView(ExecCalls.joinsView(joins)).build();
     }
 
 

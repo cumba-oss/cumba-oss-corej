@@ -17,9 +17,9 @@ import java.io.Serial;
  * ⛔ <b>Why an error rather than a match-everything or a skip.</b> Dropping a both-sides-absent
  * component is behaviour-preserving — both sides carry the same constant, so the component cannot
  * discriminate. Dropping <em>every</em> component leaves an <b>empty key</b>, and an empty key is a
- * cartesian product, not a join: {@code KeyHashing.computeKeyHashSafe} would return its constant
- * and the matcher would be all-true, so {@code _matched_} would read <b>true for every row</b>. ⇒
- * the error says <i>"there is no join here"</i>; it is not a complaint about absent columns.
+ * cartesian product, not a join: every key would hash to one constant and the matcher would be
+ * all-true, so {@code _matched_} would read <b>true for every row</b>. ⇒ the error says <i>"there
+ * is no join here"</i>; it is not a complaint about absent columns.
  * </p>
  *
  * <p>

@@ -1019,7 +1019,7 @@ public final class BroadcastFold
         // it binds at row level like a present column — never as the dataset-level absent
         // constant, which would evaluate the leaf once (row 0) and broadcast it. The table's
         // column set is untouched: this is a binding-scope answer, not a metadata one.
-        if (net.cumba.corej.core.exec.SuppPivot.qualifierColumn(ctx, name) != null)
+        if (ctx.suppQualifier(name) != null)
         {
             return BindColumnLevel.ROW;
         }
@@ -1054,7 +1054,7 @@ public final class BroadcastFold
         {
             return BindColumnLevel.ROW;
         }
-        net.cumba.corej.core.exec.JoinLookup lookup = ctx.getJoinedDatasets().get(dataset);
+        net.cumba.corej.core.exec.JoinLookup lookup = ctx.joins().get(dataset);
         return lookup == null || lookup.lacksColumnOnEveryRow(column)
                 ? BindColumnLevel.DATASET_ABSENT
                 : BindColumnLevel.ROW;

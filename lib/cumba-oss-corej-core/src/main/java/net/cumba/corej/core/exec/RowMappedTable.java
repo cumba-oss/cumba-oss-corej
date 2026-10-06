@@ -8,21 +8,22 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Row-remapped view of a base table: view row {@code i} presents the base table's row
- * {@code rowMap[i]}. Built for forward RELREC expansion; since 5b-J also the row projection behind
- * {@link MatchFilter} (a joined dataset restricted to its filter-passing rows — there the map is a
- * subset in order rather than an expansion). The column set and metadata are the base table's; row
- * identity ({@link #getRealRowIndex}) maps through to the base so a violation on an expanded row is
- * reported against the originating primary record.
+ * {@code rowMap[i]}. The evaluation table of a row-mapped merged view ({@link MergedEvaluation}:
+ * the primary part, row {@code i} the merged row {@code i}), the distinct real rows of
+ * {@link RealRows} and the row-less base of {@link SuppQualifiers}. The column set and metadata are
+ * the base table's; row identity ({@link #getRealRowIndex}) maps through to the base so a violation
+ * on an expanded row is reported against the originating primary record.
  *
  * <p>
  * Implemented as a self-contained {@link AbstractDataTable} — using only the contract types present
  * across engine variants ({@link IDataTable}, {@link IDataBufferNumeric}) — rather than a
- * {@code datatable-impl} view class. This kept the retired RELREC expander (W5) portable and avoids
- * rebuilding the base metadata (which is unnecessary here, since {@link #getRowCount} is overridden
- * and the engine iterates via {@code table.getRowCount()}).
+ * {@code datatable-impl} view class, which keeps it portable and avoids rebuilding the base
+ * metadata (unnecessary here, since {@link #getRowCount} is overridden and the engine iterates via
+ * {@code table.getRowCount()}). Born as the RELREC expander's table; renamed in W6 of
+ * {@code PLAN-merged-evaluation-table}, when the last row expander it backed retired.
  * </p>
  */
-final class RelrecExpandedTable extends AbstractDataTable
+final class RowMappedTable extends AbstractDataTable
 {
 
     private final IDataTable base;
@@ -37,7 +38,7 @@ final class RelrecExpandedTable extends AbstractDataTable
      */
     private volatile @Nullable RealRows realRows;
 
-    RelrecExpandedTable(IDataTable base, IDataBufferNumeric rowMap)
+    RowMappedTable(IDataTable base, IDataBufferNumeric rowMap)
     {
         this.base = base;
         this.rowMap = rowMap;

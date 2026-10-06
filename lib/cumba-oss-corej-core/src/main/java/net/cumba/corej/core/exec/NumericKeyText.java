@@ -9,13 +9,13 @@ import org.jspecify.annotations.Nullable;
  * arm of the two text-carried foreign-key joins: the retired {@code RelrecRowExpander.normKey} (W5;
  * the RELREC {@code IDVAR} value on both the record-level {@code IDVAR == IDVARVAL} filter and the
  * dataset-level equi-join) and {@link #childJoinToken} (the SUPP-- / CO / RELREC {@code IDVAR} join
- * token the legacy SUPP pivot and {@code distinct}'s join-token columns read; the merged view
- * matches through the datatable's own {@code JoinToken}). Ruled by PLAN-relrec-idvar-key-precision
- * T1-1 (a), owner 2026-09-25: <i>"One lossless rule for both sites"</i>. ⚠ This class decides only
- * what a <b>numeric</b> token canonicalises to; what each caller does with a token that is
- * <b>not</b> a number (the RELREC site keeps the unstripped text, the Child site keeps it stripped)
- * is that caller's rule, unchanged here, and the difference is on record in the plan's open
- * questions.
+ * token {@code distinct}'s join-token columns read; the retired SUPP pivot read it until W6 of
+ * {@code PLAN-merged-evaluation-table}, and the merged view matches through the datatable's own
+ * {@code JoinToken}). Ruled by PLAN-relrec-idvar-key-precision T1-1 (a), owner 2026-09-25: <i>"One
+ * lossless rule for both sites"</i>. ⚠ This class decides only what a <b>numeric</b> token
+ * canonicalises to; what each caller does with a token that is <b>not</b> a number (the RELREC site
+ * keeps the unstripped text, the Child site keeps it stripped) is that caller's rule, unchanged
+ * here, and the difference is on record in the plan's open questions.
  *
  * <p>
  * A token spelt with ASCII digits, an optional sign, an optional fraction and an optional exponent

@@ -19,8 +19,8 @@ import org.jspecify.annotations.Nullable;
  * The set is what the datatable's shared matching keeps once the row maps are built (W1: the index
  * is released, the QNAM set stays), taken from a merge of the SUPP over the dataset's <b>empty</b>
  * primary — one pass over the SUPP table, no row map — and memoised per SUPP table for the run
- * through {@link JoinCache.SharedIndexCache}. The engine's own {@link SuppQnamIndex} serves the
- * legacy pivot only until W6 retires it.
+ * through {@link JoinCache.SharedIndexCache}. (The engine's own QNAM index retired with the SUPP
+ * pivot in W6.)
  */
 final class SuppQualifiers
 {
@@ -133,7 +133,7 @@ final class SuppQualifiers
         IDataBufferNumeric empty = DataBufferFactory.get().createForRange(0,
                 Math.max(0, table.getRowCount() - 1));
         empty.setExpectedSize(0);
-        IDataTable primary = new RelrecExpandedTable(table, empty);
+        IDataTable primary = new RowMappedTable(table, empty);
         String suppName = Objects.requireNonNullElse(supp.getMetaData().getName(), "");
         MergeRequest request = MergeRequest.builder().primary(primary).primaryDomain(domain)
                 .supp(SuppMergeSpec.builder().suppDataset(suppName).build())

@@ -192,19 +192,19 @@ class RuleRunnerSplitJoinTest
         assertEquals(viaLambda.getStatus(), viaInventory.getStatus());
     }
 
-    // ----------------------------------------------------------- §3.1 semantics-fork guard
+    // ------------------------------------------------- the split union through the merged view
 
 
     @Test
-    void keyMatchExpanderAndBuildJoinedDatasets_bindTheSameJoinedRows()
+    void theMergedViewBindsTheSplitUnionsJoinedRows()
     {
         DatasetResolver.WithInventory inv = RealTables.inventoryOf(lbch(), lbhe());
         IDataTable primary = adlb();
         MatchDataset entry = md("LB", "left", "USUBJID", "LBSEQ");
 
-        // Path A — the row expander (the corpus path, 231/260 entries).
-        KeyMatchRowExpander.KeyMatchExpansion expansion = ExecCalls.expand(primary, List.of(entry),
-                inv, "R");
+        // The merged view's keyed part (until W6 of PLAN-merged-evaluation-table this compared
+        // the row expander with the fallback key join, both retired).
+        MergedEvaluation.Built expansion = ExecCalls.expand(primary, List.of(entry), inv, "R");
         assertNotNull(expansion);
         List<String> viaExpander = new ArrayList<>();
         IDataTable expanded = expansion.table();
@@ -215,20 +215,8 @@ class RuleRunnerSplitJoinTest
                     expanded.getRealRowIndex(i) + ":" + boundLookup.lookup(expanded, i, "LBORRES"));
         }
 
-        // Path B — the fallback key join.
-        JoinLookup direct = RuleRunnerCalls
-                .buildJoinedDatasets(List.of(entry), primary, inv, null, "R").get("LB");
-        assertNotNull(direct);
-        List<String> viaLookup = new ArrayList<>();
-        for (long r = 0; r < primary.getRowCount(); r++)
-        {
-            viaLookup.add(r + ":" + direct.lookup(primary, r, "LBORRES"));
-        }
-
-        // Unique keys, left join ⇒ one row per primary record on both paths, same bound values.
-        assertEquals(viaLookup, viaExpander,
-                "the two key-join paths must agree on the bound child rows (§3.1)");
-        assertEquals(List.of("0:res-ch-1", "1:res-he-9", "2:null"), viaLookup);
+        // Unique keys, left join ⇒ one row per primary record, the union's bound values.
+        assertEquals(List.of("0:res-ch-1", "1:res-he-9", "2:null"), viaExpander);
     }
 
 
@@ -241,9 +229,11 @@ class RuleRunnerSplitJoinTest
                 MatchDataset.class);
         assertTrue(sided.hasSidedKeys());
         IDataTable primary = RealTables.of("ADLB").str("SUBJ", "U1", "U2").build();
-        JoinLookup lookup = RuleRunnerCalls.buildJoinedDatasets(List.of(sided), primary,
-                RealTables.inventoryOf(lbch(), lbhe()), null, "R").get("LB");
-        assertNotNull(lookup, "the sided branch must resolve the split domain");
+        MergedEvaluation.Built view = ExecCalls.expand(primary, List.of(sided),
+                RealTables.inventoryOf(lbch(), lbhe()), "R");
+        assertNotNull(view, "the sided key must resolve the split domain");
+        JoinLookup lookup = view.lookups().get("LB");
+        assertNotNull(lookup, "the sided key must resolve the split domain");
         assertEquals("res-ch-1", lookup.lookup(primary, 0, "LBORRES"));
         assertEquals("res-he-9", lookup.lookup(primary, 1, "LBORRES"));
     }

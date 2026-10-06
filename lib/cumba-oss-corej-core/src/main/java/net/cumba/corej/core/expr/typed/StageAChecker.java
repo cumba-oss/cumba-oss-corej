@@ -2343,7 +2343,7 @@ public final class StageAChecker
             return;
         }
         // ⭐ Phase 6b (D110g(iii) — the ambiguity load-error D88b routed to the binding model):
-        // `RuleRunner.buildJoinedDatasets` keys the join lookups BY NAME, last-wins, so a rule
+        // the merged view keys its parts' lookups BY NAME (EvaluationContext.joins), so a rule
         // declaring two entries under one Name silently reads only the surviving entry — with the
         // 5b-J `_matched_` flag now one more reader of the survivor. Armed: 0 duplicates across
         // the authored corpus (4 349 rule files, measured 2026-09-16).

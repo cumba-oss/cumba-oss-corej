@@ -408,22 +408,28 @@ class RuleRunnerNameOnlyProjectionTest
     @Test
     void l5ASuppDeliveredQualifierIsListedByNameOnANonRecordFinding()
     {
-        // W2a: AETRTEM is no AE column — SUPPAE delivers it through the pivot. On a non-record
+        // W2a: AETRTEM is no AE column — SUPPAE delivers it (the declared SUPP merge). On a
+        // non-record
         // finding it is a raw column like any other: listed by name; on a record-level
         // projection it reports the record's qualifier value.
         IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AESEQ", "1").build();
         IDataTable suppae = MockTable.of().name("SUPPAE").col("RDOMAIN", "AE").col("USUBJID", "S1")
                 .col("IDVAR", "AESEQ").col("IDVARVAL", "1").col("QNAM", "AETRTEM").col("QVAL", "Y")
                 .build();
-        EvaluationContext ctx = EvaluationContext.builder().table(ae).ruleId("R1")
-                .datasetResolver(name -> "SUPPAE".equalsIgnoreCase(name) ? suppae
-                        : "AE".equalsIgnoreCase(name) ? ae : null)
-                .build();
+        // W6: the qualifier is a column of the merged view's SUPP part, the context's only
+        // source of qualifiers (the legacy pivot over the resolver is retired)
+        EvaluationContext ctx = ExecCalls
+                .viewContext(new Rule(), ae,
+                        name -> "SUPPAE".equalsIgnoreCase(name) ? suppae
+                                : "AE".equalsIgnoreCase(name) ? ae : null,
+                        "AE")
+                .ruleId("R1").build();
+        IDataTable table = ctx.getTable();
         List<String> ovs = List.of("AETRTEM", "AENOSUCH");
 
-        RuleRunner.NameOnlyProjection nonRecord = RuleRunner.extractNameOnlyOutputValues(ae, ctx,
+        RuleRunner.NameOnlyProjection nonRecord = RuleRunner.extractNameOnlyOutputValues(table, ctx,
                 ovs, 0);
-        Map<String, String> recordLevel = RuleRunner.extractOutputValues(ae, ctx, ovs, 0);
+        Map<String, String> recordLevel = RuleRunner.extractOutputValues(table, ctx, ovs, 0);
 
         assertEquals(List.of("AETRTEM"), nonRecord.namedColumns(),
                 "the SUPP qualifier listed, the absent column in neither channel");

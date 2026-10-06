@@ -50,22 +50,17 @@ public class EvaluationContext
      * The rule's declared SUPP merge ({@code Rule#isSuppMergeEnabled()}, default {@code true}):
      * read by the dotted existence pivot ({@code OperatorRegistry.existsAsDottedDatasetColumn}, Fix
      * #39) so that {@code Supp_Merge: false} turns the merge off on the existence path as well as
-     * on the value path ({@link SuppPivot}). {@code PLAN-operation-replacements} §2.3.
+     * on the value path (the merged view builds no SUPP part). {@code PLAN-operation-replacements}
+     * §2.3.
      */
     @Builder.Default
     boolean suppMerge = true;
 
     /**
-     * The per-context memo of the SUPP pivot ({@link SuppPivot}): the parsed {@code SUPP<domain>}
-     * of the table and the qualifier columns read so far, one materialisation each.
-     */
-    @Builder.Default
-    SuppPivot.Memo suppPivot = new SuppPivot.Memo();
-
-    /**
-     * The run's shared join-index cache, when the caller has one ({@code RuleRunner} passes it from
-     * {@code JoinCache}); the SUPP pivot parses each {@code SUPP<domain>} table once per run
-     * through it. {@code null} outside a study run: the pivot then parses once per context.
+     * The run's shared index cache, when the caller has one ({@code RuleRunner} passes it from
+     * {@code JoinCache}); the existence surfaces read each {@code SUPP<domain>}'s QNAM set once per
+     * run through it ({@link SuppQualifiers}). {@code null} outside a study run: the set is then
+     * derived per call.
      */
     JoinCache.@Nullable SharedIndexCache sharedIndexCache;
 
@@ -100,61 +95,6 @@ public class EvaluationContext
     /** The observation class (e.g., "EVENTS", "SPECIAL PURPOSE"). */
     @Nullable
     String className;
-
-    /**
-     * Joined datasets from {@code Match_Datasets}. Keyed by the entry's authored {@code Name}, each
-     * value the part's lookup. ⭐ The map matches a qualifier IGNORING letter case
-     * ({@code PLAN-merged-evaluation-table} W3d, P-19 / MET #6: a dataset name is case-insensitive,
-     * upper case expected): the builder copies whatever map it is given into a case-insensitive
-     * one, so every {@code get(qualifier)} site — the compiler's dotted plans, the output
-     * projection, the group readers, the level calculus — resolves {@code j.S}, {@code J.s} and
-     * {@code J.S} to the one join declared as {@code J}. One map, one rule.
-     */
-    @Builder.Default
-    Map<String, JoinLookup> joinedDatasets = Map.of();
-
-    /** The builder half of the case-insensitive join map (see {@link #joinedDatasets}). */
-    public static class EvaluationContextBuilder
-    {
-
-        /**
-         * Sets the joined datasets, keyed ignoring letter case.
-         *
-         * @param aJoinedDatasets
-         *            the lookups by authored entry name
-         * @return this builder
-         */
-        public EvaluationContextBuilder joinedDatasets(Map<String, JoinLookup> aJoinedDatasets)
-        {
-            this.joinedDatasets$value = caseInsensitiveJoins(aJoinedDatasets);
-            this.joinedDatasets$set = true;
-            return this;
-        }
-    }
-
-    /**
-     * A case-insensitive, insertion-ordered copy of a join map (an already case-insensitive map is
-     * reused). Two entries differing only by case keep the last one — Stage A refuses that shape at
-     * load ({@code DUPLICATE_MATCH_DATASET_NAME}).
-     */
-    static Map<String, JoinLookup> caseInsensitiveJoins(Map<String, JoinLookup> aJoins)
-    {
-        if (aJoins instanceof java.util.TreeMap<String, JoinLookup> tree
-                && tree.comparator() == String.CASE_INSENSITIVE_ORDER)
-        {
-            return aJoins;
-        }
-        if (aJoins.isEmpty())
-        {
-            return Map.of();
-        }
-        // the TreeMap itself, not an unmodifiable wrapper: toBuilder() hands it back to this
-        // method on every derived context, and the identity test above keeps that a no-op
-        java.util.TreeMap<String, JoinLookup> out = new java.util.TreeMap<>(
-                String.CASE_INSENSITIVE_ORDER);
-        out.putAll(aJoins);
-        return out;
-    }
 
     /**
      * Optional CDISC Library metadata provider for Library-dependent Operations. May be
@@ -309,19 +249,78 @@ public class EvaluationContext
     CheckLevelPlan levelPlan;
 
     /**
-     * The merged evaluation view of this execution ({@code PLAN-merged-evaluation-table} W3a,
-     * {@link MergedEvaluation}), or {@code null} on the legacy arm (a forward RELREC rule, a
-     * chained qualified key, nothing to merge). Its {@link MergedEvaluation.Built#table()} is
-     * {@link #table}; {@link SuppPivot#qualifierColumn} serves a bare {@code QNAM} from it, and
-     * {@link #joinedDatasets} holds its keyed parts. {@code toBuilder} carries it into every
-     * derived context; a derived context over another table (a {@code Filter} sub-context) does not
-     * read it, because its table is not the view's.
+     * The merged evaluation view of this execution ({@code PLAN-merged-evaluation-table},
+     * {@link MergedEvaluation}), or {@code null} when nothing is merged. Its
+     * {@link MergedEvaluation.Built#table()} is {@link #table}; it is the execution's one source of
+     * joined parts ({@link #joins}) and supplemental qualifiers ({@link #suppQualifier}).
+     * {@code toBuilder} carries it into every derived context; a derived context over another table
+     * (a {@code Filter} sub-context) reads no qualifier from it, because its table is not the
+     * view's.
      */
     MergedEvaluation.@Nullable Built mergedView;
 
     public int rowCount()
     {
         return Math.toIntExact(table.getRowCount());
+    }
+
+
+    /**
+     * The joined parts of this execution — the merged view's keyed, {@code Child} and RELREC parts
+     * by the entry's authored name ({@link MergedEvaluation.Built#lookups}), matched ignoring
+     * letter case ({@code PLAN-merged-evaluation-table} W3d, P-19 / MET #6) — or an empty map when
+     * nothing is merged. The one join map: every reader of a qualified name (the compiler's dotted
+     * plans, the output projection, the group readers, the level calculus) asks it, and nothing
+     * else holds a join ({@code PLAN-merged-evaluation-table} W6 retired the context's own map).
+     *
+     * @return the lookups by qualifier, never {@code null}
+     */
+    public Map<String, JoinLookup> joins()
+    {
+        MergedEvaluation.Built view = mergedView;
+        return view == null ? Map.of() : view.lookups();
+    }
+
+
+    /**
+     * The supplemental qualifier column of a bare name on this context's table — the merged view's
+     * SUPP column ({@link MergedEvaluation.Built#suppColumn}: the type default where no row
+     * qualifies the record) — or {@code null}: no view, the context's table is not the view's (a
+     * sub-context over another table reads that table's own columns only), the primary carries the
+     * name itself, or no SUPP part delivers it. The declared SUPP merge as a pivot by reference
+     * ({@code Supp_Merge}, owner P-Q1 / C1 (a)): a qualifier is readable per record and visible to
+     * existence, but never a variable of the parent dataset — the table's column set stays the
+     * file's.
+     *
+     * @param name
+     *            the bare column name
+     * @return the column, or {@code null}
+     * @throws MergeErrorReadException
+     *             when the column carries a {@code MERGE_ERROR} (OD-7)
+     */
+    public net.cumba.datatable.@Nullable IDataTableColumn suppQualifier(String name)
+    {
+        MergedEvaluation.Built view = mergedView;
+        return view != null && table == view.table() ? view.suppColumn(name) : null;
+    }
+
+
+    /**
+     * The merged schema's metadata of a supplemental qualifier
+     * ({@code PLAN-merged-evaluation-table} W3d, MET #7 / §3.9: the QLABEL as the label, QVAL's
+     * type), or {@code null} when {@code name} is no qualifier of this context's table
+     * ({@link #suppQualifier}).
+     *
+     * @param name
+     *            the bare column name
+     * @return the column metadata, or {@code null}
+     * @throws MergeErrorReadException
+     *             when the column carries a {@code MERGE_ERROR} (OD-7)
+     */
+    public net.cumba.datatable.@Nullable DataTableColumnMeta suppQualifierMeta(String name)
+    {
+        MergedEvaluation.Built view = mergedView;
+        return suppQualifier(name) == null || view == null ? null : view.suppColumnMeta(name);
     }
 
     /**

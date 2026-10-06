@@ -232,12 +232,11 @@ class MatchedFlagExecutionTest
 
 
     @Test
-    void datasetLookupMatchedRowReadsTheJoinMap()
+    void aViewPartsMatchedRowIsItsSuppliedMarker()
     {
         IDataTable primary = MockTable.of().name("AE").col("USUBJID", "P1", "P2", "P3").build();
         IDataTable dm = MockTable.of().name("DM").col("USUBJID", "P1", "P3").build();
-        DatasetLookup lookup = DatasetLookup.build("DM", dm, List.of("USUBJID"));
-        assertNotNull(lookup);
+        JoinLookup lookup = ExecCalls.viewLookup(primary, "DM", dm, List.of("USUBJID"));
         assertTrue(lookup.matchedRow(primary, 0));
         assertFalse(lookup.matchedRow(primary, 1));
         assertTrue(lookup.matchedRow(primary, 2));

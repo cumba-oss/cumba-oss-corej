@@ -73,9 +73,8 @@ public final class ScopeVariableSource
     private final boolean suppMerge;
 
     /**
-     * The run's shared index cache, or {@code null}: a SUPP-QNAM probe reads the one parsed
-     * {@link SuppQnamIndex} of the table the pivot reads (combined review of runbook W2–W8, round 2
-     * L2).
+     * The run's shared index cache, or {@code null}: a SUPP-QNAM probe reads the one memoised QNAM
+     * set of the SUPP table ({@link SuppQualifiers}; combined review of runbook W2–W8, round 2 L2).
      */
     private final JoinCache.@Nullable SharedIndexCache sharedIndex;
 
@@ -322,7 +321,7 @@ public final class ScopeVariableSource
 
     /**
      * Resolves a {@code --} in the qualifier against the primary table, mirroring how
-     * {@code Match_Datasets.Name} is resolved in {@code RuleRunner.buildJoinedDatasets}.
+     * {@code Match_Datasets.Name} is resolved for the merged view ({@code MergedEvaluation}).
      * <p>
      * Review M4 — note the asymmetry this inherits. {@link DatasetIdentity#resolveWildcard}
      * substitutes the primary's <b>table name</b>, not its domain code, so on a split member

@@ -23,11 +23,11 @@ import org.jspecify.annotations.Nullable;
  * </ul>
  *
  * <p>
- * Computed once per row-mapped table and kept on it ({@link RelrecExpandedTable}): the merged
- * evaluation view's table is cached per (dataset, merge signature) (P-3), so every rule sharing the
- * signature shares this too. Memory: two compact int buffers sized by the merged rows (the
- * representative of every merged row) and the distinct real rows (the merged row standing for
- * each); a temporary {@code int[]} over the base rows while computing. No per-row object.
+ * Computed once per row-mapped table and kept on it ({@link RowMappedTable}): the merged evaluation
+ * view's table is cached per (dataset, merge signature) (P-3), so every rule sharing the signature
+ * shares this too. Memory: two compact int buffers sized by the merged rows (the representative of
+ * every merged row) and the distinct real rows (the merged row standing for each); a temporary
+ * {@code int[]} over the base rows while computing. No per-row object.
  * </p>
  */
 public final class RealRows
@@ -63,8 +63,7 @@ public final class RealRows
      */
     public static @Nullable RealRows ofRepeating(IDataTable table)
     {
-        return table instanceof RelrecExpandedTable expanded ? expanded.realRows().repeating()
-                : null;
+        return table instanceof RowMappedTable expanded ? expanded.realRows().repeating() : null;
     }
 
 
@@ -79,7 +78,7 @@ public final class RealRows
      */
     public static long count(IDataTable table)
     {
-        return table instanceof RelrecExpandedTable expanded ? expanded.realRows().count
+        return table instanceof RowMappedTable expanded ? expanded.realRows().count
                 : table.getRowCount();
     }
 
@@ -139,8 +138,7 @@ public final class RealRows
      *            the base table's row count (base rows are {@code [0, baseRows)})
      * @return the projection; for a table with no repeated real row one that keeps no buffer
      */
-    static RealRows compute(RelrecExpandedTable expanded, IntToLongFunction baseRowOf,
-            long baseRows)
+    static RealRows compute(RowMappedTable expanded, IntToLongFunction baseRowOf, long baseRows)
     {
         int rows = Math.toIntExact(expanded.getRowCount());
         int[] firstSeen = new int[Math.toIntExact(baseRows)];
@@ -170,7 +168,7 @@ public final class RealRows
             return new RealRows(expanded, DataBufferFactory.get().createForRange(0, 0), distinct,
                     false);
         }
-        return new RealRows(new RelrecExpandedTable(expanded, representatives), representativeOf,
+        return new RealRows(new RowMappedTable(expanded, representatives), representativeOf,
                 distinct, true);
     }
 }

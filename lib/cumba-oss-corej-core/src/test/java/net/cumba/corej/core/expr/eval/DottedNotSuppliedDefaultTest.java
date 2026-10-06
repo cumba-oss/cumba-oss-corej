@@ -11,6 +11,7 @@ import java.util.BitSet;
 import java.util.List;
 import java.util.Set;
 import net.cumba.corej.core.exec.EvaluationContext;
+import net.cumba.corej.core.exec.ExecCalls;
 import net.cumba.corej.core.exec.OperandSubstitutor;
 import net.cumba.corej.core.exec.ScalarSemantics;
 import net.cumba.corej.core.expr.OperandKind;
@@ -252,7 +253,7 @@ class DottedNotSuppliedDefaultTest
         };
         EvaluationContext ctx = EvaluationContext.builder().table(primary())
                 .numericExpectedColumns(Set.of("DM.AGE"))
-                .joinedDatasets(java.util.Map.of("DM", supplied)).build();
+                .mergedView(ExecCalls.joinsView(java.util.Map.of("DM", supplied))).build();
 
         TypedValue v = dottedVector(ctx, "DM.AGE").value(0);
 
@@ -281,8 +282,8 @@ class DottedNotSuppliedDefaultTest
      * </p>
      *
      * <p>
-     * ⚑ This runs the REAL {@code DatasetLookup}, not a double, so the assertion covers the
-     * production absent-column arm and the wiring in one step.
+     * ⚑ This runs the REAL view lookup ({@code MergedViewLookup}), not a double, so the assertion
+     * covers the production absent-column arm and the wiring in one step.
      * </p>
      */
     @Test
@@ -290,15 +291,14 @@ class DottedNotSuppliedDefaultTest
         throws ReflectiveOperationException
     {
         IDataTable dm = MockTable.of().col("USUBJID", "S1").name("DM").build();
-        net.cumba.corej.core.exec.DatasetLookup lk = net.cumba.corej.core.exec.DatasetLookup
-                .build("DM", dm, List.of("USUBJID"));
-        assertNotNull(lk, "the fixture must join, or the arm under test is never reached");
+        net.cumba.corej.core.exec.JoinLookup lk = ExecCalls.viewLookup(primary(), "DM", dm,
+                List.of("USUBJID"));
 
         // (a) DM is joined, DM has no AGE, and the rule records DM.AGE as numeric ⇒ MIS, exactly
         // as an absent PRIMARY numeric column reads. Both arms of the operand shape.
         EvaluationContext numeric = EvaluationContext.builder().table(primary())
-                .numericExpectedColumns(Set.of("DM.AGE")).joinedDatasets(java.util.Map.of("DM", lk))
-                .build();
+                .numericExpectedColumns(Set.of("DM.AGE"))
+                .mergedView(ExecCalls.joinsView(java.util.Map.of("DM", lk))).build();
         assertTrue(dottedVector(numeric, "DM.AGE").value(0).isMissing(),
                 "⛔ §9c: the authored form must answer MIS for a numeric-expected absent joined"
                         + " column");
@@ -309,8 +309,8 @@ class DottedNotSuppliedDefaultTest
         // (b) CONTROL — the same run with the BARE column name recorded instead. The dotted
         // operand is NOT keyed on it, so the char default stands.
         EvaluationContext bare = EvaluationContext.builder().table(primary())
-                .numericExpectedColumns(Set.of("AGE")).joinedDatasets(java.util.Map.of("DM", lk))
-                .build();
+                .numericExpectedColumns(Set.of("AGE"))
+                .mergedView(ExecCalls.joinsView(java.util.Map.of("DM", lk))).build();
         TypedValue bareAuthored = dottedVector(bare, "DM.AGE").value(0);
         assertFalse(bareAuthored.isMissing(),
                 "⛔ CONTROL: keyed on the FULL DOTTED name — a bare \"AGE\" must NOT match, or the"

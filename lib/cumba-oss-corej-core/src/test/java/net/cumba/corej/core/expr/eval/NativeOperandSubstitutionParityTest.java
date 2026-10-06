@@ -7,6 +7,7 @@ import java.util.BitSet;
 import java.util.Map;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.EvaluationContext;
+import net.cumba.corej.core.exec.ExecCalls;
 import net.cumba.corej.core.exec.JoinLookup;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
@@ -87,7 +88,8 @@ class NativeOperandSubstitutionParityTest
                 .col("TRT02P", "PLACEBO", "DRUG", "PLACEBO").build();
         DatasetResolver resolver = ds -> "ADSL".equals(ds) ? adsl : null;
         EvaluationContext ctx = EvaluationContext.builder().table(primary).datasetResolver(resolver)
-                .joinedDatasets(Map.of("ADSL", rowAlignedJoin(adsl, "ADSL"))).build();
+                .mergedView(ExecCalls.joinsView(Map.of("ADSL", rowAlignedJoin(adsl, "ADSL"))))
+                .build();
 
         String operand = "ADSL.TRT${APERIOD:%02d}P";
         Expr expr = new Expr.Binary(BinOp.NEQ, ref("TRTP", OperandKind.COLUMN),
@@ -137,7 +139,8 @@ class NativeOperandSubstitutionParityTest
                 .build();
         DatasetResolver resolver = ds -> "ADSL".equals(ds) ? adsl : null;
         EvaluationContext ctx = EvaluationContext.builder().table(primary).datasetResolver(resolver)
-                .joinedDatasets(Map.of("ADSL", rowAlignedJoin(adsl, "ADSL"))).build();
+                .mergedView(ExecCalls.joinsView(Map.of("ADSL", rowAlignedJoin(adsl, "ADSL"))))
+                .build();
 
         String operand = "ADSL.APHASE${*}";
         Expr expr = new Expr.Binary(BinOp.NOT_IN, ref("APHASE", OperandKind.COLUMN),
@@ -162,7 +165,8 @@ class NativeOperandSubstitutionParityTest
                 .col("APHASE2", "TREAT", "TREAT").build();
         DatasetResolver resolver = ds -> "ADSL".equals(ds) ? adsl : null;
         EvaluationContext ctx = EvaluationContext.builder().table(primary).datasetResolver(resolver)
-                .joinedDatasets(Map.of("ADSL", rowAlignedJoin(adsl, "ADSL"))).build();
+                .mergedView(ExecCalls.joinsView(Map.of("ADSL", rowAlignedJoin(adsl, "ADSL"))))
+                .build();
 
         String operand = "ADSL.APHASE${*}";
         Expr expr = new Expr.Binary(BinOp.IN, ref("APHASE", OperandKind.COLUMN),
@@ -186,7 +190,8 @@ class NativeOperandSubstitutionParityTest
                 .col("TR2PG2", "B", "B").col("TRXPGY", "Z", "Z").build();
         DatasetResolver resolver = ds -> "ADSL".equals(ds) ? adsl : null;
         EvaluationContext ctx = EvaluationContext.builder().table(primary).datasetResolver(resolver)
-                .joinedDatasets(Map.of("ADSL", rowAlignedJoin(adsl, "ADSL"))).build();
+                .mergedView(ExecCalls.joinsView(Map.of("ADSL", rowAlignedJoin(adsl, "ADSL"))))
+                .build();
 
         String operand = "ADSL.TR${*}PG${*}";
         Expr expr = new Expr.Binary(BinOp.NOT_IN, ref("VAL", OperandKind.COLUMN),
@@ -219,7 +224,8 @@ class NativeOperandSubstitutionParityTest
                 .col("TGT2", "9.0", "9.0", "9.0").build();
         DatasetResolver resolver = ds -> "ADSL".equals(ds) ? adsl : null;
         EvaluationContext ctx = EvaluationContext.builder().table(primary).datasetResolver(resolver)
-                .joinedDatasets(Map.of("ADSL", rowAlignedJoin(adsl, "ADSL"))).build();
+                .mergedView(ExecCalls.joinsView(Map.of("ADSL", rowAlignedJoin(adsl, "ADSL"))))
+                .build();
 
         Expr absCall = new Expr.Call("abs", java.util.List.of(ref("AVAL", OperandKind.COLUMN)),
                 Map.of());

@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import java.util.List;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
-import org.junit.jupiter.api.AfterEach;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -31,13 +31,6 @@ class MergedLeafCacheTest
     private static final IDataTable J = RealTables.of("J").str("K", "k1", "k2")
             .str("K2", "k1", "k2").str("S", "x", "y").build();
 
-    @AfterEach
-    void legacyOff()
-    {
-        MergedEvaluation.setLegacyForTests(false);
-    }
-
-
     private static Rule rule(String id, String key)
     {
         String json = ruleJson("Record", "\"Match_Datasets\":[{\"Name\":\"J\",\"Keys\":[\"" + key
@@ -47,7 +40,8 @@ class MergedLeafCacheTest
     }
 
 
-    private static RuleExecutionResult run(Rule rule, JoinCache joins, ExpressionResultCache cache)
+    private static RuleExecutionResult run(Rule rule, @Nullable JoinCache joins,
+            ExpressionResultCache cache)
     {
         return RuleRunnerCalls.execute(rule, P, exactInventory(P, J), null, null, joins, null,
                 Integer.MAX_VALUE, cache);
@@ -85,14 +79,14 @@ class MergedLeafCacheTest
 
 
     @Test
-    @DisplayName("a join reached off the shared view (the legacy arm) is never cached")
-    void theLegacyArmIsNotCached()
+    @DisplayName("a view built per execution (no dataset cache) is never a cache key")
+    void aViewBuiltPerExecutionIsNotCached()
     {
-        MergedEvaluation.setLegacyForTests(true);
+        // W6 retired the legacy arm this test used to drive; the one remaining way to a join off
+        // the shared view is an execution without a JoinCache — a fresh view per rule
         ExpressionResultCache cache = new ExpressionResultCache();
-        RuleExecutionResult r = run(rule("T-L", "K"),
-                new JoinCache(new JoinCache.SharedIndexCache()), cache);
+        RuleExecutionResult r = run(rule("T-L", "K"), null, cache);
         assertEquals(List.of(1L), QualifiedNameFixture.rows(r));
-        assertEquals(0, cache.size(), "per-rule lookups and tables are never a shared key");
+        assertEquals(0, cache.size(), "a per-rule view and its table are never a shared key");
     }
 }

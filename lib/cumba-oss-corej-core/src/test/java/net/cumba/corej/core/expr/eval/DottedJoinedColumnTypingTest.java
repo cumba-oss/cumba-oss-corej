@@ -1,16 +1,15 @@
 package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
-import net.cumba.corej.core.exec.DatasetLookup;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.EvaluationContext;
+import net.cumba.corej.core.exec.ExecCalls;
 import net.cumba.corej.core.exec.JoinLookup;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.datatable.DataTableColumnMeta;
@@ -47,11 +46,10 @@ class DottedJoinedColumnTypingTest
 
     private static EvaluationContext ctx(IDataTable primary, IDataTable dm)
     {
-        JoinLookup lk = DatasetLookup.build("DM", dm, List.of("USUBJID"));
-        assertNotNull(lk);
+        JoinLookup lk = ExecCalls.viewLookup(primary, "DM", dm, List.of("USUBJID"));
         DatasetResolver res = n -> "DM".equals(n) ? dm : null;
         return EvaluationContext.builder().table(primary).datasetResolver(res)
-                .joinedDatasets(Map.of("DM", lk)).build();
+                .mergedView(ExecCalls.joinsView(Map.of("DM", lk))).build();
     }
 
 

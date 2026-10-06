@@ -841,7 +841,7 @@ public final class GroupedAggregate
     {
         String qualifier = Objects.requireNonNull(MatchDataset.qualifierOf(qualifiedName));
         String unqualified = qualifiedName.substring(qualifier.length() + 1);
-        JoinLookup lookup = ctx.getJoinedDatasets().get(qualifier);
+        JoinLookup lookup = ctx.joins().get(qualifier);
         if (lookup == null)
         {
             throw new UnresolvedQualifiedKeyException(where, qualifiedName,
@@ -890,7 +890,7 @@ public final class GroupedAggregate
                 continue;
             }
             String unqualified = name.substring(qualifier.length() + 1);
-            JoinLookup lookup = ctx.getJoinedDatasets().get(qualifier);
+            JoinLookup lookup = ctx.joins().get(qualifier);
             if (lookup == null)
             {
                 continue; // recordKeyer reports it
@@ -1429,9 +1429,8 @@ public final class GroupedAggregate
         TypeExpectations expectations = TypeExpectations.of(roots);
         IDataTable primary = ctx.getTable();
         return EvaluationContext.builder().table(primary).ruleId(ctx.getRuleId())
-                .suppMerge(ctx.isSuppMerge()).suppPivot(ctx.getSuppPivot())
-                .sharedIndexCache(ctx.getSharedIndexCache()).mergedView(ctx.getMergedView())
-                .joinedDatasets(ctx.getJoinedDatasets()).domainName(primary.getMetaData().getName())
+                .suppMerge(ctx.isSuppMerge()).sharedIndexCache(ctx.getSharedIndexCache())
+                .mergedView(ctx.getMergedView()).domainName(primary.getMetaData().getName())
                 .datasetResolver(ctx.getDatasetResolver())
                 .numericExpectedColumns(expectations.numericDefaultColumns())
                 .numericExpectedDynamicSites(expectations.numericDynamicSites()).build();

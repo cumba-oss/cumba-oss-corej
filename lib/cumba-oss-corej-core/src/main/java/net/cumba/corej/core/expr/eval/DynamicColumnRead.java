@@ -48,9 +48,9 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * ⚠ A SUPP-QNAM-pivoted qualifier ({@code exec/SuppPivot}) is <b>not</b> read here, as it is not by
- * {@code ${…}}: the pivot is not a column of the evaluation table, and {@code find_vars} does not
- * return pivoted names either (owner Q12). The authored bare name does read the pivot — an
+ * ⚠ A SUPP-QNAM-pivoted qualifier (the merged view's SUPP part) is <b>not</b> read here, as it is
+ * not by {@code ${…}}: the pivot is not a column of the evaluation table, and {@code find_vars}
+ * does not return pivoted names either (owner Q12). The authored bare name does read the pivot — an
  * asymmetry handed to {@code PLAN-qualified-name-uniformity-review}.
  * </p>
  *
@@ -148,10 +148,10 @@ public final class DynamicColumnRead
     /**
      * A supplemental qualifier the declared SUPP merge delivers for a bare name the evaluation
      * table lacks ({@code PLAN-merged-evaluation-table} W3d, MQ7 — {@code DCF Q8} lifted for this
-     * point; {@code DCF Q12}'s F1 closed with it): the column {@code SuppPivot} hands out — the
-     * merged view's SUPP column, or the legacy pivot — read as the authored name reads it. A
-     * flagged column ({@code MERGE_ERROR}, OD-7) raises {@code MergeErrorReadException} at the
-     * read, the read-time backstop of the static gate.
+     * point; {@code DCF Q12}'s F1 closed with it): the merged view's SUPP column
+     * ({@code EvaluationContext.suppQualifier}) read as the authored name reads it. A flagged
+     * column ({@code MERGE_ERROR}, OD-7) raises {@code MergeErrorReadException} at the read, the
+     * read-time backstop of the static gate.
      */
     private record Qualifier(IDataTableColumn column) implements Target
     {
@@ -335,7 +335,7 @@ public final class DynamicColumnRead
      */
     public static @Nullable JoinLookup joinedDataset(EvaluationContext ctx, String qualifier)
     {
-        Map<String, JoinLookup> joins = ctx.getJoinedDatasets();
+        Map<String, JoinLookup> joins = ctx.joins();
         JoinLookup exact = joins.get(qualifier);
         if (exact != null)
         {
@@ -418,10 +418,9 @@ public final class DynamicColumnRead
             return new Primary(colIdx, t == DataValueType.LONG || t == DataValueType.DOUBLE);
         }
         // W3d (MQ7): a bare name the primary lacks may be a SUPP<domain> qualifier of the record
-        // — the column the authored name reads through SuppPivot (the view's SUPP column on the
-        // merged arm; a MERGE_ERROR raises here, at the read).
-        IDataTableColumn qualifier = net.cumba.corej.core.exec.SuppPivot.qualifierColumn(ctx,
-                resolved);
+        // — the column the authored name reads (the view's SUPP column; a MERGE_ERROR raises here,
+        // at the read).
+        IDataTableColumn qualifier = ctx.suppQualifier(resolved);
         if (qualifier != null)
         {
             return new Qualifier(qualifier);

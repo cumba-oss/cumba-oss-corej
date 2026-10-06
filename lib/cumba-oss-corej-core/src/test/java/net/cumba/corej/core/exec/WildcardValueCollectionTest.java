@@ -1,7 +1,6 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -39,7 +38,7 @@ class WildcardValueCollectionTest
     {
         return EvaluationContext.builder().table(table)
                 .datasetResolver(name -> name == null ? null : datasets.get(name))
-                .joinedDatasets(joins).variables(new LinkedHashMap<>()).build();
+                .mergedView(ExecCalls.joinsView(joins)).variables(new LinkedHashMap<>()).build();
     }
 
 
@@ -212,8 +211,7 @@ class WildcardValueCollectionTest
         // ADSL has no S9 row, so every primary row is unmatched.
         IDataTable adsl = MockTable.of().name("ADSL").col("USUBJID", "S1").col("TRT01P", "DRUG A")
                 .col("TRT02P", "DRUG B").build();
-        DatasetLookup real = DatasetLookup.build("ADSL", adsl, List.of("USUBJID"));
-        assertNotNull(real, "a keyed lookup over a non-null table must be built");
+        JoinLookup real = ExecCalls.viewLookup(primary, "ADSL", adsl, List.of("USUBJID"));
         EvaluationContext c = ctx(primary, map("ADSL", adsl), Map.of("ADSL", real));
         assertEquals(List.of("", ""),
                 ValueResolver.resolveWildcardValues(wildcard("ADSL.TRT${*}P"), null, c, 0),
@@ -275,7 +273,8 @@ class WildcardValueCollectionTest
         JoinLookup lookup = joinReturning(Map.of("TRT01PN", "7", "TRT02PN", "9"));
         EvaluationContext c = EvaluationContext.builder().table(primary)
                 .datasetResolver(RealTables.inventoryOf(lbch, lbhe))
-                .joinedDatasets(Map.of("LB", lookup)).variables(new LinkedHashMap<>()).build();
+                .mergedView(ExecCalls.joinsView(Map.of("LB", lookup)))
+                .variables(new LinkedHashMap<>()).build();
         assertEquals(List.of("7", "9"),
                 ValueResolver.resolveWildcardValues(wildcard("LB.TRT${*}PN"), null, c, 0),
                 "the union's column set must drive the wildcard enumeration");

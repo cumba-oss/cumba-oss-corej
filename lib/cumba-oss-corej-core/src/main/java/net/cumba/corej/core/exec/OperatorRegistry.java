@@ -98,7 +98,7 @@ public final class OperatorRegistry
         // W2a (C1 ruled (a)): a qualifier SUPP<domain> delivers for this table exists for the
         // existence surface too — the same pivot the value read uses, gated by Supp_Merge.
         return ctx.getTable().getMetaData().getOptionalColumn(colName) != null
-                || SuppPivot.exists(ctx, colName);
+                || ctx.suppQualifier(colName) != null;
     }
 
 
@@ -120,7 +120,7 @@ public final class OperatorRegistry
         int colIdx = meta.getColumnIndex(name);
         // W2a: a SUPP-delivered qualifier is readable per record (C1 ruled (a)), so its nullity is
         // read over the pivoted column; an absent column stays null.
-        IDataTableColumn col = colIdx < 0 ? SuppPivot.qualifierColumn(ctx, name)
+        IDataTableColumn col = colIdx < 0 ? ctx.suppQualifier(name)
                 : ctx.getTable().getColumn(colIdx);
         if (col == null)
         {
@@ -436,7 +436,7 @@ public final class OperatorRegistry
         // schema — the join's column set, the partner's SUPP qualifiers included (MQ5) — exactly
         // what a value read of the same name would find; the inventory arm below serves an
         // undeclared dataset only (a pure metadata question, no join required).
-        JoinLookup declared = ctx.getJoinedDatasets().get(domain);
+        JoinLookup declared = ctx.joins().get(domain);
         if (declared != null)
         {
             return !declared.lacksColumnOnEveryRow(col);

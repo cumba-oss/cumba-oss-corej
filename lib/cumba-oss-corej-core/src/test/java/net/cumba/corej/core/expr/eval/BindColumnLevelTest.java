@@ -5,8 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.BindingValue;
-import net.cumba.corej.core.exec.DatasetLookup;
 import net.cumba.corej.core.exec.EvaluationContext;
+import net.cumba.corej.core.exec.ExecCalls;
+import net.cumba.corej.core.exec.JoinLookup;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.eval.BroadcastFold.BindColumnLevel;
 import net.cumba.corej.core.model.CompiledBinding;
@@ -104,12 +105,14 @@ class BindColumnLevelTest
                 {
                         "S1"
                 }, 1);
-        DatasetLookup lookup = DatasetLookup.build("EX", ex, List.of("USUBJID"));
-        EvaluationContext joined = EvaluationContext.builder()
-                .table(new SyntheticDataTable("AE", List.of("USUBJID", "AETERM"), new String[]
+        SyntheticDataTable ae = new SyntheticDataTable("AE", List.of("USUBJID", "AETERM"),
+                new String[]
                 {
                         "S1"
-                }, 1)).joinedDatasets(Map.of("EX", lookup))
+                }, 1);
+        JoinLookup lookup = ExecCalls.viewLookup(ae, "EX", ex, List.of("USUBJID"));
+        EvaluationContext joined = EvaluationContext.builder().table(ae)
+                .mergedView(ExecCalls.joinsView(Map.of("EX", lookup)))
                 .datasetResolver(n -> "EX".equals(n) ? ex : null).build();
         assertEquals(BindColumnLevel.ROW, BroadcastFold.bindColumnLevel("EX.EXDOSE", joined));
         assertEquals(BindColumnLevel.DATASET_ABSENT,
@@ -148,12 +151,14 @@ class BindColumnLevelTest
                 {
                         "S1"
                 }, 1);
-        DatasetLookup lookup = DatasetLookup.build("EX", ex, List.of("USUBJID"));
-        EvaluationContext joined = EvaluationContext.builder()
-                .table(new SyntheticDataTable("AE", List.of("USUBJID", "AETERM"), new String[]
+        SyntheticDataTable ae = new SyntheticDataTable("AE", List.of("USUBJID", "AETERM"),
+                new String[]
                 {
                         "S1"
-                }, 1)).joinedDatasets(Map.of("EX", lookup))
+                }, 1);
+        JoinLookup lookup = ExecCalls.viewLookup(ae, "EX", ex, List.of("USUBJID"));
+        EvaluationContext joined = EvaluationContext.builder().table(ae)
+                .mergedView(ExecCalls.joinsView(Map.of("EX", lookup)))
                 .datasetResolver(n -> "EX".equals(n) ? ex : null).build();
 
         assertEquals(BindColumnLevel.DATASET_ABSENT, BroadcastFold.bindColumnLevel("AEXX", joined),

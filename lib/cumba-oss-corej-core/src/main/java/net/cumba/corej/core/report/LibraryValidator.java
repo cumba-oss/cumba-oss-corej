@@ -1177,9 +1177,9 @@ public final class LibraryValidator
         // cdiscDomain ("SUPPLB" here) feeds the SUPP-aware branch correctly, yielding "SUPPLB".
         String domainPrefix = cdiscDomain;
 
-        // Per-dataset join cache — reuses join structures across rules that
-        // reference the same datasets (e.g., all rules joining DM by USUBJID
-        // share one DatasetLookup with its pre-built row map).
+        // Per-dataset join cache — the merged evaluation views, one per merge signature, shared by
+        // the rules of this dataset (e.g., all rules joining DM by [STUDYID, USUBJID] read one
+        // view and its row maps).
         net.cumba.corej.core.exec.JoinCache joinCache = new net.cumba.corej.core.exec.JoinCache(
                 aSharedIndex);
 

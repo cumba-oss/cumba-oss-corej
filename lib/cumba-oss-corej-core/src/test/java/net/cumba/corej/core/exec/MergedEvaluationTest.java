@@ -1,7 +1,6 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -21,11 +20,11 @@ import org.junit.jupiter.api.Test;
 
 /**
  * W3a of {@code PLAN-merged-evaluation-table} ({@link MergedEvaluation}): the keyed parts and the
- * SUPP qualifiers are read from the merged view. Every behaviour change is shown against the legacy
- * arm ({@link MergedEvaluation#setLegacyForTests}) in the same test — the legacy result is the
- * red-first evidence, the view result the target; a read the view does not change is shown equal on
- * both arms; a planted row shift ({@link MergedEvaluation#plantForTests}) must move a finding, or
- * the view was not read.
+ * SUPP qualifiers are read from the merged view. Until W6 every behaviour change was shown against
+ * the legacy arm in the same test (the red-first evidence); W6 retired that arm, so the reads the
+ * view did not change are pinned by the rows they report — the legacy arm's answer, recorded — and
+ * a planted row shift ({@link MergedEvaluation#plantForTests}) must move a finding, or the view was
+ * not read.
  */
 class MergedEvaluationTest
 {
@@ -33,7 +32,6 @@ class MergedEvaluationTest
     @AfterEach
     void hooksOff()
     {
-        MergedEvaluation.setLegacyForTests(false);
         MergedEvaluation.plantForTests(null);
     }
 
@@ -152,38 +150,31 @@ class MergedEvaluationTest
     }
 
 
-    private static RuleExecutionResult legacy(Rule rule, IDataTable table, DatasetResolver r)
+    /** The rows a result's findings sit on, in order. */
+    private static java.util.List<Long> rows(RuleExecutionResult result)
     {
-        MergedEvaluation.setLegacyForTests(true);
-        try
-        {
-            return RuleRunnerCalls.execute(rule, table, r);
-        }
-        finally
-        {
-            MergedEvaluation.setLegacyForTests(false);
-        }
+        return result.getViolations().stream().map(Violation::getRow).toList();
     }
 
 
     @Test
-    void keyedReadsAndTheMatchedFlagAgreeWithTheLegacyArm()
+    void keyedReadsAndTheMatchedFlagKeepTheLegacyArmsAnswer()
     {
+        // AE 01/1, 01/2, 02/1 left-joined to a DM holding subject 01 only (54, F): the rows each
+        // check reported on both arms when W3a compared them, pinned since W6 retired the legacy
         IDataTable ae = ae();
         IDataTable dm = RealTableFixture.of("DM").str("STUDYID", "S1").str("USUBJID", "01")
                 .lng("AGE", 54L).str("SEX", "F").build();
         DatasetResolver r = resolver(ae, dm);
-        for (String check : new String[]
+        Map<String, java.util.List<Long>> expected = new java.util.LinkedHashMap<>();
+        expected.put("DM.AGE > 60 or DM.SEX == \\\"F\\\"", java.util.List.of(0L, 1L));
+        expected.put("not DM._matched_", java.util.List.of(2L));
+        expected.put("empty(DM.AGE)", java.util.List.of(2L));
+        for (Map.Entry<String, java.util.List<Long>> e : expected.entrySet())
         {
-                "DM.AGE > 60 or DM.SEX == \\\"F\\\"", "not DM._matched_", "empty(DM.AGE)"
-        })
-        {
-            Rule rule = keyedRule(check);
-            RuleExecutionResult off = legacy(rule, ae, r);
-            RuleExecutionResult on = RuleRunnerCalls.execute(rule, ae, r);
-            assertEquals(RuleExecutionStatus.EXECUTED, on.getStatus(), check);
-            assertEquals(off.getViolations(), on.getViolations(), check);
-            assertFalse(on.getViolations().isEmpty(), check + " fired nowhere");
+            RuleExecutionResult on = RuleRunnerCalls.execute(keyedRule(e.getKey()), ae, r);
+            assertEquals(RuleExecutionStatus.EXECUTED, on.getStatus(), e.getKey());
+            assertEquals(e.getValue(), rows(on), e.getKey());
         }
     }
 
@@ -208,10 +199,8 @@ class MergedEvaluationTest
         IDataTable ae = ae();
         DatasetResolver r = resolver(ae, suppAe("S1|01|AESEQ|1|Y", "S1|02|AESEQ|1|N"));
         Rule rule = suppRule("AETRTEM == \\\"Y\\\"", "\"AETRTEM\"");
-        RuleExecutionResult off = legacy(rule, ae, r);
         RuleExecutionResult on = RuleRunnerCalls.execute(rule, ae, r);
-        assertEquals(1, on.getViolations().size());
-        assertEquals(off.getViolations(), on.getViolations());
+        assertEquals(java.util.List.of(0L), rows(on), "AE 01/1 is qualified Y (both arms, W3a)");
         MergedEvaluation.plantForTests(MergeKind.SUPP);
         RuleExecutionResult planted = RuleRunnerCalls.execute(rule, ae, r);
         assertNotEquals(on.getViolations(), planted.getViolations(),
@@ -222,15 +211,12 @@ class MergedEvaluationTest
     @Test
     void aDuplicateQualifierErrorsTheRuleThatReadsItAndNoOther()
     {
-        // §3.5.3 case 2: two SUPPAE rows qualify AE row 0 for AETRTEM. Legacy: the first wins
-        // (red-first evidence); the view: the rule reading AETRTEM ERRORs quoting the flag, a rule
-        // on AE that does not read it runs.
+        // §3.5.3 case 2: two SUPPAE rows qualify AE row 0 for AETRTEM. The retired legacy pivot
+        // let the first win (W3a's red-first evidence); the view: the rule reading AETRTEM ERRORs
+        // quoting the flag, a rule on AE that does not read it runs.
         IDataTable ae = ae();
         DatasetResolver r = resolver(ae, suppAe("S1|01|AESEQ|1|Y", "S1|01|AESEQ|1|N"));
         Rule reads = suppRule("AETRTEM == \\\"Y\\\"", "\"AETRTEM\"");
-        RuleExecutionResult off = legacy(reads, ae, r);
-        assertEquals(RuleExecutionStatus.EXECUTED, off.getStatus());
-        assertEquals(1, off.getViolations().size(), "legacy: the first row won");
         RuleExecutionResult on = RuleRunnerCalls.execute(reads, ae, r);
         assertEquals(RuleExecutionStatus.ERROR, on.getStatus(), String.valueOf(on));
         String msg = String.valueOf(on.getStatusMessage());
@@ -252,7 +238,6 @@ class MergedEvaluationTest
         IDataTable ae = ae();
         DatasetResolver r = resolver(ae, suppAe("S1|01|AESEQ|1|Y", "S1|01|AESEQ|1|N"));
         Rule reports = suppRule("AETERM == \\\"A\\\"", "\"AETERM\",\"AETRTEM\"");
-        assertEquals(RuleExecutionStatus.EXECUTED, legacy(reports, ae, r).getStatus());
         RuleExecutionResult on = RuleRunnerCalls.execute(reports, ae, r);
         assertEquals(RuleExecutionStatus.ERROR, on.getStatus(), String.valueOf(on));
     }
@@ -265,7 +250,6 @@ class MergedEvaluationTest
         Rule reads = suppRule("AETRTEM == \\\"Y\\\"", "\"AETRTEM\"");
         // case 3
         DatasetResolver level = resolver(ae, suppAe("S1|01||\u0000|N", "S1|01|AESEQ|1|Y"));
-        assertEquals(RuleExecutionStatus.EXECUTED, legacy(reads, ae, level).getStatus());
         RuleExecutionResult on3 = RuleRunnerCalls.execute(reads, ae, level);
         assertEquals(RuleExecutionStatus.ERROR, on3.getStatus(), String.valueOf(on3));
         assertTrue(
@@ -274,7 +258,6 @@ class MergedEvaluationTest
                 on3.getStatusMessage());
         // case 6
         DatasetResolver unknown = resolver(ae, suppAe("S1|01|AEGRPID|G1|Y"));
-        assertEquals(RuleExecutionStatus.EXECUTED, legacy(reads, ae, unknown).getStatus());
         RuleExecutionResult on6 = RuleRunnerCalls.execute(reads, ae, unknown);
         assertEquals(RuleExecutionStatus.ERROR, on6.getStatus(), String.valueOf(on6));
         assertTrue(String.valueOf(on6.getStatusMessage()).contains("IDVAR AEGRPID is not a column"),
@@ -285,12 +268,11 @@ class MergedEvaluationTest
     @Test
     void theIgKeyCarriesStudyidAndRdomain()
     {
-        // §3.5.1 "STUDYID in the key": a SUPPAE row of study S2 qualifies no AE record of S1.
-        // Legacy (never read STUDYID): matched, 1 finding — the red-first evidence.
+        // §3.5.1 "STUDYID in the key": a SUPPAE row of study S2 qualifies no AE record of S1 (the
+        // retired legacy pivot never read STUDYID: matched, 1 finding — W3a's red-first evidence).
         IDataTable ae = ae();
         DatasetResolver r = resolver(ae, suppAe("S2|01|AESEQ|1|Y"));
         Rule reads = suppRule("AETRTEM == \\\"Y\\\"", "\"AETRTEM\"");
-        assertEquals(1, legacy(reads, ae, r).getViolations().size());
         RuleExecutionResult on = RuleRunnerCalls.execute(reads, ae, r);
         assertEquals(RuleExecutionStatus.EXECUTED, on.getStatus());
         assertEquals(0, on.getViolations().size(), String.valueOf(on.getViolations()));
@@ -353,7 +335,7 @@ class MergedEvaluationTest
 
 
     @Test
-    void aForwardRelrecRuleIsServedAndNothingToMergeStaysOnTheLegacyArm()
+    void aForwardRelrecRuleIsServedAndNothingToMergeBuildsNoView()
     {
         IDataTable ae = ae();
         // W5: a forward RELREC rule builds the view even when RELREC does not resolve — the entry

@@ -262,8 +262,8 @@ public final class RuleRunner
             // key, never JKM R7's absent-side default, never EC-44's silent partition-nothing.
             // ⭐ JoinKeyTypeMismatchException joins this catch for D4-R2 (owner, 2026-09-22: "a
             // rule errors out if the types do not match … I do not want a silent mismatch"). Same
-            // channel, same shape; thrown from KeyMatchRowExpander.keySpec, which is the one site
-            // that holds BOTH sides' declared types.
+            // channel, same shape; thrown from KeyGates.check, which runs before the merged view
+            // is asked for the entry's part and holds BOTH sides' declared types.
             // ⭐ DegenerateJoinKeyException joins this catch for JKM R7 (owner, 2026-09-21: "if all
             // columns are absent, then the rule should fail with an error"). Same channel, same
             // shape, same reason: a submission the sponsor must see, never a silent skip.
@@ -274,8 +274,7 @@ public final class RuleRunner
             // split is a submission defect the sponsor must see, so the rule reports ERROR with
             // the same "__error__" sentinel shape as a load error — never a silent skip, never a
             // coerced union. The throwing resolution sites are spread across the whole execution
-            // body (the merged view build, the key-match expander, buildJoinedDatasets, and the
-            // Check-side dotted resolvers), which is why
+            // body (the merged view build and the Check-side dotted resolvers), which is why
             // the catch wraps the body rather than any one block.
             String errorMsg = String.valueOf(e.getMessage());
             LOGGER.log(System.Logger.Level.WARNING, "[{0}] {1}",
@@ -654,14 +653,13 @@ public final class RuleRunner
 
         // -----------------------------------------------------------------------
         // Phase ordering (see `core-engine-update-plan.md` §2 Cluster C):
-        // 2a.6–2a.7 — the merged view (or, legacy arm, the key-match row expansion) produce the
-        // merged,
-        // row-expanded `evalTable` (every later phase uses `evalTable`, not `table`). These run
+        // 2a.6–2a.7 — the merged view produces the merged, row-expanded `evalTable` (every later
+        // phase uses `evalTable`, not `table`). These run
         // BEFORE Operations, mirroring Python (preprocess precedes perform_rule_operations), so an
         // Operation aggregating over the primary sees the expanded row set.
         // 2a — Execute Operations (already `--`-concrete: RuleSpecialiser resolved them at the
         // top of this method, stashing `originalName` — Fix #1 / D92a)
-        // 2b — Build Match_Datasets join lookups (Fix #7 multi-row)
+        // 2b — the joins are the merged view's parts (EvaluationContext.joins)
         // (2c is gone — D77: the Check tree arrives concrete from the specialisation stage)
         // 2e — Evaluate Rule.Precondition (Fix #13 — currently deferred per OQ#4)
         // 3 — Check evaluation
@@ -758,18 +756,14 @@ public final class RuleRunner
         // part of the merged evaluation view below, its columns qualified with the parent domain
         // (AE.AESMIE), never merged bare into the evaluation table (ChildEntries).
 
-        // Phases 2a.6–2b (W3a of PLAN-merged-evaluation-table): the merged evaluation view — the
-        // keyed Match_Datasets parts, the Child parents (W4), the forward RELREC related domains
-        // (W5, the cross product per relationship) and the primary's SUPP<domain> qualifiers as
-        // columns of ONE table (§3.1) — replaces the RELREC row expansion (2a.6), the key-match
-        // row expansion (2a.7), the key-join lookups (2b) and the SUPP pivot's reader sites. Its
-        // primary part is the evaluation table, its parts are the context's JoinLookups, its
-        // qualifier columns are what SuppPivot hands out; built once per (dataset, merge
-        // signature) through the JoinCache (P-3). The legacy arm below stays for a chained
-        // qualified key (composed by the engine) until W6, and is what the corpus differential
-        // compares the view against (MergedEvaluation.setLegacyForTests).
-        List<MatchDataset> joinMatchDatasets = rule.getMatchDatasets();
-        KeyMatchRowExpander.KeyMatchExpansion keyExpansion = null;
+        // Phases 2a.6–2b (PLAN-merged-evaluation-table): the merged evaluation view — the keyed
+        // Match_Datasets parts (a chained qualified key composed in stages, W6), the Child parents
+        // (W4), the forward RELREC related domains (W5, the cross product per relationship) and
+        // the primary's SUPP<domain> qualifiers as columns of ONE table (§3.1). It replaced the
+        // RELREC row expansion (2a.6), the key-match row expansion (2a.7), the key-join lookups
+        // (2b) and the SUPP pivot (all retired in W6): its primary part is the evaluation table,
+        // its parts are the context's joins, its qualifier columns the context's SUPP
+        // qualifiers; built once per (dataset, merge signature) through the JoinCache (P-3).
         MergedEvaluation.Built mergedView = MergedEvaluation.build(rule, evalTable, table, resolver,
                 joinCache, ruleId, domainPrefix);
         RuleExecutionResult stageBOutcome = stageBGate(rule, table, varWildcardPrefix != null,
@@ -788,38 +782,6 @@ public final class RuleRunner
             if (flagged != null)
             {
                 return flagged;
-            }
-        }
-        else
-        {
-            // Phase 2a.6 is gone (W5 of PLAN-merged-evaluation-table, §3.6): a forward RELREC
-            // entry is served by the view above (RelrecEntries); a rule carrying one never
-            // reaches this arm (RulePackageLoader.checkRelrecEntryServed).
-
-            // Phase 2a.7: key-based Match_Datasets row expansion (mirrors Python merge_datasets).
-            // One
-            // expanded row per (primary, matched child) pair, honoring the entry's Join_Type (the
-            // loader stamps `inner` where none is authored — S2; the expander has no default); each
-            // expanded row binds its matching child, served by the KeyMatchExpandedLookup added
-            // below —
-            // so a dot-qualified AE.AESDTH predicate sees the matching child, not a first-wins
-            // guess.
-            // ⭐ PLAN-keymatch-shared-join-index: the child indexes come from the run's shared
-            // cache, so
-            // DM's USUBJID index is built once per DM table rather than once per rule and dataset.
-            keyExpansion = KeyMatchRowExpander.expand(evalTable, joinMatchDatasets, resolver,
-                    ruleId, joinCache != null ? joinCache.getSharedIndexCache() : null);
-            if (keyExpansion != null)
-            {
-                // (MQ11, W5: a forward RELREC entry beside a key expansion is served by the view,
-                // which composes the row maps — the "not supported on the same rule" ERROR this
-                // arm raised is gone with the expander)
-                evalTable = keyExpansion.table();
-                // Expanded entries are served by the bound-child lookups; drop them from key-join
-                // build.
-                List<MatchDataset> remaining = new ArrayList<>(joinMatchDatasets);
-                remaining.removeAll(keyExpansion.expandedEntries());
-                joinMatchDatasets = remaining;
             }
         }
 
@@ -865,24 +827,6 @@ public final class RuleRunner
         // context variable, and the SD0004 DOMAIN-column shape evaluates identically with and
         // without the injection.)
 
-        // Phase 2b: the joined dataset lookups — the view's parts, or (legacy arm) built from
-        // Match_Datasets plus the key-expansion lookups.
-        Map<String, JoinLookup> joinedDatasets;
-        if (mergedView != null)
-        {
-            joinedDatasets = mergedView.lookups();
-        }
-        else
-        {
-            joinedDatasets = buildJoinedDatasets(joinMatchDatasets, evalTable, resolver, joinCache,
-                    ruleId);
-            if (keyExpansion != null)
-            {
-                joinedDatasets = new LinkedHashMap<>(joinedDatasets);
-                joinedDatasets.putAll(keyExpansion.lookups());
-            }
-        }
-
         // Phase 2c is gone (D77): the Check tree — every level of it — was resolved by the
         // specialisation stage at the top of this method, under the same EC-36 policy this site
         // used to apply per execution. The tree read here is already concrete.
@@ -896,7 +840,7 @@ public final class RuleRunner
                 .datasetResolver(resolver).domainPrefix(domainPrefix)
                 .variableWildcardPrefix(varWildcardPrefix).suppMerge(rule.isSuppMergeEnabled())
                 .sharedIndexCache(joinCache != null ? joinCache.getSharedIndexCache() : null)
-                .domainName(evalTable.getMetaData().getName()).joinedDatasets(joinedDatasets)
+                .domainName(evalTable.getMetaData().getName())
                 .evaluationDomain(rule.getEvaluationDomain()).maxErrorsPerRule(maxErrorsPerRule)
                 .libraryProvider(libraryProvider).dictionaryProvider(dictionaryProvider)
                 .exprCache(exprCache).checkExprOverride(absentSkip.effectiveCheckExpr())
@@ -4180,28 +4124,23 @@ public final class RuleRunner
                 // too, read through the join exactly as extractOutputValues reads the anchor row —
                 // it used to keep the anchor row's value while the bare entry got D94c's set.
                 // A dotted entry no join serves (the Fix #18 identifier) is left as it is.
-                JoinLookup lookup = ctx.getJoinedDatasets().get(name.substring(0, dot));
+                JoinLookup lookup = ctx.joins().get(name.substring(0, dot));
                 String joinedColumn = name.substring(dot + 1);
                 if (lookup == null || !lookup.hasColumn(table, anchorRow, joinedColumn))
                 {
                     continue;
                 }
-                // ⚠ T2 r1: hasColumn may be ROW-dependent for a legacy lookup (until W6), so a
-                // row the lookup does not serve contributes no member — never the not-supplied
-                // default as a phantom distinct value. A view part answers for every row.
-                cellAt = row -> lookup.hasColumn(table, row, joinedColumn)
-                        ? lookup.lookupValue(table, row, joinedColumn, false)
-                        : null;
+                // a view part answers for every row (W6 retired the row-dependent lookups)
+                cellAt = row -> lookup.lookupValue(table, row, joinedColumn, false);
             }
             else
             {
                 int col = meta.getColumnIndex(name);
                 // A bare name the primary does not carry may be a supplemental qualifier
-                // delivered by the declared SUPP merge (SuppPivot) — the Check read it that way,
-                // so the group finding reports its distinct set that way too (combined review of
-                // runbook W2–W8, W2 L3: it used to keep the anchor row's value).
-                IDataTableColumn column = col >= 0 ? table.getColumn(col)
-                        : SuppPivot.qualifierColumn(ctx, name);
+                // delivered by the declared SUPP merge (the view's SUPP part) — the Check read it
+                // that way, so the group finding reports its distinct set that way too (combined
+                // review of runbook W2–W8, W2 L3: it used to keep the anchor row's value).
+                IDataTableColumn column = col >= 0 ? table.getColumn(col) : ctx.suppQualifier(name);
                 if (column == null)
                 {
                     continue;
@@ -4218,10 +4157,6 @@ public final class RuleRunner
             {
                 long row = it.nextLong();
                 IDataValue dv = cellAt.apply(row);
-                if (dv == null)
-                {
-                    continue; // a row the joined lookup does not serve (legacy lookup, W6)
-                }
                 MissingValue missing = net.cumba.corej.core.expr.eval.TypedValue
                         .missingIdentityOf(dv);
                 distinctByIdentity.putIfAbsent(missing != null
@@ -4456,199 +4391,6 @@ public final class RuleRunner
             call.kwargs().values().forEach(arg -> collectNames(arg, out));
         }
         }
-    }
-
-
-    /**
-     * Builds lookup indexes for all Match_Datasets entries. When a {@link JoinCache} is provided,
-     * previously built lookups are reused — avoiding repeated index construction when multiple
-     * rules join the same reference datasets.
-     *
-     * @param ruleId
-     *            CORE id of the rule whose joins are being prepared, used as a leading
-     *            {@code [<ruleId>]} prefix on the per-Match_Dataset DEBUG diagnostics. {@code null}
-     *            renders as {@code [?]}.
-     */
-    static Map<String, JoinLookup> buildJoinedDatasets(@Nullable List<MatchDataset> matchDatasets,
-            IDataTable primaryTable, DatasetResolver resolver, @Nullable JoinCache joinCache,
-            @Nullable String ruleId)
-    {
-        if (matchDatasets == null || matchDatasets.isEmpty())
-        {
-            return Map.of();
-        }
-        Map<String, JoinLookup> result = new LinkedHashMap<>();
-        for (MatchDataset md : matchDatasets)
-        {
-            String originalName = md.getName();
-            if (originalName == null)
-            {
-                continue;
-            }
-            // ⚠⚠ Per ELEMENT, not per list length. DatasetLookup.build can only compare the two
-            // lists' SIZES, and a size comparison is a proxy that `[{"left":"A"},{"right":"B"}]`
-            // satisfies without the property -- it would join A against B as ONE component where
-            // the author declared two. `md` is in hand here, so ask the real predicate, the same
-            // one the loader and KeyMatchRowExpander.keySpec ask
-            // (PLAN-join-key-type-identity, review round 4).
-            String malformedKey = md.malformedKeyElement();
-            if (malformedKey != null)
-            {
-                throw new MalformedSidedKeyException(originalName, malformedKey);
-            }
-            // ⭐ A `Child: true` entry is joined ONLY through its pointer (owner, 2026-09-25,
-            // PLAN-hashed-join-arm-absent-columns §3, option A): the merged evaluation view finds
-            // the parent row where parent[row.IDVAR] == row.IDVARVAL, the remaining keys compared
-            // column to column, as a part qualified with the parent domain (W4 of
-            // PLAN-merged-evaluation-table; a Child rule never reaches this legacy arm). It builds
-            // no direct keyed lookup. Until 2026-09-25 one was built here as well — its keys
-            // [USUBJID, IDVAR, IDVARVAL] compared literally as columns on BOTH sides, which is
-            // meaningless for a pointer (on the AE side there are no such columns; on CO / RELREC
-            // / a SUPP-- self-join it paired SIBLING records pointing at the same parent) — and
-            // nothing read it (a `_matched_` or a dotted read on a Child entry was a stage-A load
-            // error until W4, which serves both through the view). Its only observable effects were
-            // the leaf-cache gate (a
-            // non-empty joined map disables leaf caching) and an AE hash index built on every
-            // SUPPAE pass that could never match. Removing it is also what lets KeyHashing's
-            // KeyMatcher apply JKM R7's one-side rule without pairing rows nobody asked to pair.
-            if (Boolean.TRUE.equals(md.getChild()))
-            {
-                LOGGER.log(System.Logger.Level.DEBUG,
-                        "[{0}] Match_Dataset {1} is Child: true — joined through its pointer by "
-                                + "the pre-merge, no direct lookup",
-                        ruleId != null ? ruleId : "?", originalName);
-                continue;
-            }
-            // Resolve -- wildcard in dataset name (e.g., SUPP-- → SUPPAE). resolveWildcard only
-            // returns null for a null input; originalName is non-null here (guarded above).
-            String dsName = Objects.requireNonNull(
-                    DatasetIdentity.resolveWildcard(originalName, primaryTable),
-                    "resolved dataset name");
-            String resultKey = originalName.contains("--") ? dsName : originalName;
-
-            if (md.getKeys() == null || md.getKeys().isEmpty())
-            {
-                // No join keys. A forward RELREC entry is served by the merged view (W5) and
-                // never reaches this legacy arm; any other keyless Match_Dataset has no usable
-                // join key and is skipped.
-                LOGGER.log(System.Logger.Level.DEBUG,
-                        "[{0}] Match_Dataset {1} has no join keys, skipping",
-                        ruleId != null ? ruleId : "?", dsName);
-                continue;
-            }
-
-            if (md.hasQualifiedKeys())
-            {
-                // C1 (PLAN-rprfdy-offset-tp-join): a qualified key reads its record side from an
-                // earlier entry's bound row, which only KeyMatchRowExpander can do. The loader
-                // admits one on an expandable entry only, and the expander consumes every such
-                // entry whose dataset resolves — it leaves an unresolved one unexpanded with no
-                // lookup, and so does this method. A RESOLVABLE one reaching here is a loader
-                // bypass, refused as KeyMatchRowExpander.keySpec refuses its own (review round 1,
-                // lane 1 L3), never a lookup that would read the qualified name on the primary.
-                if (SplitDomainResolution.resolveTableOrThrow(resolver, dsName, ruleId) == null)
-                {
-                    LOGGER.log(System.Logger.Level.DEBUG,
-                            "[{0}] Match_Dataset {1} not available (qualified keys)",
-                            ruleId != null ? ruleId : "?", dsName);
-                    continue;
-                }
-                throw new IllegalStateException("[" + (ruleId != null ? ruleId : "?")
-                        + "] Match_Datasets " + originalName + " carries the qualified key "
-                        + md.getKeys() + " but was not consumed by KeyMatchRowExpander — every"
-                        + " rule comes through RulePackageLoader.checkQualifiedKeys, which admits a"
-                        + " qualified key on an expandable entry only");
-            }
-
-            // 5b-J: an entry carrying a pre-merge Filter (spec §3.3) resolves, FILTERS, then
-            // builds a fresh lookup — before the key index, so a dropped row can never become a
-            // partner, and BYPASSING the JoinCache on purpose: a filtered index is per-rule
-            // state, and sharing it with an unfiltered join of the same dataset (or a join with
-            // a different filter) would silently cross-contaminate their partner sets.
-            if (md.getFilter() != null && !md.getFilter().isBlank())
-            {
-                // Combined review of runbook W2–W8, W4 L3: the Filter's sub-context carries the
-                // run's resolver, so a study-inventory read (dataset_names()) answers instead of
-                // hitting the loud D-W4-5 arm; the library is not in scope here (LEFT).
-                IDataTable joined = MatchFilter.apply(md,
-                        SplitDomainResolution.resolveTableOrThrow(resolver, dsName, ruleId), ruleId,
-                        resolver, null);
-                if (joined == null)
-                {
-                    LOGGER.log(System.Logger.Level.DEBUG,
-                            "[{0}] Match_Dataset {1} not available (filtered join)",
-                            ruleId != null ? ruleId : "?", dsName);
-                    continue;
-                }
-                // getRightKeys() unconditionally: equal to getKeys() for a bare unqualified key,
-                // the `right` side of a sided one (a qualified key was refused above).
-                List<String> rightKeys = md.getRightKeys();
-                DatasetLookup lookup = rightKeys == null ? null
-                        : DatasetLookup.build(dsName, joined, md.getKeys(), rightKeys);
-                if (lookup != null)
-                {
-                    result.put(resultKey, lookup);
-                }
-                continue;
-            }
-
-            // Sided-key join (EC-18 / P5c): the primary side matches on the left names and the
-            // joined side on the right names. No shipped rule uses this shape yet, so it bypasses
-            // the same-named JoinCache (whose SharedJoinedIndex is keyed on one column-name list)
-            // and builds a fresh sided lookup — leaving the byte-identical same-named path below
-            // untouched.
-            if (md.hasSidedKeys())
-            {
-                IDataTable joined = SplitDomainResolution.resolveTableOrThrow(resolver, dsName,
-                        ruleId);
-                List<String> leftKeys = md.getKeys();
-                List<String> rightKeys = md.getRightKeys();
-                if (joined == null || leftKeys == null || rightKeys == null)
-                {
-                    LOGGER.log(System.Logger.Level.DEBUG,
-                            "[{0}] Match_Dataset {1} not available (sided keys)",
-                            ruleId != null ? ruleId : "?", dsName);
-                    continue;
-                }
-                DatasetLookup lookup = DatasetLookup.build(dsName, joined, leftKeys, rightKeys);
-                if (lookup != null)
-                {
-                    result.put(resultKey, lookup);
-                }
-                continue;
-            }
-
-            // Key-based join — use cache if available. Fix #358: the joined side resolves via
-            // SplitDomainResolution (exact name first, else the split-domain union, memoised on
-            // the resolver so the identity-keyed lookup caches see one stable union instance).
-            if (joinCache != null)
-            {
-                DatasetLookup lookup = joinCache.getOrBuildLookup(dsName,
-                        SplitDomainResolution.resolveTableOrThrow(resolver, dsName, ruleId),
-                        md.getKeys());
-                if (lookup != null)
-                {
-                    result.put(resultKey, lookup);
-                }
-            }
-            else
-            {
-                IDataTable joined = SplitDomainResolution.resolveTableOrThrow(resolver, dsName,
-                        ruleId);
-                if (joined == null)
-                {
-                    LOGGER.log(System.Logger.Level.DEBUG, "[{0}] Match_Dataset {1} not available",
-                            ruleId != null ? ruleId : "?", dsName);
-                    continue;
-                }
-                DatasetLookup lookup = DatasetLookup.build(dsName, joined, md.getKeys());
-                if (lookup != null)
-                {
-                    result.put(resultKey, lookup);
-                }
-            }
-        }
-        return result;
     }
 
 
@@ -5275,7 +5017,7 @@ public final class RuleRunner
             {
                 String dsName = varName.substring(0, dotIdx);
                 String colName = varName.substring(dotIdx + 1);
-                JoinLookup lookup = ctx.getJoinedDatasets().get(dsName);
+                JoinLookup lookup = ctx.joins().get(dsName);
                 if (lookup != null)
                 {
                     // ⭐⭐ §2c (PLAN-joined-value-accessor; owner 2026-09-21): "if the variable is
@@ -5370,7 +5112,7 @@ public final class RuleRunner
                 // W2a (C1 ruled (a)): a SUPP-delivered qualifier reports the record's value —
                 // the same pivot the Check read it through; on a non-record finding it is a raw
                 // column like any other and is listed by name.
-                IDataTableColumn qualifier = SuppPivot.qualifierColumn(ctx, varName);
+                IDataTableColumn qualifier = ctx.suppQualifier(varName);
                 if (qualifier != null)
                 {
                     if (named != null)
@@ -5447,14 +5189,11 @@ public final class RuleRunner
 
     /**
      * Whether the dataset carries raw column {@code name} as the projection resolves it: a bare
-     * name as a primary column or a SUPP-delivered qualifier ({@link SuppPivot}), a dotted name
-     * through its join lookup. A lookup that knows its column set — a part of the merged evaluation
-     * view, a single joined dataset — answers from it, whatever the row count
-     * ({@code PLAN-merged-evaluation-table} W3b: on an empty primary the row-0 probe below used to
-     * take the lookup's existence for the column's, and an absent joined column was listed by
-     * name). Only a legacy row-dependent lookup (until W6) is still asked at row 0 — a column-level
-     * finding has no row of its own — and on an empty primary its existence decides. Used by the
-     * column-level per-variable paths, which have no row to read.
+     * name as a primary column or a SUPP-delivered qualifier
+     * ({@link EvaluationContext#suppQualifier}), a dotted name as a column of its joined part — the
+     * part knows its column set, whatever the row count ({@code PLAN-merged-evaluation-table} W3b;
+     * W6 retired the row-0 probe the row-dependent lookups needed). Used by the column-level
+     * per-variable paths, which have no row to read.
      */
     private static boolean columnPresent(EvaluationContext ctx, String name)
     {
@@ -5462,13 +5201,10 @@ public final class RuleRunner
         int dot = name.indexOf('.');
         if (dot > 0)
         {
-            JoinLookup lookup = ctx.getJoinedDatasets().get(name.substring(0, dot));
-            String column = name.substring(dot + 1);
-            return lookup != null && !lookup.lacksColumnOnEveryRow(column)
-                    && (table.getRowCount() == 0 || lookup.hasColumn(table, 0, column));
+            JoinLookup lookup = ctx.joins().get(name.substring(0, dot));
+            return lookup != null && !lookup.lacksColumnOnEveryRow(name.substring(dot + 1));
         }
-        return table.getMetaData().getColumnIndex(name) >= 0
-                || SuppPivot.qualifierColumn(ctx, name) != null;
+        return table.getMetaData().getColumnIndex(name) >= 0 || ctx.suppQualifier(name) != null;
     }
 
 

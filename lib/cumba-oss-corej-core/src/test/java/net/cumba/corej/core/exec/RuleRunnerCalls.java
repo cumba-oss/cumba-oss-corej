@@ -1,11 +1,8 @@
 package net.cumba.corej.core.exec;
 
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
 import net.cumba.corej.core.metadata.VlmResolver;
-import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.report.Severity;
@@ -195,22 +192,5 @@ public final class RuleRunnerCalls
     {
         return RuleRunner.stageBGate(rule, table, concreteContract, ruleId, message,
                 foreignInventory, suppressedDatasets);
-    }
-
-
-    /** The join build with no rule id ({@code [?]} in the per-Match_Dataset DEBUG lines). */
-    static Map<String, JoinLookup> buildJoinedDatasets(@Nullable List<MatchDataset> matchDatasets,
-            IDataTable primaryTable, DatasetResolver resolver, @Nullable JoinCache joinCache)
-    {
-        return buildJoinedDatasets(matchDatasets, primaryTable, resolver, joinCache, null);
-    }
-
-
-    static Map<String, JoinLookup> buildJoinedDatasets(@Nullable List<MatchDataset> matchDatasets,
-            IDataTable primaryTable, DatasetResolver resolver, @Nullable JoinCache joinCache,
-            @Nullable String ruleId)
-    {
-        return RuleRunner.buildJoinedDatasets(matchDatasets, primaryTable, resolver, joinCache,
-                ruleId);
     }
 }

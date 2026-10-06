@@ -7,8 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.BindingValue;
-import net.cumba.corej.core.exec.DatasetLookup;
 import net.cumba.corej.core.exec.EvaluationContext;
+import net.cumba.corej.core.exec.ExecCalls;
+import net.cumba.corej.core.exec.JoinLookup;
 import net.cumba.corej.core.exec.VariableMetadataResult;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.OperandKind;
@@ -299,12 +300,14 @@ class BroadcastFoldTest
                 {
                         "S1"
                 }, 1);
-        DatasetLookup lookup = DatasetLookup.build("EX", ex, List.of("USUBJID"));
-        EvaluationContext joinedCtx = EvaluationContext.builder()
-                .table(new SyntheticDataTable("AE", List.of("USUBJID", "AETERM"), new String[]
+        SyntheticDataTable ae = new SyntheticDataTable("AE", List.of("USUBJID", "AETERM"),
+                new String[]
                 {
                         "S1"
-                }, 1)).joinedDatasets(Map.of("EX", lookup))
+                }, 1);
+        JoinLookup lookup = ExecCalls.viewLookup(ae, "EX", ex, List.of("USUBJID"));
+        EvaluationContext joinedCtx = EvaluationContext.builder().table(ae)
+                .mergedView(ExecCalls.joinsView(Map.of("EX", lookup)))
                 .datasetResolver(n -> "EX".equals(n) ? ex : null).build();
         Expr viaJoin = new Expr.Binary(Expr.BinOp.EQ, new Expr.Ref("AEXX", OperandKind.COLUMN),
                 LIT_A);

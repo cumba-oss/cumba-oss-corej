@@ -881,14 +881,13 @@ public final class TokenExpander
      *
      * <p>
      * This is a <b>false-positive</b> guard, not a silence guard, and it is the mirror image of the
-     * self-skip the authored shape already has. {@code RuleRunner.buildJoinedDatasets} registers
-     * the lookup unless the JOINED side fails to build, so an absence-shaped Check whose primary
-     * lacks a key sees an unmatched row every time and fires on all of them. The hand-authored
-     * {@code PMDA-AD0258} is insulated only by its {@code Data_Structures}/{@code Subclasses}
-     * scope, which guarantees {@code STUDYID}/{@code USUBJID}; {@code CDISC-AD0898} ships
-     * {@code Domains: Include: [ALL]} and has no such guarantee. Guarding here rather than adding
-     * {@code exists} conjuncts to the template keeps the expansion byte-identical to the shape
-     * {@code PMDA-AD0258} proves.
+     * self-skip the authored shape already has. The merged view builds the keyed part unless the
+     * JOINED side fails to resolve, so an absence-shaped Check whose primary lacks a key sees an
+     * unmatched row every time and fires on all of them. The hand-authored {@code PMDA-AD0258} is
+     * insulated only by its {@code Data_Structures}/{@code Subclasses} scope, which guarantees
+     * {@code STUDYID}/{@code USUBJID}; {@code CDISC-AD0898} ships {@code Domains: Include: [ALL]}
+     * and has no such guarantee. Guarding here rather than adding {@code exists} conjuncts to the
+     * template keeps the expansion byte-identical to the shape {@code PMDA-AD0258} proves.
      * </p>
      */
     private static @Nullable String firstAbsentMergeKey(Rule concrete, DataTableMeta meta)

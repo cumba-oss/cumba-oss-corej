@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.model.CheckConditionAll;
@@ -154,28 +153,32 @@ class ChildEntryDirectJoinTest
 
 
     /**
-     * ⭐ The change itself: a Child entry builds no direct lookup — and the control beside it, the
-     * same entry without the flag, still does, so the empty map is the flag's doing and not an
-     * unresolved dataset.
+     * ⭐ The change itself: a Child entry builds no direct keyed join — the merged view makes it a
+     * {@code Child} part (the pointer join), never a keyed one — and the control beside it, the
+     * same entry without the flag, does, so the absence is the flag's doing and not an unresolved
+     * dataset. (Until W6 of {@code PLAN-merged-evaluation-table} this asked the retired
+     * {@code buildJoinedDatasets}.)
      */
     @Test
     void aChildEntryBuildsNoDirectLookup()
     {
         DatasetResolver res = RealTables.inventoryOf(suppae(), ae(), co(), relrec());
-        Map<String, JoinLookup> joined = RuleRunner.buildJoinedDatasets(
-                List.of(child("AE"), child("SUPP--"), child("CO"), child("RELREC")), suppae(), res,
-                null, "R-TEST");
-        assertEquals(Map.of(), joined,
-                "option A: a Child: true entry is joined only through its pointer (the pre-merge)"
-                        + " and builds no keyed lookup — any key here is the retired direct join");
+        MergedEvaluation.Built joined = ExecCalls.expand(suppae(),
+                List.of(child("AE"), child("SUPP--"), child("CO"), child("RELREC")), res, "R-TEST");
+        List<net.cumba.datatable.merge.MergeKind> kinds = joined == null ? List.of()
+                : joined.view().parts().stream().map(net.cumba.datatable.merge.MergedPart::kind)
+                        .toList();
+        assertTrue(!kinds.contains(net.cumba.datatable.merge.MergeKind.KEYED),
+                "option A: a Child: true entry is joined only through its pointer and builds no"
+                        + " keyed part — a KEYED part here is the retired direct join: " + kinds);
 
         MatchDataset ordinary = child("AE");
         ordinary.setChild(false);
-        Map<String, JoinLookup> control = RuleRunner.buildJoinedDatasets(List.of(ordinary),
-                suppae(), res, null, "R-TEST");
-        assertTrue(control.containsKey("AE"),
-                "control: the SAME entry without Child: true still builds its lookup, so the"
-                        + " empty map above is the flag's doing, not an unresolved AE");
+        MergedEvaluation.Built control = ExecCalls.expand(suppae(), List.of(ordinary), res,
+                "R-TEST");
+        assertTrue(control != null && control.lookups().containsKey("AE"),
+                "control: the SAME entry without Child: true still builds its keyed part, so the"
+                        + " absence above is the flag's doing, not an unresolved AE");
     }
 
 

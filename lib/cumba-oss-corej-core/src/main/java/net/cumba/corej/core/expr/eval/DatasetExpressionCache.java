@@ -1,7 +1,6 @@
 package net.cumba.corej.core.expr.eval;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.JoinLookup;
@@ -164,31 +163,14 @@ public final class DatasetExpressionCache
 
     /**
      * Whether {@code ctx} evaluates on the dataset's shared merged view (P-3): its table is the
-     * view's evaluation table and every join it carries is one of the view's parts — so a leaf's
-     * value is a function of the view instance and the row, the same for every rule of the
-     * signature.
+     * view's evaluation table — and every join it reads is one of the view's parts, by construction
+     * ({@link EvaluationContext#joins}) — so a leaf's value is a function of the view instance and
+     * the row, the same for every rule of the signature.
      */
     private static boolean onSharedView(EvaluationContext ctx)
     {
         MergedEvaluation.Built built = ctx.getMergedView();
-        if (built == null || !built.isShared() || ctx.getTable() != built.table())
-        {
-            return false;
-        }
-        Map<String, JoinLookup> joins = ctx.getJoinedDatasets();
-        Map<String, JoinLookup> parts = built.lookups();
-        if (joins.size() != parts.size())
-        {
-            return false;
-        }
-        for (Map.Entry<String, JoinLookup> part : parts.entrySet())
-        {
-            if (joins.get(part.getKey()) != part.getValue())
-            {
-                return false;
-            }
-        }
-        return true;
+        return built != null && built.isShared() && ctx.getTable() == built.table();
     }
 
 
@@ -235,13 +217,12 @@ public final class DatasetExpressionCache
      * <ol>
      * <li><b>No joins, or the dataset's shared merged view</b>
      * ({@code PLAN-merged-evaluation-table} W3e, P-3, the W2 row "admits merged leaves keyed on the
-     * view instance"): a context whose joins are exactly the keyed parts of the view cached for its
-     * merge signature, and whose table is that view's evaluation table. A join reached any other
-     * way — the legacy arm's per-rule expansions (forward RELREC, a chained key), a view built per
-     * execution (a {@code Child} pre-merge) — still declines: its table or lookups are a fresh
-     * instance per rule, so a key on them could only waste memory. (The original reason for this
-     * guard — an absent-locally column ref resolving through the join fallback — is gone since
-     * 2026-09-21, {@code PLAN-unqualified-name-primary-only}.)</li>
+     * view instance"): a context whose table is the evaluation table of the view cached for its
+     * merge signature (its joins are that view's parts, {@link EvaluationContext#joins}). A view
+     * built per execution (no cache) still declines: its table and lookups are a fresh instance per
+     * rule, so a key on them could only waste memory. (The original reason for this guard — an
+     * absent-locally column ref resolving through the join fallback — is gone since 2026-09-21,
+     * {@code PLAN-unqualified-name-primary-only}.)</li>
      * <li><b>The {@code {ROW}} evaluation domain</b> — not one with a VAR cursor, whose
      * per-variable loop binds the variable name into the context and re-evaluates per variable (so
      * a leaf's result need not even be constant within one rule), and not the broadcast {@code {}}
@@ -268,7 +249,7 @@ public final class DatasetExpressionCache
      */
     public static boolean cacheableAt(Expr leaf, EvaluationContext ctx)
     {
-        if (!ctx.getJoinedDatasets().isEmpty() && !onSharedView(ctx))
+        if (!ctx.joins().isEmpty() && !onSharedView(ctx))
         {
             return false;
         }
@@ -342,7 +323,7 @@ public final class DatasetExpressionCache
         {
             return false;
         }
-        JoinLookup lookup = ctx.getJoinedDatasets().get(qualifier);
+        JoinLookup lookup = ctx.joins().get(qualifier);
         if (lookup == null)
         {
             return false;

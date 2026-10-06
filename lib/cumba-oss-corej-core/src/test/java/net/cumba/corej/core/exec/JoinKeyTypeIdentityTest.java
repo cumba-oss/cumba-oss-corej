@@ -74,17 +74,17 @@ class JoinKeyTypeIdentityTest
     }
 
 
-    private static KeyMatchRowExpander.KeyMatchExpansion expand(IDataTable primary, IDataTable ae,
+    private static MergedEvaluation.Built expand(IDataTable primary, IDataTable ae,
             MatchDataset entry)
     {
-        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(primary, List.of(entry),
+        MergedEvaluation.Built exp = ExecCalls.expand(primary, List.of(entry),
                 Map.of("ADAE", primary, AE, ae)::get, "R-TEST");
         assertNotNull(exp, "the entry under test must be expandable");
         return exp;
     }
 
 
-    private static List<String> matched(KeyMatchRowExpander.KeyMatchExpansion exp, String col)
+    private static List<String> matched(MergedEvaluation.Built exp, String col)
     {
         IDataTable t = exp.table();
         JoinLookup lk = exp.lookups().get(AE);
@@ -239,12 +239,13 @@ class JoinKeyTypeIdentityTest
      * {@code PLAN-join-key-type-identity}.
      *
      * <p>
-     * ⛔ {@code RuleRunner:918-920} removes every <em>expanded</em> entry before
-     * {@code buildJoinedDatasets} runs, so the hashed arm only ever sees entries that are excluded,
-     * keyless, or had no resolvable right-hand table. That is what licenses siting the D4 check in
-     * {@code keySpec} alone and leaving {@code KeyHashing}/{@code DatasetLookup} untouched. If the
-     * two predicates ever diverge, the check silently stops covering part of the corpus — so they
-     * are asserted to be the same predicate here rather than trusted to stay in step.
+     * ⛔ The merged view runs the D4 check ({@code KeyGates}) on exactly the entries
+     * {@link JoinKeyTypes#governedByKeyTypeCheck} admits, and types every other keyed part as
+     * unchecked ({@code MergedEvaluation.keyedSpecs}); the loader's guards ask
+     * {@link JoinKeyTypes#excludedFromKeyTypeCheck}. If the two predicates ever diverge, the check
+     * silently stops covering part of the corpus — so they are asserted to be the same predicate
+     * here rather than trusted to stay in step. (Until W6 of {@code PLAN-merged-evaluation-table}
+     * the first was the retired expander's {@code expandableEntries}.)
      * </p>
      */
     @Test
@@ -265,7 +266,7 @@ class JoinKeyTypeIdentityTest
         for (MatchDataset shape : shapes)
         {
             boolean excluded = JoinKeyTypes.excludedFromKeyTypeCheck(shape);
-            boolean isExpandable = !KeyMatchRowExpander.expandableEntries(List.of(shape)).isEmpty();
+            boolean isExpandable = JoinKeyTypes.governedByKeyTypeCheck(shape);
             assertEquals(!excluded, isExpandable, "the two predicates must be the same predicate;"
                     + " they disagreed on " + shape.getName());
             if (isExpandable)

@@ -8,8 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
-import net.cumba.corej.core.exec.DatasetLookup;
 import net.cumba.corej.core.exec.EvaluationContext;
+import net.cumba.corej.core.exec.ExecCalls;
 import net.cumba.corej.core.exec.JoinLookup;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.RuleDefinitionException;
@@ -34,15 +34,14 @@ class MatchedFlagCompilerTest
     private static EvaluationContext ctx(Map<String, JoinLookup> joins)
     {
         return EvaluationContext.builder().table(PRIMARY).ruleId("TEST-MF").domainName("ADAE")
-                .joinedDatasets(joins).build();
+                .mergedView(ExecCalls.joinsView(joins)).build();
     }
 
 
     private static JoinLookup dmLookup()
     {
         IDataTable dm = MockTable.of().name("DM").col("USUBJID", "P1", "P3").build();
-        DatasetLookup lookup = DatasetLookup.build("DM", dm, List.of("USUBJID"));
-        return java.util.Objects.requireNonNull(lookup);
+        return ExecCalls.viewLookup(PRIMARY, "DM", dm, List.of("USUBJID"));
     }
 
 

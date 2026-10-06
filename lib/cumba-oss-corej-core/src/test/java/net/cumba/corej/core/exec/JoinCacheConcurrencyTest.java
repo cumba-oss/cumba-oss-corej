@@ -1,7 +1,6 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -29,47 +28,24 @@ import org.junit.jupiter.api.Timeout;
  * against one shared {@link JoinCache} and one shared primary table.
  *
  * <p>
- * ⚠⚠ <b>Two join paths, and they use different parts of the cache.</b> A plain keyed
- * {@code Match_Datasets} entry ({@link #buildJoinRule}: {@code {ADSL, [USUBJID]}}) is served by
- * {@link KeyMatchRowExpander}'s row expansion — {@code KeyMatchRowExpander.expandableEntries}
- * accepts it ({@code JoinKeyTypes.governedByKeyTypeCheck}) and {@code RuleRunner} removes it from
- * the key-join build — so it never reaches {@code JoinCache.getOrBuildLookup} or
- * {@code DatasetLookup.ensureJoinMap}. ⭐ Since {@code PLAN-keymatch-shared-join-index} it DOES
- * reach {@code SharedIndexCache}: its child index is built once per (table, key shape) through
- * {@code getOrBuildKeyMatchIndex}. The {@code *_keyMatchExpansion*} cases therefore gate the
- * determinism of the expansion path under concurrency (every parallel result equals the sequential
- * baseline), and assert {@code keyMatchIndexBuildCount() == 1} as a <b>best-effort</b> duplicate
- * check. ⚠ Best-effort only: the raced index here is a 4-row ADSL, built in microseconds, while
- * each worker spends milliseconds in {@code RuleRunner.execute} setup before reaching the cache, so
- * a get-then-put regression would still count one build on most runs. The deterministic check is
- * {@code KeyMatchSharedIndexTest.aColdStartRaceBuildsOnceAndHandsEveryThreadTheSameIndex}, which
- * parks the first build until every thread has arrived (negative-controlled: get-then-put counts
- * 8).
- * </p>
- *
- * <p>
- * The cache itself is gated by the {@code *_cachedKeyJoin*} cases, whose entry
- * ({@link #buildCachedJoinRule}) carries a {@code SUPP}-prefixed name: the expander excludes it by
- * name, it is neither {@code Child: true} nor a template, and
- * {@code RuleRunner.buildJoinedDatasets} takes its cached key-join branch. Those cases assert the
- * rule fires, parallel equals baseline, and {@code JoinCache.get("SUPPADSL|USUBJID")} holds one
- * {@link DatasetLookup} that is the SAME instance across waves, and the lazily built join map
- * inside it ({@code ensureJoinMap}) is read concurrently by every worker. ⚠ The identity is
- * observed only after each wave, so these cases catch a lookup that is replaced or evicted between
- * waves. They also assert {@code lookupIndexBuildCount() == 1} (the counter of
- * {@code SharedIndexCache.getOrBuild} builds, since {@code PLAN-identity-safe-join-caches}): the
- * shared lookup index behind that {@code DatasetLookup} is built once per cache however many
- * workers race for it — best-effort in the same sense as above (a tiny ADSL, no parked build). ⚠
- * What that still cannot catch: a duplicate {@code DatasetLookup} built over the one shared index
- * (a get-then-put regression in {@code JoinCache.getOrBuildLookup} whose last put wins would leave
- * one stable instance and still count one index build, because the index cache is atomic on its
- * own); there is no build counter for {@code DatasetLookup} itself.
+ * ⚠⚠ <b>Two entry shapes, one cache.</b> A plain keyed {@code Match_Datasets} entry
+ * ({@link #buildJoinRule}: {@code {ADSL, [USUBJID]}}) and a {@code SUPP}-prefixed one
+ * ({@link #buildCachedJoinRule}, outside the key-type check) are both keyed parts of the merged
+ * evaluation view, built once per merge signature on the dataset's {@link JoinCache} (P-3 of
+ * {@code PLAN-merged-evaluation-table}) — the structure every worker races for. The cases gate the
+ * determinism of the view under concurrency (every parallel result equals the sequential baseline),
+ * that one view is built per signature ({@code mergedViewCount() == 1}), and that a warm cache
+ * keeps serving the instance the cold-start wave built. ⚠ The build count is best-effort under a
+ * race (a tiny ADSL builds in microseconds while each worker spends milliseconds in
+ * {@code RuleRunner.execute} setup). (Until W6 the plain entry was served by the key-match
+ * expander's shared index and the {@code SUPP} one by a cached {@code DatasetLookup}; both retired
+ * with the legacy pipeline.)
  * </p>
  *
  * <p>
  * The fixtures are real {@code ColumnCachedDataTable}s over {@code CachedDataTableColumn}s
- * ({@link RealTables}), the shape every loaded dataset has, so the join-key reads take the
- * production {@code KeyCellReader.Direct} path (asserted per fixture), not the generic one. Not
+ * ({@link RealTables}), the shape every loaded dataset has, so the datatable's join-key reads take
+ * their production fast path (the datatable's own differential covers every buffer class). Not
  * {@code MockTable} (PLAN-fast-gate-tests F3): its cells are Mockito mocks, and a shared mock
  * records every call from every worker under Mockito's own locking — measured 2026-09-28, ~95 % of
  * this class's run time (35–50 s → ~1 s), and that locking partly serialised the "concurrent"
@@ -98,8 +74,8 @@ class JoinCacheConcurrencyTest
     void parallelRuleExecution_keyMatchExpansion_matchesSequentialBaseline() throws Exception
     {
         // Primary: BDS-style table where TRTP is checked against ADSL.TRT01P (joined by USUBJID).
-        // This entry is served by KeyMatchRowExpander, whose child index comes from the shared
-        // key-match cache (see the class javadoc); this case gates the determinism of that path.
+        // This entry is a keyed part of the merged view, cached per signature on the dataset's
+        // JoinCache (see the class javadoc); this case gates the determinism of that path.
         IDataTable primary = makePrimary(1024);
         IDataTable adsl = makeAdsl();
 
@@ -133,9 +109,8 @@ class JoinCacheConcurrencyTest
     @RepeatedTest(2)
     void parallelRuleExecution_keyMatchExpansion_concurrentColdStart() throws Exception
     {
-        // N threads start simultaneously on the key-match expansion path, all cold on the shared
-        // key-match index. The cold-start race on JoinCache.getOrBuildLookup / ensureJoinMap is
-        // gated by the *_cachedKeyJoin* cases.
+        // N threads start simultaneously, all cold on the dataset's view cache — the moment of
+        // maximum contention.
         IDataTable primary = makePrimary(2048);
         IDataTable adsl = makeAdsl();
         DatasetResolver resolver = name -> "ADSL".equals(name) ? adsl : null;
@@ -167,9 +142,7 @@ class JoinCacheConcurrencyTest
     void keyMatchExpansion_twoRulesAcrossThreads_matchBaseline() throws Exception
     {
         // Two rules with the same Match_Datasets ({ADSL, USUBJID}) running in parallel must each
-        // report the sequential baseline, and share one key-match index (asserted at the end).
-        // The DatasetLookup-sharing claim is asserted by
-        // cachedKeyJoin_twoRulesAcrossThreads_shareOneDatasetLookup, whose entry takes that path.
+        // report the sequential baseline, and share one merged view (asserted at the end).
         IDataTable primary = makePrimary(64);
         IDataTable adsl = makeAdsl();
         DatasetResolver resolver = name -> "ADSL".equals(name) ? adsl : null;
@@ -203,10 +176,6 @@ class JoinCacheConcurrencyTest
                 }
             }
         }
-        // ⚠ No assertion on JoinCache.lookupCache: a key-based Match_Datasets entry is served by
-        // KeyMatchRowExpander's row expansion, which removes it from the lookup build, so this
-        // rule shape never populates that cache (measured 2026-09-24: empty after 16 waves).
-        // It does populate the shared key-match index — once, for both rules and all waves.
         assertEquals(1, cache.mergedViewCount(),
                 "two rules with the same {ADSL, [USUBJID]} entry share one merged view");
     }
@@ -215,9 +184,8 @@ class JoinCacheConcurrencyTest
     @RepeatedTest(2)
     void parallelRuleExecution_cachedKeyJoin_concurrentColdStartMatchesBaseline() throws Exception
     {
-        // The cached key-join branch (RuleRunner.buildJoinedDatasets → JoinCache.getOrBuildLookup
-        // → SharedIndexCache.getOrBuild, then DatasetLookup.ensureJoinMap per row lookup), cold-
-        // started from N threads on a fresh cache: the moment of maximum contention.
+        // The SUPP-named entry's keyed part (outside the key-type check, left), cold-started from N
+        // threads on a fresh cache: the moment of maximum contention.
         IDataTable primary = makePrimary(2048);
         IDataTable adsl = makeAdsl();
         DatasetResolver resolver = name -> CACHED_JOIN_DATASET.equals(name) ? adsl : null;
@@ -262,12 +230,12 @@ class JoinCacheConcurrencyTest
 
 
     @Test
-    void cachedKeyJoin_twoRulesAcrossThreads_shareOneDatasetLookup() throws Exception
+    void cachedKeyJoin_twoRulesAcrossThreads_shareOneMergedView() throws Exception
     {
-        // Two rules with the same cached Match_Datasets entry ({SUPPADSL, USUBJID}, a name the
-        // expander refuses) running in parallel must observe the same DatasetLookup instance after
-        // every wave (the entry is shared across rules and never rebuilt; see the class javadoc
-        // for what this cannot see during the cold-start race itself).
+        // Two rules with the same Match_Datasets entry ({SUPPADSL, USUBJID}, outside the key-type
+        // check) running in parallel must observe the same merged view instance after every wave
+        // (the view is shared across rules and never rebuilt; see the class javadoc for what this
+        // cannot see during the cold-start race itself).
         IDataTable primary = makePrimary(64);
         IDataTable adsl = makeAdsl();
         DatasetResolver resolver = name -> CACHED_JOIN_DATASET.equals(name) ? adsl : null;
@@ -346,24 +314,21 @@ class JoinCacheConcurrencyTest
 
 
     /**
-     * Guards the fixture's point: its key column must be read the way a loaded dataset's is,
-     * through {@code KeyCellReader.Direct}. Were the fixture ever built as some other table class,
-     * every case here would silently gate the generic path instead.
+     * Guards the fixture's point: it must be a loaded dataset's table class (a real
+     * {@code ColumnCachedDataTable}), so the join reads it the way it reads a study's.
      */
     private static IDataTable direct(IDataTable aTable)
     {
-        assertInstanceOf(KeyCellReader.Direct.class, KeyCellReader.of(aTable, 0),
-                "the fixture's USUBJID must take the production Direct key-cell read");
+        assertTrue(aTable.getClass().getSimpleName().contains("Cached"),
+                "the fixture must be a real cached table: " + aTable.getClass());
         return aTable;
     }
 
 
     private static Rule buildJoinRule()
     {
-        // Check: TRTP must equal ADSL.TRT01P, joined by USUBJID. ⚠ As built here the entry is
-        // served by KeyMatchRowExpander: it uses the SharedIndexCache's key-match index but never
-        // registers a DatasetLookup with the JoinCache; buildCachedJoinRule is the variant that
-        // does.
+        // Check: TRTP must equal ADSL.TRT01P, joined by USUBJID — a keyed part of the merged view
+        // under the key-type check; buildCachedJoinRule is the variant outside it.
         net.cumba.corej.core.model.CheckConditionExpression leaf = expr("TRTP != ADSL.TRT01P");
 
         Rule rule = new Rule();
@@ -386,9 +351,8 @@ class JoinCacheConcurrencyTest
         MatchDataset md = new MatchDataset();
         md.setName("ADSL");
         md.setKeys(List.of("USUBJID"));
-        // Explicit since U15 of PLAN-retire-dead-multi-match-lookup: the expander no longer
-        // defaults
-        // an absent Join_Type to `left`; `left` is what this fixture always ran as.
+        // Explicit since U15 of PLAN-retire-dead-multi-match-lookup; `left` is what this fixture
+        // always ran as.
         md.setJoinType("left");
         rule.setMatchDatasets(List.of(md));
         return rule;
@@ -397,14 +361,11 @@ class JoinCacheConcurrencyTest
 
     /**
      * {@link #buildJoinRule} with its entry renamed to {@link #CACHED_JOIN_DATASET}. A
-     * {@code SUPP}- prefixed name takes the entry out of
-     * {@code KeyMatchRowExpander.expandableEntries}
+     * {@code SUPP}-prefixed name takes the entry out of the key-type check
      * ({@code JoinKeyTypes.textCarriedForeignKeyFamily}) while it is neither {@code Child: true}
-     * nor a template, so the entry reaches the cached key-join branch of
-     * {@code RuleRunner.buildJoinedDatasets}. ⚠ Until 2026-09-25 this variant used
-     * {@code Child: true} for the same purpose; {@code PLAN-hashed-join-arm-absent-columns} (option
-     * A) made a Child entry build NO direct lookup — it is joined only through its pointer — so
-     * that shape no longer reaches the cache at all.
+     * nor a template: a keyed part the view keeps every row of ({@code left}). (Until W6 of
+     * {@code PLAN-merged-evaluation-table} this routed the entry to the retired cached key-join
+     * lookup.)
      */
     private static Rule buildCachedJoinRule()
     {

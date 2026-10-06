@@ -35,7 +35,7 @@ class CallableSurfacePhase3Test
 
     private static EvaluationContext ctx(IDataTable table, ExpressionResultCache cache)
     {
-        return EvaluationContext.builder().table(table).exprCache(cache).joinedDatasets(Map.of())
+        return EvaluationContext.builder().table(table).exprCache(cache)
                 .evaluationDomain(Domain.ROW).build();
     }
 
@@ -162,8 +162,8 @@ class CallableSurfacePhase3Test
                 new Expr.Call("upper", List.of(ref("VAR1")), Map.of()),
                 new Expr.Lit(Expr.LitKind.STRING, "X"));
         BitSet cached = eval(rule, ctx(table, new ExpressionResultCache()));
-        BitSet uncached = ExprCompiler.compile(rule).evaluate(EvalRun.fullRange(
-                EvaluationContext.builder().table(table).joinedDatasets(Map.of()).build()));
+        BitSet uncached = ExprCompiler.compile(rule)
+                .evaluate(EvalRun.fullRange(EvaluationContext.builder().table(table).build()));
         assertEquals(uncached, cached, "the memoised path is behaviour-identical");
     }
 

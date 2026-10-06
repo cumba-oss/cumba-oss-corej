@@ -8,7 +8,6 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import net.cumba.datatable.IDataTable;
@@ -83,8 +82,8 @@ class JoinLookupProductionOverrideGuardTest
 
     /**
      * A column name no fixture below declares, so every probe lands in the absent-column arm —
-     * {@code DatasetLookup:346}, {@code KeyMatchExpandedLookup:78} — which is the one arm that
-     * reads {@code numericExpected}.
+     * {@code MergedViewLookup.lookupValue}'s first branch — which is the one arm that reads
+     * {@code numericExpected}.
      */
     private static final String ABSENT_COLUMN = "ZZNOSUCHCOLUMN";
 
@@ -94,28 +93,18 @@ class JoinLookupProductionOverrideGuardTest
     }
 
     /**
-     * The production {@link JoinLookup} implementations of this module, 2026-09-18, each paired
-     * with a BUILT INSTANCE the behavioural probe can call. ⛔ Exact equality against the discovered
-     * set in both directions: a new one must be READ (does it honour the expectation?) <em>and</em>
-     * a probe must be built for it, and a departed one must be accounted for. ⚑ Requiring an
-     * instance rather than a name is deliberate — it is what makes the roster impossible to satisfy
-     * without exercising the behaviour.
+     * The production {@link JoinLookup} implementations of this module — since W6 of
+     * {@code PLAN-merged-evaluation-table} the merged view's alone (the key-join and the expanded
+     * lookups retired with the legacy pipeline) — each paired with a BUILT INSTANCE the behavioural
+     * probe can call. ⛔ Exact equality against the discovered set in both directions: a new one
+     * must be READ (does it honour the expectation?) <em>and</em> a probe must be built for it, and
+     * a departed one must be accounted for. ⚑ Requiring an instance rather than a name is
+     * deliberate — it is what makes the roster impossible to satisfy without exercising the
+     * behaviour.
      */
     private static Map<String, Probe> probes()
     {
-        IDataTable child = MockTable.of().col("USUBJID", "S1").col("ARM", "A").name("DM").build();
-        IDataTable primary = MockTable.of().col("USUBJID", "S1").name("AE").build();
         Map<String, Probe> out = new TreeMap<>();
-        out.put("DatasetLookup",
-                new Probe(
-                        Objects.requireNonNull(DatasetLookup.build("DM", child, List.of("USUBJID")),
-                                "DatasetLookup.build answered null for a non-null dataset"),
-                        primary, 0));
-        out.put("KeyMatchExpandedLookup",
-                new Probe(new KeyMatchExpandedLookup("DM", child, new int[]
-                {
-                        0
-                }), primary, 0));
         // W3a: the merged-view lookup reads a built view (real tables: the view copies column
         // metadata), its keyed part DM left-joined on USUBJID.
         IDataTable viewPrimary = RealTables.of("AE").str("USUBJID", "S1").build();
@@ -131,8 +120,8 @@ class JoinLookupProductionOverrideGuardTest
         net.cumba.datatable.merge.MergedPart keyedPart = view.parts().stream()
                 .filter(p -> p.kind() == net.cumba.datatable.merge.MergeKind.KEYED).findFirst()
                 .orElseThrow();
-        out.put("MergedViewLookup",
-                new Probe(new MergedViewLookup(view, keyedPart, false), viewPrimary, 0));
+        out.put("MergedViewLookup", new Probe(
+                new MergedViewLookup(view, keyedPart, view::partOf, false), viewPrimary, 0));
         return out;
     }
 
@@ -178,8 +167,7 @@ class JoinLookupProductionOverrideGuardTest
                         + " which cannot honour the three-way non-value contract: an absent CHARACTER"
                         + " column reads as a computed MissingValue.MIS where the constant \"\" is"
                         + " owed, and a present-but-missing cell loses its own missing identity."
-                        + " Override it, as DatasetLookup / KeyMatchExpandedLookup do: "
-                        + notDeclared);
+                        + " Override it, as MergedViewLookup does: " + notDeclared);
         assertTrue(ignoresTheExpectation.isEmpty(),
                 "⛔⛔ these production JoinLookup implementations DECLARE the expectation-aware"
                         + " lookupValue and do not HONOUR it: for a column absent from the joined"
@@ -205,7 +193,7 @@ class JoinLookupProductionOverrideGuardTest
         IDataTable primary = MockTable.of().col("USUBJID", "S1").name("AE").build();
 
         // --- the DECLARATION detector ------------------------------------------------------
-        assertTrue(declaresExpectationAwareLookupValue(DatasetLookup.class),
+        assertTrue(declaresExpectationAwareLookupValue(MergedViewLookup.class),
                 "CONTROL FAILED: a real production implementation must be recognised as compliant,"
                         + " or the guard above is asserting nothing");
         assertFalse(declaresExpectationAwareLookupValue(StringChannelOnlyLookup.class),

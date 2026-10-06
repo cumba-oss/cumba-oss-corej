@@ -73,7 +73,8 @@ class RuleRunnerOutputWildcardExpansionTest
     {
         return EvaluationContext.builder().table(adae)
                 .datasetResolver(name -> "ADSL".equals(name) ? adsl : null)
-                .joinedDatasets(Map.of("ADSL", adslLookup(adsl))).domainPrefix("AE").build();
+                .mergedView(ExecCalls.joinsView(Map.of("ADSL", adslLookup(adsl))))
+                .domainPrefix("AE").build();
     }
 
 

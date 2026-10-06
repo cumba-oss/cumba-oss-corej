@@ -23,12 +23,12 @@ import org.jspecify.annotations.Nullable;
  *
  * <ul>
  * <li>a qualified {@code J.X} of a keyed {@code Match_Datasets} entry: the row's bound {@code J}
- * record's cell, read through the context's {@link JoinLookup} — on the merged-view arm a
- * {@link MergedViewLookup}, so the cell IS the view's ({@code W3a}); an unmatched row reads the
- * column's type default (the not-supplied marker, {@code D72a-1});</li>
+ * record's cell, read through the context's {@link JoinLookup} — a {@link MergedViewLookup}, so the
+ * cell IS the view's ({@code W3a}); an unmatched row reads the column's type default (the
+ * not-supplied marker, {@code D72a-1});</li>
  * <li>a bare name the primary lacks that its {@code SUPP--} delivers: the qualifier column
- * {@link SuppPivot#qualifierColumn} hands out — on the merged-view arm the view's SUPP column, with
- * its {@code MERGE_ERROR} read as the rule's ERROR (OD-7), exactly as the Check's own bare read of
+ * {@link EvaluationContext#suppQualifier} hands out — the view's SUPP column, with its
+ * {@code MERGE_ERROR} read as the rule's ERROR (OD-7), exactly as the Check's own bare read of
  * it.</li>
  * </ul>
  *
@@ -236,7 +236,7 @@ public final class GroupReadTable extends AbstractDataTable
         String qualifier = MatchDataset.qualifierOf(name);
         if (qualifier != null)
         {
-            JoinLookup lookup = ctx.getJoinedDatasets().get(qualifier);
+            JoinLookup lookup = ctx.joins().get(qualifier);
             String column = name.substring(qualifier.length() + 1);
             if (lookup == null || lookup.lacksColumnOnEveryRow(column))
             {
@@ -246,7 +246,7 @@ public final class GroupReadTable extends AbstractDataTable
             return new Merged(new JoinedColumn(table, lookup, column),
                     type == DataValueType.MISSING ? DataValueType.STRING : type);
         }
-        IDataTableColumn qualifierColumn = SuppPivot.qualifierColumn(ctx, name);
+        IDataTableColumn qualifierColumn = ctx.suppQualifier(name);
         return qualifierColumn == null ? null : new Merged(qualifierColumn, suppType(ctx, name));
     }
 

@@ -38,9 +38,9 @@ import org.junit.jupiter.api.Test;
  * <p>
  * Known reds recorded, not fixed (plan §2.4 / findings): <b>N2</b> — a lower-case qualifier in an
  * entry is matched exactly against the join map ({@code RuleRunner.extractOutputValues}, the
- * {@code ctx.getJoinedDatasets().get(dsName)} read) and the entry is silently omitted, while a
- * lower-case COLUMN part is found (the datatable lookup ignores case); <b>N17</b> — an entry naming
- * an undeclared dataset is omitted at run time — Stage A files the observe-only
+ * {@code ctx.joins().get(dsName)} read) and the entry is silently omitted, while a lower-case
+ * COLUMN part is found (the datatable lookup ignores case); <b>N17</b> — an entry naming an
+ * undeclared dataset is omitted at run time — Stage A files the observe-only
  * {@code DOTTED_REF_UNDECLARED} for it since phase 3.
  * </p>
  *
@@ -50,9 +50,9 @@ import org.junit.jupiter.api.Test;
  * finding — is served from the merged evaluation view. A planted row shift
  * ({@link MergedEvaluation#plantForTests}) under a Check that reads only primary columns moves the
  * printed values and no finding, so the projection, not the Check, is what reads the view; a
- * behaviour the view changes is shown against the legacy arm
- * ({@link MergedEvaluation#setLegacyForTests}) in the same test. The report location keeps real
- * columns and bare {@code QNAM} tokens: a merged name always carries a {@code .}
+ * behaviour the view changed was shown against the legacy arm in the same test until W6 retired it
+ * (the values both arms printed are pinned instead). The report location keeps real columns and
+ * bare {@code QNAM} tokens: a merged name always carries a {@code .}
  * ({@code FindingLocations.isNonColumnToken}).
  * </p>
  */
@@ -190,22 +190,7 @@ class OutputVariablesUniformityTest
     @AfterEach
     void hooksOff()
     {
-        MergedEvaluation.setLegacyForTests(false);
         MergedEvaluation.plantForTests(null);
-    }
-
-
-    private static RuleExecutionResult legacy(Rule rule, IDataTable p, IDataTable... others)
-    {
-        MergedEvaluation.setLegacyForTests(true);
-        try
-        {
-            return executed(rule, p, inventory(p, others));
-        }
-        finally
-        {
-            MergedEvaluation.setLegacyForTests(false);
-        }
     }
 
 
@@ -287,8 +272,8 @@ class OutputVariablesUniformityTest
         IDataTable j = joined();
         Rule r = rule("J.S", "J.N");
         List<Map<String, String>> clean = QualifiedNameFixture.values(view(r, p, j));
-        assertEquals(QualifiedNameFixture.values(legacy(r, p, j)), clean,
-                "both arms print the same");
+        assertEquals(List.of("a", "b", "", "A", "b", "c"), column(clean, "J.S"),
+                "what both arms printed when W3b compared them");
         MergedEvaluation.plantForTests(MergeKind.KEYED);
         RuleExecutionResult planted = view(r, p, j);
         assertEquals(rows(view(r, p, j)), rows(planted), "the plant moves no finding");
@@ -304,9 +289,8 @@ class OutputVariablesUniformityTest
         IDataTable ae = ae();
         Rule r = ruleOf("Record", check("AETERM != \"zz\"") + "," + outcome("AESEQ", "AETRTEM"));
         List<Map<String, String>> clean = QualifiedNameFixture.values(view(r, ae, suppae()));
-        assertEquals(QualifiedNameFixture.values(legacy(r, ae, suppae())), clean,
-                "both arms print the same");
-        assertEquals(List.of("Y", "", "N"), column(clean, "AETRTEM"));
+        assertEquals(List.of("Y", "", "N"), column(clean, "AETRTEM"),
+                "what both arms printed when W3b compared them");
         MergedEvaluation.plantForTests(MergeKind.SUPP);
         List<Map<String, String>> planted = QualifiedNameFixture.values(view(r, ae, suppae()));
         assertEquals(List.of("", "N", "Y"), column(planted, "AETRTEM"),
@@ -323,9 +307,8 @@ class OutputVariablesUniformityTest
         Rule r = ruleOf("Group", matchJ("") + ",\"Grouping\":{\"Variables\":[\"G\"]},"
                 + check(FIRES_EVERYWHERE) + "," + outcome("G", "J.S"));
         List<Map<String, String>> clean = QualifiedNameFixture.values(view(r, p, j));
-        assertEquals(QualifiedNameFixture.values(legacy(r, p, j)), clean,
-                "both arms print the same");
-        assertEquals(List.of("[a, b]", "[, A]", "[b, c]"), column(clean, "J.S"));
+        assertEquals(List.of("[a, b]", "[, A]", "[b, c]"), column(clean, "J.S"),
+                "what both arms printed when W3b compared them");
         MergedEvaluation.plantForTests(MergeKind.KEYED);
         List<Map<String, String>> planted = QualifiedNameFixture.values(view(r, p, j));
         assertEquals(List.of("[b, ]", "[A, b]", "[c, a]"), column(planted, "J.S"),
@@ -350,8 +333,6 @@ class OutputVariablesUniformityTest
                 + outcome("variable_name", "J.S", "J.Z"));
         assertEquals(List.of(List.of("J.S")), named(view(column, empty, j)), "empty primary");
         assertEquals(List.of(List.of("J.S")), named(view(column, full, j)), "populated primary");
-        assertEquals(List.of(List.of("J.S")), named(legacy(column, empty, j)),
-                "the legacy arm's lookups know their column set too");
         Rule verdict = ruleOf("Dataset",
                 matchJ("") + "," + check("record_count() == 0") + "," + outcome("J.S", "J.Z", "S"));
         assertEquals(List.of(List.of("J.S", "S")), named(view(verdict, empty, j)),
@@ -364,13 +345,11 @@ class OutputVariablesUniformityTest
     {
         // §3.1: <Name>._matched_ is a column of the merged schema, so an Output_Variables entry
         // naming it is a present column — printed on a record finding, listed by name on a
-        // non-record one. The legacy arm had no such column and omitted the entry (the red-first
-        // evidence; no corpus rule reports the flag, so the corpus does not move).
+        // non-record one. The retired legacy arm had no such column and omitted the entry (W3b's
+        // red-first evidence; no corpus rule reports the flag, so the corpus did not move).
         IDataTable p = primary();
         IDataTable j = RealTables.of("J").str("K", "k1", "k3").str("S", "a", "c").build();
         Rule r = rule("J._matched_");
-        assertFalse(QualifiedNameFixture.values(legacy(r, p, j)).get(0).containsKey("J._matched_"),
-                "legacy: omitted");
         assertEquals(List.of("true", "false", "true", "false", "false", "false"),
                 column(QualifiedNameFixture.values(view(r, p, j)), "J._matched_"));
         Rule verdict = ruleOf("Dataset",
@@ -389,7 +368,6 @@ class OutputVariablesUniformityTest
                 .build();
         Rule r = rule("J.S");
         RuleExecutionResult on = view(r, p, j);
-        assertEquals(QualifiedNameFixture.values(legacy(r, p, j)), QualifiedNameFixture.values(on));
         assertEquals(List.of(1L, 2L, 2L, 3L, 4L, 5L, 6L), rows(on));
         assertEquals(List.of("a", "b", "c", "", "", "", ""),
                 column(QualifiedNameFixture.values(on), "J.S"));

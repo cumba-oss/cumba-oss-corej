@@ -16,13 +16,14 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Unit tests for {@link KeyMatchRowExpander} — key-based {@code Match_Datasets} row expansion,
- * mirroring the Python engine's {@code merge_sdtm_datasets} (one row per matched pair, each
- * expanded row bound to its matching child). Every fixture states its {@code Join_Type}: the
- * expander has no default (the loader stamps {@code inner} where none is authored, ruling S2), and
- * an entry that reaches it without one is refused.
+ * Key-based {@code Match_Datasets} row expansion through the merged evaluation view (one row per
+ * matched pair, each merged row bound to its matching child) — the retired key-match expander's
+ * unit tests, kept as pins of the view since W6 of {@code PLAN-merged-evaluation-table}
+ * ({@link ExecCalls#expand} builds the view where the expander's entry point stood). Every fixture
+ * states its {@code Join_Type}; an absent one runs as {@code inner}, the S2 default the loader
+ * stamps on every loaded rule.
  */
-class KeyMatchRowExpanderTest
+class KeyedPartExpansionTest
 {
 
     private static IDataTable tbl(String name, String[] cols, String[][] rows)
@@ -52,16 +53,14 @@ class KeyMatchRowExpanderTest
         MatchDataset m = new MatchDataset();
         m.setName(name);
         m.setKeys(List.of(keys));
-        // Always stated: since U15 of PLAN-retire-dead-multi-match-lookup the expander has no
-        // default and refuses an absent value (the loader stamps `inner` where none is authored).
+        // Always stated, as the loader stamps it (`inner` where none is authored, S2).
         m.setJoinType(joinType);
         return m;
     }
 
 
     /** "primaryRow:childValue" per expanded row for the named join's column. */
-    private static List<String> collect(KeyMatchRowExpander.KeyMatchExpansion exp, String ds,
-            String col)
+    private static List<String> collect(MergedEvaluation.Built exp, String ds, String col)
     {
         IDataTable t = exp.table();
         JoinLookup lk = exp.lookups().get(ds);
@@ -120,8 +119,8 @@ class KeyMatchRowExpanderTest
                         "P2", "N"
                 }
         });
-        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
-                List.of(md("AE", "left", "USUBJID")), resolver(Map.of("AE", ae)), "R");
+        MergedEvaluation.Built exp = ExecCalls.expand(dm, List.of(md("AE", "left", "USUBJID")),
+                resolver(Map.of("AE", ae)), "R");
         assertNotNull(exp);
         // P1 -> 2 AE rows (N, Y); P2 -> 1 AE row (N). 3 expanded rows; each binds its own child.
         assertEquals(3, exp.table().getRowCount());
@@ -155,8 +154,8 @@ class KeyMatchRowExpanderTest
                         "P1", "Y"
                 }
         });
-        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
-                List.of(md("AE", "inner", "USUBJID")), resolver(Map.of("AE", ae)), "R");
+        MergedEvaluation.Built exp = ExecCalls.expand(dm, List.of(md("AE", "inner", "USUBJID")),
+                resolver(Map.of("AE", ae)), "R");
         // explicit inner: P2 (no AE) is dropped.
         assertEquals(1, exp.table().getRowCount());
         assertEquals(List.of("0:Y"), collect(exp, "AE", "AESDTH"));
@@ -188,8 +187,8 @@ class KeyMatchRowExpanderTest
                 }
         });
         // explicit left: P2 (no AE) is kept with a null-bound child.
-        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
-                List.of(md("AE", "left", "USUBJID")), resolver(Map.of("AE", ae)), "R");
+        MergedEvaluation.Built exp = ExecCalls.expand(dm, List.of(md("AE", "left", "USUBJID")),
+                resolver(Map.of("AE", ae)), "R");
         assertEquals(2, exp.table().getRowCount());
         List<String> got = collect(exp, "AE", "AESDTH");
         assertTrue(got.contains("0:Y"), got.toString());
@@ -233,12 +232,12 @@ class KeyMatchRowExpanderTest
                         "P2"
                 }
         });
-        // AE not registered -> merge skipped, rows unchanged, no AE lookup.
-        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
-                List.of(md("AE", "left", "USUBJID")), resolver(Map.of()), "R");
-        assertNotNull(exp);
-        assertEquals(2, exp.table().getRowCount());
-        assertNull(exp.lookups().get("AE"));
+        // AE not registered -> no part: nothing is merged and no view is built, so the
+        // evaluation reads the primary's rows unchanged and AE's columns take the not-supplied
+        // default (the retired expander answered an unchanged expansion without an AE lookup).
+        MergedEvaluation.Built exp = ExecCalls.expand(dm, List.of(md("AE", "left", "USUBJID")),
+                resolver(Map.of()), "R");
+        assertNull(exp, "nothing to merge: no view");
     }
 
 
@@ -275,7 +274,7 @@ class KeyMatchRowExpanderTest
                         "P1", "DEATH"
                 }
         });
-        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
+        MergedEvaluation.Built exp = ExecCalls.expand(dm,
                 List.of(md("AE", "left", "USUBJID"), md("CE", "left", "USUBJID")),
                 resolver(Map.of("AE", ae, "CE", ce)), "R");
         // P1 x 2 AE x 1 CE = 2 expanded rows; each binds one AE and the one CE.
@@ -333,8 +332,8 @@ class KeyMatchRowExpanderTest
                         "P1", "Y"
                 }
         });
-        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
-                List.of(md("AE", "left", "USUBJID")), resolver(Map.of("AE", ae)), "R");
+        MergedEvaluation.Built exp = ExecCalls.expand(dm, List.of(md("AE", "left", "USUBJID")),
+                resolver(Map.of("AE", ae)), "R");
         assertNotNull(exp);
         JoinLookup lk = exp.lookups().get("AE");
         IDataTable t = exp.table();
@@ -373,7 +372,7 @@ class KeyMatchRowExpanderTest
         IDataTable lbhe = RealTables.of("lbhe").str("DOMAIN", "LB").str("USUBJID", "U2")
                 .str("LBSEQ", "9").str("LBORRES", "res-he").build();
 
-        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(primary,
+        MergedEvaluation.Built exp = ExecCalls.expand(primary,
                 List.of(md("LB", "left", "USUBJID", "LBSEQ")), RealTables.inventoryOf(lbch, lbhe),
                 "R");
         assertNotNull(exp, "a split LB must expand, not silently skip the merge");
@@ -405,12 +404,13 @@ class KeyMatchRowExpanderTest
 
 
     /**
-     * U15 of {@code PLAN-retire-dead-multi-match-lookup}: an entry that reaches the expander
-     * without a {@code Join_Type} is refused, not run as a left join — the loader stamps
-     * {@code inner} on every loaded rule, so an absent value here means a rule that bypassed it.
+     * U15 of {@code PLAN-retire-dead-multi-match-lookup} refused an entry that reached the retired
+     * expander without a {@code Join_Type}, so a loader bypass could never run as a {@code left}
+     * join against the S2 ruling. The merged view keeps that guarantee by answering S2 itself: an
+     * absent {@code Join_Type} is {@code inner} — the unmatched primary row is dropped, never kept.
      */
     @Test
-    void absentJoinTypeIsRefusedLoudly()
+    void anAbsentJoinTypeRunsAsInnerNeverLeft()
     {
         IDataTable dm = tbl("DM", new String[]
         {
@@ -419,6 +419,9 @@ class KeyMatchRowExpanderTest
         {
                 {
                         "P1"
+                },
+                {
+                        "P2"
                 }
         });
         IDataTable ae = tbl("AE", new String[]
@@ -433,12 +436,12 @@ class KeyMatchRowExpanderTest
         MatchDataset bare = new MatchDataset();
         bare.setName("AE");
         bare.setKeys(List.of("USUBJID"));
-        DatasetResolver resolver = resolver(Map.of("AE", ae));
-
-        IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> ExecCalls.expand(dm, List.of(bare), resolver, "R"));
-
-        assertTrue(e.getMessage().contains("Join_Type"), e.getMessage());
+        MergedEvaluation.Built exp = ExecCalls.expand(dm, List.of(bare), resolver(Map.of("AE", ae)),
+                "R");
+        assertNotNull(exp);
+        assertEquals(1, exp.table().getRowCount(),
+                "S2: inner — P2 has no AE partner and is dropped");
+        assertEquals(0L, exp.table().getRealRowIndex(0));
     }
 
 }

@@ -14,10 +14,7 @@ import java.util.TreeSet;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.merge.MergeKind;
-import net.cumba.datatable.merge.MergedPart;
 import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -33,13 +30,6 @@ import org.junit.jupiter.api.Test;
  */
 class RelrecMergedViewTest
 {
-
-    @AfterEach
-    void hooksOff()
-    {
-        MergedEvaluation.setLegacyForTests(false);
-    }
-
 
     /** {@code aExtraRequirements}: further {@code Requirements} keys (JSON members) or null. */
     private static Rule rule(String aEntry, String aCheck, String aRequired,
@@ -513,20 +503,5 @@ class RelrecMergedViewTest
         assertEquals("IBU", values.get(0).get("CM.CMTRT"), String.valueOf(values));
         assertEquals("", values.get(0).get("AE.AETERM"),
                 "the R3 row carries no AE: not supplied prints its type default");
-    }
-
-
-    @Test
-    void theLegacyHookRoutesAForwardRelrecRuleToTheViewToo()
-    {
-        // The corpus differential's base: a forward RELREC rule reads its related domains through
-        // the view on both arms (the expander it replaced is gone), like a Child rule.
-        IDataTable rr = relrec("AE|AESEQ|1|R1", "CM|CMSEQ|1|R1");
-        MergedEvaluation.setLegacyForTests(true);
-        MergedEvaluation.Built built = view(
-                rule(RELREC_ENTRY, "not empty(AETERM)", "\"AETERM\"", null), ae(),
-                resolver(ae(), cm(), rr));
-        List<MergeKind> kinds = built.view().parts().stream().map(MergedPart::kind).toList();
-        assertTrue(kinds.contains(MergeKind.RELREC), String.valueOf(kinds));
     }
 }

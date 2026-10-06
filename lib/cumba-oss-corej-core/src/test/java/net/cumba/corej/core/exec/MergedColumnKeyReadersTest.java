@@ -45,13 +45,12 @@ import org.junit.jupiter.params.provider.MethodSource;
  * <p>
  * The differential: each probe runs over DS + the merge's source and over DS' (DS carrying the same
  * DSSCAT values itself, {@code ""} where no source row qualifies the record — the type default, D34
- * #3); the findings (rows and reported values) must be equal, on the merged-view arm and on the
- * legacy arm ({@link MergedEvaluation#setLegacyForTests}). Non-vacuity: every probe must differ
- * from the run WITHOUT the source (the column resolves nowhere — the probe can see it), and on the
- * view arm the plant of the source's kind ({@link MergedEvaluation#plantForTests}: every read of
- * that part one merged row on) must move it — the read goes through the view — unless the probe's
- * answer is a whole-dataset set or count, invariant under a row permutation by construction (listed
- * per probe).
+ * #3); the findings (rows and reported values) must be equal (until W6 on the legacy arm too, which
+ * W6 retired). Non-vacuity: every probe must differ from the run WITHOUT the source (the column
+ * resolves nowhere — the probe can see it), and on the view arm the plant of the source's kind
+ * ({@link MergedEvaluation#plantForTests}: every read of that part one merged row on) must move it
+ * — the read goes through the view — unless the probe's answer is a whole-dataset set or count,
+ * invariant under a row permutation by construction (listed per probe).
  * </p>
  */
 class MergedColumnKeyReadersTest
@@ -60,7 +59,6 @@ class MergedColumnKeyReadersTest
     @AfterEach
     void reset()
     {
-        MergedEvaluation.setLegacyForTests(false);
         MergedEvaluation.plantForTests(null);
     }
 
@@ -389,10 +387,7 @@ class MergedColumnKeyReadersTest
                 outcome(source, p, SEQ_ONLY, ds(), sourceWithoutTheColumn(source)),
                 source + " " + p + ": a probe that cannot see the merged column measures nothing");
         assertEquals(reference, outcome(source, p, BOTH, ds(), source(source, p)),
-                source + " " + p + " — merged-view arm");
-        MergedEvaluation.setLegacyForTests(true);
-        assertEquals(reference, outcome(source, p, BOTH, ds(), source(source, p)),
-                source + " " + p + " — legacy arm");
+                source + " " + p + " — merged view");
     }
 
 

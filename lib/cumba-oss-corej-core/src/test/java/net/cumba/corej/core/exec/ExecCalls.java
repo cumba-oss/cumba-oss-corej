@@ -13,10 +13,13 @@ import org.jspecify.annotations.Nullable;
 /**
  * Test shorthand for the smaller {@code exec} entry points whose defaulting overloads
  * {@code PLAN-retire-dead-multi-match-lookup} U1 removed from {@code src/main}:
- * {@link IndexHelper#groupByPresent} (A17), {@link AbsentDatasetSkip#decide} (A21),
- * {@link KeyMatchRowExpander#expand} (A22) and the {@link Violation} constructors with a row
- * identity but no level / unit (A26). Each forwards the default the removed overload supplied. ⛔
- * Pure forwarders only — see {@link RuleRunnerCalls}.
+ * {@link IndexHelper#groupByPresent} (A17), {@link AbsentDatasetSkip#decide} (A21) and the
+ * {@link Violation} constructors with a row identity but no level / unit (A26). Each forwards the
+ * default the removed overload supplied. ⛔ Pure forwarders only — see {@link RuleRunnerCalls}.
+ * (Three fixture builders joined them in W6 of {@code PLAN-merged-evaluation-table}:
+ * {@link #expand}, the view standing where the retired key-match expander's entry point stood,
+ * {@link #viewLookup}, a keyed part's lookup where the retired {@code DatasetLookup} stood, and
+ * {@link #joinsView}, a view whose joins are hand-built lookups.)
  */
 public final class ExecCalls
 {
@@ -61,20 +64,159 @@ public final class ExecCalls
     }
 
 
-    /** {@code expand} with every child index built locally (no shared cache). */
-    static KeyMatchRowExpander.@Nullable KeyMatchExpansion expand(IDataTable primaryTable,
+    /**
+     * The merged evaluation view of {@code primaryTable} over {@code matchDatasets} alone (no SUPP
+     * merge) — the W6 successor of the retired key-match expander's test entry point
+     * ({@code PLAN-merged-evaluation-table}): its {@link MergedEvaluation.Built#table() table} and
+     * its parts' {@link MergedEvaluation.Built#lookups() lookups} answer what the expansion's did,
+     * so the expander's expectations now pin the view. {@code null} when nothing is merged.
+     */
+    static MergedEvaluation.@Nullable Built expand(IDataTable primaryTable,
             @Nullable List<MatchDataset> matchDatasets, DatasetResolver resolver,
             @Nullable String ruleId)
     {
-        return KeyMatchRowExpander.expand(primaryTable, matchDatasets, resolver, ruleId, null);
+        return expand(primaryTable, matchDatasets, resolver, ruleId, null);
     }
 
 
-    static KeyMatchRowExpander.@Nullable KeyMatchExpansion expand(IDataTable primaryTable,
+    /** {@link #expand} through a dataset cache over {@code aShared} (the cached view). */
+    static MergedEvaluation.@Nullable Built expand(IDataTable primaryTable,
             @Nullable List<MatchDataset> matchDatasets, DatasetResolver resolver,
             @Nullable String ruleId, JoinCache.@Nullable SharedIndexCache aShared)
     {
-        return KeyMatchRowExpander.expand(primaryTable, matchDatasets, resolver, ruleId, aShared);
+        Rule rule = new Rule();
+        rule.setMatchDatasets(matchDatasets);
+        rule.setSuppMerge(Boolean.FALSE);
+        // a MockTable fixture reaches the datatable's merge through a real-metadata face
+        IDataTable primary = java.util.Objects.requireNonNull(RealMetaTable.of(primaryTable));
+        DatasetResolver real = faced(resolver, primaryTable, primary);
+        return MergedEvaluation.build(rule, primary, primary, real,
+                aShared == null ? null : new JoinCache(aShared), ruleId, null);
+    }
+
+
+    /**
+     * {@code resolver} answering a real-metadata face ({@link RealMetaTable}) for every
+     * {@code MockTable} it supplies — one face per table, {@code primary}'s being {@code face} —
+     * and keeping its inventory when it has one (a split domain's union needs it).
+     */
+    private static DatasetResolver faced(DatasetResolver resolver, IDataTable primary,
+            IDataTable face)
+    {
+        java.util.IdentityHashMap<IDataTable, IDataTable> faces = new java.util.IdentityHashMap<>();
+        faces.put(primary, face);
+        java.util.function.Function<String, @Nullable IDataTable> resolve = name ->
+        {
+            IDataTable t = resolver.resolve(name);
+            return t == null ? null
+                    : faces.computeIfAbsent(t,
+                            k -> java.util.Objects.requireNonNull(RealMetaTable.of(k)));
+        };
+        if (resolver instanceof DatasetResolver.WithInventory inventory)
+        {
+            return new DatasetResolver.WithInventory()
+            {
+
+                @Override
+                public @Nullable IDataTable resolve(String name)
+                {
+                    return resolve.apply(name);
+                }
+
+
+                @Override
+                public Set<String> availableDatasets()
+                {
+                    return inventory.availableDatasets();
+                }
+            };
+        }
+        return resolve::apply;
+    }
+
+
+    /**
+     * A context over the merged view {@code rule} builds on {@code primary} — its evaluation table,
+     * its parts and its SUPP qualifiers — for a reader test that drives the readers the way
+     * {@code RuleRunner} does (W6 of {@code PLAN-merged-evaluation-table}: the view is the one
+     * source of joins and qualifiers; a context without one has neither). A {@code MockTable}
+     * fixture reaches the merge through a real-metadata face; read the table back from the built
+     * context.
+     *
+     * @throws IllegalArgumentException
+     *             when the rule merges nothing on this data
+     */
+    public static EvaluationContext.EvaluationContextBuilder viewContext(Rule rule,
+            IDataTable primary, DatasetResolver resolver, @Nullable String domain)
+    {
+        IDataTable face = java.util.Objects.requireNonNull(RealMetaTable.of(primary));
+        DatasetResolver real = faced(resolver, primary, face);
+        MergedEvaluation.Built built = MergedEvaluation.build(rule, face, face, real, null, "R",
+                domain);
+        if (built == null)
+        {
+            throw new IllegalArgumentException("the fixture merges nothing");
+        }
+        return EvaluationContext.builder().table(built.table()).mergedView(built)
+                .datasetResolver(real).suppMerge(rule.isSuppMergeEnabled());
+    }
+
+
+    /**
+     * The merged view's lookup of one {@code left} keyed part — {@code joined} under {@code name},
+     * keyed on {@code keys} — over {@code primary}: the W6 successor of the retired
+     * {@code DatasetLookup.build} fixture. The view reads the merged row, so the fixture must not
+     * expand a row (every primary row meets at most one partner): its rows ARE the primary's, and a
+     * reader asked at primary row {@code i} reads the partner of row {@code i}.
+     *
+     * @throws IllegalArgumentException
+     *             when the fixture expands a row (a duplicate partner key)
+     */
+    public static JoinLookup viewLookup(IDataTable primary, String name, IDataTable joined,
+            List<String> keys)
+    {
+        MatchDataset md = new MatchDataset();
+        md.setName(name);
+        md.setKeys(keys);
+        md.setJoinType("left");
+        MergedEvaluation.Built built = expand(primary, List.of(md),
+                n -> n.equalsIgnoreCase(name) ? joined : null, "FIXTURE");
+        if (built == null)
+        {
+            throw new IllegalArgumentException("the fixture merged nothing");
+        }
+        if (built.view().isRowMapped())
+        {
+            throw new IllegalArgumentException("the fixture expands a row: its view rows are not"
+                    + " the primary's — read it through a view context instead");
+        }
+        return java.util.Objects.requireNonNull(built.lookups().get(name));
+    }
+
+
+    /**
+     * A view whose joins are {@code joins} — test lookups standing for the merged view's parts
+     * ({@link EvaluationContext#joins}), for the reader tests that drive a reader with a hand-built
+     * {@link JoinLookup} ({@code .mergedView(ExecCalls.joinsView(joins))} where a context used to
+     * take {@code .joinedDatasets(joins)} before W6 of {@code PLAN-merged-evaluation-table}). The
+     * table behind them is an empty stand-in, never the context's, so the view serves no SUPP
+     * qualifier and is never the dataset's shared one — only the joins are read.
+     */
+    public static MergedEvaluation.Built joinsView(Map<String, ? extends JoinLookup> joins)
+    {
+        return joinsView(RealTables.of("JOINS").str("_").build(), joins);
+    }
+
+
+    /** {@link #joinsView(Map)} over {@code table}'s own rows (the view's evaluation table). */
+    public static MergedEvaluation.Built joinsView(IDataTable table,
+            Map<String, ? extends JoinLookup> joins)
+    {
+        net.cumba.datatable.merge.MergedTable alone = net.cumba.datatable.merge.MergedTables
+                .build(net.cumba.datatable.merge.MergeRequest.builder().primary(table)
+                        .resolver(_ -> null).build());
+        return new MergedEvaluation.Built(alone, table, new java.util.LinkedHashMap<>(joins),
+                List.of(), Set.of(), Map.of(), false, false, false);
     }
 
 

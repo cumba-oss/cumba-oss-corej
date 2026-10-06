@@ -894,12 +894,12 @@ public class Rule
      * The declared SUPP merge (owner P-Q1, 2026-09-28; {@code PLAN-operation-replacements} §2.3):
      * {@code true} (the default when absent) lets a bare name the parent dataset does not carry
      * resolve to its {@code SUPP<domain>} qualifier per record — the SDTM supplemental-qualifier
-     * merge every validator performs, here a pivot by reference,
-     * {@link net.cumba.corej.core.exec.SuppPivot}: readable by value and by existence, never a
-     * variable of the parent for the variable-metadata surface (C1 ruled (a), 2026-09-29) — and
-     * keeps the dotted existence pivot ({@code var_exists("AE.AETRTEM")} true when SUPPAE carries
-     * the QNAM). {@code false} evaluates the raw dataset and answers both pivots false. JSON key
-     * {@code "Supp_Merge"}.
+     * merge every validator performs, here a pivot by reference — the merged view's SUPP part,
+     * {@link net.cumba.corej.core.exec.EvaluationContext#suppQualifier}: readable by value and by
+     * existence, never a variable of the parent for the variable-metadata surface (C1 ruled (a),
+     * 2026-09-29) — and keeps the dotted existence pivot ({@code var_exists("AE.AETRTEM")} true
+     * when SUPPAE carries the QNAM). {@code false} evaluates the raw dataset and answers both
+     * pivots false. JSON key {@code "Supp_Merge"}.
      */
     @JsonProperty("Supp_Merge")
     private @Nullable Boolean suppMerge;

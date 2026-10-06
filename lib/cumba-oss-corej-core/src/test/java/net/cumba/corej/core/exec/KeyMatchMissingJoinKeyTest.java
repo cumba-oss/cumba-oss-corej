@@ -122,7 +122,7 @@ class KeyMatchMissingJoinKeyTest
     }
 
 
-    private static KeyMatchRowExpander.KeyMatchExpansion expand(String joinType)
+    private static MergedEvaluation.Built expand(String joinType)
     {
         IDataTable dm = withMissingKeyOnRowOne("DM", "AGE", "34", "51");
         IDataTable ae = withMissingKeyOnRowOne(AE, "AETERM", "HEADACHE", "NAUSEA");
@@ -134,7 +134,7 @@ class KeyMatchMissingJoinKeyTest
 
 
     /** "primaryRow:childValue" per expanded row, the same reading as KeyMatchRowExpanderTest. */
-    private static List<String> rows(KeyMatchRowExpander.KeyMatchExpansion exp, String col)
+    private static List<String> rows(MergedEvaluation.Built exp, String col)
     {
         IDataTable t = exp.table();
         JoinLookup lk = exp.lookups().get(AE);

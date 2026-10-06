@@ -3,6 +3,7 @@ package net.cumba.corej.core.exec;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.IntFunction;
 import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
@@ -21,12 +22,12 @@ import org.jspecify.annotations.Nullable;
  * <em>is</em> merged row {@code i} and no key is probed and no row map is consulted here.
  *
  * <p>
- * The answers are those the expanded and the first-wins lookups gave (W2 compared 6.9 M of them):
- * an absent partner column is the authored absent default
- * ({@link JoinLookup#absentJoinedColumnValue}), an unmatched row reads the partner column's type
- * default (the not-supplied marker, MET #4), a matched row hands the partner's cell through
- * identity and all; the text form renders through {@link ScalarSemantics#resolvedString};
- * {@code _matched_} is the part's supplied marker.
+ * The answers are those the retired expanded and first-wins lookups gave (W2 compared 6.9 M of
+ * them; W6 retired those lookups and made this the only production implementation): an absent
+ * partner column is the authored absent default ({@link JoinLookup#absentJoinedColumnValue}), an
+ * unmatched row reads the partner column's type default (the not-supplied marker, MET #4), a
+ * matched row hands the partner's cell through identity and all; the text form renders through
+ * {@link ScalarSemantics#resolvedString}; {@code _matched_} is the part's supplied marker.
  * </p>
  *
  * <p>
@@ -46,13 +47,22 @@ final class MergedViewLookup implements JoinLookup
 
     private final ConcurrentHashMap<String, Integer> columns = new ConcurrentHashMap<>();
 
+    /**
+     * The part of a merged column — {@code null} for the primary's — across the stages of a chained
+     * key ({@link MergedEvaluation.Built#partOf}), whose final table carries an earlier stage's
+     * parts as primary columns at the same indices.
+     */
+    private final IntFunction<@Nullable MergedPart> partOf;
+
     /** The test plant: rows read one merged row on ({@link MergedEvaluation#plantForTests}). */
     private final boolean shifted;
 
-    MergedViewLookup(MergedTable aView, MergedPart aPart, boolean aShifted)
+    MergedViewLookup(MergedTable aView, MergedPart aPart, IntFunction<@Nullable MergedPart> aPartOf,
+            boolean aShifted)
     {
         view = aView;
         part = aPart;
+        partOf = aPartOf;
         meta = aView.getMetaData();
         shifted = aShifted;
     }
@@ -70,7 +80,8 @@ final class MergedViewLookup implements JoinLookup
         // the keyed part's own columns, and (MQ5, W3d) the qualifiers the partner's SUPP<domain>
         // delivers — a SUPP part under the same qualifier, named <Name>.<QNAM> by the view
         int i = meta.getColumnIndex(part.qualifier() + "." + name);
-        return i >= 0 && view.partOf(i).qualifier().equals(part.qualifier()) ? i : -1;
+        MergedPart owner = i < 0 ? null : partOf.apply(i);
+        return owner != null && owner.qualifier().equals(part.qualifier()) ? i : -1;
     }
 
 
@@ -105,7 +116,8 @@ final class MergedViewLookup implements JoinLookup
         String name = source != null ? String.valueOf(source)
                 : merged.getName().substring(part.qualifier().length() + 1);
         return DataTableColumnMeta.builderFrom(merged).name(name)
-                .index(idx - view.partOf(idx).firstColumn()).build();
+                .index(idx - java.util.Objects.requireNonNull(partOf.apply(idx)).firstColumn())
+                .build();
     }
 
 

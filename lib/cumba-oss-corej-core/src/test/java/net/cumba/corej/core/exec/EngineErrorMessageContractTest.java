@@ -41,7 +41,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>
  * ⭐ <b>The classifier is no longer the only downstream.</b>
- * {@link #JOIN_LOOKUP_REQUIRED_MESSAGE_FRAGMENT} is a copy of a different literal in the rules
+ * {@link #FOREIGN_PART_REQUIRED_MESSAGE_FRAGMENT} is a copy of a different literal in the rules
  * repository — the {@code messageSubstring} of that repo's {@code NativeCorpusFullCoverageTest}
  * allowlist — and its message is a thrown {@code SubstitutionException} from {@code ValueResolver},
  * not one of {@code RuleRunner}'s ERROR sites. Read that constant's own javadoc; the mechanism is
@@ -75,37 +75,37 @@ class EngineErrorMessageContractTest
     /**
      * ⚠⚠ <b>A SECOND cross-repository coupling, and a different one from the four above.</b> Those
      * protect {@code ViolationNormaliser}'s ERROR classification; this one protects a test
-     * ALLOWLIST. Verbatim copy of the {@code messageSubstring} of the single
-     * {@code KNOWN_UNDISPATCHABLE} entry in <b>the rules repository</b>'s
-     * {@code NativeCorpusFullCoverageTest} ({@code src/test/java/net/cumba/corej/core/expr/eval/}
-     * there).
+     * ALLOWLIST: the {@code messageSubstring} of a {@code KNOWN_UNDISPATCHABLE} entry in <b>the
+     * rules repository</b>'s {@code NativeCorpusFullCoverageTest}
+     * ({@code src/test/java/net/cumba/corej/core/expr/eval/} there).
      *
      * <p>
-     * That gate asserts every shipped corpus rule reaches native dispatch. Three shipped copies of
-     * {@code CDISC-AD0720} (packages {@code rules-cdisc-adamig-1-1}, {@code -1-2}, {@code -1-3})
-     * legitimately cannot, so the gate allow-lists them by rule id <em>plus</em> this substring —
-     * the substring being what stops the same rule throwing for a DIFFERENT reason from passing
-     * silently. It is matched there with a plain {@code String.contains} against the thrown
-     * message: {@code attempt.detail().contains(known.messageSubstring())}.
+     * That gate asserts every shipped corpus rule reaches native dispatch, and allow-lists a rule
+     * that legitimately cannot by rule id <em>plus</em> a substring of the thrown message — the
+     * substring being what stops the same rule throwing for a DIFFERENT reason from passing
+     * silently ({@code attempt.detail().contains(known.messageSubstring())}). Its last entry,
+     * {@code CDISC-AD0720} on this message, was removed on 2026-09-25 (the harness now serves the
+     * joined dataset), so the map is empty; the machinery stays, and so does this pin — an entry
+     * re-added for this thrower would quote this fragment.
      * </p>
      *
      * <p>
-     * ⛔ <b>So a harmless reword of the engine text below reds a gate in ANOTHER repository</b>, one
-     * whose build never checks this repo out and whose failure names nothing over here. This test
-     * is the warning that repo structurally cannot give you. Rewording means changing BOTH — this
-     * constant and that {@code KNOWN_UNDISPATCHABLE} entry — in the same wave.
+     * ⛔ <b>So a reword of the engine text below must change any such entry in the same wave</b> — a
+     * gate in ANOTHER repository, whose build never checks this repo out and whose failure names
+     * nothing over here. Reworded in W6 of {@code PLAN-merged-evaluation-table} (the joins are the
+     * merged view's parts, no longer an interface the caller provides), with the allowlist empty.
      * </p>
      *
      * <p>
-     * ⚑ Deliberately NOT the whole message. The engine builds {@code "wildcard operand requires a
-     * JoinLookup for foreign dataset `" + foreign + "` but none was provided (Match_Datasets
-     * missing?)"}; only the run of words below is what the downstream {@code contains} sees, so
-     * only that is pinned. Pinning the {@code "wildcard operand "} prefix or the
-     * {@code "but none was provided"} tail as well would red this test for rewordings that break
-     * nothing downstream — and a pin that cries wolf gets deleted in irritation.
+     * ⚑ Deliberately NOT the whole message. The engine builds {@code "wildcard operand needs a
+     * Match_Datasets part for foreign dataset `" + foreign + "`, but the rule's merged view has
+     * none (Match_Datasets missing?)"}; only the run of words below is what a downstream
+     * {@code contains} would see, so only that is pinned. Pinning the {@code "wildcard operand "}
+     * prefix or the tail as well would red this test for rewordings that break nothing downstream —
+     * and a pin that cries wolf gets deleted in irritation.
      * </p>
      */
-    private static final String JOIN_LOOKUP_REQUIRED_MESSAGE_FRAGMENT = "requires a JoinLookup for foreign dataset";
+    private static final String FOREIGN_PART_REQUIRED_MESSAGE_FRAGMENT = "needs a Match_Datasets part for foreign dataset";
 
     private static String source(String aSimpleName) throws IOException
     {
@@ -136,9 +136,9 @@ class EngineErrorMessageContractTest
      * <p>
      * ⚠⚠ <b>Without this, every pin below is a LATENT DISARM.</b> They search the engine's source
      * TEXT, so a pin that asserts "this fragment appears exactly once" was equally satisfied by an
-     * occurrence in a comment. Measured: rewording {@code ValueResolver}'s missing-JoinLookup
-     * message <em>and</em> leaving a {@code //} comment quoting the old fragment kept
-     * {@link #theJoinLookupRequiredFragmentIsStillTheEngineSWording} GREEN while the rules
+     * occurrence in a comment. Measured: rewording {@code ValueResolver}'s missing-join message
+     * <em>and</em> leaving a {@code //} comment quoting the old fragment kept
+     * {@link #theForeignPartRequiredFragmentIsStillTheEngineSWording} GREEN while the rules
      * repository's gate would have gone red. That comment is exactly the cross-reference the pins'
      * own javadoc asks a future editor to write, so the hole was one helpful edit away from being
      * live.
@@ -410,25 +410,25 @@ class EngineErrorMessageContractTest
 
 
     @Test
-    void theJoinLookupRequiredFragmentIsStillTheEngineSWording() throws IOException
+    void theForeignPartRequiredFragmentIsStillTheEngineSWording() throws IOException
     {
-        // The fragment is built at exactly ONE site (ValueResolver's missing-JoinLookup guard).
+        // The fragment is built at exactly ONE site (ValueResolver's missing-join guard).
         // Asserting the COUNT rather than mere presence closes the hole a bare `contains` leaves
         // if a second site is ever added and only one of the two is reworded.
         int count = countFlattenedOccurrences("ValueResolver.java",
-                JOIN_LOOKUP_REQUIRED_MESSAGE_FRAGMENT);
+                FOREIGN_PART_REQUIRED_MESSAGE_FRAGMENT);
         Assertions.assertEquals(1, count,
                 "this engine message fragment no longer appears exactly once in ValueResolver:\n  "
-                        + JOIN_LOOKUP_REQUIRED_MESSAGE_FRAGMENT
-                        + "\nThe rules repository's NativeCorpusFullCoverageTest allow-lists the "
-                        + "three shipped CDISC-AD0720 rules as legitimately undispatchable by "
-                        + "rule id AND by a String.contains match on exactly this fragment "
-                        + "(KNOWN_UNDISPATCHABLE). Reworded here, that gate reds over there — an "
-                        + "accepted non-dispatch reported as an unexplained thrower — and its "
-                        + "failure names nothing in this repository. Update this constant AND that "
-                        + "entry's messageSubstring in the same wave. If instead a SECOND site now "
-                        + "emits the fragment, that is harmless downstream: raise the expected "
-                        + "count here rather than weakening the match.");
+                        + FOREIGN_PART_REQUIRED_MESSAGE_FRAGMENT
+                        + "\nThe rules repository's NativeCorpusFullCoverageTest allow-lists a "
+                        + "legitimately undispatchable rule by rule id AND by a String.contains "
+                        + "match on its message (KNOWN_UNDISPATCHABLE). Reworded here, an entry "
+                        + "quoting this fragment reds over there — an accepted non-dispatch "
+                        + "reported as an unexplained thrower — and its failure names nothing in "
+                        + "this repository. Update this constant AND any such entry's "
+                        + "messageSubstring in the same wave. If instead a SECOND site now emits "
+                        + "the fragment, that is harmless downstream: raise the expected count "
+                        + "here rather than weakening the match.");
     }
 
 

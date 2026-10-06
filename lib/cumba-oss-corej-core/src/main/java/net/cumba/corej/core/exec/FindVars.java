@@ -168,7 +168,7 @@ public final class FindVars
             // lookup's own column set (a SUPP qualifier of the partner and the _matched_ flag
             // are not enumerated); the inventory only for a lookup that cannot enumerate.
             List<DataTableColumnMeta> columns = java.util.Objects
-                    .requireNonNull(ctx.getJoinedDatasets().get(declared)).columns();
+                    .requireNonNull(ctx.joins().get(declared)).columns();
             if (columns != null)
             {
                 Pattern qualifiedPattern = literal ? patternOf(variable) : compile(variable);
@@ -403,9 +403,8 @@ public final class FindVars
         String declared = declaredQualifier(ctx,
                 java.util.Objects.requireNonNull(parsed.qualifier()));
         // W3d: the merged schema (the lookup's column set), as colref reads it
-        return declared != null
-                && !java.util.Objects.requireNonNull(ctx.getJoinedDatasets().get(declared))
-                        .lacksColumnOnEveryRow(parsed.variable());
+        return declared != null && !java.util.Objects.requireNonNull(ctx.joins().get(declared))
+                .lacksColumnOnEveryRow(parsed.variable());
     }
 
 
@@ -418,7 +417,7 @@ public final class FindVars
     {
         // the entry's OWN spelling (the map matches ignoring case since W3d, so a containsKey
         // shortcut would hand back the qualifier as written)
-        for (String name : ctx.getJoinedDatasets().keySet())
+        for (String name : ctx.joins().keySet())
         {
             if (name.equalsIgnoreCase(qualifier))
             {

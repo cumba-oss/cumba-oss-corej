@@ -13,7 +13,6 @@ import net.cumba.corej.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.merge.MergeException;
 import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -24,20 +23,13 @@ import org.junit.jupiter.api.Test;
  * <p>
  * Every violation is shown against its <b>control</b> — the same data without the authored value,
  * where the merge expands (or keys on the IG) as before — so a test that passes because the field
- * is never read cannot pass: the control and the authored run must differ. The legacy arm
- * ({@link MergedEvaluation#setLegacyForTests}) checks no cardinality and keys SUPP on the IG only;
- * where it runs it is the red-first evidence of the same test.
+ * is never read cannot pass: the control and the authored run must differ. (Until W6 the legacy arm
+ * — which checked no cardinality and keyed SUPP on the IG only — was the red-first evidence of the
+ * same test; W6 retired it.)
  * </p>
  */
 class MergedEvaluationCardinalityTest
 {
-
-    @AfterEach
-    void hooksOff()
-    {
-        MergedEvaluation.setLegacyForTests(false);
-    }
-
 
     private static Rule load(String ruleJson)
     {
@@ -159,18 +151,14 @@ class MergedEvaluationCardinalityTest
     void aDuplicateDmKeyUnderNToOneErrorsTheRuleInsteadOfExpanding()
     {
         // §3.4 Example B. Control (unauthored = n:m): AE subject 01's two records each expand into
-        // two merged rows, one per DM row — the old answer, and the legacy arm's even when n:1 is
-        // authored (it checks no cardinality).
+        // two merged rows, one per DM row — the old answer (the retired legacy arm's even when
+        // n:1 was authored: it checked no cardinality).
         IDataTable ae = ae();
         DatasetResolver r = resolver(ae, dm("S1|01|70", "S1|02|30", "S1|01|71"));
         RuleExecutionResult control = RuleRunnerCalls.execute(dmRule(STUDY_SUBJECT, ""), ae, r);
         assertEquals(RuleExecutionStatus.EXECUTED, control.getStatus(), String.valueOf(control));
         assertEquals(4, control.getViolations().size(), "n:m expands: " + control.getViolations());
         Rule nToOne = dmRule(STUDY_SUBJECT, N_TO_ONE);
-        MergedEvaluation.setLegacyForTests(true);
-        RuleExecutionResult legacy = RuleRunnerCalls.execute(nToOne, ae, r);
-        MergedEvaluation.setLegacyForTests(false);
-        assertEquals(RuleExecutionStatus.EXECUTED, legacy.getStatus());
         assertCardinalityError(RuleRunnerCalls.execute(nToOne, ae, r), "Cardinality n:1",
                 "DM has duplicate key (STUDYID=S1, USUBJID=01) at rows 1 and 3");
     }

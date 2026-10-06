@@ -234,8 +234,7 @@ class ScalarSemanticsComputedMissingTest
         // the channel is about had moved out of the module.
         for (String required : List.of("ExprCompiler.substitutedScalarCell",
                 "ExprCompiler.arithmeticCell", "JoinLookup.lookupValue",
-                "ScalarSemantics.computedMissing", "DatasetLookup.lookupValue",
-                "KeyMatchExpandedLookup.lookupValue", "MergedViewLookup.lookupValue"))
+                "ScalarSemantics.computedMissing", "MergedViewLookup.lookupValue"))
         {
             assertTrue(found.contains(required),
                     "CONTROL FAILED: the discovery did not find " + required
@@ -515,7 +514,11 @@ class ScalarSemanticsComputedMissingTest
      * the cache stores it as-is — {@code IdentityWeakCache.getOrBuild} never stores {@code null}.
      * </p>
      */
-    private static final int EXPECTED_MULTI_VALUE_PRODUCERS = 6;
+    // 6 -> 2 (PLAN-merged-evaluation-table W6, READ): the SUPP pivot's materialisation went with
+    // the pivot — SuppQnamColumn.materialise, resolve, Materialised.values and
+    // SharedIndexCache.getOrBuildSuppQnamColumn (-4); the merged view's SUPP part serves every
+    // qualifier. Left: Distinct.targetCells and GroupedAggregate.Grouped.byKey.
+    private static final int EXPECTED_MULTI_VALUE_PRODUCERS = 2;
 
     /**
      * ⛔ The permanent positive control for the element detector — a declaration carrying a
@@ -758,7 +761,12 @@ class ScalarSemanticsComputedMissingTest
     // 42 -> 41 (PLAN-merged-evaluation-table W5): RelrecExpandedLookup.lookupValue went with the
     // RELREC row expander (-1); the related domains are MergedViewLookup parts, whose lookupValue
     // was already counted (W3a).
-    private static final int EXPECTED_VALUE_PRODUCERS = 41;
+    // 41 -> 37 (PLAN-merged-evaluation-table W6): the legacy producers went with the legacy
+    // pipeline — DatasetLookup.lookupValue, KeyMatchExpandedLookup.lookupValue,
+    // SuppQnamIndex.Entry.qval and SuppPivot.SuppQnamColumn.getDataValue (-4);
+    // RelrecExpandedTable.getDataValue is RowMappedTable.getDataValue under its new name (a
+    // rename, the same body). MergedViewLookup.lookupValue is the one production lookup left.
+    private static final int EXPECTED_VALUE_PRODUCERS = 37;
 
     private static Method declared(Class<?> owner, String name)
     {

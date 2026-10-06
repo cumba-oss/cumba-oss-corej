@@ -17,7 +17,6 @@ import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.merge.ChildMergeSpec;
 import net.cumba.datatable.merge.JoinType;
 import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -31,12 +30,6 @@ import org.junit.jupiter.api.Test;
  */
 class ChildMergedViewTest
 {
-
-    @AfterEach
-    void hooksOff()
-    {
-        MergedEvaluation.setLegacyForTests(false);
-    }
 
     /** CG0371's respelled Check (MQ1). */
     private static final String REFERENCED_RECORD = "not empty(IDVAR) and not empty(IDVARVAL) and"
@@ -339,16 +332,14 @@ class ChildMergedViewTest
 
 
     @Test
-    void aChildRuleReadsItsParentThroughTheViewOnBothArmsAndSharesTheCachedView()
+    void aChildRuleReadsItsParentThroughTheViewAndSharesTheCachedView()
     {
         IDataTable supp = suppae("01|AESEQ|2|AESOSP");
         DatasetResolver r = resolver(supp, ae());
         Rule rule = rule("AE", KEYS, AESOSP, null);
-        MergedEvaluation.setLegacyForTests(true);
         assertNotNull(MergedEvaluation.build(rule, supp, supp, r, null, "X-1", "AE"),
-                "the bare pre-merge is gone: the legacy arm reads a parent through the view too");
+                "a parent is read through the view (the bare pre-merge is gone)");
         assertEquals(Set.of(0L), rows(RuleRunnerCalls.execute(rule, supp, r)));
-        MergedEvaluation.setLegacyForTests(false);
         JoinCache cache = new JoinCache();
         MergedEvaluation.Built first = MergedEvaluation.build(rule, supp, supp, r, cache, "X-1",
                 "AE");

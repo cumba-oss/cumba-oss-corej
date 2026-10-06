@@ -11,9 +11,9 @@ import net.cumba.corej.core.model.MatchDataset;
  * <h2>⭐⭐ Why this class exists at all</h2>
  *
  * <p>
- * The exclusion predicate below was, until 2026-09-22, a private {@code if} inside
- * {@link KeyMatchRowExpander#expandableEntries}. It is now shared, because the plan's own review
- * round caught its transcription into a second place having already <b>dropped a clause</b>
+ * The exclusion predicate below was, until 2026-09-22, a private {@code if} inside the (since
+ * retired) key-match expander's {@code expandableEntries}. It is now shared, because the plan's own
+ * review round caught its transcription into a second place having already <b>dropped a clause</b>
  * ({@code name == null}) — proving the warning it was written under: <i>"two copies of a
  * five-clause predicate is how the sixth clause gets added to one of them."</i> ⇒ every caller asks
  * <b>this</b> method; nobody restates it.
@@ -26,9 +26,9 @@ import net.cumba.corej.core.model.MatchDataset;
  * key</b> against a typed column <b>by design</b>: {@code IDVARVAL} is {@code Char} in all 36
  * CDISC-library datasets that define it, and it is matched against the value of the variable
  * <em>named</em> by {@code IDVAR} — routinely a {@code --SEQ}, i.e. {@code Num}. Their coercions
- * are ruled elsewhere and already implemented ({@code JKM R6} —
- * {@code NumericKeyText.childJoinToken} coerces the child token to the parent's type; and the
- * datatable's RELREC pairing float-canonicalises).
+ * are ruled elsewhere and already implemented ({@code JKM R6} — the datatable's shared matching
+ * coerces the child token to the parent's type ({@code net.cumba.datatable.merge.NumericKeyText});
+ * and the datatable's RELREC pairing float-canonicalises).
  * </p>
  *
  * <p>
@@ -41,12 +41,12 @@ import net.cumba.corej.core.model.MatchDataset;
  * <h2>⚑ Where the check actually runs</h2>
  *
  * <p>
- * In {@link KeyMatchRowExpander#keySpec} — <b>not</b> in {@code RuleRunner.buildJoinedDatasets},
- * which is the intuitive site and the wrong one: {@code RuleRunner:918-920} does
- * {@code removeAll(keyExpansion.expandedEntries())} <b>before</b> calling it, so every entry this
- * axis governs has already been removed by then. A check sited there would fire on nothing and
- * green every gate — a silent no-op. Proven exhaustively over all 214 corpus entries: 196
- * expandable, 11 excluded-and-keyed, 7 keyless, 0 violations of that invariant.
+ * In {@code KeyGates.check}, run by {@code MergedEvaluation.keyedSpecs} for exactly the entries
+ * {@link #governedByKeyTypeCheck} admits, before the datatable is asked for the part (which then
+ * type-checks the same components itself, {@code KeyedMergeSpec.typeChecked}); every other keyed
+ * part is built unchecked. (Until W6 of {@code PLAN-merged-evaluation-table} the site was the
+ * key-match expander's key-shape step.) Proven exhaustively over all 214 corpus entries on
+ * 2026-09-22: 196 expandable, 11 excluded-and-keyed, 7 keyless.
  * </p>
  */
 public final class JoinKeyTypes
@@ -62,8 +62,8 @@ public final class JoinKeyTypes
      *
      * <p>
      * ⚠⚠ This is the <b>single</b> definition of that predicate. It is byte-equivalent to the test
-     * {@link KeyMatchRowExpander#expandableEntries} applied inline before 2026-09-22 — including
-     * the {@code name == null} clause, which is the one a hand transcription dropped.
+     * the retired key-match expander's {@code expandableEntries} applied inline before 2026-09-22 —
+     * including the {@code name == null} clause, which is the one a hand transcription dropped.
      * </p>
      *
      * @param aMatch
@@ -109,13 +109,12 @@ public final class JoinKeyTypes
      *
      * <p>
      * ⭐⭐ <b>This is the predicate, and it has TWO halves.</b> An entry is governed only when it is
-     * not an excluded family <b>and</b> it actually carries keys: the flag is read at exactly one
-     * site ({@code KeyMatchRowExpander.keySpec}), reached only through
-     * {@link KeyMatchRowExpander#expandableEntries}, which requires both. ⚠ The loader's no-effect
-     * guard originally asked only {@link #excludedFromKeyTypeCheck}, so
-     * {@code Join_As_String: true} on a <b>keyless</b> entry loaded clean and did nothing — the
-     * silent no-op that guard exists to prevent, in the guard itself. The corpus carries 7 keyless
-     * entries, so the shape is real.
+     * not an excluded family <b>and</b> it actually carries keys: the type check runs at exactly
+     * one site ({@code KeyGates.check}, through {@code MergedEvaluation.keyedSpecs}), for an entry
+     * that is both. ⚠ The loader's no-effect guard originally asked only
+     * {@link #excludedFromKeyTypeCheck}, so {@code Join_As_String: true} on a <b>keyless</b> entry
+     * loaded clean and did nothing — the silent no-op that guard exists to prevent, in the guard
+     * itself. The corpus carries 7 keyless entries, so the shape is real.
      * </p>
      *
      * @param aMatch

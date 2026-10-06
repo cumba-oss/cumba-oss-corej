@@ -117,8 +117,9 @@ class MergedTableAuthoringGatesTest
 
     /**
      * W4: a Child entry keeps every record (the bare pre-merge never dropped one), so an authored
-     * {@code Join_Type} other than {@code left} would be silently ignored — a load error; and a
-     * Child entry on a rule the legacy arm runs (it builds no Child part) is one too.
+     * {@code Join_Type} other than {@code left} would be silently ignored — a load error. (A Child
+     * entry beside a chained qualified key was a second one until W6, which serves both shapes in
+     * one view.)
      */
     @Test
     void aChildEntryIsLeftAndOnlyServedByTheMergedView() throws IOException
@@ -131,11 +132,8 @@ class MergedTableAuthoringGatesTest
         assertClean(load(CHILD.formatted("") + ",{\"Name\":\"RELREC\",\"Child\":true}", ""));
         // W5: a forward RELREC entry is a part of the same view — a Child entry beside it is served
         assertClean(load(CHILD.formatted("") + ",{\"Name\":\"RELREC\"}", ""));
-        assertError(
-                loadAuthored(CHAINED.formatted(",{\"Name\":\"SUPP--\",\"Child\":true,"
-                        + "\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]}")),
-                "a Child: true Match_Datasets entry on a rule that carries a chained qualified"
-                        + " key");
+        assertNoChainedGate(loadAuthored(CHAINED.formatted(",{\"Name\":\"SUPP--\",\"Child\":true,"
+                + "\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]}")));
     }
 
 
@@ -155,31 +153,40 @@ class MergedTableAuthoringGatesTest
     }
 
 
-    /** W5: the forward RELREC entry is served by the view, never by the legacy arm. */
+    /**
+     * W6: a chained qualified key is composed by the merged view, so the four load gates that kept
+     * every view-only shape off such a rule (a forward RELREC entry, a checking
+     * {@code Cardinality}, {@code Supp_Keys}, a {@code Child} entry) retired with the legacy arm.
+     * Red-first: each of these loaded with its gate's error until W6.
+     */
     @Test
-    void aForwardRelrecEntryOnAChainedKeyRuleIsALoadError() throws IOException
+    void aForwardRelrecEntryOnAChainedKeyRuleIsServed() throws IOException
     {
         assertClean(loadAuthored(CHAINED.formatted("")));
-        assertError(loadAuthored(CHAINED.formatted(",{\"Name\":\"RELREC\"}")),
-                "a forward RELREC Match_Datasets entry on a rule that carries a chained qualified"
-                        + " key");
+        assertNoChainedGate(loadAuthored(CHAINED.formatted(",{\"Name\":\"RELREC\"}")));
     }
 
 
     @Test
-    void aRuleOnTheLegacyArmCannotAuthorACheckingCardinality() throws IOException
+    void aChainedKeyRuleAuthorsACheckingCardinality() throws IOException
     {
-        // A chained qualified key keeps the whole rule on the legacy pipeline, which checks none.
         assertClean(loadAuthored(CHAINED.formatted("")));
-        assertError(loadAuthored(CHAINED_DM_EXTRA.formatted(",\"Cardinality\":\"n:1\"")),
-                "Cardinality n:1 on Match_Datasets entry 'DM' would not be checked: the rule"
-                        + " carries a chained qualified key");
+        assertClean(loadAuthored(CHAINED_DM_EXTRA.formatted(",\"Cardinality\":\"n:1\"")));
+    }
+
+
+    /** No load error of the retired chained-key gates (the shape may carry others of its own). */
+    private static void assertNoChainedGate(Rule rule)
+    {
+        @Nullable
+        String error = rule.getLoadError();
+        assertTrue(error == null || !error.contains("chained qualified key"), error);
     }
 
     /**
      * A rule with a chained qualified key (the shape {@code PLAN-rprfdy-offset-tp-join} C1
-     * requires) — the one population still on the legacy arm after W5; {@code %s} takes further
-     * {@code Match_Datasets} entries.
+     * requires) — the last population of the legacy arm until W6 composed it in the view;
+     * {@code %s} takes further {@code Match_Datasets} entries.
      */
     private static final String CHAINED = "{\"Core\":{\"Id\":\"T-W3F\"},\"Sensitivity\":\"Record\","
             + "\"Requirements\":{\"Variables\":{\"All\":[\"USUBJID\",\"DM.RPATHCD\"],"
@@ -264,12 +271,10 @@ class MergedTableAuthoringGatesTest
 
 
     @Test
-    void suppKeysOnALegacyArmedRuleIsALoadError() throws IOException
+    void suppKeysOnAChainedKeyRuleIsRead() throws IOException
     {
-        // W5: a forward RELREC rule reads its SUPP through the view; the chained key is the one
-        // shape still on the legacy arm
+        // W6: the chained key is composed by the view, which reads the authored SUPP key
         assertClean(load("{\"Name\":\"RELREC\"}", "\"Supp_Keys\":[\"USUBJID\"],"));
-        assertError(loadAuthored(CHAINED_TOP_EXTRA.formatted("\"Supp_Keys\":[\"USUBJID\"],")),
-                "Supp_Keys would not be read: the rule carries a chained qualified key");
+        assertClean(loadAuthored(CHAINED_TOP_EXTRA.formatted("\"Supp_Keys\":[\"USUBJID\"],")));
     }
 }

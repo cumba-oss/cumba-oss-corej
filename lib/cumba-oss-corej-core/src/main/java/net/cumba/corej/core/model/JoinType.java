@@ -10,10 +10,10 @@ import org.jspecify.annotations.Nullable;
  *
  * <h2>Why an enum exists but the field stays a {@code String}</h2> {@code Join_Type} is authored as
  * free text and, until {@code Fix #236}, <b>nothing validated it</b>: the engine's only value
- * comparison is a <em>negation</em> — {@code !"inner".equalsIgnoreCase(getJoinType())} in
- * {@code KeyMatchRowExpander} — so every unrecognised value (a typo, a case error, a value borrowed
- * from another vocabulary) was silently executed as a <b>left</b> join. {@code Join_Type: "iner"}
- * became {@code left} and reported nothing.
+ * comparison was a <em>negation</em> — {@code !"inner".equalsIgnoreCase(getJoinType())} in the
+ * (since retired) key-match expander — so every unrecognised value (a typo, a case error, a value
+ * borrowed from another vocabulary) was silently executed as a <b>left</b> join.
+ * {@code Join_Type: "iner"} became {@code left} and reported nothing.
  *
  * <p>
  * This enum is the vocabulary; {@code RulePackageLoader.validateEnumFields} is the gate that makes
@@ -26,10 +26,11 @@ import org.jspecify.annotations.Nullable;
  * <i>"not authored"</i>: {@code RulePackageLoader.normalizeJoinTypes} stamps {@code inner} onto a
  * null/blank value at load (the owner's S2 ruling, 2026-09-25: <i>"inner stays default"</i>).
  * Load-time validation therefore judges <b>the string when present</b>, never its absence. At
- * <b>execution</b> an absent value is no longer legal: a hand-built {@code MatchDataset} that never
- * sets it — a rule that bypassed the loader — is refused by {@code KeyMatchRowExpander} with an
- * {@code IllegalStateException} (U15 of {@code PLAN-retire-dead-multi-match-lookup}); until then it
- * fell through to a {@code left} fallback.
+ * <b>execution</b> an absent value is never a {@code left} join: the merged view
+ * ({@code MergedEvaluation}) runs a hand-built {@code MatchDataset} that never sets it — a rule
+ * that bypassed the loader — as the S2 {@code inner}. (The retired key-match expander refused it,
+ * U15 of {@code PLAN-retire-dead-multi-match-lookup}; before that it fell through to a {@code left}
+ * fallback.)
  *
  * <p>
  * ⚑ That null used to carry a second consequence — it was what kept {@code RuleCohortGrouper}'s
@@ -40,7 +41,7 @@ import org.jspecify.annotations.Nullable;
  * <h2>Case sensitivity mirrors the engine, and trimming deliberately does not</h2>
  * {@link #fromJson} compares with {@code equalsIgnoreCase} and does <b>no trimming</b>, so it
  * accepts exactly the set of strings the engine already interprets as that join type.
- * {@code " inner "} is <em>not</em> accepted, because {@code KeyMatchRowExpander} would run it as
+ * {@code " inner "} is <em>not</em> accepted, because the retired key-match expander ran it as
  * {@code left} — treating it as valid would re-create the silent divergence this enum exists to
  * close. A blank value is absence, not a value, and is normalised to {@code inner} by the loader.
  */
@@ -62,8 +63,9 @@ public enum JoinType
      * shipped corpus authors — 85 {@code Match_Datasets} entries across 18 distinct rules
      * (2026-08-17; was 158 across 38 before {@code D-TA-2} removed the over-firing ones;
      * re-measured 2026-09-25: 17 {@code rules-src} rules, one entry each). Until U15 of
-     * {@code PLAN-retire-dead-multi-match-lookup} it was also {@code KeyMatchRowExpander}'s
-     * fallback for a loader-bypassing rule; such a rule is refused now.
+     * {@code PLAN-retire-dead-multi-match-lookup} it was also the (since retired) key-match
+     * expander's fallback for a loader-bypassing rule; the merged view runs such a rule as
+     * {@code inner}.
      */
     LEFT("left");
 

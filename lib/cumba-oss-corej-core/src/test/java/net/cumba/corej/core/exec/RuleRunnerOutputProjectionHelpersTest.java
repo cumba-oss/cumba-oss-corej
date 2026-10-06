@@ -245,12 +245,15 @@ class RuleRunnerOutputProjectionHelpersTest
     {
         IDataTable t = MockTable.of().name("AE").col("AETERM", "x").build();
         EvaluationContext present = EvaluationContext.builder().table(t)
-                .joinedDatasets(Map.of("DM", lookupReturning("ARM", "PLACEBO", true))).build();
+                .mergedView(
+                        ExecCalls.joinsView(Map.of("DM", lookupReturning("ARM", "PLACEBO", true))))
+                .build();
         assertEquals(Map.of("DM.ARM", "PLACEBO"), extract(t, present, List.of("DM.ARM"), 0));
 
         // The lookup only knows OTHER, so ARM is absent from the merged frame entirely.
         EvaluationContext missingValue = EvaluationContext.builder().table(t)
-                .joinedDatasets(Map.of("DM", lookupReturning("OTHER", "v", true))).build();
+                .mergedView(ExecCalls.joinsView(Map.of("DM", lookupReturning("OTHER", "v", true))))
+                .build();
         assertEquals(Map.of(), extract(t, missingValue, List.of("DM.ARM"), 0),
                 "a column absent from the merged frame is omitted");
 
@@ -271,7 +274,7 @@ class RuleRunnerOutputProjectionHelpersTest
             }
         };
         EvaluationContext presentButMissing = EvaluationContext.builder().table(t)
-                .joinedDatasets(Map.of("DM", nullValueButPresent)).build();
+                .mergedView(ExecCalls.joinsView(Map.of("DM", nullValueButPresent))).build();
         // ⚠ This stub overrides only lookup(), so it inherits JoinLookup's type-blind
         // lookupValue: a null text becomes ScalarSemantics.computedMissing(), i.e. MIS.
         assertEquals(Map.of("DM.ARM", "."), extract(t, presentButMissing, List.of("DM.ARM"), 0),
@@ -313,7 +316,7 @@ class RuleRunnerOutputProjectionHelpersTest
     {
         IDataTable t = MockTable.of().name("AE").col("AETERM", "x").build();
         EvaluationContext ctx = EvaluationContext.builder().table(t)
-                .joinedDatasets(Map.of("DM", lookupValueReturning(value))).build();
+                .mergedView(ExecCalls.joinsView(Map.of("DM", lookupValueReturning(value)))).build();
         Map<String, String> out = extract(t, ctx, List.of("DM.X"), 0);
         assertTrue(out.containsKey("DM.X"), "an existing joined column is always reported");
         return out.get("DM.X");
@@ -402,7 +405,8 @@ class RuleRunnerOutputProjectionHelpersTest
     {
         IDataTable t = MockTable.of().name("AE").col("AETERM", "x").build();
         EvaluationContext ctx = EvaluationContext.builder().table(t)
-                .joinedDatasets(Map.of("DM", lookupReturning("RFSTDTC", "2020-01-01", true)))
+                .mergedView(ExecCalls
+                        .joinsView(Map.of("DM", lookupReturning("RFSTDTC", "2020-01-01", true))))
                 .build();
         // ⭐⭐ INVERTED 2026-09-21 -- this is site S5 of PLAN-unqualified-name-primary-only, and
         // the one a USER sees. RFSTDTC is absent from the primary AE table and present on the
@@ -511,7 +515,8 @@ class RuleRunnerOutputProjectionHelpersTest
             }
         };
         EvaluationContext ctx = EvaluationContext.builder().table(t).variableWildcardPrefix("MH")
-                .domainPrefix("APMH").joinedDatasets(Map.of("SUPPAPMH", supp)).build();
+                .domainPrefix("APMH").mergedView(ExecCalls.joinsView(Map.of("SUPPAPMH", supp)))
+                .build();
 
         Map<String, String> out = extract(t, ctx, List.of("--TERM", "SUPP--.QVAL"), 0);
         assertEquals("v", out.get("MHTERM"), "unqualified -- takes the variable prefix");
@@ -547,15 +552,15 @@ class RuleRunnerOutputProjectionHelpersTest
     }
 
     // -----------------------------------------------------------------------
-    // buildJoinedDatasets — result keying
+    // the merged view's joins — result keying
     // -----------------------------------------------------------------------
 
 
     /**
      * A wildcard Match_Datasets name is registered under its RESOLVED name (SUPP-- on an AE primary
-     * → SUPPAE) so the Check's dotted reads find it; a keyless entry builds nothing. The 4-arg
-     * overload must delegate, not return empty — a mutant there silently drops every join of every
-     * rule executed through it.
+     * → SUPPAE) so the Check's dotted reads find it; a keyless entry builds nothing. (Until W6 of
+     * {@code PLAN-merged-evaluation-table} this asked the retired {@code buildJoinedDatasets}; the
+     * keying is the merged view's now.)
      */
     @Test
     void joinedDatasetsAreKeyedByResolvedWildcardName()
@@ -567,8 +572,8 @@ class RuleRunnerOutputProjectionHelpersTest
         md.setName("SUPP--");
         md.setKeys(List.of("USUBJID"));
 
-        Map<String, JoinLookup> joins = RuleRunnerCalls.buildJoinedDatasets(List.of(md), ae,
-                name -> "SUPPAE".equals(name) ? suppae : null, null);
+        Map<String, JoinLookup> joins = joinsOf(List.of(md), ae,
+                name -> "SUPPAE".equals(name) ? suppae : null);
         assertEquals(List.of("SUPPAE"), List.copyOf(joins.keySet()),
                 "wildcard names register under the resolved dataset name");
         assertEquals("yes", joins.get("SUPPAE").lookup(ae, 0, "QVAL"));
@@ -576,15 +581,24 @@ class RuleRunnerOutputProjectionHelpersTest
         MatchDataset nonWildcard = new MatchDataset();
         nonWildcard.setName("SUPPAE");
         nonWildcard.setKeys(List.of("USUBJID"));
-        Map<String, JoinLookup> plain = RuleRunnerCalls.buildJoinedDatasets(List.of(nonWildcard),
-                ae, name -> "SUPPAE".equals(name) ? suppae : null, null);
+        Map<String, JoinLookup> plain = joinsOf(List.of(nonWildcard), ae,
+                name -> "SUPPAE".equals(name) ? suppae : null);
         assertEquals(List.of("SUPPAE"), List.copyOf(plain.keySet()));
 
         MatchDataset keyless = new MatchDataset();
         keyless.setName("SUPPAE");
-        Map<String, JoinLookup> none = RuleRunnerCalls.buildJoinedDatasets(List.of(keyless), ae,
-                name -> "SUPPAE".equals(name) ? suppae : null, null);
+        Map<String, JoinLookup> none = joinsOf(List.of(keyless), ae,
+                name -> "SUPPAE".equals(name) ? suppae : null);
         assertTrue(none.isEmpty(), "a keyless Match_Dataset has no usable join");
+    }
+
+
+    /** The joins of the merged view over {@code primary} — empty when nothing is merged. */
+    private static Map<String, JoinLookup> joinsOf(List<MatchDataset> entries, IDataTable primary,
+            DatasetResolver resolver)
+    {
+        MergedEvaluation.Built built = ExecCalls.expand(primary, entries, resolver, null);
+        return built == null ? Map.of() : built.lookups();
     }
 
     // -----------------------------------------------------------------------

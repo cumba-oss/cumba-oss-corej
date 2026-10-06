@@ -63,7 +63,7 @@ class AbsentJoinKeyColumnTest
     }
 
 
-    private static List<String> rows(KeyMatchRowExpander.KeyMatchExpansion exp, String col)
+    private static List<String> rows(MergedEvaluation.Built exp, String col)
     {
         IDataTable t = exp.table();
         JoinLookup lk = exp.lookups().get(AE);
@@ -76,8 +76,7 @@ class AbsentJoinKeyColumnTest
     }
 
 
-    private static KeyMatchRowExpander.KeyMatchExpansion expand(IDataTable dm, IDataTable ae,
-            List<String> keys)
+    private static MergedEvaluation.Built expand(IDataTable dm, IDataTable ae, List<String> keys)
     {
         var exp = ExecCalls.expand(dm, List.of(md(keys)), Map.of("DM", dm, AE, ae)::get, "R-TEST");
         assertNotNull(exp, "one keyed entry is expandable, so the expansion must be built");
@@ -209,28 +208,22 @@ class AbsentJoinKeyColumnTest
     }
 
     /**
-     * ⭐⭐ The same three one-side cases on the <b>hashed</b> arm ({@code KeyHashing.KeyMatcher},
-     * reached through {@link DatasetLookup}). Until 2026-09-25 this arm answered <i>no match</i>
-     * for a one-side-absent component — the one row of {@code JKM R7} that was implemented on the
-     * expander arm only, reverted here by the E4 non-harm review because a {@code Child: true}
-     * entry then also reached this arm. {@code PLAN-hashed-join-arm-absent-columns} (option A)
-     * removed that lookup and landed the rule here in the same change.
-     *
-     * <p>
-     * ⚠ No shipped entry reaches this arm any more (every non-expandable keyed entry in both
-     * corpora is {@code Child: true}), so no corpus scenario and no findings snapshot can see these
-     * cases. These tests ARE the instrument; the falsifier in each message is the pre-fix answer.
-     * </p>
+     * ⭐⭐ The same three one-side cases read through a keyed part's <b>lookup</b>
+     * ({@link JoinLookup#matchedRow} and {@link JoinLookup#lookup}) — until W6 of
+     * {@code PLAN-merged-evaluation-table} the <b>hashed</b> arm ({@code KeyHashing.KeyMatcher}
+     * behind the retired {@code DatasetLookup}), which answered <i>no match</i> for a
+     * one-side-absent component until 2026-09-25 ({@code PLAN-hashed-join-arm-absent-columns}
+     * landed JKM R7 there). Since W6 every keyed entry is a part of the merged view, so these pins
+     * now hold the view's lookup to the same answers, the falsifier in each message the pre-fix
+     * one.
      */
     @Nested
     class TheHashedArm
     {
 
-        private DatasetLookup lookupOver(IDataTable joined, List<String> keys)
+        private JoinLookup lookupOver(IDataTable primary, IDataTable joined, List<String> keys)
         {
-            DatasetLookup lk = DatasetLookup.build(AE, joined, keys);
-            assertNotNull(lk, "a keyed lookup over a non-null table must be built");
-            return lk;
+            return ExecCalls.viewLookup(primary, AE, joined, keys);
         }
 
 
@@ -242,7 +235,7 @@ class AbsentJoinKeyColumnTest
                     .name("DM").build();
             IDataTable ae = MockTable.of().col(USUBJID, "P1", "P1").col(VISIT, "2", "")
                     .col("AETERM", "HEADACHE", "NAUSEA").name(AE).build();
-            DatasetLookup lk = lookupOver(ae, List.of(USUBJID, VISIT));
+            JoinLookup lk = lookupOver(dm, ae, List.of(USUBJID, VISIT));
             assertTrue(lk.matchedRow(dm, 0L) && lk.matchedRow(dm, 1L),
                     "R7 on the hashed arm: the absent VISITNUM contributes \"\" on the primary"
                             + " side, so both primary rows match the AE row whose VISITNUM is"
@@ -260,7 +253,7 @@ class AbsentJoinKeyColumnTest
                     .name("DM").build();
             IDataTable ae = MockTable.of().col(USUBJID, "P1", "P1").colLong(VISIT, 2L, null)
                     .col("AETERM", "HEADACHE", "NAUSEA").name(AE).build();
-            DatasetLookup lk = lookupOver(ae, List.of(USUBJID, VISIT));
+            JoinLookup lk = lookupOver(dm, ae, List.of(USUBJID, VISIT));
             assertTrue(lk.matchedRow(dm, 0L),
                     "R7: an absent NUMERIC column contributes a MissingValue, which pairs the"
                             + " missing numeric cell. Unmatched is the pre-fix guard");
@@ -281,7 +274,7 @@ class AbsentJoinKeyColumnTest
                     .name("SUPPAE").build();
             IDataTable ae = MockTable.of().col(USUBJID, "P1").col("AETERM", "HEADACHE").name(AE)
                     .build();
-            DatasetLookup lk = lookupOver(ae, List.of(USUBJID, "IDVAR"));
+            JoinLookup lk = lookupOver(suppae, ae, List.of(USUBJID, "IDVAR"));
             assertFalse(lk.matchedRow(suppae, 0L),
                     "IDVAR=AESEQ against the joined side's \"\" is a mismatch — matched would"
                             + " mean the absent component was dropped instead of defaulted");
@@ -317,7 +310,7 @@ class AbsentJoinKeyColumnTest
             assertEquals(KeyPart.missing(MissingValue.MIS_UNKNOWN),
                     GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(ae.getColumn(1).getDataValue(2L)),
                     "row 2 must carry MIS_UNKNOWN");
-            DatasetLookup lk = lookupOver(ae, List.of(USUBJID, VISIT));
+            JoinLookup lk = lookupOver(dm, ae, List.of(USUBJID, VISIT));
             assertTrue(lk.matchedRow(dm, 0L));
             assertEquals("MIS", lk.lookup(dm, 0L, "AETERM"),
                     "R5: the absent side is MIS and MIS joins neither MIS_A nor MIS_UNKNOWN nor a"
@@ -335,7 +328,7 @@ class AbsentJoinKeyColumnTest
                     .name("DM").build();
             IDataTable ae = MockTable.of().col(USUBJID, "P1").col("AETERM", "HEADACHE").name(AE)
                     .build();
-            DatasetLookup lk = lookupOver(ae, List.of(USUBJID, VISIT));
+            JoinLookup lk = lookupOver(dm, ae, List.of(USUBJID, VISIT));
             assertFalse(lk.matchedRow(dm, 0L), "VISITNUM=2 against the joined side's MIS");
             assertTrue(lk.matchedRow(dm, 1L), "VISITNUM=MIS against the joined side's MIS");
         }
@@ -358,13 +351,13 @@ class AbsentJoinKeyColumnTest
             assertEquals(KeyPart.EMPTY,
                     GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(ae.getColumn(1).getDataValue(1L)),
                     "a blank date cell is EMPTY");
-            // hashed arm
-            DatasetLookup lk = lookupOver(ae, List.of(USUBJID, "AESTDTC"));
+            // read through the part's lookup
+            JoinLookup lk = lookupOver(dm, ae, List.of(USUBJID, "AESTDTC"));
             assertEquals("NAUSEA", lk.lookup(dm, 0L, "AETERM"));
-            // expander arm, the same fixture
+            // the merged rows, the same fixture
             assertEquals(List.of("0:NAUSEA", "1:NAUSEA"),
                     rows(expand(dm, ae, List.of(USUBJID, "AESTDTC")), "AETERM"),
-                    "the two arms must agree: the absent date side is \"\" on both");
+                    "the two reads must agree: the absent date side is \"\" on both");
         }
 
 
@@ -378,7 +371,7 @@ class AbsentJoinKeyColumnTest
                     .name("DM").build();
             IDataTable ae = MockTable.of().col(USUBJID, "P2", "P1")
                     .col("AETERM", "NAUSEA", "HEADACHE").name(AE).build();
-            DatasetLookup lk = lookupOver(ae, List.of(USUBJID, VISIT));
+            JoinLookup lk = lookupOver(dm, ae, List.of(USUBJID, VISIT));
             assertEquals("HEADACHE", lk.lookup(dm, 0L, "AETERM"));
             assertEquals("NAUSEA", lk.lookup(dm, 1L, "AETERM"));
         }

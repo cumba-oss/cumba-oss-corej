@@ -1,32 +1,21 @@
 package net.cumba.corej.core.exec;
 
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
-import net.cumba.corej.core.exec.DatasetLookup.SharedJoinedIndex;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Caches cross-dataset join structures to avoid redundant index construction when multiple rules
- * join the same datasets with the same keys.
+ * The per-dataset cache of the merged evaluation views ({@code PLAN-merged-evaluation-table} P-3:
+ * one view per merge signature, shared by every rule of the dataset whose merge agrees), and the
+ * holder of the run's {@link SharedIndexCache}.
+ *
  * <p>
- * Two levels of caching:
- * <ol>
- * <li><b>Lookup cache</b> — caches complete {@link DatasetLookup} instances per (datasetName, keys)
- * combination. A single lookup contains both the joined-side index and the primary-to-joined row
- * map. Since the row map is built lazily on first use for a given primary table and then cached,
- * reusing the same lookup across rules for the same primary table avoids all repeated work. Backed
- * by a {@link ConcurrentHashMap} so multiple rule threads validating the same primary dataset can
- * share lookups safely.</li>
- * <li><b>Index cache</b> — caches the joined-side index ({@link DatasetLookup.SharedJoinedIndex}: a
- * primitive {@code HashLookup} keyed by a 32-bit hash of the join columns) independently of the
- * primary table. This index is immutable once built and is safe to share across threads. When
- * multiple primary datasets all join to the same reference dataset (e.g., DM by USUBJID), the index
- * is built once and shared, avoiding repeated scans of the reference dataset.</li>
- * </ol>
+ * The key-join lookups, their joined-side indexes, the key-match indexes and the SUPP pivot's
+ * parsed qualifier rows and columns it cached until W6 retired with the pipeline that read them:
+ * the datatable's shared matching indexes the partners of a view, and the view is the cached unit.
+ * </p>
  *
  * <h2>Typical lifecycle</h2>
  *
@@ -45,8 +34,8 @@ public final class JoinCache
 {
 
     /**
-     * Thread-safe cache for joined-side indexes. Shared across dataset validation threads so that a
-     * reference dataset (e.g., DM) is indexed only once for the entire validation run.
+     * Thread-safe run-wide caches, shared across dataset validation threads so that a structure
+     * derived from one table is built only once for the entire validation run.
      *
      * <p>
      * ⭐⭐ <b>Every table-keyed cache here is identity-exact</b>
@@ -59,11 +48,8 @@ public final class JoinCache
      * </p>
      *
      * <ul>
-     * <li><b>Lookup indexes</b> ({@link #getOrBuild}) — sub-key: the key column names in order.
-     * {@code DatasetLookup.buildSharedIndex} reads only the table and those names.</li>
-     * <li><b>Key-match indexes</b> ({@link #getOrBuildKeyMatchIndex}) — sub-key:
-     * {@link KeyMatchIndex.SpecKey}.</li>
      * <li><b>Wildcard column sets</b> ({@link #wildcardColumns}) — sub-key: regex and flags.</li>
+     * <li><b>The merged schema's QNAM set</b> per SUPP table ({@link #getOrBuildSuppQnams}).</li>
      * </ul>
      *
      * <p>
@@ -78,20 +64,7 @@ public final class JoinCache
     public static final class SharedIndexCache
     {
 
-        private final IdentityWeakCache<List<String>, SharedJoinedIndex> lookupIndexes;
-
-        private final IdentityWeakCache<KeyMatchIndex.SpecKey, KeyMatchIndex> keyMatchIndexes;
-
         private final WildcardForeignColumnCache wildcardColumns;
-
-        private final IdentityWeakCache<String, SuppQnamIndexHolder> suppQnamIndexes;
-
-        /**
-         * The materialised pivot columns ({@link SuppPivot}), keyed by the PARENT table and the
-         * (index, QNAM) pair — once per run, not once per rule (combined review of runbook W2–W8,
-         * XCUT PERF 1: a QNAM column materialised per rule × dataset).
-         */
-        private final IdentityWeakCache<SuppQnamColumnKey, IDataValue[]> suppQnamColumns;
 
         /** The merged schema's QNAM set per SUPP table ({@link SuppQualifiers}, W3d). */
         private final IdentityWeakCache<String, java.util.Set<String>> suppQnams;
@@ -109,12 +82,8 @@ public final class JoinCache
          */
         SharedIndexCache(java.util.function.ToIntFunction<Object> aIdentityHash)
         {
-            lookupIndexes = new IdentityWeakCache<>(aIdentityHash);
-            keyMatchIndexes = new IdentityWeakCache<>(aIdentityHash);
             wildcardColumns = new WildcardForeignColumnCache(
                     new IdentityWeakCache<>(aIdentityHash));
-            suppQnamIndexes = new IdentityWeakCache<>(aIdentityHash);
-            suppQnamColumns = new IdentityWeakCache<>(aIdentityHash);
             suppQnams = new IdentityWeakCache<>(aIdentityHash);
         }
 
@@ -137,149 +106,12 @@ public final class JoinCache
         }
 
 
-        /**
-         * The parsed qualifier rows of one {@code SUPP--} table, built once per table per run for
-         * the declared SUPP merge ({@link SuppPivot}) and the existence probes (the legacy pivot,
-         * until W6; existence reads {@link SuppQualifiers}); {@code null} when the table has no
-         * {@code QNAM} column.
-         */
-        @Nullable
-        SuppQnamIndex getOrBuildSuppQnamIndex(IDataTable aSupp)
-        {
-            return suppQnamIndexes
-                    .getOrBuild(aSupp, "", _ -> new SuppQnamIndexHolder(SuppQnamIndex.of(aSupp)))
-                    .index();
-        }
-
-
-        int suppQnamIndexBuildCount()
-        {
-            return suppQnamIndexes.buildCount();
-        }
-
-
-        /**
-         * The cells of one pivoted qualifier column of {@code aParent} — {@code aQnam} of
-         * {@code anIndex} resolved against the parent's rows — built once per run through
-         * {@code aBuild} and shared by every rule reading that qualifier of that table.
-         *
-         * @param aParent
-         *            the parent table (identity)
-         * @param anIndex
-         *            the parsed {@code SUPP--} index the column is resolved from (identity)
-         * @param aQnam
-         *            the qualifier name
-         * @param aBuild
-         *            the resolution, run at most once per (parent, index, QNAM)
-         * @return the cells, one per parent row
-         */
-        IDataValue[] getOrBuildSuppQnamColumn(IDataTable aParent, SuppQnamIndex anIndex,
-                String aQnam, Supplier<IDataValue[]> aBuild)
-        {
-            return suppQnamColumns.getOrBuild(aParent, new SuppQnamColumnKey(anIndex, aQnam),
-                    _ -> aBuild.get());
-        }
-
-
-        int suppQnamColumnBuildCount()
-        {
-            return suppQnamColumns.buildCount();
-        }
-
-
-        /**
-         * Returns a cached index or builds and caches one.
-         *
-         * @param dataset
-         *            the joined dataset
-         * @param keyColumns
-         *            the join key columns
-         * @return the joined-side index, never {@code null}
-         */
-        SharedJoinedIndex getOrBuild(IDataTable dataset, List<String> keyColumns)
-        {
-            return lookupIndexes.getOrBuild(dataset, List.copyOf(keyColumns),
-                    keys -> DatasetLookup.buildSharedIndex(dataset, keys));
-        }
-
-
-        /**
-         * Returns the key-match index for {@code aChild} under {@code aSpec}, building it with
-         * {@code aBuild} on first use. Built once per (table instance, spec) even under a
-         * concurrent cold start, and immutable afterwards.
-         *
-         * @param aChild
-         *            the joined table, <b>unfiltered</b> — a {@code Filter} is applied per rule as
-         *            a mask over the shared index, never baked into it.
-         * @param aSpec
-         *            the child-side key shape.
-         * @param aBuild
-         *            builds the index when it is not cached; must not touch this cache.
-         * @return the index, never {@code null}.
-         */
-        KeyMatchIndex getOrBuildKeyMatchIndex(IDataTable aChild, KeyMatchIndex.SpecKey aSpec,
-                Supplier<KeyMatchIndex> aBuild)
-        {
-            return keyMatchIndexes.getOrBuild(aChild, aSpec, _ -> aBuild.get());
-        }
-
-
         /** Returns the run's wildcard column cache, shared by every rule of the run. */
         WildcardForeignColumnCache wildcardColumns()
         {
             return wildcardColumns;
         }
-
-
-        /** Returns how many key-match indexes this cache has built so far. */
-        int keyMatchIndexBuildCount()
-        {
-            return keyMatchIndexes.buildCount();
-        }
-
-
-        /** Returns how many child tables currently hold key-match indexes. */
-        int keyMatchIndexedTableCount()
-        {
-            return keyMatchIndexes.tableCount();
-        }
-
-
-        /** Returns how many lookup indexes this cache has built so far. */
-        int lookupIndexBuildCount()
-        {
-            return lookupIndexes.buildCount();
-        }
-
-
-        /** Returns how many live tables currently hold lookup indexes. */
-        int lookupIndexedTableCount()
-        {
-            return lookupIndexes.tableCount();
-        }
-
     }
-
-
-    private record SuppQnamIndexHolder(@Nullable SuppQnamIndex index)
-    {
-    }
-
-
-    /**
-     * The sub-key of a materialised pivot column: the index (identity — {@link SuppQnamIndex} does
-     * not override {@code equals}) and the qualifier name.
-     */
-    private record SuppQnamColumnKey(SuppQnamIndex index, String qnam)
-    {
-    }
-
-    /**
-     * Per-dataset lookup cache: cacheKey → JoinLookup. {@link ConcurrentHashMap} so concurrent rule
-     * threads validating the same primary dataset can share entries without external
-     * synchronisation.
-     */
-    private final ConcurrentHashMap<String, JoinLookup> lookupCache = new ConcurrentHashMap<>();
 
     /**
      * The merged evaluation views of this dataset, one per merge signature (P-3 of
@@ -376,74 +208,4 @@ public final class JoinCache
         return views.values().stream().filter(MergedEvaluation.Built.class::isInstance)
                 .map(MergedEvaluation.Built.class::cast).toList();
     }
-
-
-    /**
-     * Returns a cached {@link DatasetLookup} for the given dataset and keys, or builds and caches
-     * one.
-     *
-     * @param dsName
-     *            the joined dataset name
-     * @param dataset
-     *            the joined dataset
-     * @param keys
-     *            the join key columns
-     * @return the lookup, or {@code null} if the dataset is null
-     */
-    @Nullable
-    DatasetLookup getOrBuildLookup(String dsName, @Nullable IDataTable dataset, List<String> keys)
-    {
-        if (dataset == null)
-        {
-            return null;
-        }
-        String key = lookupCacheKey(dsName, keys);
-        // compute guarantees the build runs once per key even under concurrent access from
-        // multiple rule threads. The mapping function may briefly block other threads asking for
-        // the same key — acceptable since DatasetLookup construction is fast (it defers the
-        // multi-MB row map to ensureJoinMap, called outside this lock).
-        // ⭐ PLAN-identity-safe-join-caches D5: a cached lookup is reused ONLY for the very table
-        // instance it was built over. The key is a NAME, and a name could resolve to a different
-        // instance (a split union rebuilt for another resolver, a reloaded table); serving the old
-        // lookup would then read the other instance's rows. Today the instance is always the same
-        // (the cached lookup pins its table, one JoinCache per target dataset), so this check
-        // never fires in production — and when it holds, the result is byte-identical.
-        JoinLookup existing = lookupCache.compute(key, (_, current) ->
-        {
-            if (current instanceof DatasetLookup dl ? dl.dataset() == dataset : current != null)
-            {
-                return current; // same instance, or a non-key lookup registered under this name
-            }
-            SharedJoinedIndex prebuiltIndex = sharedIndex != null
-                    ? sharedIndex.getOrBuild(dataset, keys)
-                    : null;
-            return prebuiltIndex != null ? DatasetLookup.build(dsName, dataset, keys, prebuiltIndex)
-                    : DatasetLookup.build(dsName, dataset, keys);
-        });
-        return existing instanceof DatasetLookup dl ? dl : null;
-    }
-
-
-    /**
-     * Returns a previously cached JoinLookup by name.
-     *
-     * <p>
-     * ⚑ No production caller: a read seam for the concurrency tests, which assert that one
-     * {@code DatasetLookup} instance survives across parallel waves
-     * ({@code JoinCacheConcurrencyTest}). Kept as that instrument when its {@code put} twin — which
-     * nothing called at all — was retired (2026-09-25, U2 / A34).
-     * </p>
-     */
-    @Nullable
-    JoinLookup get(String name)
-    {
-        return lookupCache.get(name);
-    }
-
-
-    private static String lookupCacheKey(String dsName, List<String> keys)
-    {
-        return dsName + "|" + String.join(",", keys);
-    }
-
 }

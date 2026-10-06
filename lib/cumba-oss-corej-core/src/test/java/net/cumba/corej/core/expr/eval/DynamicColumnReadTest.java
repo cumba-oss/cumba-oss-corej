@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.exec.EvaluationContext;
+import net.cumba.corej.core.exec.ExecCalls;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.ast.Expr;
@@ -129,7 +130,7 @@ class DynamicColumnReadTest
             }
         };
         EvaluationContext c = EvaluationContext.builder().table(TABLE)
-                .joinedDatasets(Map.of("ADSL", adsl)).build();
+                .mergedView(ExecCalls.joinsView(Map.of("ADSL", adsl))).build();
         int rows = 3000;
         DynamicColumnRead.Resolver resolver = new DynamicColumnRead.Resolver(c, false, false);
         for (int r = 0; r < rows; r++)

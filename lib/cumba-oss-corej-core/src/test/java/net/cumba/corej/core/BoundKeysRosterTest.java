@@ -70,7 +70,7 @@ class BoundKeysRosterTest
 
     private static final String RUNNER = P + "exec.RuleRunner";
 
-    private static final String KEY_MATCH = P + "exec.KeyMatchRowExpander";
+    private static final String KEY_MATCH = P + "exec.MergedEvaluation";
 
     /** {@code fqcn#accessor}: the production class that reads the key and the accessor it calls. */
     private static String r(String fqcn, String accessor)
@@ -104,7 +104,7 @@ class BoundKeysRosterTest
                     Map.entry("Requirements", r(RUNNER, "getRequirements")),
                     Map.entry("Outcome", r(RUNNER, "getOutcome")),
                     Map.entry("Bindings", r(LOADER, "getBindings")),
-                    Map.entry("Match_Datasets", r(RUNNER, "getMatchDatasets")),
+                    Map.entry("Match_Datasets", r(KEY_MATCH, "getMatchDatasets")),
                     Map.entry("Grouping_Variables",
                             r(P + "exec.RuleSpecialiser", "getGroupingVariables")),
                     Map.entry("Grouping", r(P + "exec.RuleSpecialiser", "getGrouping")),

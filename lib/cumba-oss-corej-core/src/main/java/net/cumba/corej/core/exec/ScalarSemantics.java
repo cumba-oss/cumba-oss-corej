@@ -28,7 +28,7 @@ import org.jspecify.annotations.Nullable;
  * duration grammar. They exist so that every caller answers the same scalar question the same way:
  * the native expression evaluator (package {@code net.cumba.corej.core.expr.eval}, chiefly
  * {@code Primitives}), the {@code Operations}/{@code Bindings} pre-pass in the registry functions,
- * the lookup and merge machinery ({@code DatasetLookup}, {@code ValueResolver},
+ * the lookup and merge machinery ({@code MergedViewLookup}, {@code ValueResolver},
  * {@code GroupSemantics}) and {@link OperatorRegistry}'s name-existence probes. The
  * {@code ScalarSemantics*Test} suites — plus {@code NumericToleranceTest} and
  * {@code IsoDateLayoutDifferentialTest} — pin these primitives directly.
@@ -556,8 +556,7 @@ public final class ScalarSemantics
      * ⛔ Reading {@code ""} off here as <em>the</em> absent-column answer is the mistake the old
      * wording invited, and the dangerous kind: the claim is <b>true for char</b>, so a reader
      * checks it, finds it correct, and carries away a type-independent rule that is false. See
-     * {@link DatasetLookup#lookupValue}'s {@code colIdx < 0} arm and
-     * {@link KeyMatchExpandedLookup#lookupValue} — both take the expectation from
+     * {@link MergedViewLookup#lookupValue}'s absent-column arm — it takes the expectation from
      * {@code JoinLookup.lookupValue(IDataTable, long, String, boolean)}, <b>the method whose
      * {@code numericExpected} flag IS that channel</b> (its former 3-arg form, which answered as if
      * nothing numeric were expected, is retired — U14 of

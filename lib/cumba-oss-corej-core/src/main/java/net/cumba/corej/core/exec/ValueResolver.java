@@ -92,22 +92,23 @@ public final class ValueResolver
             java.util.regex.Pattern pattern, EvaluationContext ctx, long row)
     {
         // Foreign-dataset wildcard — enumerate columns of the foreign dataset and pull values
-        // through the JoinLookup for the row's join keys.
+        // through its part of the merged view at the evaluation row.
         if (wild.foreignDataset() != null)
         {
             String foreign = wild.foreignDataset();
-            JoinLookup lookup = ctx.getJoinedDatasets().get(foreign);
+            JoinLookup lookup = ctx.joins().get(foreign);
             if (lookup == null)
             {
-                // ⚠ This wording is matched from ANOTHER repository — the sibling rules
-                // repository's NativeCorpusFullCoverageTest allow-lists the three shipped
-                // CDISC-AD0720 rules by a String.contains on "requires a JoinLookup for foreign
-                // dataset" (KNOWN_UNDISPATCHABLE). Reword it and that gate reds over there, naming
-                // nothing here. EngineErrorMessageContractTest pins the fragment so you find out
-                // in this build instead; change all three in one wave.
-                throw new OperandSubstitutor.SubstitutionException(
-                        "wildcard operand requires a JoinLookup for foreign dataset `" + foreign
-                                + "` but none was provided (Match_Datasets missing?)");
+                // ⚠ Engine prose another repository may match: the sibling rules repository's
+                // NativeCorpusFullCoverageTest allow-lists a structural thrower by rule id plus a
+                // String.contains on its message (KNOWN_UNDISPATCHABLE — empty since 2026-09-25;
+                // CDISC-AD0720 was its last entry). EngineErrorMessageContractTest pins the
+                // fragment; reword both, and any entry that names it, in one wave. (Reworded in
+                // W6 of PLAN-merged-evaluation-table: the joins are the merged view's parts, not
+                // an interface the caller provides.)
+                throw new OperandSubstitutor.SubstitutionException("wildcard operand needs a"
+                        + " Match_Datasets part for foreign dataset `" + foreign
+                        + "`, but the rule's merged view has none (Match_Datasets missing?)");
             }
             // W3d of PLAN-merged-evaluation-table (MQ6): the joined dataset's REAL columns as the
             // merged schema lists them — the lookup's own column set; the inventory (Fix #358:
@@ -150,8 +151,8 @@ public final class ValueResolver
                 // ⚠ The two cases are indistinguishable from the VALUE alone on a numeric column —
                 // unmatched yields MIS and a matched missing may also be MIS — which is precisely
                 // why
-                // this asks the join, not the value. Every production JoinLookup answers
-                // matchedRow (DatasetLookup, KeyMatchExpandedLookup, MergedViewLookup).
+                // this asks the join, not the value. The production JoinLookup answers
+                // matchedRow (MergedViewLookup: the part's supplied marker).
                 IDataValue dv = lookup.lookupValue(ctx.getTable(), row, colName, false);
                 MissingValue identity = TypedValue.missingIdentityOf(dv);
                 if (identity != null && lookup.matchedRow(ctx.getTable(), row))

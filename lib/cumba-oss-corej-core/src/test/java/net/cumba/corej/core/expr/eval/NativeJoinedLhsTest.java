@@ -6,6 +6,7 @@ import java.util.BitSet;
 import java.util.Map;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.EvaluationContext;
+import net.cumba.corej.core.exec.ExecCalls;
 import net.cumba.corej.core.exec.JoinLookup;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
@@ -71,7 +72,7 @@ class NativeJoinedLhsTest
         };
 
         EvaluationContext ctx = EvaluationContext.builder().table(primary).datasetResolver(resolver)
-                .joinedDatasets(Map.of("DM", lookup)).build();
+                .mergedView(ExecCalls.joinsView(Map.of("DM", lookup))).build();
 
         // Unqualified foreign LHS: DMVAL == AVAL → [1,X,3] vs [1,2,3] → rows 0,2 equal.
         Expr unqualified = new Expr.Binary(BinOp.EQ, ref("DMVAL", OperandKind.COLUMN),
@@ -121,7 +122,7 @@ class NativeJoinedLhsTest
             }
         };
         EvaluationContext ctx = EvaluationContext.builder().table(primary).datasetResolver(resolver)
-                .joinedDatasets(Map.of("DM", lookup)).build();
+                .mergedView(ExecCalls.joinsView(Map.of("DM", lookup))).build();
 
         // GHOST is in neither the primary table nor DM → empty BitSet.
         Expr e = new Expr.Binary(BinOp.EQ, ref("GHOST", OperandKind.COLUMN),

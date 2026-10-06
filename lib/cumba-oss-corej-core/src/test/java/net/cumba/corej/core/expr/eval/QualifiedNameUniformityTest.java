@@ -3,7 +3,6 @@ package net.cumba.corej.core.expr.eval;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -18,9 +17,9 @@ import java.util.SequencedMap;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import net.cumba.corej.core.exec.DatasetLookup;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.EvaluationContext;
+import net.cumba.corej.core.exec.ExecCalls;
 import net.cumba.corej.core.exec.JoinLookup;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ast.Expr;
@@ -1093,12 +1092,11 @@ class QualifiedNameUniformityTest
         Map<String, JoinLookup> joins = new LinkedHashMap<>();
         if (joinIt)
         {
-            DatasetLookup lk = DatasetLookup.build(joinName, j, List.of(KEY));
-            assertNotNull(lk, "the J join over " + KEY);
-            joins.put(joinName, lk);
+            joins.put(joinName, ExecCalls.viewLookup(p, joinName, j, List.of(KEY)));
         }
-        return EvaluationContext.builder().table(p).datasetResolver(resolver).joinedDatasets(joins)
-                .numericExpectedColumns(numeric).ruleId("QNU").domainName("P").build();
+        return EvaluationContext.builder().table(p).datasetResolver(resolver)
+                .mergedView(ExecCalls.joinsView(joins)).numericExpectedColumns(numeric)
+                .ruleId("QNU").domainName("P").build();
     }
 
     // ------------------------------------------------------------------
@@ -1633,12 +1631,11 @@ class QualifiedNameUniformityTest
             Vector arg = args.get(0);
             String name = arg == null ? null : arg.asString(0);
             ColumnVector own = name == null || name.isEmpty() ? null : primaryColumn(run, name);
-            if (own != null || name == null || name.isEmpty()
-                    || run.ctx().getJoinedDatasets().isEmpty())
+            if (own != null || name == null || name.isEmpty() || run.ctx().joins().isEmpty())
             {
                 return own == null ? ConstVector.of("") : own;
             }
-            JoinLookup lookup = run.ctx().getJoinedDatasets().values().iterator().next();
+            JoinLookup lookup = run.ctx().joins().values().iterator().next();
             IDataTable table = run.ctx().getTable();
             net.cumba.datatable.IDataTableColumn column = new net.cumba.datatable.AbstractDataTableColumn(
                     0)

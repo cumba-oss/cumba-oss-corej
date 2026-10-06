@@ -198,10 +198,10 @@ public enum StageAErrorKind
      * <p>
      * ⇒ Two questions must be answered before arming, and neither is this kind's to decide: whether
      * {@code Requirements.Datasets} is a second legal declaration channel for a dotted qualifier
-     * (it gates SKIP-vs-run; it does <b>not</b> reach {@code RuleRunner.buildJoinedDatasets}), and
-     * whether those fixtures are authoring errors to repair or shapes to admit. ⛔ Do not arm this
-     * kind by editing the fixtures until that is ruled — three fixtures pin run-time gating
-     * behaviour, and adding a join to them changes what they measure.
+     * (it gates SKIP-vs-run; it does <b>not</b> reach the merged view's parts), and whether those
+     * fixtures are authoring errors to repair or shapes to admit. ⛔ Do not arm this kind by editing
+     * the fixtures until that is ruled — three fixtures pin run-time gating behaviour, and adding a
+     * join to them changes what they measure.
      * </p>
      */
     DOTTED_REF_UNDECLARED(false),
@@ -224,13 +224,14 @@ public enum StageAErrorKind
     /**
      * Two {@code Match_Datasets} entries sharing one {@code Name} (phase 6b — D110g(iii), the
      * 2026-08 join-match-flag plan's ambiguity load-error, routed here by D88b as part of the
-     * binding model): {@code RuleRunner.buildJoinedDatasets} keys the join lookups by name,
-     * last-wins, so a duplicate-name rule silently reads only the surviving entry — since 5b-J with
-     * the {@code _matched_} flag as one more reader of the survivor. A binding declared twice is an
-     * authoring contradiction, not a resolvable preference, so it fails loud at load (the
-     * {@code Operations:} analogue is the duplicate-{@code id} shape). Armed: measured 0 duplicates
-     * across the authored corpus (4&#8239;349 rule files, 2026-09-16), 0 newly parked over the
-     * shipped-corpus load and the {@code rulespec/} harness.
+     * binding model): the merged view keys its parts' lookups by name
+     * ({@code EvaluationContext.joins}), last-wins, so a duplicate-name rule silently reads only
+     * the surviving entry — since 5b-J with the {@code _matched_} flag as one more reader of the
+     * survivor. A binding declared twice is an authoring contradiction, not a resolvable
+     * preference, so it fails loud at load (the {@code Operations:} analogue is the
+     * duplicate-{@code id} shape). Armed: measured 0 duplicates across the authored corpus
+     * (4&#8239;349 rule files, 2026-09-16), 0 newly parked over the shipped-corpus load and the
+     * {@code rulespec/} harness.
      */
     DUPLICATE_MATCH_DATASET_NAME(true),
 
