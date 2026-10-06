@@ -696,11 +696,23 @@ public final class SplitDomainResolution
     {
         List<IDataTable> members = new ArrayList<>();
         String unloadable = null;
-        IDataTable exact = byName(inv, key);
-        if (exact != null)
+        IDataTable exact = null;
+        try
         {
-            members.add(exact);
+            exact = byName(inv, key);
+            if (exact != null)
+            {
+                members.add(exact);
+            }
         }
+        catch (RuntimeException e)
+        {
+            // the exactly-named member is a member whatever its rows (D3), so its load failure
+            // takes the same path as any other member's — once, memoised, never a raw exception
+            // out of the walk (confirmation look on the fold)
+            unloadable = "member " + key + " cannot be loaded: " + e;
+        }
+        boolean exactFailed = unloadable != null;
         for (String dsName : inv.availableDatasets())
         {
             if (!isSuppOrSqName(dsName))
@@ -708,9 +720,9 @@ public final class SplitDomainResolution
                 continue; // the D2 pre-filter: a non-supplemental entry is never resolved
             }
             boolean exactName = dsName.equalsIgnoreCase(key);
-            if (exactName && exact != null)
+            if (exactName && (exact != null || exactFailed))
             {
-                continue; // the exactly-named entry is already a member
+                continue; // the exactly-named entry is already a member, or already failed once
             }
             try
             {

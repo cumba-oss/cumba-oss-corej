@@ -2091,8 +2091,28 @@ public final class ExprCompiler
         case Expr.And and -> nestedQuantifierIn(and.parts());
         case Expr.Or or -> nestedQuantifierIn(or.parts());
         case Expr.Not not -> nestedQuantifier(not.inner());
+        case Expr.Lit lit when lit.kind() == Expr.LitKind.LIST
+                && lit.value() instanceof List<?> members -> nestedQuantifierInMembers(members);
         default -> null;
         };
+    }
+
+
+    /** The LIST literal case of the walk: {@code [none(joined(…))]} nests exactly like a call. */
+    private static @Nullable String nestedQuantifierInMembers(List<?> members)
+    {
+        for (Object member : members)
+        {
+            if (member instanceof Expr part)
+            {
+                String found = nestedQuantifier(part);
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+        }
+        return null;
     }
 
 

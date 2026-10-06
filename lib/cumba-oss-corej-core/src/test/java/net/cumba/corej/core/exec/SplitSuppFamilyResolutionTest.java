@@ -717,6 +717,86 @@ class SplitSuppFamilyResolutionTest
     }
 
 
+    /**
+     * Confirmation look on the fold (MEDIUM): the EXACTLY-named member's load failure must take the
+     * same path — {@code byName(inv, key)} sat before the walk's catch, so an unreadable
+     * {@code SUPPAE} escaped as a raw exception (nothing memoised, re-tried per rule and site,
+     * {@code MergedEvaluation.build} let it out as no MERGE_REFUSED). One load attempt, Invalid,
+     * MERGE_REFUSED.
+     */
+    @Test
+    void anUnloadableExactlyNamedMemberMakesTheFamilyInvalid_loadedOnce()
+    {
+        IDataTable ae = SUPP.base.get();
+        IDataTable one = SUPP.member1.get();
+        Map<String, IDataTable> tables = new LinkedHashMap<>();
+        tables.put("AE", ae);
+        tables.put("SUPPAE1", one);
+        CountingThrowingInventory inv = new CountingThrowingInventory(tables, "SUPPAE");
+        DomainResolution r = SplitDomainResolution.resolve(inv, "SUPPAE", "R");
+        DomainResolution.Invalid invalid = assertInstanceOf(DomainResolution.Invalid.class, r,
+                "an unreadable exact SUPPAE cannot escape as a raw exception");
+        assertTrue(invalid.message().contains("SUPPAE cannot be loaded"), invalid.message());
+        assertEquals(List.of(one), SplitDomainResolution.suppFamilyMembers(inv, "SUPPAE", "R"));
+        assertSame(invalid, SplitDomainResolution.resolve(inv, "SUPPAE", "R"), "memoised");
+        assertEquals(1, inv.attempts("SUPPAE"), "the exact member is loaded once, never retried");
+        RuleExecutionResult merged = run(rule("", "empty(AETERM)"), ae, inv);
+        assertEquals(RuleExecutionStatus.ERROR, merged.getStatus(), merged.getStatusMessage());
+        assertTrue(
+                merged.getStatusMessage().startsWith(MergedEvaluation.MERGE_REFUSED_MESSAGE_PREFIX),
+                merged.getStatusMessage());
+        assertEquals(1, inv.attempts("SUPPAE"), "the merge did not re-try the load either");
+    }
+
+    /** A throwing inventory that counts the load attempts per name. */
+    static final class CountingThrowingInventory implements DatasetResolver.WithInventory
+    {
+
+        private final Map<String, IDataTable> tables;
+
+        private final Set<String> broken;
+
+        private final Map<String, Integer> attempts = new LinkedHashMap<>();
+
+        CountingThrowingInventory(Map<String, IDataTable> tables, String... bad)
+        {
+            this.tables = tables;
+            this.broken = Set.of(bad);
+        }
+
+
+        int attempts(String name)
+        {
+            return attempts.getOrDefault(name.toUpperCase(Locale.ROOT), 0);
+        }
+
+
+        @Override
+        public @Nullable IDataTable resolve(String name)
+        {
+            if (name == null)
+            {
+                return null;
+            }
+            String upper = name.toUpperCase(Locale.ROOT);
+            if (broken.contains(upper))
+            {
+                attempts.merge(upper, 1, Integer::sum);
+                throw new IllegalStateException("corrupt file " + name);
+            }
+            return tables.get(upper);
+        }
+
+
+        @Override
+        public Set<String> availableDatasets()
+        {
+            Set<String> names = new java.util.LinkedHashSet<>(tables.keySet());
+            names.addAll(broken);
+            return names;
+        }
+    }
+
     /** An inventory whose named entries throw on resolve (a corrupt file). */
     static DatasetResolver.WithInventory throwing(Map<String, IDataTable> tables, String... bad)
     {

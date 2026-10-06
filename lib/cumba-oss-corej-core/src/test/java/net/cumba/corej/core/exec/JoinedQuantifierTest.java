@@ -346,6 +346,12 @@ class JoinedQuantifierTest
                 () -> ExprCompiler.compile(nested));
         assertTrue(e.getMessage().contains("nest"), e.getMessage());
         assertTrue(e.getMessage().contains("none"), e.getMessage());
+        // a quantifier inside a LIST literal nests the same way (confirmation look, cosmetic)
+        ExpressionException listed = assertThrows(ExpressionException.class,
+                () -> ExprCompiler.compile(CheckExpressionParser
+                        .parse("any(joined(J.S in [none(joined(J.S == \"b\"))]))")));
+        assertTrue(listed.getMessage().contains("nest") && listed.getMessage().contains("none"),
+                listed.getMessage());
         // the control: one quantifier compiles
         assertNotNull(
                 ExprCompiler.compile(CheckExpressionParser.parse("any(joined(J.S == \"b\"))")));
