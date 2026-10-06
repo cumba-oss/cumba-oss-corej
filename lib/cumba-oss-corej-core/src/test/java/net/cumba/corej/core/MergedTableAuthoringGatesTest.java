@@ -96,8 +96,12 @@ class MergedTableAuthoringGatesTest
     private static final String CHILD = "{\"Name\":\"SUPP--\",\"Keys\":[\"USUBJID\",\"IDVAR\","
             + "\"IDVARVAL\"],\"Child\":true%s}";
 
+    /**
+     * W4: the merged view checks a Child entry's authored cardinality (P-16), so the W3f staging
+     * refusal is retired; the IG-disagreement WARNING stays (MET #12 (c), P-13).
+     */
     @Test
-    void aChildEntryDisagreeingWithTheIgWarnsAndIsNotServedBeforeW4() throws IOException
+    void aChildEntryDisagreeingWithTheIgWarnsAndIsServed() throws IOException
     {
         Rule agrees = load(CHILD.formatted(",\"Cardinality\":\"n:m\""), "");
         assertClean(agrees);
@@ -107,8 +111,27 @@ class MergedTableAuthoringGatesTest
         assertNotNull(warning, "MET #12 (c): the disagreement is logged");
         assertTrue(warning.contains("the authored Cardinality n:1 of Child entry 'SUPP--'"
                 + " disagrees with the IG's n:m"), warning);
-        assertError(disagrees, "a Child: true entry is merged by the pre-merge until"
-                + " PLAN-merged-evaluation-table W4");
+        assertClean(disagrees);
+    }
+
+
+    /**
+     * W4: a Child entry keeps every record (the bare pre-merge never dropped one), so an authored
+     * {@code Join_Type} other than {@code left} would be silently ignored — a load error; and a
+     * Child entry on a rule the legacy arm runs (it builds no Child part) is one too.
+     */
+    @Test
+    void aChildEntryIsLeftAndOnlyServedByTheMergedView() throws IOException
+    {
+        assertClean(load(CHILD.formatted(""), ""));
+        assertClean(load(CHILD.formatted(",\"Join_Type\":\"left\""), ""));
+        assertError(load(CHILD.formatted(",\"Join_Type\":\"inner\""), ""),
+                "Join_Type 'inner' on Child: true Match_Datasets entry 'SUPP--' — a Child entry"
+                        + " keeps every record (left)");
+        assertClean(load(CHILD.formatted("") + ",{\"Name\":\"RELREC\",\"Child\":true}", ""));
+        assertError(load(CHILD.formatted("") + ",{\"Name\":\"RELREC\"}", ""),
+                "a Child: true Match_Datasets entry on a rule that carries a forward RELREC entry"
+                        + " or a chained qualified key");
     }
 
 

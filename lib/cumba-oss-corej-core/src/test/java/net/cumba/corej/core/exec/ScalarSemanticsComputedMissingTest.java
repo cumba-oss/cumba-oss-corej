@@ -250,11 +250,10 @@ class ScalarSemanticsComputedMissingTest
                         + " owes?) and a deleted one must be accounted for, before this constant is"
                         + " bumped. Discovered: " + found);
 
-        // ⚑ Two allowed @Nullable declarations, both OUTSIDE the value channel by §1b's boundary
-        // test (does this flow into expression evaluation as a VALUE? no):
+        // ⚑ One allowed @Nullable declaration, OUTSIDE the value channel by §1b's boundary test
+        // (does this flow into expression evaluation as a VALUE? no) — the second,
+        // PolymorphicMergedColumn.readParentDataValue, went with the Child pre-merge (W4):
         //
-        // * PolymorphicMergedColumn.readParentDataValue — a private helper answering "this merged
-        // column has no parent column object here"; its caller converts before publishing.
         // * TypedValue.sourceCell — PROVENANCE, not a value: null means "this value was not
         // produced from a cell" (a resolved literal / untyped computed value), and consumers
         // branch on exactly that (Primitives:260). The VALUE channel of the same carrier is
@@ -268,9 +267,7 @@ class ScalarSemanticsComputedMissingTest
         //
         // ⛔ Exact equality, so REMOVING an annotation reds too and an allowance cannot outlive its
         // reason unnoticed.
-        assertEquals(
-                List.of("PolymorphicMergedColumn.readParentDataValue", "TypedValue.sourceCell"),
-                nullable,
+        assertEquals(List.of("TypedValue.sourceCell"), nullable,
                 "the set of @Nullable IDataValue declarations in this module changed. Every value"
                         + " a rule reads is a real value or a MissingValue, never null — produce"
                         + " ScalarSemantics.computedMissing() or the owed default instead of"
@@ -753,7 +750,12 @@ class ScalarSemanticsComputedMissingTest
     // supplemental qualifier column SuppPivot hands out for a bare name colref names (MQ7): a
     // missing cell is handed through with its identity, a present one as its text (DataValues.of).
     // Never null; a flagged column raises MergeErrorReadException at the read.
-    private static final int EXPECTED_VALUE_PRODUCERS = 44;
+    // 44 -> 42 (PLAN-merged-evaluation-table W4): the bare Child pre-merge's producers went with
+    // it — PolymorphicMergedColumn.getDataValue, .readParentDataValue and
+    // StringArrayColumn.getDataValue (-3); ChildEntries.TokenColumn.getDataValue came (+1) — read:
+    // the J5 pointer token where it differs from the stored IDVARVAL text, else the original
+    // column's own cell, identity kept. Never null.
+    private static final int EXPECTED_VALUE_PRODUCERS = 42;
 
     private static Method declared(Class<?> owner, String name)
     {

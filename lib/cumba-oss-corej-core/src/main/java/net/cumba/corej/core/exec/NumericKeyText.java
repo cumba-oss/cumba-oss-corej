@@ -8,12 +8,14 @@ import org.jspecify.annotations.Nullable;
  * The exact-decimal canonical text of a numeric join-key token — the ONE rule behind the numeric
  * arm of the two text-carried foreign-key joins: {@code RelrecRowExpander.normKey} (the RELREC
  * {@code IDVAR} value on both the record-level {@code IDVAR == IDVARVAL} filter and the
- * dataset-level equi-join) and {@link ChildMatchIndex#normalizeJoinToken} (the SUPP-- / CO / RELREC
- * {@code Child} join token). Ruled by PLAN-relrec-idvar-key-precision T1-1 (a), owner 2026-09-25:
- * <i>"One lossless rule for both sites"</i>. ⚠ This class decides only what a <b>numeric</b> token
- * canonicalises to; what each caller does with a token that is <b>not</b> a number (the RELREC site
- * keeps the unstripped text, the Child site keeps it stripped) is that caller's rule, unchanged
- * here, and the difference is on record in the plan's open questions.
+ * dataset-level equi-join) and {@link #childJoinToken} (the SUPP-- / CO / RELREC {@code IDVAR} join
+ * token the legacy SUPP pivot and {@code distinct}'s join-token columns read; the merged view
+ * matches through the datatable's own {@code JoinToken}). Ruled by PLAN-relrec-idvar-key-precision
+ * T1-1 (a), owner 2026-09-25: <i>"One lossless rule for both sites"</i>. ⚠ This class decides only
+ * what a <b>numeric</b> token canonicalises to; what each caller does with a token that is
+ * <b>not</b> a number (the RELREC site keeps the unstripped text, the Child site keeps it stripped)
+ * is that caller's rule, unchanged here, and the difference is on record in the plan's open
+ * questions.
  *
  * <p>
  * A token spelt with ASCII digits, an optional sign, an optional fraction and an optional exponent
@@ -57,6 +59,37 @@ final class NumericKeyText
 
     private NumericKeyText()
     {
+    }
+
+
+    /**
+     * Normalizes an IDVAR-join token so the parent's IDVAR-named column value (e.g. {@code AESEQ}
+     * &rarr; {@code "1"}) and the child's {@code IDVARVAL} value (which can carry SAS padding, e.g.
+     * {@code "       1"}, or a float rendering such as {@code "1.0"}) compare equal: a numeric
+     * parent's token is canonicalized to its exact decimal text ({@link #canonicalOrNull}), any
+     * other token is returned stripped (a string parent keeps {@code "01" != "1"}). Moved here from
+     * the retired {@code ChildMatchIndex} ({@code PLAN-merged-evaluation-table} W4).
+     *
+     * @param raw
+     *            the raw join token, or {@code null}
+     * @param numericParent
+     *            whether the parent {@code IDVAR}-named column is numeric (gates the numeric
+     *            canonicalization; stripping is always applied)
+     * @return the coerced token, or {@code null} when {@code raw} is {@code null}
+     */
+    static @Nullable String childJoinToken(@Nullable String raw, boolean numericParent)
+    {
+        if (raw == null)
+        {
+            return null;
+        }
+        String t = raw.strip();
+        if (!numericParent)
+        {
+            return t;
+        }
+        String canonical = canonicalOrNull(t);
+        return canonical != null ? canonical : t;
     }
 
 

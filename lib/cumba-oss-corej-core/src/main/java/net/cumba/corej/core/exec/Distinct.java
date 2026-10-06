@@ -60,7 +60,7 @@ import org.jspecify.annotations.Nullable;
  * its {@link Primitives.MissingMember} (D11 / D34 #5-2, never {@code ""} nor {@code "."}), an
  * ABSENT column as the NVE constant of its type's default ({@code ""} for character, {@code MIS}
  * for a column the rule expects numeric), and an {@code IDVARVAL} component as its SUPP-- / RELREC
- * join token ({@link ChildMatchIndex#normalizeJoinToken}, review H1 of 2026-08-19) — exactly the
+ * join token ({@link NumericKeyText#childJoinToken}, review H1 of 2026-08-19) — exactly the
  * components the {@code tuple(…)} probe side builds, so a row tuple and a reference tuple compare
  * {@link List#equals List-equal}.
  * </p>
@@ -467,7 +467,7 @@ public final class Distinct
                     continue;
                 }
                 String cell = dv.getValueAsString();
-                tuple.add(joinToken[c] ? ChildMatchIndex.normalizeJoinToken(cell, true) : cell);
+                tuple.add(joinToken[c] ? NumericKeyText.childJoinToken(cell, true) : cell);
             }
             seen.add(java.util.Collections.unmodifiableList(tuple));
         }

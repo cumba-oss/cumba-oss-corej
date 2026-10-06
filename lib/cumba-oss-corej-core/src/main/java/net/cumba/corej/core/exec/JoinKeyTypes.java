@@ -27,7 +27,7 @@ import net.cumba.corej.core.model.MatchDataset;
  * CDISC-library datasets that define it, and it is matched against the value of the variable
  * <em>named</em> by {@code IDVAR} — routinely a {@code --SEQ}, i.e. {@code Num}. Their coercions
  * are ruled elsewhere and already implemented ({@code JKM R6} —
- * {@code ChildMatchIndex.normalizeJoinToken} coerces the child token to the parent's type; and
+ * {@code NumericKeyText.childJoinToken} coerces the child token to the parent's type; and
  * {@code RelrecRowExpander.normKey} float-canonicalises).
  * </p>
  *

@@ -656,7 +656,8 @@ public final class RuleRunner
 
         // -----------------------------------------------------------------------
         // Phase ordering (see `core-engine-update-plan.md` §2 Cluster C):
-        // 2a.5–2a.7 — ChildMatchPreMerger / RELREC / key-match row expansion produce the merged,
+        // 2a.6–2a.7 — RELREC / key-match row expansion (legacy arm) or the merged view produce the
+        // merged,
         // row-expanded `evalTable` (every later phase uses `evalTable`, not `table`). These run
         // BEFORE Operations, mirroring Python (preprocess precedes perform_rule_operations), so an
         // Operation aggregating over the primary sees the expanded row set.
@@ -755,11 +756,9 @@ public final class RuleRunner
         // read (they are lazy — BindingValue evaluates on first read, after this block), so a
         // binding that aggregates over the primary sees the merged/expanded row set.
 
-        // Phase 2a.5: Pre-merge Child:true parent columns (Fix #6 — CDISC-CG0371 and siblings).
-        // Every later phase uses the augmented evalTable so plain-name references in the Check can
-        // reach parent columns.
-        evalTable = ChildMatchPreMerger.preMerge(evalTable, rule.getMatchDatasets(), resolver,
-                ruleId, joinCache);
+        // Phase 2a.5 is gone (W4 of PLAN-merged-evaluation-table, MQ1): a Child: true parent is a
+        // part of the merged evaluation view below, its columns qualified with the parent domain
+        // (AE.AESMIE), never merged bare into the evaluation table (ChildEntries).
 
         // Phases 2a.6–2b (W3a of PLAN-merged-evaluation-table): the merged evaluation view — the
         // keyed Match_Datasets parts and the primary's SUPP<domain> qualifiers as columns of ONE
@@ -4544,15 +4543,17 @@ public final class RuleRunner
                 throw new MalformedSidedKeyException(originalName, malformedKey);
             }
             // ⭐ A `Child: true` entry is joined ONLY through its pointer (owner, 2026-09-25,
-            // PLAN-hashed-join-arm-absent-columns §3, option A): ChildMatchPreMerger finds the
-            // parent row where parent[row.IDVAR] == row.IDVARVAL, the remaining keys compared
-            // column to column, and merges the parent's columns into the primary BARE. It builds
+            // PLAN-hashed-join-arm-absent-columns §3, option A): the merged evaluation view finds
+            // the parent row where parent[row.IDVAR] == row.IDVARVAL, the remaining keys compared
+            // column to column, as a part qualified with the parent domain (W4 of
+            // PLAN-merged-evaluation-table; a Child rule never reaches this legacy arm). It builds
             // no direct keyed lookup. Until 2026-09-25 one was built here as well — its keys
             // [USUBJID, IDVAR, IDVARVAL] compared literally as columns on BOTH sides, which is
             // meaningless for a pointer (on the AE side there are no such columns; on CO / RELREC
             // / a SUPP-- self-join it paired SIBLING records pointing at the same parent) — and
-            // nothing read it: a `_matched_` or a dotted read on a Child entry is a stage-A load
-            // error (StageAChecker). Its only observable effects were the leaf-cache gate (a
+            // nothing read it (a `_matched_` or a dotted read on a Child entry was a stage-A load
+            // error until W4, which serves both through the view). Its only observable effects were
+            // the leaf-cache gate (a
             // non-empty joined map disables leaf caching) and an AE hash index built on every
             // SUPPAE pass that could never match. Removing it is also what lets KeyHashing's
             // KeyMatcher apply JKM R7's one-side rule without pairing rows nobody asked to pair.

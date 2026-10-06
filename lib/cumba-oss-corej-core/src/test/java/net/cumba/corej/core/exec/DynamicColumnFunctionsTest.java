@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
  * {@code PLAN-dynamic-column-functions} phase 2 — {@code str}, {@code num}, {@code printf},
  * {@code lpad} and the scalar {@code colref} as ordinary functions, pinned END TO END: every rule
  * here is loaded through {@link RulePackageLoader} (so the load seams run) and executed through the
- * rule runner (so the context carries the rule's own type expectations, joins and Child pre-merge
+ * rule runner (so the context carries the rule's own type expectations, joins and Child parent part
  * exactly as in production). Each {@code colref} case is asserted against the <b>authored</b>
  * spelling of the same name on the same tables — the uniformity the plan rests on ({@code D72},
  * {@code NF §3a}, {@code UVC unqualified}).
@@ -400,7 +400,7 @@ class DynamicColumnFunctionsTest
     private static List<Long> cg0371On(IDataTable suppae, IDataTable ae)
     {
         String check = "not empty(IDVAR) and not empty(IDVARVAL)"
-                + " and str(IDVARVAL) != str(colref(IDVAR))";
+                + " and str(IDVARVAL) != str(colref(concat(RDOMAIN, \".\", IDVAR)))";
         String json = "{\"Core\":{\"Id\":\"CDISC-CG0371\"},\"Sensitivity\":\"Record\","
                 + "\"Match_Datasets\":[{\"Name\":\"SUPP--\",\"Child\":true,\"Keys\":"
                 + "[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]}],\"Check\":{\"expression\":\"" + esc(check)

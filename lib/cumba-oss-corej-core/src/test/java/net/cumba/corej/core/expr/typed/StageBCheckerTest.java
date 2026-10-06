@@ -326,54 +326,33 @@ class StageBCheckerTest
     }
 
 
+    /**
+     * W4 of {@code PLAN-merged-evaluation-table} (MQ1) retired the Child hedge: a Child parent's
+     * columns are qualified ({@code AE.AESMIE}), never merged under their bare names, so an absent
+     * bare column is absent whatever the rule's entries — {@code Match_Datasets: [null]} included
+     * (the loader tolerates it; never an NPE).
+     */
     @Test
-    void aChildEntrysParentMaySupplyAnAbsentBareColumnAndTheRecordSaysSo()
+    void aChildEntrysParentSuppliesNoBareColumnSoTheRecordDoesNotHedge()
     {
-        // The one path that still reads a parent column under its bare name
-        // (ChildMatchPreMerger, D2 of PLAN-unqualified-joined-column-gate), merged in after
-        // this seam.
-        Rule rule = rule("AESMIE != \"Y\"");
-        MatchDataset child = new MatchDataset();
-        child.setName("AE");
-        child.setChild(Boolean.TRUE);
-        child.setKeys(List.of("USUBJID", "IDVAR", "IDVARVAL"));
-        rule.setMatchDatasets(List.of(child));
-        StageBReport report = StageBChecker.check(rule, table("SUPPAE", "QNAM"), true, null,
-                Set.of());
-        List<StageBFinding> absent = of(report, StageBErrorKind.ABSENT_COLUMN);
-        assertEquals(1, absent.size());
-        assertEquals("AESMIE", absent.get(0).binding());
-        assertEquals("absent from SUPPAE; D76 default type string (missing = \"\")"
-                + " (unless its Child: true parent supplies it)", absent.get(0).message());
-        assertEquals(List.of(), report.armedFindings());
-    }
-
-
-    @Test
-    void aNullMatchDatasetsElementIsNoEntryAndTheRecordDoesNotHedge()
-    {
-        // The loader tolerates `Match_Datasets: [null]`; the hedge test must read such an element
-        // as no entry — never an NPE, never a Child. The second, real Child entry proves the scan
-        // walks past the null rather than stopping at it.
         Rule rule = rule("AESMIE != \"Y\"");
         List<MatchDataset> matches = new ArrayList<>();
         matches.add(null);
         rule.setMatchDatasets(matches);
-        List<StageBFinding> absent = of(
-                StageBChecker.check(rule, table("SUPPAE", "QNAM"), true, null, Set.of()),
-                StageBErrorKind.ABSENT_COLUMN);
-        assertEquals(List.of("absent from SUPPAE; D76 default type string (missing = \"\")"),
-                absent.stream().map(StageBFinding::message).toList());
         MatchDataset child = new MatchDataset();
         child.setName("AE");
         child.setChild(Boolean.TRUE);
         child.setKeys(List.of("USUBJID", "IDVAR", "IDVARVAL"));
         matches.add(child);
-        absent = of(StageBChecker.check(rule, table("SUPPAE", "QNAM"), true, null, Set.of()),
-                StageBErrorKind.ABSENT_COLUMN);
+        StageBReport report = StageBChecker.check(rule, table("SUPPAE", "QNAM"), true, null,
+                Set.of());
+        List<StageBFinding> absent = of(report, StageBErrorKind.ABSENT_COLUMN);
         assertEquals(1, absent.size());
-        assertTrue(absent.get(0).message().endsWith(" (unless its Child: true parent supplies it)"),
-                absent.get(0).message());
+        assertEquals("AESMIE", absent.get(0).binding());
+        assertEquals("absent from SUPPAE; D76 default type string (missing = \"\")",
+                absent.get(0).message(),
+                "the hedge \"(unless its Child: true parent supplies it)\"" + " retired with W4");
+        assertEquals(List.of(), report.armedFindings());
     }
 
 

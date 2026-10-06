@@ -271,7 +271,7 @@ final class RelrecRowExpander
     /**
      * Detects a forward RELREC join entry: {@code Name == "RELREC"}, no {@code Keys}, and not
      * {@code Child:true}. The {@code Child:true} / keyed RELREC entries use the
-     * {@link ChildMatchPreMerger} path instead and are left untouched.
+     * {@link ChildEntries} path (the merged view) instead and are left untouched.
      */
     static @Nullable MatchDataset findForwardRelrec(@Nullable List<MatchDataset> matchDatasets)
     {

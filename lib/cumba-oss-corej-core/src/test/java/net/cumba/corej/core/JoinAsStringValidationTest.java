@@ -213,8 +213,8 @@ class JoinAsStringValidationTest
 
     /**
      * ⭐ Round 3, L2 — a well-formed sided key on a {@code Child} entry is rejected, because
-     * {@code ChildMatchPreMerger} reads the LEFT names on both sides and would ignore the
-     * declaration silently.
+     * {@code ChildEntries} reads the LEFT names on both sides and would ignore the declaration
+     * silently.
      */
     @Test
     void aSidedKeyOnAChildEntryFilesALoadError() throws IOException

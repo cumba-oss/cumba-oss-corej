@@ -120,7 +120,7 @@ class SuppPivotTest
     @Test
     void theIdvarvalTextCoercesToTheNumericParentColumn()
     {
-        // " 1" (SAS-padded) and "1.0" both name the numeric PCSEQ 1 (ChildMatchIndex J5 / D4-R5).
+        // " 1" (SAS-padded) and "1.0" both name the numeric PCSEQ 1 (the J5 join token / D4-R5).
         assertEquals("a",
                 cell(column(ctx(pc(), suppPc(new SuppRow("S2", "PCSEQ", " 1", "PCCALCN", "a"))),
                         "PCCALCN"), 2));

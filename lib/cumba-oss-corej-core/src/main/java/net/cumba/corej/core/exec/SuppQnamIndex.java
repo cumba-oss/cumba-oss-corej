@@ -26,8 +26,8 @@ import org.jspecify.annotations.Nullable;
  * blank, whose {@code IDVAR} is set while {@code IDVARVAL} is missing, or that are subject-level
  * with a blank subject key (naming neither a subject, a pool nor a record) can qualify no record
  * and are dropped. The {@code IDVARVAL} text is stored raw (stripped only at match time,
- * {@link ChildMatchIndex#normalizeJoinToken}) because the coercion depends on the parent column's
- * type, which is known only when a parent is merged.
+ * {@link NumericKeyText#childJoinToken}) because the coercion depends on the parent column's type,
+ * which is known only when a parent is merged.
  * </p>
  *
  * <p>

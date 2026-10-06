@@ -1,8 +1,6 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -24,16 +22,21 @@ import org.junit.jupiter.api.Test;
 /**
  * ⭐⭐ Option A of {@code PLAN-hashed-join-arm-absent-columns} (owner, 2026-09-25): <b>a
  * {@code Child: true} entry disables the direct join</b>. It is joined only through its pointer —
- * {@code ChildMatchPreMerger} finds the parent row where {@code parent[row.IDVAR] == row.IDVARVAL}
- * and merges the parent's columns in bare — and {@code RuleRunner.buildJoinedDatasets} builds
- * <b>no</b> keyed {@link DatasetLookup} for it.
+ * since W4 of {@code PLAN-merged-evaluation-table} (MQ1) the merged view's parent part, which finds
+ * the parent row where {@code parent[row.IDVAR] == row.IDVARVAL} and serves its columns QUALIFIED
+ * with the parent domain ({@code AE.AESMIE}; the retired {@code ChildMatchPreMerger} merged them
+ * bare) — and {@code RuleRunner.buildJoinedDatasets} builds <b>no</b> keyed {@link DatasetLookup}
+ * for it.
  *
  * <p>
  * The fixtures are the phase-1 probe's (findings §Appendix B): a SUPPAE with a record-level, a
  * subject-level ({@code IDVAR}/{@code IDVARVAL} both {@code ""}) and an orphan row; AE, CO and
  * RELREC beside it. The findings pinned below are the figures the probe <b>measured on the engine
- * before this change</b>, so a green here is the plan's <i>"a Child rule's findings are
- * unchanged"</i> claim, per rule and per primary — not a restatement of the new code.
+ * before option A</b>, and W4 respells the two rules (MQ1) without moving one of them — so a green
+ * here is the plan's <i>"a Child rule's findings are unchanged"</i> claim, per rule and per
+ * primary. The refusals option A added for a dotted read of a Child entry (DOTTED_REF_CHILD_ENTRY)
+ * retired with W4: the parent is now a declared qualifier (P-14), and the tests below show it
+ * served.
  * </p>
  */
 class ChildEntryDirectJoinTest
@@ -106,12 +109,12 @@ class ChildEntryDirectJoinTest
     }
 
 
-    /** {@code CDISC-CG0043} as shipped: one {@code AE} Child entry, a bare {@code AESMIE} read. */
+    /** {@code CDISC-CG0043} as shipped since W4: one {@code AE} Child entry, AE.AESMIE read. */
     private static Rule cg0043()
     {
         return rule("CDISC-CG0043", List.of(child("AE")),
-                "QNAM == \"AESOSP\" and var_exists(\"AESMIE\") and AESMIE != \"Y\"",
-                List.of("QNAM", "AESMIE"));
+                "QNAM == \"AESOSP\" and var_exists(\"AE.AESMIE\") and AE.AESMIE != \"Y\"",
+                List.of("QNAM", "AE.AESMIE"));
     }
 
 
@@ -121,7 +124,8 @@ class ChildEntryDirectJoinTest
     private static Rule cg0371()
     {
         return rule("CDISC-CG0371", List.of(child("SUPP--"), child("CO"), child("RELREC")),
-                "not empty(IDVAR) and not empty(IDVARVAL) and str(IDVARVAL) != str(colref(IDVAR))",
+                "not empty(IDVAR) and not empty(IDVARVAL) and str(IDVARVAL) !="
+                        + " str(colref(concat(RDOMAIN, \".\", IDVAR)))",
                 List.of("RDOMAIN", "IDVAR", "IDVARVAL"));
     }
 
@@ -176,9 +180,10 @@ class ChildEntryDirectJoinTest
 
 
     /**
-     * {@code CDISC-CG0043} on SUPPAE: the pre-merge still supplies {@code AESMIE} bare, so the
-     * three findings the probe measured before the change (row 1 {@code N}; rows 2 and 3 with no
-     * parent found, {@code AESMIE} empty) are the three findings now.
+     * {@code CDISC-CG0043} on SUPPAE: the parent part supplies {@code AE.AESMIE}, so the three
+     * findings the probe measured before the change (row 1 {@code N}; rows 2 and 3 with no parent
+     * found, {@code AESMIE} empty) are the three findings now, the dotted output included (the
+     * retired arm refused {@code Output_Variables: [AE.AESMIE]} at load).
      */
     @Test
     void cg0043FindingsAreUnchangedOnSuppae()
@@ -186,11 +191,11 @@ class ChildEntryDirectJoinTest
         RuleExecutionResult r = execute(cg0043(), suppae());
         assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(), r.getStatusMessage());
         assertEquals(
-                List.of("row1 QNAM=AESOSP AESMIE=N", "row2 QNAM=AESOSP AESMIE=",
-                        "row3 QNAM=AESOSP AESMIE="),
-                fired(r, "QNAM", "AESMIE"),
-                "the phase-1 probe's as-shipped result; a fourth row or a missing AESMIE column"
-                        + " would mean the pre-merge — the pointer join — stopped serving the rule");
+                List.of("row1 QNAM=AESOSP AE.AESMIE=N", "row2 QNAM=AESOSP AE.AESMIE=",
+                        "row3 QNAM=AESOSP AE.AESMIE="),
+                fired(r, "QNAM", "AE.AESMIE"),
+                "the phase-1 probe's as-shipped result; a fourth row or a missing AE.AESMIE value"
+                        + " would mean the pointer join stopped serving the rule");
     }
 
 
@@ -240,108 +245,50 @@ class ChildEntryDirectJoinTest
 
 
     /**
-     * ⭐ Follow-up 1, end to end: a dotted read of a Child entry — the probe's authored
-     * {@code CO.COVAL == "co-subj"}, which the retired lookup answered for the subject-level row —
-     * is refused at load, not served by a join that no longer exists and not silently defaulted.
+     * Follow-up 1 of option A refused a dotted read of a Child entry at load; W4 serves it (P-14):
+     * {@code AE.AESMIE} on SUPPAE reads the parent part, and {@code CO.COVAL} — CO is a declared
+     * qualifier there, but no SUPPAE row's parent is CO — reads the not-supplied marker (P-1),
+     * never the retired direct lookup's subject-level self-join answer (the probe's row 2).
      */
     @Test
-    void aDottedReadOfAChildEntryIsRefusedAtLoad()
+    void aDottedReadOfAChildParentIsServed()
     {
-        RuleExecutionResult r = execute(
+        RuleExecutionResult ae = execute(rule("PROBE-ae-dotted",
+                List.of(child("SUPP--"), child("CO")), "AE.AESMIE == \"N\"", List.of("USUBJID")),
+                suppae());
+        assertEquals(RuleExecutionStatus.EXECUTED, ae.getStatus(), ae.getStatusMessage());
+        assertEquals(List.of("row1 AE.AESMIE=N"),
+                fired(ae, "AE.AESMIE").stream().map(f -> f.replace(" USUBJID=U1", "")).toList());
+        RuleExecutionResult co = execute(
                 rule("PROBE-co-dotted", List.of(child("SUPP--"), child("CO")),
                         "CO.COVAL == \"co-subj\"", List.of("USUBJID")),
                 suppae());
-        assertEquals(RuleExecutionStatus.ERROR, r.getStatus(),
-                "the probe measured EXECUTED firing row 2 through the direct lookup; after option"
-                        + " A the read is refused at load: " + r.getStatusMessage());
-        String message = String.valueOf(r.getStatusMessage());
-        assertTrue(message.contains("DOTTED_REF_CHILD_ENTRY"), message);
-        assertTrue(message.contains("CO.COVAL"), message);
-        assertFalse(r.getViolations().isEmpty(), "the ERROR carries its sentinel violation");
-        assertNotNull(r.getViolations().get(0).getValues().get("__error__"));
+        assertEquals(RuleExecutionStatus.EXECUTED, co.getStatus(), co.getStatusMessage());
+        assertEquals(List.of(), fired(co), "no SUPPAE row's parent is CO");
     }
 
 
     /**
-     * M2, end to end: {@code CDISC-CG0043} with {@code Output_Variables: [QNAM, AE.AESMIE]} used to
-     * load clean and report findings WITHOUT the column — the direct lookup was gone, so the
-     * violation builder skipped it silently. It is now the same load error as a dotted operand.
+     * The qualified wildcard shapes of a Child parent — refused at load until W4 because, with no
+     * lookup for the entry, {@code AE.**SMIE} answered the not-supplied default on every row (a
+     * silent flood) — now read the parent part like {@code AE.AESMIE}: the value shape fires
+     * exactly CG0043's three rows, and none of the three is an error.
      */
     @Test
-    void aDottedOutputVariableOfAChildEntryIsRefusedAtLoad()
-    {
-        RuleExecutionResult r = execute(rule("CDISC-CG0043-dotted-output", List.of(child("AE")),
-                "QNAM == \"AESOSP\" and var_exists(\"AESMIE\") and AESMIE != \"Y\"",
-                List.of("QNAM", "AE.AESMIE")), suppae());
-        assertEquals(RuleExecutionStatus.ERROR, r.getStatus(), r.getStatusMessage());
-        String message = String.valueOf(r.getStatusMessage());
-        assertTrue(message.contains("DOTTED_REF_CHILD_ENTRY"), message);
-        assertTrue(message.contains("Output_Variables entry AE.AESMIE"), message);
-    }
-
-
-    /**
-     * A {@code DS.**X} operand is a {@code WILDCARD_COLUMN}, never a {@code DOTTED_REF}. In VALUE
-     * position {@code ExprCompiler} reads it through a per-row dotted plan, which with no lookup
-     * for the Child entry answers the not-supplied default on every row — SILENT, so stage A's
-     * Child arm now judges a judgeably-qualified wildcard too (M2). Every judgeably-qualified
-     * wildcard shape is refused at load; what each does at run time without stage A is pinned
-     * below.
-     */
-    @Test
-    void aQualifiedWildcardReadOfAChildEntryIsRefusedAtLoad()
+    void aQualifiedWildcardReadOfAChildParentReadsTheParent()
     {
         RuleExecutionResult value = execute(rule("PROBE-ae-wildcard-value", List.of(child("AE")),
                 "QNAM == \"AESOSP\" and AE.**SMIE != \"Y\"", List.of("QNAM")), suppae());
-        assertEquals(RuleExecutionStatus.ERROR, value.getStatus(), value.getStatusMessage());
-        assertTrue(String.valueOf(value.getStatusMessage()).contains("DOTTED_REF_CHILD_ENTRY"),
-                value.getStatusMessage());
-        RuleExecutionResult member = execute(rule("PROBE-ae-wildcard-member", List.of(child("AE")),
-                "QNAM == \"AESOSP\" and \"Y\" in AE.**SMIE", List.of("QNAM")), suppae());
-        assertEquals(RuleExecutionStatus.ERROR, member.getStatus(), member.getStatusMessage());
-        assertTrue(String.valueOf(member.getStatusMessage()).contains("DOTTED_REF_CHILD_ENTRY"),
-                member.getStatusMessage());
-        RuleExecutionResult list = execute(rule("PROBE-ae-wildcard-list", List.of(child("AE")),
-                "QNAM == \"AESOSP\" and \"Y\" in AE.AES${*}", List.of("QNAM")), suppae());
-        assertEquals(RuleExecutionStatus.ERROR, list.getStatus(), list.getStatusMessage());
-        assertTrue(String.valueOf(list.getStatusMessage()).contains("DOTTED_REF_CHILD_ENTRY"),
-                list.getStatusMessage());
-    }
-
-
-    /**
-     * The run-time picture for a package that bypasses the loader (the native expression set
-     * directly, stage A never run), measured 2026-09-25 — the reason the load refusal above judges
-     * a judgeably-qualified wildcard at all: a {@code **} read of the Child entry is SILENT in both
-     * positions (value: the not-supplied default on every row, a flood; membership: an empty set,
-     * no finding), and only the {@code ${*}} list-operand shape is loud, through
-     * {@code ValueResolver}'s {@code SubstitutionException}. ⚠ Review round 1 had assumed the
-     * {@code **} shape shared that loudness; it does not.
-     */
-    @Test
-    void withoutStageAOnlyTheListWildcardIsLoud()
-    {
-        RuleExecutionResult value = execute(uncheckedRule("PROBE-ae-wildcard-value-raw",
-                "QNAM == \"AESOSP\" and AE.**SMIE != \"Y\""), suppae());
         assertEquals(RuleExecutionStatus.EXECUTED, value.getStatus(), value.getStatusMessage());
-        assertEquals(3, value.getViolations().size(),
-                "the not-supplied default on every row: \"\" != \"Y\" fires all three SUPPAE"
-                        + " rows — the silent flood only the load refusal prevents");
-
-        RuleExecutionResult member = execute(uncheckedRule("PROBE-ae-wildcard-member-raw",
-                "QNAM == \"AESOSP\" and \"Y\" in AE.**SMIE"), suppae());
-        assertEquals(RuleExecutionStatus.EXECUTED, member.getStatus(), member.getStatusMessage());
-        assertEquals(0, member.getViolations().size(),
-                "membership over a ** read of the Child entry is an empty set on every row — a"
-                        + " silent no-finding, not a SubstitutionException");
-
-        Rule list = uncheckedRule("PROBE-ae-wildcard-list-raw",
-                "QNAM == \"AESOSP\" and \"Y\" in AE.AES${*}");
-        var thrown = org.junit.jupiter.api.Assertions.assertThrows(
-                OperandSubstitutor.SubstitutionException.class, () -> execute(list, suppae()),
-                "the ${*} list operand is the one shape ValueResolver refuses without a lookup");
-        assertTrue(String.valueOf(thrown.getMessage()).contains("foreign dataset `AE`"),
-                thrown.getMessage());
+        assertEquals(List.of("row1", "row2", "row3"), fired(value),
+                "the parent's AESMIE: N on row 1, not supplied on rows 2 and 3 — CG0043's rows");
+        for (String check : List.of("QNAM == \"AESOSP\" and \"Y\" in AE.**SMIE",
+                "QNAM == \"AESOSP\" and \"Y\" in AE.AES${*}"))
+        {
+            RuleExecutionResult r = execute(uncheckedRule("PROBE-ae-wildcard-raw", check),
+                    suppae());
+            assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(), check);
+        }
     }
 
 

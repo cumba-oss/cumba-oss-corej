@@ -262,7 +262,6 @@ public final class StageBChecker
         // (RuleRunner.typeExpectations; PLAN-column-typed-function-absent-type §6 M2): the same
         // roots and the same binding map, so a $-reference's kind (A2) is reported as applied.
         TypeExpectations expectations = TypeExpectations.forRule(rule);
-        boolean hasChildEntry = hasChildEntry(rule);
         // W3d (M8): over the merged schema a DOTTED name is a column like a bare one — its
         // absence (the join lacks it, or is not supplied — P-1) and its type are judged here too.
         List<String> columns = new ArrayList<>(expectations.valueReadColumns());
@@ -276,19 +275,15 @@ public final class StageBChecker
             if (idx < 0)
             {
                 // The absent-column fold candidate (EC-38). An unqualified name always means the
-                // PRIMARY's column (UVC), so a keyed or keyless Match_Datasets join never supplies
-                // it. The one exception is a Child: true entry, whose parent columns the primary
-                // lacks are merged in under their bare names (ChildMatchPreMerger) — after this
-                // seam — so only that case keeps the hedge.
+                // PRIMARY's column (UVC), so no Match_Datasets join supplies it — since W4 of
+                // PLAN-merged-evaluation-table not even a Child: true parent, whose columns are
+                // qualified with its domain (MQ1), so the Child hedge is retired.
                 String defaultType = expectations.numericExpected(column)
                         ? "number (missing = MissingValue.MIS)"
                         : "string (missing = \"\")";
                 StringBuilder message = new StringBuilder("absent from ")
                         .append(mergedSchema ? "the merged schema of " : "").append(dataset)
-                        .append("; D76 default type ").append(defaultType)
-                        .append(hasChildEntry && column.indexOf('.') < 0
-                                ? " (unless its Child: true parent supplies it)"
-                                : "");
+                        .append("; D76 default type ").append(defaultType);
                 List<Expr.Call> sites = expectations.primaryTargetSites(column);
                 Set<Expr.Call> numericSites = sites.isEmpty() ? Set.of()
                         : expectations.numericDynamicSites();
@@ -352,28 +347,6 @@ public final class StageBChecker
                                 + ") if the rule means a numeric comparison"));
             }
         }
-    }
-
-
-    /**
-     * Whether any {@code Match_Datasets} entry of the rule is a {@code Child: true} entry. A
-     * {@code null} element (the loader tolerates {@code [null]}) is no entry at all.
-     */
-    private static boolean hasChildEntry(Rule rule)
-    {
-        List<MatchDataset> matches = rule.getMatchDatasets();
-        if (matches == null)
-        {
-            return false;
-        }
-        for (MatchDataset match : matches)
-        {
-            if (match != null && Boolean.TRUE.equals(match.getChild()))
-            {
-                return true;
-            }
-        }
-        return false;
     }
 
     // ------------------------------------------------------------------

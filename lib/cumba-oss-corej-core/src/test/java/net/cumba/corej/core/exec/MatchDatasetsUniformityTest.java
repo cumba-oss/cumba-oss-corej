@@ -91,28 +91,31 @@ class MatchDatasetsUniformityTest
 
 
     @Test
-    void aChildEntryIsReadBareAndItsDottedReadIsRefusedAtLoad()
+    void aChildEntryIsReadQualifiedAndNeverBare()
     {
         // The Child shape of CDISC-CG0371: the primary is the CHILD side (IDVAR / IDVARVAL point
-        // at the parent record named by RDOMAIN), and the parent's columns are pre-merged BARE into
-        // it (D62b).
+        // at the parent record named by RDOMAIN), and since W4 of PLAN-merged-evaluation-table
+        // (MQ1) the parent's columns are a part of the merged view qualified with its domain,
+        // C.T — no longer pre-merged bare (D62b retired for Child).
         IDataTable p = RealTables.of("P").str("USUBJID", "k1", "k2").str("RDOMAIN", "C", "C")
                 .str("IDVAR", "TSEQ", "TSEQ").str("IDVARVAL", "1", "2").build();
         IDataTable c = RealTables.of("C").str("USUBJID", "k1", "k2").str("TSEQ", "1", "2")
                 .str("T", "x", "y").build();
         String childEntry = "\"Match_Datasets\":[{\"Name\":\"C\",\"Keys\":[\"USUBJID\","
                 + "\"IDVAR\",\"IDVARVAL\"],\"Child\":true}]";
+        Rule dotted = loadClean(
+                ruleJson("Record",
+                        childEntry + "," + check("C.T == \"x\"") + "," + outcome("USUBJID", "C.T")),
+                true);
+        RuleExecutionResult r = executed(dotted, p, exactInventory(p, c));
+        assertEquals(List.of(1L), rows(r), "the parent's T is read qualified, C.T");
+        assertEquals("x", QualifiedNameFixture.values(r).get(0).get("C.T"));
         Rule bare = loadClean(
                 ruleJson("Record",
                         childEntry + "," + check("T == \"x\"") + "," + outcome("USUBJID", "T")),
                 true);
-        RuleExecutionResult r = executed(bare, p, exactInventory(p, c));
-        assertEquals(List.of(1L), rows(r), "the parent's T is merged bare into the primary (D62b)");
-        assertEquals("x", QualifiedNameFixture.values(r).get(0).get("T"));
-        Rule dotted = load(ruleJson("Record",
-                childEntry + "," + check("C.T == \"x\"") + "," + outcome("USUBJID")), true);
-        assertNotNull(dotted.getLoadError(), "DOTTED_REF_CHILD_ENTRY is armed");
-        assertTrue(dotted.getLoadError().contains("C.T"), dotted.getLoadError());
+        assertEquals(List.of(), rows(executed(bare, p, exactInventory(p, c))),
+                "a bare T is the primary's own (absent) column, never the parent's (UVC)");
     }
 
 }

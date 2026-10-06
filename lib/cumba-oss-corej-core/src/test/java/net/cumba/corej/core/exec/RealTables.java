@@ -20,8 +20,8 @@ import org.jspecify.annotations.Nullable;
  * backed tables (not Mockito mocks). Required by every split-domain test: {@code UnionDataTable}'s
  * constructor copies column metadata via {@code DataTableColumnMeta.builderFrom(cm)} →
  * {@code cm.toBuilder()}, which reads the real class's fields — a mocked
- * {@code DataTableColumnMeta} answers {@code null} and NPEs (the same reason
- * {@code ChildMatchPreMergerTest} carries its own real-table fixture).
+ * {@code DataTableColumnMeta} answers {@code null} and NPEs (the same reason retired
+ * {@code ChildMatchPreMergerTest} carried its own real-table fixture).
  */
 public final class RealTables
 {

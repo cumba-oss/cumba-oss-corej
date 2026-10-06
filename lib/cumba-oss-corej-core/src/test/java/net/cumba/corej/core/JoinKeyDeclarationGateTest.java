@@ -253,7 +253,7 @@ class JoinKeyDeclarationGateTest
     @Test
     void aNamelessChildEntryIsJudgedLikeANamedOne() throws IOException
     {
-        // Review round 4, G1: ChildMatchPreMerger.applicableChildKeys falls back to the FIRST
+        // Review round 4, G1: ChildEntries.spec (applicableEntry) falls back to the FIRST
         // Child entry whatever its name, so a nameless Child entry is joined on and must declare
         // its keys — the corpus lint judges it (String.valueOf(name)); the loader used to skip it.
         String md = "{\"Child\":true,\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]}";

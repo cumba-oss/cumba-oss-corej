@@ -64,7 +64,10 @@ class TargetInvariantMarkerCensusTest
      * were removed, which is the erosion this test exists to catch. ⚡ It never moves alone:
      * {@link #EXPECTED_FILES} carries the same measurement per file and must be updated with it.
      */
-    private static final int EXPECTED_IN_THIS_REPO = 15;
+    // 15 -> 14 on 2026-10-05 (PLAN-merged-evaluation-table W4): PolymorphicMergedColumn, the bare
+    // Child pre-merge's column, was deleted with the pre-merge; its marker named that method as a
+    // per-component null-free shape, a role the merged view (cumba-datatable) now holds.
+    private static final int EXPECTED_IN_THIS_REPO = 14;
 
     /** ⚠ Assembled, not written out — see the class javadoc. */
     private static final String MARKER = "TARGET-" + "INVARIANT" + "(null-free-value-channel)";
@@ -101,8 +104,6 @@ class TargetInvariantMarkerCensusTest
     private static final List<String> EXPECTED_FILES = List.of(
             "lib/cumba-oss-corej-core/src/main/java/net/cumba/corej/core"
                     + "/exec/KeyMatchRowExpander.java ×1",
-            "lib/cumba-oss-corej-core/src/main/java/net/cumba/corej/core"
-                    + "/exec/PolymorphicMergedColumn.java ×1",
             "lib/cumba-oss-corej-core/src/main/java/net/cumba/corej/core"
                     + "/exec/ScalarSemantics.java ×4",
             "lib/cumba-oss-corej-core/src/main/java/net/cumba/corej/core"

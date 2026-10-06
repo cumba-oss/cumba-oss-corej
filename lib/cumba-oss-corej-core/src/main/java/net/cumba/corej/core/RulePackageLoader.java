@@ -3817,7 +3817,7 @@ public class RulePackageLoader
                 // An ORDINARY entry with no dataset name has no `NAME.RIGHT` side to declare
                 // against — its own gate's business. ⚠ Only ordinary entries are exempt (review
                 // round 4, G1): a nameless `Child: true` entry IS joined on —
-                // ChildMatchPreMerger.applicableChildKeys falls back to the first Child entry
+                // ChildEntries.spec (applicableEntry) falls back to the first Child entry
                 // whatever its name — so it was judged above, as the corpus lint judges it.
                 continue;
             }
@@ -4687,6 +4687,7 @@ public class RulePackageLoader
         checkJoinAsString(rule, errors);
         checkKeepMissingsOnUngovernedEntry(rule, errors);
         checkChildEntryNames(rule, errors);
+        checkChildEntryServed(rule, errors);
         checkSidedKeys(rule, errors);
         checkQualifiedKeys(rule, errors);
         checkQualifiedGroupMembers(rule, errors);
@@ -6208,12 +6209,12 @@ public class RulePackageLoader
      * is data, so its disagreement is the merge's own run-time WARNING (OD-5 / OD-9), not this
      * one.</li>
      * <li><b>Not served yet</b> — an authored cardinality that would check something (anything but
-     * {@code n:m}) on an entry the merged evaluation table does not build yet: a {@code Child:
-     * true} entry (merged by the pre-merge until W4), a keyless entry (forward RELREC until W5),
-     * and every entry of a rule that runs the legacy arm ({@code MergedEvaluation#legacyArmed}: a
-     * forward RELREC entry or a chained qualified key). Those paths never check a cardinality, so
-     * the value would be silently ignored; a load error says so instead. {@code n:m} checks nothing
-     * and is accepted everywhere. Zero corpus entries are affected (W3f census).</li>
+     * {@code n:m}) on an entry the merged evaluation table does not build yet: a keyless entry
+     * (forward RELREC until W5), and every keyed entry of a rule that runs the legacy arm
+     * ({@code MergedEvaluation#legacyArmed}: a forward RELREC entry or a chained qualified key).
+     * Those paths never check a cardinality, so the value would be silently ignored; a load error
+     * says so instead. {@code n:m} checks nothing and is accepted everywhere. Zero corpus entries
+     * are affected (W3f census).</li>
      * </ul>
      *
      * @param rule
@@ -6262,9 +6263,9 @@ public class RulePackageLoader
                         + " grouping variable addressing many parent records); the authored"
                         + " value wins");
             }
-            String notServed = child
-                    ? "a Child: true entry is merged by the pre-merge until " + MERGED_TABLE_PLAN
-                            + " W4"
+            // A Child entry's cardinality is checked by the merged view (P-16, W4); a Child entry
+            // on a legacy-armed rule is its own load error (checkChildEntryServed).
+            String notServed = child ? null
                     : !net.cumba.corej.core.exec.MergedEvaluation.servedAsKeyedPart(md)
                             ? "a keyless entry (forward RELREC) runs its own expansion until "
                                     + MERGED_TABLE_PLAN + " W5"
@@ -6411,7 +6412,7 @@ public class RulePackageLoader
                 continue;
             }
             // ⚑ Round 3, L2 — a WELL-FORMED sided key on a Child/RELREC/SUPP entry passes every
-            // check above and is still wrong: ChildMatchPreMerger reads md.getKeys() (the LEFT
+            // check above and is still wrong: ChildEntries.spec reads md.getKeys() (the LEFT
             // names) on both sides, so the SUPP pivot would match on the wrong child columns.
             // Unreachable in practice — the pivot is defined on SDTM-standard names that are
             // identical on both sides by construction, and no corpus entry is sided at all — but
@@ -6861,14 +6862,13 @@ public class RulePackageLoader
      * ⭐⭐ <b>A load error, not silence.</b> The flag is read at exactly one site,
      * {@code KeyMatchRowExpander.keySpec}, reached only through {@code expandableEntries} — i.e.
      * only for an entry {@link net.cumba.corej.core.exec.JoinKeyTypes#governedByKeyTypeCheck}
-     * admits. The text-carried family's own merge ({@code ChildMatchPreMerger},
-     * {@code RelrecRowExpander}) and the hashed {@code DatasetLookup} the remaining keyed non-Child
-     * shapes reach KEEP a blank key unconditionally ({@code JKM R4}'s default) and never consult
-     * the flag — and since {@code JKM R7}'s one-side rule landed on the hashed arm too, an absent
-     * key column there is present-but-blank on every row, exactly the rows an authored
-     * {@code false} claims to drop. An author who writes the flag there believes they have chosen
-     * DROP and has not. An authored {@code true} is accepted: it states the default those paths
-     * already implement.
+     * admits. The text-carried family's own merge ({@code ChildEntries}, {@code RelrecRowExpander})
+     * and the hashed {@code DatasetLookup} the remaining keyed non-Child shapes reach KEEP a blank
+     * key unconditionally ({@code JKM R4}'s default) and never consult the flag — and since
+     * {@code JKM R7}'s one-side rule landed on the hashed arm too, an absent key column there is
+     * present-but-blank on every row, exactly the rows an authored {@code false} claims to drop. An
+     * author who writes the flag there believes they have chosen DROP and has not. An authored
+     * {@code true} is accepted: it states the default those paths already implement.
      * </p>
      *
      * <p>
@@ -6933,6 +6933,63 @@ public class RulePackageLoader
 
 
     /**
+     * The {@code Child: true} gates of {@code PLAN-merged-evaluation-table} W4 (MQ1): a parent is
+     * read only through the merged evaluation view ({@code ChildEntries}), which keeps every record
+     * of the child ({@code left} — the bare pre-merge it replaced never dropped a row; a record
+     * whose parent is not found reads the not-supplied marker, which the referenced-record rules
+     * report). Two shapes would make the entry silently mean something else, each a load error:
+     *
+     * <ul>
+     * <li>an authored {@code Join_Type} other than {@code left} — an {@code inner} Child entry
+     * would still keep every record. Judged on the AUTHORED value (this gate runs before
+     * {@code normalizeJoinTypes} stamps {@code inner} onto an absent one);</li>
+     * <li>a rule that runs the legacy arm ({@code MergedEvaluation#legacyArmed}: a forward RELREC
+     * entry or a chained qualified key) — that arm builds no Child part, so every parent column
+     * would read the not-supplied default on every row.</li>
+     * </ul>
+     * Corpus exposure of both: 0 (the 11 Child entries author no {@code Join_Type}; none shares a
+     * rule with a forward RELREC entry or a chained key).
+     *
+     * @param rule
+     *            the rule to check.
+     * @param errors
+     *            the load-error collector.
+     */
+    private static void checkChildEntryServed(Rule rule, List<String> errors)
+    {
+        List<net.cumba.corej.core.model.MatchDataset> matches = rule.getMatchDatasets();
+        if (matches == null || !net.cumba.corej.core.exec.ChildEntries.hasChildEntry(matches))
+        {
+            return;
+        }
+        for (net.cumba.corej.core.model.MatchDataset md : matches)
+        {
+            if (md == null || !Boolean.TRUE.equals(md.getChild()))
+            {
+                continue;
+            }
+            String jt = md.getJoinType();
+            if (!net.cumba.corej.core.model.JoinType.isAbsent(jt) && !"left".equalsIgnoreCase(jt))
+            {
+                errors.add("[" + ruleId(rule) + "] Join_Type '" + jt + "' on Child: true"
+                        + " Match_Datasets entry '" + md.getName() + "' — a Child entry keeps"
+                        + " every record (left): a record whose parent is not found reads the"
+                        + " parent's columns as not supplied (guard with <D>._matched_); remove"
+                        + " the Join_Type or author \"left\"");
+            }
+        }
+        if (net.cumba.corej.core.exec.MergedEvaluation.legacyArmed(matches))
+        {
+            errors.add("[" + ruleId(rule) + "] a Child: true Match_Datasets entry on a rule that"
+                    + " carries a forward RELREC entry or a chained qualified key: such a rule"
+                    + " runs the legacy join pipeline, which builds no Child part, so every"
+                    + " parent column would read the not-supplied default — split the rule ("
+                    + MERGED_TABLE_PLAN + " W5 / W6 serve both shapes)");
+        }
+    }
+
+
+    /**
      * Tags a {@code Child: true} entry whose {@code Name} is not a concrete dataset name and not a
      * template with a <b>trailing</b> {@code --} such as {@code SUPP--} — a {@code *},
      * {@code ${...}} or {@code &TOKEN&} name, a bare {@code --}, or a {@code --} anywhere but at
@@ -6941,8 +6998,8 @@ public class RulePackageLoader
      * <p>
      * A Child entry's name is never resolved to a joined dataset — the pointer join finds the
      * parent per row from {@code RDOMAIN} or the {@code SUPP} prefix. The name is read by exactly
-     * two consumers, and neither can bind those shapes: {@code ChildMatchPreMerger} selects the
-     * entry whose name equals the primary's, and {@code StageAChecker.entryFor} resolves a dotted
+     * two consumers, and neither can bind those shapes: {@code ChildEntries} selects the entry
+     * whose name equals the primary's, and {@code StageAChecker.entryFor} resolves a dotted
      * qualifier to it exactly or as an instance of its {@code --} template. Any other spelling is
      * an entry no check can ever name and no merge can ever select by name — a load error, so the
      * author learns it now rather than from a silently unselected entry. Zero carriers in either
@@ -6970,13 +7027,13 @@ public class RulePackageLoader
             String name = md.getName();
             if (name == null)
             {
-                // A nameless Child entry is ACCEPTED, and used: ChildMatchPreMerger takes it as
+                // A nameless Child entry is ACCEPTED, and used: ChildEntries takes it as
                 // the firstChild fallback for the child-side keys, and no qualifier can name it —
                 // there is nothing here to bind wrongly.
                 continue;
             }
-            // Both consumers must bind every accepted shape: ChildMatchPreMerger's
-            // childEntryMatchesPrimary binds a template only as `<prefix>--` (a TRAILING `--`),
+            // Both consumers must bind every accepted shape: ChildEntries'
+            // applicableEntry binds a template only as `<prefix>--` (a TRAILING `--`),
             // and StageAChecker.entryFor resolves any `--` — so the loader accepts the narrower
             // of the two (review round 2, L4).
             int dashes = name.indexOf("--");
@@ -6989,7 +7046,7 @@ public class RulePackageLoader
                         + "' must name a concrete dataset or a template with a TRAILING -- such"
                         + " as SUPP-- — a Child entry is joined only through its pointer (RDOMAIN"
                         + " / IDVAR / IDVARVAL); its name selects the child-side keys"
-                        + " (ChildMatchPreMerger binds `<prefix>--` only) and answers the stage-A"
+                        + " (the merged view binds `<prefix>--` only) and answers the stage-A"
                         + " qualifier checks, and a `*`, `${}`, `&`, bare `--` or non-trailing"
                         + " `--` name binds in neither");
             }

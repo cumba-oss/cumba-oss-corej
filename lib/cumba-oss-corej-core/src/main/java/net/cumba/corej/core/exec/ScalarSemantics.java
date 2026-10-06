@@ -29,10 +29,9 @@ import org.jspecify.annotations.Nullable;
  * the native expression evaluator (package {@code net.cumba.corej.core.expr.eval}, chiefly
  * {@code Primitives}), the {@code Operations}/{@code Bindings} pre-pass in the registry functions,
  * the lookup and merge machinery ({@code DatasetLookup}, {@code ValueResolver},
- * {@code ChildMatchPreMerger}, {@code GroupSemantics}) and {@link OperatorRegistry}'s
- * name-existence probes. The {@code ScalarSemantics*Test} suites — plus
- * {@code NumericToleranceTest} and {@code IsoDateLayoutDifferentialTest} — pin these primitives
- * directly.
+ * {@code GroupSemantics}) and {@link OperatorRegistry}'s name-existence probes. The
+ * {@code ScalarSemantics*Test} suites — plus {@code NumericToleranceTest} and
+ * {@code IsoDateLayoutDifferentialTest} — pin these primitives directly.
  * </p>
  *
  * <p>
@@ -604,8 +603,8 @@ public final class ScalarSemantics
      * saturates to {@code false} on character leaves — and flips to <b>all six operators
      * {@code true}</b> on numeric-typed leaves (the mixed-shape branch above). Resolving blanks to
      * {@code ""} would have moved {@code date_not_equal_to} verdicts on character leaves and every
-     * operator on numeric ones, in merged/joined columns too (see
-     * {@code PolymorphicMergedColumn.getDataValue}, which maps a blank parent cell to the missing
+     * operator on numeric ones, in merged/joined columns too (the retired
+     * {@code PolymorphicMergedColumn.getDataValue} mapped a blank parent cell to the missing
      * sentinel whatever the column's type).
      * </p>
      *

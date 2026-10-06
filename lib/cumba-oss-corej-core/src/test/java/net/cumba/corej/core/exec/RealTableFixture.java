@@ -12,8 +12,8 @@ import net.cumba.datatable.values.DataValueType;
 /**
  * A real {@link ColumnCachedDataTable} for tests that need genuine column metadata — the merge
  * views ({@code MergeDataTable}) rebuild every column meta through {@code toBuilder()}, which the
- * testkit's mocked metas do not offer. Same shape as {@code ChildMatchPreMergerTest}'s private
- * fixture, shared so the SUPP-merge tests do not copy it a third time.
+ * testkit's mocked metas do not offer. Same shape as the retired {@code ChildMatchPreMergerTest}'s
+ * private fixture, shared so the SUPP-merge tests do not copy it a third time.
  */
 final class RealTableFixture
 {

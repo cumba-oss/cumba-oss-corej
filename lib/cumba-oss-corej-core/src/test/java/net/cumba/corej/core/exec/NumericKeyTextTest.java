@@ -17,7 +17,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * {@link NumericKeyText} — the one canonical form behind {@code RelrecRowExpander.normKey} and
- * {@code ChildMatchIndex.normalizeJoinToken} (PLAN-relrec-idvar-key-precision T1-1 (a)).
+ * {@code NumericKeyText.childJoinToken} (PLAN-relrec-idvar-key-precision T1-1 (a)).
  */
 class NumericKeyTextTest
 {

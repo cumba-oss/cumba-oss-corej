@@ -199,7 +199,7 @@ class BoundKeysRosterTest
                     Map.of("name", r(LOADER, "getName"), "expression", r(LOADER, "getExpression"))),
             Map.entry(MatchDataset.class, Map.of("Name", r(P + "exec.RelrecRowExpander", "getName"),
                     "Keys", r(KEY_MATCH, "getKeys"), "Child",
-                    r(P + "exec.ChildMatchPreMerger", "getChild"), "Join_Type",
+                    r(P + "exec.ChildEntries", "getChild"), "Join_Type",
                     r(KEY_MATCH, "getJoinType"), "Join_As_String", r(KEY_MATCH, "joinKeysAsString"),
                     "keep_missings", r(KEY_MATCH, "keepMissingKeys"), "Filter",
                     r(P + "exec.MatchFilter", "filterExpr"), "Cardinality",

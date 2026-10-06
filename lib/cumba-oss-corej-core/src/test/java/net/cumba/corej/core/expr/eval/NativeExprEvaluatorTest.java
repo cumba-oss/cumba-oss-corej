@@ -327,7 +327,8 @@ class NativeExprEvaluatorTest
         // CDISC-CG0371: IDVARVAL not_equal_to IDVAR (type-insensitive, value_is_reference two-hop)
         // ->
         // `str(IDVARVAL) != str(colref(IDVAR))`. IDVAR names a column; colref reads it on the same
-        // row. AESEQ is the parent-domain column ChildMatchPreMerger pre-merges into the SUPP--
+        // row. AESEQ stands in for the parent-domain column (since W4 read qualified, AE.AESEQ,
+        // from the merged view) of the SUPP--
         // table
         // before the EvaluationContext is built; here it is supplied directly. row0 IDVARVAL=1 ==
         // AESEQ=1 (no violation); row1 IDVARVAL=99 != AESEQ=1 (violation).

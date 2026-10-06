@@ -151,14 +151,15 @@ public enum StageAErrorKind
     /**
      * A {@code <DATASET>._matched_} reference that cannot mean anything (phase 5b-J): the qualifier
      * names no {@code Match_Datasets} entry (a dangling join reference — the binding analogue of
-     * {@link #FORWARD_OR_CYCLIC_BINDING}), the named entry is {@code Child: true} (a pre-merge
-     * carries no match flag) or declares no keys (nothing to match on), or the flag stands in value
-     * position (spec §3.3 / D88b: the flag is a boolean <em>condition</em> —
-     * {@code not AE._matched_} — never a comparison operand). Dataset-independent and decidable at
-     * load, so a stage-A error under D67's fail-loud precedent, exactly like
-     * {@link #MATCHED_FLAG_INNER_JOIN}. Armed: measured 0 newly parked in phase 5b-J (no corpus or
-     * rulespec spelling of {@code _matched_} exists yet — the namespace scan found 0 over the
-     * 3&#8239;940 authored checks, D88b).
+     * {@link #FORWARD_OR_CYCLIC_BINDING}), the flag names a {@code Child: true} entry by its own
+     * {@code --} template (the child dataset, not a parent — a parent domain's flag is served since
+     * W4 of {@code PLAN-merged-evaluation-table}, P-14) or an entry that declares no keys (nothing
+     * to match on), or the flag stands in value position (spec §3.3 / D88b: the flag is a boolean
+     * <em>condition</em> — {@code not AE._matched_} — never a comparison operand).
+     * Dataset-independent and decidable at load, so a stage-A error under D67's fail-loud
+     * precedent, exactly like {@link #MATCHED_FLAG_INNER_JOIN}. Armed: measured 0 newly parked in
+     * phase 5b-J (no corpus or rulespec spelling of {@code _matched_} exists yet — the namespace
+     * scan found 0 over the 3&#8239;940 authored checks, D88b).
      */
     MATCHED_FLAG_INVALID(true),
 
@@ -206,44 +207,6 @@ public enum StageAErrorKind
     DOTTED_REF_UNDECLARED(false),
 
     /**
-     * A plain dotted operand {@code <DATASET>.<COLUMN>} whose qualifier names a {@code Child: true}
-     * {@code Match_Datasets} entry — the value-read sibling of {@link #MATCHED_FLAG_INVALID}'s
-     * Child arm. A Child entry is joined only through its pointer ({@code RDOMAIN} / {@code IDVAR}
-     * / {@code IDVARVAL}, {@code ChildMatchPreMerger}): the parent row's columns are merged into
-     * the primary and read <b>bare</b>, and no direct keyed lookup is built for the entry
-     * ({@code RuleRunner.buildJoinedDatasets} skips it). A dotted read of it therefore has nothing
-     * to read — it would take the not-supplied default on every row, a silent {@code PASS} for a
-     * comparison that never ran. Owner ruling 2026-09-25
-     * ({@code PLAN-hashed-join-arm-absent-columns} §3, follow-up 1): refused at load, as the flag
-     * already is. The qualifier is matched exactly, or as an instance of the entry's {@code --}
-     * template ({@code SUPPAE} names a {@code SUPP--} entry), because a Child entry keeps its
-     * template name through specialisation. Armed: 0 over both corpora — none of the 5 Child rules
-     * reads its entry dotted (phase 1 findings, §3), and the only {@code SUPPAE.QNAM} in them is
-     * prose in a {@code Source.Condition}.
-     *
-     * <p>
-     * Four surfaces are judged: a {@code DOTTED_REF} operand of the Check, a
-     * {@code WILDCARD_COLUMN} operand whose qualifier is judgeable — non-empty, not a
-     * <code>${...}</code> substitution, not an {@code &TOKEN&}: {@code AE.**SMIE}, {@code AE.${X}},
-     * {@code SUPP--.QVAL} —, a {@code Bindings} expression, and an {@code Outcome.Output_Variables}
-     * entry (review round 1, M2 — a dotted output naming a Child entry was silently omitted from
-     * every finding). The qualified wildcard is judged because it is <b>not</b> loud at run time:
-     * {@code ExprCompiler} compiles it to a per-row dotted plan that reads through the joined
-     * lookup, and with none built for a Child entry it answers the not-supplied default on every
-     * row (measured 2026-09-25 — {@code
-     * AE.**SMIE != "Y"} EXECUTED and fired every row, and {@code "Y" in AE.**SMIE} EXECUTED with no
-     * finding). Only the {@code ${*}} list-operand shape ({@code X in AE.AES${*}}) is loud at run
-     * time, through {@code ValueResolver}'s {@code SubstitutionException}; all three are pinned,
-     * and all three are refused here. Not judged anywhere, deliberately: an operand or output whose
-     * <em>qualifier</em> is itself a {@code ${...}} substitution or an {@code &TOKEN&}
-     * ({@code ${X}.COL}) is bound at run time / expansion; on a Child entry it is silent (the
-     * not-supplied default on every row) — an accepted gap, zero carriers (review round 2, L6). A
-     * {@code --} qualifier IS judged ({@code SUPP--.QVAL} names its own Child entry; round 2, M1).
-     * </p>
-     */
-    DOTTED_REF_CHILD_ENTRY(true),
-
-    /**
      * Two {@code Match_Datasets} entries sharing one {@code Name} (phase 6b — D110g(iii), the
      * 2026-08 join-match-flag plan's ambiguity load-error, routed here by D88b as part of the
      * binding model): {@code RuleRunner.buildJoinedDatasets} keys the join lookups by name,
@@ -272,10 +235,10 @@ public enum StageAErrorKind
      * A {@code Match_Datasets} {@code Filter} that cannot work (phase 5b-J): unparseable text, a
      * wildcard column reference (a filter is never specialised, so {@code --} could resolve
      * nothing), or a filter on an entry the engine cannot pre-filter — {@code Child: true} (the
-     * pre-merger, not the key join, consumes it), {@code RELREC} (row expansion), or an entry with
-     * no {@code Keys} (no join is ever built, so the filter would be silently dead). Fail loud at
-     * load rather than silently not applying a declared filter. Armed: measured 0 newly parked in
-     * phase 5b-J (no {@code Filter} exists in either population yet).
+     * pointer, not the key join, finds its parent), {@code RELREC} (row expansion), or an entry
+     * with no {@code Keys} (no join is ever built, so the filter would be silently dead). Fail loud
+     * at load rather than silently not applying a declared filter. Armed: measured 0 newly parked
+     * in phase 5b-J (no {@code Filter} exists in either population yet).
      */
     FILTER_INVALID(true),
 

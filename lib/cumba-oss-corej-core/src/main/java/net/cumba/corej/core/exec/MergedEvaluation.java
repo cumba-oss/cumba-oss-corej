@@ -19,6 +19,7 @@ import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.impl.databuffer.DataBufferFactory;
 import net.cumba.datatable.impl.databuffer.IDataBufferNumeric;
 import net.cumba.datatable.merge.Cardinality;
+import net.cumba.datatable.merge.ChildMergeSpec;
 import net.cumba.datatable.merge.KeyColumn;
 import net.cumba.datatable.merge.KeyedMergeSpec;
 import net.cumba.datatable.merge.MergeKind;
@@ -48,16 +49,21 @@ import org.jspecify.annotations.Nullable;
  * <li>a {@code SUPP<domain>} qualifier is a view column handed out by {@link SuppPivot} as a bare
  * name of the record ({@link Built#suppColumn}) — the type default where no row qualifies the
  * record, and a {@link MergeErrorReadException} where the column carries a {@code MERGE_ERROR}
- * (OD-7).</li>
+ * (OD-7);</li>
+ * <li>every {@code Child: true} parent domain is a part qualified with that domain (W4, MQ1 —
+ * {@link ChildEntries}), a {@link MergedViewLookup} under the domain like a keyed part, supplied on
+ * the rows whose parent is that domain.</li>
  * </ul>
  *
  * <p>
  * <b>What stays on today's pipeline until its wave</b> (the legacy arm in {@code RuleRunner}): a
- * rule with a forward RELREC entry (W5, MQ11's ERROR when combined with a key expansion), a rule
- * with a chained qualified key (composed by the engine; the datatable refuses it), and a
- * {@code Child: true} parent, which {@code ChildMatchPreMerger} still merges BARE into the table
- * this view is built on (W4). {@link #setLegacyForTests} routes every execution to that arm, which
- * is what the corpus differential compares the view against.
+ * rule with a forward RELREC entry (W5, MQ11's ERROR when combined with a key expansion) and a rule
+ * with a chained qualified key (composed by the engine; the datatable refuses it) — a {@code Child}
+ * entry on such a rule is a load error ({@code RulePackageLoader}), the view being the only reader
+ * of a parent. {@link #setLegacyForTests} routes every execution without a {@code Child} entry to
+ * that arm, which is what the corpus differential compares the view against; a {@code Child} rule
+ * reads its parents through the view on both arms (the pre-merge it replaced is gone), so the
+ * differential's subjects are the keyed and SUPP parts.
  * </p>
  *
  * <p>
@@ -65,8 +71,9 @@ import org.jspecify.annotations.Nullable;
  * (every field that changes a merge, P-3) plus the SUPP flag; the row maps live in the datatable's
  * compact int buffers; the primary-part row map is copied into one int buffer per cached view so
  * the hot path of a primary read stays one buffer read ({@link RelrecExpandedTable}, retired with
- * the legacy expander in W6). A rule whose {@code Child} pre-merge replaced the table builds its
- * view per execution (W4 moves the parent into the view).
+ * the legacy expander in W6). The {@code Child} parts are cached like every other part: the
+ * pointer-token view of the primary ({@link ChildEntries#withPointerTokens}) is built inside the
+ * cached construction, so the rules of one signature share it.
  * </p>
  */
 public final class MergedEvaluation
@@ -128,7 +135,7 @@ public final class MergedEvaluation
      * the IG's).
      */
     record ViewKey(List<KeyedMergeSpec> keyed, List<String> supp,
-            @Nullable List<KeyColumn> suppKeys)
+            @Nullable List<KeyColumn> suppKeys, @Nullable ChildMergeSpec child)
     {
 
         ViewKey
@@ -176,9 +183,9 @@ public final class MergedEvaluation
 
         /**
          * Whether this is the dataset's cached view of its merge signature (P-3), shared by every
-         * rule of the signature — {@code false} for a view built per execution (a {@code Child}
-         * pre-merge replaced the table, or no cache). The expression cache keys a merged leaf on a
-         * shared view only ({@code DatasetExpressionCache.cacheableAt}).
+         * rule of the signature — {@code false} for a view built per execution (no cache). The
+         * expression cache keys a merged leaf on a shared view only
+         * ({@code DatasetExpressionCache.cacheableAt}).
          *
          * @return whether the view is shared
          */
@@ -317,7 +324,7 @@ public final class MergedEvaluation
      * @param rule
      *            the rule (its {@code Match_Datasets} and {@code Supp_Merge})
      * @param primary
-     *            the table the rule evaluates — the dataset, or its {@code Child} pre-merge
+     *            the table the rule evaluates
      * @param original
      *            the dataset as resolved (the cache key when {@code primary} is it)
      * @param resolver
@@ -336,9 +343,13 @@ public final class MergedEvaluation
             DatasetResolver resolver, @Nullable JoinCache joinCache, @Nullable String ruleId,
             @Nullable String domainPrefix)
     {
-        if (legacyForTests || resolver == null || legacyArmed(rule.getMatchDatasets()))
+        ChildMergeSpec child = resolver == null ? null
+                : ChildEntries.spec(rule.getMatchDatasets(), primary);
+        if ((legacyForTests && child == null) || resolver == null
+                || legacyArmed(rule.getMatchDatasets()))
         {
-            // (a hand-built execution without a resolver has nothing to merge)
+            // (a hand-built execution without a resolver has nothing to merge; a Child parent is
+            // read through the view on either arm — the bare pre-merge is gone)
             return null;
         }
         List<KeyedMergeSpec> keyed = new ArrayList<>();
@@ -369,7 +380,7 @@ public final class MergedEvaluation
                 }
             }
         }
-        if (keyed.isEmpty() && supp.isEmpty())
+        if (keyed.isEmpty() && supp.isEmpty() && child == null)
         {
             // nothing to merge: the legacy arm expands nothing, joins nothing and pivots nothing,
             // so the execution is the same on either and no empty view is built
@@ -380,13 +391,15 @@ public final class MergedEvaluation
         List<KeyColumn> suppKeys = rule.suppKeyColumns();
         SuppMergeSpec suppSpec = supp.isEmpty() ? null
                 : SuppMergeSpec.builder().suppDatasets(supp).keys(suppKeys).build();
-        MergeRequest request = request(primary, keyed, suppSpec, primaryDomain, resolver, ruleId);
+        net.cumba.datatable.merge.DatasetResolver datasets = name -> SplitDomainResolution
+                .resolveTableOrThrow(resolver, name, ruleId);
         if (joinCache != null && primary == original)
         {
-            return joinCache.mergedView(new ViewKey(keyed, supp, suppKeys),
-                    () -> construct(primary, request, true));
+            return joinCache.mergedView(new ViewKey(keyed, supp, suppKeys, child),
+                    () -> construct(primary, keyed, suppSpec, child, primaryDomain, datasets,
+                            true));
         }
-        return construct(primary, request, false);
+        return construct(primary, keyed, suppSpec, child, primaryDomain, datasets, false);
     }
 
 
@@ -425,8 +438,8 @@ public final class MergedEvaluation
 
 
     /**
-     * Whether an entry becomes a keyed part of the view: named, not {@code Child: true} (W4), with
-     * keys.
+     * Whether an entry becomes a keyed part of the view: named, not {@code Child: true} (a parent
+     * is its own part, {@link ChildEntries}), with keys.
      *
      * @param md
      *            the entry
@@ -439,20 +452,18 @@ public final class MergedEvaluation
     }
 
 
-    private static MergeRequest request(IDataTable primary, List<KeyedMergeSpec> keyed,
-            @Nullable SuppMergeSpec supp, @Nullable String primaryDomain, DatasetResolver resolver,
-            @Nullable String ruleId)
+    @SuppressWarnings("checkstyle:ParameterNumber")
+    private static Built construct(IDataTable dataset, List<KeyedMergeSpec> keyed,
+            @Nullable SuppMergeSpec supp, @Nullable ChildMergeSpec child,
+            @Nullable String primaryDomain, net.cumba.datatable.merge.DatasetResolver datasets,
+            boolean shared)
     {
-        return MergeRequest.builder().primary(primary).primaryDomain(primaryDomain).keyed(keyed)
-                .supp(supp)
-                .resolver(name -> SplitDomainResolution.resolveTableOrThrow(resolver, name, ruleId))
-                .matchedFlags(true).build();
-    }
-
-
-    private static Built construct(IDataTable primary, MergeRequest request, boolean shared)
-    {
-        MergedTable view = MergedTables.build(request);
+        // J5 (ChildEntries): a Child primary's IDVARVAL reads as the pointer's join token
+        IDataTable primary = child == null ? dataset
+                : ChildEntries.withPointerTokens(dataset, child, datasets);
+        MergedTable view = MergedTables.build(
+                MergeRequest.builder().primary(primary).primaryDomain(primaryDomain).keyed(keyed)
+                        .supp(supp).child(child).resolver(datasets).matchedFlags(true).build());
         MergeKind plant = plantForTests;
         IDataTable table = primary;
         if (view.isRowMapped())
@@ -471,17 +482,22 @@ public final class MergedEvaluation
         Map<String, JoinLookup> lookups = new LinkedHashMap<>();
         for (MergedPart part : view.parts())
         {
-            if (part.kind() == MergeKind.KEYED)
+            if (part.kind() == MergeKind.KEYED || part.kind() == MergeKind.CHILD)
             {
                 lookups.put(part.qualifier(),
-                        new MergedViewLookup(view, part, plant == MergeKind.KEYED));
+                        new MergedViewLookup(view, part, plant == part.kind()));
             }
         }
         Map<String, String> flagged = new LinkedHashMap<>();
         for (DataTableColumnMeta column : view.getMetaData().getColumns())
         {
             Object flag = column.getMetaData(MergeMeta.MERGE_ERROR);
-            if (flag != null)
+            // A Child parent's flag (a pointer naming a column its parent lacks) errors no rule:
+            // the rows it concerns read the not-supplied marker, exactly as the pre-merge left
+            // them, and the referenced-record rules (CDISC-CG0371, FDA-/PMDA-SD0077) report them
+            // — the precedent of OD-1 (serve the row; the conformance rule reports it).
+            if (flag != null
+                    && !MergeKind.CHILD.name().equals(column.getMetaData(MergeMeta.MERGE_KIND)))
             {
                 flagged.put(column.getName(), String.valueOf(flag));
             }
@@ -518,7 +534,7 @@ public final class MergedEvaluation
             String name = md.getName();
             if (name == null || !servedAsKeyedPart(md))
             {
-                continue; // a Child parent (W4) or a keyless entry: no keyed part
+                continue; // a Child parent (its own part) or a keyless entry: no keyed part
             }
             if (md.hasQualifiedKeys())
             {
@@ -536,6 +552,10 @@ public final class MergedEvaluation
             if (partner == null)
             {
                 continue; // not supplied: no part, the dotted reads take the not-supplied default
+            }
+            if (suppMerge)
+            {
+                refuseSuppQualifierKey(md, name, primary, resolver, ruleId);
             }
             boolean expandable = JoinKeyTypes.governedByKeyTypeCheck(md);
             if (expandable)
@@ -572,6 +592,75 @@ public final class MergedEvaluation
                     .build());
         }
         return true;
+    }
+
+
+    /**
+     * A left key the primary lacks but its {@code SUPP<dataset>} / {@code SUPP<domain>} supplies as
+     * a qualifier ({@code QNAM}) is refused — the rule's ERROR under the merged table's prefix
+     * ({@link #MERGE_REFUSED_MESSAGE_PREFIX}), never served: the datatable keys the raw primary
+     * before the SUPP parts exist, so the key would read its absent default on every row (JKM R7) —
+     * a silent mis-join. Serving it is a datatable change (both twins), assessed in the plan's T1.
+     * Costs nothing unless a key is absent from the primary (corpus exposure 0, W3f).
+     */
+    private static void refuseSuppQualifierKey(MatchDataset md, String name, IDataTable primary,
+            DatasetResolver resolver, @Nullable String ruleId)
+    {
+        String dataset = Objects.requireNonNullElse(primary.getMetaData().getName(), "");
+        List<String> left = md.getKeys();
+        if (left == null || dataset.isEmpty() || neverPivoted(dataset))
+        {
+            return;
+        }
+        List<String> suppNames = null;
+        for (String key : left)
+        {
+            if (key == null || primary.getMetaData().getColumnIndex(key) >= 0)
+            {
+                continue;
+            }
+            if (suppNames == null)
+            {
+                String domain = DatasetIdentity.domainOfDataset(dataset, resolver);
+                suppNames = domain == null || domain.isEmpty() ? List.of()
+                        : SuppMergeSpec.defaultSuppNames(dataset, domain);
+            }
+            for (String suppName : suppNames)
+            {
+                IDataTable supp = SplitDomainResolution.resolveTableOrThrow(resolver, suppName,
+                        ruleId);
+                if (supp != null && supp != primary && carriesQnam(supp, key))
+                {
+                    throw new net.cumba.datatable.merge.MergeException("the key " + key
+                            + " of the Match_Datasets entry " + name + " is not a column of "
+                            + dataset + " but a supplemental qualifier (QNAM) of " + suppName
+                            + " — a SUPP qualifier cannot key a join yet, so the join would"
+                            + " read the key's absent default on every row");
+                }
+            }
+        }
+    }
+
+
+    /** Whether a supplemental dataset carries a row whose {@code QNAM} is {@code qnam}. */
+    private static boolean carriesQnam(IDataTable supp, String qnam)
+    {
+        int col = supp.getMetaData().getColumnIndex("QNAM");
+        if (col < 0)
+        {
+            return false;
+        }
+        IDataTableColumn column = supp.getColumn(col);
+        long rows = supp.getRowCount();
+        for (long r = 0; r < rows; r++)
+        {
+            IDataValue dv = column.getDataValue(r);
+            if (!dv.isMissingOrInvalid() && qnam.equalsIgnoreCase(dv.getValueAsString().strip()))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
 

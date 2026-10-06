@@ -40,10 +40,10 @@ import org.jspecify.annotations.Nullable;
  * pair, {@link SuppQnamIndex.SubjectKey} — SENDIG's pooled records carry a blank {@code USUBJID}
  * and a populated {@code POOLID}, and keyed on {@code USUBJID} alone one pool's qualifier qualified
  * every pool; the {@code IDVARVAL} text coerced to a numeric parent column as the child pre-merge
- * does, {@link ChildMatchIndex#normalizeJoinToken}, J5 / D4-R5); a blank {@code IDVAR} qualifies
- * every record of the subject or pool (SDTMIG 8.4), and a subject-level row naming neither
- * qualifies nothing; a record-level row wins over a subject-level one; among duplicates the first
- * row in dataset order wins. A record no row qualifies reads the present blank {@code ""} (the type
+ * does, {@link NumericKeyText#childJoinToken}, J5 / D4-R5); a blank {@code IDVAR} qualifies every
+ * record of the subject or pool (SDTMIG 8.4), and a subject-level row naming neither qualifies
+ * nothing; a record-level row wins over a subject-level one; among duplicates the first row in
+ * dataset order wins. A record no row qualifies reads the present blank {@code ""} (the type
  * default of a char column, D34 #3); a matched row's {@code QVAL} cell is handed through, identity
  * kept. The parent's own column always wins: the pivot answers nothing for a name the primary
  * carries. A {@code SUPP--} / {@code SQ--} / {@code RELREC} primary is never pivoted.
@@ -397,8 +397,7 @@ public final class SuppPivot
         /** The coerced join token of a present text (never {@code null} for a present input). */
         private static String token(String raw, boolean numeric)
         {
-            return java.util.Objects
-                    .requireNonNull(ChildMatchIndex.normalizeJoinToken(raw, numeric));
+            return java.util.Objects.requireNonNull(NumericKeyText.childJoinToken(raw, numeric));
         }
 
         /** The column's cells, one per parent row, never {@code null} and no element null. */

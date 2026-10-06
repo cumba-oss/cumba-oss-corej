@@ -88,8 +88,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * Returns {@code null} when the rule declares no expandable key entry, leaving evaluation
- * unchanged. Child / RELREC entries are handled by {@link ChildMatchPreMerger} /
- * {@link RelrecRowExpander} and are excluded here.
+ * unchanged. Child / RELREC entries are handled by {@link ChildEntries} / {@link RelrecRowExpander}
+ * and are excluded here.
  * </p>
  */
 final class KeyMatchRowExpander

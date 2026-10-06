@@ -435,13 +435,26 @@ class StageACheckerTest
     }
 
 
+    /**
+     * W4 of {@code PLAN-merged-evaluation-table} (P-14): a Child entry's parent domain flag is
+     * served by the merged view's parent part, which keeps every record — not an inner join, even
+     * with no {@code Join_Type} authored (the loader's {@code inner} stamp means nothing there).
+     */
     @Test
-    void matchedFlagOnAChildEntryIsInvalid()
+    void matchedFlagOfAChildParentDomainIsServed()
     {
-        Rule rule = ruleJoining("AE", "left", "USUBJID");
+        Rule rule = ruleJoining("AE", null, "USUBJID", "IDVAR", "IDVARVAL");
         rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
-        StageAReport report = check(rule, "not AE._matched_");
-        assertEquals(List.of(StageAErrorKind.MATCHED_FLAG_INVALID), kinds(report));
+        assertEquals(List.of(), check(rule, "not AE._matched_").findings(),
+                "MATCHED_FLAG_INVALID (a pre-merge carried no flag) before W4");
+        // P-14: a parent domain no entry names is declared under a (concrete) Child entry …
+        Rule co = ruleJoining("CO", null, "USUBJID", "IDVAR", "IDVARVAL");
+        co.getMatchDatasets().get(0).setChild(Boolean.TRUE);
+        assertEquals(List.of(), check(co, "not CM._matched_").findings());
+        // … and is not without one (control)
+        co.getMatchDatasets().get(0).setChild(Boolean.FALSE);
+        assertEquals(List.of(StageAErrorKind.MATCHED_FLAG_INVALID),
+                kinds(check(co, "not CM._matched_")));
     }
 
 
@@ -461,7 +474,8 @@ class StageACheckerTest
      * {@code Child: true} entry keeps its {@code SUPP--} template name through specialisation, so
      * an exact-name comparison found no entry for {@code SUPPAE._matched_} at either pass, deferred
      * it (the test above), and the flag then read a SUPPAE self-join at run time — every row true.
-     * The qualifier now resolves as an instance of the template, and the Child arm refuses it.
+     * The qualifier now resolves as an instance of the template, and the Child arm refuses it: the
+     * template is the child dataset itself, never a parent (W4 keeps this arm, P-14).
      */
     @Test
     void matchedFlagOnAChildTemplateEntryIsInvalidDespiteTheTemplate()
@@ -474,6 +488,7 @@ class StageACheckerTest
         String message = report.findings().get(0).toString();
         assertTrue(message.contains("SUPPAE._matched_"), message);
         assertTrue(message.contains("Child: true"), message);
+        assertTrue(message.contains("not a parent"), message);
     }
 
 
@@ -536,67 +551,87 @@ class StageACheckerTest
     }
 
     // ------------------------------------------------------------------
-    // DOTTED_REF_CHILD_ENTRY (PLAN-hashed-join-arm-absent-columns §3 follow-up 1, owner
-    // 2026-09-25) — the value-read sibling of MATCHED_FLAG_INVALID's Child arm. Armed, and like
-    // that arm ZERO over the shipped corpus (none of the 5 Child rules reads its entry dotted), so
-    // these cases are the whole instrument.
+    // A dotted read of a Child: true parent (W4 of PLAN-merged-evaluation-table, MQ1, P-14): served
+    // by the merged view's parent part since DOTTED_REF_CHILD_ENTRY retired (it refused every such
+    // read while the pre-merge merged the parent bare). Only the entry's own -- template — the
+    // child dataset itself — is no parent: judged undeclared, observe-only like every undeclared
+    // qualifier.
     // ------------------------------------------------------------------
 
 
     @Test
-    void aDottedReadOfAChildEntryIsAnArmedStageAError()
+    void aDottedReadOfAChildParentIsServed()
     {
         Rule rule = ruleJoining("AE", null, "USUBJID", "IDVAR", "IDVARVAL");
         rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
-        StageAReport report = check(rule, "AE.AESMIE != \"Y\"");
-        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY), kinds(report),
-                "a Child entry builds no direct lookup, so AE.AESMIE has nothing to read; clean is"
-                        + " the pre-ruling behaviour (the read took the not-supplied default)");
-        assertEquals(1, report.armedFindings().size(), "refused at load, as the flag is");
-        String message = report.findings().get(0).toString();
-        assertTrue(message.contains("AE.AESMIE"), message);
-        assertTrue(message.contains("read bare"), message);
+        assertEquals(List.of(), check(rule, "AE.AESMIE != \"Y\"").findings(),
+                "DOTTED_REF_CHILD_ENTRY (armed) before W4");
+        assertEquals(List.of(), check(rule, "AE.**SMIE != \"Y\"").findings(),
+                "a qualified wildcard of the parent");
+        rule.setCompiledBindings(List.of(binding("$smie", "AE.AESMIE")));
+        assertEquals(List.of(), check(rule, "$smie != \"Y\"").findings(), "through a binding");
+    }
+
+
+    /**
+     * P-14: under a Child entry every concrete qualifier no entry names is a parent domain (the
+     * data's {@code RDOMAIN} decides per row) — but never a {@code SUPP} / {@code SQ} dataset.
+     */
+    @Test
+    void aParentDomainNoEntryNamesIsDeclaredUnderAChildEntry()
+    {
+        Rule rule = ruleJoining("CO", null, "USUBJID", "IDVAR", "IDVARVAL");
+        rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
+        assertEquals(List.of(), check(rule, "str(IDVARVAL) != str(AE.AESEQ)").findings());
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED),
+                kinds(check(rule, "SUPPAE.QVAL == \"x\"")), "a SUPP dataset is never a parent");
+        // control: the same read without the Child entry is undeclared
+        rule.getMatchDatasets().get(0).setChild(Boolean.FALSE);
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED),
+                kinds(check(rule, "str(IDVARVAL) != str(AE.AESEQ)")));
     }
 
 
     @Test
-    void aDottedReadOfAChildTemplateEntryIsRefusedDespiteTheTemplate()
+    void aDottedReadOfAChildTemplateEntryNamesTheChildItself()
     {
-        // The same template resolution as the flag: SUPPAE.QVAL names the SUPP-- Child entry, and
-        // the refusal is not deferred — the entry WAS resolved, so this is no guess.
+        // The template resolution of the flag: SUPPAE.QVAL names the SUPP-- Child entry — the
+        // child dataset, which no join serves.
         Rule rule = ruleJoining("SUPP--", null, "USUBJID", "IDVAR", "IDVARVAL");
         rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
         StageAReport report = check(rule, "SUPPAE.QVAL == \"x\"");
-        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY), kinds(report));
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED), kinds(report));
+        assertTrue(report.findings().get(0).toString().contains("child dataset itself"),
+                report.findings().toString());
     }
 
 
     /**
      * Round 2 M1: {@code SUPP--.QVAL} is a {@code WILDCARD_COLUMN} (it contains {@code --}) whose
      * qualifier names the {@code SUPP--} Child entry <b>exactly</b>; {@code ExprPrefixResolver}
-     * later rewrites it to {@code SUPPAE.QVAL}, a silent not-supplied default. One predicate for
-     * every surface: it is judged in a Check and in a Binding alike.
+     * later rewrites it to {@code SUPPAE.QVAL}. One predicate for every surface: it is judged in a
+     * Check and in a Binding alike.
      */
     @Test
-    void aTemplateQualifiedReadOfAChildEntryIsRefused()
+    void aTemplateQualifiedReadOfAChildEntryIsUndeclared()
     {
         Rule rule = ruleJoining("SUPP--", null, "USUBJID", "IDVAR", "IDVARVAL");
         rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
-        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED),
                 kinds(check(rule, "SUPP--.QVAL == \"x\"")), "SUPP--.QVAL in a Check");
-        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED),
                 kinds(check(rule, "SUPP--.**VAL == \"x\"")), "SUPP--.**VAL in a Check");
         rule.setCompiledBindings(List.of(binding("$q", "SUPP--.QVAL")));
         assertTrue(
-                kinds(check(rule, "$q == \"x\"")).contains(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
+                kinds(check(rule, "$q == \"x\"")).contains(StageAErrorKind.DOTTED_REF_UNDECLARED),
                 "SUPP--.QVAL in a Binding");
-        // control: the same reads against an ORDINARY SUPP-- entry are not refused
+        // control: the same reads against an ORDINARY SUPP-- entry are declared
         rule.getMatchDatasets().get(0).setChild(Boolean.FALSE);
         assertFalse(
-                kinds(check(rule, "$q == \"x\"")).contains(StageAErrorKind.DOTTED_REF_CHILD_ENTRY));
+                kinds(check(rule, "$q == \"x\"")).contains(StageAErrorKind.DOTTED_REF_UNDECLARED));
         rule.setCompiledBindings(null);
         assertFalse(kinds(check(rule, "SUPP--.QVAL == \"x\""))
-                .contains(StageAErrorKind.DOTTED_REF_CHILD_ENTRY));
+                .contains(StageAErrorKind.DOTTED_REF_UNDECLARED));
     }
 
 
@@ -616,74 +651,32 @@ class StageACheckerTest
 
 
     @Test
-    void aDottedOutputVariableOfAChildEntryIsAnArmedStageAError()
+    void aDottedOutputVariableOfAChildParentIsServed()
     {
-        // M2: CG0043 with Output_Variables: [AE.AESMIE] loaded clean and RuleRunner silently
-        // dropped the column from every finding (no lookup, no value, no message).
-        Rule rule = ruleJoining("AE", null, "USUBJID", "IDVAR", "IDVARVAL");
-        rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
-        net.cumba.corej.core.model.Outcome outcome = new net.cumba.corej.core.model.Outcome();
-        outcome.setOutputVariables(List.of("QNAM", "AE.AESMIE"));
-        rule.setOutcome(outcome);
-        StageAReport report = check(rule, "QNAM == \"AESOSP\"");
-        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY), kinds(report),
-                "clean is the pre-fix silent omission");
-        assertEquals(1, report.armedFindings().size());
-        String message = report.findings().get(0).toString();
-        assertTrue(message.contains("Output_Variables entry AE.AESMIE"), message);
-    }
-
-
-    @Test
-    void dottedOutputVariableShapesOnAChildEntry()
-    {
+        // M2 of the retired arm: CG0043 with Output_Variables: [AE.AESMIE] was silently omitted;
+        // since W4 the parent part serves it.
         Rule rule = ruleJoining("AE", null, "USUBJID", "IDVAR", "IDVARVAL");
         rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
         net.cumba.corej.core.model.Outcome outcome = new net.cumba.corej.core.model.Outcome();
         rule.setOutcome(outcome);
-        // a judgeable qualifier before a substituted or wildcard suffix is judged
-        outcome.setOutputVariables(List.of("AE.${QNAM}"));
-        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
-                kinds(check(rule, "QNAM == \"AESOSP\"")), "AE.${QNAM}: the prefix is literal");
-        outcome.setOutputVariables(List.of("AE.**TERM"));
-        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
-                kinds(check(rule, "QNAM == \"AESOSP\"")), "AE.**TERM: the prefix is literal");
-        // a substituted QUALIFIER is bound at run time and is not judged here (documented on the
-        // kind), and an excluded name is not judged either
-        outcome.setOutputVariables(List.of("${IDVAR}.AESMIE"));
-        assertEquals(List.of(), check(rule, "QNAM == \"AESOSP\"").findings());
-        // L5: an excluded name is not judged — the exclusion REMOVES AE.AESMIE from the list the
-        // arm reads, so the pair yields nothing (red with applyExclusions removed: control run)
-        outcome.setOutputVariables(List.of("AE.AESMIE", "!AE.AESMIE"));
-        assertEquals(List.of(), check(rule, "QNAM == \"AESOSP\"").findings(),
-                "the exclusion must take AE.AESMIE out before the Child arm sees it");
-        // control: the same output on the same entry WITHOUT Child: true is clean
-        rule.getMatchDatasets().get(0).setChild(Boolean.FALSE);
-        outcome.setOutputVariables(List.of("AE.AESMIE"));
-        assertEquals(List.of(), check(rule, "QNAM == \"AESOSP\"").findings());
+        for (String output : List.of("AE.AESMIE", "AE.${QNAM}", "AE.**TERM", "${IDVAR}.AESMIE",
+                "CM.CMTRT"))
+        {
+            outcome.setOutputVariables(List.of("QNAM", output));
+            assertEquals(List.of(), check(rule, "QNAM == \"AESOSP\"").findings(), output);
+        }
+        // the child's own template is no parent
+        Rule supp = ruleJoining("SUPP--", null, "USUBJID", "IDVAR", "IDVARVAL");
+        supp.getMatchDatasets().get(0).setChild(Boolean.TRUE);
+        supp.setOutcome(outcome);
+        outcome.setOutputVariables(List.of("SUPP--.QVAL"));
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED),
+                kinds(check(supp, "QNAM == \"AESOSP\"")));
     }
 
 
     @Test
-    void aBindingExpressionReadingAChildEntryDottedIsAnArmedStageAError()
-    {
-        // L5: the Bindings surface is walked by collectBindingDottedRefs, so a Child entry read
-        // through a binding is the same refusal.
-        Rule rule = ruleJoining("AE", null, "USUBJID", "IDVAR", "IDVARVAL");
-        rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
-        rule.setCompiledBindings(List.of(binding("$smie", "AE.AESMIE")));
-        StageAReport report = check(rule, "$smie != \"Y\"");
-        assertTrue(kinds(report).contains(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
-                "the binding's AE.AESMIE reads the Child entry: " + report.findings());
-        // control: the same binding against an ordinary entry
-        rule.getMatchDatasets().get(0).setChild(Boolean.FALSE);
-        assertFalse(kinds(check(rule, "$smie != \"Y\""))
-                .contains(StageAErrorKind.DOTTED_REF_CHILD_ENTRY));
-    }
-
-
-    @Test
-    void theLoaderParksADottedReadOfAChildEntry() throws Exception
+    void theLoaderLoadsADottedReadOfAChildParent() throws Exception
     {
         RulePackage pkg = RulePackageLoader
                 .loadFromString(KeyedJoinFixtures.declared("{\"rules\":{\"X-1\":{\"Core\":{\"Id\":"
@@ -691,9 +684,8 @@ class StageACheckerTest
                         + "[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]}],\"Check\":{\"expression\":"
                         + "\"AE.AESMIE != \\\"Y\\\"\"}}}}"));
         Rule rule = pkg.getRules().get("X-1");
-        assertNotNull(rule.getLoadError(), "the armed kind parks the rule");
-        assertTrue(rule.getLoadError().contains("DOTTED_REF_CHILD_ENTRY"), rule.getLoadError());
-        assertNull(rule.getCheckExpr());
+        assertNull(rule.getLoadError(), "parked by DOTTED_REF_CHILD_ENTRY before W4");
+        assertNotNull(rule.getCheckExpr());
     }
 
 
@@ -1308,26 +1300,26 @@ class StageACheckerTest
 
 
     /**
-     * N26: a {@code colref} / {@code find_vars} literal qualifier naming a {@code Child: true}
-     * entry reads the not-supplied default on every row — the authored {@code AE.AESMIE} is refused
-     * at load for exactly that (armed), the dynamic spelling was only ever judged undeclared.
+     * N26 retired with the Child arm (W4): a {@code colref} / {@code find_vars} literal naming a
+     * Child parent reads the merged view's parent part, as the authored {@code AE.AESMIE} does; the
+     * respelled {@code colref(concat(RDOMAIN, ".", IDVAR))} (MQ1) has no literal qualifier and is
+     * judged nowhere. The child's own template stays undeclared.
      */
     @Test
-    void aColrefOrFindVarsNameOfAChildEntryIsAnArmedStageAError()
+    void aColrefOrFindVarsNameOfAChildParentIsServed()
     {
         Rule rule = ruleJoining("AE", null, "USUBJID", "IDVAR", "IDVARVAL");
         rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
         for (String expression : List.of("colref(\"AE.AESMIE\") != \"Y\"",
-                "count(find_vars(\"AE.AES*\")) > 0"))
+                "count(find_vars(\"AE.AES*\")) > 0",
+                "str(IDVARVAL) != str(colref(concat(RDOMAIN, \".\", IDVAR)))"))
         {
-            StageAReport report = check(rule, expression);
-            assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY), kinds(report),
-                    expression);
-            assertEquals(1, report.armedFindings().size(), expression);
+            assertEquals(List.of(), check(rule, expression).findings(), expression);
         }
-        // control: the same names against the same entry without Child: true are clean
-        rule.getMatchDatasets().get(0).setChild(Boolean.FALSE);
-        assertEquals(List.of(), check(rule, "colref(\"AE.AESMIE\") != \"Y\"").findings());
+        Rule supp = ruleJoining("SUPP--", null, "USUBJID", "IDVAR", "IDVARVAL");
+        supp.getMatchDatasets().get(0).setChild(Boolean.TRUE);
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED),
+                kinds(check(supp, "colref(\"SUPPAE.QVAL\") == \"x\"")));
     }
 
 

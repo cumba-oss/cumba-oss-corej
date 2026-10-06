@@ -208,10 +208,12 @@ final class KeyHashing
          * side lacked {@code IDVAR}/{@code IDVARVAL} this arm would have paired subject-level rows
          * nobody asked to pair. {@code PLAN-hashed-join-arm-absent-columns} (owner, 2026-09-25,
          * option A) removed that lookup — a Child entry is joined only through its pointer, by
-         * {@code ChildMatchPreMerger} — and landed this arm in the same change. ⚠ The comment that
-         * stood here in between over-claimed: <i>"matched NOTHING, ever"</i> was true of 2 of the
-         * 11 entries, and <i>"{@code _matched_} would flip on 5 shipped rules"</i> of 0 — the flag
-         * on a Child entry has been a stage-A load error all along (phase 1 findings, §6).
+         * {@code ChildMatchPreMerger}, since W4 of {@code PLAN-merged-evaluation-table} the merged
+         * view's Child part ({@code ChildEntries}) — and landed this arm in the same change. ⚠ The
+         * comment that stood here in between over-claimed: <i>"matched NOTHING, ever"</i> was true
+         * of 2 of the 11 entries, and <i>"{@code _matched_} would flip on 5 shipped rules"</i> of 0
+         * — the flag on a Child entry has been a stage-A load error all along (phase 1 findings,
+         * §6).
          * </p>
          */
         private static @Nullable KeyPart[] absentParts(IDataTable table1, int[] colIds1,

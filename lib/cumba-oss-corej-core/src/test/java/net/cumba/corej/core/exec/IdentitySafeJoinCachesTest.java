@@ -122,53 +122,6 @@ class IdentitySafeJoinCachesTest
                 .lookup(aPrimary, 0, "VAL");
     }
 
-    // ----------------------------------------------------------------------- child-match indexes
-
-
-    @Test
-    void childMatch_collidingParentsStayApartAndANullBuildNeverLeaks()
-    {
-        IDataTable withIdvar = MockTable.of().name("AE").col("USUBJID", "P1").col("AESEQ", "1")
-                .build();
-        IDataTable withoutIdvar = MockTable.of().name("AE").col("USUBJID", "P1").build();
-        for (boolean nullFirst : new boolean[]
-        {
-                false, true
-        })
-        {
-            JoinCache.SharedIndexCache cache = new JoinCache.SharedIndexCache(
-                    IdentitySafeJoinCachesTest::oneBucket);
-            if (nullFirst)
-            {
-                assertNull(cache.getOrBuildChildMatchIndex(withoutIdvar, USUBJID, "AESEQ"));
-            }
-            assertNotNull(cache.getOrBuildChildMatchIndex(withIdvar, USUBJID, "AESEQ"),
-                    "a buildable parent must not read another parent's cached null");
-            assertNull(cache.getOrBuildChildMatchIndex(withoutIdvar, USUBJID, "AESEQ"),
-                    "a parent lacking the IDVAR must not read another parent's index");
-            assertEquals(2, cache.childMatchIndexBuildCount());
-        }
-    }
-
-
-    @Test
-    void childMatch_idvarAndStandardKeysArePartOfTheKey()
-    {
-        IDataTable parent = MockTable.of().name("AE").col("USUBJID", "P1").col("AESEQ", "1")
-                .col("STUDYID", "S").build();
-        JoinCache.SharedIndexCache cache = new JoinCache.SharedIndexCache();
-        assertNull(cache.getOrBuildChildMatchIndex(parent, USUBJID, "AELNKID"),
-                "no AELNKID column: the build fails and that null is cached");
-        assertNotNull(cache.getOrBuildChildMatchIndex(parent, USUBJID, "AESEQ"),
-                "a different IDVAR is a different index, not the cached null");
-        assertNotNull(
-                cache.getOrBuildChildMatchIndex(parent, List.of("USUBJID", "STUDYID"), "AESEQ"));
-        assertNull(cache.getOrBuildChildMatchIndex(parent, List.of("USUBJID", "NOSUCH"), "AESEQ"),
-                "different standard keys are a different index");
-        assertEquals(4, cache.childMatchIndexBuildCount());
-        assertEquals(4, cache.childMatchIndexCount());
-    }
-
     // ------------------------------------------------------------------------- key-match indexes
 
 
@@ -334,7 +287,6 @@ class IdentitySafeJoinCachesTest
         WeakReference<IDataTable> probe = populateAll(cache);
         long deadline = System.nanoTime() + 20_000_000_000L;
         while ((probe.get() != null || cache.lookupIndexedTableCount() != 0
-                || cache.childMatchIndexedTableCount() != 0
                 || cache.keyMatchIndexedTableCount() != 0
                 || cache.wildcardColumns().entryCount() != 0) && System.nanoTime() < deadline)
         {
@@ -343,13 +295,12 @@ class IdentitySafeJoinCachesTest
         }
         assertNull(probe.get(), "no cache may keep the table reachable (D3: no parent field)");
         assertEquals(0, cache.lookupIndexedTableCount());
-        assertEquals(0, cache.childMatchIndexedTableCount());
         assertEquals(0, cache.keyMatchIndexedTableCount());
         assertEquals(0, cache.wildcardColumns().entryCount());
     }
 
 
-    /** Populates all four caches from one table that nothing else keeps. */
+    /** Populates all three caches from one table that nothing else keeps. */
     private static WeakReference<IDataTable> populateAll(JoinCache.SharedIndexCache aCache)
     {
         IDataTable t = MockTable.of().name("AE").col("USUBJID", "P1").col("AESEQ", "1")
@@ -357,7 +308,6 @@ class IdentitySafeJoinCachesTest
         try
         {
             aCache.getOrBuild(t, USUBJID);
-            assertNotNull(aCache.getOrBuildChildMatchIndex(t, USUBJID, "AESEQ"));
             // Through the REAL expander, so the index is built by reading t (review round 1, lane
             // A, LOW): an index or closure that kept its child would then show here.
             MatchDataset md = new MatchDataset();
@@ -369,7 +319,6 @@ class IdentitySafeJoinCachesTest
                     ExecCalls.expand(primary, List.of(md), Map.of("AE", t)::get, "R", aCache));
             aCache.wildcardColumns().matchingColumns(t, Pattern.compile("TRT.*PN"));
             assertEquals(1, aCache.lookupIndexedTableCount());
-            assertEquals(1, aCache.childMatchIndexedTableCount());
             assertEquals(1, aCache.keyMatchIndexedTableCount());
             assertEquals(1, aCache.wildcardColumns().entryCount());
             return new WeakReference<>(t);

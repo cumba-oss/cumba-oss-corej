@@ -219,36 +219,38 @@ class DynamicColumnStageATest
     /**
      * LOW-1 ({@code PLAN-dynamic-column-corpus-respelling} §6.2): a {@code $}-binding handed to
      * {@code colref} / {@code find_vars} is followed into its expression, so a bound qualified name
-     * is judged exactly as the same name written inline — the armed Child arm and the observe-only
-     * undeclared arm alike.
+     * is judged exactly as the same name written inline — by the observe-only undeclared arm (the
+     * armed Child arm that also proved it retired with W4 of {@code PLAN-merged-evaluation-table}:
+     * a Child parent is a declared qualifier, P-14).
      */
     @Test
     void aBoundQualifiedNameIsJudgedAsTheInlineOne()
     {
-        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
-                kinds(check(adslRule(Boolean.TRUE), "count(find_vars(" + P_S + ")) == 0")),
+        String ap = "concat(\"ADSL.AP\", printf(\"%02d\", APERIOD), \"SDT\")";
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED),
+                kinds(check(adslRule(null), "count(find_vars(" + P_S + ")) == 0")),
                 "the inline spelling (the reference)");
-        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
-                kinds(check(adslRule(Boolean.TRUE, "$p", P_S), "count(find_vars($p)) == 0")),
-                "bound: find_vars($p)");
-        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
-                kinds(check(
-                        adslRule(Boolean.TRUE, "$a",
-                                "concat(\"ADSL.AP\", printf(\"%02d\", APERIOD), \"SDT\")"),
-                        "APERSDT != colref($a)")),
-                "bound: colref($a)");
-        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
-                kinds(check(adslRule(Boolean.TRUE, "$p", P_S, "$q", "$p"),
-                        "count(find_vars($q)) == 0")),
-                "a binding of a binding is followed to the expression");
-        assertEquals(List.of(),
-                kinds(check(adslRule(Boolean.FALSE, "$p", P_S), "count(find_vars($p)) == 0")),
-                "an ordinary ADSL entry: declared, clean");
         assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED),
                 kinds(check(adslRule(null, "$p", P_S), "count(find_vars($p)) == 0")),
-                "no Match_Datasets: the observe-only undeclared kind, as inline");
-        assertEquals(kinds(check(adslRule(null), "count(find_vars(" + P_S + ")) == 0")),
-                kinds(check(adslRule(null, "$p", P_S), "count(find_vars($p)) == 0")));
+                "bound: find_vars($p)");
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED),
+                kinds(check(adslRule(null, "$a", ap), "APERSDT != colref($a)")),
+                "bound: colref($a)");
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED),
+                kinds(check(adslRule(null, "$p", P_S, "$q", "$p"), "count(find_vars($q)) == 0")),
+                "a binding of a binding is followed to the expression");
+        for (Boolean child : new Boolean[]
+        {
+                Boolean.FALSE, Boolean.TRUE
+        })
+        {
+            assertEquals(List.of(),
+                    kinds(check(adslRule(child, "$p", P_S), "count(find_vars($p)) == 0")),
+                    "a declared ADSL entry (Child: " + child + "): clean");
+            assertEquals(List.of(),
+                    kinds(check(adslRule(child, "$a", ap), "APERSDT != colref($a)")),
+                    "a declared ADSL entry (Child: " + child + "): clean");
+        }
     }
 
 

@@ -2324,10 +2324,9 @@ public final class StageAChecker
      * under an inner join (D88e) or with no usable defining entry / in value position
      * ({@link StageAErrorKind#MATCHED_FLAG_INVALID}); per dotted operand, a qualifier naming no
      * entry ({@link StageAErrorKind#DOTTED_REF_UNDECLARED} — the value-read sibling of that same
-     * dangling-qualifier arm) or a {@code Child: true} entry
-     * ({@link StageAErrorKind#DOTTED_REF_CHILD_ENTRY}); and the D62 unqualified-merged-column
-     * heuristic (observe-only by ruling — D62a's three {@code SUPPAE} rules read {@code AESMIE}
-     * bare and work today).
+     * dangling-qualifier arm; under a {@code Child: true} entry the parent domains are declared,
+     * P-14, {@link #childParentQualifier}); and the D62 unqualified-merged-column heuristic
+     * (observe-only by ruling).
      */
     private void checkMatchDatasets(java.util.Collection<Expr> roots)
     {
@@ -2519,15 +2518,18 @@ public final class StageAChecker
 
     /**
      * The join-match-flag checks of phase 5b-J (spec §3.3, D88/D88e), per {@code _matched_}
-     * reference: value position, no defining entry, a {@code Child: true} or keyless entry, or an
-     * inner join. A flag whose qualifier matches no entry is silently deferred when any entry name
-     * is still a template ({@code --} / {@code *} / {@code ${} / {@code &}) — this checker also
-     * runs at package load, before specialisation binds those names, and the specialised
-     * per-dataset pass re-checks with concrete names. ⚠ The qualifier is resolved by {@link
-     * #entryFor}, which also matches an instance of a {@code --} template ({@code SUPPAE._matched_}
-     * names a {@code SUPP--} entry): a {@code Child: true} entry keeps its template name through
-     * specialisation, so an exact comparison let {@code SUPPAE._matched_} slip past the Child arm
-     * at both passes and read a SUPPAE self-join at run time (the Stage-A hole of {@code
+     * reference: value position, no defining entry, a keyless entry, an inner join, or the
+     * {@code --} template a {@code Child: true} entry names its own child dataset by. Under a
+     * {@code Child} entry a parent domain's flag ({@code AE._matched_}) is served by the merged
+     * view's parent part, which keeps every record (P-14, {@code PLAN-merged-evaluation-table} W4).
+     * A flag whose qualifier matches no entry is silently deferred when any entry name is still a
+     * template ({@code --} / {@code *} / {@code ${} / {@code &}) — this checker also runs at
+     * package load, before specialisation binds those names, and the specialised per-dataset pass
+     * re-checks with concrete names. ⚠ The qualifier is resolved by {@link #entryFor}, which also
+     * matches an instance of a {@code --} template ({@code SUPPAE._matched_} names a {@code SUPP--}
+     * entry): a {@code Child: true} entry keeps its template name through specialisation, so an
+     * exact comparison let {@code SUPPAE._matched_} slip past the Child arm at both passes and read
+     * a SUPPAE self-join at run time (the Stage-A hole of {@code
      * PLAN-hashed-join-arm-absent-columns} §2b, closed 2026-09-25).
      */
     private void checkMatchedFlags(java.util.Collection<Expr> roots,
@@ -2559,7 +2561,7 @@ public final class StageAChecker
             noteQualifierCase(flag, qualifier, entry);
             if (entry == null)
             {
-                if (!templates)
+                if (!templates && !childParentQualifier(qualifier, entries))
                 {
                     find(StageAErrorKind.MATCHED_FLAG_INVALID,
                             flag + " references no " + "Match_Datasets entry named " + qualifier
@@ -2569,9 +2571,14 @@ public final class StageAChecker
             }
             if (Boolean.TRUE.equals(entry.getChild()))
             {
-                find(StageAErrorKind.MATCHED_FLAG_INVALID, flag + " names a Child: true entry — "
-                        + "a pre-merged parent join carries no match flag");
-                continue;
+                if (childSelfTemplate(entry))
+                {
+                    find(StageAErrorKind.MATCHED_FLAG_INVALID, flag + " names the Child: true"
+                            + " entry " + entry.getName() + " by its own template — that is the"
+                            + " child dataset, not a parent; a parent's flag is <D>._matched_ of"
+                            + " its domain (P-14)");
+                }
+                continue; // a parent domain's flag: served, and left by construction (P-14)
             }
             if (entry.getKeys() == null || entry.getKeys().isEmpty())
             {
@@ -2733,13 +2740,14 @@ public final class StageAChecker
      * </p>
      *
      * <p>
-     * ⭐ And one refusal that is <b>not</b> deferred: a dotted read whose qualifier resolves ({@link
-     * #entryFor}) to a {@code Child: true} entry ({@link StageAErrorKind#DOTTED_REF_CHILD_ENTRY},
-     * armed) — a {@code DOTTED_REF} operand, a {@code WILDCARD_COLUMN} operand with a judgeable
-     * qualifier ({@link #hasJudgeableQualifier}), a {@code Bindings} expression, or an {@code
-     * Output_Variables} entry ({@link #checkDottedOutputVariables}). Owner ruling 2026-09-25: a
-     * Child entry is joined only through its pointer and builds no direct lookup, so the read has
-     * nothing to read — the parent's columns are merged in bare.
+     * ⭐ Under a {@code Child: true} entry ({@code PLAN-merged-evaluation-table} W4, MQ1, P-14) the
+     * parent domains are declared qualifiers: the merged view serves {@code AE.AESMIE} from the
+     * parent part of the rows whose {@code RDOMAIN} is {@code AE}. The entry's own {@code Name}
+     * labels it, and a qualifier no entry names is a parent domain too ({@link
+     * #childParentQualifier} — the data's {@code RDOMAIN} set is unknown here). The one qualifier a
+     * Child entry does not declare is its own {@code --} template ({@code SUPP--.QVAL} / {@code
+     * SUPPAE.QVAL}: the child dataset itself) — judged as undeclared. A typo in a parent read is
+     * the corpus existence census's to catch ({@code ChildParentExistenceCensusTest}).
      * </p>
      */
     private void checkDottedRefs(java.util.Collection<Expr> roots,
@@ -2790,13 +2798,13 @@ public final class StageAChecker
             noteQualifierCase(ref, qualifier, entry);
             if (entry != null && Boolean.TRUE.equals(entry.getChild()))
             {
-                find(StageAErrorKind.DOTTED_REF_CHILD_ENTRY, ref + " reads a Child: true entry"
-                        + " — a Child entry is joined only through its pointer (RDOMAIN / IDVAR /"
-                        + " IDVARVAL) and builds no direct lookup, so a qualified wildcard read of"
-                        + " it answers the not-supplied default on every row; the parent row's"
-                        + " columns are merged into the primary and are read bare");
+                if (childSelfTemplate(entry))
+                {
+                    find(StageAErrorKind.DOTTED_REF_UNDECLARED, childSelfMessage(ref, entry));
+                }
             }
-            else if (entry == null && !templates && isConcreteQualifier(qualifier))
+            else if (entry == null && !templates && isConcreteQualifier(qualifier)
+                    && !childParentQualifier(qualifier, entries))
             {
                 // QNU N27: a qualified TEMPLATE operand (DM.${V}, ADSL.X${*}, AE.**TERM) reads
                 // through the join of its CONCRETE qualifier exactly as DM.X does, so an
@@ -2821,15 +2829,14 @@ public final class StageAChecker
             noteQualifierCase(name, qualifier, entry);
             if (entry != null && Boolean.TRUE.equals(entry.getChild()))
             {
-                find(StageAErrorKind.DOTTED_REF_CHILD_ENTRY, "the column name " + name
-                        + " (a colref / find_vars argument) reads a Child: true entry — a Child"
-                        + " entry is joined only through its pointer (RDOMAIN / IDVAR / IDVARVAL)"
-                        + " and builds no direct lookup, so the name reads the not-supplied"
-                        + " default on every row; the parent row's columns are merged into the"
-                        + " primary and are named bare, never as " + qualifier + ".<column>");
+                if (childSelfTemplate(entry))
+                {
+                    find(StageAErrorKind.DOTTED_REF_UNDECLARED, childSelfMessage(
+                            "the column name " + name + " (a colref / find_vars argument)", entry));
+                }
                 continue;
             }
-            if (templates || entry != null)
+            if (templates || entry != null || childParentQualifier(qualifier, entries))
             {
                 continue;
             }
@@ -2847,26 +2854,17 @@ public final class StageAChecker
             noteQualifierCase(ref, qualifier, entry);
             if (entry != null)
             {
-                // ⭐ Owner ruling 2026-09-25 (PLAN-hashed-join-arm-absent-columns §3, follow-up
-                // 1): a Child: true entry is joined only through its pointer, its parent columns
-                // arrive BARE through the pre-merge, and no direct lookup is built for it
-                // (RuleRunner.buildJoinedDatasets) — so a dotted read of it has nothing to read.
-                // Refused at load like the flag, and judged even while a template name remains:
-                // the entry was resolved, exactly or as an instance of its own template, so this
-                // is not the guess the deferral below exists to avoid.
-                if (Boolean.TRUE.equals(entry.getChild()))
+                // W4 (P-14): a Child entry's parent read is served by the merged view; only its
+                // own -- template (the child dataset itself) is no parent.
+                if (Boolean.TRUE.equals(entry.getChild()) && childSelfTemplate(entry))
                 {
-                    find(StageAErrorKind.DOTTED_REF_CHILD_ENTRY, ref + " reads a Child: true "
-                            + "entry — a Child entry is joined only through its pointer (RDOMAIN /"
-                            + " IDVAR / IDVARVAL) and builds no direct lookup; the parent row's "
-                            + "columns are merged into the primary and are read bare, never as "
-                            + qualifier + ".<column>");
+                    find(StageAErrorKind.DOTTED_REF_UNDECLARED, childSelfMessage(ref, entry));
                 }
                 continue;
             }
-            if (templates)
+            if (templates || childParentQualifier(qualifier, entries))
             {
-                continue; // a concrete qualifier against a name that is not concrete yet
+                continue; // a name not concrete yet, or a Child parent domain (P-14)
             }
             find(StageAErrorKind.DOTTED_REF_UNDECLARED,
                     ref + " references no Match_Datasets entry named " + qualifier
@@ -2875,6 +2873,47 @@ public final class StageAChecker
                             + " the operand reads its type default on every row and the check can"
                             + " never fire");
         }
+    }
+
+
+    /**
+     * P-14 for {@code Child: true} entries ({@code PLAN-merged-evaluation-table} W4, MQ1): a
+     * concrete qualifier no entry names is declared when the rule carries a {@code Child} entry —
+     * it is a parent domain, which the data's {@code RDOMAIN} decides per row, so this checker
+     * cannot know the set. A {@code SUPP} / {@code SQ} dataset is never a parent and stays
+     * undeclared.
+     *
+     * @param qualifier
+     *            the qualifier as written
+     * @param entries
+     *            the rule's {@code Match_Datasets}
+     * @return whether the qualifier is a declared Child parent domain
+     */
+    static boolean childParentQualifier(String qualifier, List<MatchDataset> entries)
+    {
+        String upper = qualifier.toUpperCase(java.util.Locale.ROOT);
+        return isConcreteQualifier(qualifier) && !upper.startsWith("SUPP")
+                && !upper.startsWith("SQ")
+                && net.cumba.corej.core.exec.ChildEntries.hasChildEntry(entries);
+    }
+
+
+    /**
+     * Whether a {@code Child: true} entry is named by a {@code --} template ({@code SUPP--}): its
+     * name, and every instance of it, is the child dataset itself — never one of its parents.
+     */
+    private static boolean childSelfTemplate(MatchDataset entry)
+    {
+        return entry.getName() != null && entry.getName().contains("--");
+    }
+
+
+    private static String childSelfMessage(String what, MatchDataset entry)
+    {
+        return what + " names the Child: true entry " + entry.getName() + " by its own template —"
+                + " that is the child dataset itself, not a parent: a Child entry declares its"
+                + " PARENT domains (P-14, read as <D>.<column>), so no join serves it and it"
+                + " reads the not-supplied default on every row";
     }
 
 
@@ -2961,17 +3000,17 @@ public final class StageAChecker
             noteQualifierCase(name, qualifier, entry);
             if (entry != null && Boolean.TRUE.equals(entry.getChild()))
             {
-                find(StageAErrorKind.DOTTED_REF_CHILD_ENTRY, "Output_Variables entry " + name
-                        + " reads a Child: true entry — a Child entry is joined only through its"
-                        + " pointer (RDOMAIN / IDVAR / IDVARVAL) and builds no direct lookup, so"
-                        + " the column would be silently omitted from every finding; the parent"
-                        + " row's columns are merged into the primary and are reported bare,"
-                        + " never as " + qualifier + ".<column>");
+                if (childSelfTemplate(entry))
+                {
+                    find(StageAErrorKind.DOTTED_REF_UNDECLARED,
+                            childSelfMessage("Output_Variables entry " + name, entry));
+                }
                 continue;
             }
-            if (entry != null || templates || !isConcreteQualifier(qualifier))
+            if (entry != null || templates || !isConcreteQualifier(qualifier)
+                    || childParentQualifier(qualifier, entries))
             {
-                continue; // declared (ignoring case, P-19), or not yet judgeable
+                continue; // declared (ignoring case, P-19; a Child parent, P-14), or not judgeable
             }
             if (variableDomain == null)
             {

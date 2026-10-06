@@ -61,9 +61,6 @@ public final class JoinCache
      * <ul>
      * <li><b>Lookup indexes</b> ({@link #getOrBuild}) — sub-key: the key column names in order.
      * {@code DatasetLookup.buildSharedIndex} reads only the table and those names.</li>
-     * <li><b>Child-match indexes</b> ({@link #getOrBuildChildMatchIndex}) — sub-key: the standard
-     * keys in order and the IDVAR column. A {@code null} build (the parent lacks a column) is
-     * cached too, through {@link ChildMatchIndexHolder}.</li>
      * <li><b>Key-match indexes</b> ({@link #getOrBuildKeyMatchIndex}) — sub-key:
      * {@link KeyMatchIndex.SpecKey}.</li>
      * <li><b>Wildcard column sets</b> ({@link #wildcardColumns}) — sub-key: regex and flags.</li>
@@ -73,27 +70,15 @@ public final class JoinCache
      * Each lives exactly as long as its table ({@code PLAN-keymatch-shared-join-index} Q3 (d)):
      * tables are soft-memoised and may reload as a new instance mid-run, which gets fresh entries
      * and never a stale hit. ⚠ A cached value must never hold its own table strongly, or it pins it
-     * — which is why {@code ChildMatchIndex} no longer carries its parent (D3). Each cache is its
-     * own map, so a long {@code computeIfAbsent} build never holds a bin lock over another cache's
-     * entries.
+     * (the retired {@code ChildMatchIndex} dropped its parent for that reason, D3). Each cache is
+     * its own map, so a long {@code computeIfAbsent} build never holds a bin lock over another
+     * cache's entries.
      * </p>
      */
     public static final class SharedIndexCache
     {
 
-        /** Every input of {@code ChildMatchIndex.build} besides the parent table. */
-        record ChildKey(List<String> standardKeys, String idvarCol)
-        {
-
-            ChildKey
-            {
-                standardKeys = List.copyOf(standardKeys);
-            }
-        }
-
         private final IdentityWeakCache<List<String>, SharedJoinedIndex> lookupIndexes;
-
-        private final IdentityWeakCache<ChildKey, ChildMatchIndexHolder> childMatchIndexes;
 
         private final IdentityWeakCache<KeyMatchIndex.SpecKey, KeyMatchIndex> keyMatchIndexes;
 
@@ -125,7 +110,6 @@ public final class JoinCache
         SharedIndexCache(java.util.function.ToIntFunction<Object> aIdentityHash)
         {
             lookupIndexes = new IdentityWeakCache<>(aIdentityHash);
-            childMatchIndexes = new IdentityWeakCache<>(aIdentityHash);
             keyMatchIndexes = new IdentityWeakCache<>(aIdentityHash);
             wildcardColumns = new WildcardForeignColumnCache(
                     new IdentityWeakCache<>(aIdentityHash));
@@ -220,27 +204,6 @@ public final class JoinCache
 
 
         /**
-         * Returns the cached child-match index for {@code (parent, standardKeys, idvarCol)} or
-         * builds and caches one. The standard-key list is part of the key so two rules declaring
-         * different keys do not share an index.
-         * <p>
-         * May return {@code null} when the parent lacks the named IDVAR column or a declared
-         * standard-key column; the {@code null} is itself cached so the failed build is not retried
-         * per rule.
-         * </p>
-         */
-        @Nullable
-        ChildMatchIndex getOrBuildChildMatchIndex(IDataTable aParent, List<String> aStandardKeyCols,
-                String aIdvarCol)
-        {
-            return childMatchIndexes.getOrBuild(aParent, new ChildKey(aStandardKeyCols, aIdvarCol),
-                    key -> new ChildMatchIndexHolder(
-                            ChildMatchIndex.build(aParent, key.standardKeys(), key.idvarCol())))
-                    .index();
-        }
-
-
-        /**
          * Returns the key-match index for {@code aChild} under {@code aSpec}, building it with
          * {@code aBuild} on first use. Built once per (table instance, spec) even under a
          * concurrent cold start, and immutable afterwards.
@@ -295,35 +258,6 @@ public final class JoinCache
             return lookupIndexes.tableCount();
         }
 
-
-        /** Returns how many child-match indexes (including cached failed builds) are cached. */
-        int childMatchIndexCount()
-        {
-            return childMatchIndexes.valueCount();
-        }
-
-
-        /** Returns how many child-match indexes this cache has built so far. */
-        int childMatchIndexBuildCount()
-        {
-            return childMatchIndexes.buildCount();
-        }
-
-
-        /** Returns how many live parent tables currently hold child-match indexes. */
-        int childMatchIndexedTableCount()
-        {
-            return childMatchIndexes.tableCount();
-        }
-    }
-
-
-    /**
-     * Holder that permits caching a {@code null} {@link ChildMatchIndex} (failed build) in a
-     * {@link ConcurrentHashMap}, which itself forbids {@code null} values.
-     */
-    private record ChildMatchIndexHolder(@Nullable ChildMatchIndex index)
-    {
     }
 
 
@@ -382,8 +316,7 @@ public final class JoinCache
 
     /**
      * Returns the shared index cache, or {@code null} when this {@code JoinCache} was constructed
-     * without one. Exposed so {@link ChildMatchPreMerger} can cache {@link ChildMatchIndex}
-     * instances cross-rule.
+     * without one.
      */
     @Nullable
     SharedIndexCache getSharedIndexCache()
