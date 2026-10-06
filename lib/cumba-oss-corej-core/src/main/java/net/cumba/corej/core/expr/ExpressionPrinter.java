@@ -103,13 +103,18 @@ public final class ExpressionPrinter
     {
         StringBuilder sb = new StringBuilder(c.name()).append('(');
         boolean first = true;
+        // joined(<condition>) takes a whole boolean expression bare (CheckExpressionParser's one
+        // name-keyed arm, PLAN-cg0218-transition-day-precision P1); every other call's boolean
+        // argument keeps its own parentheses.
+        boolean bare = net.cumba.corej.core.exec.JoinedRowFold.JOINED.equals(c.name())
+                && c.args().size() == 1 && c.kwargs().isEmpty();
         for (Expr a : c.args())
         {
             if (!first)
             {
                 sb.append(", ");
             }
-            sb.append(value(a));
+            sb.append(bare ? raw(a) : value(a));
             first = false;
         }
         // Emit kwargs sorted by key so the printed form is deterministic regardless of the

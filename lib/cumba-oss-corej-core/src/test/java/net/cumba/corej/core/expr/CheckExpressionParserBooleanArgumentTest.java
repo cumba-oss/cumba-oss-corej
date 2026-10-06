@@ -57,5 +57,37 @@ class CheckExpressionParserBooleanArgumentTest
     {
         assertThrows(ExpressionException.class,
                 () -> CheckExpressionParser.parse("f(x, filter=A == \"b\")"));
+        // PLAN-cg0218-transition-day-precision: the one exception is joined(…); a quantifier
+        // itself is an ordinary call, so a bare comparison in ITS argument position stays refused
+        assertThrows(ExpressionException.class,
+                () -> CheckExpressionParser.parse("any(A == \"b\")"));
+    }
+
+
+    /**
+     * {@code PLAN-cg0218-transition-day-precision} P1: {@code joined(<condition>)} takes a boolean
+     * by declaration, so the parser reads its argument as a whole expression without the extra
+     * parentheses, the printer writes it bare again, and the parenthesised spelling still parses to
+     * the same tree.
+     */
+    @Test
+    void joinedTakesABareBooleanExpressionAndRoundTrips()
+    {
+        String text = "none(joined(date(SE.SESTDTC) <= date(SVSTDTC) and EPOCH == SE.EPOCH))";
+        Expr e = CheckExpressionParser.parse(text);
+        Expr.Call none = assertInstanceOf(Expr.Call.class, e);
+        Expr.Call joined = assertInstanceOf(Expr.Call.class, none.args().get(0));
+        assertEquals("joined", joined.name());
+        assertInstanceOf(Expr.And.class, joined.args().get(0));
+        assertEquals(text, ExpressionPrinter.print(e), "printed bare, no second parenthesis");
+        assertEquals(e,
+                CheckExpressionParser.parse(
+                        "none(joined((date(SE.SESTDTC) <= date(SVSTDTC) and EPOCH == SE.EPOCH)))"),
+                "the parenthesised spelling is the same tree");
+        assertEquals("any(joined(not empty(SE.EPOCH)))", ExpressionPrinter
+                .print(CheckExpressionParser.parse("any(joined(not empty(SE.EPOCH)))")));
+        assertEquals("all(joined(SE.EPOCH in [\"A\", \"B\"] or empty(SE.EPOCH)))",
+                ExpressionPrinter.print(CheckExpressionParser
+                        .parse("all(joined(SE.EPOCH in [\"A\", \"B\"] or empty(SE.EPOCH)))")));
     }
 }

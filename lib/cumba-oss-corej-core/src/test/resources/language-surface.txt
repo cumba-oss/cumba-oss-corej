@@ -1,6 +1,8 @@
-LEVEL=1
+LEVEL=2
 functions:
 abs(x:unknown) kind=value
+all(list:list<boolean>) kind=boolean
+any(list:list<boolean>) kind=boolean
 available(x:unknown) kind=boolean
 between(x:number, lo:number, hi:number) kind=boolean
 ceil(x:unknown) kind=value
@@ -90,6 +92,7 @@ is_valid_date(x:string) kind=boolean
 is_valid_duration(x:unknown) kind=boolean
 is_valid_name(x:unknown) kind=boolean
 is_valid_testcd(x:unknown) kind=boolean
+joined(condition:boolean) kind=value
 latest_date(a:date, b:date) kind=value
 latest_possible(x:unknown) kind=value
 len(x:unknown) kind=value
@@ -108,6 +111,7 @@ minus(value:unknown, subtract:unknown) kind=value aggregate
 month(x:unknown) kind=value
 natural_key_variables() kind=value aggregate provider=library
 non_empty(x:unknown) kind=boolean
+none(list:list<boolean>) kind=boolean
 normalize_space(x:unknown) kind=value
 not_contains_all(source:unknown, required:unknown?, keys:list<unknown>?) kind=boolean
 num(x:unknown) kind=value

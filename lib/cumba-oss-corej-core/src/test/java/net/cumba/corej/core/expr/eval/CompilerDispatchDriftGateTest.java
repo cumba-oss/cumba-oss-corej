@@ -38,8 +38,8 @@ import org.junit.jupiter.api.Test;
  *
  * <p>
  * ⚠ <b>Non-vacuity is asserted explicitly</b> (the phase-7 lesson, D122b — five silent vacuities,
- * none caught by an assertion): the descriptor counts are pinned (28 + 2 + 13, total parameter
- * count 91), the probe map's key set must equal the declared name sets (a new descriptor without a
+ * none caught by an assertion): the descriptor counts are pinned (31 + 2 + 20, total parameter
+ * count 128), the probe map's key set must equal the declared name sets (a new descriptor without a
  * dispatch-proving probe fails the gate), and the registry-derived sets must be non-empty and
  * exactly equal to the declarations — so losing the SPI registration line, or emptying either side,
  * reds instead of passing over nothing.
@@ -96,6 +96,12 @@ class CompilerDispatchDriftGateTest
         probes.put("is_not_ordered_subset_of",
                 "is_not_ordered_subset_of($source_list, $required_list)");
         probes.put("is_ordered_subset_of", "is_ordered_subset_of($source_list, $required_list)");
+        // PLAN-cg0218-transition-day-precision C8: the quantifiers over joined(…), compiled by
+        // compileJoinedQuantifier (joined itself is a VALUE descriptor, proven below through its
+        // refusing operandPlan arm).
+        probes.put("any", "any(joined(EPOCH == \"X\"))");
+        probes.put("all", "all(joined(EPOCH == \"X\"))");
+        probes.put("none", "none(joined(EPOCH == \"X\"))");
         return probes;
     }
 
@@ -107,20 +113,22 @@ class CompilerDispatchDriftGateTest
     @Test
     void declaredCountsArePinned()
     {
-        assertEquals(28, CompilerDispatchedCalls.booleanCallNames().size(),
-                "compileBoolCall-dispatched boolean calls");
+        assertEquals(31, CompilerDispatchedCalls.booleanCallNames().size(),
+                "compileBoolCall-dispatched boolean calls (28 + the three quantifiers any / all /"
+                        + " none of PLAN-cg0218-transition-day-precision)");
         assertEquals(2, CompilerDispatchedCalls.negationDispatchedBooleanCallNames().size(),
                 "negation-dispatched boolean calls (compileNot's Q1 arms)");
-        assertEquals(19, CompilerDispatchedCalls.valueCallNames().size(),
+        assertEquals(20, CompilerDispatchedCalls.valueCallNames().size(),
                 "compiler-dispatched value calls (vlm_* family, max_value_length, the decode"
                         + " accessors, read_value, W5's max / max_date / min_date, W6's"
-                        + " record_count, W7's distinct)");
+                        + " record_count, W7's distinct, PLAN-cg0218's joined)");
         int parameters = new CompilerDispatchedCalls().functions().stream()
                 .mapToInt(d -> d.parameters().size()).sum();
-        assertEquals(124, parameters, "declared parameter surfaces across the 47 descriptors —"
+        assertEquals(128, parameters, "declared parameter surfaces across the 53 descriptors —"
                 + " update deliberately when a signature legitimately changes (W2a: read_value's"
                 + " four; W5: read_value's group / keep_missings, max's five, the two date"
-                + " extremes' six each; W6: record_count's five; W7: distinct's five)");
+                + " extremes' six each; W6: record_count's five; W7: distinct's five;"
+                + " PLAN-cg0218: one each for any / all / none / joined)");
     }
 
 
@@ -191,7 +199,8 @@ class CompilerDispatchDriftGateTest
     {
         // The value calls are dispatched by operandPlan's dedicated arms; the registry tail
         // (valueCallPlan) refuses their fn == null descriptors loudly. Probe through a value
-        // comparison, whose left side compiles via operandPlan.
+        // comparison, whose left side compiles via operandPlan. (joined's arm refuses every value
+        // position semantically — PLAN-cg0218 P4 — which the filter below reads as dispatch.)
         List<String> drifted = new ArrayList<>();
         for (String name : CompilerDispatchedCalls.valueCallNames())
         {

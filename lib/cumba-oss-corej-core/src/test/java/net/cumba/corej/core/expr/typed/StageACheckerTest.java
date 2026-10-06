@@ -2085,4 +2085,164 @@ class StageACheckerTest
                 pre("library_available()"));
         assertEquals(0, repeatedRowsLints(control), String.valueOf(control.findings()));
     }
+
+    // ------------------------------------------------------------------
+    // PLAN-cg0218-transition-day-precision C4 / C5 / C8 — the quantifiers over joined(…)
+    // ------------------------------------------------------------------
+
+
+    /** A rule joining SE on USUBJID (inner): the shape CDISC-CG0218 declares. */
+    private static Rule ruleJoiningSe()
+    {
+        return ruleJoining("SE", null, "USUBJID");
+    }
+
+
+    private static List<String> joinedQuantifierMessages(StageAReport report)
+    {
+        return report.findings().stream().filter(f -> f.kind() == StageAErrorKind.JOINED_QUANTIFIER)
+                .map(StageAFinding::message).toList();
+    }
+
+
+    @Test
+    void theQuantifiersAreCleanInACheckLevel()
+    {
+        for (String q : List.of("any", "all", "none"))
+        {
+            StageAReport report = check(ruleJoiningSe(), "EPOCH != SE.EPOCH and not " + q
+                    + "(joined(date(SE.SESTDTC) <= date(SVSTDTC) and EPOCH == SE.EPOCH))");
+            assertEquals(List.of(), report.findings(), q);
+            // typed BOOLEAN at record level; joined(…) is list<boolean>
+            TypedExpr quantifier = root(report).children().get(1).children().get(0);
+            assertEquals(Primitive.BOOLEAN, quantifier.type());
+            assertEquals(Granularity.Simple.RECORD, quantifier.level().granularity());
+            assertEquals(new ExprType.ListOf(Primitive.BOOLEAN),
+                    quantifier.children().get(0).type(), "joined(…) is a list<boolean>");
+        }
+        // under or / and / not at any depth of the logical tree
+        assertEquals(List.of(), check(ruleJoiningSe(),
+                "(empty(EPOCH) or not (any(joined(EPOCH == SE.EPOCH)) and none(joined(SE.EPOCH"
+                        + " == \"X\")))) and all(joined(not empty(SE.EPOCH)))").findings());
+    }
+
+
+    @Test
+    void aQuantifierOutsideACheckLevelIsAJoinedQuantifierFinding()
+    {
+        // a binding
+        Rule bound = ruleJoiningSe();
+        bound.setCompiledBindings(List.of(binding("$m", "any(joined(EPOCH == SE.EPOCH))")));
+        StageAReport report = check(bound, "$m == true");
+        assertEquals(List.of(StageAErrorKind.JOINED_QUANTIFIER), kinds(report));
+        assertTrue(joinedQuantifierMessages(report).get(0).contains("binding $m"),
+                report.findings().toString());
+        // the Precondition
+        report = StageAChecker.check(ruleJoiningSe(), levels(pre("EPOCH != SE.EPOCH")),
+                pre("any(joined(EPOCH == SE.EPOCH))"));
+        assertEquals(List.of(StageAErrorKind.JOINED_QUANTIFIER), kinds(report));
+        assertTrue(joinedQuantifierMessages(report).get(0).contains("Precondition"),
+                report.findings().toString());
+        // a comparison operand and a call argument inside a Check level
+        report = check(ruleJoiningSe(), "any(joined(EPOCH == SE.EPOCH)) == true");
+        assertEquals(List.of(StageAErrorKind.JOINED_QUANTIFIER), kinds(report));
+        assertTrue(joinedQuantifierMessages(report).get(0).contains("as an operand or argument"),
+                report.findings().toString());
+        report = check(ruleJoiningSe(),
+                "record_count(group=[USUBJID], filter=(any(joined(EPOCH == SE.EPOCH)))) > 1");
+        assertEquals(List.of(StageAErrorKind.JOINED_QUANTIFIER), kinds(report));
+        // nested inside joined(…)
+        report = check(ruleJoiningSe(), "any(joined(none(joined(EPOCH == SE.EPOCH))))");
+        assertEquals(List.of(StageAErrorKind.JOINED_QUANTIFIER), kinds(report));
+        assertEquals(1, report.armedFindings().size(), "armed: the rule parks");
+    }
+
+
+    @Test
+    void aQuantifierTakesExactlyJoined()
+    {
+        // (a bare boolean where list<boolean> is declared is a PARAMETER_TYPE finding as well)
+        StageAReport report = check(ruleJoiningSe(), "any((EPOCH == SE.EPOCH))");
+        assertTrue(kinds(report).contains(StageAErrorKind.JOINED_QUANTIFIER),
+                report.findings().toString());
+        assertTrue(joinedQuantifierMessages(report).get(0).contains("joined(<condition>)"),
+                report.findings().toString());
+        report = check(ruleJoiningSe(),
+                "any(joined(EPOCH == SE.EPOCH), joined(SE.EPOCH == \"X\"))");
+        assertTrue(kinds(report).contains(StageAErrorKind.JOINED_QUANTIFIER),
+                report.findings().toString());
+        report = check(ruleJoiningSe(), "none()");
+        assertTrue(kinds(report).contains(StageAErrorKind.JOINED_QUANTIFIER),
+                report.findings().toString());
+    }
+
+
+    @Test
+    void joinedOutsideAQuantifierIsAJoinedQuantifierFinding()
+    {
+        StageAReport report = check(ruleJoiningSe(), "joined(EPOCH == SE.EPOCH)");
+        assertTrue(kinds(report).contains(StageAErrorKind.JOINED_QUANTIFIER),
+                report.findings().toString());
+        assertTrue(joinedQuantifierMessages(report).get(0).contains(
+                "only as the argument of any / all / none"), report.findings().toString());
+        // as a value operand
+        report = check(ruleJoiningSe(), "joined(EPOCH == SE.EPOCH) == true");
+        assertTrue(kinds(report).contains(StageAErrorKind.JOINED_QUANTIFIER),
+                report.findings().toString());
+    }
+
+
+    @Test
+    void aNonBooleanJoinedArgumentIsATypeFinding()
+    {
+        // a column reference dereferences to an unknown cell type (§1.2): stage A cannot refuse
+        // it; a statically known non-boolean is refused
+        assertEquals(List.of(), check(ruleJoiningSe(), "any(joined(SE.EPOCH))").findings());
+        StageAReport report = check(ruleJoiningSe(), "any(joined(upper(SE.EPOCH)))");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(report));
+        assertTrue(report.findings().get(0).message().contains("'condition' of 'joined'"),
+                report.findings().toString());
+        report = check(ruleJoiningSe(), "any(joined(1))");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(report));
+    }
+
+
+    @Test
+    void joinedNeedsAKeyedOrRelrecEntry()
+    {
+        // P5: no entry at all
+        StageAReport report = check(new Rule(), "any(joined(EPOCH == \"X\"))");
+        assertEquals(List.of(StageAErrorKind.JOINED_QUANTIFIER), kinds(report));
+        assertTrue(joinedQuantifierMessages(report).get(0).contains("declares none"),
+                report.findings().toString());
+        // a Child: true entry is not a keyed part
+        Rule child = ruleJoining("AE", null, "USUBJID");
+        child.getMatchDatasets().get(0).setChild(true);
+        assertEquals(List.of(StageAErrorKind.JOINED_QUANTIFIER),
+                kinds(check(child, "any(joined(EPOCH == \"X\"))")));
+        // a forward RELREC entry serves
+        assertEquals(List.of(),
+                check(ruleWithForwardRelrec("left"), "any(joined(RELREC._matched_))").findings());
+        // a keyed entry declared n:1 is legal (the list then has one element)
+        Rule nToOne = ruleJoining("DM", null, "USUBJID");
+        nToOne.getMatchDatasets().get(0).setCardinality("n:1");
+        assertEquals(List.of(), check(nToOne, "any(joined(DM.SEX == \"F\"))").findings());
+    }
+
+
+    @Test
+    void aQuantifierInAFilterIsAFilterFinding()
+    {
+        StageAReport report = check(ruleWithFilter("any(joined(AESER == \"Y\"))"),
+                "not AE._matched_");
+        assertTrue(kinds(report).contains(StageAErrorKind.FILTER_INVALID),
+                report.findings().toString());
+        assertTrue(
+                report.findings().stream().map(StageAFinding::message)
+                        .anyMatch(m -> m.contains("no joined rows to quantify over")),
+                report.findings().toString());
+        report = check(ruleWithFilter("joined(AESER == \"Y\")"), "not AE._matched_");
+        assertTrue(kinds(report).contains(StageAErrorKind.FILTER_INVALID),
+                report.findings().toString());
+    }
 }

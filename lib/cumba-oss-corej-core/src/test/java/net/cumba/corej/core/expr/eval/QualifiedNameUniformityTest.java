@@ -96,6 +96,8 @@ class QualifiedNameUniformityTest
 
     static final String TABLE = """
             abs | x | N | V:abs(@N)
+            all | list | - | the argument is joined(<condition>), never a column (PLAN-cg0218 P1 / P4); the condition's leaves are probed by their own rows
+            any | list | - | the argument is joined(<condition>), never a column (PLAN-cg0218 P1 / P4); the condition's leaves are probed by their own rows
             available | x | - | a provider list accessor, never a column
             between | x | N | B:between(@N, 1, 3)
             between | lo | N | B:between(#N, @N, 10)
@@ -259,6 +261,7 @@ class QualifiedNameUniformityTest
             is_valid_duration | x | N | B:is_valid_duration(@U)
             is_valid_name | x | N | B:is_valid_name(@S)
             is_valid_testcd | x | N | B:is_valid_testcd(@S)
+            joined | condition | - | a boolean condition, fused into any / all / none (PLAN-cg0218 P1); its leaves are probed by their own rows
             latest_date | a | N | V:latest_date(date(@D), date("2020-01-10"))
             latest_date | b | N | V:latest_date(date("2020-01-10"), date(@D))
             latest_possible | x | N | V:latest_possible(@D)
@@ -294,6 +297,7 @@ class QualifiedNameUniformityTest
             month | x | N | V:month(@D)
             natural_key_variables | - | - | nullary
             non_empty | x | N | B:non_empty(@S)
+            none | list | - | the argument is joined(<condition>), never a column (PLAN-cg0218 P1 / P4); the condition's leaves are probed by their own rows
             normalize_space | x | N | V:normalize_space(@S)
             not_contains_all | source | N | B:not_contains_all(@S, split_by(#S, ","))
             not_contains_all | required | N | X:list-valued — a $-binding or list accessor; no column channel in this slot
@@ -797,10 +801,11 @@ class QualifiedNameUniformityTest
     {
         // +1 descriptor / +2 parameters / +1 accessor since PLAN-library-template-label-resolution
         // (matches_label_template(label, template) and label_template(…, "LIBRARY")).
-        assertEquals(165, FunctionRegistry.all().size(), "registered descriptors");
-        assertEquals(283,
+        assertEquals(169, FunctionRegistry.all().size(),
+                "registered descriptors (165 + any / all / none / joined, PLAN-cg0218)");
+        assertEquals(287,
                 FunctionRegistry.all().stream().mapToInt(d -> d.parameters().size()).sum(),
-                "declared parameters");
+                "declared parameters (283 + one each for any / all / none / joined)");
         assertEquals(27, MetadataAttribute.values().length, "metadata accessors");
         assertEquals(Set.of("date", "date_part", "num", "time", "time_part"),
                 new TreeSet<>(ExprCompiler.comparisonMarkers()), "comparison markers");
@@ -825,7 +830,9 @@ class QualifiedNameUniformityTest
         assertEquals(48, unprobed.size(), "unprobed name-bearing rows: " + unprobed);
         // T2 r2 L5: the non-name class is pinned too — a row that flips to '-' to dodge a probe
         // moves this count. +1 for label_template's stem= keyword (R2-3), a static selector.
-        assertEquals(137, rows.stream().filter(r -> !r.name()).count(), "non-name rows");
+        // +4 for the quantifier family (PLAN-cg0218): any / all / none take joined(…), joined
+        // takes a condition — none of the four slots can carry a column name itself.
+        assertEquals(141, rows.stream().filter(r -> !r.name()).count(), "non-name rows");
     }
 
     // ------------------------------------------------------------------

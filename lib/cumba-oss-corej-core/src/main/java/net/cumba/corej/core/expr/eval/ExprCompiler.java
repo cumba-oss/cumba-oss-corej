@@ -2015,6 +2015,37 @@ public final class ExprCompiler
     }
 
 
+    /**
+     * {@code any(joined(c))} / {@code all(joined(c))} / {@code none(joined(c))}
+     * ({@code PLAN-cg0218-transition-day-precision} C2 / C3): the inner condition is compiled as
+     * any boolean, and {@link net.cumba.corej.core.exec.JoinedRowFold#fold} folds its bit set over
+     * the evaluation table's real rows per run — one fused plan, no {@code list<boolean>} value.
+     * The inner condition may be the maximal pure subtree (then {@link #cachedBool} wraps it and
+     * its bit set can be a shared cache entry): the fold reads it and writes a new set. A nested
+     * quantifier, or an argument that is not {@code joined(<condition>)}, is refused here as at
+     * stage A (P4, which parks the rule first).
+     */
+    private static ExprProgram.BoolPlan compileJoinedQuantifier(Expr.Call c)
+    {
+        net.cumba.corej.core.exec.JoinedRowFold.Quantifier quantifier = Objects
+                .requireNonNull(net.cumba.corej.core.exec.JoinedRowFold.quantifier(c.name()));
+        if (c.args().size() != 1 || !c.kwargs().isEmpty()
+                || !(c.args().get(0) instanceof Expr.Call joined)
+                || !net.cumba.corej.core.exec.JoinedRowFold.JOINED.equals(joined.name()))
+        {
+            throw unsupported(c.name() + "(…) takes exactly one argument, joined(<condition>) —"
+                    + " the quantifier ranges over the joined rows of the current primary record");
+        }
+        if (joined.args().size() != 1 || !joined.kwargs().isEmpty())
+        {
+            throw unsupported("joined(…) takes exactly one boolean condition");
+        }
+        ExprProgram.BoolPlan condition = compileBool(joined.args().get(0));
+        return run -> net.cumba.corej.core.exec.JoinedRowFold.fold(quantifier, condition.eval(run),
+                run.ctx(), run.rowCount());
+    }
+
+
     private static ExprProgram.BoolPlan compileBoolCall(Expr.Call c)
     {
         ExprProgram.BoolPlan plan = compileBoolCallPlan(c);
@@ -2052,6 +2083,10 @@ public final class ExprCompiler
         if (FunctionRegistry.descriptor(name) == null)
         {
             throw unsupported("no native function '" + name + "'");
+        }
+        if (net.cumba.corej.core.exec.JoinedRowFold.isQuantifier(name))
+        {
+            return compileJoinedQuantifier(c);
         }
         if (("ds_exists".equals(name) || "ds_not_exists".equals(name)) && arity == 1)
         {
@@ -4945,6 +4980,15 @@ public final class ExprCompiler
             if (tagOf(c) != null)
             {
                 yield operandPlan(untag(c), namePosition);
+            }
+            if (net.cumba.corej.core.exec.JoinedRowFold.JOINED.equals(c.name()))
+            {
+                // PLAN-cg0218-transition-day-precision P4 / C2: joined(…) is a list<boolean> that
+                // exists only as the argument of any / all / none, where compileJoinedQuantifier
+                // fuses it into the fold; in any value position it is refused — semantically, so
+                // CompilerDispatchDriftGateTest's value probe reads the refusal as dispatch (stage
+                // A parks a loaded rule first).
+                throw unsupported("joined(…) is legal only as the argument of any / all / none");
             }
             if (COLREF.equals(c.name()))
             {

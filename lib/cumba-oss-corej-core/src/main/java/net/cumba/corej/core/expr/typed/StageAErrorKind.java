@@ -303,6 +303,20 @@ public enum StageAErrorKind
     AGGREGATE_OVER_REPEATED_ROWS(false),
 
     /**
+     * A misuse of the quantifier family over joined rows
+     * ({@code PLAN-cg0218-transition-day-precision} P4 / P5): {@code any} / {@code all} /
+     * {@code none} outside a Check level expression (a binding, the Precondition, a comparison
+     * operand, a call argument) or with an argument other than {@code joined(<condition>)};
+     * {@code joined(…)} anywhere but as a quantifier's direct argument; or {@code joined(…)} in a
+     * rule that declares no keyed or RELREC {@code Match_Datasets} entry (it ranges over the rows
+     * an entry adds; an entry declared {@code n:1} / {@code 1:1} is legal — the list then has one
+     * element). Armed: nothing in either corpus spells the family before this plan, so no shipped
+     * rule parks; the kind exists so a wrong position is a load error naming it, never a silently
+     * per-row answer.
+     */
+    JOINED_QUANTIFIER(true),
+
+    /**
      * The checker itself failed on this rule. Never armed: a checker defect must not park a rule
      * (that would be an evaluation change caused by the instrument).
      */

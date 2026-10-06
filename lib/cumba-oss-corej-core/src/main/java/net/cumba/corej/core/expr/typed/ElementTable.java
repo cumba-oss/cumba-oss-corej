@@ -134,6 +134,9 @@ public final class ElementTable
             // content, a list by carrier, whose element type is the target's (Unknown);
             // referenced_dataset_variables a per-row list of variable names.
             Map.entry("distinct", new ListOf(Unknown.UNKNOWN)),
+            // PLAN-cg0218-transition-day-precision P1: joined(<condition>) is the list<boolean>
+            // the quantifiers any / all / none fold (StageAChecker pins the same type at the call)
+            Map.entry("joined", new ListOf(Primitive.BOOLEAN)),
             Map.entry("referenced_dataset_variables", new ListOf(Primitive.STRING)),
             // §1.5: tuple(…) is sugar for a list<column-reference> composite key
             Map.entry("tuple", new ListOf(Primitive.COLUMN_REFERENCE)),

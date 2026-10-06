@@ -91,6 +91,24 @@ import net.cumba.corej.core.expr.typed.ExprType.Unknown;
 public final class CompilerDispatchedCalls implements FunctionProvider
 {
 
+    /**
+     * The quantifier family over joined rows ({@code PLAN-cg0218-transition-day-precision} P1):
+     * {@code any(L)} / {@code all(L)} / {@code none(L)} over a {@code list<boolean>}, and the one
+     * producer of such a list, {@code joined(c)} — the per-record list of a boolean condition's
+     * answers over the current primary record's rows ({@code exec.JoinedRowFold}). The relation,
+     * explicitly: {@code any(joined(c))} is "some row of this record satisfies c",
+     * {@code none(joined(c))} "no row does", {@code all(joined(c))} "every row does". In this plan
+     * {@code joined(…)} is the only legal argument of the three quantifiers and they are legal only
+     * in a Check level expression (P4, held by {@code StageAChecker});
+     * {@code PLAN-elementwise-boolean-predicates} (D13a) widens the argument to other
+     * {@code list<boolean>} producers and reuses the quantifiers unchanged. The three are BOOLEAN
+     * {@code fn == null} descriptors compiled by {@code ExprCompiler.compileJoinedQuantifier};
+     * {@code joined} is a VALUE {@code fn == null} descriptor whose {@code operandPlan} arm refuses
+     * (it is compiled only as the quantifier's argument, fused into one plan — no
+     * {@code list<boolean>} value exists at run time).
+     */
+    private static final List<String> QUANTIFIERS = List.of("any", "all", "none");
+
     /** Names dispatched by {@code ExprCompiler.compileBoolCall}'s if-cascade (kind BOOLEAN). */
     private static final List<FunctionDescriptor> BOOL_CALLS = buildBoolCalls();
 
@@ -138,7 +156,10 @@ public final class CompilerDispatchedCalls implements FunctionProvider
     }
 
 
-    /** The per-record metadata value calls with dedicated {@code operandPlan} arms. */
+    /**
+     * The per-record metadata value calls with dedicated {@code operandPlan} arms — and
+     * {@code joined}, whose arm refuses outside a quantifier (class javadoc).
+     */
     public static Set<String> valueCallNames()
     {
         return names(VALUE_CALLS);
@@ -222,6 +243,11 @@ public final class CompilerDispatchedCalls implements FunctionProvider
         bool(fns, "shares_elements_with", req("name"), opt("value"), valueKeys());
         bool(fns, "is_not_ordered_subset_of", req("name"), req("value"));
         bool(fns, "is_ordered_subset_of", req("name"), req("value"));
+        // PLAN-cg0218-transition-day-precision C1: the quantifiers over joined(…) (class javadoc).
+        for (String quantifier : QUANTIFIERS)
+        {
+            bool(fns, quantifier, Parameter.required("list", new ListOf(Primitive.BOOLEAN)));
+        }
         return List.copyOf(fns);
     }
 
@@ -257,6 +283,10 @@ public final class CompilerDispatchedCalls implements FunctionProvider
         value(fns, "vlm_decode_matches");
         value(fns, "library_variable_code_pair_matches");
         value(fns, "define_variable_decode_matches");
+        // PLAN-cg0218-transition-day-precision C1: joined(<boolean>) — the list<boolean> the
+        // quantifiers fold (class javadoc); its result type is pinned in StageAChecker, where the
+        // call is typed, since a VALUE descriptor declares no result type.
+        value(fns, "joined", Parameter.required("condition", Primitive.BOOLEAN));
         // Runbook W2a (PLAN-operation-replacements §2.2): the generic filtered cross-dataset read
         // that replaced ts_parameter_value. Its arguments name columns of `domain`, never of the
         // dataset under evaluation, so ExprCompiler.compileReadValue reads them from the call

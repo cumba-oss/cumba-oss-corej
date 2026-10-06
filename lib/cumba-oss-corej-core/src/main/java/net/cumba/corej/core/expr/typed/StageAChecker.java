@@ -1,6 +1,8 @@
 package net.cumba.corej.core.expr.typed;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -12,6 +14,7 @@ import java.util.SequencedMap;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import net.cumba.corej.core.exec.JoinedRowFold;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.convert.BindingInliner;
@@ -154,6 +157,25 @@ public final class StageAChecker
      * {@code Check (ERROR)}, {@code Precondition}, {@code binding $x}.
      */
     private String where = "the expression";
+
+    /**
+     * Whether the root being walked is a Check level ({@code PLAN-cg0218-transition-day-precision}
+     * P4): the quantifiers {@code any} / {@code all} / {@code none} are legal only there, reached
+     * through {@code and} / {@code or} / {@code not} alone ({@link #operandOwners} empty).
+     */
+    private boolean checkLevelRoot;
+
+    /**
+     * The comparison and call nodes whose operands / arguments enclose the node being walked —
+     * empty at a logical position (the root, or under {@code and} / {@code or} / {@code not}).
+     */
+    private final Deque<Expr> operandOwners = new ArrayDeque<>();
+
+    /**
+     * The {@code joined(…)} call the quantifier being walked expects as its argument (node
+     * identity), or {@code null}: a {@code joined} met anywhere else is a P4 finding.
+     */
+    private @Nullable Expr expectedJoined;
 
     /**
      * Review r2 F1: every list literal holding a {@code $} (binding) element, with the root it was
@@ -359,9 +381,11 @@ public final class StageAChecker
             for (Map.Entry<Severity, Expr> level : levels.entrySet())
             {
                 checker.where = "Check (" + level.getKey() + ")";
+                checker.checkLevelRoot = true;
                 typed.put(level.getKey(), checker.walkRoot(level.getValue(), "the Check root"));
                 roots.add(new Root(level.getValue(), "the Check (" + level.getKey() + ")"));
             }
+            checker.checkLevelRoot = false;
             if (precondition != null)
             {
                 typedPrecondition = checker.walkPrecondition(precondition);
@@ -518,8 +542,10 @@ public final class StageAChecker
 
     private TypedExpr binary(Expr.Binary b)
     {
+        operandOwners.push(b);
         TypedExpr left = walk(b.left());
         TypedExpr right = walk(b.right());
+        operandOwners.pop();
         Level level = join(left.level(), right.level());
         List<TypedExpr> children = List.of(left, right);
         switch (b.op())
@@ -1071,7 +1097,11 @@ public final class StageAChecker
             return call(probe);
         }
         String name = c.name();
+        Expr joinedArgument = quantifierPosition(c);
+        Expr outerExpected = expectedJoined;
+        expectedJoined = joinedArgument;
         List<TypedExpr> children = walkArguments(c);
+        expectedJoined = outerExpected;
         if ("value".equals(name) && c.args().isEmpty() && c.kwargs().isEmpty())
         {
             return new TypedExpr(c, Unknown.UNKNOWN, Level.VARIABLE_VALUE, children);
@@ -1193,6 +1223,18 @@ public final class StageAChecker
                 return new TypedExpr(c, typed.type(),
                         groupedLevel(groupKeys(c.kwargs().get("group"))), children);
             }
+            if (JoinedRowFold.isQuantifier(name) || JoinedRowFold.JOINED.equals(name))
+            {
+                // PLAN-cg0218-transition-day-precision C4: joined(c) is the list<boolean> of c's
+                // answers over the current record's rows, the quantifiers fold it to one boolean
+                // per row — both RECORD granularity whatever the condition's own level says (the
+                // descriptor binding above held joined's argument to BOOLEAN and the quantifier's
+                // to list<boolean>; a VALUE descriptor declares no result type, so joined's is
+                // pinned here).
+                ExprType type = JoinedRowFold.JOINED.equals(name) ? new ListOf(Primitive.BOOLEAN)
+                        : Primitive.BOOLEAN;
+                return new TypedExpr(c, type, join(typed.level(), Level.RECORD), children);
+            }
             if (c.kwargs().containsKey("domain"))
             {
                 // DomainScan's `domain=` arm, mirrored (combined review of runbook W2–W8, XCUT
@@ -1206,6 +1248,77 @@ public final class StageAChecker
             return typed;
         }
         return unregistered(c, children);
+    }
+
+
+    /**
+     * The P4 / P5 position rules of {@code PLAN-cg0218-transition-day-precision} for a call, filed
+     * as {@link StageAErrorKind#JOINED_QUANTIFIER}: a quantifier ({@code any} / {@code all} /
+     * {@code none}) is legal only under a Check level root reached through {@code and} / {@code or}
+     * / {@code not}, and takes exactly {@code joined(<condition>)}; {@code joined(…)} is legal only
+     * as that argument (node identity against {@link #expectedJoined}) and only in a rule with a
+     * keyed or RELREC {@code Match_Datasets} entry to range over. Every other call is untouched.
+     *
+     * @return the {@code joined(…)} argument the quantifier expects, or {@code null}
+     */
+    private @Nullable Expr quantifierPosition(Expr.Call c)
+    {
+        String name = c.name();
+        if (JoinedRowFold.isQuantifier(name))
+        {
+            boolean inOperand = !operandOwners.isEmpty();
+            if (!checkLevelRoot || inOperand)
+            {
+                find(StageAErrorKind.JOINED_QUANTIFIER, name + "(…) is legal only in a Check level"
+                        + " expression (under and / or / not), not "
+                        + (inOperand ? "as an operand or argument in " + where : "in " + where)
+                        + at(c));
+            }
+            if (c.args().size() == 1 && c.kwargs().isEmpty()
+                    && c.args().get(0) instanceof Expr.Call joined
+                    && JoinedRowFold.JOINED.equals(joined.name()))
+            {
+                return joined;
+            }
+            find(StageAErrorKind.JOINED_QUANTIFIER, name
+                    + "(…) takes exactly one argument, joined(<condition>) — the quantifier ranges"
+                    + " over the joined rows of the current primary record" + at(c));
+            return null;
+        }
+        if (JoinedRowFold.JOINED.equals(name))
+        {
+            if (c != expectedJoined)
+            {
+                find(StageAErrorKind.JOINED_QUANTIFIER,
+                        "joined(…) is legal only as the argument of any / all / none" + at(c));
+            }
+            if (!hasExpandableEntry())
+            {
+                find(StageAErrorKind.JOINED_QUANTIFIER, "joined(…) ranges over the rows a"
+                        + " Match_Datasets entry adds; this rule declares none (a keyed entry or a"
+                        + " RELREC entry)" + at(c));
+            }
+        }
+        return null;
+    }
+
+
+    /** Whether the rule declares an entry whose rows {@code joined(…)} can range over (P5). */
+    private boolean hasExpandableEntry()
+    {
+        List<MatchDataset> matches = rule.getMatchDatasets();
+        if (matches == null)
+        {
+            return false;
+        }
+        for (MatchDataset md : matches)
+        {
+            if (md != null && net.cumba.corej.core.exec.MergedEvaluation.servedAsKeyedPart(md))
+            {
+                return true;
+            }
+        }
+        return net.cumba.corej.core.exec.RelrecEntries.hasForwardEntry(matches);
     }
 
 
@@ -1412,6 +1525,7 @@ public final class StageAChecker
     private List<TypedExpr> walkArguments(Expr.Call c)
     {
         List<TypedExpr> children = new ArrayList<>(c.args().size() + c.kwargs().size());
+        operandOwners.push(c);
         for (Expr arg : c.args())
         {
             children.add(walk(arg));
@@ -1420,6 +1534,7 @@ public final class StageAChecker
         {
             children.add(walk(kwarg));
         }
+        operandOwners.pop();
         return children;
     }
 
@@ -2632,6 +2747,16 @@ public final class StageAChecker
             {
                 checkWrittenColrefInFilter(c.args().get(0), entryName);
             }
+            if (JoinedRowFold.isQuantifier(c.name()) || JoinedRowFold.JOINED.equals(c.name()))
+            {
+                // PLAN-cg0218-transition-day-precision P4: a filter runs on the entry's own rows
+                // before the join, where there are no joined rows to quantify over
+                find(StageAErrorKind.FILTER_INVALID,
+                        "the Filter on Match_Datasets entry " + entryName + " calls " + c.name()
+                                + "(…) — a filter is evaluated on " + entryName
+                                + "'s OWN rows before the join, so there are no joined rows"
+                                + " to quantify over");
+            }
             c.args().forEach(a -> checkFilterRefs(a, entryName));
             c.kwargs().values().forEach(a -> checkFilterRefs(a, entryName));
         }
@@ -3473,7 +3598,10 @@ public final class StageAChecker
         }
         case Expr.Call c ->
         {
-            c.args().forEach(a -> collectMatchedFlags(a, false, flags, misused));
+            // joined(<condition>) takes a boolean by declaration (PLAN-cg0218 P1): its argument
+            // is a boolean position, so `any(joined(J._matched_ and …))` is the bare flag
+            boolean condition = JoinedRowFold.JOINED.equals(c.name());
+            c.args().forEach(a -> collectMatchedFlags(a, condition, flags, misused));
             c.kwargs().values().forEach(a -> collectMatchedFlags(a, false, flags, misused));
         }
         }

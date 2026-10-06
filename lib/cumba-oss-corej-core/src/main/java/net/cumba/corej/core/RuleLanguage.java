@@ -49,7 +49,7 @@ public final class RuleLanguage
 {
 
     /** The declared rule-language level. Bump it whenever {@link #surface()} changes. */
-    public static final int LEVEL = 1;
+    public static final int LEVEL = 2;
 
     /** The header line of the golden file. */
     public static final String LEVEL_HEADER = "LEVEL=";

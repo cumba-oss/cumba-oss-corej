@@ -282,7 +282,16 @@ public final class CheckExpressionParser
         expect(TokenType.LPAREN, "(");
         List<Expr> args = new ArrayList<>();
         Map<String, Expr> kwargs = new LinkedHashMap<>();
-        if (peek().type() != TokenType.RPAREN)
+        if (net.cumba.corej.core.exec.JoinedRowFold.JOINED.equals(name)
+                && peek().type() != TokenType.RPAREN)
+        {
+            // PLAN-cg0218-transition-day-precision P1: joined(<condition>) takes a boolean by
+            // declaration, so its argument is a whole expression without the parentheses an
+            // ordinary boolean argument needs (`filter=(A == "b")`, D9 / D12 — that arm stays
+            // exactly as it was for every other call). ExpressionPrinter prints it bare again.
+            args.add(parseOr());
+        }
+        else if (peek().type() != TokenType.RPAREN)
         {
             parseArg(args, kwargs);
             while (peek().type() == TokenType.COMMA)
