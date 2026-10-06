@@ -470,5 +470,22 @@ class DefineCtSelectionServiceTest
         org.junit.jupiter.api.Assertions.assertTrue(
                 malformed.getMessage().contains("not a valid CT package id"),
                 malformed.getMessage());
+        // 5e follow-up: seeding cannot supply a malformed id — the message says how to correct
+        // it, carries the MALFORMED_ID marker the surfaces key on, and never advises seeding.
+        for (CtSelection.Source source : List.of(CtSelection.Source.DEFINE, CtSelection.Source.TS))
+        {
+            String message = org.junit.jupiter.api.Assertions
+                    .assertThrows(StudyValidationException.class,
+                            () -> StudyValidationService.requireNamedCtPackagesPresent(factory,
+                                    file, List.of("sdtmct-Draft"), source))
+                    .getMessage();
+            org.junit.jupiter.api.Assertions.assertTrue(message.contains(CtPresence.MALFORMED_ID),
+                    message);
+            org.junit.jupiter.api.Assertions.assertTrue(message.contains("Correct the id"),
+                    message);
+            org.junit.jupiter.api.Assertions.assertFalse(message.contains("Seed"), message);
+            org.junit.jupiter.api.Assertions.assertTrue(message.contains(CtPresence.CT_FIELD_HATCH),
+                    message);
+        }
     }
 }

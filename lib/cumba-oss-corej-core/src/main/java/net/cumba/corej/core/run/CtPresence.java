@@ -33,6 +33,13 @@ public final class CtPresence
      */
     public static final String UNKNOWN_RELEASE = "no CDISC CT release of that date is known to the store";
 
+    /**
+     * The phrase of an abort for a CT package id that is not of the form {@code
+     * <family>ct-<yyyy-mm-dd>}: seeding cannot help either, so a surface leaves its seeding remedy
+     * out for it as for {@link #UNKNOWN_RELEASE} (5e follow-up).
+     */
+    public static final String MALFORMED_ID = "is not a valid CT package id";
+
     private CtPresence()
     {
     }
@@ -100,13 +107,9 @@ public final class CtPresence
                 continue;
             }
             String problem = presence == Presence.MALFORMED
-                    ? "is not a valid CT package id (expected <family>ct-<yyyy-mm-dd>)"
+                    ? MALFORMED_ID + " (expected <family>ct-<yyyy-mm-dd>)"
                     : "is not held by the metadata store at " + aStoreFile;
-            // LOW-2: a well-formed id the published enumeration lacks is no CDISC CT release at
-            // all (a mistyped date) — seeding cannot help. An empty enumeration says nothing.
-            String remedy = presence == Presence.ABSENT && !aPublished.isEmpty()
-                    && !aPublished.contains(id) ? "; " + UNKNOWN_RELEASE + ". Correct the date, or "
-                            : ". Seed the store with it, or ";
+            String remedy = remedy(presence, aPublished, id);
             if (aSource == CtSelection.Source.DEFINE)
             {
                 throw new StudyValidationException("The Define-XML declares "
@@ -126,5 +129,25 @@ public final class CtPresence
             throw new StudyValidationException("Controlled-terminology package '" + id
                     + "' was requested, but it " + problem + ".");
         }
+    }
+
+
+    /**
+     * The remedy clause of a DEFINE- or TS-source abort, ending where {@link #CT_FIELD_HATCH}
+     * follows. Seeding is advised only when it can supply the id: never for a malformed id (5e
+     * follow-up) nor, LOW-2, for a well-formed id the published enumeration lacks — no CDISC CT
+     * release at all (a mistyped date). An empty enumeration says nothing.
+     */
+    private static String remedy(Presence aPresence, Collection<String> aPublished, String aId)
+    {
+        if (aPresence == Presence.MALFORMED)
+        {
+            return ". Correct the id, or ";
+        }
+        if (aPresence == Presence.ABSENT && !aPublished.isEmpty() && !aPublished.contains(aId))
+        {
+            return "; " + UNKNOWN_RELEASE + ". Correct the date, or ";
+        }
+        return ". Seed the store with it, or ";
     }
 }
