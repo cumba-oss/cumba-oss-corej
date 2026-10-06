@@ -5,8 +5,9 @@ import java.util.List;
 /**
  * The three lists a surface that shows a rule's {@code Output_Variables} needs, in one place
  * ({@code PLAN-rule-catalogue-effective-output-variables} P1; owner rulings D1 (b) / D3,
- * 2026-10-05): the <b>effective</b> report columns, the subset the author <b>wrote</b>, and the
- * names the author <b>excluded</b> with {@code !X}.
+ * 2026-10-05): the <b>effective</b> report columns, the include entries the author <b>wrote</b>
+ * (not necessarily a subset of the effective ones, see {@code authored}), and the names the author
+ * <b>excluded</b> with {@code !X}.
  *
  * <p>
  * ⛔ The engine owns {@code includes} / {@code exclusions} ({@link OutputVariableToken}) and the

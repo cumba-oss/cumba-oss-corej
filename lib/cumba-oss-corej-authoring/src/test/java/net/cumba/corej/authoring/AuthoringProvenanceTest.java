@@ -5,10 +5,26 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URI;
+import java.net.URL;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.CodeSource;
+import java.security.ProtectionDomain;
+import java.security.cert.Certificate;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import net.cumba.corej.core.expr.convert.CheckLevelNodes;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@link AuthoringProvenance} reads the {@code git.properties} the parent pom's git-commit-id
@@ -61,6 +77,69 @@ class AuthoringProvenanceTest
         assertTrue(core.containsKey("git.dirty"), core.toString());
         assertEquals(new Properties(), AuthoringProvenance.gitPropertiesOf(String.class),
                 "a class from no file location carries no provenance, and does not throw");
+    }
+
+    /** A class to define again under a code source of the test's choosing. */
+    static final class Probe
+    {
+    }
+
+
+    /** Defines {@link Probe} with a given code source. */
+    private static final class CodeSourceLoader extends ClassLoader
+    {
+
+        CodeSourceLoader()
+        {
+            super(AuthoringProvenanceTest.class.getClassLoader());
+        }
+
+
+        Class<?> probeAt(URL aLocation) throws IOException
+        {
+            byte[] bytes;
+            try (InputStream in = AuthoringProvenanceTest.class
+                    .getResourceAsStream("AuthoringProvenanceTest$Probe.class"))
+            {
+                bytes = in.readAllBytes();
+            }
+            ProtectionDomain domain = new ProtectionDomain(
+                    new CodeSource(aLocation, (Certificate[]) null), null, this, null);
+            return defineClass(Probe.class.getName(), bytes, 0, bytes.length, domain);
+        }
+    }
+
+    /**
+     * Confirmation look on the fold: a code source that is a file <em>inside</em> an open zip file
+     * system (a jar nested in a jar) is no directory and a regular file, and {@code Path.toFile()}
+     * on it throws {@code UnsupportedOperationException} — which escaped "no provenance, not a
+     * crash".
+     */
+    @Test
+    void aCodeSourceInsideAZipFileSystemCarriesNoProvenance(@TempDir Path aDir) throws IOException
+    {
+        Path outer = aDir.resolve("outer.zip");
+        try (OutputStream out = Files.newOutputStream(outer);
+                ZipOutputStream zip = new ZipOutputStream(out))
+        {
+            zip.putNextEntry(new ZipEntry("inner.jar"));
+            zip.write(new byte[]
+            {
+                    'P', 'K'
+            });
+            zip.closeEntry();
+        }
+        URI uri = URI.create("jar:" + outer.toUri() + "!/inner.jar");
+        // newFileSystem(URI, …) — not (Path, …) — registers the file system, so Path.of(jar:…)
+        // and the provenance read find it
+        try (FileSystem zipFs = FileSystems.newFileSystem(URI.create("jar:" + outer.toUri()),
+                Map.of()))
+        {
+            assertTrue(Files.isRegularFile(Path.of(uri)),
+                    "the nested entry is a file of the open" + " zip file system: " + zipFs);
+            Class<?> probe = new CodeSourceLoader().probeAt(uri.toURL());
+            assertEquals(new Properties(), AuthoringProvenance.gitPropertiesOf(probe));
+        }
     }
 
 

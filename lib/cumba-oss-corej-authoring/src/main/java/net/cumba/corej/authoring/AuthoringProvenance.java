@@ -33,7 +33,11 @@ import net.cumba.corej.core.expr.convert.CheckLevelNodes;
  * in the engine's core module ({@code CheckLevelNodes}, the loader), installed separately — a fresh
  * authoring jar over a stale core one is the same hazard one level down. And a jar built from a
  * working tree with uncommitted changes carries its HEAD's id but not its HEAD's bytes, so
- * {@code git.dirty} is recorded (the parent pom includes it) and a dirty jar is refused.
+ * {@code git.dirty} is recorded (the parent pom includes it) and a dirty jar is refused. ⚠ For
+ * git-commit-id an <b>untracked</b> file makes the tree dirty too, so a stray scratch file in the
+ * {@code cumba-corej} checkout builds a jar this refuses under
+ * {@code -Dcorej.authoring.expectedCommit} — the refusal says "WITH uncommitted changes"; commit or
+ * remove the file and install again (confirmation look, F5 follow-up).
  * </p>
  */
 public final class AuthoringProvenance
@@ -139,10 +143,12 @@ public final class AuthoringProvenance
             return props;
         }
         catch (IOException | URISyntaxException | IllegalArgumentException
-                | FileSystemNotFoundException | SecurityException _)
+                | FileSystemNotFoundException | UnsupportedOperationException | SecurityException _)
         {
             // FileSystemNotFoundException / IllegalArgumentException for a URI no default file
-            // system serves (review 8a-A F5): no provenance, not a crash
+            // system serves (review 8a-A F5), UnsupportedOperationException from toFile() when the
+            // code source is a file inside an open zip file system (a jar nested in a jar;
+            // confirmation look): no provenance, not a crash
             return new Properties();
         }
     }
