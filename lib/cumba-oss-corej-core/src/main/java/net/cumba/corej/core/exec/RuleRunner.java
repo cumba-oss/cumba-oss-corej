@@ -785,7 +785,7 @@ public final class RuleRunner
             // schema is not trusted) — otherwise the refusal stands as the rule's ERROR.
             // ⭐ The four KeyGates refusals join this catch (PLAN-merge-followups item 4, D40
             // probe): KeyGates.check runs inside the same view build, but its exceptions are the
-            // engine's own RuntimeExceptions, not the datatable's MergeException, so a D4 key-type
+            // engine's own unchecked ones, not the datatable's MergeException, so a D4 key-type
             // mismatch (or a degenerate, unresolved or malformed key) escaped to the outer catch
             // and pre-empted the declared skip — measured
             // (MatchFilterExecutionTest.aDeclaredStageBSkipBeatsAKeyGatesRefusal). Same
