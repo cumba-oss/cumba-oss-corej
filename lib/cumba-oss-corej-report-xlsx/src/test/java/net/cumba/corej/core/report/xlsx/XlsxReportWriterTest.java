@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.List;
+import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.report.ReportAssembler;
@@ -408,10 +409,42 @@ class XlsxReportWriterTest
             assertEquals("Executed", header.getCell(6).getStringCellValue());
             assertEquals("Skipped", header.getCell(7).getStringCellValue());
             assertEquals("Errored", header.getCell(8).getStringCellValue());
+            assertEquals("RELREC Key", header.getCell(9).getStringCellValue());
             Row row = rr.getRow(1);
             assertEquals(2.0, row.getCell(6).getNumericCellValue());
             assertEquals(1.0, row.getCell(7).getNumericCellValue());
             assertEquals(0.0, row.getCell(8).getNumericCellValue());
+            assertNull(string(rr, 1, 9), "no RELREC entry: the key cell stays blank");
+        }
+    }
+
+
+    /**
+     * OD-9 / {@code PLAN-merge-followups} FU-4 (a) — the v2 rule sheet's {@code RELREC Key} column:
+     * a rule with a forward RELREC entry writes the key its merge paired on (by the run standard
+     * the sections carry); a rule without one leaves the cell blank.
+     */
+    @Test
+    void rulesReportSheetCarriesTheRelrecKeyColumn() throws Exception
+    {
+        ValidationReport report = ValidationReport.builder().members(List.of())
+                .executedCoreIds(List.of(CORE_001, "CORE-002")).build();
+        Rule relrec = rule(CORE_001);
+        MatchDataset md = new MatchDataset();
+        md.setName("RELREC");
+        md.setJoinType("left");
+        relrec.setMatchDatasets(List.of(md));
+        try (XSSFWorkbook wb = render(new ReportAssembler().report(report)
+                .conformance(ReportAssembler.Conformance.builder().standard("sendig")
+                        .version("3-1-1").build())
+                .rules(List.of(relrec, rule("CORE-002"))).sections(), 10_000))
+        {
+            Sheet rr = wb.getSheet("Rules Report");
+            assertEquals("RELREC Key", string(rr, 0, 9));
+            assertEquals(CORE_001, string(rr, 1, 0));
+            assertEquals("STUDYID, RELID", string(rr, 1, 9), "SEND: the key the merge paired on");
+            assertEquals("CORE-002", string(rr, 2, 0));
+            assertNull(string(rr, 2, 9), "no forward RELREC entry: blank");
         }
     }
 

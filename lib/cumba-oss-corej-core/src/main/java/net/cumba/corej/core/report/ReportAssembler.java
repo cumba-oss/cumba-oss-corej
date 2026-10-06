@@ -13,11 +13,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.exec.FindVars;
+import net.cumba.corej.core.exec.RelrecEntries;
 import net.cumba.corej.core.model.Authority;
 import net.cumba.corej.core.model.AuthorityStandard;
 import net.cumba.corej.core.model.Reference;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleIdentifier;
+import net.cumba.datatable.merge.MergeStandard;
 import net.cumba.datatable.report.RowFindingSlab;
 import net.cumba.datatable.report.ValidationFinding;
 import net.cumba.datatable.report.ValidationFindingLocation;
@@ -991,7 +993,7 @@ public final class ReportAssembler
     }
 
 
-    private static Map<String, Object> rulesReportRow(@Nullable String coreId, @Nullable Rule rule,
+    private Map<String, Object> rulesReportRow(@Nullable String coreId, @Nullable Rule rule,
             String status, @Nullable String message, long runtimeMs, ExecutionCounts counts)
     {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -1009,7 +1011,50 @@ public final class ReportAssembler
         m.put(ReportSections.RULES_EXECUTED_COUNT, counts.executed());
         m.put(ReportSections.RULES_SKIPPED_COUNT, counts.skipped());
         m.put(ReportSections.RULES_ERRORED_COUNT, counts.errored());
+        // OD-9 / FU-4 (a): a rule with a forward RELREC entry states the key its RELREC merge
+        // paired on. ⛔ v2-only like the counts (owner: "v2 only"); stripped by the same
+        // projection. Absent — not null — on every other row, so a non-RELREC row is unchanged.
+        if (rule != null && RelrecEntries.spec(rule.getMatchDatasets()) != null)
+        {
+            m.put(ReportSections.RELREC_KEY, relrecKeyOf(mergeStandard()));
+        }
         return m;
+    }
+
+
+    /**
+     * The standard the run's RELREC merges read their relationships under — the conformance's
+     * {@code Standard} (the run standard's name, {@code StudyValidationService}'s
+     * {@code runStandard.standard()}) through {@link MergeStandard#ofStandardName}, which is
+     * exactly {@code StudyValidationService.mergeStandardOf} on the same string: the merge and the
+     * report cannot disagree. {@link MergeStandard#UNKNOWN} with no conformance.
+     */
+    private MergeStandard mergeStandard()
+    {
+        return MergeStandard.ofStandardName(conformance != null ? conformance.standard : null);
+    }
+
+
+    /**
+     * The RELREC key a forward {@code RELREC} merge pairs the related records on under
+     * {@code aStandard}, as {@code Rules_Report} states it (OD-9): SDTMIG 3.4 sec. 8.2's
+     * {@code (STUDYID, USUBJID, RELID)}, SENDIG 3.1.1 sec. 8.2's {@code (STUDYID, RELID)}, and
+     * under {@link MergeStandard#UNKNOWN} the inference the merge applied, spelled out — the
+     * assembler never sees the data, so it states the rule, not its outcome.
+     *
+     * @param aStandard
+     *            the run's merge standard
+     * @return the key statement
+     */
+    static String relrecKeyOf(MergeStandard aStandard)
+    {
+        return switch (aStandard)
+        {
+        case SDTM -> "STUDYID, USUBJID, RELID";
+        case SEND -> "STUDYID, RELID";
+        case UNKNOWN -> "inferred from the data: STUDYID, RELID when RELREC carries POOLID,"
+                + " else STUDYID, USUBJID, RELID";
+        };
     }
 
     // ------------------------------------------------------------------

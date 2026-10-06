@@ -127,17 +127,25 @@ public final class XlsxReportWriter implements ReportWriter
     static final String DETAIL_COLUMNS_HEADER = "Columns (name only)";
 
     /**
-     * D65: the three trailing count columns ({@code executed} / {@code skipped} / {@code errored})
-     * have no header in the shipped template (copied verbatim from the Python resources), so
+     * D65: the three count columns ({@code executed} / {@code skipped} / {@code errored}) and,
+     * after them, the OD-9 {@code relrec_key} column ({@code PLAN-merge-followups} FU-4 (a): the
+     * RELREC key a forward-RELREC rule's merge paired on, blank on every other rule) have no header
+     * in the shipped template (copied verbatim from the Python resources), so
      * {@link #rulesReportSheet} appends their headers programmatically — the same pattern as the
      * Java-only {@code Skipped Rules} sheet.
      */
     private static final List<String> RULES_COLUMNS = List.of("core_id", "version", "cdisc_rule_id",
-            "fda_rule_id", "message", "status", "executed", "skipped", "errored");
+            "fda_rule_id", "message", "status", "executed", "skipped", "errored", "relrec_key");
 
-    /** Header labels for the D65 count columns appended to the {@code Rules Report} sheet. */
-    private static final List<String> RULES_COUNT_HEADERS = List.of("Executed", "Skipped",
-            "Errored");
+    /**
+     * Header labels for the v2-only columns appended to the {@code Rules Report} sheet: the D65
+     * counts and the RELREC key, in {@link #RULES_COLUMNS}' order.
+     */
+    private static final List<String> RULES_APPENDED_HEADERS = List.of("Executed", "Skipped",
+            "Errored", "RELREC Key");
+
+    /** The RELREC key column's width: its longest value is the spelled-out inference. */
+    private static final int RELREC_KEY_COLUMN_WIDTH = 48 * 256;
 
     private static final List<String> SKIPPED_COLUMNS = List.of("core_id", "dataset", "reason");
 
@@ -307,12 +315,12 @@ public final class XlsxReportWriter implements ReportWriter
 
 
     /**
-     * Returns the {@code Rules Report} sheet with the three D65 count-column headers
-     * ({@code Executed} / {@code Skipped} / {@code Errored}) appended to its header row when they
-     * are not already present. The shipped template (copied verbatim from the Python resources)
-     * carries six header cells; the appended headers reuse the last template header's style so the
-     * row reads as one. A future template that ships the headers — or a second call on the same
-     * workbook — is used as-is.
+     * Returns the {@code Rules Report} sheet with the v2-only column headers — the three D65 counts
+     * ({@code Executed} / {@code Skipped} / {@code Errored}) and the OD-9 {@code RELREC Key} —
+     * appended to its header row when they are not already present. The shipped template (copied
+     * verbatim from the Python resources) carries six header cells; the appended headers reuse the
+     * last template header's style so the row reads as one. A future template that ships the
+     * headers — or a second call on the same workbook — is used as-is.
      */
     static @Nullable Sheet rulesReportSheet(XSSFWorkbook aWorkbook)
     {
@@ -326,7 +334,7 @@ public final class XlsxReportWriter implements ReportWriter
         {
             header = sheet.createRow(0);
         }
-        int firstCountCol = RULES_COLUMNS.size() - RULES_COUNT_HEADERS.size();
+        int firstCountCol = RULES_COLUMNS.size() - RULES_APPENDED_HEADERS.size();
         // ⚠ Presence is a non-blank VALUE, not a non-null cell: the shipped template carries
         // styled-but-empty placeholder cells beyond the six real headers, and POI returns those as
         // non-null — a getCell(...) != null guard silently skipped the append (measured: the
@@ -338,18 +346,20 @@ public final class XlsxReportWriter implements ReportWriter
             return sheet; // headers already present (a template that ships them, or a re-call)
         }
         // firstCountCol is structurally positive (RULES_COLUMNS is the six template columns plus
-        // the count columns), so the last template header is always a valid style source; it may
-        // still be a null CELL on a template without a header row.
+        // the appended columns), so the last template header is always a valid style source; it
+        // may still be a null CELL on a template without a header row.
         Cell styleSource = header.getCell(firstCountCol - 1);
-        for (int i = 0; i < RULES_COUNT_HEADERS.size(); i++)
+        for (int i = 0; i < RULES_APPENDED_HEADERS.size(); i++)
         {
             Cell cell = header.getCell(firstCountCol + i, MissingCellPolicy.CREATE_NULL_AS_BLANK);
             if (styleSource != null)
             {
                 cell.setCellStyle(styleSource.getCellStyle());
             }
-            cell.setCellValue(RULES_COUNT_HEADERS.get(i));
-            sheet.setColumnWidth(firstCountCol + i, 12 * 256);
+            String label = RULES_APPENDED_HEADERS.get(i);
+            cell.setCellValue(label);
+            sheet.setColumnWidth(firstCountCol + i,
+                    "RELREC Key".equals(label) ? RELREC_KEY_COLUMN_WIDTH : 12 * 256);
         }
         return sheet;
     }

@@ -29,7 +29,8 @@ import org.jspecify.annotations.Nullable;
  * {@code List<String>}.</li>
  * <li>{@code rulesReport} — {@code Rules_Report} rows ({@code core_id, version, cdisc_rule_id,
  * fda_rule_id, message, status, runtime_ms}, plus the v2-only D65 counts
- * {@code executed, skipped, errored} — see {@link #RULES_EXECUTED_COUNT}).</li>
+ * {@code executed, skipped, errored} — see {@link #RULES_EXECUTED_COUNT} — and, on a rule with a
+ * forward RELREC entry, the v2-only {@code relrec_key} — see {@link #RELREC_KEY}).</li>
  * <li>{@code skippedRules} — {@code Skipped_Rules} rows ({@code core_id, dataset, reason}); a Java
  * extension without a Python counterpart.</li>
  * <li>{@code combinedFindings} — the v2 {@code Findings} rows
@@ -125,6 +126,22 @@ public record ReportSections(Map<String, @Nullable Object> conformanceDetails,
     static final String RULES_ERRORED_COUNT = "errored";
 
     /**
+     * ⭐ <b>v2-only</b> {@code Rules_Report} row key stating the RELREC key a rule's forward
+     * {@code RELREC} merge paired the related records on ({@code PLAN-merged-evaluation-table}
+     * OD-9, "stated in the report's rule metadata"; {@code PLAN-merge-followups} FU-4 (a)): under
+     * SDTM {@code STUDYID, USUBJID, RELID}, under SEND {@code STUDYID, RELID}, and when the run's
+     * standard selects neither the inference the merge applied, spelled out. Present <b>only</b> on
+     * the rows of rules with a forward RELREC entry (the keyless {@code Name: RELREC} entry): a
+     * {@code Child} or keyed RELREC entry declares its own keys and states nothing.
+     *
+     * <p>
+     * ⛔ v2-only for the same reason as {@link #RULES_EXECUTED_COUNT} (owner, FU-4: "v2 only"):
+     * {@link #toExportDocument} strips it with the counts.
+     * </p>
+     */
+    static final String RELREC_KEY = "relrec_key";
+
+    /**
      * Projects these sections into the <b>v1</b> export document: the nested {@link LinkedHashMap}
      * whose key order <em>is</em> the published v1 schema
      * ({@code Conformance_Details, Dataset_Details, Issue_Summary, Issue_Details, Rules_Report,
@@ -151,7 +168,7 @@ public record ReportSections(Map<String, @Nullable Object> conformanceDetails,
         root.put(DATASET_DETAILS, datasetDetails());
         root.put(ISSUE_SUMMARY, issueSummary());
         root.put(ISSUE_DETAILS, issueDetails());
-        root.put(RULES_REPORT, withoutExecutionCountKeys(rulesReport()));
+        root.put(RULES_REPORT, withoutV2OnlyRuleKeys(rulesReport()));
         root.put(SKIPPED_RULES, skippedRules());
         return root;
     }
@@ -206,27 +223,19 @@ public record ReportSections(Map<String, @Nullable Object> conformanceDetails,
         return m;
     }
 
+    /** The v2-only {@code Rules_Report} row keys: the D65 counts and the RELREC key. */
+    private static final List<String> V2_ONLY_RULE_KEYS = List.of(RULES_EXECUTED_COUNT,
+            RULES_SKIPPED_COUNT, RULES_ERRORED_COUNT, RELREC_KEY);
 
     /**
-     * {@code rows} without the v2-only D65 execution-count keys, for the frozen v1 projection.
-     * Stripped rather than assumed absent, for the same round-trip reason as
-     * {@link #withoutToleranceKey}: a document read back through {@link #fromExportDocument}
-     * carries whatever its source had.
+     * {@code rows} without the v2-only keys — the D65 execution counts and the RELREC key
+     * ({@link #RELREC_KEY}) — for the frozen v1 projection. Stripped rather than assumed absent,
+     * for the same round-trip reason as {@link #withoutToleranceKey}: a document read back through
+     * {@link #fromExportDocument} carries whatever its source had.
      */
-    private static List<Map<String, Object>> withoutExecutionCountKeys(
-            List<Map<String, Object>> rows)
+    private static List<Map<String, Object>> withoutV2OnlyRuleKeys(List<Map<String, Object>> rows)
     {
-        boolean any = false;
-        for (Map<String, Object> row : rows)
-        {
-            if (row.containsKey(RULES_EXECUTED_COUNT) || row.containsKey(RULES_SKIPPED_COUNT)
-                    || row.containsKey(RULES_ERRORED_COUNT))
-            {
-                any = true;
-                break;
-            }
-        }
-        if (!any)
+        if (rows.stream().noneMatch(ReportSections::carriesV2OnlyRuleKey))
         {
             return rows;
         }
@@ -234,12 +243,16 @@ public record ReportSections(Map<String, @Nullable Object> conformanceDetails,
         for (Map<String, Object> row : rows)
         {
             Map<String, Object> m = new LinkedHashMap<>(row);
-            m.remove(RULES_EXECUTED_COUNT);
-            m.remove(RULES_SKIPPED_COUNT);
-            m.remove(RULES_ERRORED_COUNT);
+            m.keySet().removeAll(V2_ONLY_RULE_KEYS);
             out.add(m);
         }
         return out;
+    }
+
+
+    private static boolean carriesV2OnlyRuleKey(Map<String, Object> row)
+    {
+        return V2_ONLY_RULE_KEYS.stream().anyMatch(row::containsKey);
     }
 
 

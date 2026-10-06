@@ -82,6 +82,17 @@ import org.junit.jupiter.api.io.TempDir;
  * </p>
  *
  * <p>
+ * ⚠ <b>Regenerated a fifth time, deliberately, for {@code PLAN-merge-followups} FU-4 (a) (OD-9: the
+ * RELREC key stated in the report's rule metadata)</b>: the {@code Rules Report} sheet gained the
+ * appended tenth column {@code RELREC Key} (v2's {@code relrec_key}, present on a rule with a
+ * forward RELREC entry only). Rendered through this class's own {@link #render()} (the
+ * {@link XlsxWindowsSeparatorRender} entry point on the module's test classpath) and verified
+ * cell-by-cell against the previous golden (resolved values, every sheet): exactly <b>one</b>
+ * difference — {@code Rules Report!J1}, the new header; the fixture's rules carry no key, so column
+ * J stays blank on every data row. The ratchet resumes from here.
+ * </p>
+ *
+ * <p>
  * ⚠⚠ <b>Compared by per-entry content digest, never by file hash.</b> An XLSX is a zip, and a zip
  * carries a per-entry modification timestamp: two runs of <em>identical</em> code produce files
  * with different bytes and different SHA-256s. A file-hash comparison here would fail every time

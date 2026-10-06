@@ -10,6 +10,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
 import java.util.List;
 import java.util.Map;
+import net.cumba.corej.core.model.MatchDataset;
+import net.cumba.corej.core.model.Rule;
+import net.cumba.corej.core.model.RuleCore;
 import net.cumba.datatable.report.FindingKind;
 import net.cumba.datatable.report.RowFindingSlab;
 import net.cumba.datatable.report.Severity;
@@ -175,6 +178,53 @@ class ReportDocumentV2Test
         // v2 replaces the flat per-row Issue_Details with the combined Findings array.
         assertFalse(v2.containsKey("Issue_Details"));
         assertTrue(v2.containsKey("Findings"));
+    }
+
+
+    /**
+     * OD-9 / {@code PLAN-merge-followups} FU-4 (a): v2's {@code Rules_Report} row of a rule with a
+     * forward RELREC entry carries {@code relrec_key}; the v1 projection of the SAME sections does
+     * not (v1 is frozen), and a row of a rule without such an entry carries it in neither.
+     */
+    @Test
+    void v2CarriesTheRelrecKeyAndV1DoesNot()
+    {
+        Rule relrec = rule(CORE_252);
+        MatchDataset md = new MatchDataset();
+        md.setName("RELREC");
+        md.setJoinType("left");
+        relrec.setMatchDatasets(List.of(md));
+        ReportSections sections = new ReportAssembler()
+                .report(sampleReport()).conformance(ReportAssembler.Conformance.builder()
+                        .standard("sdtmig").version("3-4").build())
+                .rules(List.of(relrec, rule(CORE_ERR))).sections();
+
+        Map<String, Object> v2 = sections.toCombinedExportDocument();
+        Map<String, Object> v1 = sections.toExportDocument();
+        assertEquals("STUDYID, USUBJID, RELID", rulesRow(v2, CORE_252).get("relrec_key"),
+                "v2 states the RELREC key of a forward-RELREC rule");
+        assertFalse(rulesRow(v1, CORE_252).containsKey("relrec_key"), "v1 is frozen");
+        assertFalse(rulesRow(v2, CORE_ERR).containsKey("relrec_key"), "no RELREC entry: no key");
+        assertFalse(rulesRow(v1, CORE_ERR).containsKey("relrec_key"));
+    }
+
+
+    private static Map<String, Object> rulesRow(Map<String, Object> export, String coreId)
+    {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) export.get("Rules_Report");
+        return rows.stream().filter(r -> coreId.equals(r.get("core_id"))).findFirst()
+                .orElseThrow(() -> new AssertionError("no row for " + coreId + ": " + rows));
+    }
+
+
+    private static Rule rule(String coreId)
+    {
+        Rule r = new Rule();
+        RuleCore core = new RuleCore();
+        core.setId(coreId);
+        r.setCore(core);
+        return r;
     }
 
 

@@ -7,8 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
+import net.cumba.corej.core.run.StudyValidationResult;
 import net.cumba.datatable.report.FindingKind;
 import net.cumba.datatable.report.RowFindingSlab;
 import net.cumba.datatable.report.Severity;
@@ -30,6 +33,12 @@ import org.junit.jupiter.api.Test;
  * 2026-08-11), and D57 rules that per-execution detail lands in v2 or a new section, never by
  * widening v1. {@link #v1DocumentNeverCarriesTheCountKeys()} and
  * {@link #aRoundTrippedV2DocumentReprojectsToV1WithoutTheCounts()} are the pins.
+ * </p>
+ *
+ * <p>
+ * The same row carries the v2-only {@code relrec_key} on a rule with a forward RELREC entry (OD-9,
+ * {@code PLAN-merge-followups} FU-4 (a)): the key the merge paired on, by the run's standard —
+ * {@link #aForwardRelrecRuleStatesItsKeyByTheRunsStandard()} and its siblings.
  * </p>
  */
 class RulesReportExecutionCountsTest
@@ -244,8 +253,166 @@ class RulesReportExecutionCountsTest
     }
 
     // ------------------------------------------------------------------
+    // The RELREC key (OD-9, FU-4 (a) of PLAN-merge-followups)
+    // ------------------------------------------------------------------
+
+
+    /**
+     * A rule with a forward RELREC entry states the key its merge paired on, by the run's standard
+     * — the conformance's {@code Standard} is the run standard's name, so
+     * {@code MergeStandard.ofStandardName} over it is exactly the merge's
+     * {@code StudyValidationService.mergeStandardOf}. Under neither (ADaM, no conformance) the
+     * inference the merge applied is spelled out, because the assembler never sees the data.
+     */
+    @Test
+    void aForwardRelrecRuleStatesItsKeyByTheRunsStandard()
+    {
+        ValidationReport report = ValidationReport.builder().members(List.of())
+                .executedCoreIds(List.of(CORE_001)).build();
+        assertEquals("STUDYID, USUBJID, RELID",
+                v2Row(report, "sdtmig", CORE_001, forwardRelrec(rule(CORE_001))).get(RELREC_KEY));
+        assertEquals("STUDYID, RELID",
+                v2Row(report, "sendig", CORE_001, forwardRelrec(rule(CORE_001))).get(RELREC_KEY));
+        String inferred = "inferred from the data: STUDYID, RELID when RELREC carries POOLID,"
+                + " else STUDYID, USUBJID, RELID";
+        assertEquals(inferred,
+                v2Row(report, "adamig", CORE_001, forwardRelrec(rule(CORE_001))).get(RELREC_KEY));
+        assertEquals(inferred,
+                v2Row(report, null, CORE_001, forwardRelrec(rule(CORE_001))).get(RELREC_KEY),
+                "no conformance at all: UNKNOWN");
+        // the key sits after the counts, so a reader of the row sees the D65 trio unchanged
+        List<String> keys = List
+                .copyOf(v2Row(report, "sdtmig", CORE_001, forwardRelrec(rule(CORE_001))).keySet());
+        assertEquals(List.of("executed", "skipped", "errored", RELREC_KEY),
+                keys.subList(keys.size() - 4, keys.size()));
+    }
+
+
+    /**
+     * Only the forward (keyless, non-Child) {@code RELREC} entry states a key: a keyed RELREC entry
+     * and a {@code Child: true} RELREC entry declare their own keys, a keyed AE join is not a
+     * RELREC merge, a rule without entries merges nothing — none of them carries the key, absent
+     * rather than null (the row is byte-identical to a pre-FU-4 one).
+     */
+    @Test
+    void aRuleWithoutAForwardRelrecEntryCarriesNoKey()
+    {
+        ValidationReport report = ValidationReport.builder().members(List.of())
+                .executedCoreIds(List.of(CORE_001)).build();
+        Rule keyedRelrec = joining(rule(CORE_001), "RELREC", "USUBJID", "RELID");
+        Rule childRelrec = joining(rule(CORE_001), "RELREC", "USUBJID", "IDVAR", "IDVARVAL");
+        childRelrec.getMatchDatasets().get(0).setChild(Boolean.TRUE);
+        Rule keyedAe = joining(rule(CORE_001), "AE", "USUBJID");
+        for (Rule rule : List.of(keyedRelrec, childRelrec, keyedAe, rule(CORE_001)))
+        {
+            Map<String, Object> row = v2Row(report, "sdtmig", CORE_001, rule);
+            assertFalse(row.containsKey(RELREC_KEY), String.valueOf(row));
+        }
+        // an orphan row (a finding of a rule the run did not supply) has no entries to read
+        ValidationReport orphan = ValidationReport.builder()
+                .members(List.of(member("AE", error("CORE-999", "boom"))))
+                .executedCoreIds(List.of("CORE-999")).build();
+        assertFalse(v2Row(orphan, "sdtmig", "CORE-999").containsKey(RELREC_KEY));
+    }
+
+
+    /** The key is v2-only: stripped from v1 and from a round-tripped v2 re-projected to v1. */
+    @Test
+    void v1DocumentNeverCarriesTheRelrecKey()
+    {
+        ValidationReport report = ValidationReport.builder().members(List.of())
+                .executedCoreIds(List.of(CORE_001)).build();
+        ReportSections sections = new ReportAssembler().report(report).conformance(sdtm())
+                .rules(List.of(forwardRelrec(rule(CORE_001)))).sections();
+        assertTrue(rows(sections.toCombinedExportDocument()).get(0).containsKey(RELREC_KEY),
+                "precondition: v2 carries the key");
+        assertFalse(rows(sections.toExportDocument()).get(0).containsKey(RELREC_KEY),
+                "v1 is frozen — no relrec_key");
+        Map<String, Object> v1Again = ReportSections
+                .fromExportDocument(sections.toCombinedExportDocument()).toExportDocument();
+        Map<String, Object> row = rows(v1Again).get(0);
+        assertFalse(row.containsKey(RELREC_KEY), "a round-tripped v2 re-projects without it");
+        assertTrue(row.containsKey("status"), "the frozen v1 fields survive the strip");
+    }
+
+
+    /**
+     * The production path: {@code StudyValidationResult.sections()} hands the assembler the
+     * conformance {@code StudyValidationService} built with {@code runStandard.standard()}, so the
+     * stated key follows the run standard — the same name the merge's {@code mergeStandardOf} read.
+     */
+    @Test
+    void aStudyValidationResultStatesTheKeyFromItsRunStandard()
+    {
+        ValidationReport report = ValidationReport.builder().members(List.of())
+                .executedCoreIds(List.of(CORE_001)).build();
+        ReportAssembler.Conformance send = ReportAssembler.Conformance.builder().standard("sendig")
+                .version("3-1-1").build();
+        StudyValidationResult result = new StudyValidationResult(report, send, List.of(),
+                List.of(forwardRelrec(rule(CORE_001))), 0, 0.0, List.of(), Map.of(), Set.of());
+        assertEquals("STUDYID, RELID",
+                rows(result.sections().toCombinedExportDocument()).get(0).get(RELREC_KEY));
+    }
+
+    // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
+
+    private static final String RELREC_KEY = "relrec_key";
+
+    private static ReportAssembler.Conformance sdtm()
+    {
+        return ReportAssembler.Conformance.builder().standard("sdtmig").version("3-4").build();
+    }
+
+
+    /** {@code rule} with a forward RELREC entry: {@code Name: RELREC}, no keys, not Child. */
+    private static Rule forwardRelrec(Rule rule)
+    {
+        MatchDataset md = new MatchDataset();
+        md.setName("RELREC");
+        md.setJoinType("left");
+        rule.setMatchDatasets(List.of(md));
+        return rule;
+    }
+
+
+    private static Rule joining(Rule rule, String name, String... keys)
+    {
+        MatchDataset md = new MatchDataset();
+        md.setName(name);
+        md.setKeys(List.of(keys));
+        md.setJoinType("left");
+        rule.setMatchDatasets(List.of(md));
+        return rule;
+    }
+
+
+    private static List<Map<String, Object>> rows(Map<String, Object> document)
+    {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) document.get(RULES_REPORT);
+        return rows;
+    }
+
+
+    private static Map<String, Object> v2Row(ValidationReport report, String standard,
+            String coreId, Rule... rules)
+    {
+        ReportAssembler assembler = new ReportAssembler().report(report).rules(List.of(rules));
+        if (standard != null)
+        {
+            assembler.conformance(ReportAssembler.Conformance.builder().standard(standard).build());
+        }
+        for (Map<String, Object> row : rows(assembler.sections().toCombinedExportDocument()))
+        {
+            if (coreId.equals(row.get("core_id")))
+            {
+                return row;
+            }
+        }
+        throw new AssertionError("no Rules_Report row for " + coreId);
+    }
 
 
     private static List<Map<String, Object>> v2Rows(ValidationReport report, Rule... rules)
