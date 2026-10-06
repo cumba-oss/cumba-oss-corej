@@ -25,11 +25,14 @@ import org.junit.jupiter.api.Test;
  * {@code calculateStudyDay} arithmetic and the D36 missing hand-through; the rule-level cases pin
  * what the port changes: the reference is read through the declared join on every row copy, so with
  * a duplicated {@code DM.USUBJID} the binding agrees with the Check (ONE finding where the
- * operation's subject map gave TWO — the engine-level twin of
- * {@code CDISC-CG0006-invalid_duplicate_dm_usubjid-AE.cdt}); and the negative controls of R1 and
- * R6: one argument is an arity load error, a quoted reference — positional or {@code reference=} —
- * fails to load as a literal where a column is required. Mockito-free: real tables from the
- * testkit, real vectors.
+ * operation's subject map gave TWO). ⚑ That row-copy pin lives here alone, on a rule declaring no
+ * {@code Cardinality}: the corpus scenario of the same shape,
+ * {@code CDISC-CG0006-invalid_duplicate_dm_usubjid-AE.cdt}, is since W3f of
+ * {@code PLAN-merged-evaluation-table} (OD-10) a MERGE_REFUSED error — CG0006 authors {@code n:1}
+ * on its DM join, so a duplicated DM refuses the merge instead of copying the record. The negative
+ * controls of R1 and R6: one argument is an arity load error, a quoted reference — positional or
+ * {@code reference=} — fails to load as a literal where a column is required. Mockito-free: real
+ * tables from the testkit, real vectors.
  */
 class StudyDayTest
 {
