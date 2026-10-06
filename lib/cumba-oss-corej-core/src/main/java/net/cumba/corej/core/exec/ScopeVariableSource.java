@@ -2,7 +2,6 @@ package net.cumba.corej.core.exec;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -21,14 +20,19 @@ import org.jspecify.annotations.Nullable;
  * scope-side <b>supersets</b>:
  * <ol>
  * <li>a {@code --} in the qualifier is resolved against the primary table
- * ({@link DatasetIdentity#resolveWildcard}), so {@code SUPP--.QVAL} works — the Check side does not
- * do this;</li>
- * <li>{@link DatasetResolver#resolve} by exact dataset name;</li>
- * <li>failing that, the union of {@link DatasetResolver.WithInventory#tablesForDomain}, so a split
- * domain ({@code LB} → {@code lbch}/{@code lbhe}/{@code lbur}) resolves to its members' columns —
- * the Check side does not do this either;</li>
- * <li>for a <em>literal</em> variable, a SUPP-pivot fallback scanning {@code SUPP<QUALIFIER>} for a
- * row with {@code QNAM == <variable>} (Fix #39 parity, shared implementation with
+ * ({@link DatasetIdentity#resolveDatasetWildcard}: {@code SUPP--} / {@code SQAP--} is the
+ * supplemental family of the primary's domain code, every other shape as before), so
+ * {@code SUPP--.QVAL} works — the Check side does not do this;</li>
+ * <li>{@link DatasetResolver#resolve} by dataset name, ignoring case;</li>
+ * <li>failing that, the members of a split domain ({@code LB} → {@code lbch}/{@code lbhe}/
+ * {@code lbur}: {@link SplitDomainResolution#membersOf}, fault-tolerant per entry) or — for a
+ * supplemental family name ({@code SUPPAE}, {@code SQAPMH}; {@code PLAN-split-supp-resolution} D2)
+ * — the family's members ({@link SplitDomainResolution#suppFamilyMembers}: {@code SUPPAE1} +
+ * {@code SUPPAE2}, the exact {@code SUPPAE} among them), so the entry resolves to its members'
+ * columns, never the union — a type question is {@code ScopeMatcher}'s {@code agreedKind};</li>
+ * <li>for a <em>literal</em> variable, a SUPP-pivot fallback over the qualifier's SUPP sources (the
+ * one chooser's members, {@link SplitDomainResolution#suppMergeSources}) for a row with
+ * {@code QNAM == <variable>} (Fix #39 parity, shared implementation with
  * {@code OperatorRegistry}).</li>
  * </ol>
  * Because of (1) and (3) a hoist of an {@code exists DS.COL} guard from a {@code Check} into
@@ -211,8 +215,11 @@ public final class ScopeVariableSource
 
     /**
      * W2a (C1 ruled (a)): whether {@code column} is delivered as a supplemental qualifier of the
-     * PRIMARY dataset — {@code Supp_Merge} on and {@code SUPP<domain>} of the primary carrying the
-     * {@code QNAM}. The bare-entry counterpart of {@link #existsViaSuppQnam}.
+     * PRIMARY dataset — {@code Supp_Merge} on and one of the primary's SUPP sources (the one
+     * chooser's members, {@link SplitDomainResolution#suppMergeSources}: on {@code LBCH} its own
+     * {@code SUPPLBCH}, on {@code AE} the {@code SUPPAE} family — exactly what the merged view
+     * feeds, {@code PLAN-split-supp-resolution} PG-H1) carrying the {@code QNAM}. The bare-entry
+     * counterpart of {@link #existsViaSuppQnam}.
      *
      * @param column
      *            the bare column name
@@ -225,16 +232,26 @@ public final class ScopeVariableSource
             return false;
         }
         String name = primary.getMetaData().getName();
-        String domain = name == null ? null : DatasetIdentity.domainOfDataset(name, resolver);
+        if (name == null)
+        {
+            return false;
+        }
+        String domain = DatasetIdentity.domainOfDataset(name, resolver);
         if (domain == null || domain.isEmpty())
         {
             return false;
         }
         return suppMemo.computeIfAbsent(KEY_SEP + domain + KEY_SEP + column, _ ->
         {
-            IDataTable supp = resolveIgnoringCase("SUPP" + domain);
-            return supp != null && supp != primary
-                    && SuppQualifiers.ofSupp(primary, domain, supp, sharedIndex).contains(column);
+            for (IDataTable supp : SplitDomainResolution.suppMergeSources(resolver, primary, name,
+                    domain, null))
+            {
+                if (SuppQualifiers.ofSupp(primary, domain, supp, sharedIndex).contains(column))
+                {
+                    return true;
+                }
+            }
+            return false;
         });
     }
 
@@ -245,14 +262,12 @@ public final class ScopeVariableSource
      * qualified scope entries into line with the {@code Check}-side dotted {@code exists}.
      *
      * <p>
-     * The set itself is {@link SuppQualifiers}' — the merged schema's QNAM set, shared with the
-     * Check-side dotted {@code var_exists} — so the case-sensitive {@code QNAM} comparison (a
-     * {@code QNAM} cell is a string value, register {@code CIT §3}) and the blank-cell skip are
-     * identical on both paths. Review L8 — one deliberate deviation: the "don't look for
-     * {@code SUPPSUPPAE}" guard below is case-<em>in</em>sensitive, where the Check side tests
-     * {@code domain.startsWith("SUPP")} exactly. That makes a filename-derived lowercase
-     * {@code suppae} behave correctly here; it is unobservable otherwise, since it would take a
-     * dataset literally named {@code SUPPsuppae} to tell the two apart.
+     * The set itself is {@link SuppQualifiers}' — the merged schema's QNAM set over the qualifier's
+     * SUPP sources (the one chooser's members), shared with the Check-side dotted
+     * {@code var_exists} — so the case-sensitive {@code QNAM} comparison (a {@code QNAM} cell is a
+     * string value, register {@code CIT §3}) and the blank-cell skip are identical on both paths,
+     * and both guard a SUPP / SQ / RELREC qualifier the same way
+     * ({@link DatasetIdentity#hasNoSupplemental}, ignoring case).
      * </p>
      *
      * @param qualifier
@@ -264,7 +279,9 @@ public final class ScopeVariableSource
     public boolean existsViaSuppQnam(String qualifier, String column)
     {
         String resolved = resolveQualifierName(qualifier);
-        return suppMerge && !resolved.toUpperCase(Locale.ROOT).startsWith("SUPP")
+        // a SUPP / SQ / RELREC qualifier has no supplemental of its own (the IG's rule; the guard
+        // follows the merge's, PLAN-split-supp-resolution C5)
+        return suppMerge && !DatasetIdentity.hasNoSupplemental(resolved)
                 && suppMemo.computeIfAbsent(resolved + KEY_SEP + column, _ ->
                 {
                     // W3d: the merged schema's QNAM set for the foreign dataset (SuppQualifiers,
@@ -292,50 +309,67 @@ public final class ScopeVariableSource
      * {@code QVAL} is Char), so a study shipping something unusual is reported honestly.
      * </p>
      *
+     * <p>
+     * The SUPP tables read are the qualifier's SUPP sources (the one chooser's members,
+     * {@link SplitDomainResolution#suppMergeSources}; {@code PLAN-split-supp-resolution} C5): the
+     * type every member's {@code QVAL} agrees on; members that disagree, or no member with a
+     * {@code QVAL} column, answer {@link DataValueType#MISSING}.
+     * </p>
+     *
      * @param qualifier
      *            the qualifier half of the entry, {@code --} not yet resolved
-     * @return {@code QVAL}'s declared type, or {@link DataValueType#MISSING} when the SUPP table or
-     *         its {@code QVAL} column is absent — i.e. "unknown", which does not block (D2)
+     * @return {@code QVAL}'s declared type, or {@link DataValueType#MISSING} when no SUPP table or
+     *         {@code QVAL} column is there, or the members disagree — i.e. "unknown", which does
+     *         not block (D2)
      */
     public DataValueType suppQvalType(String qualifier)
     {
         String resolved = resolveQualifierName(qualifier);
         return qvalMemo.computeIfAbsent(resolved, name ->
         {
-            IDataTable supp = resolver.resolve("SUPP" + name);
-            if (supp == null)
+            IDataTable foreign = resolveIgnoringCase(name);
+            String domain = java.util.Objects
+                    .requireNonNullElse(DatasetIdentity.domainOfDataset(name, resolver), name);
+            DataValueType agreed = null;
+            for (IDataTable supp : SplitDomainResolution.suppMergeSources(resolver, foreign, name,
+                    domain, null))
             {
-                return DataValueType.MISSING;
+                DataTableMeta meta = supp.getMetaData();
+                int idx = meta.getColumnIndex("QVAL");
+                DataValueType type = idx < 0 ? null : meta.getColumn(idx).getType();
+                if (type == null)
+                {
+                    return DataValueType.MISSING;
+                }
+                if (agreed != null && agreed != type)
+                {
+                    return DataValueType.MISSING; // the members disagree: unknown
+                }
+                agreed = type;
             }
-            DataTableMeta meta = supp.getMetaData();
-            int idx = meta.getColumnIndex("QVAL");
-            if (idx < 0)
-            {
-                return DataValueType.MISSING;
-            }
-            DataValueType type = meta.getColumn(idx).getType();
-            return type == null ? DataValueType.MISSING : type;
+            return agreed == null ? DataValueType.MISSING : agreed;
         });
     }
 
 
     /**
      * Resolves a {@code --} in the qualifier against the primary table, mirroring how
-     * {@code Match_Datasets.Name} is resolved for the merged view ({@code MergedEvaluation}).
+     * {@code Match_Datasets.Name} is resolved for the merged view ({@code MergedEvaluation}) — the
+     * one helper {@link DatasetIdentity#resolveDatasetWildcard}.
      * <p>
-     * Review M4 — note the asymmetry this inherits. {@link DatasetIdentity#resolveWildcard}
-     * substitutes the primary's <b>table name</b>, not its domain code, so on a split member
-     * {@code lbch} the qualifier {@code SUPP--} becomes {@code SUPPlbch} (which does not exist)
-     * rather than {@code SUPPLB}. The <em>unqualified</em> leg of the same gate resolves {@code --}
-     * against the domain code instead ({@code ScopeMatcher.resolveScopeVariable}). The behaviour
-     * here is deliberate: it is exactly what {@code Match_Datasets.Name} does, and diverging would
-     * mean a qualifier resolved one way for the join and another for the scope gate. A qualified
-     * {@code SUPP--.} entry is therefore not usable on split datasets.
+     * Review M4 of the scope gate recorded an asymmetry here: {@code resolveWildcard} substituted
+     * the primary's <b>table name</b>, so on a split member {@code lbch} a qualified {@code SUPP--}
+     * became {@code SUPPlbch} while the unqualified leg resolved {@code --} against the domain
+     * code. Since {@code PLAN-split-supp-resolution} (Q6, D6) {@code SUPP--} is the supplemental
+     * family of the primary's <em>domain code</em> in every dataset-name position — {@code SUPPLB}
+     * on {@code lbch}, {@code SQAPMH} on {@code APMH} (D10) — so the qualifier, the join and the
+     * unqualified leg agree, and a qualified {@code SUPP--.} entry is usable on a split dataset. A
+     * SUPP / SQAP primary keeps Fix #33 (the parent prefix).
      * </p>
      */
     private String resolveQualifierName(String qualifier)
     {
-        String resolved = DatasetIdentity.resolveWildcard(qualifier, primary);
+        String resolved = DatasetIdentity.resolveDatasetWildcard(qualifier, primary);
         return resolved != null ? resolved : qualifier;
     }
 
@@ -352,9 +386,8 @@ public final class ScopeVariableSource
     }
 
     /**
-     * Length of an SDTM domain code — the only qualifier for which the split-domain union can
-     * possibly match, since {@code tablesForDomain} compares against each table's {@code DOMAIN}
-     * cell.
+     * Length of an SDTM domain code — the only qualifier for which the split-domain members can
+     * possibly match, since the walk compares against each table's {@code DOMAIN} cell.
      */
     private static final int DOMAIN_CODE_LENGTH = 2;
 
@@ -362,26 +395,41 @@ public final class ScopeVariableSource
     private List<DataTableMeta> resolveMetas(String qualifier)
     {
         String name = resolveQualifierName(qualifier);
+        if (SplitDomainResolution.isSuppFamilyName(name))
+        {
+            // PLAN-split-supp-resolution D2 / D3 (PG-H1): a supplemental family name answers its
+            // members' metas — the exactly-named table among them — never the union
+            return metasOf(SplitDomainResolution.suppFamilyMembers(resolver, name, null));
+        }
         IDataTable exact = resolveIgnoringCase(name);
         if (exact != null)
         {
             return List.of(exact.getMetaData());
         }
         // No dataset by that name: the qualifier may be an SDTM domain split across members
-        // (LB -> lbch/lbhe/lbur). tablesForDomain is the existing data-driven union.
+        // (LB -> lbch/lbhe/lbur) — the seam's own member walk (SplitDomainResolution.membersOf:
+        // memoised per run, sorted, fault-tolerant per entry, so an unreadable UNRELATED dataset
+        // never throws through the scope gate — PLAN-split-supp-resolution confirmation look
+        // side (a); tablesForDomain resolved every entry unguarded).
         //
-        // Review M3 — bound the walk. tablesForDomain resolves EVERY dataset in the inventory and
+        // Review M3 — bound the walk. The walk resolves EVERY dataset in the inventory and
         // reads a DOMAIN cell from each; in production `resolve` loads and parses the dataset, so
         // an unbounded call pulls the whole submission into memory. It can only ever match a
         // two-character SDTM domain code (that is what a DOMAIN cell holds), so a longer
-        // qualifier — an ADaM dataset name, a SUPP name, or a typo, i.e. the common "genuinely
-        // absent" case — is answered immediately without touching the inventory.
+        // qualifier — an ADaM dataset name, a split SUPP member name, or a typo, i.e. the common
+        // "genuinely absent" case — is answered immediately without touching the inventory.
         if (name.length() != DOMAIN_CODE_LENGTH)
         {
             return List.of();
         }
-        List<DataTableMeta> metas = new ArrayList<>();
-        for (IDataTable table : resolver.tablesForDomain(name))
+        return metasOf(SplitDomainResolution.membersOf(resolver, name, null));
+    }
+
+
+    private static List<DataTableMeta> metasOf(List<IDataTable> members)
+    {
+        List<DataTableMeta> metas = new ArrayList<>(members.size());
+        for (IDataTable table : members)
         {
             metas.add(table.getMetaData());
         }

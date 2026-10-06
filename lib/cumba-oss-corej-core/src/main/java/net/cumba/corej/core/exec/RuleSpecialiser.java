@@ -364,9 +364,12 @@ public final class RuleSpecialiser
 
     /**
      * Resolves a non-{@code Child} {@code Match_Datasets} name through the same data-driven
-     * substitution the join builder applies ({@code DatasetIdentity.resolveWildcard} — Fix #33
-     * SUPP/SQAP parent-stripping included), so the two can never disagree. {@code Child: true}
-     * entries are primary-name <em>patterns</em> and stay verbatim (see the class javadoc).
+     * substitution the join builder applies ({@link DatasetIdentity#resolveDatasetWildcard}:
+     * {@code SUPP--} / {@code SQAP--} is the supplemental family of the primary's domain code —
+     * {@code SUPPLB} on {@code LBCH}, {@code SQAPMH} on {@code APMH}
+     * ({@code PLAN-split-supp-resolution} Q6, D6, D10) — Fix #33 SUPP/SQAP parent-stripping
+     * included), so the two can never disagree. {@code Child: true} entries are primary-name
+     * <em>patterns</em> and stay verbatim (see the class javadoc).
      */
     private static MatchDataset resolveMatchDataset(MatchDataset md, IDataTable table)
     {
@@ -379,7 +382,7 @@ public final class RuleSpecialiser
         {
             return md;
         }
-        String resolved = DatasetIdentity.resolveWildcard(name, table);
+        String resolved = DatasetIdentity.resolveDatasetWildcard(name, table);
         if (java.util.Objects.equals(resolved, name))
         {
             return md;

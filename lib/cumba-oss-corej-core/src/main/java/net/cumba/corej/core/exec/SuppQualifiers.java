@@ -1,6 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import net.cumba.datatable.IDataTable;
@@ -12,15 +13,21 @@ import net.cumba.datatable.merge.SuppMergeSpec;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The supplemental qualifiers a dataset's {@code SUPP<dataset>} / {@code SUPP<domain>} deliver —
- * the {@code QNAM} set of the merged schema's SUPP parts ({@code PLAN-merged-evaluation-table} W3d,
- * M8 / MQ9), read for the EXISTENCE surfaces: the dotted {@code var_exists} of an undeclared
- * dataset, a {@code Requirements.Variables} entry ({@link ScopeVariableSource}), the scope gate.
- * The set is what the datatable's shared matching keeps once the row maps are built (W1: the index
- * is released, the QNAM set stays), taken from a merge of the SUPP over the dataset's <b>empty</b>
- * primary — one pass over the SUPP table, no row map — and memoised per SUPP table for the run
- * through {@link JoinCache.SharedIndexCache}. (The engine's own QNAM index retired with the SUPP
- * pivot in W6.)
+ * The supplemental qualifiers a dataset's SUPP sources deliver — the {@code QNAM} set of the merged
+ * schema's SUPP parts ({@code PLAN-merged-evaluation-table} W3d, M8 / MQ9), read for the EXISTENCE
+ * surfaces: the dotted {@code var_exists} of an undeclared dataset, a
+ * {@code Requirements.Variables} entry ({@link ScopeVariableSource}), the scope gate. The sources
+ * are the one chooser's ({@link SplitDomainResolution#suppMergeSources}, D4 (b) of
+ * {@code PLAN-split-supp-resolution}): the dataset's own {@code SUPP<dataset>} and the domain-level
+ * members of its {@code SUPP<domain>} / {@code SQAP<xx>} family — exactly the datasets the merged
+ * view feeds, so what this set reports present is what a value read finds. The set is the union
+ * over the members of what the datatable's shared matching keeps once the row maps are built (W1:
+ * the index is released, the QNAM set stays), each taken from a merge of the member over the
+ * dataset's <b>empty</b> primary — one pass over the SUPP table, no row map — and memoised per
+ * member for the run through {@link JoinCache.SharedIndexCache}. The members are read one by one,
+ * never as a union, so an {@code Invalid} family (a type clash across members) still answers its
+ * members' qualifiers here; the view refuses it (D3). (The engine's own QNAM index retired with the
+ * SUPP pivot in W6.)
  */
 final class SuppQualifiers
 {
@@ -31,8 +38,8 @@ final class SuppQualifiers
 
 
     /**
-     * The qualifiers delivered for {@code table}: the union over the IG's SUPP names for it
-     * ({@link SuppMergeSpec#defaultSuppNames}, P-7) that resolve and are not the table itself.
+     * The qualifiers delivered for {@code table}: the union over its SUPP sources
+     * ({@link SplitDomainResolution#suppMergeSources}).
      *
      * @param table
      *            the dataset (the primary, or a foreign dataset named by a qualified entry)
@@ -84,13 +91,10 @@ final class SuppQualifiers
             @Nullable String ruleId)
     {
         Set<String> out = null;
-        for (String name : SuppMergeSpec.defaultSuppNames(dataset, domain))
+        List<IDataTable> sources = SplitDomainResolution.suppMergeSources(resolver, table, dataset,
+                domain, ruleId);
+        for (IDataTable supp : sources)
         {
-            IDataTable supp = SplitDomainResolution.resolveTableOrThrow(resolver, name, ruleId);
-            if (supp == null || supp == table)
-            {
-                continue;
-            }
             Set<String> qnams = ofSupp(table != null ? table : supp, domain, supp, cache);
             if (out == null)
             {
@@ -107,7 +111,10 @@ final class SuppQualifiers
 
     /**
      * The {@code QNAM} set of one SUPP table as the merged schema lists it for {@code table},
-     * memoised per SUPP table for the run.
+     * memoised per SUPP table for the run — every {@code QNAM} the table carries, whether or not it
+     * became a column of the base (P-10 skips a name the base owns as a column, the existence set
+     * keeps it), so the set does not depend on the base ({@code PLAN-split-supp-resolution}
+     * confirmation look F3, measured false).
      *
      * @param table
      *            the dataset the SUPP qualifies

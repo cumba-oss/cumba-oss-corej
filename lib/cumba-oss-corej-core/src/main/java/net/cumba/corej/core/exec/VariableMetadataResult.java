@@ -112,7 +112,11 @@ public final class VariableMetadataResult
         }
 
         // T1 of PLAN-merged-evaluation-table: the one dataset-name resolution (case-insensitive)
-        net.cumba.datatable.IDataTable table = SplitDomainResolution.byName(resolver, domainName);
+        // — through the seam since PLAN-split-supp-resolution (D4 (a), Fix #358 D7: every reader
+        // widens): a split domain answers its union's metadata, a split SUPP / SQAP family its
+        // members' union; an un-unionable split is the reader's ERROR, as read_value's is
+        net.cumba.datatable.IDataTable table = SplitDomainResolution.resolveTableOrThrow(resolver,
+                domainName, null);
         if (table == null)
         {
             return new VariableMetadataResult(Map.of(), metadataField);

@@ -228,8 +228,12 @@ public final class ScalarMetadataFunctions
         String domain = ListFunctionSupport.staticString(args.get(1));
         IDataTable table = run.ctx().getTable();
         DatasetResolver resolver = run.ctx().getDatasetResolver();
-        String source = DatasetIdentity.resolveWildcard(domain, table);
-        if (source == null || (!ALL_DATASETS.equals(source) && resolver.resolve(source) == null))
+        // the dataset name resolves as every dataset-name position does (PLAN-split-supp-
+        // resolution D4 (a), D6): `--` through the one helper, presence through the seam — a split
+        // domain and a split SUPP / SQAP family are present, as read_value(domain=) reads them
+        String source = DatasetIdentity.resolveDatasetWildcard(domain, table);
+        if (source == null || (!ALL_DATASETS.equals(source)
+                && !SplitDomainResolution.isPresentAsDomain(resolver, source)))
         {
             return ConstVector.of(null);
         }

@@ -274,12 +274,19 @@ class WildcardPrefixResolutionTest
     void dotQualifiedDatasetName_keepsTheFullDomainCode()
     {
         // `SUPP--.QVAL` names a DATASET, not a column. On an APMH primary the supplemental dataset
-        // is SUPPAPMH; substituting the variable prefix would give SUPPMH — a DIFFERENT dataset
-        // that can genuinely exist in a study carrying both MH and APMH.
+        // is the IG's SQAPMH (SDTMIG-AP; SDTMIG v3.4 sec. 8.4.2 — re-pinned from SUPPAPMH by
+        // PLAN-split-supp-resolution D10: SUPP-- is the supplemental family of the domain code);
+        // substituting the variable prefix would give SUPPMH — a DIFFERENT dataset that can
+        // genuinely exist in a study carrying both MH and APMH.
         assertEquals("MHTERM", resolveValue("--TERM", "MH", "APMH"),
                 "a column name takes the variable prefix");
-        assertEquals("SUPPAPMH.QVAL", resolveValue("SUPP--.QVAL", "MH", "APMH"),
-                "the dataset half keeps the full domain code");
+        assertEquals("SQAPMH.QVAL", resolveValue("SUPP--.QVAL", "MH", "APMH"),
+                "the dataset half is the IG's supplemental name of the domain code (D10)");
+        assertEquals("SQAPMH.QVAL", resolveValue("SQAP--.QVAL", "MH", "APMH"), "the synonym");
+        assertEquals("SUPPAE.QVAL", resolveValue("SQAP--.QVAL", "AE", "AE"),
+                "SQAP-- on a non-AP primary is SUPP-- (D10), never an error");
+        assertEquals("SUPPLB.QVAL", resolveValue("SUPP--.QVAL", "LB", "LB"),
+                "on a split member the code is the domain's: the family");
     }
 
 
@@ -310,9 +317,10 @@ class WildcardPrefixResolutionTest
     {
         // The defect the split-and-resolve rewrite fixes: picking ONE prefix via indexOf and then
         // String.replace-ing every occurrence gave SUPPAPMH.APMHQVAL — the dataset prefix leaked
-        // into the column half.
-        assertEquals("SUPPAPMH.MHQVAL", resolveValue("SUPP--.--QVAL", "MH", "APMH"));
-        assertEquals("SUPPSUPPAE.QNAM", resolveValue("SUPP--.--QNAM", "", "SUPPAE"));
+        // into the column half. (The dataset half is SQAPMH since PLAN-split-supp-resolution D10.)
+        assertEquals("SQAPMH.MHQVAL", resolveValue("SUPP--.--QVAL", "MH", "APMH"));
+        assertEquals("SUPPSUPPAE.QNAM", resolveValue("SUPP--.--QNAM", "", "SUPPAE"),
+                "a SUPP primary's code: unchanged by D6 (Fix #33 territory)");
     }
 
 
@@ -320,8 +328,8 @@ class WildcardPrefixResolutionTest
     void dotQualified_datasetHalfResolvesEvenWhenColumnHalfIsDoubleWildcard()
     {
         // Fix #5 preserves the column-side `**` for per-row RELREC resolution, but the dataset half
-        // must still resolve — previously the whole value was returned untouched.
-        assertEquals("SUPPAPMH.**DECOD", resolveValue("SUPP--.**DECOD", "MH", "APMH"));
+        // must still resolve — previously the whole value was returned untouched. (SQAPMH: D10.)
+        assertEquals("SQAPMH.**DECOD", resolveValue("SUPP--.**DECOD", "MH", "APMH"));
     }
 
 

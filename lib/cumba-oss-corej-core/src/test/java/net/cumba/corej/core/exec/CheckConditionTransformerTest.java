@@ -58,17 +58,25 @@ class CheckConditionTransformerTest
     void dotQualifiedDatasetHalfUsesTheDomainCodePrefix()
     {
         // EC-36: on an APMH primary the variable prefix is "MH" but the SUPP dataset keeps the
-        // full domain code — SUPPAPMH, not SUPPMH.
-        assertEquals("SUPPAPMH.QVAL",
+        // full domain code — never SUPPMH. ⚑ Re-pinned by PLAN-split-supp-resolution D10: the
+        // dataset half SUPP-- is the IG's supplemental family of the code, SQAPMH (SDTMIG-AP;
+        // SDTMIG v3.4 sec. 8.4.2), not the never-used SUPPAPMH.
+        assertEquals("SQAPMH.QVAL",
                 CheckConditionTransformer.resolveTextWildcard("SUPP--.QVAL", "MH", "APMH"));
+        assertEquals("SQAPMH.QVAL",
+                CheckConditionTransformer.resolveTextWildcard("SQAP--.QVAL", "MH", "APMH"),
+                "SQAP-- is a synonym (D10)");
+        assertEquals("SUPPAE.QVAL",
+                CheckConditionTransformer.resolveTextWildcard("SUPP--.QVAL", "AE", "AE"));
     }
 
 
     @Test
     void dotQualifiedHalvesResolveOnTheirOwnPrefixes()
     {
-        // SUPP--.--QVAL: dataset half takes the domain code, column half the variable prefix.
-        assertEquals("SUPPAPMH.MHQVAL",
+        // SUPP--.--QVAL: dataset half takes the domain code (the supplemental family of APMH,
+        // SQAPMH — PLAN-split-supp-resolution D10), column half the variable prefix.
+        assertEquals("SQAPMH.MHQVAL",
                 CheckConditionTransformer.resolveTextWildcard("SUPP--.--QVAL", "MH", "APMH"));
     }
 

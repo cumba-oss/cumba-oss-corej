@@ -54,6 +54,9 @@ class SplitDomainResolutionTest
 
         final AtomicInteger walks = new AtomicInteger();
 
+        /** Every name the resolver was asked for, in order. */
+        final List<String> resolved = new ArrayList<>();
+
         CountingInventory(IDataTable... tables)
         {
             for (IDataTable t : tables)
@@ -67,6 +70,7 @@ class SplitDomainResolutionTest
         @Override
         public @Nullable IDataTable resolve(String name)
         {
+            resolved.add(String.valueOf(name));
             return name == null ? null : byName.get(name.toUpperCase(Locale.ROOT));
         }
 
@@ -129,7 +133,7 @@ class SplitDomainResolutionTest
 
 
     @Test
-    void threeCharacterName_neverWalksTheInventory()
+    void otherNameShapes_neverWalkTheInventory_aFamilyNameWalksOnceOverSupplementalsOnly()
     {
         // "adsl" is in the inventory but not under the name ADSL; ADSL is 4 chars, so the R-4
         // bound answers Absent without touching the inventory.
@@ -138,8 +142,25 @@ class SplitDomainResolutionTest
         assertInstanceOf(DomainResolution.Absent.class,
                 SplitDomainResolution.resolve(inv, "ADSL", "R"));
         assertInstanceOf(DomainResolution.Absent.class,
+                SplitDomainResolution.resolve(inv, "SUPPLBCH", "R"),
+                "a member name is not a family");
+        assertEquals(0, inv.walks.get(), "the bound must prevent the walk");
+        // ⚑ Re-pinned by PLAN-split-supp-resolution (PG-M7, D2): a supplemental family name —
+        // SUPP / SQAP + a domain code — is the third shape that walks, once, and the walk resolves
+        // only SUPP / SQ-named entries (the pre-filter): adsl2 is never loaded for SUPPLB.
+        inv.resolved.clear();
+        assertInstanceOf(DomainResolution.Absent.class,
                 SplitDomainResolution.resolve(inv, "SUPPLB", "R"));
-        assertEquals(0, inv.walks.get(), "the two-character bound must prevent the walk");
+        assertEquals(1, inv.walks.get(), "a family name walks the inventory once");
+        for (String name : inv.resolved)
+        {
+            String upper = name.toUpperCase(Locale.ROOT);
+            assertTrue(upper.startsWith("SUPP") || upper.startsWith("SQ"),
+                    "the family walk resolved a non-supplemental entry: " + name);
+        }
+        assertInstanceOf(DomainResolution.Absent.class,
+                SplitDomainResolution.resolve(inv, "supplb", "R"));
+        assertEquals(1, inv.walks.get(), "memoised under the upper-cased family name");
     }
 
 

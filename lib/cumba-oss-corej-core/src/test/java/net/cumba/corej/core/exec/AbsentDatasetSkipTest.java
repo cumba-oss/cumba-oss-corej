@@ -299,6 +299,37 @@ class AbsentDatasetSkipTest
 
 
     /**
+     * {@code PLAN-split-supp-resolution} (Fix #358 lockstep): a split SUPP / SQAP family candidate
+     * — {@code SUPPAE} shipped as {@code SUPPAE1} + {@code SUPPAE2} — counts as present, so the
+     * dependant runs against the family union instead of being silenced.
+     */
+    @Test
+    void splitSuppFamilyCountsAsPresent_ruleIsNotSkipped() throws Exception
+    {
+        Rule rule = load("{\"Core\":{\"Id\":\"TEST-SPLIT-SUPP-PRESENT\"},"
+                + "\"Sensitivity\":\"Record\",\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
+                + "\"Match_Datasets\":[{\"Name\":\"SUPPAE\",\"Keys\":[\"USUBJID\"],"
+                + "\"Join_Type\":\"left\"}],\"Check\":{\"expression\":\"empty(SUPPAE.QVAL)\"},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}");
+        IDataTable ae = RealTables.of("AE").str("DOMAIN", "AE", "AE").str("USUBJID", "U1", "U3")
+                .build();
+        IDataTable suppae1 = RealTables.of("SUPPAE1").str("RDOMAIN", "AE").str("USUBJID", "U1")
+                .str("QNAM", "AETRTEM").str("QVAL", "Y").build();
+        IDataTable suppae2 = RealTables.of("SUPPAE2").str("RDOMAIN", "AE").str("USUBJID", "U2")
+                .str("QNAM", "AETRTEM").str("QVAL", "N").build();
+
+        RuleExecutionResult res = run(rule, ae, RealTables.inventoryOf(ae, suppae1, suppae2),
+                Set.of("SUPPAE"));
+        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(),
+                "a split SUPPAE family is present — the dependant must run against the union");
+        assertEquals(List.of(1L), rows(res), "U3's row has no SUPPAE match and fires");
+        RuleExecutionResult absent = run(rule, ae, RealTables.inventoryOf(ae), Set.of("SUPPAE"));
+        assertEquals(RuleExecutionStatus.SKIPPED, absent.getStatus(),
+                "control: without any member the dependency is silenced");
+    }
+
+
+    /**
      * Review F2: a rule that reads the split domain ONLY through a dotted Check reference (no
      * {@code Match_Datasets}) is runnable too — the dotted {@code var_exists} unions (Fix #358 site
      * 7) — so its presence test must be widened as well, or the rule would be silenced while the

@@ -413,6 +413,50 @@ class RuleRunnerSplitJoinTest
     }
 
 
+    /**
+     * {@code PLAN-split-supp-resolution}: a split supplemental family resolves like a split domain
+     * — a keyed join on {@code SUPPAE} reads the union of {@code SUPPAE1} + {@code SUPPAE2}, and
+     * the dotted {@code var_exists} sees its columns; the {@code supplbch}-primary case above
+     * stays.
+     */
+    @Test
+    void keyedAndDottedReadsOfASplitSuppFamily_resolveTheUnion()
+    {
+        IDataTable adae = RealTables.of("ADAE").str("USUBJID", "U1", "U2", "U3").build();
+        IDataTable suppae1 = RealTables.of("SUPPAE1").str("RDOMAIN", "AE").str("USUBJID", "U1")
+                .str("QNAM", "AETRTEM").str("QVAL", "Y").build();
+        IDataTable suppae2 = RealTables.of("SUPPAE2").str("RDOMAIN", "AE").str("USUBJID", "U2")
+                .str("QNAM", "AETRTEM").str("QVAL", "N").build();
+        DatasetResolver.WithInventory inv = RealTables.inventoryOf(adae, suppae1, suppae2);
+
+        Rule rule = new Rule();
+        RuleCore core = new RuleCore();
+        core.setId("TEST-SPLIT-SUPP-JOIN");
+        rule.setCore(core);
+        rule.setScope(new Scope());
+        rule.setSensitivity(Sensitivity.RECORD);
+        Outcome outcome = new Outcome();
+        outcome.setMessage("no SUPPAE row");
+        outcome.setOutputVariables(List.of("USUBJID", "SUPPAE.QVAL"));
+        rule.setOutcome(outcome);
+        rule.setMatchDatasets(List.of(md("SUPPAE", "left", "USUBJID")));
+        rule.setCheck(new CheckConditionAll(List.of(expr("not SUPPAE._matched_"))));
+        RulePackageLoader.installNativeExpr(rule);
+
+        RuleExecutionResult res = RuleRunnerCalls.execute(rule, adae, inv, null, null);
+        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(), res.getStatusMessage());
+        assertEquals(1, res.getViolations().size(), "U1 ← SUPPAE1, U2 ← SUPPAE2; only U3 fires");
+        assertEquals(3L, res.getViolations().get(0).getRowNumber(), "the third row, 1-based");
+
+        EvaluationContext ctx = EvaluationContext.builder().table(adae).datasetResolver(inv)
+                .build();
+        assertTrue(OperatorRegistry.existsAsVariable(ctx, "SUPPAE.QNAM"),
+                "dotted var_exists unions the split SUPP family");
+        assertTrue(OperatorRegistry.existsAsDataset(ctx, "SUPPAE"), "ds_exists sees the family");
+        assertFalse(OperatorRegistry.existsAsDataset(ctx, "SUPPAE1X"), "a typo walks nothing");
+    }
+
+
     @Test
     void dsExists_countsASplitDomainAsPresent_boundedToDomainCodes()
     {

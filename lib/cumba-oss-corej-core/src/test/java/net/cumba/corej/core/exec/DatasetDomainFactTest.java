@@ -245,6 +245,24 @@ class DatasetDomainFactTest
     }
 
 
+    /**
+     * R4 of {@code PLAN-split-supp-resolution}: the {@code SUPP} / {@code SQ} prefix test ignores
+     * letter case, so a lower-case member (a hand-built resolver's {@code supplbch}) keys to the
+     * same family as its upper-case twin — the prefix upper-cased, the member's own prefix kept.
+     */
+    @Test
+    void lowerCaseSuppMemberYieldsTheUpperCasePrefixPlusRdomain() throws Exception
+    {
+        IDataTable supp = MockTable.of().name("supplbch").col("RDOMAIN", "LB", "LB")
+                .col("QNAM", "X", "Y").build();
+        assertTrue(factEquals(supp, "supplbch", "SUPPLB"));
+        assertFalse(factEquals(supp, "supplbch", "supplbch"), "not the raw name any more");
+        IDataTable sqap = MockTable.of().name("sqapmh1").col("RDOMAIN", "APMH").col("QNAM", "X")
+                .build();
+        assertTrue(factEquals(sqap, "sqapmh1", "SQAPMH"));
+    }
+
+
     /** A 0-row table has no cell to read, so the fact is the raw dataset name. */
     @Test
     void zeroRowDatasetYieldsTheRawName() throws Exception

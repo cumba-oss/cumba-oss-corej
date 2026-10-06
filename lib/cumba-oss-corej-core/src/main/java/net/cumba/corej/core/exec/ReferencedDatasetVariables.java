@@ -42,6 +42,14 @@ import org.jspecify.annotations.Nullable;
  * the retired per-row result object was read. No provider capability: the study's own datasets are
  * read through the run's resolver, never the CDISC Library.
  * </p>
+ *
+ * <p>
+ * A value of the supplemental-family shape ({@code SUPPAE}, {@code SQAPMH} —
+ * {@code PLAN-split-supp-resolution} D2) answers the columns of the family's members
+ * ({@link SplitDomainResolution#suppFamilyMembers}: {@code SUPPAE1} + {@code SUPPAE2}, keyed by
+ * their {@code RDOMAIN}), never the name heuristic's guess (under which {@code SUPPLBCH} did not
+ * join {@code SUPPLB}).
+ * </p>
  */
 public final class ReferencedDatasetVariables
 {
@@ -118,19 +126,27 @@ public final class ReferencedDatasetVariables
         // unopenable UNRELATED study dataset must not ERROR this read — tablesForDomain resolved
         // every inventory entry unguarded).
         // T1 of PLAN-merged-evaluation-table: the one dataset-name resolution (case-insensitive)
-        IDataTable exact = SplitDomainResolution.byName(resolver, domain);
         Iterable<IDataTable> tables;
-        if (exact != null)
+        if (resolver instanceof DatasetResolver.WithInventory inventory
+                && SplitDomainResolution.isSuppFamilyName(domain))
         {
-            tables = List.of(exact);
-        }
-        else if (resolver instanceof DatasetResolver.WithInventory inventory)
-        {
-            tables = SplitDomainResolution.membersOf(inventory, domain, null);
+            tables = SplitDomainResolution.suppFamilyMembers(inventory, domain, null);
         }
         else
         {
-            tables = List.of();
+            IDataTable exact = SplitDomainResolution.byName(resolver, domain);
+            if (exact != null)
+            {
+                tables = List.of(exact);
+            }
+            else if (resolver instanceof DatasetResolver.WithInventory inventory)
+            {
+                tables = SplitDomainResolution.membersOf(inventory, domain, null);
+            }
+            else
+            {
+                tables = List.of();
+            }
         }
         Set<Object> columns = new LinkedHashSet<>();
         for (IDataTable table : tables)

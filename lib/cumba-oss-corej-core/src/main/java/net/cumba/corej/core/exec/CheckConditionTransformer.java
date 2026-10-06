@@ -47,14 +47,16 @@ public final class CheckConditionTransformer
         // A dot-qualified reference has TWO independent halves: the dataset half is an identity and
         // keeps the CDISC domain code, the column half is a variable name. Resolving each on its
         // own prefix — rather than picking one and `replace`-ing the whole string — is what makes
-        // `SUPP--.--QVAL` become `SUPPAPMH.MHQVAL` instead of `SUPPAPMH.APMHQVAL`.
+        // `SUPP--.--QVAL` become `SQAPMH.MHQVAL` on an APMH primary instead of `SUPPAPMH.APMHQVAL`
+        // (the dataset half: DatasetIdentity.resolveDatasetHalf — `SUPP--` / `SQAP--` is the
+        // supplemental family of the domain code, PLAN-split-supp-resolution D6 / D10).
         int dot = text.indexOf('.');
         if (dot >= 0 && (text.contains(WILDCARD) || text.contains(DOUBLE_WILDCARD)))
         {
             String dsHalf = text.substring(0, dot);
             String colHalf = text.substring(dot + 1);
-            String newDs = dsHalf.replace(WILDCARD, datasetPrefix).replace(DOUBLE_WILDCARD,
-                    datasetPrefix);
+            String newDs = DatasetIdentity.resolveDatasetHalf(dsHalf, datasetPrefix)
+                    .replace(DOUBLE_WILDCARD, datasetPrefix);
             // Fix #5: a `**` in the COLUMN half is the joined side's — a rule-prep substitution
             // on the primary's prefix would name the wrong domain's variable. A `--` there is an
             // ordinary variable name.

@@ -285,6 +285,25 @@ class AuthoredRuleAssemblerTest
     }
 
 
+    /**
+     * PACK 3 ride-along (the rule editor's stop-gap in {@code RuleAnalyser}): the corpus gate drops
+     * a parked rule before anything is derived, so a parked rule whose {@code Sensitivity} cannot
+     * be derived is not an error here either — its one diagnostic stays {@code PARKED}.
+     */
+    @Test
+    void aParkedRuleWithAnUnderivableSensitivityRaisesNoSensitivityError()
+    {
+        String parkedNoCheck = CHECK.replace("\"Fully Executable\"", "\"Not Executable\"")
+                .replace("Check:\n  expression: 'AESEV == \"MILD\" and AESER == \"Y\"'\n", "");
+        AssembledRule r = AuthoredRuleAssembler.assemble(parkedNoCheck, null, STANDARDS);
+        assertTrue(r.parked());
+        assertNull(r.rule());
+        assertEquals(List.of("PARKED"), r.diagnostics().stream().map(RuleDiagnostic::code).toList(),
+                "a parked rule is never loaded, so nothing is derived for it: " + r.diagnostics());
+        assertFalse(r.hasErrors());
+    }
+
+
     @Test
     void anUnderivableSensitivityIsAnErrorAndTheRuleStillLoads()
     {

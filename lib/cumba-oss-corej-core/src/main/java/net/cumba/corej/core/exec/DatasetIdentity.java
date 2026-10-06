@@ -5,6 +5,7 @@ import java.util.Locale;
 import java.util.Set;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.merge.SuppMergeSpec;
 import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
@@ -24,12 +25,180 @@ import org.jspecify.annotations.Nullable;
  * an operation. Moved verbatim — the javadoc below is the original, its cross-references
  * re-pointed.
  * </p>
+ *
+ * <h2>The supplemental family ({@code PLAN-split-supp-resolution})</h2>
+ * <p>
+ * A supplemental-qualifier dataset belongs to the <b>family</b> of the domain it qualifies, named
+ * as the IG names an unsplit supplemental: {@code SUPP<domain>} ({@code SUPPLB} for
+ * {@code SUPPLBCH}, {@code SUPPLBHE}, {@code SUPPLBUR}; {@code SUPPAE} for {@code SUPPAE1} +
+ * {@code SUPPAE2}) and {@code SQAP<xx>} for an associated-persons domain ({@code SQAPMH} for
+ * {@code SQAPMH1}, SDTMIG-AP; SDTMIG v3.4 sec. 8.4.2). The family key ({@link #suppFamilyKey}, D1)
+ * is decided by the member's row-0 {@code RDOMAIN} alone — never by the name heuristic
+ * ({@code SplitDatasetUtil.unsplitName("SUPPLBCH")} is {@code SUPPLBC}) and never by the member's
+ * own prefix (a non-IG {@code SUPPAPMH} with {@code RDOMAIN = APMH} is a member of {@code SQAPMH},
+ * D9). A rule names the family ({@code record_count(domain="SUPPAE")}, {@code ds_exists("SUPPLB")},
+ * {@code Requirements.Datasets: [SUPPPC]}) and {@code SplitDomainResolution} answers it with every
+ * member; {@code SUPP--} / {@code SQAP--} in a dataset-name position is the family of the primary's
+ * <em>domain code</em> ({@link #resolveDatasetWildcard}, {@link #resolveDatasetHalf} — D6, D10).
+ * </p>
  */
 public final class DatasetIdentity
 {
 
+    /** The {@code --} wildcard of a dataset-name position. */
+    private static final String WILDCARD = "--";
+
+    /** {@code SUPP--}: the supplemental family of the primary's domain (D6). */
+    private static final String SUPP_WILDCARD = "SUPP--";
+
+    /** {@code SQAP--}: a synonym of {@code SUPP--} in every dataset-name position (D10). */
+    private static final String SQAP_WILDCARD = "SQAP--";
+
     private DatasetIdentity()
     {
+    }
+
+
+    /**
+     * The supplemental-family key of a dataset (D1 of {@code PLAN-split-supp-resolution}): for a
+     * dataset whose name starts {@code SUPP} or {@code SQ} (ignoring case) and whose row-0
+     * {@code RDOMAIN} is a non-empty value, the IG's supplemental name of that domain —
+     * {@link SuppMergeSpec#suppNameOf}: {@code SQ} + an associated-persons code ({@code APMH} ⇒
+     * {@code SQAPMH}), else {@code SUPP} + it ({@code LB} ⇒ {@code SUPPLB}), upper case. The one
+     * mapping the family resolution, the merge's IG names and the merge-source choice share, so a
+     * member keys to exactly the name the merge would read it under.
+     *
+     * <p>
+     * {@code null} for every other dataset: a non-supplemental name, a supplemental with no rows,
+     * or one whose first {@code RDOMAIN} is missing or empty — such a table is <b>not</b> a member
+     * by {@code RDOMAIN} (D5; the exactly-named table is a member of its own family regardless,
+     * {@code SplitDomainResolution} adds it by name). The decision never falls back to the name:
+     * the SUPP name heuristic is wrong for a letter split ({@code SUPPLBCH} ⇒ {@code SUPPLBC}).
+     * </p>
+     *
+     * @param table
+     *            the dataset
+     * @return the family key, or {@code null}
+     */
+    public static @Nullable String suppFamilyKey(IDataTable table)
+    {
+        String name = table.getMetaData().getName();
+        if (name == null || !isSuppOrSqName(name))
+        {
+            return null;
+        }
+        String rdomain = firstRowValue(table, "RDOMAIN");
+        return rdomain == null ? null : suppFamilyNameOf(rdomain);
+    }
+
+
+    /**
+     * The supplemental family name of a domain code — the IG's name of its supplemental dataset
+     * ({@link SuppMergeSpec#suppNameOf}): {@code SUPP<code>}, or {@code SQ<code>} for an
+     * associated-persons code ({@code AP} + its parent, four characters or more): {@code LB} ⇒
+     * {@code SUPPLB}, {@code APMH} ⇒ {@code SQAPMH} (D6, D10).
+     *
+     * @param domainCode
+     *            the CDISC domain code
+     * @return the family name, upper case
+     */
+    public static String suppFamilyNameOf(String domainCode)
+    {
+        return SuppMergeSpec.suppNameOf(domainCode);
+    }
+
+
+    /**
+     * ⭐ <b>The one {@code --} resolution of a dataset-name position at run time</b> (D6 / D10 of
+     * {@code PLAN-split-supp-resolution}; owner, 2026-10-05: {@code SUPP--} means "SUPP of my
+     * domain" in every dataset-name position). {@code SUPP--} and its synonym {@code SQAP--}
+     * (ignoring case) resolve to the supplemental family of the primary's <b>domain code</b>
+     * ({@link #domainPrefix}: the row-0 {@code DOMAIN}, else the unsplit name — the D77c code the
+     * specialiser's text policy receives, so the two policies agree): on {@code LBCH} ⇒
+     * {@code SUPPLB} (every SUPP of the LB family), on {@code AE} ⇒ {@code SUPPAE}, on {@code APMH}
+     * ⇒ {@code SQAPMH} — never {@code SUPPLBCH} (the table name, which {@link #resolveWildcard}
+     * substitutes) and never {@code SUPPAPMH} (a name the IG does not use). A SUPP / SQAP primary
+     * keeps Fix #33 untouched ({@link #resolveWildcard}: the parent prefix), and every other
+     * {@code --} shape resolves as before.
+     *
+     * <p>
+     * Serves the six run-time sites that used to call {@link #resolveWildcard} directly: a
+     * non-{@code Child} {@code Match_Datasets} name ({@code RuleSpecialiser}), the keyed partner of
+     * the merged view ({@code MergedEvaluation}), {@code Requirements.Datasets}
+     * ({@code RuleRunner}), {@code domain=} of the grouped readers and {@code read_value}
+     * ({@code GroupedAggregate}), the cross-dataset metadata call ({@code ScalarMetadataFunctions})
+     * and a qualified scope / requirement entry ({@code ScopeVariableSource}). The text policy's
+     * dataset half is {@link #resolveDatasetHalf}.
+     * </p>
+     *
+     * @param name
+     *            the authored dataset name, possibly carrying {@code --}
+     * @param primary
+     *            the dataset under evaluation
+     * @return the resolved name; {@code name} itself when it carries no {@code --} or the primary
+     *         supplies no code; {@code null} only for a {@code null} name
+     */
+    static @Nullable String resolveDatasetWildcard(@Nullable String name, IDataTable primary)
+    {
+        if (name == null || !name.contains(WILDCARD))
+        {
+            return name;
+        }
+        String upper = name.toUpperCase(Locale.ROOT);
+        if (!upper.equals(SUPP_WILDCARD) && !upper.equals(SQAP_WILDCARD))
+        {
+            return resolveWildcard(name, primary);
+        }
+        String tableName = primary.getMetaData().getName();
+        if (tableName != null && isSuppOrSqName(tableName))
+        {
+            // Fix #33: on a SUPP / SQAP primary the wildcard is the parent prefix — unchanged
+            return resolveWildcard(name, primary);
+        }
+        String code = domainPrefix(primary);
+        return code.isEmpty() ? name : suppFamilyNameOf(code);
+    }
+
+
+    /**
+     * The dataset half of a dot-qualified reference under the bind-time text policy
+     * ({@code CheckConditionTransformer.resolveTextWildcard}, {@code RuleRunner}'s
+     * {@code Output_Variables}): {@code SUPP--} / {@code SQAP--} (ignoring case) ⇒ the supplemental
+     * family of the domain code ({@link #suppFamilyNameOf}: {@code SUPP--.QVAL} on {@code APMH} is
+     * {@code SQAPMH.QVAL}, D10; on a SUPP primary whose code is {@code SUPPAE} the answer is
+     * today's {@code SUPPSUPPAE}); every other spelling substitutes the code for {@code --} as
+     * before.
+     *
+     * @param dsHalf
+     *            the dataset half as authored
+     * @param datasetPrefix
+     *            the primary's CDISC domain code (D77c)
+     * @return the resolved dataset half
+     */
+    static String resolveDatasetHalf(String dsHalf, String datasetPrefix)
+    {
+        String upper = dsHalf.toUpperCase(Locale.ROOT);
+        if (upper.equals(SUPP_WILDCARD) || upper.equals(SQAP_WILDCARD))
+        {
+            return suppFamilyNameOf(datasetPrefix);
+        }
+        return dsHalf.replace(WILDCARD, datasetPrefix);
+    }
+
+
+    /**
+     * Whether a dataset has no supplemental of its own (the IG's rule): a {@code SUPP} / {@code SQ}
+     * supplemental or {@code RELREC}, ignoring letter case. The merge, the merge-source chooser and
+     * the scope gate's SUPP-QNAM probes all stop here.
+     *
+     * @param dataset
+     *            the dataset name
+     * @return whether no supplemental dataset qualifies it
+     */
+    static boolean hasNoSupplemental(String dataset)
+    {
+        String upper = dataset.toUpperCase(Locale.ROOT);
+        return upper.startsWith("SUPP") || upper.startsWith("SQ") || "RELREC".equals(upper);
     }
 
 
@@ -275,12 +444,16 @@ public final class DatasetIdentity
         {
             return domainVal;
         }
-        if (name.startsWith("SUPP") || name.startsWith("SQ"))
+        // R4 of PLAN-split-supp-resolution: the prefix test ignores letter case (a hand-built
+        // resolver may carry `supplbch`); the result keeps the member's OWN prefix, upper-cased
+        // — a SUPPAPFAMH still scopes as SUPPAPFA. Only resolution keys by RDOMAIN alone
+        // (suppFamilyKey, D1 / D9).
+        if (isSuppOrSqName(name))
         {
             String rdomain = firstRowValue(table, "RDOMAIN");
             if (rdomain != null)
             {
-                return (name.startsWith("SUPP") ? "SUPP" : "SQ") + rdomain;
+                return (name.toUpperCase(Locale.ROOT).startsWith("SUPP") ? "SUPP" : "SQ") + rdomain;
             }
         }
         return name;

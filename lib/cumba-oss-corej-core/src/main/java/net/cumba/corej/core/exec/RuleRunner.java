@@ -1978,7 +1978,13 @@ public final class RuleRunner
      *
      * <p>
      * Entries accept the {@code --} wildcard, resolved against the primary exactly as a
-     * {@code domain=} literal of a compiled binding is, so {@code SUPP--} is expressible.
+     * {@code domain=} literal of a compiled binding is
+     * ({@link DatasetIdentity#resolveDatasetWildcard}): {@code SUPP--} / {@code SQAP--} is the
+     * supplemental family of the primary's domain code ({@code SUPPLB} on {@code LBCH},
+     * {@code SQAPMH} on {@code APMH} — {@code PLAN-split-supp-resolution} Q6, D6, D10). A
+     * {@code SUPP<domain>} / {@code SQAP<xx>} family name is present when any member ships —
+     * {@code SUPPAE1} + {@code SUPPAE2} for {@code SUPPAE} — the same widened fact
+     * {@code ds_exists} answers.
      * </p>
      */
     private static @Nullable String describeMissingRequiredDataset(Rule rule, IDataTable table,
@@ -1995,11 +2001,11 @@ public final class RuleRunner
             {
                 continue;
             }
-            // resolveWildcard returns its argument unchanged when there is no `--` to substitute
-            // and when the primary's name cannot supply a prefix, so it is null only for a null
-            // argument — which the guard above has already excluded. The fallback keeps that
-            // contract local rather than assumed.
-            String resolved = DatasetIdentity.resolveWildcard(entry, table);
+            // resolveDatasetWildcard returns its argument unchanged when there is no `--` to
+            // substitute and when the primary's name cannot supply a prefix, so it is null only
+            // for a null argument — which the guard above has already excluded. The fallback
+            // keeps that contract local rather than assumed.
+            String resolved = DatasetIdentity.resolveDatasetWildcard(entry, table);
             String name = resolved != null ? resolved : entry;
             boolean present = AbsentDatasetSkip.resolvesExactOnly(rule,
                     name.toUpperCase(java.util.Locale.ROOT)) ? resolver.resolve(name) != null
@@ -4751,10 +4757,12 @@ public final class RuleRunner
 
     /**
      * EC-36: an {@code Output_Variables} entry splits the same way a Check value does — the dataset
-     * half of a dot-qualified entry keeps the CDISC domain code, the column half takes the variable
-     * prefix. Without the split the identical string resolved to {@code SUPPAPMH.QVAL} in the Check
-     * and {@code SUPPMH.QVAL} in the finding, so a violation named a different dataset than the one
-     * that was actually read.
+     * half of a dot-qualified entry keeps the CDISC domain code
+     * ({@link DatasetIdentity#resolveDatasetHalf}: {@code SUPP--} / {@code SQAP--} is the
+     * supplemental family of that code, {@code SQAPMH.QVAL} on {@code APMH} —
+     * {@code PLAN-split-supp-resolution} D10), the column half takes the variable prefix. Without
+     * the split the identical string resolved to one dataset in the Check and {@code SUPPMH.QVAL}
+     * in the finding, so a violation named a different dataset than the one that was actually read.
      */
     private static @Nullable String resolveOutputVarName(@Nullable String name,
             @Nullable String variablePrefix, @Nullable String datasetPrefix)
@@ -4769,7 +4777,7 @@ public final class RuleRunner
         {
             return name.replace("--", variablePrefix);
         }
-        return name.substring(0, dot).replace("--", dsPrefix) + "."
+        return DatasetIdentity.resolveDatasetHalf(name.substring(0, dot), dsPrefix) + "."
                 + name.substring(dot + 1).replace("--", variablePrefix);
     }
 

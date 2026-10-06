@@ -173,7 +173,8 @@ public final class ReadValue
             }
             EvaluationContext ctx = run.ctx();
             // F-W8-2: a `--` in the domain= literal resolves as every other dataset-name position
-            // does (DatasetIdentity.resolveWildcard, Fix #33).
+            // does (GroupedAggregate.datasetName -> DatasetIdentity.resolveDatasetWildcard:
+            // SUPP-- is the supplemental family of the domain code; Fix #33 on a SUPP primary).
             IDataTable table = SplitDomainResolution.resolveTableOrThrow(ctx.getDatasetResolver(),
                     GroupedAggregate.datasetName(dataset, ctx), ctx.getRuleId());
             if (table == null)

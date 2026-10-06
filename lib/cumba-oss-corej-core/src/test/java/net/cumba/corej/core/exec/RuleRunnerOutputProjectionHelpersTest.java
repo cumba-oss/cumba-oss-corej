@@ -511,17 +511,19 @@ class RuleRunnerOutputProjectionHelpersTest
             @Override
             public String getDatasetName()
             {
-                return "SUPPAPMH";
+                return "SQAPMH";
             }
         };
+        // ⚑ SQAPMH, not SUPPAPMH, since PLAN-split-supp-resolution D10: the dataset half SUPP--
+        // is the IG's supplemental family of the domain code (SDTMIG-AP)
         EvaluationContext ctx = EvaluationContext.builder().table(t).variableWildcardPrefix("MH")
-                .domainPrefix("APMH").mergedView(ExecCalls.joinsView(Map.of("SUPPAPMH", supp)))
+                .domainPrefix("APMH").mergedView(ExecCalls.joinsView(Map.of("SQAPMH", supp)))
                 .build();
 
         Map<String, String> out = extract(t, ctx, List.of("--TERM", "SUPP--.QVAL"), 0);
         assertEquals("v", out.get("MHTERM"), "unqualified -- takes the variable prefix");
-        assertEquals("joined", out.get("SUPPAPMH.QVAL"),
-                "the dataset half of a dotted entry takes the domain code");
+        assertEquals("joined", out.get("SQAPMH.QVAL"),
+                "the dataset half of a dotted entry takes the domain code's supplemental family");
         assertEquals(2, out.size());
     }
 

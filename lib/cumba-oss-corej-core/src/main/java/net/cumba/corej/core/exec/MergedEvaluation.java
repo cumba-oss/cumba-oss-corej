@@ -6,7 +6,6 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -54,7 +53,13 @@ import org.jspecify.annotations.Nullable;
  * <li>a {@code SUPP<domain>} qualifier is a view column handed out as a bare name of the record
  * ({@link Built#suppColumn}, read through {@link EvaluationContext#suppQualifier}) — the type
  * default where no row qualifies the record, and a {@link MergeErrorReadException} where the column
- * carries a {@code MERGE_ERROR} (OD-7);</li>
+ * carries a {@code MERGE_ERROR} (OD-7). The SUPP sources of the primary and of every keyed partner
+ * are the one chooser's ({@link SplitDomainResolution#suppMergeSources},
+ * {@code PLAN-split-supp-resolution} D4 (b) / Q5 (b)): the dataset's own {@code SUPP<dataset>} plus
+ * the domain-level members of its split {@code SUPP<domain>} / {@code SQAP<xx>} family —
+ * {@code SUPPAE1} + {@code SUPPAE2} for {@code AE}, exactly {@code SUPPLBCH} for {@code LBCH} (D12)
+ * — handed to the datatable as member <b>names</b> and answered from a pre-resolved map (D11), so
+ * no member is ever fed twice;</li>
  * <li>every {@code Child: true} parent domain is a part qualified with that domain (W4, MQ1 —
  * {@link ChildEntries}), a {@link MergedViewLookup} under the domain like a keyed part, supplied on
  * the rows whose parent is that domain;</li>
@@ -132,8 +137,8 @@ public final class MergedEvaluation
     /**
      * The merge signature of one execution (P-3): every field that changes the merge — the keyed
      * specs (their {@code Cardinality} and their partner's SUPP key included), the supplemental
-     * datasets that resolve for the primary and the authored {@code Supp_Keys} ({@code null} for
-     * the IG's).
+     * member datasets chosen for the primary (their names, {@code SUPPAE1} + {@code SUPPAE2} for a
+     * split family — D11) and the authored {@code Supp_Keys} ({@code null} for the IG's).
      */
     record ViewKey(List<KeyedMergeSpec> keyed, List<String> supp,
             @Nullable List<KeyColumn> suppKeys, @Nullable ChildMergeSpec child,
@@ -443,29 +448,28 @@ public final class MergedEvaluation
         {
             return null; // a hand-built execution without a resolver has nothing to merge
         }
+        // D11 (PLAN-split-supp-resolution): every SUPP member chosen for the view — the primary's
+        // and each keyed partner's — by name, matched ignoring case; the datatable's callback
+        // answers a chosen name from here and every other name through the widened seam
+        ChosenSupp chosen = new ChosenSupp();
         List<KeyedMergeSpec> keyed = new ArrayList<>();
-        keyedSpecs(rule, primary, resolver, ruleId, keyed, rule.isSuppMergeEnabled());
+        Map<String, IDataTable> partners = new LinkedHashMap<>();
+        keyedSpecs(rule, primary, resolver, ruleId, keyed, rule.isSuppMergeEnabled(), chosen,
+                partners);
         String dataset = Objects.requireNonNullElse(primary.getMetaData().getName(), "");
         String domain = null;
         List<String> supp = List.of();
-        if (rule.isSuppMergeEnabled() && !dataset.isEmpty() && !neverPivoted(dataset))
+        if (rule.isSuppMergeEnabled() && !dataset.isEmpty()
+                && !DatasetIdentity.hasNoSupplemental(dataset))
         {
             domain = DatasetIdentity.domainOfDataset(dataset, resolver);
             if (domain != null && !domain.isEmpty())
             {
-                // the IG's names for the primary (its own SUPP and its domain's, P-7), kept only
-                // where a dataset resolves and is not the primary itself: a SUPP merge is asked
-                // of the view only when there is a supplemental dataset to merge
-                supp = new ArrayList<>(2);
-                for (String name : SuppMergeSpec.defaultSuppNames(dataset, domain))
-                {
-                    IDataTable t = SplitDomainResolution.resolveTableOrThrow(resolver, name,
-                            ruleId);
-                    if (t != null && t != primary)
-                    {
-                        supp.add(name);
-                    }
-                }
+                // the one chooser (D4 (b)): the primary's own SUPP and the domain-level members
+                // of its family, as tables; a SUPP merge is asked of the view only when there
+                // is a supplemental dataset to merge
+                supp = chosen.add(SplitDomainResolution.suppMergeSources(resolver, primary, dataset,
+                        domain, ruleId));
             }
         }
         if (keyed.isEmpty() && supp.isEmpty() && child == null && relrec == null)
@@ -473,13 +477,18 @@ public final class MergedEvaluation
             // nothing to merge: no empty view is built, the execution reads the primary alone
             return null;
         }
+        chosen.refuseCollisions(partners, resolver, ruleId);
         String primaryDomain = domain != null ? domain : domainPrefix;
         // Supp_Keys (MET #18): the authored key, else the IG's (SuppMergeSpec.DEFAULT_KEYS)
         List<KeyColumn> suppKeys = rule.suppKeyColumns();
         SuppMergeSpec suppSpec = supp.isEmpty() ? null
                 : SuppMergeSpec.builder().suppDatasets(supp).keys(suppKeys).build();
-        net.cumba.datatable.merge.DatasetResolver datasets = name -> SplitDomainResolution
-                .resolveTableOrThrow(resolver, name, ruleId);
+        net.cumba.datatable.merge.DatasetResolver datasets = name ->
+        {
+            IDataTable member = chosen.get(name);
+            return member != null ? member
+                    : SplitDomainResolution.resolveTableOrThrow(resolver, name, ruleId);
+        };
         // the run's standard (H1): the dataset's cache carries it, so the SUPP-- and RELREC
         // readings never depend on which permissible columns the study happened to include; an
         // execution without a cache keeps the inference (UNKNOWN)
@@ -638,14 +647,87 @@ public final class MergedEvaluation
         return false;
     }
 
-
-    /** A SUPP / SQ / RELREC primary has no supplemental dataset (the IG's rule). */
-    private static boolean neverPivoted(String dataset)
+    /**
+     * The SUPP members chosen for one view (D11 of {@code PLAN-split-supp-resolution}): member name
+     * → member table, matched ignoring letter case, for the primary and every keyed partner. The
+     * datatable resolves a {@code suppDatasets} name through the view's callback; answering it from
+     * here — never from the seam, which answers a family name with the union of every member — is
+     * what keeps an exactly-named {@code SUPPAE} shipped beside {@code SUPPAE1} from being fed
+     * twice.
+     */
+    static final class ChosenSupp
     {
-        String upper = dataset.toUpperCase(Locale.ROOT);
-        return upper.startsWith("SUPP") || upper.startsWith("SQ") || "RELREC".equals(upper);
-    }
 
+        private final java.util.TreeMap<String, IDataTable> byName = new java.util.TreeMap<>(
+                String.CASE_INSENSITIVE_ORDER);
+
+        /**
+         * Registers the chooser's members and answers their names, in feeding order.
+         *
+         * @param members
+         *            the chosen member tables
+         * @return their names
+         * @throws net.cumba.datatable.merge.MergeException
+         *             two chosen members whose names differ by case alone — the datatable could
+         *             serve only one of them under the name
+         */
+        List<String> add(List<IDataTable> members)
+        {
+            List<String> names = new ArrayList<>(members.size());
+            for (IDataTable member : members)
+            {
+                String name = Objects.requireNonNullElse(member.getMetaData().getName(), "");
+                IDataTable earlier = byName.putIfAbsent(name, member);
+                if (earlier != null && earlier != member)
+                {
+                    throw new net.cumba.datatable.merge.MergeException(
+                            "two supplemental datasets named " + name
+                                    + " (differing in letter case only) qualify this view; the"
+                                    + " merge can serve only one of them under the name");
+                }
+                names.add(name);
+            }
+            return names;
+        }
+
+
+        /** The chosen member of that name, or {@code null}. */
+        @Nullable
+        IDataTable get(String name)
+        {
+            return byName.get(name);
+        }
+
+
+        /**
+         * F1 of {@code PLAN-split-supp-resolution}'s confirmation look: a keyed partner whose name
+         * equals a chosen member's ignoring case, where the seam answered the partner with a
+         * different table (a non-{@code Child} keyed {@code SUPPAE} / {@code SUPP--} on an
+         * {@code AE} that ships an exact {@code SUPPAE} beside {@code SUPPAE1}: the key gates
+         * checked the family union, the datatable would get the exact member from this map and drop
+         * {@code SUPPAE1}'s rows silently). Refused loudly — the rule's MERGE_REFUSED ERROR.
+         *
+         * @throws net.cumba.datatable.merge.MergeException
+         *             the collision
+         */
+        void refuseCollisions(Map<String, IDataTable> partners, DatasetResolver resolver,
+                @Nullable String ruleId)
+        {
+            for (Map.Entry<String, IDataTable> partner : partners.entrySet())
+            {
+                IDataTable member = byName.get(partner.getKey());
+                if (member != null && member != partner.getValue())
+                {
+                    throw new net.cumba.datatable.merge.MergeException("the Match_Datasets partner "
+                            + partner.getKey() + " resolves to the supplemental family (every "
+                            + "member of " + partner.getKey() + ") while the SUPP merge feeds "
+                            + "its member " + member.getMetaData().getName()
+                            + " under that name; one name cannot serve both — name the member"
+                            + " or declare Supp_Merge: false");
+                }
+            }
+        }
+    }
 
     /**
      * Fills {@code out} with one spec per keyed entry whose partner resolves, running the engine's
@@ -654,8 +736,10 @@ public final class MergedEvaluation
      * raised). A chained qualified key ({@code DM.RPATHCD}) becomes a sided key component whose
      * left name is the source part's column, composed by the stages of {@link #construct}.
      */
+    @SuppressWarnings("checkstyle:ParameterNumber")
     private static void keyedSpecs(Rule rule, IDataTable primary, DatasetResolver resolver,
-            @Nullable String ruleId, List<KeyedMergeSpec> out, boolean suppMerge)
+            @Nullable String ruleId, List<KeyedMergeSpec> out, boolean suppMerge, ChosenSupp chosen,
+            Map<String, IDataTable> partners)
     {
         List<KeyColumn> suppKeys = rule.suppKeyColumns();
         List<MatchDataset> entries = rule.getMatchDatasets();
@@ -677,7 +761,9 @@ public final class MergedEvaluation
             {
                 throw new MalformedSidedKeyException(name, malformedKey);
             }
-            String dsName = Objects.requireNonNull(DatasetIdentity.resolveWildcard(name, primary));
+            // D6 / D10: SUPP-- / SQAP-- is the supplemental family of the primary's domain
+            String dsName = Objects
+                    .requireNonNull(DatasetIdentity.resolveDatasetWildcard(name, primary));
             String qualifier = name.contains("--") ? dsName : name;
             IDataTable partner = SplitDomainResolution.resolveTableOrThrow(resolver, dsName,
                     ruleId);
@@ -685,6 +771,7 @@ public final class MergedEvaluation
             {
                 continue; // not supplied: no part, the dotted reads take the not-supplied default
             }
+            partners.put(dsName, partner);
             if (suppMerge)
             {
                 refuseSuppQualifierKey(md, name, primary, resolver, ruleId);
@@ -726,7 +813,8 @@ public final class MergedEvaluation
                     .keepMissings(md.keepMissingKeys()).typeChecked(expandable).partnerMask(mask)
                     .cardinality(
                             Objects.requireNonNullElse(md.cardinality(), Cardinality.MANY_TO_MANY))
-                    .supp(suppMerge ? partnerSupp(partner, dsName, resolver, ruleId, suppKeys)
+                    .supp(suppMerge
+                            ? partnerSupp(partner, dsName, resolver, ruleId, suppKeys, chosen)
                             : null)
                     .build());
         }
@@ -734,44 +822,46 @@ public final class MergedEvaluation
 
 
     /**
-     * A left key the primary lacks but its {@code SUPP<dataset>} / {@code SUPP<domain>} supplies as
-     * a qualifier ({@code QNAM}) is refused — the rule's ERROR under the merged table's prefix
-     * ({@link #MERGE_REFUSED_MESSAGE_PREFIX}), never served: the datatable keys the raw primary
-     * before the SUPP parts exist, so the key would read its absent default on every row (JKM R7) —
-     * a silent mis-join. Serving it is a datatable change (both twins), assessed in the plan's T1.
-     * Costs nothing unless a key is absent from the primary (corpus exposure 0, W3f).
+     * A left key the primary lacks but one of its SUPP sources (the one chooser's members,
+     * {@link SplitDomainResolution#suppMergeSources} — its {@code SUPP<dataset>} and the
+     * domain-level members of its family) supplies as a qualifier ({@code QNAM}) is refused — the
+     * rule's ERROR under the merged table's prefix ({@link #MERGE_REFUSED_MESSAGE_PREFIX}), never
+     * served: the datatable keys the raw primary before the SUPP parts exist, so the key would read
+     * its absent default on every row (JKM R7) — a silent mis-join. Serving it is a datatable
+     * change (both twins), assessed in the plan's T1. Costs nothing unless a key is absent from the
+     * primary (corpus exposure 0, W3f).
      */
     private static void refuseSuppQualifierKey(MatchDataset md, String name, IDataTable primary,
             DatasetResolver resolver, @Nullable String ruleId)
     {
         String dataset = Objects.requireNonNullElse(primary.getMetaData().getName(), "");
         List<String> left = md.getKeys();
-        if (left == null || dataset.isEmpty() || neverPivoted(dataset))
+        if (left == null || dataset.isEmpty() || DatasetIdentity.hasNoSupplemental(dataset))
         {
             return;
         }
-        List<String> suppNames = null;
+        List<IDataTable> sources = null;
         for (String key : left)
         {
             if (key == null || primary.getMetaData().getColumnIndex(key) >= 0)
             {
                 continue;
             }
-            if (suppNames == null)
+            if (sources == null)
             {
                 String domain = DatasetIdentity.domainOfDataset(dataset, resolver);
-                suppNames = domain == null || domain.isEmpty() ? List.of()
-                        : SuppMergeSpec.defaultSuppNames(dataset, domain);
+                sources = domain == null || domain.isEmpty() ? List.of()
+                        : SplitDomainResolution.suppMergeSources(resolver, primary, dataset, domain,
+                                ruleId);
             }
-            for (String suppName : suppNames)
+            for (IDataTable supp : sources)
             {
-                IDataTable supp = SplitDomainResolution.resolveTableOrThrow(resolver, suppName,
-                        ruleId);
-                if (supp != null && supp != primary && carriesQnam(supp, key))
+                if (carriesQnam(supp, key))
                 {
                     throw new net.cumba.datatable.merge.MergeException("the key " + key
                             + " of the Match_Datasets entry " + name + " is not a column of "
-                            + dataset + " but a supplemental qualifier (QNAM) of " + suppName
+                            + dataset + " but a supplemental qualifier (QNAM) of "
+                            + supp.getMetaData().getName()
                             + " — a SUPP qualifier cannot key a join yet, so the join would"
                             + " read the key's absent default on every row");
                 }
@@ -804,14 +894,18 @@ public final class MergedEvaluation
 
     /**
      * MQ5 ({@code PLAN-merged-evaluation-table} W3d): under the rule's {@code Supp_Merge} a keyed
-     * partner's own {@code SUPP<dataset>} / {@code SUPP<domain>} qualifiers are columns of the view
-     * too, named {@code <Name>.<QNAM>} — the same IG names and the same P-7 choice as the
-     * primary's; {@code null} when no supplemental dataset resolves for the partner.
+     * partner's own SUPP qualifiers are columns of the view too, named {@code <Name>.<QNAM>} — the
+     * same chooser as the primary's ({@link SplitDomainResolution#suppMergeSources}: its
+     * {@code SUPP<dataset>} and the domain-level members of its family; a partner that resolves as
+     * a split union — {@code LB} on {@code lbch} / {@code lbhe} / {@code lbur} — contains every
+     * member and is fed the whole family, D12), registered in the view's chosen members (D11);
+     * {@code null} when no supplemental dataset resolves for the partner.
      */
     private static @Nullable SuppMergeSpec partnerSupp(IDataTable partner, String dsName,
-            DatasetResolver resolver, @Nullable String ruleId, @Nullable List<KeyColumn> suppKeys)
+            DatasetResolver resolver, @Nullable String ruleId, @Nullable List<KeyColumn> suppKeys,
+            ChosenSupp chosen)
     {
-        if (neverPivoted(dsName))
+        if (DatasetIdentity.hasNoSupplemental(dsName))
         {
             return null;
         }
@@ -820,15 +914,8 @@ public final class MergedEvaluation
         {
             return null;
         }
-        List<String> supp = new ArrayList<>(2);
-        for (String name : SuppMergeSpec.defaultSuppNames(dsName, domain))
-        {
-            IDataTable t = SplitDomainResolution.resolveTableOrThrow(resolver, name, ruleId);
-            if (t != null && t != partner)
-            {
-                supp.add(name);
-            }
-        }
+        List<String> supp = chosen.add(
+                SplitDomainResolution.suppMergeSources(resolver, partner, dsName, domain, ruleId));
         return supp.isEmpty() ? null
                 : SuppMergeSpec.builder().suppDatasets(supp).keys(suppKeys).build();
     }

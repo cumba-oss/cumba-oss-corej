@@ -15,7 +15,9 @@ import org.jspecify.annotations.Nullable;
  * <em>same</em> two-prefix text policy ({@link CheckConditionTransformer#resolveTextWildcard}):
  * variable-name positions take the variable wildcard prefix (EC-36 — {@code ""} for SUPP/SQ, the
  * 2-character parent suffix for AP), the dataset half of a dot-qualified reference keeps the full
- * CDISC domain code ({@code SUPP--.QVAL} on an {@code APMH} primary is {@code SUPPAPMH.QVAL}).
+ * CDISC domain code, and {@code SUPP--} / {@code SQAP--} there is the supplemental family of that
+ * code ({@code SUPP--.QVAL} on an {@code APMH} primary is {@code SQAPMH.QVAL}, on {@code LBCH}
+ * {@code SUPPLB.QVAL} — {@code PLAN-split-supp-resolution} D6 / D10).
  *
  * <p>
  * Called from {@link RuleSpecialiser} (D77); public so tests and embedders can specialise a raw

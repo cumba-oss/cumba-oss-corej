@@ -18,6 +18,8 @@ import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -296,6 +298,50 @@ class SidecarResolverTest
         assertThrows(IOException.class, () -> r.open(scenario, "junction/lib.yaml"));
         // the walk's other components are untouched by the seam
         assertNotNull(r.resolve(scenario, "lib.yaml"));
+    }
+
+
+    /**
+     * The real thing the injected seam above stands in for (PACK 3 ride-along, owner ruling): on
+     * Windows an NTFS junction is created with {@code cmd /c mklink /J} inside the scenario tree,
+     * pointing outside it, and the resolver refuses a sidecar reached through it with the
+     * redirection message and no absolute path — while a sidecar beside the scenario still
+     * resolves. Runs on Windows only (the owner's
+     * {@code mvn -o -pl lib/cumba-corej-ruletest test -Dtest=SidecarResolverTest}); creating a
+     * junction needs no elevated rights, so a failed {@code mklink} is a real failure, not an
+     * assumption.
+     */
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void aRealNtfsJunctionIsRefused(@TempDir Path aRoot) throws IOException, InterruptedException
+    {
+        Path scenario = tree(aRoot);
+        Path outside = Files.createDirectories(aRoot.resolve("outside"));
+        Files.writeString(outside.resolve("lib.yaml"), "standard: sdtmig\n",
+                StandardCharsets.UTF_8);
+        Path junction = scenario.resolveSibling("junction");
+        Process mklink = new ProcessBuilder("cmd", "/c", "mklink", "/J", junction.toString(),
+                outside.toString()).redirectErrorStream(true).start();
+        String output = new String(mklink.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertEquals(0, mklink.waitFor(), "mklink /J failed: " + output);
+        assertTrue(Files.isDirectory(junction), "the junction must be a directory: " + output);
+        assertFalse(Files.isSymbolicLink(junction),
+                "the premise: a junction is no symbolic link to isSymbolicLink");
+
+        SidecarResolver r = SidecarResolver.rootedAt(aRoot.resolve("suites"));
+        IOException e = assertThrows(IOException.class,
+                () -> r.resolve(scenario, "junction/lib.yaml"));
+        assertTrue(e.getMessage().contains("symbolic link, junction or other redirection"),
+                e.getMessage());
+        assertFalse(e.getMessage().contains(aRoot.toRealPath().toString()), e.getMessage());
+        assertFalse(e.getMessage().contains(outside.toRealPath().toString()), e.getMessage());
+        IOException opened = assertThrows(IOException.class,
+                () -> r.open(scenario, "junction/lib.yaml"));
+        assertFalse(opened.getMessage().contains(aRoot.toRealPath().toString()),
+                opened.getMessage());
+        // the control: a sidecar beside the scenario is unaffected by the junction beside it
+        assertEquals(scenario.resolveSibling("lib.yaml").toRealPath(),
+                r.resolve(scenario, "lib.yaml"));
     }
 
 

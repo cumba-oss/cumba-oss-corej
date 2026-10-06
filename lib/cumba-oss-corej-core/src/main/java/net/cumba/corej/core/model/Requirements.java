@@ -68,7 +68,9 @@ public class Requirements
     /**
      * Datasets that must be present in the run for the rule to be answerable at all. Presence is
      * the <b>widened</b> fact {@code ds_exists} has tested since {@code Fix #358} — a split domain
-     * counts as present — never exact-name resolution.
+     * counts as present, and since {@code PLAN-split-supp-resolution} a split supplemental family
+     * too ({@code SUPPPC} is present when {@code SUPPPC1} + {@code SUPPPC2} ship; {@code SUPP--} /
+     * {@code SQAP--} names the family of the primary's domain) — never exact-name resolution.
      */
     @JsonProperty("Datasets")
     private @Nullable List<String> datasets;

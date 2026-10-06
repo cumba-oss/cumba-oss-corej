@@ -183,19 +183,25 @@ public final class AuthoredRuleAssembler
                             + "\" — the rule is omitted from every package and never loaded",
                     path, locations.rangeOf(path)));
         }
-        try
+        // A parked rule is dropped by the corpus gate before anything is derived for it, so its
+        // Sensitivity is not derived here either (PACK 3 ride-along; the rule editor's
+        // RuleAnalyser used to drop the SENSITIVITY_UNDERIVABLE diagnostic of a parked rule).
+        if (!parked)
         {
-            requireDerivableSensitivity(check);
-        }
-        catch (IllegalStateException e)
-        {
-            // A rule that cannot be BOUND (a malformed Check) fails the derivation too; that is
-            // the load step's finding, reported once there with the expression's position.
-            if (!(e.getCause() instanceof JsonProcessingException))
+            try
             {
-                YamlPath path = YamlPath.of("Sensitivity");
-                diagnostics.add(new RuleDiagnostic("SENSITIVITY_UNDERIVABLE", Severity.ERROR,
-                        String.valueOf(e.getMessage()), path, locations.rangeOf(path)));
+                requireDerivableSensitivity(check);
+            }
+            catch (IllegalStateException e)
+            {
+                // A rule that cannot be BOUND (a malformed Check) fails the derivation too; that
+                // is the load step's finding, reported once there with the expression's position.
+                if (!(e.getCause() instanceof JsonProcessingException))
+                {
+                    YamlPath path = YamlPath.of("Sensitivity");
+                    diagnostics.add(new RuleDiagnostic("SENSITIVITY_UNDERIVABLE", Severity.ERROR,
+                            String.valueOf(e.getMessage()), path, locations.rangeOf(path)));
+                }
             }
         }
         ShapeProblem shape = standardsShapeProblem(check);

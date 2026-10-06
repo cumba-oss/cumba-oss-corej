@@ -90,7 +90,12 @@ public final class JoinCache
 
         /**
          * The merged schema's QNAM set of one SUPP table, built once per table per run
-         * ({@link SuppQualifiers}).
+         * ({@link SuppQualifiers}). Keyed by the SUPP table alone on purpose: the set is every
+         * {@code QNAM} the table carries whether or not it became a column
+         * ({@code MergedTable.suppQnams}), so it does not depend on the base it is paired with — a
+         * member of a split family ({@code SUPPAE1}) paired with two bases answers one set
+         * ({@code PLAN-split-supp-resolution} confirmation look F3, measured false:
+         * {@code SuppMergeSourcesTest}).
          */
         java.util.Set<String> getOrBuildSuppQnams(IDataTable aSupp,
                 java.util.function.Function<IDataTable, java.util.Set<String>> aBuild)

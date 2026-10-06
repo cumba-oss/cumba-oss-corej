@@ -308,6 +308,59 @@ class RuleSpecialiserTest
     }
 
 
+    /**
+     * {@code PLAN-split-supp-resolution} (Q6, D6, D10): a non-{@code Child} {@code SUPP--} /
+     * {@code SQAP--} join name is the supplemental family of the primary's <b>domain code</b> —
+     * {@code SUPPLB} on {@code LBCH} (not the table name's {@code SUPPLBCH}), {@code SQAPMH} on
+     * {@code APMH} (the IG's name, not {@code SUPPAPMH}), {@code SUPPAE} for {@code SQAP--} on
+     * {@code AE} (a synonym, never an error). The {@code Child} pin above stays: a pattern.
+     */
+    @Test
+    void nonChildSuppWildcardIsTheDomainsFamily()
+    {
+        IDataTable lbch = MockTable.of().name("LBCH").col("DOMAIN", "LB").col("LBSEQ", "1").build();
+        IDataTable apmh = MockTable.of().name("APMH").col("DOMAIN", "APMH").col("APID", "A1")
+                .col("MHSEQ", "1").build();
+        for (String[] c : List.of(new String[]
+        {
+                "SUPP--", "SUPPLB"
+        }, new String[]
+        {
+                "SQAP--", "SUPPLB"
+        }))
+        {
+            MatchDataset join = new MatchDataset();
+            join.setName(c[0]);
+            join.setKeys(List.of("USUBJID"));
+            Rule rule = exprRule("TEST-MD-LB", "--SEQ == \"1\"");
+            rule.setMatchDatasets(List.of(join));
+            Rule specialised = Objects.requireNonNull(RuleSpecialiser.specialise(rule, lbch, "LB"));
+            assertEquals(c[1],
+                    Objects.requireNonNull(specialised.getMatchDatasets()).get(0).getName(),
+                    c[0] + " on LBCH is the LB family");
+        }
+        MatchDataset ap = new MatchDataset();
+        ap.setName("SUPP--");
+        ap.setKeys(List.of("APID"));
+        Rule apRule = exprRule("TEST-MD-AP", "--TERM == \"X\"");
+        apRule.setMatchDatasets(List.of(ap));
+        assertEquals("SQAPMH",
+                Objects.requireNonNull(
+                        Objects.requireNonNull(RuleSpecialiser.specialise(apRule, apmh, "APMH"))
+                                .getMatchDatasets())
+                        .get(0).getName(),
+                "SUPP-- on an AP primary is the IG's SQAP name (D10)");
+        MatchDataset synonym = new MatchDataset();
+        synonym.setName("SQAP--");
+        synonym.setKeys(List.of("USUBJID"));
+        Rule aeRule = exprRule("TEST-MD-AE", "--STDTC == \"X\"");
+        aeRule.setMatchDatasets(List.of(synonym));
+        assertEquals("SUPPAE", Objects.requireNonNull(Objects
+                .requireNonNull(RuleSpecialiser.specialise(aeRule, ae(), "AE")).getMatchDatasets())
+                .get(0).getName(), "SQAP-- on AE is SUPP-- (D10)");
+    }
+
+
     @Test
     void groupingVariablesAndOutputVariablesAreSpecialised()
     {

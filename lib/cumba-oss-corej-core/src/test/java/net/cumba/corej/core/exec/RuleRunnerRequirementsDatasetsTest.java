@@ -272,6 +272,64 @@ class RuleRunnerRequirementsDatasetsTest
     }
 
 
+    /**
+     * {@code PLAN-split-supp-resolution} (Q1, Q3, Q7): a split supplemental family — SUPPAE1 +
+     * SUPPAE2 ({@code RDOMAIN = AE}, no SUPPAE), SQAPMH1 + SQAPMH2 ({@code RDOMAIN = APMH}) — is
+     * present under its family name, the same widened fact {@code ds_exists} answers.
+     */
+    @Test
+    @DisplayName("a split SUPP / SQAP family satisfies a requirement naming the family")
+    void splitSuppFamilySatisfiesTheRequirement() throws IOException
+    {
+        Rule rule = ruleRequiring("empty(AETERM)", "SUPPAE");
+        IDataTable suppae1 = RealTables.of("SUPPAE1").str("RDOMAIN", "AE").str("QNAM", "X").build();
+        IDataTable suppae2 = RealTables.of("SUPPAE2").str("RDOMAIN", "AE").str("QNAM", "Y").build();
+        RuleExecutionResult present = run(rule, ae(), inventory(study(ae(), suppae1, suppae2)));
+        assertNotEquals(RuleExecutionStatus.SKIPPED, present.getStatus(),
+                present.getStatusMessage());
+        RuleExecutionResult absent = run(rule, ae(), inventory(study(ae())));
+        assertEquals(RuleExecutionStatus.SKIPPED, absent.getStatus());
+        assertTrue(absent.getStatusMessage().contains("SUPPAE"), absent.getStatusMessage());
+
+        Rule ap = ruleRequiring("empty(AETERM)", "SQAPMH");
+        IDataTable sqapmh1 = RealTables.of("SQAPMH1").str("RDOMAIN", "APMH").str("QNAM", "X")
+                .build();
+        RuleExecutionResult apPresent = run(ap, ae(), inventory(study(ae(), sqapmh1)));
+        assertNotEquals(RuleExecutionStatus.SKIPPED, apPresent.getStatus(),
+                apPresent.getStatusMessage());
+        // a member name is not a family: a requirement naming SUPPAE1 is exact
+        RuleExecutionResult member = run(ruleRequiring("empty(AETERM)", "SUPPAE1"), ae(),
+                inventory(study(ae(), suppae2)));
+        assertEquals(RuleExecutionStatus.SKIPPED, member.getStatus());
+    }
+
+
+    /**
+     * ⚑ Re-pinned by {@code PLAN-split-supp-resolution} (Q6, D6): {@code SUPP--} is the
+     * supplemental family of the primary's <b>domain code</b> in every dataset-name position — on a
+     * split member {@code LBCH} it is {@code SUPPLB} (every SUPP of the LB family, present through
+     * {@code SUPPLBCH} / {@code SUPPLBHE}), not the table-name substitution {@code SUPPLBCH}.
+     */
+    @Test
+    @DisplayName("a `--` entry on a split member names its domain's family")
+    void dashDashEntryOnASplitMemberIsTheDomainsFamily() throws IOException
+    {
+        Rule rule = ruleRequiring("empty(LBORRES)", "SUPP--");
+        IDataTable lbch = RealTables.of("LBCH").str("DOMAIN", "LB").str("LBORRES", "r").build();
+        IDataTable supplbhe = RealTables.of("SUPPLBHE").str("RDOMAIN", "LB").str("QNAM", "X")
+                .build();
+        RuleExecutionResult present = RuleRunnerCalls.execute(rule, lbch,
+                inventory(study(lbch, supplbhe)), "LB", null, null, null);
+        assertNotEquals(RuleExecutionStatus.SKIPPED, present.getStatus(),
+                "SUPP-- on LBCH is SUPPLB, present through SUPPLBHE: "
+                        + present.getStatusMessage());
+        RuleExecutionResult absent = RuleRunnerCalls.execute(rule, lbch, inventory(study(lbch)),
+                "LB", null, null, null);
+        assertEquals(RuleExecutionStatus.SKIPPED, absent.getStatus());
+        assertTrue(absent.getStatusMessage().contains("SUPPLB"), absent.getStatusMessage());
+    }
+
+
     @Test
     @DisplayName("a `--` entry resolves against the primary, as an Operation's domain does")
     void dashDashEntryResolvesAgainstThePrimary() throws IOException

@@ -70,10 +70,12 @@ public final class OperatorRegistry
             return b;
         }
         // Fix #358 (D7, widen both halves): a split domain (lbch/lbhe/lbur with no standalone LB)
-        // IS part of the submission, so ds_exists("LB") answers true. This is the same widened
-        // presence fact AbsentDatasetSkip tests, keeping SKIP and the presence rule in lockstep
-        // on split submissions. An un-unionable split still counts as present — its data ships,
-        // the union merely cannot be joined.
+        // or a split SUPP / SQAP family (SUPPAE1 + SUPPAE2 for SUPPAE, PLAN-split-supp-resolution
+        // D2 / D3) IS part of the submission, so ds_exists("LB") and ds_exists("SUPPAE") answer
+        // true. This is the same widened presence fact AbsentDatasetSkip and Requirements.Datasets
+        // test, keeping SKIP and the presence rule in lockstep on split submissions. An
+        // un-unionable split still counts as present — its data ships, the union merely cannot
+        // be joined.
         return name != null
                 && SplitDomainResolution.isPresentAsDomain(ctx.getDatasetResolver(), name);
     }
@@ -451,15 +453,16 @@ public final class OperatorRegistry
             return true;
         }
         // Fix #39: lazy SUPP-pivot lookup. If the foreign dataset doesn't carry the
-        // column literally, the column may be delivered via supplemental qualifiers.
-        // Scan SUPP<DOMAIN> for a row with QNAM == <col>. SUPP-only scope (no
-        // SQAP/APFA); shipped ADaM rules don't reference those families in this
-        // shape. (Routing through SplitDomainResolution keeps the site uniform; the
-        // two-character bound means a SUPP<domain> name still resolves exactly — a split
-        // SUPPLB never unions here, matching ScopeVariableSource's literal-half behaviour.)
+        // column literally, the column may be delivered via supplemental qualifiers: the
+        // merged schema's QNAM set over the dataset's SUPP sources (SuppQualifiers — the one
+        // chooser's members, exactly what the merged view feeds: PLAN-split-supp-resolution
+        // D4 (b); a split SUPPLB family resolves to its members' union above, and on LBCH only
+        // SUPPLBCH qualifies, so var_exists("LBCH.X") with X only in SUPPLBHE is false, PG-H3).
+        // A SUPP / SQ / RELREC dataset has no supplemental of its own (the IG's rule; the same
+        // guard as the scope gate's and the merge's, ignoring case).
         // PLAN-operation-replacements §2.3: the pivot is the existence half of the declared SUPP
         // merge, so a rule that declares Supp_Merge: false does not get it either.
-        if (ctx.isSuppMerge() && !domain.toUpperCase(java.util.Locale.ROOT).startsWith("SUPP"))
+        if (ctx.isSuppMerge() && !DatasetIdentity.hasNoSupplemental(domain))
         {
             // the dataset may be absent while its SUPP ships (review H2 of the scope gate): the
             // SUPP's qualifiers are still the merged schema's answer for the name

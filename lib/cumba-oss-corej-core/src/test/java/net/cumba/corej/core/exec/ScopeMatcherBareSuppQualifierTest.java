@@ -162,6 +162,100 @@ class ScopeMatcherBareSuppQualifierTest
     }
 
 
+    /** The split family: SUPPAE1 + SUPPAE2 (RDOMAIN AE), no SUPPAE — one qualifier each. */
+    private static IDataTable suppae(String name, String subject, String qnam)
+    {
+        return RealTables.of(name).str("RDOMAIN", "AE").str("USUBJID", subject)
+                .str("IDVAR", "AESEQ").str("IDVARVAL", "1").str("QNAM", qnam).str("QVAL", "Y")
+                .build();
+    }
+
+
+    /**
+     * {@code PLAN-split-supp-resolution} PG-H1 / C5: the bare facets read the primary's SUPP
+     * sources — the one chooser's members — so a split family delivers its qualifiers to {@code AE}
+     * (SUPPAE1 ∪ SUPPAE2), and a split member reads exactly its own SUPP.
+     */
+    @Test
+    @DisplayName("⭐ the bare facets see a split SUPP family's qualifiers")
+    void theBareFacetsSeeASplitFamily()
+    {
+        IDataTable s1 = suppae("SUPPAE1", "S1", "AETRTEM");
+        IDataTable s2 = suppae("SUPPAE2", "S2", "AESOSP");
+        assertNull(check(all("AETRTEM"), true, ae(), s1, s2), "SUPPAE1 delivers it");
+        assertNull(check(all("AESOSP"), true, ae(), s1, s2), "SUPPAE2 delivers it");
+        assertNotNull(check(none("AESOSP"), true, ae(), s1, s2), "None excludes it");
+        assertNull(check(allOrNone("AETRTEM", "AESOSP", "AESEQ"), true, ae(), s1, s2),
+                "every member of the group is present");
+        assertNotNull(check(all("AETRTEM"), false, ae(), s1, s2), "Supp_Merge off: absent");
+        // a split member reads its own SUPP: LBCH ← SUPPLBCH, never SUPPLBHE (D12)
+        IDataTable lbch = RealTables.of("LBCH").str("DOMAIN", "LB").str("USUBJID", "S1")
+                .str("LBSEQ", "1").build();
+        IDataTable supplbch = RealTables.of("SUPPLBCH").str("RDOMAIN", "LB").str("USUBJID", "S1")
+                .str("IDVAR", "LBSEQ").str("IDVARVAL", "1").str("QNAM", "LBCHX").str("QVAL", "a")
+                .build();
+        IDataTable supplbhe = RealTables.of("SUPPLBHE").str("RDOMAIN", "LB").str("USUBJID", "S1")
+                .str("IDVAR", "LBSEQ").str("IDVARVAL", "1").str("QNAM", "LBHEX").str("QVAL", "b")
+                .build();
+        IDataTable lbhe = RealTables.of("LBHE").str("DOMAIN", "LB").str("USUBJID", "S1")
+                .str("LBSEQ", "2").build();
+        ScopeVariableSource src = ScopeVariableSource
+                .of(RealTables.inventoryOf(lbch, lbhe, supplbch, supplbhe), lbch, true);
+        assertNotNull(src);
+        assertNull(ScopeMatcherCalls.describeVariablesMismatch(all("LBCHX"), lbch.getMetaData(),
+                "LB", src), "its own SUPP's qualifier");
+        assertNotNull(ScopeMatcherCalls.describeVariablesMismatch(all("LBHEX"), lbch.getMetaData(),
+                "LB", src), "a sibling's qualifier is the sibling's");
+    }
+
+
+    /**
+     * {@code PLAN-split-supp-resolution} confirmation look side (a): the two-character leg of a
+     * qualified entry walks the inventory fault-tolerantly — an unreadable UNRELATED dataset does
+     * not throw through the gate; the facet decides on the members.
+     */
+    @Test
+    @DisplayName("a throwing unrelated dataset beside a split-LB qualified entry: the facet decides")
+    void aThrowingUnrelatedDatasetDoesNotThrowThroughTheGate()
+    {
+        IDataTable lbch = RealTables.of("LBCH").str("DOMAIN", "LB").str("LBORRES", "r").build();
+        IDataTable lbhe = RealTables.of("LBHE").str("DOMAIN", "LB").str("LBORRES", "r").build();
+        Map<String, IDataTable> tables = new LinkedHashMap<>();
+        tables.put("AE", ae());
+        tables.put("LBCH", lbch);
+        tables.put("LBHE", lbhe);
+        DatasetResolver.WithInventory inv = new DatasetResolver.WithInventory()
+        {
+
+            @Override
+            public @Nullable IDataTable resolve(String name)
+            {
+                if ("BAD".equals(name))
+                {
+                    throw new IllegalStateException("corrupt file");
+                }
+                return name == null ? null : tables.get(name);
+            }
+
+
+            @Override
+            public Set<String> availableDatasets()
+            {
+                Set<String> all = new java.util.LinkedHashSet<>(tables.keySet());
+                all.add("BAD");
+                return all;
+            }
+        };
+        ScopeVariableSource src = ScopeVariableSource.of(inv, ae(), true);
+        assertNotNull(src);
+        assertNull(ScopeMatcherCalls.describeVariablesMismatch(all("LB.LBORRES"),
+                ae().getMetaData(), "AE", src),
+                "the split members carry it — decided, no exception");
+        assertNotNull(ScopeMatcherCalls.describeVariablesMismatch(all("LB.NOSUCH"),
+                ae().getMetaData(), "AE", src), "and an absent column is absent");
+    }
+
+
     @Test
     @DisplayName("All_Or_None without the qualifier is partly present: SKIP naming both halves")
     void allOrNoneWithoutTheQualifierIsPartlyPresent()

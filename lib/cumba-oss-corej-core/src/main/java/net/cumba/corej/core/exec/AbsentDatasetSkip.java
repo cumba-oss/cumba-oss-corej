@@ -30,17 +30,18 @@ import org.jspecify.annotations.Nullable;
  * the same predicate the presence rule evaluates —
  * {@link OperatorRegistry#existsAsDataset(EvaluationContext, String)} is
  * {@code resolver.resolve(name) != null} — widened by {@code Fix #358} (D7) so a <em>split</em>
- * domain counts as present on <b>both</b> sides ({@code SplitDomainResolution.isPresentAsDomain};
- * here scoped to the candidates whose readers were widened: {@code Match_Datasets} names, dotted
- * references and the {@code domain=} of a registry call, in the Check and in the compiled bindings)
- * — which is what {@link #decide} tests — so SKIP engages exactly when the presence rule fires,
- * never when it does not. Since runbook W8 there is no exception left: the one this paragraph used
- * to state — a candidate referenced only via an {@code Operations[].domain}, whose operation
- * resolved by exact name — went with the operation surface, and every {@code domain=} reader
- * resolves a split family to its union ({@code SplitDomainResolution.resolveTableOrThrow}; an
- * un-unionable family ERRORs the rule — ruling 1, D-W7-17). A future reader that resolves exact
- * must re-open the exception here (mirror, never weaken —
- * {@code PLAN-match-datasets-split-union.md} §9).
+ * domain — and, since {@code PLAN-split-supp-resolution}, a split {@code SUPP<domain>} /
+ * {@code SQAP<xx>} family — counts as present on <b>both</b> sides
+ * ({@code SplitDomainResolution.isPresentAsDomain}; here scoped to the candidates whose readers
+ * were widened: {@code Match_Datasets} names, dotted references and the {@code domain=} of a
+ * registry call, in the Check and in the compiled bindings) — which is what {@link #decide} tests —
+ * so SKIP engages exactly when the presence rule fires, never when it does not. Since runbook W8
+ * there is no exception left: the one this paragraph used to state — a candidate referenced only
+ * via an {@code Operations[].domain}, whose operation resolved by exact name — went with the
+ * operation surface, and every {@code domain=} reader resolves a split family to its union
+ * ({@code SplitDomainResolution.resolveTableOrThrow}; an un-unionable family ERRORs the rule —
+ * ruling 1, D-W7-17). A future reader that resolves exact must re-open the exception here (mirror,
+ * never weaken — {@code PLAN-match-datasets-split-union.md} §9).
  *
  * <h2>⚠ SKIP is scoped to the DEPENDENCY, not to the rule (K5b)</h2> Skipping the whole rule would
  * discard branches that never touched the absent dataset. The worked example is
@@ -498,9 +499,11 @@ public final class AbsentDatasetSkip
             // widened: Match_Datasets names (the join sites), dotted references (the
             // OperatorRegistry/ValueResolver sites) and registry calls' domain= (the grouped
             // readers resolve through SplitDomainResolution) — since W8 that is every surface a
-            // candidate comes from. Bounded to two-character domain codes inside
-            // SplitDomainResolution (an `adsl` member carrying DOMAIN=ADSL must never make "ADSL"
-            // present — no inventory walk happens for names longer than a domain code).
+            // candidate comes from. Bounded inside SplitDomainResolution to two-character domain
+            // codes and the two supplemental-family shapes SUPP<xx> / SQAP<xx> (a split SUPPAE1 +
+            // SUPPAE2 makes "SUPPAE" present, PLAN-split-supp-resolution D2 / D3; an `adsl` member
+            // carrying DOMAIN=ADSL must never make "ADSL" present — no inventory walk happens for
+            // any other name shape).
             if (splitWidened.contains(candidate)
                     && SplitDomainResolution.isPresentAsDomain(resolver, candidate))
             {

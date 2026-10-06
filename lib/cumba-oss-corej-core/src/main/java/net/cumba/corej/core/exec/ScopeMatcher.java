@@ -882,9 +882,11 @@ public final class ScopeMatcher
             addColumnsMatching(meta, pattern, names);
             return new EntryNames(label, names, true, null);
         }
-        // W2a (C1 ruled (a)) — the bare arm mirrors describeIncludeEntry's: a column SUPP<domain>
-        // of the primary delivers as a qualifier is present, so All_Or_None, All and
-        // var_exists agree about what "present" means (combined review W2 M4).
+        // W2a (C1 ruled (a)) — the bare arm mirrors describeIncludeEntry's: a column the
+        // primary's SUPP sources (the one chooser's members — its SUPP<dataset> and the
+        // domain-level members of its SUPP<domain> / SQAP family, PLAN-split-supp-resolution
+        // C5) deliver as a qualifier is present, so All_Or_None, All and var_exists agree about
+        // what "present" means (combined review W2 M4).
         if (meta.getColumnIndex(resolved) >= 0
                 || (foreign != null && foreign.localQualifier(resolved)))
         {
@@ -1153,8 +1155,9 @@ public final class ScopeMatcher
             if (metas.isEmpty())
             {
                 // Review H2: consult the SUPP pivot BEFORE declaring the dataset unavailable.
-                // OperatorRegistry.existsAsDottedDatasetColumn falls through to the SUPP<DOMAIN>
-                // scan when resolve() returns null, so a study carrying SUPPAE but no AE answers
+                // OperatorRegistry.existsAsDottedDatasetColumn falls through to the scan of the
+                // dataset's SUPP sources (the chooser's members, C5 of PLAN-split-supp-resolution)
+                // when resolve() returns null, so a study carrying SUPPAE but no AE answers
                 // `exists AE.AETRTEM` true. Returning early here would make the scope gate skip
                 // where the Check-side guard runs — breaking exactly the hoist equivalence the
                 // migration plan relies on.
@@ -1237,9 +1240,10 @@ public final class ScopeMatcher
         }
         else if (meta.getColumnIndex(resolved) < 0)
         {
-            // W2a (C1 ruled (a)): a bare entry SUPP<domain> delivers as a qualifier is present
-            // for the existence surface. An untagged entry only — a typed requirement on a
-            // qualifier is not a shipped shape and keeps the absent answer.
+            // W2a (C1 ruled (a)): a bare entry the primary's SUPP sources (the chooser's
+            // members, C5 of PLAN-split-supp-resolution) deliver as a qualifier is present for
+            // the existence surface. An untagged entry only — a typed requirement on a qualifier
+            // is not a shipped shape and keeps the absent answer.
             if (required == null && foreign != null && foreign.localQualifier(resolved))
             {
                 return null;
@@ -1485,10 +1489,10 @@ public final class ScopeMatcher
         }
         else if (foreign != null && foreign.localQualifier(resolved))
         {
-            // W2a (C1 ruled (a)) — the mirror of describeIncludeEntry's bare arm: a variable
-            // SUPP<domain> delivers as a qualifier is present for the existence surface, so
-            // None must exclude it exactly when var_exists would answer true (combined review
-            // W2 M4).
+            // W2a (C1 ruled (a)) — the mirror of describeIncludeEntry's bare arm: a variable the
+            // primary's SUPP sources (the chooser's members, C5 of PLAN-split-supp-resolution)
+            // deliver as a qualifier is present for the existence surface, so None must exclude
+            // it exactly when var_exists would answer true (combined review W2 M4).
             return "Requirements.Variables.None variable "
                     + entryLabel(varName, entry.variable(), resolved)
                     + " present as a supplemental qualifier of the dataset";

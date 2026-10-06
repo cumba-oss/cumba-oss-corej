@@ -1377,11 +1377,14 @@ public final class GroupedAggregate
      * The {@code domain=} dataset as it names a table of the study: a {@code --} in the literal
      * ({@code domain="SUPP--"}) resolves against the evaluated dataset exactly as
      * {@code Match_Datasets} names and the cross-dataset metadata functions resolve it
-     * ({@link DatasetIdentity#resolveWildcard} — Fix #33: {@code SUPP--} on {@code AE} is
-     * {@code SUPPAE}, and on {@code SUPPAE} too). Combined review of runbook W2–W8, F-W8-2: the
-     * grouped readers looked the literal {@code SUPP--} up verbatim and silently answered their
+     * ({@link DatasetIdentity#resolveDatasetWildcard}: {@code SUPP--} / {@code SQAP--} is the
+     * supplemental family of the evaluated dataset's domain code — {@code SUPPAE} on {@code AE},
+     * {@code SUPPLB} on {@code LBCH} (the whole LB family), {@code SQAPMH} on {@code APMH}
+     * ({@code PLAN-split-supp-resolution} Q6, D6, D10); on a {@code SUPPAE} primary Fix #33's
+     * parent prefix, {@code SUPPAE} too). Combined review of runbook W2–W8, F-W8-2: the grouped
+     * readers looked the literal {@code SUPP--} up verbatim and silently answered their
      * absent-dataset default, while {@code crossDatasetVariableMetadata} resolved it — one
-     * spelling, two meanings.
+     * spelling, two meanings. Serves {@code ReadValue}'s {@code domain=} as well.
      *
      * @param dataset
      *            the authored {@code domain=} dataset
@@ -1391,7 +1394,7 @@ public final class GroupedAggregate
      */
     static String datasetName(String dataset, EvaluationContext ctx)
     {
-        String resolved = DatasetIdentity.resolveWildcard(dataset, ctx.getTable());
+        String resolved = DatasetIdentity.resolveDatasetWildcard(dataset, ctx.getTable());
         return resolved != null ? resolved : dataset;
     }
 
