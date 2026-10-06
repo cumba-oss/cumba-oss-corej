@@ -260,8 +260,48 @@ class MatchFilterExecutionTest
     }
 
 
+    /**
+     * {@code PLAN-merge-followups} item 4, the KeyGates / D40 probe: the four
+     * {@code KeyGates.check} refusals (a D4 key-type mismatch here) are thrown from inside
+     * {@code MergedEvaluation.build} — before the merge itself — and are {@code MergeException}s,
+     * so the T2 L3 catch that lets a DECLARED Stage B skip beat a merge refusal covers them too:
+     * the skip wins, and without a declared skip the D4 refusal stands as the rule's ERROR (the
+     * control proves the probe reached KeyGates: the message is D4's, not the Cardinality
+     * refusal's).
+     */
+    @Test
+    @DisplayName("a declared Stage B skip beats a KeyGates refusal too (D40)")
+    void aDeclaredStageBSkipBeatsAKeyGatesRefusal() throws IOException
+    {
+        // AE.USUBJID numeric against DM's character USUBJID: JoinKeyTypeMismatchException (D4-R2)
+        IDataTable aeNumericKey = RealTables.of("AE").lng("USUBJID", 1L, 1L, 2L, 3L)
+                .str("AEOUT", "MILD", "FATAL", "FATAL", "MILD").build();
+        RuleExecutionResult declared = runRefused("AEBOGUS != \"X\"",
+                "\"Any\":[\"AE.AEBOGUS\",\"DTHFL\"]", aeNumericKey);
+        assertEquals(RuleExecutionStatus.SKIPPED, declared.getStatus(),
+                String.valueOf(declared.getStatusMessage()));
+        assertTrue(String.valueOf(declared.getStatusMessage()).contains("AE.AEBOGUS"),
+                declared.getStatusMessage());
+        RuleExecutionResult refused = runRefused("AEOUT != \"X\"",
+                "\"Any\":[\"AE.AEBOGUS\",\"DTHFL\"]", aeNumericKey);
+        assertEquals(RuleExecutionStatus.ERROR, refused.getStatus(),
+                String.valueOf(refused.getStatusMessage()));
+        String message = String.valueOf(refused.getStatusMessage());
+        assertTrue(message.contains("Character") && message.contains("Numeric"),
+                "the D4 key-type refusal, not the Cardinality one: " + message);
+    }
+
+
     /** DM over AE {@code n:1} with {@code filter} — refused on P1's two AE records. */
     private static RuleExecutionResult runRefused(String filter, String variables)
+        throws IOException
+    {
+        return runRefused(filter, variables, ae());
+    }
+
+
+    /** DM over {@code ae} {@code n:1} with {@code filter}. */
+    private static RuleExecutionResult runRefused(String filter, String variables, IDataTable ae)
         throws IOException
     {
         String body = "{\"rules\":{\"R1\":{\"Core\":{\"Id\":\"TEST-FLT\"},"
@@ -276,8 +316,8 @@ class MatchFilterExecutionTest
         assertNotNull(r);
         assertNull(r.getLoadError());
         IDataTable primary = dm();
-        return RuleRunnerCalls.execute(r, primary, inventory(study(primary, ae())), "DM", null,
-                null, null);
+        return RuleRunnerCalls.execute(r, primary, inventory(study(primary, ae)), "DM", null, null,
+                null);
     }
 
 

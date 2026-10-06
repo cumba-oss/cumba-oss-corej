@@ -770,7 +770,9 @@ public final class RuleRunner
             mergedView = MergedEvaluation.build(rule, evalTable, table, resolver, joinCache, ruleId,
                     domainPrefix);
         }
-        catch (net.cumba.datatable.merge.MergeException e)
+        catch (net.cumba.datatable.merge.MergeException | JoinKeyTypeMismatchException
+                | DegenerateJoinKeyException | UnresolvedQualifiedKeyException
+                | MalformedSidedKeyException e)
         {
             // T2 L3 (D40, "cannot run beats is wrong"): the gate below runs after the view build,
             // so a merge the datatable refuses (a Cardinality violation, a degenerate key) would
@@ -781,6 +783,14 @@ public final class RuleRunner
             // read the run's inventory, not the merged schema, so they are decided here without
             // one; only a SKIPPED answer is taken (a bind finding decided without the merged
             // schema is not trusted) — otherwise the refusal stands as the rule's ERROR.
+            // ⭐ The four KeyGates refusals join this catch (PLAN-merge-followups item 4, D40
+            // probe): KeyGates.check runs inside the same view build, but its exceptions are the
+            // engine's own RuntimeExceptions, not the datatable's MergeException, so a D4 key-type
+            // mismatch (or a degenerate, unresolved or malformed key) escaped to the outer catch
+            // and pre-empted the declared skip — measured
+            // (MatchFilterExecutionTest.aDeclaredStageBSkipBeatsAKeyGatesRefusal). Same
+            // precedence, same rethrow: without a declared skip the refusal is still the rule's
+            // ERROR through the outer catch — no new ERROR site.
             RuleExecutionResult declaredSkip = stageBGate(rule, table, varWildcardPrefix != null,
                     ruleId, message, foreignInventory(resolver, ruleId), stageBSuppressed, null);
             if (declaredSkip != null && declaredSkip.getStatus() == RuleExecutionStatus.SKIPPED)
