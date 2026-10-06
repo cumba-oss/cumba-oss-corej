@@ -87,51 +87,9 @@ public final class ExecCalls
         Rule rule = new Rule();
         rule.setMatchDatasets(matchDatasets);
         rule.setSuppMerge(Boolean.FALSE);
-        // a MockTable fixture reaches the datatable's merge through a real-metadata face
-        IDataTable primary = java.util.Objects.requireNonNull(RealMetaTable.of(primaryTable));
-        DatasetResolver real = faced(resolver, primaryTable, primary);
-        return MergedEvaluation.build(rule, primary, primary, real,
+        // a MockTable's metadata is real since T1 (the testkit), so the merge copies it directly
+        return MergedEvaluation.build(rule, primaryTable, primaryTable, resolver,
                 aShared == null ? null : new JoinCache(aShared), ruleId, null);
-    }
-
-
-    /**
-     * {@code resolver} answering a real-metadata face ({@link RealMetaTable}) for every
-     * {@code MockTable} it supplies — one face per table, {@code primary}'s being {@code face} —
-     * and keeping its inventory when it has one (a split domain's union needs it).
-     */
-    private static DatasetResolver faced(DatasetResolver resolver, IDataTable primary,
-            IDataTable face)
-    {
-        java.util.IdentityHashMap<IDataTable, IDataTable> faces = new java.util.IdentityHashMap<>();
-        faces.put(primary, face);
-        java.util.function.Function<String, @Nullable IDataTable> resolve = name ->
-        {
-            IDataTable t = resolver.resolve(name);
-            return t == null ? null
-                    : faces.computeIfAbsent(t,
-                            k -> java.util.Objects.requireNonNull(RealMetaTable.of(k)));
-        };
-        if (resolver instanceof DatasetResolver.WithInventory inventory)
-        {
-            return new DatasetResolver.WithInventory()
-            {
-
-                @Override
-                public @Nullable IDataTable resolve(String name)
-                {
-                    return resolve.apply(name);
-                }
-
-
-                @Override
-                public Set<String> availableDatasets()
-                {
-                    return inventory.availableDatasets();
-                }
-            };
-        }
-        return resolve::apply;
     }
 
 
@@ -139,9 +97,8 @@ public final class ExecCalls
      * A context over the merged view {@code rule} builds on {@code primary} — its evaluation table,
      * its parts and its SUPP qualifiers — for a reader test that drives the readers the way
      * {@code RuleRunner} does (W6 of {@code PLAN-merged-evaluation-table}: the view is the one
-     * source of joins and qualifiers; a context without one has neither). A {@code MockTable}
-     * fixture reaches the merge through a real-metadata face; read the table back from the built
-     * context.
+     * source of joins and qualifiers; a context without one has neither). Read the table back from
+     * the built context.
      *
      * @throws IllegalArgumentException
      *             when the rule merges nothing on this data
@@ -149,16 +106,14 @@ public final class ExecCalls
     public static EvaluationContext.EvaluationContextBuilder viewContext(Rule rule,
             IDataTable primary, DatasetResolver resolver, @Nullable String domain)
     {
-        IDataTable face = java.util.Objects.requireNonNull(RealMetaTable.of(primary));
-        DatasetResolver real = faced(resolver, primary, face);
-        MergedEvaluation.Built built = MergedEvaluation.build(rule, face, face, real, null, "R",
-                domain);
+        MergedEvaluation.Built built = MergedEvaluation.build(rule, primary, primary, resolver,
+                null, "R", domain);
         if (built == null)
         {
             throw new IllegalArgumentException("the fixture merges nothing");
         }
         return EvaluationContext.builder().table(built.table()).mergedView(built)
-                .datasetResolver(real).suppMerge(rule.isSuppMergeEnabled());
+                .datasetResolver(resolver).suppMerge(rule.isSuppMergeEnabled());
     }
 
 

@@ -240,8 +240,12 @@ class IdentitySafeJoinCachesTest
      */
     private static WeakReference<IDataTable> populateAll(JoinCache.SharedIndexCache aCache)
     {
-        IDataTable t = MockTable.of().name("AE").col("USUBJID", "P1").col("AESEQ", "1")
-                .col("TRT01PN", "7").build();
+        // ⚠ A REAL table, not a MockTable: Mockito keeps the last mock invoked on a thread in its
+        // thread-local stubbing progress, so a mock read last (here getMetaData, since the
+        // testkit's metas are real — T1 of PLAN-merged-evaluation-table) stays reachable from
+        // the test thread and this lifetime check could never see it go.
+        IDataTable t = RealTables.of("AE").str("USUBJID", "P1").str("AESEQ", "1")
+                .str("TRT01PN", "7").build();
         try
         {
             MatchDataset md = new MatchDataset();

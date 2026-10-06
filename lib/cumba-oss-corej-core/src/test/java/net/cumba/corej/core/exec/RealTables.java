@@ -92,6 +92,19 @@ public final class RealTables
     }
 
 
+    /**
+     * A real column of any declared {@code aType} — e.g. the {@code BOOLEAN} an all-{@code NA} R
+     * {@code logical} column arrives as, which no other builder here declares.
+     */
+    public RealTables typed(String aName, DataValueType aType, Object... aValues)
+    {
+        colNames.add(aName);
+        colTypes.add(aType);
+        colData.add(aValues);
+        return this;
+    }
+
+
     public IDataTable build()
     {
         int colCount = colNames.size();

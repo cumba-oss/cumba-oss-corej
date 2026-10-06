@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
@@ -374,12 +373,14 @@ class JoinKeyTypeIdentityTest
     void aKeyColumnWhoseKindIsUnclassifiedDoesNotError()
     {
         IDataTable adae = MockTable.of().col(USUBJID, "P1").col(AESEQ, "1").name("ADAE").build();
-        IDataTable ae = MockTable.of().col(USUBJID, "P1").col(AESEQ, "1").col("AETERM", "HA")
-                .name(AE).build();
-        // An all-NA R `logical` column arrives as BOOLEAN; MockTable cannot declare one, so the
-        // mock's own column type is re-stubbed. kindOf(BOOLEAN) is null -> not gated (D4-R6a).
-        int idx = ae.getMetaData().getColumnIndex(AESEQ);
-        when(ae.getMetaData().getColumn(idx).getType()).thenReturn(DataValueType.BOOLEAN);
+        // An all-NA R `logical` column arrives as BOOLEAN; MockTable cannot declare one (and its
+        // metadata is real since T1, so it is no longer re-stubbed): a real table declares it.
+        // kindOf(BOOLEAN) is null -> not gated (D4-R6a).
+        IDataTable ae = RealTables.of(AE).str(USUBJID, "P1")
+                .typed(AESEQ, DataValueType.BOOLEAN, (Object) null).str("AETERM", "HA").build();
+        assertEquals(DataValueType.BOOLEAN,
+                ae.getMetaData().getColumn(ae.getMetaData().getColumnIndex(AESEQ)).getType(),
+                "the fixture really declares the unclassified kind");
         Assertions.assertDoesNotThrow(() -> expand(adae, ae, md(AE, List.of(USUBJID, AESEQ))),
                 "D4-R6a: an unclassified kind is NOT a mismatch. If this throws, every .rds study"
                         + " whose key variable is wholly missing ERRORs on every keyed rule");
