@@ -70,12 +70,13 @@ public enum StageAErrorKind
 
     /**
      * A name position that is not statically known and not one of §1.2's dynamic forms
-     * ({@code ${VAR[:fmt]}}, {@code RELREC.**}, {@code colref(<string>)},
-     * {@code colref(<list<string>>)}, {@code var_exists(<string>)} — amended by
-     * {@code PLAN-dynamic-column-functions}, 2026-09-30) — the typed mirror of
-     * {@code ExprCompiler:4583}. Armed: measured 0 newly parked (the engine already parks these
-     * today via {@code RuleDefinitionException}). Phase 2 enforces it for the metadata-accessor
-     * name argument only — §1.2's full name-position rule lands with the complete element table.
+     * ({@code ${VAR[:fmt]}}, {@code colref(<string>)} — {@code RELREC.**} retired with W5 of
+     * {@code PLAN-merged-evaluation-table} —, {@code colref(<list<string>>)},
+     * {@code var_exists(<string>)} — amended by {@code PLAN-dynamic-column-functions}, 2026-09-30)
+     * — the typed mirror of {@code ExprCompiler:4583}. Armed: measured 0 newly parked (the engine
+     * already parks these today via {@code RuleDefinitionException}). Phase 2 enforces it for the
+     * metadata-accessor name argument only — §1.2's full name-position rule lands with the complete
+     * element table.
      */
     NON_STATIC_NAME(true),
 
@@ -261,11 +262,12 @@ public enum StageAErrorKind
     /**
      * A bare (unqualified) reference that resolves onto a merged dataset's column (D62 — a merged
      * column is always qualified). ⚠ Observe-only in phase 2 <b>by ruling</b>: the {@code SUPPAE}
-     * rules D62a named read {@code AESMIE} bare and work today; arming before their booked
-     * migration would park them. Measured 2026-09-16 as three, re-derived 2026-09-19 as <b>two</b>
-     * after the CORE-family retirement: the prefix heuristic finds exactly those two
-     * ({@code CDISC-CG0043}, {@code FDA-SD1143}) and no false positive. Phase-2 detection is a
-     * heuristic, not name resolution.
+     * rules D62a named read {@code AESMIE} bare; arming before their booked migration would have
+     * parked them. Measured 2026-09-16 as three, re-derived 2026-09-19 as <b>two</b> after the
+     * CORE-family retirement ({@code CDISC-CG0043}, {@code FDA-SD1143}); both read
+     * {@code AE.AESMIE} since {@code PLAN-merged-evaluation-table} W4 (MET #2), and enforcement is
+     * the name resolution itself (a bare name is the primary's) plus the corpus lint
+     * {@code UnqualifiedJoinedReadLintTest}. Phase-2 detection is a heuristic, not name resolution.
      */
     MERGED_COLUMN_UNQUALIFIED(false),
 

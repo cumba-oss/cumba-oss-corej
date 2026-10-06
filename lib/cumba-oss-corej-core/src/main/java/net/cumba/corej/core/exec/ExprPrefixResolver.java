@@ -29,10 +29,11 @@ import org.jspecify.annotations.Nullable;
  * <b>What is deliberately NOT rewritten:</b>
  * </p>
  * <ul>
- * <li><b>{@code ${VAR[:fmt]}} operand substitution and the dot-qualified {@code RELREC.**} form</b>
- * (D77d) — both derive a column name from a <em>cell value</em>, so they are per-row column
- * selection, not templates. Any operand containing a {@code ${...}} placeholder is left verbatim;
- * the {@code **} column half of a dotted reference is preserved by the shared text policy.</li>
+ * <li><b>{@code ${VAR[:fmt]}} operand substitution and the dot-qualified {@code **} form</b>
+ * ({@code RELREC.**} itself a load error since W5 of {@code PLAN-merged-evaluation-table}) (D77d) —
+ * both derive a column name from a <em>cell value</em>, so they are per-row column selection, not
+ * templates. Any operand containing a {@code ${...}} placeholder is left verbatim; the {@code **}
+ * column half of a dotted reference is preserved by the shared text policy.</li>
  * <li><b>The template of {@code variable_count("--LNKGRP")}</b> (D92a) — it deliberately folds
  * across the dataset inventory using the pre-resolution template ({@code --LNKGRP} re-resolves per
  * iterated dataset: AE&rarr;AELNKGRP, CM&rarr;CMLNKGRP, …). Expanding it here would leave

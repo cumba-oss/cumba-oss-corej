@@ -3745,9 +3745,9 @@ public class RulePackageLoader
      * </ul>
      * Entries without {@code Keys} (a RELREC entry, a filter-only join) declare nothing, and so
      * does an <b>ordinary</b> entry without a {@code Name} (no {@code NAME.RIGHT} side exists) — a
-     * nameless {@code Child} entry is judged like a named one, since the child pre-merger joins on
-     * it. Type suffixes ({@code :N}) are stripped and names compared case-insensitively, as the
-     * lint does.
+     * nameless {@code Child} entry is judged like a named one, since the {@code Child} part of the
+     * merged evaluation table joins on it. Type suffixes ({@code :N}) are stripped and names
+     * compared case-insensitively, as the lint does.
      */
     static void validateJoinKeyDeclarations(Rule rule, List<String> errors)
     {

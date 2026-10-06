@@ -5064,8 +5064,8 @@ public final class ExprCompiler
     /**
      * ⭐ {@code colref(x)} — the dynamic column read ({@code PLAN-dynamic-column-functions} §2.3):
      * per row, the column {@code x} names, resolved by {@link DynamicColumnRead} exactly as the
-     * authored name resolves (a bare name on the evaluation table after the {@code Child}
-     * pre-merge, {@code DS.X} through the join), its cell typed, a list of names dereferenced
+     * authored name resolves (a bare name on the evaluation table, {@code DS.X} the merged column
+     * of the rule's merged evaluation table), its cell typed, a list of names dereferenced
      * element-wise (§2.7, Q4).
      *
      * <p>
@@ -5136,7 +5136,7 @@ public final class ExprCompiler
     /**
      * Whether {@code name} is a {@code --}-prefix domain wildcard (e.g. {@code --SEQ}) the native
      * backend resolves at eval time — as opposed to a {@code *}/{@code **}/ADaM enumeration
-     * wildcard or a dot-qualified {@code RELREC.**} form, which it declines.
+     * wildcard or a dot-qualified {@code D.**X} form, which it declines.
      */
     private static boolean isDomainPrefixWildcard(String name)
     {

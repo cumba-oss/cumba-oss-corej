@@ -54,8 +54,8 @@ import org.jspecify.annotations.Nullable;
  * ({@code ChildEntries.applicableEntry}), split-aware: {@code SUPP--} must keep matching a split
  * member such as {@code SUPPLBCH}, which a resolved {@code SUPPLB} would not. A pattern is not a
  * reference; resolving it would break split-SUPP child matching.</li>
- * <li>The D77d per-row forms ({@code ${VAR[:fmt]}}, dot-qualified {@code RELREC.**}) and the D92a /
- * D92b constructs — see {@link ExprPrefixResolver}.</li>
+ * <li>The D77d per-row forms ({@code ${VAR[:fmt]}}, a dot-qualified {@code **}) and the D92a / D92b
+ * constructs — see {@link ExprPrefixResolver}.</li>
  * <li>Record keys — the {@code --} candidates there are engine constants, not rule fields, and
  * {@code RecordKeyResolver} already resolves them through this same prefix authority.</li>
  * </ul>

@@ -394,8 +394,9 @@ public final class ReportAssembler
         // Every other id keeps its per-dataset rows. Issue_Details and Rules_Report are unaffected.
         // ⚑ The example id departs from plans/findings/CENSUS-core-rule-disposition.tsv on
         // purpose. This comment used to name `CORE-000767`, which the census maps to
-        // `CDISC-CG0603` — but CG0603 is a `**`-wildcard rule
-        // (`not empty(RELREC.**DECOD) and FAOBJ != RELREC.**DECOD`), not a `--`-prefix expansion,
+        // `CDISC-CG0603` — but CG0603 was a `**`-wildcard rule
+        // (`not empty(RELREC.**DECOD) and FAOBJ != RELREC.**DECOD`, respelled per related domain
+        // since W5 of PLAN-merged-evaluation-table), not a `--`-prefix expansion,
         // so it cannot illustrate the bundling described here. `CDISC-CG0088`
         // (`not var_exists("--PRESP") and var_exists("--OCCUR")`) is a real `--`-prefix rule and
         // does illustrate it.

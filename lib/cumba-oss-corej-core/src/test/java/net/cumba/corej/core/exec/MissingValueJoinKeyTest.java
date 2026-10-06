@@ -33,61 +33,26 @@ import org.junit.jupiter.api.Test;
  * </p>
  *
  * <p>
- * ⭐ <b>What the cases below therefore are: a record of the DROP behaviour, not of the ruled
- * semantics.</b> They stay because the behaviour they pin is still what ships until
- * {@code PLAN-join-key-missing-semantics} phase 4 lands, and a silent change of it is exactly what
- * this class exists to catch. ⛔ When phase 4 lands they must be INVERTED, not deleted — the join
- * then keeps missing-keyed rows, with {@code MIS} joining {@code MIS} and joining neither
- * {@code ""} nor {@code MIS_A} ({@code JKM R5}).
+ * ⭐ <b>What the cases below are: the ruled KEEP semantics.</b> Until
+ * {@code PLAN-join-key-missing-semantics} phase 4 landed they recorded the DROP behaviour that
+ * shipped then; they were INVERTED, not deleted, when it landed — the join keeps missing-keyed
+ * rows, {@code MIS} joins {@code MIS} and joins neither {@code ""} nor {@code MIS_A}
+ * ({@code JKM R5}). Since {@code PLAN-merged-evaluation-table} the merged view's keyed part (the
+ * datatable's shared matching) is what they measure.
  * </p>
  *
  * <p>
- * ⚠⚠ <b>Why this class exists: a real product join behaviour MOVED on 2026-09-18 and nothing
- * recorded it or tested it.</b> {@code KeyMatchRowExpander.tuple} has guarded
- * {@code dv.isMissingOrInvalid()} since the initial commit, but what a raw {@code null} CHARACTER
- * cell wraps to changed underneath it in the datatable repository's {@code d4edd59} ("a null
- * character cell is {@code MissingValue.MIS}, on both wrap paths"):
- * </p>
- * <table border="1">
- * <caption>the composition that moved</caption>
- * <tr>
- * <th></th>
- * <th>{@code getDataValue} for a raw-null char cell</th>
- * <th>{@code isMissingOrInvalid()}</th>
- * <th>the key {@code tuple} builds</th>
- * <th>effect</th>
- * </tr>
- * <tr>
- * <td>before</td>
- * <td>{@code DataValueString("")}</td>
- * <td>{@code false}</td>
- * <td>an EMPTY segment</td>
- * <td>two null-key rows JOINED each other</td>
- * </tr>
- * <tr>
- * <td>at HEAD</td>
- * <td>{@code DataValueMissing(MIS)}</td>
- * <td>{@code true}</td>
- * <td>{@code null} ⇒ no key</td>
- * <td>they do not join at all</td>
- * </tr>
- * </table>
- *
- * <p>
- * ⭐ <b>Reachable on real data, not a thought experiment:</b> an {@code .rds} dataset whose join-key
- * character column carries an R {@code NA} — {@code factor(..., exclude = NULL)}, which
- * {@code RdataTableProvider.copyFactorData} stores as an explicit null LEVEL. That is the one
- * shipped read path where {@code d4edd59} is visible, and the shape
- * {@code RdataTableProviderRealFixturesTest} was re-based for.
- * </p>
- *
- * <p>
- * ⭐ <b>The new behaviour is the CORRECT one and is deliberately not changed here</b> — §1b: a
- * missing cell is that cell's own {@code MissingValue}, never the empty string, and an unknown
- * identifier cannot be equal to another unknown identifier. It also restores agreement with the
- * behaviour this class' enclosing file cites as its model: <i>"pandas drops NaN keys"</i>
- * ({@code buildChildIndex}). What was missing was a test, so the next change to the wrap path
- * cannot move a product join silently again.
+ * ⚠ <b>Why the class was first written: a product join behaviour moved on 2026-09-18 and nothing
+ * recorded it.</b> The retired key-match expander guarded {@code dv.isMissingOrInvalid()} when it
+ * built a key, and what a raw {@code null} CHARACTER cell wraps to changed underneath it in the
+ * datatable repository's {@code d4edd59} (a null character cell became {@code MissingValue.MIS}
+ * instead of {@code ""}): two null-key rows that had JOINED each other (as two empty strings) then
+ * did not join at all (no key). The ruling of 2026-09-21 settled what is right — a missing key is
+ * that cell's own {@code MissingValue}, KEPT, and equal only to the same missing — and these cases
+ * pin it, so the next change to the wrap path cannot move a product join silently again. Reachable
+ * on real data: an {@code .rds} join-key character column carrying an R {@code NA}
+ * ({@code factor(..., exclude = NULL)}, stored by {@code RdataTableProvider.copyFactorData} as an
+ * explicit null LEVEL).
  * </p>
  *
  * <p>
@@ -137,7 +102,7 @@ class MissingValueJoinKeyTest
     }
 
 
-    /** "primaryRow:childValue" per expanded row, the same reading as KeyMatchRowExpanderTest. */
+    /** "primaryRow:childValue" per merged row. */
     private static List<String> rows(MergedEvaluation.Built exp, String col)
     {
         IDataTable t = exp.table();

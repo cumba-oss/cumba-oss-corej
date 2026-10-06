@@ -25,9 +25,10 @@ import org.jspecify.annotations.Nullable;
  * Q4). A name handed to {@code colref} as a string resolves <b>exactly as the same name written
  * literally</b> ({@code D72}, {@code NF §3a}, {@code UVC unqualified} UNIFORMITY):
  * <ul>
- * <li>a bare {@code X} reads the <b>evaluation table</b> — the primary after the
- * {@code Child: true} pre-merge ({@code D62b}: a {@code colref(IDVAR)} reaches a pre-merged parent
- * column) — and never a regular join;</li>
+ * <li>a bare {@code X} reads the <b>evaluation table</b> — the primary and its SUPP qualifiers
+ * (MQ7) — and never a merged column of a join; a {@code Child: true} parent is qualified with its
+ * domain ({@code colref(concat(RDOMAIN, ".", IDVAR))}, MET #2 of
+ * {@code PLAN-merged-evaluation-table});</li>
  * <li>a dotted {@code DS.X} reads the joined dataset through {@link JoinLookup#lookupValue} exactly
  * as the authored {@code DS.X} does ({@code ExprCompiler.dottedVector}); a dataset that is not
  * supplied takes {@code ExprCompiler.dottedNotSuppliedDefault};</li>

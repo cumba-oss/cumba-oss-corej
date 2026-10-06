@@ -31,9 +31,9 @@ import org.jspecify.annotations.Nullable;
  * {@code w} one), glob ({@code *}, {@code ?}), regex ({@code "ADSL./TRT[0-9]+PN/"} — the qualifier
  * outside the slashes, the regex over the variable name only) and literal ({@code "ADSL.TRT01PN"},
  * an existence test); precedence regex, glob, template, literal; anchored, case-insensitive;</li>
- * <li>unqualified ⇒ the evaluation table (after the {@code Child} pre-merge); qualified ⇒ the
- * joined dataset's <b>real</b> columns (the split-domain union included) — never the SUPP-QNAM
- * pivot (Q12: a pivoted name is not a column {@code colref} can read);</li>
+ * <li>unqualified ⇒ the evaluated dataset's own columns; qualified ⇒ the joined dataset's
+ * <b>real</b> columns (the split-domain union included) — never the SUPP-QNAM pivot (Q12: a pivoted
+ * name is not a column {@code colref} can read);</li>
  * <li>the result is a {@code list<string>} of NAMES in the dataset's column order, spelled
  * {@code QUALIFIER.COLUMN} (the qualifier as written, the column in the dataset's own case); only
  * {@code colref} dereferences them.</li>

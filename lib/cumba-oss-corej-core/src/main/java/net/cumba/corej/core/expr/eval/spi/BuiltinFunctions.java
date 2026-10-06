@@ -224,8 +224,9 @@ public final class BuiltinFunctions implements FunctionProvider
 
         // -- VALUE dynamic column read (colref) ------------------------------
         // colref(X): per row, the column X names (PLAN-dynamic-column-functions §2.3) — a bare
-        // name on the evaluation table after the Child pre-merge (D62b: CDISC-CG0371's IDVAR
-        // reaches the pre-merged parent key), DS.X through the join, the cell typed, a list of
+        // name on the evaluation table (the primary and its SUPP qualifiers), DS.X the merged
+        // column (CDISC-CG0371 builds RDOMAIN.IDVAR for its Child parent), the cell typed, a list
+        // of
         // names dereferenced element-wise (Q4), a present non-string first hop a computed missing
         // (Q7). ⚠ ExprCompiler dispatches colref through its own arm (colrefPlan), which knows the
         // CALL SITE and so the site's absent-column kind (Q14 (b)); this implementation is the
