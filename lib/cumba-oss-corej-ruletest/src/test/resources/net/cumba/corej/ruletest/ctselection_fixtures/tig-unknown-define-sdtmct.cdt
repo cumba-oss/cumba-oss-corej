@@ -1,0 +1,21 @@
+#!RuleTest
+#test CT-RUN-1 expect=noViolation domain=VS
+#note Fold F1 / F4 pin of TODAY's output — a TIG SDTM-leg run is UNKNOWN-kind (standard "tig"), which the store never serves (P0), so it consumes no CT root and never reads a Trial Summary. Its 2.1 define declares sdtmct-2024-09-27: the selection stays DEFINE (step 4) exactly as today, with no TS note; with no store serving it the rule finds no library codelist and does not fire. The TS names sdtmct-1999-01-01: a wrongful TS read would replace the define's set and the note would say so.
+#run-product tig/1-0/sdtm
+#define-xml define-21-sdtm-2024-09-27.xml
+#ct-available none
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---
+
+dataset TS
+col STUDYID  type=Char
+col TSPARMCD type=Char
+col TSVAL    type=Char
+col TSVCDREF type=Char
+col TSVCDVER type=Char
+---
+S1 | TCNTRL | PLACEBO | CDISC CT | 1999-01-01
+---

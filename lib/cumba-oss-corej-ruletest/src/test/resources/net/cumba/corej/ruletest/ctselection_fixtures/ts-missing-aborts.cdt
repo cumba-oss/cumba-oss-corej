@@ -1,0 +1,20 @@
+#!RuleTest
+#test CT-RUN-1 expect=skipped domain=VS
+#note CTD-2 row T2 — blank field, no define, the Trial Summary states CDISC CT 2023-12-15 but the store holds only 2024-09-27: a TS-derived package is NAMED, so the run ABORTS naming it and its TS row (D3), with the same escape hatch as the define (fill the CT Packages field).
+#ct-available sdtmct-2024-09-27
+#expect-abort "The Trial Summary (TS) states controlled-terminology package 'sdtmct-2023-12-15' (TSVCDREF \"CDISC CT\", TSVCDVER \"2023-12-15\")"
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---
+
+dataset TS
+col STUDYID  type=Char
+col TSPARMCD type=Char
+col TSVAL    type=Char
+col TSVCDREF type=Char
+col TSVCDVER type=Char
+---
+S1 | TCNTRL | PLACEBO | CDISC CT | 2023-12-15
+---

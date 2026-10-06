@@ -12,8 +12,9 @@ import org.junit.jupiter.api.Test;
 /**
  * Define-ct plan P6 — the run-level CT-selection directives: {@code #ct-packages} (the run's
  * {@code CT Packages} field), {@code #ct-available} (what the run's metadata store holds),
- * {@code #expect-abort} (§4.4 abort rows), and {@code #expect-ct-mismatch} (the §4.2 run-level
- * note). Absent directives stay {@code null} so the rule-level corpus runner is untouched.
+ * {@code #expect-abort} (§4.4 abort rows), {@code #expect-ct-mismatch} (the §4.2 run-level note)
+ * and {@code #run-product} (the run's metadata product, PLAN-ct-packages-default-and-ts-source
+ * C11). Absent directives stay {@code null} so the rule-level corpus runner is untouched.
  */
 class RuleTestCdtCtSelectionTest
 {
@@ -61,6 +62,35 @@ class RuleTestCdtCtSelectionTest
         assertNull(s.getCtAvailable());
         assertNull(s.getExpectAbort());
         assertNull(s.getExpectCtMismatch());
+        assertNull(s.getRunProduct(), "absent #run-product = the sdtmig/3-4 default");
+    }
+
+
+    @Test
+    @DisplayName("#run-product parses to a canonical product key; a malformed one is refused")
+    void runProductParses()
+    {
+        RuleTestScenario s = RuleTestCdt.parse(scenario("""
+                #test CT-X expect=violation domain=VS
+                #run-product standards/SENDIG/3-1-1"""), "t", null);
+        assertEquals("sendig/3-1-1", s.getRunProduct(), "prefix stripped, lower-cased");
+        assertEquals("tig/1-0/sdtm", RuleTestCdt.parse(scenario("""
+                #test CT-X expect=violation domain=VS
+                #run-product tig/1-0/sdtm"""), "t", null).getRunProduct());
+
+        for (String bad : List.of("#run-product sendig", "#run-product sendig/",
+                "#run-product /3-1-1", "#run-product a/b c/d"))
+        {
+            RuleTestCdtException e = assertThrows(RuleTestCdtException.class,
+                    () -> RuleTestCdt.parse(
+                            scenario("#test CT-X expect=violation domain=VS\n" + bad), "t", null),
+                    bad);
+            assertTrue(e.getMessage().contains("#run-product"), e.getMessage());
+        }
+        assertThrows(RuleTestCdtException.class, () -> RuleTestCdt.parse(scenario("""
+                #test CT-X expect=violation domain=VS
+                #run-product sdtmig/3-4
+                #run-product sendig/3-1-1"""), "t", null), "duplicate");
     }
 
 
@@ -105,7 +135,7 @@ class RuleTestCdtCtSelectionTest
 
 
     @Test
-    @DisplayName("all four directives round-trip through the writer")
+    @DisplayName("all five directives round-trip through the writer")
     void directivesRoundTrip()
     {
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
@@ -119,6 +149,12 @@ class RuleTestCdtCtSelectionTest
         assertEquals(List.of("sdtmct-2024-09-27"), back.getCtPackages());
         assertEquals(List.of(), back.getCtAvailable());
         assertEquals("define declares sdtmct-2023-12-15", back.getExpectCtMismatch());
+
+        RuleTestScenario product = RuleTestCdt.parse(scenario("""
+                #test CT-X expect=violation domain=VS
+                #run-product adam/adamig-1-3"""), "t", null);
+        assertEquals("adam/adamig-1-3", RuleTestCdt
+                .parse(RuleTestCdt.toString(product), "roundtrip", null).getRunProduct());
 
         RuleTestScenario abort = RuleTestCdt.parse(scenario("""
                 #test CT-X expect=skipped domain=VS

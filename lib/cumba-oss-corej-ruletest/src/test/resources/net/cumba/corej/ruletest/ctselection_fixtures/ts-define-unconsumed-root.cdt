@@ -1,0 +1,22 @@
+#!RuleTest
+#test CT-RUN-1 expect=violation domain=VS
+#note CQ5 (a) + fold F1 — the define declares CT only for a root this SDTM run never consumes (define-xmlct): it does not put the define in play, so the Trial Summary supplies the CT. Define and TS ids are never mixed, and the ignored declaration is not flagged as a mismatch against the TS set (the note opens with the TS text, no "define declares" part).
+#define-xml define-21-define-xmlct-only.xml
+#ct-available sdtmct-2024-09-27
+#expect-ct-mismatch "CT Packages is blank and no Define-XML declares CT for this run; CT taken from the Trial Summary: sdtmct-2024-09-27"
+#expectViolationCount 1
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---
+
+dataset TS
+col STUDYID  type=Char
+col TSPARMCD type=Char
+col TSVAL    type=Char
+col TSVCDREF type=Char
+col TSVCDVER type=Char
+---
+S1 | TCNTRL | PLACEBO | CDISC CT | 2024-09-27
+---

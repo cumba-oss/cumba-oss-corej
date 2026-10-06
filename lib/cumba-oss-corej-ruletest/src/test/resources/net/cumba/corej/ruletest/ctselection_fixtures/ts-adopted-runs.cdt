@@ -1,0 +1,22 @@
+#!RuleTest
+#test CT-RUN-1 expect=violation domain=VS
+#note CTD-2 row T1 — blank field, no define, the Trial Summary states CDISC CT 2024-09-27 (TSVCDREF/TSVCDVER) and the store holds it: the run takes its CT from TS, the codelist resolves, the rule fires, and the run note names the source (CQ7 (a)).
+#ct-available sdtmct-2024-09-27
+#expect-ct-mismatch "CT taken from the Trial Summary: sdtmct-2024-09-27 (TSVCDREF \"CDISC CT\", TSVCDVER \"2024-09-27\")"
+#expectViolationCount 1
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---
+
+dataset TS
+col STUDYID  type=Char
+col TSPARMCD type=Char
+col TSVAL    type=Char
+col TSVCDREF type=Char
+col TSVCDVER type=Char
+---
+S1 | TCNTRL | PLACEBO | CDISC CT | 2024-09-27
+S1 | TRT | DRUG A | UNII | 2024
+---

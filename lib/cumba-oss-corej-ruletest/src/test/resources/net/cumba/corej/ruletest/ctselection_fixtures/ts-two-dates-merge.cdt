@@ -1,0 +1,23 @@
+#!RuleTest
+#test CT-RUN-1 expect=violation domain=VS
+#note CTD-2 merge — the Trial Summary states TWO CDISC CT versions: both join the run, newest first (D1 "merge, never first-wins"). The runner seeds NY only into the newest package and AGEU only into the older one, so BOTH violations fire only if both TS-derived packages were loaded.
+#ct-available sdtmct-2025-03-28 sdtmct-2024-09-27
+#expect-ct-mismatch "CT taken from the Trial Summary: sdtmct-2025-03-28 (TSVCDREF \"CDISC CT\", TSVCDVER \"2025-03-28\"), sdtmct-2024-09-27 (TSVCDREF \"CDISC\", TSVCDVER \"2024-09-27\")"
+#expectViolationCount 2
+dataset VS
+col VSSTAT type=Char
+col VSAGEU type=Char
+---
+BOGUS | BOGUS
+---
+
+dataset TS
+col STUDYID  type=Char
+col TSPARMCD type=Char
+col TSVAL    type=Char
+col TSVCDREF type=Char
+col TSVCDVER type=Char
+---
+S1 | TCNTRL | PLACEBO | CDISC | 2024-09-27
+S1 | AGEU | YEARS | CDISC CT | 2025-03-28
+---

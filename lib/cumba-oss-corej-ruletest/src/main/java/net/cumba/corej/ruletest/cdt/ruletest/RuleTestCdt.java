@@ -178,6 +178,7 @@ public final class RuleTestCdt
         int expectErrorMessageLine = -1;
         String expectCtMismatch = null;
         int expectCtMismatchLine = -1;
+        String runProduct = null;
 
         for (Directive d : directives)
         {
@@ -299,12 +300,22 @@ public final class RuleTestCdt
                         d.lineIdx);
                 expectCtMismatchLine = d.lineIdx;
             }
+            case "run-product" ->
+            {
+                if (runProduct != null)
+                {
+                    throw error(aSource, d.lineIdx, "duplicate #run-product directive");
+                }
+                runProduct = parseRunProductPayload(tokens, aSource, d.lineIdx);
+            }
             case "setup", "teardown" -> throw error(aSource, d.lineIdx, "directive '#" + keyword
                     + "' is reserved for a future version and not implemented in v1");
-            default -> throw error(aSource, d.lineIdx, "unknown directive: #" + keyword
-                    + " (expected #test, #note, #library, #library-include, #library-ref, "
-                    + "#define, #define-include, #define-xml, #dictionaries, #runLevel, "
-                    + "#ct-packages, #ct-available, #expect-abort, or #expect-ct-mismatch)");
+            default -> throw error(aSource, d.lineIdx,
+                    "unknown directive: #" + keyword
+                            + " (expected #test, #note, #library, #library-include, #library-ref, "
+                            + "#define, #define-include, #define-xml, #dictionaries, #runLevel, "
+                            + "#ct-packages, #ct-available, #expect-abort, #expect-ct-mismatch, or "
+                            + "#run-product)");
             }
         }
         if (!sawTest)
@@ -453,7 +464,8 @@ public final class RuleTestCdt
                 .dictionaries(dictionaries).runLevel(runLevel).expectViolationCount(expectCount)
                 .expectedViolations(expectedViolations).ctPackages(ctPackages)
                 .ctAvailable(ctAvailable).expectAbort(expectAbort)
-                .expectCtMismatch(expectCtMismatch).expectErrorMessage(expectErrorMessage).build();
+                .expectCtMismatch(expectCtMismatch).expectErrorMessage(expectErrorMessage)
+                .runProduct(runProduct).build();
     }
 
 
@@ -794,6 +806,13 @@ public final class RuleTestCdt
         {
             aOut.write("#expect-ct-mismatch ");
             aOut.write(quoteIfNeeded(expectCtMismatch));
+            aOut.write('\n');
+        }
+        String runProduct = aScenario.getRunProduct();
+        if (runProduct != null)
+        {
+            aOut.write("#run-product ");
+            aOut.write(runProduct);
             aOut.write('\n');
         }
 
@@ -1682,6 +1701,35 @@ public final class RuleTestCdt
             }
         }
         return List.copyOf(ids);
+    }
+
+
+    /**
+     * Parse the {@code #run-product} payload (PLAN-ct-packages-default-and-ts-source C11): exactly
+     * one metadata product key, {@code <group>/<version>[/<leg>]} — e.g. {@code sendig/3-1-1},
+     * {@code adam/adamig-1-3}, {@code tig/1-0/sdtm} — with or without the {@code standards/}
+     * prefix, which is stripped. Lower-cased: product keys are.
+     */
+    private static String parseRunProductPayload(List<String> aTokens, String aSource, int aLineIdx)
+    {
+        if (aTokens.size() != 2)
+        {
+            throw error(aSource, aLineIdx,
+                    "#run-product expects exactly one metadata product key, e.g. "
+                            + "'#run-product sendig/3-1-1'");
+        }
+        String key = aTokens.get(1).toLowerCase(Locale.ROOT);
+        if (key.startsWith("standards/"))
+        {
+            key = key.substring("standards/".length());
+        }
+        int slash = key.indexOf('/');
+        if (slash <= 0 || slash == key.length() - 1)
+        {
+            throw error(aSource, aLineIdx, "#run-product '" + aTokens.get(1)
+                    + "' is not a metadata product key (<group>/<version>, e.g. sendig/3-1-1)");
+        }
+        return key;
     }
 
 

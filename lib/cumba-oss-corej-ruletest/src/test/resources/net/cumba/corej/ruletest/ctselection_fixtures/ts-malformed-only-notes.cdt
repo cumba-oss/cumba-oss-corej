@@ -1,0 +1,20 @@
+#!RuleTest
+#test CT-RUN-1 expect=skipped domain=VS
+#note CTD-2 row T4 + fold F3 — the Trial Summary's only CDISC CT value is not a valid ISO date (2023-02-30, a well-shaped impossible date): it is ignored, never aborted on (CQ4 (a)), so the run has no CT and the rule SKIPs — but the note lists the ignored value (CQ4 is the more specific ruling than CQ6's "no note").
+#ct-available sdtmct-2024-09-27
+#expect-ct-mismatch "Trial Summary CT value(s) ignored, not one valid ISO date (YYYY-MM-DD): TSVCDREF \"CDISC CT\", TSVCDVER \"2023-02-30\""
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---
+
+dataset TS
+col STUDYID  type=Char
+col TSPARMCD type=Char
+col TSVAL    type=Char
+col TSVCDREF type=Char
+col TSVCDVER type=Char
+---
+S1 | TCNTRL | PLACEBO | CDISC CT | 2023-02-30
+---

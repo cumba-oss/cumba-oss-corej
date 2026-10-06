@@ -50,16 +50,18 @@ import org.junit.jupiter.params.provider.ValueSource;
 /**
  * Define-ct plan P6 — the run-level CT-selection scenarios: one {@code .cdt} per row of the §4.4
  * state table, plus the same-set merge, the Define-XML 2.0 fallback, and the §4.5.1 unconsumed-root
- * case. Each scenario drives the REAL run path — {@link StudyValidationService#validate} over a
- * per-scenario synthetic metadata store — so the precedence (P4), the named-package abort (P5) and
- * the §4.2 mismatch note are asserted where they live, not on extracted helpers.
+ * case; and the {@code ts-*} rows of PLAN-ct-packages-default-and-ts-source §4.2 (the Trial Summary
+ * as the second CT source) with fold F1's two pins of today's output. Each scenario drives the REAL
+ * run path — {@link StudyValidationService#validate} over a per-scenario synthetic metadata store —
+ * so the precedence (P4), the named-package abort (P5) and the §4.2 mismatch note are asserted
+ * where they live, not on extracted helpers.
  *
  * <h2>Scenario semantics</h2>
  * <ul>
  * <li>{@code #ct-packages} — the run's {@code CT Packages} field; absent = blank.</li>
  * <li>{@code #ct-available} — the CT packages the seeded store holds ({@code none} = no CT at all);
- * absent = every package the scenario references. The store always holds the {@code sdtmig/3-4} IG
- * product — availability here is a CT axis, not a product axis.</li>
+ * absent = every package the scenario references. The store always holds the run's IG product —
+ * availability here is a CT axis, not a product axis.</li>
  * <li>The <b>newest</b> available package holds only the {@code NY} codelist (bound by
  * {@code VSSTAT}); every <b>older</b> one holds only {@code AGEU} (bound by {@code VSAGEU}). A
  * scenario whose dataset carries both columns therefore fires both violations only when the
@@ -68,12 +70,23 @@ import org.junit.jupiter.params.provider.ValueSource;
  * <li>{@code #expect-abort} — the run must throw {@link StudyValidationException} naming the
  * substring; {@code #expect-ct-mismatch} — the completed run's {@code CT_Declaration_Mismatch} note
  * must contain the substring, and its absence asserts NO note.</li>
+ * <li>{@code #run-product} — the run's metadata product (default {@code sdtmig/3-4}): the rule
+ * package, the {@code --metadata-products} entry and the store's IG product all follow it, so a
+ * {@code sendig} / {@code adam} / {@code tig} scenario runs as one
+ * (PLAN-ct-packages-default-and-ts-source C11).</li>
+ * <li>A {@code TS} dataset — the Trial Summary, the second CT source (CTD-2) — requires an explicit
+ * {@code #ct-available}; the rule's verdict is read on the {@code #test} domain only.</li>
  * </ul>
  */
 class CtSelectionScenarioTest
 {
 
     private static final String FIXTURES = "net/cumba/corej/ruletest/ctselection_fixtures/";
+
+    /** The run's metadata product when a scenario declares no {@code #run-product}. */
+    private static final String DEFAULT_PRODUCT = "sdtmig/3-4";
+
+    private static final String STANDARDS = "standards/";
 
     /** The one CT-dependent rule every scenario runs — the CDISC-SEND-0296 shape. */
     private static final String RULE_ID = "CT-RUN-1";
@@ -95,7 +108,14 @@ class CtSelectionScenarioTest
             "row3-declared-missing-aborts.cdt", "row4-user-wins-note-reports.cdt",
             "row5-user-missing-aborts.cdt", "row6-invalid-declaration-nonevent.cdt",
             "merge-two-declared-same-set.cdt", "define-20-falls-back.cdt",
-            "unconsumed-root-ignored.cdt"
+            "unconsumed-root-ignored.cdt",
+            // PLAN-ct-packages-default-and-ts-source C11 — the Trial Summary as the second source
+            "ts-adopted-runs.cdt", "ts-missing-aborts.cdt", "ts-user-wins.cdt",
+            "ts-define-wins.cdt", "ts-two-dates-merge.cdt", "ts-no-ct-rows-skips.cdt",
+            "ts-malformed-only-notes.cdt", "ts-define-unconsumed-root.cdt",
+            "ts-send-sndctver-adopted.cdt",
+            // fold F1 — today's output pinned where the TS must NOT be read
+            "adam-define-xmlct-only.cdt", "tig-unknown-define-sdtmct.cdt"
     })
     void scenario(String aFile) throws IOException
     {
@@ -112,9 +132,18 @@ class CtSelectionScenarioTest
                             .declaredCtPackages();
         }
 
-        // 2. Seed the store: IG product always; CT packages per #ct-available (default: every
-        // package the scenario references).
+        // 2. Seed the store: the run's IG product always; CT packages per #ct-available (default:
+        // every package the scenario references).
+        // ⚠ Fold F6: a scenario carrying a Trial Summary must name the store's holdings itself —
+        // the default below is computed from the field and the define only, and re-implementing
+        // the TS parse here to widen it would test the harness against itself.
+        String product = scenario.getRunProduct() != null ? scenario.getRunProduct()
+                : DEFAULT_PRODUCT;
         List<String> available = scenario.getCtAvailable();
+        assertTrue(
+                available != null || scenario.getDatasets().stream()
+                        .noneMatch(t -> "TS".equalsIgnoreCase(t.getMetaData().getName())),
+                aFile + ": a scenario with a TS dataset must declare #ct-available");
         if (available == null)
         {
             Set<String> referenced = new LinkedHashSet<>();
@@ -128,14 +157,18 @@ class CtSelectionScenarioTest
             }
             available = new ArrayList<>(referenced);
         }
-        configureStore(available);
+        configureStore(available, product);
 
         // 3. The run: the scenario's datasets behind a mocked manager, the fixed CT rule, and the
         // scenario's CT Packages field.
+        // The run's standard follows #run-product: the rule package, the metadata product and the
+        // store product all derive from it (C11), so a SEND / ADaM / TIG scenario really runs as
+        // one — the CT roots it consumes and the TS family it reads are the engine's to decide.
         StudyValidationParams.Builder params = StudyValidationParams.builder()
-                .manager(managerOf(scenario.getDatasets())).dataLibrary(tempDir.toString())
-                .rulesDir(writeRules().toString()).rulesPackages(List.of("sdtmig-3-4"))
-                .metadataProducts(List.of("standards/sdtmig/3-4")).controlledTerminologyPackages(
+                .manager(managerOf(scenario.getDatasets(), product)).dataLibrary(tempDir.toString())
+                .rulesDir(writeRules(product).toString())
+                .rulesPackages(List.of(packageName(product)))
+                .metadataProducts(List.of(STANDARDS + product)).controlledTerminologyPackages(
                         scenario.getCtPackages() != null ? scenario.getCtPackages() : List.of());
         if (definePath != null)
         {
@@ -159,7 +192,7 @@ class CtSelectionScenarioTest
 
         // 4. The rule's verdict. Row 1's SKIP is the D3/R2 boundary pin: reaching this point at
         // all already proves the run did NOT abort.
-        DatasetExecutionSummary.RuleExecution rule = ruleExecution(result);
+        DatasetExecutionSummary.RuleExecution rule = ruleExecution(result, scenario.getDomain());
         switch (scenario.getExpect())
         {
         case VIOLATION ->
@@ -234,10 +267,11 @@ class CtSelectionScenarioTest
      * separate the state table's rows: resolved ⇒ fires, bound-but-unresolvable ⇒ visible SKIP
      * (define P1), no codelist ⇒ no-fire.
      */
-    private Path writeRules() throws IOException
+    private Path writeRules(String aProduct) throws IOException
     {
         Path dir = Files.createDirectory(tempDir.resolve("rules"));
-        Files.writeString(dir.resolve("rules-sdtmig-3-4.json"), """
+        String file = "rules-" + packageName(aProduct) + ".json";
+        Files.writeString(dir.resolve(file), """
                 {
                   "rules": {
                     "u1": {
@@ -256,26 +290,41 @@ class CtSelectionScenarioTest
                   }
                 }
                 """.formatted(RULE_ID));
+        // The entry declares no standards, so the run's standard derives from the first
+        // --metadata-products entry — the scenario's #run-product.
+        int slash = aProduct.indexOf('/');
         new RulePackageManifest("test",
-                List.of(new RulePackageManifest.Entry("rules-sdtmig-3-4.json", "CDISC", "sdtmig",
-                        "3-4", 1, List.of()))).writeTo(dir);
+                List.of(new RulePackageManifest.Entry(file, "CDISC", aProduct.substring(0, slash),
+                        aProduct.substring(slash + 1).replace('/', '-'), 1, List.of())))
+                                .writeTo(dir);
         return dir;
     }
 
 
     /**
-     * Seeds the scenario's metadata store: the {@code sdtmig/3-4} IG product (dataset {@code VS}
-     * with {@code VSSTAT} bound to codelist concept {@code C66742} = NY and {@code VSAGEU} bound to
-     * {@code C66781} = AGEU), plus one CT package per available id — NY only in the newest, AGEU
-     * only in every older one (see the class javadoc for why that split proves the merge).
+     * The rule package short name for a product key: {@code sendig/3-1-1} → {@code sendig-3-1-1}.
      */
-    private void configureStore(List<String> aAvailableCtIds) throws IOException
+    private static String packageName(String aProduct)
+    {
+        return aProduct.replace('/', '-');
+    }
+
+
+    /**
+     * Seeds the scenario's metadata store: the run's IG product ({@code #run-product}, dataset
+     * {@code VS} with {@code VSSTAT} bound to codelist concept {@code C66742} = NY and
+     * {@code VSAGEU} bound to {@code C66781} = AGEU), plus one CT package per available id — NY
+     * only in the newest, AGEU only in every older one (see the class javadoc for why that split
+     * proves the merge).
+     */
+    private void configureStore(List<String> aAvailableCtIds, String aProduct) throws IOException
     {
         StoredVariable vsstat = StoredVariable.builder().name("VSSTAT").ordinal("1").core("Exp")
                 .simpleDatatype("Char").codelistIds(List.of("C66742")).build();
         StoredVariable vsageu = StoredVariable.builder().name("VSAGEU").ordinal("2").core("Perm")
                 .simpleDatatype("Char").codelistIds(List.of("C66781")).build();
-        StoredProduct ig = StoredProduct.builder().key("standards/sdtmig/3-4").version("3-4")
+        StoredProduct ig = StoredProduct.builder().key(STANDARDS + aProduct)
+                .version(aProduct.substring(aProduct.lastIndexOf('/') + 1))
                 .classes(List.of(new StoredClass("Findings", null, "1", List.of(),
                         List.of(new StoredDataset("VS", "Vital Signs", "1", null,
                                 List.of(vsstat, vsageu), null, null)),
@@ -299,19 +348,30 @@ class CtSelectionScenarioTest
             writer.addCtPackage(new StoredCtPackage(newestFirst.get(i), List.of(codelist)));
         }
         Path file = tempDir.resolve("store.zip");
-        writer.publishedCtPackages(newestFirst).productCatalogue(List.of("standards/sdtmig/3-4"))
+        writer.publishedCtPackages(newestFirst).productCatalogue(List.of(STANDARDS + aProduct))
                 .write(file);
         System.setProperty(StoreMetadataProviderFactory.STORE_PROPERTY, file.toString());
     }
 
 
-    /** A mocked manager whose library members are exactly the scenario's datasets. */
-    private IDataTableManager managerOf(List<OverlayDataTable> aDatasets) throws IOException
+    /**
+     * A mocked manager whose library members are exactly the scenario's datasets. A TIG run is
+     * {@code UNKNOWN}-kind — the store never serves it — so the engine reads the study's own
+     * metadata library instead; only that run gets one (an empty library), so no store-served
+     * scenario's define fallback changes.
+     */
+    private IDataTableManager managerOf(List<OverlayDataTable> aDatasets, String aProduct)
+        throws IOException
     {
         IDataTableManager mgr = mock(IDataTableManager.class);
         IDataTableLibraryRef lib = mock(IDataTableLibraryRef.class);
         when(lib.getUri()).thenReturn("file:///study");
         when(mgr.getLibraryRef(any(URI.class), any())).thenReturn(lib);
+        if (aProduct.startsWith("tig/"))
+        {
+            when(mgr.getMetadataLibrary(any()))
+                    .thenReturn(mock(net.cumba.datatable.metadata.IMetadataLibrary.class));
+        }
 
         List<ILibraryMemberRef> members = new ArrayList<>();
         for (IDataTable table : aDatasets)
@@ -330,10 +390,19 @@ class CtSelectionScenarioTest
     }
 
 
-    private DatasetExecutionSummary.RuleExecution ruleExecution(StudyValidationResult aResult)
+    /**
+     * The rule's execution on the scenario's own domain — filtered, because a scenario carrying a
+     * Trial Summary has two datasets and the rule's first summary may otherwise be TS's (fold F6).
+     */
+    private DatasetExecutionSummary.RuleExecution ruleExecution(StudyValidationResult aResult,
+            String aDomain)
     {
         for (DatasetExecutionSummary summary : aResult.executionSummaries())
         {
+            if (!aDomain.equalsIgnoreCase(summary.domain()))
+            {
+                continue;
+            }
             for (DatasetExecutionSummary.RuleExecution rule : summary.ruleExecutions())
             {
                 if (RULE_ID.equals(rule.coreId()))
@@ -342,6 +411,7 @@ class CtSelectionScenarioTest
                 }
             }
         }
-        throw new AssertionError("rule " + RULE_ID + " not found in the execution summaries");
+        throw new AssertionError(
+                "rule " + RULE_ID + " not found in the execution summaries of " + aDomain);
     }
 }

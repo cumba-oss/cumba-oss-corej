@@ -1,0 +1,21 @@
+#!RuleTest
+#test CT-RUN-1 expect=noViolation domain=VS
+#note Fold F1 pin of TODAY's output — an ADaM run never reads a Trial Summary (CTD-2: ADaM has no TS, define only). Its define declares only define-xmlct, a root ADaM never consumes, so the run stays on the define (step 4), names nothing, and the CT rule finds no library codelist and does not fire — with no note. The TS names sdtmct-1999-01-01, which the store lacks: a wrongful TS read would name it and ABORT.
+#run-product adam/adamig-1-3
+#define-xml define-21-define-xmlct-only.xml
+#ct-available none
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---
+
+dataset TS
+col STUDYID  type=Char
+col TSPARMCD type=Char
+col TSVAL    type=Char
+col TSVCDREF type=Char
+col TSVCDVER type=Char
+---
+S1 | TCNTRL | PLACEBO | CDISC CT | 1999-01-01
+---

@@ -1,0 +1,21 @@
+#!RuleTest
+#test CT-RUN-1 expect=violation domain=VS
+#note CQ1 (a) — a SEND Trial Summary has no TSVCDREF/TSVCDVER; it states its CT version as the SNDCTVER row's TSVAL ("SEND CT 2024-09-27", the P0-measured spelling). A sendig run takes sendct-2024-09-27 from it, and only that (CQ2 (a): no sdtmct companion — the store holds none).
+#run-product sendig/3-1-1
+#ct-available sendct-2024-09-27
+#expect-ct-mismatch "CT taken from the Trial Summary: sendct-2024-09-27 (TSPARMCD \"SNDCTVER\", TSVAL \"SEND CT 2024-09-27\")"
+#expectViolationCount 1
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---
+
+dataset TS
+col STUDYID  type=Char
+col TSPARMCD type=Char
+col TSVAL    type=Char
+---
+S1 | SNDIGVER | SEND Implementation Guide Version 3.1.1
+S1 | SNDCTVER | SEND CT 2024-09-27
+---

@@ -319,6 +319,9 @@ public final class DefineStoreBinding implements AutoCloseable
         {
         case USER -> "explicit selection";
         case DEFINE -> "the define's def:Standards declaration";
+        // Unreachable here: the define run resolves through the two-argument CtSelection.resolve,
+        // which never consults a Trial Summary (a define file has no datasets).
+        case TS -> "the Trial Summary";
         case NONE -> "none";
         };
     }

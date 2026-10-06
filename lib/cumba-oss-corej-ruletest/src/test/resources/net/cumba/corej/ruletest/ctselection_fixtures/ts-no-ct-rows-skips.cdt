@@ -1,0 +1,19 @@
+#!RuleTest
+#test CT-RUN-1 expect=skipped domain=VS
+#note CQ6 (a) — a Trial Summary without a CDISC CT row (only a UNII reference) names nothing: the run has no CT, the CT rule SKIPs (D3 row 1), and there is NO note.
+#ct-available sdtmct-2024-09-27
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---
+
+dataset TS
+col STUDYID  type=Char
+col TSPARMCD type=Char
+col TSVAL    type=Char
+col TSVCDREF type=Char
+col TSVCDVER type=Char
+---
+S1 | TRT | DRUG A | UNII | 2024-09-27
+---

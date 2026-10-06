@@ -166,6 +166,19 @@ public class RuleTestScenario
     String expectCtMismatch;
 
     /**
+     * The metadata product a <b>run-level</b> CT-selection scenario runs on, from a
+     * {@code #run-product} directive (PLAN-ct-packages-default-and-ts-source C11) — e.g.
+     * {@code sendig/3-1-1}, {@code adam/adamig-1-3}, {@code tig/1-0/sdtm}, canonical (no
+     * {@code standards/} prefix, lower-case); {@code null} when absent, which means
+     * {@code sdtmig/3-4}. The run-level runner ({@code CtSelectionScenarioTest}) takes the run's
+     * metadata product, its rule package and its store product from it, so the run's standard — and
+     * with it the CT roots it consumes and the Trial Summary family it reads — follows the
+     * scenario. Ignored by the rule-level corpus runner.
+     */
+    @Nullable
+    String runProduct;
+
+    /**
      * Expected substring of the engine's own error message from {@code #expect-execution-error}, or
      * {@code null} when the scenario asserts only <em>that</em> the rule errored. Meaningful only
      * with {@link Verdict#EXECUTION_ERROR}; the parser rejects it on any other verdict.

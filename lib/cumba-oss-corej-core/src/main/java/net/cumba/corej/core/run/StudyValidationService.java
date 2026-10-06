@@ -117,6 +117,15 @@ public final class StudyValidationService
     private static final String OWN_VERSION = VersionInfo.forClass(StudyValidationService.class)
             .version();
 
+    /** The SDTM CT root — consumed by every store-served run (the codelist fallback root). */
+    private static final String SDTMCT_ROOT = "sdtmct";
+
+    /** The ADaM CT root. */
+    private static final String ADAMCT_ROOT = "adamct";
+
+    /** The normalised member name of the Trial Summary (CTD-2's second CT source). */
+    private static final String TRIAL_SUMMARY = "TS";
+
     /**
      * Creates a service that stamps the engine's own version into every result's
      * {@code CORE_Engine_Version} — the version of the jar (or class directory) containing this
@@ -328,15 +337,28 @@ public final class StudyValidationService
         // -s/-v to read any more.
         RunStandard runStandard = runStandardOf(selection.declared(), effectiveProducts);
         StandardKind kind = StandardKind.fromName(runStandard.standard());
-        // §4.2 (D1) — resolve the run's CT selection: an explicit user selection wins outright
-        // (the declaration is then out of play entirely — §4.4 row 6); a blank field takes the
-        // define's declared set; with neither, the run has no CT (row 1: SKIP, never abort).
+        // §4.2 (D1) + CTD-2 (PLAN-ct-packages-default-and-ts-source, owner 2026-10-05) — resolve
+        // the run's CT selection: an explicit user selection wins outright (the declaration and
+        // the Trial Summary are then out of play entirely — §4.4 row 6); a blank field takes the
+        // define's declared set when it names a root this run consumes; failing that, the CDISC CT
+        // version(s) the study's Trial Summary states; with none of them, the run has no CT (row
+        // 1: SKIP, never abort). The TS is read lazily — only when it is the deciding source.
+        CtRoots ctRoots = ctRootsOf(kind, runStandard, effectiveProducts);
+        String tsRoot = ctRoots.trialSummaryRoot();
         CtSelection ctSelection = CtSelection.resolve(params.controlledTerminologyPackages(),
-                declaredCt);
+                declaredCt, ctRoots.consumed(),
+                tsRoot != null ? () -> trialSummaryCt(loaded, tsRoot) : null);
         if (ctSelection.source() == CtSelection.Source.DEFINE)
         {
             LOGGER.log(System.Logger.Level.INFO,
                     "CT Packages is blank; using the Define-XML''s declared CT set: {0}",
+                    String.join(", ", ctSelection.packageIds()));
+        }
+        else if (ctSelection.source() == CtSelection.Source.TS)
+        {
+            LOGGER.log(System.Logger.Level.INFO,
+                    "CT Packages is blank and no Define-XML declares CT for this run; using the "
+                            + "Trial Summary''s CDISC CT version(s): {0}",
                     String.join(", ", ctSelection.packageIds()));
         }
         MetadataProvider provider = buildProvider(manager, metadataLibrary, params, kind,
@@ -348,8 +370,18 @@ public final class StudyValidationService
         // <recent> downgrade) joins the SAME field -- engine text first, caller text appended,
         // either alone when the other is null; both null on an agreeing run keeps the field
         // absent, so every existing consumer of CT_Declaration_Mismatch is unchanged.
+        // CTD-2 / CQ7 (a): a CT set taken from the Trial Summary — and any TS value not taken
+        // (CQ4 (a), fold F3) — joins the same field, after the define mismatch and before the
+        // caller's note. With source TS the mismatch is computed over the declared ids of the
+        // roots this run consumes only (fold F1): a define naming only unconsumed roots is ignored
+        // silently (§4.5.1), never flagged against the TS-derived set.
+        List<net.cumba.corej.core.gen.CtStandardRef> mismatchBasis = ctSelection
+                .source() == CtSelection.Source.TS
+                        ? consumedRootDeclarations(declaredCt, ctRoots.consumed())
+                        : declaredCt;
         String ctDeclarationMismatch = joinCtNotes(
-                ctDeclarationMismatch(declaredCt, ctSelection.packageIds()),
+                joinCtNotes(ctDeclarationMismatch(mismatchBasis, ctSelection.packageIds()),
+                        trialSummaryNote(ctSelection)),
                 params.ctResolutionNote());
         if (ctDeclarationMismatch != null)
         {
@@ -1516,11 +1548,13 @@ public final class StudyValidationService
     /**
      * Builds a metadata provider from the unified metadata store when one is configured
      * ({@code CDISC_METADATA_STORE} / {@code cdisc.metadata.store}) and it carries the run's
-     * products, with the run's resolved {@link CtSelection} (define-ct plan §4.2) supplying the CT
-     * package ids. Returns {@code null} — the caller then degrades the run (cache P4 / ruling R2:
-     * library-dependent rules SKIP; there is no other metadata path any more) — when no store is
-     * configured, the store cannot be opened, or it lacks a needed product. Package-private static
-     * for unit testing.
+     * products, with the run's resolved {@link CtSelection} (define-ct plan §4.2 — the user's list,
+     * the define's declaration or, since PLAN-ct-packages-default-and-ts-source CTD-2, the Trial
+     * Summary's CDISC CT versions) supplying the CT package ids; a TS selection's evidence reaches
+     * the D3 abort message from {@link CtSelection#trialSummary()}. Returns {@code null} — the
+     * caller then degrades the run (cache P4 / ruling R2: library-dependent rules SKIP; there is no
+     * other metadata path any more) — when no store is configured, the store cannot be opened, or
+     * it lacks a needed product. Package-private static for unit testing.
      *
      * <p>
      * {@code PUBLISHED_CT_PACKAGES} on this path is the store's whole published enumeration on
@@ -1583,14 +1617,14 @@ public final class StudyValidationService
                 String libStd = loader != null ? loader.standard() : runStandard.standard();
                 String libVersion = loader != null ? loader.version() : runStandard.version();
                 // §4.3 (define-ct plan): ALL matching packages join the merge, newest first — and a
-                // SEND-family run's own CT root (sendct) precedes the sdtmct fallback root.
+                // SEND-family run's own CT root (sendct) precedes the sdtmct fallback root. The
+                // roots come from ctRootsOf, the one helper the CT selection also reads, so the
+                // selection and this provider cannot disagree about what the run consumes.
                 List<String> ctIds = new ArrayList<>();
-                if (runStandard.standard() != null
-                        && runStandard.standard().toLowerCase(Locale.ROOT).startsWith("send"))
+                for (String root : ctRootsOf(kind, runStandard, effectiveProducts).consumed())
                 {
-                    ctIds.addAll(ctIdsWithPrefix(ctSelection.packageIds(), "sendct"));
+                    ctIds.addAll(ctIdsWithPrefix(ctSelection.packageIds(), root));
                 }
-                ctIds.addAll(ctIdsWithPrefix(ctSelection.packageIds(), "sdtmct"));
                 namedCtIds = ctIds;
                 provider = factory.forSdtm(libStd, libVersion, ctIds);
             }
@@ -1624,7 +1658,8 @@ public final class StudyValidationService
             // Root filtering already happened above, so a declared package for a root this run
             // does not consume was never named here (§4.5.1: ignored silently); and with a
             // populated user field the declaration never reached the selection at all (row 6).
-            requireNamedCtPackagesPresent(factory, file, namedCtIds, ctSelection.source());
+            requireNamedCtPackagesPresent(factory, file, namedCtIds, ctSelection.source(),
+                    ctSelection.trialSummary());
             LOGGER.log(System.Logger.Level.INFO,
                     "Using unified metadata store at {0} for {1} {2} (metadata products {3})", file,
                     runStandard.standard(), runStandard.version(), effectiveProducts);
@@ -1696,11 +1731,12 @@ public final class StudyValidationService
      * someone asked for.
      *
      * <p>
-     * The two abort rows this implements: a missing <em>declared</em> package while the declaration
-     * is in play (row 3 — escapable, because filling the field takes the declaration out of play
-     * entirely, row 6), and a missing <em>user-selected</em> package (row 5). An empty
-     * {@code aNamedCtIds} — nothing named ({@code CtSelection.Source.NONE}), or every id
-     * root-filtered away — checks nothing: that is the cache ruling's territory (run with no CT;
+     * The abort rows this implements: a missing <em>declared</em> package while the declaration is
+     * in play (row 3 — escapable, because filling the field takes the declaration out of play
+     * entirely, row 6), a missing <em>TS-derived</em> package while the Trial Summary is the source
+     * (CTD-2 row T2 — escapable the same way), and a missing <em>user-selected</em> package (row
+     * 5). An empty {@code aNamedCtIds} — nothing named ({@code CtSelection.Source.NONE}), or every
+     * id root-filtered away — checks nothing: that is the cache ruling's territory (run with no CT;
      * CT-dependent rules SKIP visibly).
      * </p>
      *
@@ -1719,9 +1755,179 @@ public final class StudyValidationService
             net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory aFactory,
             Path aStoreFile, List<String> aNamedCtIds, CtSelection.Source aSource)
     {
+        requireNamedCtPackagesPresent(aFactory, aStoreFile, aNamedCtIds, aSource, null);
+    }
+
+
+    /**
+     * As
+     * {@link #requireNamedCtPackagesPresent(net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory, Path, List, CtSelection.Source)},
+     * with the Trial Summary evidence a {@link CtSelection.Source#TS} abort cites per package
+     * (CTD-2: the TS row is named beside the package).
+     */
+    static void requireNamedCtPackagesPresent(
+            net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory aFactory,
+            Path aStoreFile, List<String> aNamedCtIds, CtSelection.Source aSource,
+            CtSelection.@Nullable TrialSummaryEvidence aTrialSummary)
+    {
         // One loop and one wording for both runs (PLAN-define-ct-evaluation T1-2 a): the
         // Define-XML conformance run applies D3 through the same helper.
-        CtPresence.requireNamedPresent(aFactory::presence, aStoreFile, aNamedCtIds, aSource);
+        CtPresence.requireNamedPresent(aFactory::presence, aStoreFile, aNamedCtIds, aSource,
+                aTrialSummary);
+    }
+
+    /**
+     * The CT roots a run consumes and the root its Trial Summary maps to (fold F4: decided by the
+     * run's family and primary product, never by a TS column).
+     *
+     * @param consumed
+     *            the roots the store provider names packages for, in its load order
+     * @param trialSummaryRoot
+     *            {@code sdtmct} or {@code sendct} when the run reads TS, else {@code null}
+     */
+    record CtRoots(List<String> consumed, @Nullable String trialSummaryRoot)
+    {
+    }
+
+    /**
+     * The one answer to "which CT roots does this run consume, and which root does its Trial
+     * Summary state?" — read by the CT selection (CQ5 (a), CTD-2) and by {@link #tryStoreProvider}
+     * alike, so the two cannot disagree. It follows {@code tryStoreProvider}'s own branches:
+     * <ul>
+     * <li>an SDTM-kind run ({@code sdtmig/*}, {@code sendig/*}): {@code sdtmct}, preceded by
+     * {@code sendct} when the primary product is SEND-family ({@code sendig/*} carries standard
+     * {@code sendig}); its TS root is {@code sendct} for SEND, else {@code sdtmct};</li>
+     * <li>an ADaM-family run (an ADaM product, or a TIG ADaM leg): {@code adamct} + {@code sdtmct};
+     * ADaM has no Trial Summary, so its CT is the define's only (CTD-2);</li>
+     * <li>anything else — including every TIG SDTM / SEND leg run, whose standard {@code tig} is
+     * {@code UNKNOWN}-kind and which the store therefore never serves — consumes no root and never
+     * reads TS.</li>
+     * </ul>
+     */
+    static CtRoots ctRootsOf(StandardKind kind, RunStandard runStandard,
+            List<String> effectiveProducts)
+    {
+        if (kind == StandardKind.SDTM)
+        {
+            if (runStandard.standard() != null
+                    && runStandard.standard().toLowerCase(Locale.ROOT).startsWith("send"))
+            {
+                return new CtRoots(List.of(TrialSummaryCt.SENDCT_ROOT, SDTMCT_ROOT),
+                        TrialSummaryCt.SENDCT_ROOT);
+            }
+            return new CtRoots(List.of(SDTMCT_ROOT), SDTMCT_ROOT);
+        }
+        if (kind == StandardKind.ADAM || isTigAdamRun(effectiveProducts))
+        {
+            return new CtRoots(List.of(ADAMCT_ROOT, SDTMCT_ROOT), null);
+        }
+        return new CtRoots(List.of(), null);
+    }
+
+
+    /**
+     * The lazy Trial Summary read behind
+     * {@link CtSelection#resolve(List, List, java.util.Collection, java.util.function.Supplier)}:
+     * the primary library's member named {@code TS} (case-insensitively, target or reference — a
+     * dataset filter that excludes TS does not hide it), read through the SAME soft-memoised
+     * supplier the validator uses, so nothing is loaded twice.
+     *
+     * <p>
+     * CQ6 (a): a TS that is absent or that fails to load is "nothing from TS" — never a run abort.
+     * Any {@link RuntimeException} is caught, not only {@link UncheckedIOException}: a provider or
+     * codec can fail a member load with any unchecked exception. The validator still reports the
+     * member's own load failure per dataset.
+     * </p>
+     */
+    private static CtSelection.TrialSummaryEvidence trialSummaryCt(LoadedLibrary aLoaded,
+            String aCtRoot)
+    {
+        Supplier<IDataTable> ts = null;
+        for (DatasetEntry target : aLoaded.targets())
+        {
+            if (TRIAL_SUMMARY.equals(stripExtUpper(target.domain())))
+            {
+                ts = target.tableSupplier();
+                break;
+            }
+        }
+        if (ts == null)
+        {
+            for (ReferenceDataset ref : aLoaded.references())
+            {
+                if (TRIAL_SUMMARY.equals(stripExtUpper(ref.domain())))
+                {
+                    ts = ref.supplier();
+                    break;
+                }
+            }
+        }
+        if (ts == null)
+        {
+            return CtSelection.TrialSummaryEvidence.EMPTY;
+        }
+        try
+        {
+            return TrialSummaryCt.read(ts.get(), aCtRoot);
+        }
+        catch (RuntimeException e)
+        {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "The Trial Summary (TS) could not be read for the run''s CT selection ({0}); "
+                            + "no CT is taken from it.",
+                    String.valueOf(e.getMessage()));
+            return CtSelection.TrialSummaryEvidence.EMPTY;
+        }
+    }
+
+
+    /** The declared packages of the roots the run consumes (the store provider's prefix test). */
+    static List<net.cumba.corej.core.gen.CtStandardRef> consumedRootDeclarations(
+            List<net.cumba.corej.core.gen.CtStandardRef> aDeclared, List<String> aConsumedRoots)
+    {
+        List<net.cumba.corej.core.gen.CtStandardRef> out = new ArrayList<>();
+        for (net.cumba.corej.core.gen.CtStandardRef ref : aDeclared)
+        {
+            if (CtSelection.namesAConsumedRoot(List.of(ref.packageId()), aConsumedRoots))
+            {
+                out.add(ref);
+            }
+        }
+        return out;
+    }
+
+
+    /**
+     * The run note for a Trial Summary read (CQ7 (a), CQ4 (a), fold F3), or {@code null}: on a
+     * {@link CtSelection.Source#TS} selection it names the packages taken and the TS values they
+     * came from; whenever the read ignored a CDISC-CT value that is not one valid ISO date it lists
+     * those values — also on a run that ends {@code NONE} or {@code DEFINE}. A read that found
+     * nothing (TS absent, without CDISC-CT rows, unreadable — CQ6) adds no note.
+     */
+    static @Nullable String trialSummaryNote(CtSelection aSelection)
+    {
+        CtSelection.TrialSummaryEvidence ev = aSelection.trialSummary();
+        if (ev == null)
+        {
+            return null;
+        }
+        List<String> parts = new ArrayList<>(2);
+        if (aSelection.source() == CtSelection.Source.TS)
+        {
+            List<String> taken = new ArrayList<>(ev.refs().size());
+            for (CtSelection.TsRef ref : ev.refs())
+            {
+                taken.add(ref.packageId() + " (" + ref.evidence() + ")");
+            }
+            parts.add("CT Packages is blank and no Define-XML declares CT for this run; CT taken"
+                    + " from the Trial Summary: " + String.join(", ", taken));
+        }
+        if (!ev.ignored().isEmpty())
+        {
+            parts.add("Trial Summary CT value(s) ignored, not one valid ISO date (YYYY-MM-DD): "
+                    + String.join(", ", ev.ignored()));
+        }
+        return parts.isEmpty() ? null : String.join("; ", parts);
     }
 
 

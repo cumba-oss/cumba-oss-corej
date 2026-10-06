@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.function.Function;
 import net.cumba.corej.core.metadata.store.Presence;
+import org.jspecify.annotations.Nullable;
 
 /**
  * §4.4 (owner ruling D3, define-ct P5) — <b>abort when something named is missing or unusable; skip
@@ -17,9 +18,9 @@ public final class CtPresence
 {
 
     /**
-     * The escape hatch the DEFINE-source abort names: the phrase every surface can recognise to
-     * append its own spelling of that field (the CLI's {@code -ct}, PLAN-define-ct-evaluation
-     * review round 1 M1).
+     * The escape hatch the DEFINE- and TS-source aborts name: the phrase every surface can
+     * recognise to append its own spelling of that field (the CLI's {@code -ct},
+     * PLAN-define-ct-evaluation review round 1 M1).
      */
     public static final String CT_FIELD_HATCH = "fill the CT Packages field explicitly";
 
@@ -45,6 +46,34 @@ public final class CtPresence
     static void requireNamedPresent(Function<String, Presence> aPresence, Path aStoreFile,
             List<String> aNamedCtIds, CtSelection.Source aSource)
     {
+        requireNamedPresent(aPresence, aStoreFile, aNamedCtIds, aSource, null);
+    }
+
+
+    /**
+     * As {@link #requireNamedPresent(Function, Path, List, CtSelection.Source)}, with the Trial
+     * Summary evidence a {@link CtSelection.Source#TS} message cites per package
+     * (PLAN-ct-packages-default-and-ts-source CTD-2: a TS-derived package the store does not hold
+     * is treated like a define-declared one — abort, naming it and its TS row, with the same escape
+     * hatch).
+     *
+     * @param aPresence
+     *            the store's presence answer
+     * @param aStoreFile
+     *            the store, for the message
+     * @param aNamedCtIds
+     *            the ids in play, after resolution
+     * @param aSource
+     *            where they came from — the DEFINE and TS messages name the escape hatch
+     * @param aTrialSummary
+     *            the Trial Summary read behind a TS selection, or {@code null}
+     * @throws StudyValidationException
+     *             on the first id that is not present, naming it
+     */
+    static void requireNamedPresent(Function<String, Presence> aPresence, Path aStoreFile,
+            List<String> aNamedCtIds, CtSelection.Source aSource,
+            CtSelection.@Nullable TrialSummaryEvidence aTrialSummary)
+    {
         for (String id : aNamedCtIds)
         {
             Presence presence = aPresence.apply(id);
@@ -61,6 +90,15 @@ public final class CtPresence
                         + "controlled-terminology package '" + id + "' (def:Standards), which "
                         + problem + ". Seed the store with it, or " + CT_FIELD_HATCH
                         + " - an explicit selection takes the define's declaration out of play.");
+            }
+            if (aSource == CtSelection.Source.TS)
+            {
+                String evidence = aTrialSummary != null ? aTrialSummary.evidenceFor(id) : null;
+                throw new StudyValidationException(
+                        "The Trial Summary (TS) states " + "controlled-terminology package '" + id
+                                + "'" + (evidence != null ? " (" + evidence + ")" : "") + ", which "
+                                + problem + ". Seed the store with it, or " + CT_FIELD_HATCH
+                                + " - an explicit selection takes the Trial Summary out of play.");
             }
             throw new StudyValidationException("Controlled-terminology package '" + id
                     + "' was requested, but it " + problem + ".");

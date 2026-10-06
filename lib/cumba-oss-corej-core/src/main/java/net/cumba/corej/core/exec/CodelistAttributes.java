@@ -143,6 +143,29 @@ public final class CodelistAttributes
 
 
     /**
+     * Whether a Trial Summary {@code TSVCDREF} value names CDISC Controlled Terminology: exactly
+     * {@code "CDISC"} or {@code "CDISC CT"} after stripping, case-sensitive.
+     *
+     * <p>
+     * ⭐ The ONE predicate both readers of {@code TSVCDREF} use
+     * (PLAN-ct-packages-default-and-ts-source CQ3 (a), owner 2026-10-05): {@link #ctPackageId} for
+     * {@code get_codelist_attributes} ({@code CDISC-CG0288}) and the run's CT selection from the
+     * Trial Summary ({@code run.TrialSummaryCt}), so the run's CT choice and {@code CG0288}'s
+     * per-row package can never disagree about the same row.
+     * </p>
+     *
+     * @param aTargetVal
+     *            the {@code TSVCDREF} value
+     * @return {@code true} for a CDISC CT reference
+     */
+    public static boolean isCdiscCt(String aTargetVal)
+    {
+        String targetText = aTargetVal.strip();
+        return "CDISC".equals(targetText) || "CDISC CT".equals(targetText);
+    }
+
+
+    /**
      * Derives a CT package id from the row's target value, version value and the active standard,
      * matching the reference engine's {@code _get_ct_package}. Returns {@code null} when the
      * version is blank.
@@ -164,7 +187,7 @@ public final class CodelistAttributes
             return null;
         }
         String targetText = aTargetVal.strip();
-        if ("CDISC".equals(targetText) || "CDISC CT".equals(targetText))
+        if (isCdiscCt(targetText))
         {
             String std = aStandard == null ? "" : aStandard.toLowerCase(Locale.ROOT);
             // (TIG substandard handling is not exercised by any shipping rule; the standard name is
