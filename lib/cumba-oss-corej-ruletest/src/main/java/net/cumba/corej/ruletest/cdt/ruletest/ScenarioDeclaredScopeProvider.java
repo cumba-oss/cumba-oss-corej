@@ -58,12 +58,12 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <pre>
- * BuiltinFunctions   library_available()  -&gt; OperationExecutor.libraryAnswerable(provider)
+ * BuiltinFunctions   library_available()  -&gt; LibraryAnswerability.libraryAnswerable(provider)
  * (Fix #369: was `getLibraryProvider() != null`, which a DEGRADED provider passed.)
- * RuleRunner:439     libraryProvider == null &amp;&amp; referencesOperandPrefix(check, "library_")
- * RuleRunner:537     libraryProvider == null &amp;&amp; OperationExecutor.isLibraryDependent(op)
- * OperationExecutor  libraryProvider == null -&gt; LIBRARY_NOT_AVAILABLE
- * RuleRunner:430     defineProvider  == null &amp;&amp; referencesOperandPrefix(check, "define_")
+ * RuleRunner         libraryProvider == null &amp;&amp; referencesOperandPrefix(check, "library_")
+ * RuleRunner         libraryProvider == null &amp;&amp; a library-dependent call (the pre-W8
+ *                    operation executor's isLibraryDependent / LIBRARY_NOT_AVAILABLE gates)
+ * RuleRunner         defineProvider  == null &amp;&amp; referencesOperandPrefix(check, "define_")
  * </pre>
  *
  * <p>
@@ -444,9 +444,9 @@ public final class ScenarioDeclaredScopeProvider implements MetadataProvider
 
     /**
      * Review finding F6 — the structure-keyed provenance, delegated. Log-only in effect, but the
-     * log it feeds is {@code OperationExecutor}'s Fix #369 SKIP diagnostic: without this override
-     * every {@code .cdt} scenario reported {@code declared product(s) <unknown>}, in the very
-     * harness this area is debugged from.
+     * log it feeds is the Fix #369 SKIP diagnostic of the operation executor (retired by runbook
+     * W8): without this override every {@code .cdt} scenario reported
+     * {@code declared product(s) <unknown>}, in the very harness this area is debugged from.
      */
     @Override
     public List<String> declaredStructureKeyedProducts()

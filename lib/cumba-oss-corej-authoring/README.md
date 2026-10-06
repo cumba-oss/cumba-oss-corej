@@ -21,6 +21,7 @@ shipped surface. That is why this is a module of its own and not part of `cumba-
 | `AuthoringProvenance` | the engine commit this jar was built from (`git.properties`), so a corpus regeneration can refuse a stale engine |
 | `RuleInsight` | the static analysis of one loaded rule: `derived` (Sensitivity, the `OutputVariableListing`, Authorities, evaluation domain, wildcard names), `referencedVariables` (every name the rule names and where — quoted `var_exists` targets included, `--` forms kept), `scopeUniverse` (the datasets of the rule's standards its `Scope` admits, judged with the production `ScopeMatcher` over our metadata store, plus the variable names to complete from), `related` |
 | `CorpusIndex` | what `related` looks up in: the corpus's own authority references, plus the equivalence register and the minted-rule parentage where the repository carries them |
+| `FunctionHelp` | function help read from the rule guide's `functions.md`: per `### name` section the signature, the summary, the parameter table and the named sub-sections; the corpus's `FunctionReferenceParameterTableTest` holds the tables to the engine's descriptors |
 
 ## Maven coordinates
 
