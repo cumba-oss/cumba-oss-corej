@@ -38,7 +38,10 @@ class RetiredLegacyPipelineTest
             "RelrecRowExpander", "RelrecExpandedLookup",
             // W6 — the key-match expander, the key-join lookups, the SUPP pivot, their structures
             "KeyMatchRowExpander", "KeyMatchExpandedLookup", "DatasetLookup", "KeyHashing",
-            "KeyCellReader", "KeyMatchIndex", "SuppPivot", "SuppQnamIndex", "RelrecExpandedTable");
+            "KeyCellReader", "KeyMatchIndex", "SuppPivot", "SuppQnamIndex", "RelrecExpandedTable",
+            // T1 — the engine's copy of the datatable's numeric join-key text (W1 review L6): the
+            // engine reads net.cumba.datatable.merge.NumericKeyText / JoinToken, one rule
+            "NumericKeyText");
 
     /** The retired members of classes that live on, as {@code Class#method}. */
     private static final List<String> RETIRED_MEMBERS = List.of(

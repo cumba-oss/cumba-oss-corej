@@ -60,9 +60,10 @@ import org.jspecify.annotations.Nullable;
  * its {@link Primitives.MissingMember} (D11 / D34 #5-2, never {@code ""} nor {@code "."}), an
  * ABSENT column as the NVE constant of its type's default ({@code ""} for character, {@code MIS}
  * for a column the rule expects numeric), and an {@code IDVARVAL} component as its SUPP-- / RELREC
- * join token ({@link NumericKeyText#childJoinToken}, review H1 of 2026-08-19) — exactly the
- * components the {@code tuple(…)} probe side builds, so a row tuple and a reference tuple compare
- * {@link List#equals List-equal}.
+ * join token ({@link net.cumba.datatable.merge.JoinToken#normalize}, numeric — review H1 of
+ * 2026-08-19; the datatable's one rule since T1 of {@code PLAN-merged-evaluation-table}, the token
+ * the merged view's SUPP / RELREC matching compares) — exactly the components the {@code tuple(…)}
+ * probe side builds, so a row tuple and a reference tuple compare {@link List#equals List-equal}.
  * </p>
  *
  * <p>
@@ -467,7 +468,11 @@ public final class Distinct
                     continue;
                 }
                 String cell = dv.getValueAsString();
-                tuple.add(joinToken[c] ? NumericKeyText.childJoinToken(cell, true) : cell);
+                tuple.add(
+                        joinToken[c]
+                                ? java.util.Objects.requireNonNull(
+                                        net.cumba.datatable.merge.JoinToken.normalize(cell, true))
+                                : cell);
             }
             seen.add(java.util.Collections.unmodifiableList(tuple));
         }
