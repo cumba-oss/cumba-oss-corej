@@ -9,15 +9,19 @@ package net.cumba.corej.core.expr;
  *
  * <p>
  * A 0-based character offset into the source expression, when one applies, is folded into the
- * message ({@code "(at position N)"}). Callers that load rule packages route this through the
- * established per-rule load-error channel so a bad expression appears as a rule load error, not a
- * hard crash.
+ * message ({@code "(at position N)"}) and kept as {@link #getPosition()} so an authoring tool can
+ * point at the character without re-parsing the text ({@code PLAN-rule-authoring-api} §2.3 item 1).
+ * Callers that load rule packages route this through the established per-rule load-error channel so
+ * a bad expression appears as a rule load error, not a hard crash.
  * </p>
  */
 public class ExpressionException extends RuntimeException
 {
 
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 2L;
+
+    /** The offset the message names, or {@code -1}. */
+    private final int position;
 
     /**
      * @param position
@@ -27,6 +31,7 @@ public class ExpressionException extends RuntimeException
     public ExpressionException(String message, int position)
     {
         super(position >= 0 ? message + " (at position " + position + ")" : message);
+        this.position = position;
     }
 
 
@@ -35,4 +40,14 @@ public class ExpressionException extends RuntimeException
         this(message, -1);
     }
 
+
+    /**
+     * The 0-based character offset into the source expression this exception is about.
+     *
+     * @return the offset, or {@code -1} when none applies
+     */
+    public int getPosition()
+    {
+        return position;
+    }
 }

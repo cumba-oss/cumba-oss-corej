@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>net.cumba</groupId>
+        <artifactId>cumba-oss-corej-parent</artifactId>
+        <version>${revision}</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>cumba-oss-corej-authoring</artifactId>
+    <packaging>jar</packaging>
+
+    <!--
+        Declared HERE, not inherited: <name> is one of the few POM elements
+        Maven does NOT take from the parent, so a module without its own name
+        deploys a nameless artifact.
+    -->
+    <name>Cumba OSS coreJ :: Authoring</name>
+    <url>https://github.com/cumba-oss/cumba-oss-corej</url>
+
+    <inceptionYear>2026</inceptionYear>
+    <description>
+        The rule authoring API: turns an authored rule (the rules-src split
+        storage - check YAML, docs sidecar, package standards) into the
+        packaged rule the engine loads, exactly as the corpus generator
+        emits it, with structured diagnostics; plus the static rule insight
+        an editor needs (derived fields, referenced variables, the scope
+        universe over a metadata store, related rules) and function help.
+        The corpus gate (the rule corpus repository) and the rule editor are its two
+        consumers: one implementation, so the editor reports the gate's
+        verdicts. The product never loads authored YAML, which is why this
+        is a module of its own and not part of cumba-corej-core.
+    </description>
+
+    <properties>
+        <!-- Repo-root anchor, depth 2 (see the root pom). -->
+        <repo.root.dir>${project.basedir}/../..</repo.root.dir>
+    </properties>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-corej-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-datatable</artifactId>
+        </dependency>
+
+        <!-- JSpecify nullability annotations (NullAway). -->
+        <dependency>
+            <groupId>org.jspecify</groupId>
+            <artifactId>jspecify</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <!-- The authored corpus is YAML; the engine's own input contract stays JSON. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-params</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+</project>

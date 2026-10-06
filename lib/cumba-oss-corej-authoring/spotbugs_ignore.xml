@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+
+    <!-- ================================================================ -->
+    <!-- Targeted suppressions                                            -->
+    <!--    One <Match> per unique (class, bug pattern) tuple.            -->
+    <!-- ================================================================ -->
+
+    <Match>
+        <!-- AssembledRule is a result record that hands back, by design and by
+             reference, the engine's own loaded Rule and the assembled Jackson
+             nodes: the loaded Rule IS the object the engine executes (there is
+             no copy of a Rule), and the nodes are what the composition gate
+             compares byte for byte. A defensive copy would hide neither from a
+             caller that wants to mutate them and would cost a deep copy of
+             every assembled rule for nothing. -->
+        <Class name="net.cumba.corej.authoring.AssembledRule" />
+        <Or>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Bug pattern="EI_EXPOSE_REP2" />
+        </Or>
+    </Match>
+
+</FindBugsFilter>

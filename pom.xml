@@ -334,6 +334,7 @@
         <module>lib/cumba-oss-corej-report-json</module>
         <module>lib/cumba-oss-corej-report-xlsx</module>
         <module>lib/cumba-oss-corej-ruletest</module>
+        <module>lib/cumba-oss-corej-authoring</module>
         <module>lib/cumba-oss-corej-define-conformance</module>
 
         <module>coverage</module>
@@ -1471,6 +1472,11 @@
                     <dependency>
                 <groupId>${project.groupId}</groupId>
                 <artifactId>cumba-oss-corej-ruletest</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>cumba-oss-corej-authoring</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

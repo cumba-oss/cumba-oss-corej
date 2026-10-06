@@ -36,6 +36,7 @@ classpath first; they are released separately to Maven Central.
 | `cumba-oss-corej-report-xlsx` | `net.cumba.corej.core.report.xlsx` | Registers the `xlsx` format. The only module that puts Apache POI's writer path on the engine classpath, so an engine without it validates normally and simply offers no Excel output. |
 | [`cumba-oss-corej-ruletest`](lib/cumba-oss-corej-ruletest/README.md) | `net.cumba.corej.ruletest.cdt` | Rule-test harness: load `.cdt` fixtures, evaluate a single rule against them, compare against expected findings. Ships no JUnit on its main path. |
 | `cumba-oss-corej-define-conformance` | `net.cumba.corej.define.conformance` | Define-XML conformance validator implementing the CDISC Define-XML v2.1 Conformance Rules and the PMDA Validation Rules v6.0 Define-XML sheet. |
+| [`cumba-oss-corej-authoring`](lib/cumba-oss-corej-authoring/README.md) | `net.cumba.corej.authoring` | The rule authoring API: an authored rule (check YAML, docs sidecar, package standards) → the packaged rule the engine loads, with structured diagnostics; the per-rule half of corpus assembly, shared by the corpus generator and the rule editor. |
 
 ## What is not in this repository
 

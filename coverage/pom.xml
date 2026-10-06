@@ -58,6 +58,11 @@
         </dependency>
         <dependency>
             <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-corej-authoring</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>net.cumba</groupId>
             <artifactId>cumba-oss-corej-define-conformance</artifactId>
             <version>${project.version}</version>
         </dependency>

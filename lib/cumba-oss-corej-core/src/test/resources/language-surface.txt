@@ -1,0 +1,200 @@
+LEVEL=1
+functions:
+abs(x:unknown) kind=value
+available(x:unknown) kind=boolean
+between(x:number, lo:number, hi:number) kind=boolean
+ceil(x:unknown) kind=value
+char(x:unknown) kind=value
+coalesce(a:unknown, b:unknown, c:unknown?) kind=value
+codelist_terms(codelists:list<string>, level:string, returntype:string?) kind=value aggregate provider=library
+colref(x:unknown) kind=value perRow
+column_series_metadata(name:string?, name_pattern:string, min_length:number?) kind=value aggregate
+concat(a:unknown, b:unknown, c:unknown?) kind=value
+contains(x:unknown, value:unknown) kind=boolean
+contains_all(source:unknown, required:unknown?, keys:list<unknown>?) kind=boolean
+count(x:unknown) kind=value
+cross_dataset_variable_metadata(name:string, domain:string) kind=value aggregate perVariable
+dataset_class_from_library() kind=value aggregate provider=library
+dataset_names() kind=value aggregate
+date(x:unknown) kind=value
+date_contains(outer:date, inner:date) kind=boolean
+date_diff_days(name:column-reference, reference:unknown) kind=value
+date_overlaps(a:date, b:date) kind=boolean
+day(x:unknown) kind=value
+define_dataset_names() kind=value aggregate provider=define
+define_key_variables() kind=value aggregate provider=define
+define_variable_decode_matches(name:unknown?) kind=value
+define_variable_names() kind=value aggregate provider=define
+dictionary_available(type:string) kind=boolean
+dictionary_has_decode(name:column-reference, external_dictionary_type:string, case_sensitive:boolean?) kind=boolean provider=dictionary<external_dictionary_type>
+distinct(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>?, keep_missings:boolean?) kind=value
+does_not_contain(x:unknown, value:unknown) kind=boolean
+does_not_equal_string_part(name:unknown, value:unknown, regex:string) kind=boolean
+domain_is_custom() kind=value aggregate provider=library
+ds_exists(name:unknown) kind=boolean
+ds_not_exists(name:unknown) kind=boolean
+duplicate_label_variables() kind=value aggregate
+dy(name:column-reference, reference:column-reference) kind=value
+earliest_date(a:date, b:date) kind=value
+earliest_possible(x:unknown) kind=value
+empty(x:unknown) kind=boolean
+empty_within_except_last_row(name:unknown, group:unknown, ordering:unknown, keep_missings:boolean?) kind=boolean
+ends_with(x:unknown, value:unknown) kind=boolean
+equalsIgnoreCase(a:unknown, b:unknown) kind=boolean
+expected_variables() kind=value aggregate provider=library
+extract_metadata(name:string) kind=value aggregate
+find_vars(entry:string) kind=value
+floor(x:unknown) kind=value
+get_codelist_attributes(name:unknown, version:unknown, ct_attribute:string) kind=value aggregate provider=library
+get_column_order_from_dataset() kind=value aggregate
+get_column_order_from_library() kind=value aggregate provider=library
+get_dataset_filtered_variables(key_name:string?, key_value:string?) kind=value aggregate provider=library
+get_model_column_order() kind=value aggregate provider=library
+get_model_filtered_variables(key_name:string?, key_value:string?, model_class:string?) kind=value aggregate provider=library
+get_parent_model_column_order(name:column-reference) kind=value provider=library
+has_alpha(x:unknown) kind=boolean
+has_digit(x:unknown) kind=boolean
+has_equal_length(name:unknown, length:unknown) kind=boolean
+has_mixed_emptiness_within_group(name:column-reference, group:list<column-reference>?, qualifying_any_populated:list<column-reference>?, keep_missings:boolean?) kind=boolean
+has_multiple_values_for(name:unknown, key:unknown, within:unknown?, keep_missings:boolean?, include_empty:boolean?) kind=boolean
+has_next_corresponding_record(name:unknown, value:unknown, within:unknown, ordering:unknown, relation:string?, keep_missings:boolean?) kind=boolean
+has_not_equal_length(name:unknown, length:unknown) kind=boolean
+has_same_values(name:unknown) kind=boolean
+imatches(x:unknown, pattern:regex) kind=boolean
+inconsistent_enumerated_columns(name:unknown) kind=boolean
+interval_uncertainty_precision_mismatch(name:column-reference, delimiter:string?) kind=boolean
+invalid_date(x:string) kind=boolean
+invalid_duration(x:unknown, negative:boolean?) kind=boolean
+is_complete_date(x:string) kind=boolean
+is_complete_date_part(x:string) kind=boolean
+is_incomplete_date(x:string) kind=boolean
+is_inconsistent_across_dataset(name:unknown, key:unknown?, keys:list<column-reference>?, include_empty:boolean?, keep_missings:boolean?) kind=boolean
+is_integer(x:unknown) kind=boolean
+is_last_in_group(ordering:column-reference, group:list<column-reference>, keep_missings:boolean?) kind=boolean
+is_missing(x:unknown) kind=boolean
+is_not_complete_date_part(x:string) kind=boolean
+is_not_integer(x:unknown) kind=boolean
+is_not_ordered_subset_of(name:unknown, value:unknown) kind=boolean
+is_not_unique_relationship(name:unknown, value:unknown?, keys:list<column-reference>?) kind=boolean
+is_not_unique_set(members:list<column-reference>, regex:string?, keep_missings:boolean?) kind=boolean
+is_not_unique_value(name:unknown) kind=boolean
+is_numeric(x:unknown) kind=boolean
+is_ordered_subset_of(name:unknown, value:unknown) kind=boolean
+is_partial_date(x:string) kind=boolean
+is_present(x:unknown) kind=boolean
+is_sorted_by(target:unknown, by:list<column-reference>, within:unknown?, keep_missings:boolean?) kind=boolean
+is_unique_relationship(name:unknown, value:unknown?, keys:list<column-reference>?) kind=boolean
+is_unique_set(members:list<column-reference>, regex:string?, keep_missings:boolean?) kind=boolean
+is_unique_value(name:unknown) kind=boolean
+is_valid_date(x:string) kind=boolean
+is_valid_duration(x:unknown) kind=boolean
+is_valid_name(x:unknown) kind=boolean
+is_valid_testcd(x:unknown) kind=boolean
+latest_date(a:date, b:date) kind=value
+latest_possible(x:unknown) kind=value
+len(x:unknown) kind=value
+length(x:unknown) kind=value
+library_available() kind=boolean
+library_variable_code_pair_matches(name:unknown?) kind=value
+lowcase(x:unknown) kind=value
+lower(x:unknown) kind=value
+lpad(x:unknown, width:number, fill:string?) kind=value
+matches_label_template(label:string, template:string) kind=boolean
+max(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?) kind=value
+max_date(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?, missing_values:string?) kind=value
+max_value_length(name:unknown?) kind=value
+min_date(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?, missing_values:string?) kind=value
+minus(value:unknown, subtract:unknown) kind=value aggregate
+month(x:unknown) kind=value
+natural_key_variables() kind=value aggregate provider=library
+non_empty(x:unknown) kind=boolean
+normalize_space(x:unknown) kind=value
+not_contains_all(source:unknown, required:unknown?, keys:list<unknown>?) kind=boolean
+num(x:unknown) kind=value
+prefix(x:unknown, n:number) kind=value
+prefix_matches(x:unknown, pattern:regex, n:number?) kind=boolean
+present(x:unknown) kind=boolean
+present_on_multiple_rows_within(name:unknown, within:unknown, keep_missings:boolean?) kind=boolean
+printf(format:string, args:list<unknown>?...) kind=value
+read_value(name:unknown, domain:dataset-reference, filter:unknown?, mode:string, group:list<column-reference>?, keep_missings:boolean?) kind=value
+record_count(domain:dataset-reference?, filter:unknown?, group:list<column-reference>?, keep_missings:boolean?, regex:regex?) kind=value
+referenced_dataset_variables(name:column-reference) kind=value
+referenced_domain_class(name:column-reference) kind=value provider=library
+required_variables() kind=value aggregate provider=library
+round(x:unknown) kind=value
+row_max(name_pattern:string) kind=value perRow
+shares_elements_with(name:unknown, value:unknown?, keys:list<unknown>?) kind=boolean
+shares_no_elements_with(name:unknown, value:unknown?, keys:list<unknown>?) kind=boolean
+size(x:unknown) kind=value
+split_by(x:unknown, delimiter:string) kind=value
+split_sibling_length_mismatch() kind=value aggregate
+standard_domains() kind=value aggregate provider=library
+starts_with(x:unknown, value:unknown) kind=boolean
+str(x:unknown) kind=value
+study_domains() kind=value aggregate
+substring(x:unknown, start:number, length:number?) kind=value
+suffix(x:unknown, n:number) kind=value
+suffix_matches(x:unknown, pattern:regex, n:number?) kind=boolean
+time(x:unknown) kind=value
+time_contains(outer:time, inner:time) kind=boolean
+time_overlaps(a:time, b:time) kind=boolean
+trim(x:unknown) kind=value
+tuple(c1:column-reference, c2:column-reference, columns:list<column-reference>?...) kind=value
+upcase(x:unknown) kind=value
+upper(x:unknown) kind=value
+valid_codelist_dates(ct_package_types:list<string>?) kind=value aggregate provider=library
+valid_external_dictionary_code(name:column-reference, external_dictionary_type:string, dictionary_term_type:string, case_sensitive:boolean?) kind=boolean provider=dictionary<external_dictionary_type>
+valid_external_dictionary_code_term_pair(name:column-reference, external_dictionary_term_variable:column-reference, external_dictionary_type:string, case_sensitive:boolean?) kind=boolean provider=dictionary<external_dictionary_type>
+valid_external_dictionary_hierarchy(name:column-reference, dictionary_parent:column-reference, external_dictionary_type:string, case_sensitive:boolean?) kind=boolean provider=dictionary<external_dictionary_type>
+valid_external_dictionary_value(name:column-reference, external_dictionary_type:string, dictionary_term_type:string, case_sensitive:boolean?) kind=boolean provider=dictionary<external_dictionary_type>
+value() kind=value
+var_exists(name:unknown) kind=boolean
+var_is_null(name:unknown) kind=boolean
+var_not_exists(name:unknown) kind=boolean
+variable_count(name:string?, name_pattern:string?) kind=value aggregate
+variable_names() kind=value aggregate provider=library
+varname() kind=value
+vlm_codelist_coded_codes(name:unknown?) kind=value
+vlm_codelist_coded_values(name:unknown?) kind=value
+vlm_codelist_extensible(name:unknown?) kind=value
+vlm_data_type(name:unknown?) kind=value
+vlm_decode_matches(name:unknown?) kind=value
+vlm_has_codelist(name:unknown?) kind=value
+vlm_length(name:unknown?) kind=value
+vlm_mandatory(name:unknown?) kind=value
+vlm_type_conforms(name:unknown?) kind=value
+vlm_value_length(name:unknown?) kind=value
+year(x:unknown) kind=value
+keys:
+AUTHORITY: Organization,Rule_Ids,Standards
+AUTHORITY_STANDARD: Name,References,Substandard,Version
+BINDING: expression,name
+CITATION: Cited_Guidance,Document,Item,Section
+CLASS_SCOPE: Exclude,Include
+CORE: Id,Status,Version
+DATASET_SCOPE: Exclude,Include
+DATA_STRUCTURE_SCOPE: Exclude,Include
+DOMAIN_SCOPE: Exclude,Include,include_split_datasets
+EXECUTABILITY_HINT: Category,Detail
+EXPANSION: known_domain_only,over,pattern,token,with
+GROUPING: Variables,keep_missings
+MATCH_DATASET: Cardinality,Child,Filter,Join_As_String,Join_Type,Keys,Name,keep_missings
+MATCH_KEY_ELEMENT: left,right
+NEVER_HINTED: Operations,Rule_Type,id
+OUTCOME: Message,Output_Variables
+REFERENCE: Citations,Origin,Rule_Identifier,Version
+REQUIREMENTS: Datasets,Define,Dictionary,Library,Variables
+RULE: Authorities,Bindings,Check,Core,Description,Executability,ExecutabilityHint,Expansion,Grouping,Grouping_Variables,Match_Datasets,Operations,Outcome,Precondition,Requirements,Rule_Type,Scope,Sensitivity,Severity,Supp_Keys,Supp_Merge,Variable_Universe,id,skipIfLibraryDefined,wildcardExclude,wildcardPairCatalogue,wildcards
+RULE_IDENTIFIER: Id,Version
+RULE_PACKAGE: rules,standards
+SCOPE: Classes,Data Structures,Data_Structures,Datasets,Domains,Subclasses,Use_Case
+STANDARD_REF: id,role
+SUBCLASS_SCOPE: Exclude,Include
+VARIABLE_REQUIREMENT: All,All_Or_None,Any,None
+WILDCARD_FILTER: max,min
+enums:
+Sensitivity: Dataset,Group,Record,Study
+Executability: Fully Executable,Not Executable,Partially Executable,Partially Executable - Possible Overreporting,Partially Executable - Possible Underreporting
+Variable_Universe: Data,Define
+Expansion.source: all_character_variables,all_numeric_variables,all_variables,domain_from_variable,shared_variables
+Severity: ERROR,INFO,NOTICE,REJECT,WARNING
