@@ -25,6 +25,14 @@ public final class CtPresence
      */
     public static final String CT_FIELD_HATCH = "fill the CT Packages field explicitly";
 
+    /**
+     * The phrase of an abort for a well-formed CT package id that no CDISC CT release carries (a
+     * mistyped date, 5e review LOW-2): seeding cannot help, so a surface that appends a seeding
+     * remedy to a {@link #CT_FIELD_HATCH} abort recognises this phrase and leaves it out (5e last
+     * LOW).
+     */
+    public static final String UNKNOWN_RELEASE = "no CDISC CT release of that date is known to the store";
+
     private CtPresence()
     {
     }
@@ -97,9 +105,7 @@ public final class CtPresence
             // LOW-2: a well-formed id the published enumeration lacks is no CDISC CT release at
             // all (a mistyped date) — seeding cannot help. An empty enumeration says nothing.
             String remedy = presence == Presence.ABSENT && !aPublished.isEmpty()
-                    && !aPublished.contains(id)
-                            ? "; no CDISC CT release of that date is known to the store. Correct"
-                                    + " the date, or "
+                    && !aPublished.contains(id) ? "; " + UNKNOWN_RELEASE + ". Correct the date, or "
                             : ". Seed the store with it, or ";
             if (aSource == CtSelection.Source.DEFINE)
             {
