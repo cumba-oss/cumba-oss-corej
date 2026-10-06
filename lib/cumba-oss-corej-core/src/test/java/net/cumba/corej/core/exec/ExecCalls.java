@@ -171,7 +171,7 @@ public final class ExecCalls
                 .build(net.cumba.datatable.merge.MergeRequest.builder().primary(table)
                         .resolver(_ -> null).build());
         return new MergedEvaluation.Built(alone, table, new java.util.LinkedHashMap<>(joins),
-                List.of(), Set.of(), Map.of(), false, false, false);
+                List.of(), Set.of(), Map.of(), false, false, false, false);
     }
 
 

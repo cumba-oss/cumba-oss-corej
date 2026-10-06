@@ -120,8 +120,9 @@ class JoinLookupProductionOverrideGuardTest
         net.cumba.datatable.merge.MergedPart keyedPart = view.parts().stream()
                 .filter(p -> p.kind() == net.cumba.datatable.merge.MergeKind.KEYED).findFirst()
                 .orElseThrow();
-        out.put("MergedViewLookup", new Probe(
-                new MergedViewLookup(view, keyedPart, view::partOf, false), viewPrimary, 0));
+        out.put("MergedViewLookup",
+                new Probe(new MergedViewLookup(view, keyedPart, view::partOf, false, Map.of()),
+                        viewPrimary, 0));
         return out;
     }
 

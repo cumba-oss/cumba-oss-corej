@@ -19,6 +19,8 @@ import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.impl.databuffer.DataBufferFactory;
 import net.cumba.datatable.impl.databuffer.IDataBufferNumeric;
+import net.cumba.datatable.impl.view.MergeDataTable;
+import net.cumba.datatable.impl.view.ViewDataTable;
 import net.cumba.datatable.merge.Cardinality;
 import net.cumba.datatable.merge.ChildMergeSpec;
 import net.cumba.datatable.merge.KeyColumn;
@@ -175,6 +177,9 @@ public final class MergedEvaluation
         /** Whether the rule declares a forward RELREC entry (W5, P-14). */
         private final boolean relrecDeclared;
 
+        /** Whether the view carries a {@code Child} merge (W4, MQ1): one part per parent domain. */
+        private final boolean childDeclared;
+
         /** name → {@link ViewColumn}, the flag (a String) of a flagged column, or {@link #NONE}. */
         private final ConcurrentHashMap<String, Object> suppColumns = new ConcurrentHashMap<>();
 
@@ -188,7 +193,7 @@ public final class MergedEvaluation
         Built(MergedTable aView, IDataTable aTable, Map<String, JoinLookup> aLookups,
                 List<MergedPart> aParts, java.util.Set<String> aSuppQnams,
                 Map<String, String> aFlagged, boolean aSuppShifted, boolean aShared,
-                boolean aRelrecDeclared)
+                boolean aRelrecDeclared, boolean aChildDeclared)
         {
             view = aView;
             table = aTable;
@@ -206,6 +211,7 @@ public final class MergedEvaluation
             suppShifted = aSuppShifted;
             shared = aShared;
             relrecDeclared = aRelrecDeclared;
+            childDeclared = aChildDeclared;
         }
 
 
@@ -220,6 +226,20 @@ public final class MergedEvaluation
         public boolean relrecDeclared()
         {
             return relrecDeclared;
+        }
+
+
+        /**
+         * Whether the view carries a {@code Child} merge (W4, MQ1): its parts are the parent
+         * domains the primary's rows point at on this study, so a parent domain no row points at
+         * has no part — its {@code _matched_} flag ("this row carries a D record") is {@code false}
+         * on every row, never a missing-join error (T2 M3).
+         *
+         * @return whether a part-less qualifier may be a parent domain no row points at
+         */
+        public boolean childDeclared()
+        {
+            return childDeclared;
         }
 
 
@@ -509,6 +529,8 @@ public final class MergedEvaluation
         List<MergedPart> parts = new ArrayList<>(view.parts().subList(1, view.parts().size()));
         java.util.Set<String> suppQnams = view.suppQnams();
         boolean rowMapped = view.isRowMapped();
+        List<MergedTable> stageViews = new ArrayList<>(stages.size());
+        stageViews.add(view);
         for (int s = 1; s < stages.size(); s++)
         {
             // a chained key (W6): the next stage keys on a column of the table built so far
@@ -518,38 +540,40 @@ public final class MergedEvaluation
                     .matchedFlags(true).standard(standard).build());
             parts.addAll(view.parts().subList(1, view.parts().size()));
             rowMapped |= view.isRowMapped();
+            stageViews.add(view);
         }
         MergeKind plant = plantForTests;
         IDataTable table = primary;
         if (rowMapped)
         {
-            // the final table's real row chains through every stage to the primary's own row
+            // the final table's row chains through every stage's primary part to the primary's
+            // own POSITION (part 0's base-row map) — never view.getRealRowIndex: that also maps
+            // through a non-positional primary's own real rows (a sorted / filtered
+            // ViewDataTable), and RowMappedTable maps the entry through the primary again (T2 L1)
             int rows = Math.toIntExact(view.getRowCount());
             int primaryRows = Math.toIntExact(primary.getRowCount());
+            List<@Nullable ViewDataTable> primaryParts = primaryParts(stageViews);
             IDataBufferNumeric rowMap = DataBufferFactory.get().createForRange(0,
                     Math.max(0, primaryRows - 1L));
             rowMap.setExpectedSize(rows);
             for (int i = 0; i < rows; i++)
             {
-                rowMap.addValue(view.getRealRowIndex(i));
+                long position = i;
+                for (int s = primaryParts.size() - 1; s >= 0; s--)
+                {
+                    ViewDataTable part = primaryParts.get(s);
+                    if (part != null)
+                    {
+                        position = part.getBaseRowIndex(position);
+                    }
+                }
+                rowMap.addValue(position);
             }
             table = new RowMappedTable(primary, rowMap);
         }
         List<MergedPart> flat = List.copyOf(parts);
         java.util.function.IntFunction<@Nullable MergedPart> partOf = column -> partContaining(flat,
                 column);
-        Map<String, JoinLookup> lookups = new LinkedHashMap<>();
-        for (MergedPart part : flat)
-        {
-            // a keyed partner, a Child parent domain, a RELREC related domain — and the RELREC
-            // entry's own flag part (qualifier RELREC, one column: "has any relationship", P-14)
-            if (part.kind() == MergeKind.KEYED || part.kind() == MergeKind.CHILD
-                    || part.kind() == MergeKind.RELREC)
-            {
-                lookups.put(part.qualifier(),
-                        new MergedViewLookup(view, part, partOf, plant == part.kind()));
-            }
-        }
         Map<String, String> flagged = new LinkedHashMap<>();
         for (DataTableColumnMeta column : view.getMetaData().getColumns())
         {
@@ -564,8 +588,54 @@ public final class MergedEvaluation
                 flagged.put(column.getName(), String.valueOf(flag));
             }
         }
+        Map<String, JoinLookup> lookups = new LinkedHashMap<>();
+        for (MergedPart part : flat)
+        {
+            // a keyed partner, a Child parent domain, a RELREC related domain — and the RELREC
+            // entry's own flag part (qualifier RELREC, one column: "has any relationship", P-14);
+            // each reads the flag map, so a dynamic read of a flagged partner-SUPP qualifier
+            // (MQ5) or RELREC-domain column errors (OD-7, T2 M4) — a CHILD column is never in it
+            if (part.kind() == MergeKind.KEYED || part.kind() == MergeKind.CHILD
+                    || part.kind() == MergeKind.RELREC)
+            {
+                lookups.put(part.qualifier(), new MergedViewLookup(view, part, partOf,
+                        plant == part.kind(), Collections.unmodifiableMap(flagged)));
+            }
+        }
         return new Built(view, table, lookups, flat, suppQnams, flagged, plant == MergeKind.SUPP,
-                shared, relrec != null);
+                shared, relrec != null, child != null);
+    }
+
+
+    /**
+     * The primary part of each stage, as the row map it is when the stage is row-mapped (its base
+     * rows are positions of the stage's primary: the previous stage's table, the first stage's the
+     * evaluated dataset), else {@code null} (the stage's primary part is its primary, row for row).
+     * The datatable builds a row-mapped primary part as a {@link ViewDataTable} over the stage's
+     * primary ({@code MergeBuilder}, both twins); anything else is refused loudly rather than read
+     * through {@code getRealRowIndex}, which is not a position on a non-positional primary.
+     */
+    private static List<@Nullable ViewDataTable> primaryParts(List<MergedTable> stageViews)
+    {
+        List<@Nullable ViewDataTable> out = new ArrayList<>(stageViews.size());
+        for (MergedTable stage : stageViews)
+        {
+            if (!stage.isRowMapped())
+            {
+                out.add(null);
+            }
+            else if (stage instanceof MergeDataTable merged
+                    && merged.part(0) instanceof ViewDataTable part)
+            {
+                out.add(part);
+            }
+            else
+            {
+                throw new IllegalStateException("a row-mapped merged table whose primary part is"
+                        + " not a row map over its primary: " + stage.getClass().getName());
+            }
+        }
+        return out;
     }
 
 
@@ -678,6 +748,12 @@ public final class MergedEvaluation
             // An entry outside the key-type check (a SUPP-named or wildcard-named partner) was a
             // first-wins lookup that never dropped a primary row, whatever Join_Type the loader
             // stamped: it keeps every row (left). An expandable entry honours its Join_Type.
+            // ⚠ The CARDINALITY of such an entry (SUPP- / SQ / -- named, a keyed RELREC) did
+            // change: the retired lookup took the FIRST matching partner row; the view expands
+            // n:m like every keyed part (Cardinality unset ⇒ MANY_TO_MANY), so two partner rows
+            // on one key give the record two rows. Recorded, not refused (T2 L2): the population
+            // is 0 in both corpora (plan §2.5, "first match wins is retired"), and an author who
+            // means one partner row declares Cardinality n:1 and the view checks it (P-16).
             String jt = md.getJoinType();
             net.cumba.datatable.merge.JoinType joinType = !expandable
                     ? net.cumba.datatable.merge.JoinType.LEFT

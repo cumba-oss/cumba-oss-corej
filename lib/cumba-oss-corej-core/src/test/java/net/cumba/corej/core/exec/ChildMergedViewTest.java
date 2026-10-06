@@ -351,6 +351,33 @@ class ChildMergedViewTest
     }
 
 
+    /**
+     * T2 M3: under a {@code Child} entry, {@code <D>._matched_} for a parent domain no row points
+     * at on this study (no part for D) is "this row carries a D record" — {@code false} on every
+     * row, never the engine-sequencing {@code IllegalStateException} (a generic ERROR). Control:
+     * the same rule over a CO pointing at CM on row 1 reads the part — only row 0 fires.
+     */
+    @Test
+    void aParentDomainNoRowPointsAtReadsMatchedFalseNotAnError()
+    {
+        String check = "not CM._matched_";
+        IDataTable aeOnly = RealTableFixture.of("CO").str("STUDYID", "S1", "S1")
+                .str("RDOMAIN", "AE", "AE").str("USUBJID", "01", "01")
+                .str("IDVAR", "AESEQ", "AESEQ").str("IDVARVAL", "1", "2").str("COVAL", "a", "b")
+                .build();
+        RuleExecutionResult none = RuleRunnerCalls.execute(rule("CO", KEYS, check, null), aeOnly,
+                resolver(aeOnly, ae(), cm()));
+        assertEquals(Set.of(0L, 1L), rows(none), "no CM part: the flag is false on every row");
+        IDataTable mixed = RealTableFixture.of("CO").str("STUDYID", "S1", "S1")
+                .str("RDOMAIN", "AE", "CM").str("USUBJID", "01", "01")
+                .str("IDVAR", "AESEQ", "CMSEQ").str("IDVARVAL", "1", "4").str("COVAL", "a", "b")
+                .build();
+        RuleExecutionResult served = RuleRunnerCalls.execute(rule("CO", KEYS, check, null), mixed,
+                resolver(mixed, ae(), cm()));
+        assertEquals(Set.of(0L), rows(served), "a CM part: row 1 carries a CM record");
+    }
+
+
     @Test
     void noPointerNoPart()
     {

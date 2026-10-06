@@ -2,6 +2,7 @@ package net.cumba.corej.core.exec;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.IntFunction;
 import net.cumba.datatable.DataTableColumnMeta;
@@ -31,6 +32,18 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
+ * <b>A flagged column</b> (OD-7, MET #15 — a partner's SUPP qualifier two rows qualify for one
+ * record, MQ5; a RELREC related domain lacking the column a relationship names) is never read:
+ * every value read — {@link #lookupValue}, {@link #columnReader}, {@link #lookup} — throws
+ * {@link MergeErrorReadException}, the read-time backstop behind {@code RuleRunner}'s static gate
+ * for a dynamic read ({@code colref}) no static walk sees (T2 M4). The existence answers
+ * ({@link #hasColumn}, {@link #columnMeta}, {@link #declaredTypeOf}) still see the column: it
+ * exists, its values cannot be supplied. A {@code Child} part is never flagged here (OD-1's
+ * precedent: its rows read the not-supplied marker and the referenced-record rule reports them —
+ * the builder leaves CHILD columns out of the flag map).
+ * </p>
+ *
+ * <p>
  * Costs: one column-index memo per column name (filled once per name, shared by every rule the
  * cached view serves), then one {@code isSupplied} and one cell read per row — no per-row
  * allocation of this class's own.
@@ -57,21 +70,36 @@ final class MergedViewLookup implements JoinLookup
     /** The test plant: rows read one merged row on ({@link MergedEvaluation#plantForTests}). */
     private final boolean shifted;
 
+    /** Merged column name → its {@code MERGE_ERROR} flag (OD-7), CHILD columns excluded (OD-1). */
+    private final Map<String, String> flagged;
+
     MergedViewLookup(MergedTable aView, MergedPart aPart, IntFunction<@Nullable MergedPart> aPartOf,
-            boolean aShifted)
+            boolean aShifted, Map<String, String> aFlagged)
     {
         view = aView;
         part = aPart;
         partOf = aPartOf;
         meta = aView.getMetaData();
         shifted = aShifted;
+        flagged = aFlagged;
     }
 
 
-    /** The merged column of a partner column name, or {@code -1}; memoised per name. */
+    /**
+     * The memo code of a partner column name: the merged column index, {@code -1} when the part has
+     * no such column, or {@code -2 - index} when the column is flagged (OD-7) — so the hot path of
+     * an unflagged read stays one memo lookup and one sign test.
+     */
     private int column(String name)
     {
         return columns.computeIfAbsent(name, this::resolve);
+    }
+
+
+    /** The merged column index of a {@link #column} code ({@code -1} when absent). */
+    private static int index(int code)
+    {
+        return code >= -1 ? code : -2 - code;
     }
 
 
@@ -81,7 +109,19 @@ final class MergedViewLookup implements JoinLookup
         // delivers — a SUPP part under the same qualifier, named <Name>.<QNAM> by the view
         int i = meta.getColumnIndex(part.qualifier() + "." + name);
         MergedPart owner = i < 0 ? null : partOf.apply(i);
-        return owner != null && owner.qualifier().equals(part.qualifier()) ? i : -1;
+        if (owner == null || !owner.qualifier().equals(part.qualifier()))
+        {
+            return -1;
+        }
+        return flagged.containsKey(meta.getColumn(i).getName()) ? -2 - i : i;
+    }
+
+
+    /** The read of a flagged column (a {@link #column} code below {@code -1}): OD-7's ERROR. */
+    private MergeErrorReadException flaggedRead(int code)
+    {
+        String merged = meta.getColumn(index(code)).getName();
+        return new MergeErrorReadException(merged, String.valueOf(flagged.get(merged)));
     }
 
 
@@ -103,7 +143,7 @@ final class MergedViewLookup implements JoinLookup
     @Override
     public @Nullable DataTableColumnMeta columnMeta(String columnName)
     {
-        int idx = column(columnName);
+        int idx = index(column(columnName));
         return idx < 0 ? null : sourceMeta(idx);
     }
 
@@ -134,6 +174,10 @@ final class MergedViewLookup implements JoinLookup
         int idx = column(columnName);
         if (idx < 0)
         {
+            if (idx < -1)
+            {
+                throw flaggedRead(idx);
+            }
             return JoinLookup.absentJoinedColumnValue(numericExpected);
         }
         long r = row(row);
@@ -152,6 +196,14 @@ final class MergedViewLookup implements JoinLookup
         // lookupValue with the column resolved once (T1): the name memo's hash lookup per cell
         // measured ~20 → ~16 ns per merged read through this reader (1 M rows, warm)
         int idx = column(columnName);
+        if (idx < -1)
+        {
+            // thrown at the read, not here: a reader built for no row reads nothing
+            return _ ->
+            {
+                throw flaggedRead(idx);
+            };
+        }
         if (idx < 0)
         {
             IDataValue absent = JoinLookup.absentJoinedColumnValue(numericExpected);
@@ -182,6 +234,10 @@ final class MergedViewLookup implements JoinLookup
         int idx = column(columnName);
         if (idx < 0)
         {
+            if (idx < -1)
+            {
+                throw flaggedRead(idx);
+            }
             return null;
         }
         long r = row(row);
@@ -192,21 +248,21 @@ final class MergedViewLookup implements JoinLookup
     @Override
     public boolean hasColumn(IDataTable primaryTable, long row, String columnName)
     {
-        return columnName != null && column(columnName) >= 0;
+        return columnName != null && column(columnName) != -1;
     }
 
 
     @Override
     public boolean lacksColumnOnEveryRow(String columnName)
     {
-        return column(columnName) < 0;
+        return column(columnName) == -1;
     }
 
 
     @Override
     public DataValueType declaredTypeOf(String columnName)
     {
-        int idx = column(columnName);
+        int idx = index(column(columnName));
         return idx < 0 ? DataValueType.MISSING : meta.getColumn(idx).getType();
     }
 

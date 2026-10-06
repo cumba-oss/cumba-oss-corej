@@ -105,10 +105,16 @@ class MergedEvaluationTest
 
     private static Rule keyedRule(String check)
     {
+        return keyedRule(check, "left");
+    }
+
+
+    private static Rule keyedRule(String check, String joinType)
+    {
         return load("{\"Core\":{\"Id\":\"X-1\"},\"Requirements\":{\"Variables\":{"
                 + "\"All\":[\"STUDYID\",\"USUBJID\"],\"All_Or_None\":[[\"STUDYID\",\"DM.STUDYID\"],"
                 + "[\"USUBJID\",\"DM.USUBJID\"]]}},\"Match_Datasets\":[{\"Name\":\"DM\","
-                + "\"Keys\":[\"STUDYID\",\"USUBJID\"],\"Join_Type\":\"left\"}],"
+                + "\"Keys\":[\"STUDYID\",\"USUBJID\"],\"Join_Type\":\"" + joinType + "\"}],"
                 + "\"Check\":{\"expression\":\"" + check + "\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"DM.AGE\",\"DM.SEX\"]}}");
     }
@@ -293,6 +299,145 @@ class MergedEvaluationTest
         assertThrows(MergeErrorReadException.class, () -> built.suppColumn("AETRTEM"));
         assertNull(built.suppColumn("AETERM"), "a primary column is never a qualifier");
         assertNull(built.suppColumn("NOSUCH"));
+    }
+
+
+    /** SUPPDM, subject-level rows as USUBJID|QNAM|QVAL (study S1). */
+    private static IDataTable suppDm(String... rows)
+    {
+        int n = rows.length;
+        String[][] c = new String[3][n];
+        for (int i = 0; i < n; i++)
+        {
+            String[] f = rows[i].split("\\|", -1);
+            for (int k = 0; k < 3; k++)
+            {
+                c[k][i] = f[k];
+            }
+        }
+        String[] studyid = new String[n];
+        String[] rdomain = new String[n];
+        String[] blank = new String[n];
+        java.util.Arrays.fill(studyid, "S1");
+        java.util.Arrays.fill(rdomain, "DM");
+        java.util.Arrays.fill(blank, "");
+        return RealTableFixture.of("SUPPDM").str("STUDYID", studyid).str("RDOMAIN", rdomain)
+                .str("USUBJID", c[0]).str("IDVAR", blank).str("IDVARVAL", blank).str("QNAM", c[1])
+                .str("QVAL", c[2]).build();
+    }
+
+
+    /**
+     * T2 M4 (OD-7, MQ5): a partner's SUPP qualifier two rows qualify for one record is flagged, and
+     * every value read of it through the keyed part — {@code lookupValue}, {@code columnReader},
+     * {@code lookup}, the three channels a dynamic read ({@code colref("DM.RACEOTH")}) takes —
+     * throws, never reads the not-supplied default. Control: the partner's unflagged qualifier and
+     * own column still read.
+     */
+    @Test
+    void aFlaggedPartnerSuppQualifierThrowsOnEveryReadChannel()
+    {
+        IDataTable ae = ae();
+        DatasetResolver r = resolver(ae, dm(),
+                suppDm("01|RACEOTH|A", "01|RACEOTH|B", "01|DMOTHER|Z"));
+        MergedEvaluation.Built built = MergedEvaluation.build(keyedRule("AETERM == \\\"A\\\""), ae,
+                ae, r, null, "X-1", "AE");
+        assertNotNull(built);
+        assertEquals(java.util.Set.of("DM.RACEOTH"), built.flagged().keySet());
+        JoinLookup dmPart = java.util.Objects.requireNonNull(built.lookups().get("DM"));
+        IDataTable t = built.table();
+        assertThrows(MergeErrorReadException.class,
+                () -> dmPart.lookupValue(t, 0, "RACEOTH", false));
+        java.util.function.LongFunction<net.cumba.datatable.values.IDataValue> reader = dmPart
+                .columnReader(t, "RACEOTH", false);
+        MergeErrorReadException ex = assertThrows(MergeErrorReadException.class,
+                () -> reader.apply(0));
+        assertTrue(
+                String.valueOf(ex.getMessage())
+                        .startsWith(MergedEvaluation.MERGE_ERROR_MESSAGE_PREFIX + "DM.RACEOTH"),
+                ex.getMessage());
+        assertThrows(MergeErrorReadException.class, () -> dmPart.lookup(t, 0, "RACEOTH"));
+        assertTrue(dmPart.hasColumn(t, 0, "RACEOTH"), "the column exists; its values cannot");
+        // the planted control: an unflagged qualifier and an own column of the same part read
+        assertEquals("Z", dmPart.lookup(t, 0, "DMOTHER"));
+        assertEquals("Z", dmPart.lookupValue(t, 0, "DMOTHER", false).getValueAsString());
+        assertEquals("54", dmPart.columnReader(t, "AGE", true).apply(0).getValueAsString());
+    }
+
+
+    /** T2 M4 end to end: a {@code colref} to the flagged partner qualifier ERRORs the rule. */
+    @Test
+    void aDynamicReadOfAFlaggedPartnerQualifierErrorsTheRule()
+    {
+        IDataTable ae = ae();
+        DatasetResolver r = resolver(ae, dm(),
+                suppDm("01|RACEOTH|A", "01|RACEOTH|B", "01|DMOTHER|Z"));
+        RuleExecutionResult flagged = RuleRunnerCalls.execute(
+                keyedRule("colref(concat(\\\"DM.\\\", \\\"RACEOTH\\\")) == \\\"A\\\""), ae, r);
+        assertEquals(RuleExecutionStatus.ERROR, flagged.getStatus(), String.valueOf(flagged));
+        assertTrue(String.valueOf(flagged.getStatusMessage()).startsWith(
+                MergedEvaluation.MERGE_ERROR_MESSAGE_PREFIX), flagged.getStatusMessage());
+        RuleExecutionResult control = RuleRunnerCalls.execute(
+                keyedRule("colref(concat(\\\"DM.\\\", \\\"DMOTHER\\\")) == \\\"Z\\\""), ae, r);
+        assertEquals(RuleExecutionStatus.EXECUTED, control.getStatus(), String.valueOf(control));
+        assertEquals(java.util.List.of(0L, 1L), rows(control), "subject 01's two AE records");
+    }
+
+
+    /** {@code base} with its rows in reverse order — a sorted view: not positional. */
+    private static IDataTable reversed(IDataTable base)
+    {
+        int n = Math.toIntExact(base.getRowCount());
+        net.cumba.datatable.impl.databuffer.IDataBufferNumeric map = net.cumba.datatable.impl.databuffer.DataBufferFactory
+                .get().createForRange(0, Math.max(0, n - 1L));
+        map.setExpectedSize(n);
+        for (int i = n - 1; i >= 0; i--)
+        {
+            map.addValue(i);
+        }
+        return new net.cumba.datatable.impl.view.ViewDataTable(base,
+                new net.cumba.datatable.impl.view.DataTableViewBuffer(map), null);
+    }
+
+
+    /**
+     * T2 L1: a primary whose real rows are not its positions (a sorted {@code ViewDataTable}) under
+     * a row-mapped view (an inner join drops AE 02/1). The evaluation table maps each merged row to
+     * the primary's POSITION (part 0's base-row map) and reports its real row once — never the real
+     * row read again as a position (the double mapping read the dropped record C and lost A).
+     * Control: the unmerged rule over the same sorted primary reports A on the same real row.
+     */
+    @Test
+    void aSortedPrimaryUnderARowMappedViewReadsAndReportsTheRightRecords()
+    {
+        IDataTable ae = reversed(ae());
+        IDataTable dm01 = RealTableFixture.of("DM").str("STUDYID", "S1").str("USUBJID", "01")
+                .lng("AGE", 54L).str("SEX", "F").build();
+        DatasetResolver r = resolver(ae, dm01);
+        MergedEvaluation.Built built = MergedEvaluation
+                .build(keyedRule("AETERM == \\\"A\\\"", "inner"), ae, ae, r, null, "X-1", "AE");
+        assertNotNull(built);
+        assertTrue(built.view().isRowMapped(), "the inner join drops AE 02/1: row-mapped");
+        IDataTable t = built.table();
+        int term = t.getMetaData().getColumnIndex("AETERM");
+        java.util.List<String> terms = new java.util.ArrayList<>();
+        java.util.List<Long> real = new java.util.ArrayList<>();
+        for (long i = 0; i < t.getRowCount(); i++)
+        {
+            terms.add(t.getDataValue(i, term).getValueAsString());
+            real.add(t.getRealRowIndex(i));
+        }
+        assertEquals(java.util.List.of("B", "A"), terms, "the sorted primary's surviving records");
+        assertEquals(java.util.List.of(1L, 0L), real, "each reported on its own base row");
+        RuleExecutionResult dropped = RuleRunnerCalls
+                .execute(keyedRule("AETERM == \\\"C\\\"", "inner"), ae, r);
+        assertEquals(java.util.List.of(), rows(dropped), "C was dropped by the inner join");
+        RuleExecutionResult merged = RuleRunnerCalls
+                .execute(keyedRule("AETERM == \\\"A\\\"", "inner"), ae, r);
+        RuleExecutionResult alone = RuleRunnerCalls.execute(suppRule("AETERM == \\\"A\\\"", ""), ae,
+                resolver(ae));
+        assertEquals(1, merged.getViolations().size(), String.valueOf(merged.getViolations()));
+        assertEquals(rows(alone), rows(merged), "the same real row as the unmerged run");
     }
 
 

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -446,6 +447,42 @@ class RelrecMergedViewTest
         RuleExecutionResult clean = RuleRunnerCalls.execute(
                 rule(RELREC_ENTRY, "LB._matched_ and AETERM != LB.LBTESTCD", "\"AETERM\"", null),
                 ae(), r);
+        assertEquals(Set.of(0L), rows(clean));
+    }
+
+
+    /**
+     * T2 M4: the read-time backstop covers a RELREC related domain too — a dynamic read of the
+     * flagged CM part's column through every value channel throws (never the not-supplied default),
+     * and a {@code colref} the static gate cannot see ERRORs the rule. Control: the unflagged LB
+     * part still reads and its rule runs.
+     */
+    @Test
+    void od7_aDynamicReadOfAFlaggedRelatedDomainColumnThrows()
+    {
+        IDataTable rr = relrec("AE|AESEQ|1|R1", "CM|CMSPID|1|R1", "LB|LBSEQ|1|R1");
+        DatasetResolver r = resolver(ae(), cm(), lb(), rr);
+        MergedEvaluation.Built built = view(
+                rule(RELREC_ENTRY, "AETERM != \\\"X\\\"", "\"AETERM\"", null), ae(), r);
+        JoinLookup cmPart = built.lookups().get("CM");
+        assertNotNull(cmPart, String.valueOf(built.lookups().keySet()));
+        IDataTable t = built.table();
+        assertThrows(MergeErrorReadException.class, () -> cmPart.lookupValue(t, 0, "CMTRT", false));
+        assertThrows(MergeErrorReadException.class,
+                () -> cmPart.columnReader(t, "CMTRT", false).apply(0));
+        assertThrows(MergeErrorReadException.class, () -> cmPart.lookup(t, 0, "CMTRT"));
+        assertEquals("ALT", column(built, "LB", "LBTESTCD").get(0), "the unflagged part reads");
+        RuleExecutionResult flagged = RuleRunnerCalls.execute(rule(RELREC_ENTRY,
+                "AETERM != colref(concat(\\\"CM.\\\", \\\"CMTRT\\\"))", "\"AETERM\"", null), ae(),
+                r);
+        assertEquals(RuleExecutionStatus.ERROR, flagged.getStatus(), String.valueOf(flagged));
+        assertTrue(
+                String.valueOf(flagged.getStatusMessage())
+                        .startsWith(MergedEvaluation.MERGE_ERROR_MESSAGE_PREFIX),
+                String.valueOf(flagged.getStatusMessage()));
+        RuleExecutionResult clean = RuleRunnerCalls.execute(rule(RELREC_ENTRY,
+                "LB._matched_ and AETERM != colref(concat(\\\"LB.\\\", \\\"LBTESTCD\\\"))",
+                "\"AETERM\"", null), ae(), r);
         assertEquals(Set.of(0L), rows(clean));
     }
 

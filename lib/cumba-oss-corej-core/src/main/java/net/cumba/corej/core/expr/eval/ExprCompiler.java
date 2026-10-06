@@ -492,8 +492,11 @@ public final class ExprCompiler
      * qualifier no entry names is a related domain, and one no relationship reaches on this study
      * has no part — its flag ("this row carries a D record") is {@code false} on every row, the
      * not-supplied answer (P-1), never a flood: the flag guards a read of that domain, it is not
-     * negated over an absent dataset.
-     * {@link net.cumba.corej.core.exec.MergedEvaluation.Built#relrecDeclared} says which case this
+     * negated over an absent dataset. The same holds under a {@code Child} entry (T2 M3): a parent
+     * domain no row of the primary points at on this study has no part, and its flag is
+     * {@code false} on every row.
+     * {@link net.cumba.corej.core.exec.MergedEvaluation.Built#relrecDeclared} and
+     * {@link net.cumba.corej.core.exec.MergedEvaluation.Built#childDeclared} say which case this
      * is.
      * </p>
      */
@@ -508,9 +511,11 @@ public final class ExprCompiler
             if (lookup == null)
             {
                 net.cumba.corej.core.exec.MergedEvaluation.Built view = ctx.getMergedView();
-                if (view != null && view.relrecDeclared())
+                if (view != null && (view.relrecDeclared() || view.childDeclared()))
                 {
-                    return new BitSet(rc); // a related domain no relationship reaches: not supplied
+                    // a related domain no relationship reaches (W5), a parent domain no row
+                    // points at (T2 M3): not supplied
+                    return new BitSet(rc);
                 }
                 throw new IllegalStateException("the join-match flag " + flagName + " has no "
                         + "built join for dataset " + dataset + " — stage B should have skipped "
