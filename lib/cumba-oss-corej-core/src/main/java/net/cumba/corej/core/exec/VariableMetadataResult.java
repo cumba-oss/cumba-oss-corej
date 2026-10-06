@@ -111,7 +111,8 @@ public final class VariableMetadataResult
             return buildFromAllDatasets(resolver, metadataField, primaryDatasetName);
         }
 
-        net.cumba.datatable.IDataTable table = resolver.resolve(domainName);
+        // T1 of PLAN-merged-evaluation-table: the one dataset-name resolution (case-insensitive)
+        net.cumba.datatable.IDataTable table = SplitDomainResolution.byName(resolver, domainName);
         if (table == null)
         {
             return new VariableMetadataResult(Map.of(), metadataField);

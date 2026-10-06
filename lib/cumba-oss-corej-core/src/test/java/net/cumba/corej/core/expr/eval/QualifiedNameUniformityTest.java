@@ -549,18 +549,16 @@ class QualifiedNameUniformityTest
             "is_sorted_by/target", "is_sorted_by/within", "present_on_multiple_rows_within/name");
 
     /**
-     * The rows red on C5q because the channel they read is NOT the dotted qualifier but a dataset
-     * name travelling as a STRING to the resolver — {@code read_value(domain=)},
-     * {@code referenced_dataset_variables(name=)}, the {@code var_*} {@code dataset=} kwarg — each
-     * calling {@code resolver.resolve(name)} directly, exact-case in THIS fixture
-     * ({@code exactInventory}; the product's resolvers upper-case every name, and the join-side
-     * resolution goes through {@code SplitDomainResolution}, which falls back ignoring case since
-     * W3d). A named gap (W3d report), not a qualifier-case question; an exact set — a channel made
-     * case-insensitive reds here until its row is removed.
+     * The rows red on C5q. EMPTY since T1 of {@code PLAN-merged-evaluation-table}: the channels
+     * that carry a dataset name as a STRING to the resolver — {@code read_value(domain=)},
+     * {@code referenced_dataset_variables(name=)}, the {@code var_*} {@code dataset=} kwarg — were
+     * exact-case in this fixture ({@code exactInventory}; the product's resolvers upper-case every
+     * name) until they resolved through the one dataset-name resolution
+     * ({@code SplitDomainResolution.byName}: the exact name, else the inventory entry equal to it
+     * ignoring letter case — owner 2026-09-28, names match case-insensitively). An exact set: a
+     * channel that resolves a dataset name by its own rule reds here.
      */
-    static final Set<String> C5Q_RED_THROUGH_THE_INVENTORY = Set.of("read_value/name",
-            "read_value/filter", "read_value/group", "referenced_dataset_variables/name",
-            "var_label/dataset", "var_length/dataset", "var_type/dataset");
+    static final Set<String> C5Q_RED_THROUGH_THE_INVENTORY = Set.of();
 
     // ------------------------------------------------------------------
     // Table model
@@ -1077,8 +1075,9 @@ class QualifiedNameUniformityTest
     /**
      * {@code joinName}: the name the join AND the inventory register J under. ⚠ For a {@code @DS}
      * row and for {@code domain="J"} probes the qualifier travels as a STRING through the
-     * inventory, so C5q measures the INVENTORY's case handling there (exact in this fixture), not
-     * the join map's (T2 r1 L6).
+     * inventory, so C5q measures the dataset-name resolution there (the resolver below is exact;
+     * {@code SplitDomainResolution.byName} matches ignoring case since T1), not the join map's (T2
+     * r1 L6).
      */
     private static EvaluationContext ctx(IDataTable p, IDataTable j, boolean joinIt,
             String exprText, String joinName)

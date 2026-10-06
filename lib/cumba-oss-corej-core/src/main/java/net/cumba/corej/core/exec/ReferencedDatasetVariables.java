@@ -117,7 +117,8 @@ public final class ReferencedDatasetVariables
         // fault-tolerant sorted walk (combined review of runbook W2–W8, W4 M1's twin: an
         // unopenable UNRELATED study dataset must not ERROR this read — tablesForDomain resolved
         // every inventory entry unguarded).
-        IDataTable exact = resolver.resolve(domain);
+        // T1 of PLAN-merged-evaluation-table: the one dataset-name resolution (case-insensitive)
+        IDataTable exact = SplitDomainResolution.byName(resolver, domain);
         Iterable<IDataTable> tables;
         if (exact != null)
         {

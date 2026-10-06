@@ -108,22 +108,18 @@ public final class SplitDomainResolution
         {
             return ABSENT;
         }
-        IDataTable exact = resolver.resolve(name);
-        if (exact != null)
+        // ⭐ W3d of PLAN-merged-evaluation-table (P-19 / MET #6): a dataset name is matched
+        // ignoring letter case — the entry that equals the name ignoring case answers for a
+        // resolver whose own policy is exact (the product's upper-case every name already); since
+        // T1 for every resolver, not only an inventory one (byName)
+        IDataTable named = byName(resolver, name);
+        if (named != null)
         {
-            return new DomainResolution.Table(exact);
+            return new DomainResolution.Table(named);
         }
         if (!(resolver instanceof DatasetResolver.WithInventory inv))
         {
             return ABSENT;
-        }
-        // ⭐ W3d of PLAN-merged-evaluation-table (P-19 / MET #6): a dataset name is matched
-        // ignoring letter case — the inventory entry that equals the name ignoring case answers
-        // for a resolver whose own policy is exact (the product's upper-case every name already)
-        IDataTable ignoringCase = resolveIgnoringCase(inv, name);
-        if (ignoringCase != null)
-        {
-            return new DomainResolution.Table(ignoringCase);
         }
         if (name.length() != DOMAIN_CODE_LENGTH)
         {
@@ -136,16 +132,41 @@ public final class SplitDomainResolution
 
 
     /**
-     * The inventory entry equal to {@code name} ignoring letter case, resolved — {@code null} when
-     * none differs from {@code name} by case alone (the exact spelling is the caller's).
+     * ⭐ <b>The one resolution of a dataset NAME</b> ({@code PLAN-merged-evaluation-table} W3d / T1;
+     * owner 2026-09-28: names — columns and datasets — match case-insensitively): the dataset the
+     * resolver answers for {@code name} as written, else the one it answers for the name's upper-
+     * or lower-case spelling. Every site that turns a dataset name into a table goes through it —
+     * the join side ({@link #resolve}), the scope / requirements gates
+     * ({@code ScopeVariableSource}), and the channels that carry a dataset name as a STRING:
+     * {@code read_value(domain=)}, {@code referenced_dataset_variables(name=)} and the
+     * {@code var_*} {@code dataset=} keyword ({@code QualifiedNameUniformityTest}'s C5q, an exact
+     * empty set). No split-domain union and no inventory walk here — that is {@link #resolve}'s,
+     * under its R-4 bound.
+     *
+     * @param resolver
+     *            the run's resolver
+     * @param name
+     *            the dataset name as written
+     * @return the table, or {@code null} when no spelling of the name resolves
+     */
+    static @Nullable IDataTable byName(DatasetResolver resolver, String name)
+    {
+        IDataTable exact = resolver.resolve(name);
+        return exact != null ? exact : resolveIgnoringCase(resolver, name);
+    }
+
+
+    /**
+     * The dataset equal to {@code name} ignoring letter case, resolved — {@code null} when none
+     * differs from {@code name} by case alone (the exact spelling is the caller's).
      *
      * @param inv
-     *            the inventory resolver
+     *            the resolver
      * @param name
      *            the dataset name as written
      * @return the table, or {@code null}
      */
-    static @Nullable IDataTable resolveIgnoringCase(DatasetResolver.WithInventory inv, String name)
+    static @Nullable IDataTable resolveIgnoringCase(DatasetResolver inv, String name)
     {
         // the two canonical spellings only — upper case is what the IG and the product's
         // resolvers use, lower case what a file-named inventory carries; never an inventory walk

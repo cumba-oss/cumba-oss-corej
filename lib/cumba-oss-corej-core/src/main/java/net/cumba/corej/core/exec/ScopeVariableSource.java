@@ -348,8 +348,7 @@ public final class ScopeVariableSource
      */
     private @Nullable IDataTable resolveIgnoringCase(String name)
     {
-        IDataTable exact = resolver.resolve(name);
-        return exact != null ? exact : SplitDomainResolution.resolveIgnoringCase(resolver, name);
+        return SplitDomainResolution.byName(resolver, name);
     }
 
     /**
