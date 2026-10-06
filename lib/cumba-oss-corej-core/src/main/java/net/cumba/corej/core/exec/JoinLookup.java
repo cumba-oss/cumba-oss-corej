@@ -276,14 +276,18 @@ public interface JoinLookup
     /**
      * The joined dataset's own column metadata, in its column order — the merged schema's part the
      * enumerations read ({@code PLAN-merged-evaluation-table} W3d, MQ6: real columns only, never a
-     * SUPP qualifier, never the {@code _matched_} flag); {@code null} when this lookup cannot
-     * enumerate one dataset (a row-dependent RELREC lookup, until W5).
+     * SUPP qualifier, never the {@code _matched_} flag). Every production lookup is a part of the
+     * merged view ({@link MergedViewLookup}) and enumerates; W5 retired the row-dependent RELREC
+     * lookup that could not, and T2 L4 the inventory fallbacks its readers kept for it
+     * ({@code FindVars}, {@code ValueResolver}) — a hand-built lookup that is enumerated answers
+     * this itself.
      *
-     * @return the columns, or {@code null}
+     * @return the columns, never {@code null}
      */
-    default @Nullable List<DataTableColumnMeta> columns()
+    default List<DataTableColumnMeta> columns()
     {
-        return null;
+        throw new UnsupportedOperationException("this JoinLookup (" + getClass().getName()
+                + ", dataset " + getDatasetName() + ") does not enumerate its columns");
     }
 
 

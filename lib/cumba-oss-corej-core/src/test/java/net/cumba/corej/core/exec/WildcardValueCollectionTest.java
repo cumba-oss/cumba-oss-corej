@@ -53,11 +53,22 @@ class WildcardValueCollectionTest
     }
 
 
-    /** A {@link JoinLookup} that answers from a fixed column-name -> value map. */
-    private static JoinLookup joinReturning(Map<String, String> byColumn)
+    /**
+     * A {@link JoinLookup} that answers from a fixed column-name -> value map, enumerating
+     * {@code source}'s columns (the merged schema's part — T2 L4: every lookup a wildcard
+     * enumerates answers its own column set; the inventory fallback is retired).
+     */
+    private static JoinLookup joinReturning(Map<String, String> byColumn, IDataTable source)
     {
         return new JoinLookup()
         {
+
+            @Override
+            public List<net.cumba.datatable.DataTableColumnMeta> columns()
+            {
+                return List.of(source.getMetaData().getColumns());
+            }
+
 
             @Override
             public @org.jspecify.annotations.Nullable String lookup(IDataTable primaryTable,
@@ -155,8 +166,8 @@ class WildcardValueCollectionTest
         IDataTable adsl = MockTable.of().name("ADSL").col("TRT01PN", "7").col("TRT02PN", "9")
                 .build();
         // A join that returns the foreign column's value regardless of key.
-        JoinLookup lookup = joinReturning(Map.of("TRT01PN", "7", "TRT02PN", "9"));
-        EvaluationContext c = ctx(primary, map("ADSL", adsl), Map.of("ADSL", lookup));
+        JoinLookup lookup = joinReturning(Map.of("TRT01PN", "7", "TRT02PN", "9"), adsl);
+        EvaluationContext c = ctx(primary, map(), Map.of("ADSL", lookup));
         assertEquals(List.of("7", "9"),
                 ValueResolver.resolveWildcardValues(wildcard("ADSL.TRT${*}PN"), null, c, 0));
     }
@@ -189,8 +200,8 @@ class WildcardValueCollectionTest
         IDataTable primary = MockTable.of().name("ADAE").col("USUBJID", "S1").build();
         IDataTable adsl = MockTable.of().name("ADSL").col("TRT01PN", "7").col("TRT02PN", "9")
                 .build();
-        JoinLookup lookup = joinReturning(Map.of("TRT01PN", "7"));
-        EvaluationContext c = ctx(primary, map("ADSL", adsl), Map.of("ADSL", lookup));
+        JoinLookup lookup = joinReturning(Map.of("TRT01PN", "7"), adsl);
+        EvaluationContext c = ctx(primary, map(), Map.of("ADSL", lookup));
         assertEquals(List.of("7"),
                 ValueResolver.resolveWildcardValues(wildcard("ADSL.TRT${*}PN"), null, c, 0),
                 "a MATCHED row whose cell is missing contributes nothing — a MissingValue in this list"
@@ -237,46 +248,38 @@ class WildcardValueCollectionTest
     }
 
 
-    @Test
-    void foreignDatasetWildcardWithAnUnresolvableDatasetRaises()
-    {
-        IDataTable primary = MockTable.of().name("ADAE").col("USUBJID", "S1").build();
-        JoinLookup lookup = joinReturning(Map.of());
-        // A JoinLookup is declared, but the dataset itself does not resolve.
-        EvaluationContext c = ctx(primary, map(), Map.of("ADSL", lookup));
-        OperandSubstitutor.SubstitutionException e = assertThrows(
-                OperandSubstitutor.SubstitutionException.class,
-                () -> ValueResolver.resolveWildcardValues(wildcard("ADSL.TRT${*}PN"), null, c, 0));
-        assertTrue(e.getMessage().contains("could not resolve foreign dataset"), e.getMessage());
-    }
-
-
     /**
-     * Fix #358, site 10: a foreign wildcard over a domain that ships <b>split</b> resolves the
-     * member union and returns values instead of throwing {@code SubstitutionException}. Before the
-     * fix this failed at the resolve (with a JoinLookup present, the split domain still resolved to
-     * {@code null}) — fixing the join alone would only have moved the failure here. Real member
-     * tables + a {@code WithInventory} resolver ({@link RealTables}) — the lambda {@code ctx}
-     * helper above cannot reach the union.
+     * Fix #358, site 10: a foreign wildcard over a domain that ships <b>split</b> enumerates the
+     * member union. Since T2 L4 the union is the merged view's business — the keyed part resolves
+     * the split domain ({@code SplitDomainResolution}) and its column set is the union's; the
+     * reader's inventory fallback (the site this test pinned before) is retired. Real member tables
+     * + a {@code WithInventory} resolver ({@link RealTables}), read through the real view.
      */
     @Test
     void foreignWildcardOverASplitDomainResolvesTheUnion()
     {
         // ${*} matches DIGITS (\d+), so the members carry TRT01PN-shaped columns — one per
         // member, proving the enumeration runs over the UNION's column set (TRT02PN exists only
-        // in lbhe).
-        IDataTable primary = MockTable.of().name("ADLB").col("USUBJID", "S1").build();
+        // in lbhe, and only S2's row carries it).
+        IDataTable primary = RealTables.of("ADLB").str("USUBJID", "S1", "S2").build();
         IDataTable lbch = RealTables.of("lbch").str("DOMAIN", "LB").str("USUBJID", "S1")
                 .str("TRT01PN", "7").build();
         IDataTable lbhe = RealTables.of("lbhe").str("DOMAIN", "LB").str("USUBJID", "S2")
                 .str("TRT02PN", "9").build();
-        JoinLookup lookup = joinReturning(Map.of("TRT01PN", "7", "TRT02PN", "9"));
-        EvaluationContext c = EvaluationContext.builder().table(primary)
-                .datasetResolver(RealTables.inventoryOf(lbch, lbhe))
-                .mergedView(ExecCalls.joinsView(Map.of("LB", lookup)))
-                .variables(new LinkedHashMap<>()).build();
-        assertEquals(List.of("7", "9"),
-                ValueResolver.resolveWildcardValues(wildcard("LB.TRT${*}PN"), null, c, 0),
+        net.cumba.corej.core.model.MatchDataset lb = new net.cumba.corej.core.model.MatchDataset();
+        lb.setName("LB");
+        lb.setKeys(List.of("USUBJID"));
+        lb.setJoinType("left");
+        DatasetResolver inventory = RealTables.inventoryOf(lbch, lbhe);
+        MergedEvaluation.Built built = java.util.Objects
+                .requireNonNull(ExecCalls.expand(primary, List.of(lb), inventory, "X-1"));
+        EvaluationContext c = EvaluationContext.builder().table(built.table())
+                .datasetResolver(inventory).mergedView(built).variables(new LinkedHashMap<>())
+                .build();
+        assertEquals(List.of("7"),
+                ValueResolver.resolveWildcardValues(wildcard("LB.TRT${*}PN"), null, c, 0));
+        assertEquals(List.of("9"),
+                ValueResolver.resolveWildcardValues(wildcard("LB.TRT${*}PN"), null, c, 1),
                 "the union's column set must drive the wildcard enumeration");
     }
 

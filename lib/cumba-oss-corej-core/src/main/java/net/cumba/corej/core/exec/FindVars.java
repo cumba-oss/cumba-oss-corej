@@ -166,28 +166,19 @@ public final class FindVars
             variable = entry.variable();
             // W3d (MQ6): the joined dataset's REAL columns as the merged schema lists them — the
             // lookup's own column set (a SUPP qualifier of the partner and the _matched_ flag
-            // are not enumerated); the inventory only for a lookup that cannot enumerate.
+            // are not enumerated); every lookup enumerates (T2 L4 retired the inventory fallback)
             List<DataTableColumnMeta> columns = java.util.Objects
                     .requireNonNull(ctx.joins().get(declared)).columns();
-            if (columns != null)
+            Pattern qualifiedPattern = literal ? patternOf(variable) : compile(variable);
+            List<String> out = new ArrayList<>();
+            for (DataTableColumnMeta column : columns)
             {
-                Pattern qualifiedPattern = literal ? patternOf(variable) : compile(variable);
-                List<String> out = new ArrayList<>();
-                for (DataTableColumnMeta column : columns)
+                if (qualifiedPattern.matcher(column.getName()).matches())
                 {
-                    if (qualifiedPattern.matcher(column.getName()).matches())
-                    {
-                        out.add(prefix + column.getName());
-                    }
+                    out.add(prefix + column.getName());
                 }
-                return List.copyOf(out);
             }
-            table = SplitDomainResolution.resolveTableOrThrow(ctx.getDatasetResolver(), declared,
-                    ctx.getRuleId());
-            if (table == null)
-            {
-                return List.of();
-            }
+            return List.copyOf(out);
         }
         else
         {

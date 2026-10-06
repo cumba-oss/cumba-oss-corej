@@ -335,20 +335,9 @@ public final class DynamicColumnRead
      */
     public static @Nullable JoinLookup joinedDataset(EvaluationContext ctx, String qualifier)
     {
-        Map<String, JoinLookup> joins = ctx.joins();
-        JoinLookup exact = joins.get(qualifier);
-        if (exact != null)
-        {
-            return exact;
-        }
-        for (Map.Entry<String, JoinLookup> e : joins.entrySet())
-        {
-            if (e.getKey().equalsIgnoreCase(qualifier))
-            {
-                return e.getValue();
-            }
-        }
-        return null;
+        // the one join map matches ignoring case itself (MergedEvaluation.Built's lookups, W3d):
+        // T2 L4 retired the case-insensitive scan that stood behind an exact get
+        return ctx.joins().get(qualifier);
     }
 
 

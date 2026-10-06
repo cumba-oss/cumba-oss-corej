@@ -56,6 +56,15 @@ class NativeOperandSubstitutionParityTest
             }
 
 
+            // the merged schema's part: the foreign table's own columns (T2 L4 — every lookup a
+            // wildcard enumerates answers its column set; the inventory fallback is retired)
+            @Override
+            public java.util.List<net.cumba.datatable.DataTableColumnMeta> columns()
+            {
+                return java.util.List.of(foreign.getMetaData().getColumns());
+            }
+
+
             @Override
             public String getDatasetName()
             {

@@ -3,7 +3,6 @@ package net.cumba.corej.core.exec;
 import java.util.ArrayList;
 import java.util.List;
 import net.cumba.corej.core.expr.eval.TypedValue;
-import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.values.IDataValue;
 import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
@@ -54,35 +53,16 @@ public final class ValueResolver
 
 
     /** The joined dataset's column names matching {@code pattern} (see the call site). */
-    private static List<String> matchingColumnNames(EvaluationContext ctx, JoinLookup lookup,
-            String foreign, java.util.regex.Pattern pattern)
+    private static List<String> matchingColumnNames(JoinLookup lookup,
+            java.util.regex.Pattern pattern)
     {
-        List<net.cumba.datatable.DataTableColumnMeta> columns = lookup.columns();
         List<String> out = new ArrayList<>();
-        if (columns != null)
+        for (net.cumba.datatable.DataTableColumnMeta column : lookup.columns())
         {
-            for (net.cumba.datatable.DataTableColumnMeta column : columns)
+            if (pattern.matcher(column.getName()).matches())
             {
-                if (pattern.matcher(column.getName()).matches())
-                {
-                    out.add(column.getName());
-                }
+                out.add(column.getName());
             }
-            return out;
-        }
-        net.cumba.datatable.IDataTable foreignTable = SplitDomainResolution
-                .resolveTableOrThrow(ctx.getDatasetResolver(), foreign, ctx.getRuleId());
-        if (foreignTable == null)
-        {
-            throw new OperandSubstitutor.SubstitutionException(
-                    "wildcard operand could not resolve foreign dataset `" + foreign + "`");
-        }
-        // Phase 7: cache the matching column-name lookup once per (foreignTable, Pattern).
-        int[] matchingColIdx = ctx.getWildcardColumns().matchingColumns(foreignTable, pattern);
-        DataTableMeta meta = foreignTable.getMetaData();
-        for (int c : matchingColIdx)
-        {
-            out.add(meta.getColumn(c).getName());
         }
         return out;
     }
@@ -111,10 +91,9 @@ public final class ValueResolver
                         + "`, but the rule's merged view has none (Match_Datasets missing?)");
             }
             // W3d of PLAN-merged-evaluation-table (MQ6): the joined dataset's REAL columns as the
-            // merged schema lists them — the lookup's own column set; the inventory (Fix #358:
-            // exact name first, else the split-domain union) only for a lookup that cannot
-            // enumerate one dataset.
-            List<String> columnNames = matchingColumnNames(ctx, lookup, foreign, pattern);
+            // merged schema lists them — the lookup's own column set (every lookup enumerates:
+            // T2 L4 retired the inventory fallback a row-dependent RELREC lookup needed until W5)
+            List<String> columnNames = matchingColumnNames(lookup, pattern);
             List<Object> result = new ArrayList<>(columnNames.size());
             for (String colName : columnNames)
             {
