@@ -9,6 +9,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves a scenario's sidecars — {@code #library-include} and {@code #define-xml} — <b>inside a
@@ -236,22 +237,27 @@ public final class SidecarResolver
     {
         Path abs = aScenarioFile.toAbsolutePath().normalize();
         Path parent = abs.getParent();
-        if (parent != null)
+        Path name = abs.getFileName();
+        Path realParent = parent == null || name == null ? null : realPathOrNull(parent);
+        if (realParent != null && name != null && realParent.startsWith(root))
         {
-            try
-            {
-                Path real = parent.toRealPath().resolve(abs.getFileName());
-                if (real.startsWith(root))
-                {
-                    return shown(real);
-                }
-            }
-            catch (IOException _)
-            {
-                // fall through to the bare name
-            }
+            return shown(realParent.resolve(name));
         }
-        return String.valueOf(abs.getFileName());
+        return String.valueOf(name);
+    }
+
+
+    /** The real path, or {@code null} when it cannot be resolved (the label then falls back). */
+    private static @Nullable Path realPathOrNull(Path aPath)
+    {
+        try
+        {
+            return aPath.toRealPath();
+        }
+        catch (IOException _)
+        {
+            return null;
+        }
     }
 
 

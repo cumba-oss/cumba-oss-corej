@@ -489,12 +489,9 @@ public final class YamlLocations
             {
                 return -1;
             }
-            if (empty == 0)
+            if (empty == 0 && !emit(' ', aLine, aLines[aLine].length(), false))
             {
-                if (!emit(' ', aLine, aLines[aLine].length(), false))
-                {
-                    return -1;
-                }
+                return -1;
             }
             for (int e = 0; e < empty; e++)
             {

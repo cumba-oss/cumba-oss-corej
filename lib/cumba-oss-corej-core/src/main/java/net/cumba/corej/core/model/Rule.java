@@ -244,7 +244,7 @@ public class Rule
         {
             return check == null ? List.of() : List.of(check);
         }
-        List<CheckCondition> out = new java.util.ArrayList<>(checkLevels.size());
+        List<CheckCondition> out = new ArrayList<>(checkLevels.size());
         for (LevelCheck level : checkLevels.values())
         {
             out.add(level.condition());
@@ -958,7 +958,7 @@ public class Rule
         {
             return null;
         }
-        List<net.cumba.datatable.merge.KeyColumn> out = new java.util.ArrayList<>();
+        List<net.cumba.datatable.merge.KeyColumn> out = new ArrayList<>();
         for (com.fasterxml.jackson.databind.JsonNode n : suppKeys)
         {
             if (n.isTextual())
