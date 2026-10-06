@@ -143,14 +143,42 @@ public final class JoinCache
     private final @Nullable SharedIndexCache sharedIndex;
 
     /**
-     * Creates a JoinCache with a shared index cache for cross-dataset index reuse.
+     * The standard the dataset's {@code SUPP--} and {@code RELREC} datasets are read under
+     * ({@link net.cumba.datatable.merge.MergeStandard}): the run's standard, carried here because
+     * the cache is per dataset and every view it builds is read under the same one (T2 fold, H1).
+     */
+    private final net.cumba.datatable.merge.MergeStandard mergeStandard;
+
+    /**
+     * Creates a JoinCache with a shared index cache for cross-dataset index reuse, reading the
+     * supplemental and relationship datasets under
+     * {@link net.cumba.datatable.merge.MergeStandard#UNKNOWN} (SEND inferred from a {@code POOLID}
+     * column).
      *
      * @param sharedIndex
      *            the shared index cache, or {@code null} to disable cross-dataset sharing
      */
     public JoinCache(@Nullable SharedIndexCache sharedIndex)
     {
+        this(sharedIndex, net.cumba.datatable.merge.MergeStandard.UNKNOWN);
+    }
+
+
+    /**
+     * Creates a JoinCache reading the dataset's {@code SUPP--} and {@code RELREC} datasets under
+     * the run's standard.
+     *
+     * @param sharedIndex
+     *            the shared index cache, or {@code null} to disable cross-dataset sharing
+     * @param mergeStandard
+     *            the standard the merges are read under; {@code UNKNOWN} infers SEND from a
+     *            {@code POOLID} column
+     */
+    public JoinCache(@Nullable SharedIndexCache sharedIndex,
+            net.cumba.datatable.merge.MergeStandard mergeStandard)
+    {
         this.sharedIndex = sharedIndex;
+        this.mergeStandard = java.util.Objects.requireNonNull(mergeStandard, "mergeStandard");
     }
 
 
@@ -160,6 +188,13 @@ public final class JoinCache
     public JoinCache()
     {
         this(null);
+    }
+
+
+    /** The standard this dataset's {@code SUPP--} and {@code RELREC} datasets are read under. */
+    public net.cumba.datatable.merge.MergeStandard mergeStandard()
+    {
+        return mergeStandard;
     }
 
 

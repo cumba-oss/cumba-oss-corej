@@ -26,6 +26,7 @@ import net.cumba.datatable.merge.KeyedMergeSpec;
 import net.cumba.datatable.merge.MergeKind;
 import net.cumba.datatable.merge.MergeMeta;
 import net.cumba.datatable.merge.MergeRequest;
+import net.cumba.datatable.merge.MergeStandard;
 import net.cumba.datatable.merge.MergedPart;
 import net.cumba.datatable.merge.MergedTable;
 import net.cumba.datatable.merge.MergedTables;
@@ -461,13 +462,19 @@ public final class MergedEvaluation
                 : SuppMergeSpec.builder().suppDatasets(supp).keys(suppKeys).build();
         net.cumba.datatable.merge.DatasetResolver datasets = name -> SplitDomainResolution
                 .resolveTableOrThrow(resolver, name, ruleId);
+        // the run's standard (H1): the dataset's cache carries it, so the SUPP-- and RELREC
+        // readings never depend on which permissible columns the study happened to include; an
+        // execution without a cache keeps the inference (UNKNOWN)
+        MergeStandard standard = joinCache != null ? joinCache.mergeStandard()
+                : MergeStandard.UNKNOWN;
         if (joinCache != null && primary == original)
         {
             return joinCache.mergedView(new ViewKey(keyed, supp, suppKeys, child, relrec),
                     () -> construct(primary, keyed, suppSpec, child, relrec, primaryDomain,
-                            datasets, true));
+                            standard, datasets, true));
         }
-        return construct(primary, keyed, suppSpec, child, relrec, primaryDomain, datasets, false);
+        return construct(primary, keyed, suppSpec, child, relrec, primaryDomain, standard, datasets,
+                false);
     }
 
 
@@ -489,7 +496,7 @@ public final class MergedEvaluation
     @SuppressWarnings("checkstyle:ParameterNumber")
     private static Built construct(IDataTable dataset, List<KeyedMergeSpec> keyed,
             @Nullable SuppMergeSpec supp, @Nullable ChildMergeSpec child,
-            @Nullable RelrecPartSpec relrec, @Nullable String primaryDomain,
+            @Nullable RelrecPartSpec relrec, @Nullable String primaryDomain, MergeStandard standard,
             net.cumba.datatable.merge.DatasetResolver datasets, boolean shared)
     {
         // J5 (ChildEntries): a Child primary's IDVARVAL reads as the pointer's join token
@@ -498,7 +505,7 @@ public final class MergedEvaluation
         List<List<KeyedMergeSpec>> stages = stages(keyed);
         MergedTable view = MergedTables.build(MergeRequest.builder().primary(primary)
                 .primaryDomain(primaryDomain).keyed(stages.get(0)).supp(supp).child(child)
-                .relrec(relrec).resolver(datasets).matchedFlags(true).build());
+                .relrec(relrec).resolver(datasets).matchedFlags(true).standard(standard).build());
         List<MergedPart> parts = new ArrayList<>(view.parts().subList(1, view.parts().size()));
         java.util.Set<String> suppQnams = view.suppQnams();
         boolean rowMapped = view.isRowMapped();
@@ -506,9 +513,9 @@ public final class MergedEvaluation
         {
             // a chained key (W6): the next stage keys on a column of the table built so far
             // (DM.RPATHCD), which is that stage's primary; its columns keep their indices
-            view = MergedTables
-                    .build(MergeRequest.builder().primary(view).primaryDomain(primaryDomain)
-                            .keyed(stages.get(s)).resolver(datasets).matchedFlags(true).build());
+            view = MergedTables.build(MergeRequest.builder().primary(view)
+                    .primaryDomain(primaryDomain).keyed(stages.get(s)).resolver(datasets)
+                    .matchedFlags(true).standard(standard).build());
             parts.addAll(view.parts().subList(1, view.parts().size()));
             rowMapped |= view.isRowMapped();
         }

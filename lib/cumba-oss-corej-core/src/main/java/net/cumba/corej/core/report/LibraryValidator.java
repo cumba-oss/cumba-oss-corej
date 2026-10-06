@@ -324,6 +324,16 @@ public final class LibraryValidator
     private final Set<String> crossStandardDatasets;
 
     /**
+     * The standard the merged evaluation views read every {@code SUPP--} and {@code RELREC} dataset
+     * under (T2 fold, H1): the run layer maps its derived run standard
+     * ({@code StudyValidationService}, R5) through
+     * {@link net.cumba.datatable.merge.MergeStandard#ofStandardName}; {@code UNKNOWN} (the default)
+     * infers SEND from a {@code POOLID} column, which misreads a SEND study without one and an SDTM
+     * study carrying a blank one.
+     */
+    private final net.cumba.datatable.merge.MergeStandard mergeStandard;
+
+    /**
      * The run's use case (owner ruling X1, {@code PLAN-use-case-scope-filter}); {@code null} when
      * none was given. A rule whose {@code Scope.Use_Case} names only other use cases is kept out of
      * the study-anchor pass and reported {@code SKIPPED} on every dataset by the per-dataset
@@ -358,6 +368,7 @@ public final class LibraryValidator
         presenceReportedDatasets = AbsentDatasetSkip
                 .reportedDatasets(ScopeMatcher.rulesInUseCase(rules, useCase));
         crossStandardDatasets = aBuilder.crossStandardDatasets;
+        mergeStandard = aBuilder.mergeStandard;
         if (!presenceReportedDatasets.isEmpty())
         {
             LOGGER.log(Level.DEBUG,
@@ -1181,7 +1192,7 @@ public final class LibraryValidator
         // the rules of this dataset (e.g., all rules joining DM by [STUDYID, USUBJID] read one
         // view and its row maps).
         net.cumba.corej.core.exec.JoinCache joinCache = new net.cumba.corej.core.exec.JoinCache(
-                aSharedIndex);
+                aSharedIndex, mergeStandard);
 
         // Per-dataset expression-result cache — reuses pure leaf results across the rules of this
         // dataset (PLAN-dataset-expression-cache.md). Strictly per-dataset (keyed on table
@@ -1453,6 +1464,8 @@ public final class LibraryValidator
 
         private Set<String> crossStandardDatasets = Set.of();
 
+        private net.cumba.datatable.merge.MergeStandard mergeStandard = net.cumba.datatable.merge.MergeStandard.UNKNOWN;
+
         private @Nullable String useCase;
 
         private boolean sequential;
@@ -1541,6 +1554,23 @@ public final class LibraryValidator
             Objects.requireNonNull(aRules, "rules");
             rules.clear();
             rules.addAll(aRules);
+            return this;
+        }
+
+
+        /**
+         * The standard the merged evaluation views read every {@code SUPP--} and {@code RELREC}
+         * dataset under (T2 fold, H1) — the run's standard, mapped by
+         * {@link net.cumba.datatable.merge.MergeStandard#ofStandardName}. Default {@code UNKNOWN}:
+         * SEND is inferred from a {@code POOLID} column.
+         *
+         * @param aStandard
+         *            the merge standard, never null
+         * @return this builder
+         */
+        public Builder mergeStandard(net.cumba.datatable.merge.MergeStandard aStandard)
+        {
+            mergeStandard = Objects.requireNonNull(aStandard, "mergeStandard");
             return this;
         }
 

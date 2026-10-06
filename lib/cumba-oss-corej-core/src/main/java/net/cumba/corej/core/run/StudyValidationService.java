@@ -418,7 +418,7 @@ public final class StudyValidationService
                 .ruleThreads(params.ruleThreads()).maxErrorsPerRule(params.maxErrorsPerRule())
                 .severityThreshold(params.severityThreshold()).runtimeListener(listener)
                 .crossStandardDatasets(crossStandard).useCase(params.useCase())
-                .taskDecorator(params.taskDecorator());
+                .mergeStandard(mergeStandardOf(runStandard)).taskDecorator(params.taskDecorator());
         if (progress != null)
         {
             // Live per-dataset progress: the validator fires this as each dataset finishes (in
@@ -1956,6 +1956,23 @@ public final class StudyValidationService
                     pack);
         }
         return all;
+    }
+
+
+    /**
+     * The standard the merged evaluation views read {@code SUPP--} and {@code RELREC} under (T2
+     * fold, H1): the run standard's name through
+     * {@link net.cumba.datatable.merge.MergeStandard#ofStandardName} — {@code sendig…} is SEND,
+     * {@code sdtm…} is SDTM; an ADaM run (whose merges join ADaM datasets) stays {@code UNKNOWN},
+     * the POOLID inference.
+     *
+     * @param aRunStandard
+     *            the derived run standard
+     * @return the merge standard, never null
+     */
+    public static net.cumba.datatable.merge.MergeStandard mergeStandardOf(RunStandard aRunStandard)
+    {
+        return net.cumba.datatable.merge.MergeStandard.ofStandardName(aRunStandard.standard());
     }
 
 

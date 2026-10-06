@@ -309,11 +309,16 @@ public final class ScenarioCapture
         }
         DatasetResolver.WithInventory resolver = ScenarioResolver.of(aDatasets);
         // The engine's one entry point, with exactly the defaults the retired 6-argument
-        // convenience forwarded (no Define-XML provider, unlimited findings, no caches, no
+        // convenience forwarded (no Define-XML provider, unlimited findings, no shared cache, no
         // dictionary or VLM provider, empty coverage sets, the default severity threshold) —
         // PLAN-retire-dead-multi-match-lookup K5.
+        // the scenario's `#library standard=` is the run standard its merges are read under
+        // (T2 fold, H1), carried by a throwaway per-execution JoinCache like the factory's
+        net.cumba.corej.core.exec.JoinCache joinCache = new net.cumba.corej.core.exec.JoinCache(
+                null, net.cumba.datatable.merge.MergeStandard
+                        .ofStandardName(aLibrary != null ? aLibrary.getStandard() : null));
         RuleExecutionResult res = RuleRunner.execute(aRule, aPrimary, resolver, aDomain, aLibrary,
-                null, null, Integer.MAX_VALUE, null, null, null, Set.of(), Set.of(),
+                joinCache, null, Integer.MAX_VALUE, null, null, null, Set.of(), Set.of(),
                 EngineLimits.DEFAULT_SEVERITY_THRESHOLD);
         // Row-bearing domain (the leaf-scope successor of RuleType.isValueBased()).
         boolean valueBased = aRule.getEvaluationDomain() == null
