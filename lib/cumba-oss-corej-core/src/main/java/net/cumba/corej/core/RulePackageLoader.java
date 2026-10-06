@@ -3124,7 +3124,8 @@ public class RulePackageLoader
      * @param rule
      *            the bound rule
      * @param errors
-     *            per-rule error accumulator; joined into {@link Rule#setLoadError} by the caller
+     *            per-rule error accumulator; filed entry by entry through {@link Rule#addLoadError}
+     *            by the caller
      */
     private static void validateRetiredUnderscoreKeys(Rule rule, List<String> errors)
     {
@@ -3478,7 +3479,8 @@ public class RulePackageLoader
      * @param rule
      *            the bound rule
      * @param errors
-     *            per-rule error accumulator; joined into {@link Rule#setLoadError} by the caller
+     *            per-rule error accumulator; filed entry by entry through {@link Rule#addLoadError}
+     *            by the caller
      */
     static void validateUnknownKeys(Rule rule, List<String> errors)
     {

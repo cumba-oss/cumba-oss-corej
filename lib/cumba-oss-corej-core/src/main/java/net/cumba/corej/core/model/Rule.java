@@ -1347,7 +1347,7 @@ public class Rule
 
 
     /**
-     * File one more load error: appended to the joined {@link #getLoadError()} with {@code "; "} —
+     * File one more load error: appended to the joined {@code getLoadError()} with {@code "; "} —
      * byte for byte what every loader site used to concatenate — and kept as its own entry in
      * {@link #getLoadErrors()}. A {@code null} (an exception without a message) is spelled as the
      * concatenation always spelled it: nothing on an empty channel, {@code "null"} after an earlier
