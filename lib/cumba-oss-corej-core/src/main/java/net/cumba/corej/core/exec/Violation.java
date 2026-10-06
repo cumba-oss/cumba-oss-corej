@@ -227,6 +227,13 @@ public class Violation
         record Row(long row, @Nullable List<Object> merged) implements Unit
         {
 
+            /** An unmodifiable view (the identity's own list is one already: no copy, no wrap). */
+            public Row
+            {
+                merged = merged == null ? null : java.util.Collections.unmodifiableList(merged);
+            }
+
+
             /**
              * A row of a table whose rows are distinct records.
              *
@@ -270,6 +277,13 @@ public class Violation
          */
         record Column(String column, long row, @Nullable List<Object> merged) implements Unit
         {
+
+            /** An unmodifiable view (the identity's own list is one already: no copy, no wrap). */
+            public Column
+            {
+                merged = merged == null ? null : java.util.Collections.unmodifiableList(merged);
+            }
+
 
             /**
              * A (column, row) unit of a table whose rows are distinct records, or a column-level

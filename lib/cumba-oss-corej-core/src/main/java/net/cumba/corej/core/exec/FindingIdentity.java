@@ -3,6 +3,7 @@ package net.cumba.corej.core.exec;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import net.cumba.corej.core.expr.eval.TypedValue;
 import net.cumba.corej.core.expr.eval.Vector;
@@ -223,7 +224,8 @@ final class FindingIdentity
         {
             cells[i] = entries[i].identityAt(table, row);
         }
-        return new Key(realRow, column, Arrays.asList(cells));
+        // unmodifiable once here: the list rides on into the cross-level unit (Violation.Unit)
+        return new Key(realRow, column, Collections.unmodifiableList(Arrays.asList(cells)));
     }
 
 
