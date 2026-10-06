@@ -119,6 +119,23 @@ public final class JoinCache
      * reads the same view, its row maps and its qualifier columns — or the
      * {@link net.cumba.datatable.merge.MergeException} the datatable refused the signature with.
      * Released with this cache when the dataset finishes.
+     *
+     * <p>
+     * ⭐ <b>Keyed on the signature, not on the partners' identity</b> (T1 of the plan; the retired
+     * {@code DatasetLookup} cache validated identity, D5 of
+     * {@code PLAN-identity-safe-join-caches}). D5 guarded a key made of a 31-bit identity hash;
+     * this key is a value (the partner names, keys and flags), so no two tables can collide in it.
+     * What is left is a partner RELOADED as a new instance while its signature's view is cached —
+     * and that is unreachable: (1) this cache is one dataset's ({@code LibraryValidator} builds one
+     * per dataset, and the primary is held for the dataset's whole run; a view is cached only when
+     * the rule evaluates that table itself); (2) a built view holds every partner strongly (its
+     * parts are views over them), so the run's soft dataset memo cannot clear and reload a partner
+     * while the view lives — any resolve in that time answers the very instance the view reads
+     * ({@code JoinCacheViewIdentityTest}, with its planted control); (3) a resolver that loaded
+     * afresh on every call would hand back an instance of the same file, whose answers are the
+     * view's. ⚠ If a view ever stops pinning its partners (a weak part, a lazily re-resolved
+     * partner), that test reds and this key must then carry, or validate, the partners' identity.
+     * </p>
      */
     private final ConcurrentHashMap<MergedEvaluation.ViewKey, Object> views = new ConcurrentHashMap<>();
 
