@@ -158,6 +158,28 @@ public interface JoinLookup
 
 
     /**
+     * A reader of one column at {@code primaryTable}'s rows: {@link #lookupValue} with everything
+     * that depends only on the column resolved ONCE ({@code PLAN-merged-evaluation-table} T1 — a
+     * group reader reads a merged column on every row, and resolving its name per cell was about a
+     * fifth of the read). Answers exactly what {@link #lookupValue} answers for every row. The
+     * default resolves nothing ahead.
+     *
+     * @param primaryTable
+     *            the evaluated table
+     * @param columnName
+     *            the column to read
+     * @param numericExpected
+     *            as for {@link #lookupValue}
+     * @return the reader, row → value; never {@code null}
+     */
+    default java.util.function.LongFunction<IDataValue> columnReader(IDataTable primaryTable,
+            String columnName, boolean numericExpected)
+    {
+        return row -> lookupValue(primaryTable, row, columnName, numericExpected);
+    }
+
+
+    /**
      * Whether the joined dataset lacks {@code columnName} for <b>every</b> row — a fact a lookup
      * can state only when it binds ONE target table ({@code PLAN-qualified-name-uniformity-review}
      * N12). A dotted operand over such a column is then the authored absent default exactly as an

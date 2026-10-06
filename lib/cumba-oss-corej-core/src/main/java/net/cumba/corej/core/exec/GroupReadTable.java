@@ -266,22 +266,22 @@ public final class GroupReadTable extends AbstractDataTable
         return DataValueType.STRING;
     }
 
-    /** A qualified column read through its join lookup at the evaluated row. */
+    /**
+     * A qualified column read through its join lookup at the evaluated row — its name resolved once
+     * per reader, not per cell ({@link JoinLookup#columnReader}, T1).
+     */
     private static final class JoinedColumn extends AbstractDataTableColumn
     {
 
         private final IDataTable primary;
 
-        private final JoinLookup lookup;
-
-        private final String column;
+        private final java.util.function.LongFunction<IDataValue> reader;
 
         private JoinedColumn(IDataTable aPrimary, JoinLookup aLookup, String aColumn)
         {
             super(-1);
             primary = aPrimary;
-            lookup = aLookup;
-            column = aColumn;
+            reader = aLookup.columnReader(aPrimary, aColumn, false);
         }
 
 
@@ -302,7 +302,7 @@ public final class GroupReadTable extends AbstractDataTable
         @Override
         public IDataValue getDataValue(long aRow)
         {
-            return lookup.lookupValue(primary, aRow, column, false);
+            return reader.apply(aRow);
         }
     }
 
