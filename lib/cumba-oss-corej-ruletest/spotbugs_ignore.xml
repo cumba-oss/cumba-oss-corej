@@ -24,6 +24,16 @@
     <!-- ================================================================ -->
 
     <Match>
+        <!-- The .cdt harness's declared-tier decorator (moved here from the
+             rules repository's test tree by PLAN-rule-authoring-api phase 3)
+             answers getDeclaredSubClasses with the List.of(...) it was
+             constructed with - an immutable list, so handing it out by
+             reference exposes nothing a caller could change. -->
+        <Class name="net.cumba.corej.ruletest.cdt.ruletest.ScenarioDeclaredScopeProvider" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+
+    <Match>
         <!-- Test-fixture provider exposes its in-memory metadata map by
              reference so test setup can mutate it across scenario tweaks
              without rebuilding the provider. -->

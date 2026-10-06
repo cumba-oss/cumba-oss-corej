@@ -185,8 +185,10 @@ class MetadataProviderDecoratorDelegationGuardTest
             "CompanionDomainsProvider.java", Role.DECORATOR, //
             "DefineXmlMetadataProvider.java", Role.DECORATOR, //
             "MetadataLibraryProvider.java", Role.LEAF, //
-            // the .cdt harness
+            // the .cdt harness (cumba-corej-ruletest main; the decorator moved here from the
+            // rules repository's test tree with PLAN-rule-authoring-api phase 3, 2026-10-06)
             "MapBackedLibraryMetadataProvider.java", Role.LEAF, //
+            "ScenarioDeclaredScopeProvider.java", Role.DECORATOR, //
             // test doubles
             "StubMetadataProvider.java", Role.LEAF);
 
@@ -194,26 +196,30 @@ class MetadataProviderDecoratorDelegationGuardTest
      * Floors, so a refactor that empties the population reds instead of passing vacuously.
      *
      * <p>
-     * ⚠⚠ <b>These were 8 / 4 in the coreJ monorepo, and the three missing implementations did not
-     * disappear — they moved to another repository.</b> {@code CompositeMetadataProvider},
-     * {@code MockLibraryProvider} and {@code ScenarioDeclaredScopeProvider} all live in
-     * {@code lib/corej-rules/src/test}, which the split places in <b>the rules repository</b>, and
-     * this repo's build never checks that repo out. Lowering the floor is therefore recording a
-     * boundary, not weakening the guard — which is the one thing the message on the failing
-     * assertion tells you not to do, so it is spelled out here.
+     * ⚠⚠ <b>These were 8 / 4 in the coreJ monorepo, and the implementations missing here did not
+     * disappear — they moved to another repository.</b> {@code CompositeMetadataProvider} and
+     * {@code MockLibraryProvider} live in {@code lib/corej-rules/src/test}, which the split places
+     * in <b>the rules repository</b>, and this repo's build never checks that repo out.
+     * {@code ScenarioDeclaredScopeProvider} went the same way and came BACK on 2026-10-06
+     * ({@code PLAN-rule-authoring-api} phase 3 lifted the .cdt harness into
+     * {@code cumba-corej-ruletest} main scope), so it is pinned here again and the floors read 6 /
+     * 3. Lowering a floor is therefore recording a boundary, not weakening the guard — which is the
+     * one thing the message on the failing assertion tells you not to do, so it is spelled out
+     * here.
      * </p>
      *
      * <p>
      * ⭐ That obligation is discharged: the rules repository carries its own copy of this guard (at
-     * {@code src/test/java/net/cumba/corej/core/rulespec}), pinned over its own three
-     * implementations. ⚠ Its ledger and this one are measured over different populations and are
-     * <b>supposed</b> to differ — its floors are not this file's, and copying a value across is how
-     * a row gets excused by a class the copying repository does not contain.
+     * {@code src/test/java/net/cumba/corej/core/rulespec}), pinned over its own two implementations
+     * plus its {@code StubMetadataProvider} copy. ⚠ Its ledger and this one are measured over
+     * different populations and are <b>supposed</b> to differ — its floors are not this file's, and
+     * copying a value across is how a row gets excused by a class the copying repository does not
+     * contain.
      * </p>
      */
-    private static final int MIN_IMPLEMENTATIONS = 5;
+    private static final int MIN_IMPLEMENTATIONS = 6;
 
-    private static final int MIN_DECORATORS = 2;
+    private static final int MIN_DECORATORS = 3;
 
     /** The two-arg primary: {@code getXForStructure(String token, List<String> subclasses)}. */
     private static final String TWO_ARG = "(?<![\\w.])%s\\s*\\(\\s*String\\s+(\\w+)\\s*,"
