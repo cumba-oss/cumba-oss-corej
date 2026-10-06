@@ -85,6 +85,28 @@ class GroupOperatorQualifiedSourceTest
     }
 
 
+    /**
+     * T2 review (lane 2, M2): the positive twins {@code is_unique_value} and
+     * {@code is_unique_relationship} read their operands through the same group reader as their
+     * negatives, so D-SRC judges them too. RED before: both loaded clean over a {@code left} join.
+     */
+    @Test
+    void theUniquePositivesAreJudgedLikeTheirNegatives()
+    {
+        for (String shape : List.of("is_unique_value(J.S)", "is_unique_relationship(J.S, K)"))
+        {
+            String error = rule(match("J", "left"), shape).getLoadError();
+            assertNotNull(error, shape + " must not load over a left join");
+            assertTrue(error.contains("J.S") && error.contains("Join_Type left"),
+                    shape + ": " + error);
+            assertNull(rule(match("J", "inner"), shape).getLoadError(), shape + " over inner");
+            // control: the bare operand is no qualified name
+            assertNull(rule(match("J", "left"), shape.replace("J.S", "S")).getLoadError(),
+                    shape + " with a bare operand");
+        }
+    }
+
+
     /** The roster the gate judges names registered functions only — it cannot rot. */
     @Test
     void theGroupOperatorRosterNamesRegisteredFunctions()
@@ -95,6 +117,6 @@ class GroupOperatorQualifiedSourceTest
         {
             assertTrue(registered.contains(name), name + " is not a registered function");
         }
-        assertEquals(21, GroupReadTable.GROUP_OPERATORS.size());
+        assertEquals(23, GroupReadTable.GROUP_OPERATORS.size());
     }
 }

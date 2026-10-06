@@ -4071,8 +4071,10 @@ public final class ExprCompiler
         // ReadValue.spec throws the ExpressionException itself (the reader's own message is the
         // rule's load error), so nothing is caught and rethrown here. The plan closes over its
         // CALL SITE (PLAN-column-typed-function-absent-type A1, as compileGroupedAggregate).
+        // Not wrapped for OD-6 (T2 review LOW-2): domain= is required, so the call reads no
+        // primary column to count by real row (RealRowAggregates hands a domain= call through).
         net.cumba.corej.core.exec.ReadValue.Spec spec = net.cumba.corej.core.exec.ReadValue.spec(c);
-        return RealRowAggregates.value(c, run -> spec.evaluate(run, c));
+        return run -> spec.evaluate(run, c);
     }
 
 

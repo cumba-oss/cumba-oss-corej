@@ -66,15 +66,30 @@ public final class GroupReadTable extends AbstractDataTable
      * keyed {@code inner} {@code Match_Datasets} entry of the rule
      * ({@code RulePackageLoader.qualifiedSourceError}). {@code read_value} is not listed: its
      * {@code domain=} names the dataset itself (W3c), and a call carrying {@code domain=} is not
-     * judged for any member.
+     * judged for any member. The positive twins {@code is_unique_value} /
+     * {@code is_unique_relationship} read through the same readers as their negatives (T2 review,
+     * lane 2 M2), so they are judged too.
      */
     public static final java.util.Set<String> GROUP_OPERATORS = java.util.Set.of("is_unique_set",
             "is_not_unique_set", "has_multiple_values_for", "present_on_multiple_rows_within",
-            "is_inconsistent_across_dataset", "is_not_unique_relationship", "is_not_unique_value",
-            "has_same_values", "empty_within_except_last_row", "has_next_corresponding_record",
-            "is_sorted_by", "is_last_in_group", "has_mixed_emptiness_within_group", "contains_all",
+            "is_inconsistent_across_dataset", "is_not_unique_relationship",
+            "is_unique_relationship", "is_not_unique_value", "is_unique_value", "has_same_values",
+            "empty_within_except_last_row", "has_next_corresponding_record", "is_sorted_by",
+            "is_last_in_group", "has_mixed_emptiness_within_group", "contains_all",
             "not_contains_all", "inconsistent_enumerated_columns", "max", "max_date", "min_date",
             "record_count", "distinct");
+
+    /**
+     * The operators that count records ({@code PLAN-merged-evaluation-table} OD-6): every
+     * {@link #GROUP_OPERATORS} member but {@code inconsistent_enumerated_columns}, which reads a
+     * column family beyond its written operand and judges each row on its own. On a table a
+     * one-to-many merge expanded, an operator of this roster whose operands are all primary columns
+     * counts each primary record once ({@code RealRowAggregates}); the stage-A lint
+     * {@code AGGREGATE_OVER_REPEATED_ROWS} reports the operands it cannot judge statically.
+     */
+    public static final java.util.Set<String> REAL_ROW_OPERATORS = GROUP_OPERATORS.stream()
+            .filter(n -> !"inconsistent_enumerated_columns".equals(n))
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
 
     private final IDataTable base;
 

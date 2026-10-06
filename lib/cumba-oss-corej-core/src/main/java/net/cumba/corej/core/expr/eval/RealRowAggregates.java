@@ -4,8 +4,6 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.GroupReadTable;
 import net.cumba.corej.core.exec.RealRows;
@@ -45,9 +43,25 @@ import org.jspecify.annotations.Nullable;
  * <b>What counts as a merged column</b> (the operator then runs over every merged row, as before):
  * a qualified {@code J.X} or {@code J._matched_}, a {@code SUPP--} qualifier read bare (a column of
  * the SUPP part, not of the primary — the ruling's words), a {@code $} reference (its value can
- * read either), a {@code *} / {@code **} pattern, and a {@code domain=} call (its operands are
- * another dataset's; the record side only keys the broadcast, which reads the same answer for every
- * copy of a record anyway).
+ * read either), a {@code *} / {@code **} pattern, a {@code domain=} call (its operands are another
+ * dataset's; the record side only keys the broadcast, which reads the same answer for every copy of
+ * a record anyway), and a <b>dynamic read</b> — {@code colref} or any other declared row reader
+ * ({@link FunctionDescriptor#readingRows()}): the column it reads is known per row only, so it can
+ * be a merged column (T2 review MED-2: {@code record_count(group=[USUBJID],
+ * filter=(colref("CM.CMTRT") == "ASPIRIN"))} counted another record's partner, silently).
+ * </p>
+ *
+ * <p>
+ * ⚠ The reduced evaluation runs <b>without the merged view</b>: its rows are the distinct real
+ * rows, not the view's, so nothing on it may read a part (a lookup is positional on the view's
+ * rows). Only the primary's own columns are read there, which the checks above guarantee; a read
+ * that slipped past them finds no join and no qualifier rather than another record's cells.
+ * </p>
+ *
+ * <p>
+ * The {@code $} / {@code *} / {@code **} operands are the gap OD-6 cannot close statically (the
+ * operator then counts merged rows): the stage-A lint {@code AGGREGATE_OVER_REPEATED_ROWS}
+ * (observe-only) reports them on a rule whose view can repeat a record.
  * </p>
  *
  * <p>
@@ -64,18 +78,15 @@ final class RealRowAggregates
      * {@code inconsistent_enumerated_columns}: it reads a column family beyond its written operand
      * (the base name suffixed 1, 2, …) and judges each row on its own, so no count is involved.
      */
-    static final Set<String> BOOLEAN_OPERATORS = Stream
-            .concat(GroupReadTable.GROUP_OPERATORS.stream(),
-                    Stream.of("is_unique_value", "is_unique_relationship"))
-            .filter(n -> !"inconsistent_enumerated_columns".equals(n))
-            .collect(Collectors.toUnmodifiableSet());
+    static final Set<String> BOOLEAN_OPERATORS = GroupReadTable.REAL_ROW_OPERATORS;
 
     /**
-     * The value aggregates: the grouped extremes, {@code record_count}, {@code distinct},
-     * {@code read_value}.
+     * The value aggregates: the grouped extremes, {@code record_count}, {@code distinct}. Not
+     * {@code read_value}: it always names its dataset ({@code domain=}), so it reads no primary
+     * column to count by real row (T2 review LOW-2).
      */
     static final Set<String> VALUE_AGGREGATES = Set.of("max", "max_date", "min_date",
-            "record_count", "distinct", "read_value");
+            "record_count", "distinct");
 
     private RealRowAggregates()
     {
@@ -159,7 +170,10 @@ final class RealRowAggregates
     /** The run over the projection: the same context on the table of the distinct real rows. */
     private static EvalRun reduced(EvalRun run, RealRows real)
     {
-        EvaluationContext reducedCtx = run.ctx().toBuilder().table(real.table()).build();
+        // without the merged view (MED-2): a part's lookup is positional on the view's rows, and
+        // these rows are the projection's
+        EvaluationContext reducedCtx = run.ctx().toBuilder().table(real.table()).mergedView(null)
+                .build();
         return new EvalRun(reducedCtx, 0, real.count());
     }
 
@@ -202,7 +216,7 @@ final class RealRowAggregates
         {
         case Expr.Ref r -> collectRef(r, out);
         case Expr.Lit lit -> collectLiteral(lit, out);
-        case Expr.Call call -> !call.kwargs().containsKey("domain")
+        case Expr.Call call -> !call.kwargs().containsKey("domain") && !readsDynamically(call)
                 && call.args().stream().allMatch(a -> collect(a, out))
                 && call.kwargs().values().stream().allMatch(a -> collect(a, out));
         case Expr.Binary b -> collect(b.left(), out) && collect(b.right(), out);
@@ -210,6 +224,18 @@ final class RealRowAggregates
         case Expr.Or o -> o.parts().stream().allMatch(p -> collect(p, out));
         case Expr.Not n -> collect(n.inner(), out);
         };
+    }
+
+
+    /**
+     * Whether a call reads a column chosen per row — {@code colref} and every other declared row
+     * reader ({@link FunctionDescriptor#readingRows()}, e.g. {@code row_max}): which column it
+     * reads is not a name of the call, so it may be a merged one (MED-2).
+     */
+    private static boolean readsDynamically(Expr.Call call)
+    {
+        FunctionDescriptor descriptor = FunctionRegistry.descriptor(call.name());
+        return descriptor != null && descriptor.perRow();
     }
 
 

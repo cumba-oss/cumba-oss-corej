@@ -141,6 +141,40 @@ class RealRowAggregatesTest
     }
 
 
+    /**
+     * T2 review MED-2: a {@code colref} inside an aggregate is a dynamic read — what it reads is
+     * known per row only, so the call is never evaluated over the real-row projection (whose rows
+     * are not the merged view's rows): it sees every merged row, exactly as the authored
+     * {@code J.S} does. RED before: the reduced evaluation read {@code colref("J.S")} at the
+     * projection's row index in the merged view — another record's partner — and counted group
+     * {@code g} 0 times instead of once.
+     */
+    @Test
+    @DisplayName("a colref inside an aggregate reads every merged row, as the authored name does")
+    void aColrefInsideAnAggregateSeesEveryMergedRow()
+    {
+        // inner: P's k1 is two merged rows (a, b), k2 one (c); k3 has no partner and is dropped.
+        // Group g holds the merged rows a, b, c: exactly one has S == "c".
+        RuleExecutionResult viaColref = run(match("J", "K", "inner"),
+                "record_count(group=[G], filter=(colref(\"J.S\") == \"c\")) == 1", p(), j(), "K");
+        RuleExecutionResult authored = run(match("J", "K", "inner"),
+                "record_count(group=[G], filter=(J.S == \"c\")) == 1", p(), j(), "K");
+        assertEquals(List.of("k1", "k2"), keys(authored), "the oracle: the authored J.S");
+        assertEquals(keys(authored), keys(viaColref), "colref(\"J.S\") counts what J.S counts: "
+                + QualifiedNameFixture.values(viaColref));
+        // the planted control: a primary-only aggregate still counts by real row (OD-6) — group
+        // g holds two records, not three merged rows
+        assertEquals(List.of("k1", "k2"), keys(run(match("J", "K", "inner"),
+                "record_count(group=[G], filter=(K != \"\")) == 2", p(), j(), "K")));
+    }
+
+
+    private static List<String> keys(RuleExecutionResult r)
+    {
+        return QualifiedNameFixture.values(r).stream().map(m -> m.get("K")).toList();
+    }
+
+
     @Test
     @DisplayName("is_last_in_group: every copy of the last record is last, no copy of another")
     void isLastInGroupByRealRow()
