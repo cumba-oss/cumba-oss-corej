@@ -19,8 +19,6 @@ import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.impl.databuffer.DataBufferFactory;
 import net.cumba.datatable.impl.databuffer.IDataBufferNumeric;
-import net.cumba.datatable.impl.view.MergeDataTable;
-import net.cumba.datatable.impl.view.ViewDataTable;
 import net.cumba.datatable.merge.Cardinality;
 import net.cumba.datatable.merge.ChildMergeSpec;
 import net.cumba.datatable.merge.KeyColumn;
@@ -547,25 +545,21 @@ public final class MergedEvaluation
         if (rowMapped)
         {
             // the final table's row chains through every stage's primary part to the primary's
-            // own POSITION (part 0's base-row map) — never view.getRealRowIndex: that also maps
-            // through a non-positional primary's own real rows (a sorted / filtered
-            // ViewDataTable), and RowMappedTable maps the entry through the primary again (T2 L1)
+            // own POSITION (part 0's base-row map, MergedTable.primaryRowOf — a stage that is not
+            // row-mapped answers the row itself) — never view.getRealRowIndex: that also maps
+            // through a non-positional primary's own real rows (a sorted / filtered view), and
+            // RowMappedTable maps the entry through the primary again (T2 L1)
             int rows = Math.toIntExact(view.getRowCount());
             int primaryRows = Math.toIntExact(primary.getRowCount());
-            List<@Nullable ViewDataTable> primaryParts = primaryParts(stageViews);
             IDataBufferNumeric rowMap = DataBufferFactory.get().createForRange(0,
                     Math.max(0, primaryRows - 1L));
             rowMap.setExpectedSize(rows);
             for (int i = 0; i < rows; i++)
             {
                 long position = i;
-                for (int s = primaryParts.size() - 1; s >= 0; s--)
+                for (int s = stageViews.size() - 1; s >= 0; s--)
                 {
-                    ViewDataTable part = primaryParts.get(s);
-                    if (part != null)
-                    {
-                        position = part.getBaseRowIndex(position);
-                    }
+                    position = stageViews.get(s).primaryRowOf(position);
                 }
                 rowMap.addValue(position);
             }
@@ -604,38 +598,6 @@ public final class MergedEvaluation
         }
         return new Built(view, table, lookups, flat, suppQnams, flagged, plant == MergeKind.SUPP,
                 shared, relrec != null, child != null);
-    }
-
-
-    /**
-     * The primary part of each stage, as the row map it is when the stage is row-mapped (its base
-     * rows are positions of the stage's primary: the previous stage's table, the first stage's the
-     * evaluated dataset), else {@code null} (the stage's primary part is its primary, row for row).
-     * The datatable builds a row-mapped primary part as a {@link ViewDataTable} over the stage's
-     * primary ({@code MergeBuilder}, both twins); anything else is refused loudly rather than read
-     * through {@code getRealRowIndex}, which is not a position on a non-positional primary.
-     */
-    private static List<@Nullable ViewDataTable> primaryParts(List<MergedTable> stageViews)
-    {
-        List<@Nullable ViewDataTable> out = new ArrayList<>(stageViews.size());
-        for (MergedTable stage : stageViews)
-        {
-            if (!stage.isRowMapped())
-            {
-                out.add(null);
-            }
-            else if (stage instanceof MergeDataTable merged
-                    && merged.part(0) instanceof ViewDataTable part)
-            {
-                out.add(part);
-            }
-            else
-            {
-                throw new IllegalStateException("a row-mapped merged table whose primary part is"
-                        + " not a row map over its primary: " + stage.getClass().getName());
-            }
-        }
-        return out;
     }
 
 
