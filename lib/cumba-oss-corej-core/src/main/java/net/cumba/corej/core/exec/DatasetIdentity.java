@@ -226,10 +226,12 @@ public final class DatasetIdentity
             return domain;
         }
         String substitutionPrefix = tableName;
-        if ((tableName.startsWith("SUPP") || tableName.startsWith("SQAP"))
-                && tableName.length() > 4)
+        // the prefix test ignores letter case (R4 of PLAN-split-supp-resolution, review L3): a
+        // lower-case `suppae1` primary keeps Fix #33 like SUPPAE1
+        String upper = tableName.toUpperCase(Locale.ROOT);
+        if ((upper.startsWith("SUPP") || upper.startsWith("SQAP")) && tableName.length() > 4)
         {
-            substitutionPrefix = SplitDatasetUtil.unsplitName(tableName.substring(4));
+            substitutionPrefix = SplitDatasetUtil.unsplitName(upper.substring(4));
         }
         return domain.replace("--", substitutionPrefix);
     }

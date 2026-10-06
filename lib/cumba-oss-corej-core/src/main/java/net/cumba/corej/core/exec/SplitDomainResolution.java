@@ -142,8 +142,18 @@ public final class SplitDomainResolution
      * by the sorted, unmodifiable member list — the gates and the string channels read the members,
      * never the union (an {@code Invalid} family still answers its members' columns).
      */
-    private static final Map<DatasetResolver, ConcurrentHashMap<String, List<IDataTable>>> FAMILY_MEMBERS = Collections
+    private static final Map<DatasetResolver, ConcurrentHashMap<String, FamilyWalk>> FAMILY_MEMBERS = Collections
             .synchronizedMap(new WeakHashMap<>());
+
+    /**
+     * One family walk: the members that loaded, sorted, and — when a plausible member (an entry
+     * named after the family) could not be loaded — the message that makes the family
+     * {@link DomainResolution.Invalid} (review L2; B5 W1 fold M5: a split SUPP that fails to load
+     * is a defect to see, never a fallback). The gates read {@code members}; the union is refused.
+     */
+    private record FamilyWalk(List<IDataTable> members, @Nullable String unloadable)
+    {
+    }
 
     private SplitDomainResolution()
     {
@@ -385,9 +395,17 @@ public final class SplitDomainResolution
         {
             return exactOnly(inv, family); // the test hook: the exactly-named table alone
         }
+        return familyWalk(inv, family, ruleId).members();
+    }
+
+
+    /** The memoised walk of a family — the members that loaded and any load failure. */
+    private static FamilyWalk familyWalk(DatasetResolver.WithInventory inv, String family,
+            @Nullable String ruleId)
+    {
         String key = family.toUpperCase(Locale.ROOT);
         return FAMILY_MEMBERS.computeIfAbsent(inv, _ -> new ConcurrentHashMap<>())
-                .computeIfAbsent(key, _ -> List.copyOf(walkSuppFamily(inv, key, ruleId)));
+                .computeIfAbsent(key, _ -> walkSuppFamily(inv, key, ruleId));
     }
 
 
@@ -498,6 +516,39 @@ public final class SplitDomainResolution
     }
 
 
+    /**
+     * The load failure of the supplemental family of {@code domain}, or {@code null} when every
+     * plausible member loads (or there is no inventory): the message the merged view refuses the
+     * merge with (review L2 — the chooser hands the merge the members that loaded, which would be
+     * exactly the silent fallback B5 W1 M5 forbids; the gates keep reading those members).
+     *
+     * @param resolver
+     *            the run's resolver
+     * @param domain
+     *            the base's domain code
+     * @param ruleId
+     *            CORE id for the log prefix
+     * @return the failure message, or {@code null}
+     */
+    static @Nullable String suppFamilyLoadFailure(DatasetResolver resolver, String domain,
+            @Nullable String ruleId)
+    {
+        if (!(resolver instanceof DatasetResolver.WithInventory inv) || !familyArmed())
+        {
+            return null;
+        }
+        String family = SuppMergeSpec.suppNameOf(domain);
+        if (!isSuppFamilyName(family))
+        {
+            return null;
+        }
+        String unloadable = familyWalk(inv, family, ruleId).unloadable();
+        return unloadable == null ? null
+                : "the supplemental family " + family + " of " + domain + " cannot be read as one"
+                        + " — its " + unloadable;
+    }
+
+
     /** The exactly-named table alone, as a one-element list (the family arm off). */
     private static List<IDataTable> exactOnly(DatasetResolver resolver, String name)
     {
@@ -538,12 +589,22 @@ public final class SplitDomainResolution
     }
 
 
-    /** The family arm of {@link #resolve}: the memoised members, unioned (D3). */
+    /**
+     * The family arm of {@link #resolve}: the memoised members, unioned (D3) — or
+     * {@link DomainResolution.Invalid} when a plausible member could not be loaded (review L2).
+     */
     private static DomainResolution familyUnionOf(DatasetResolver.WithInventory inv, String key,
             @Nullable String ruleId)
     {
-        return unionOrInvalid(suppFamilyMembers(inv, key, ruleId), key, "split supplemental family",
-                ruleId);
+        FamilyWalk walk = familyWalk(inv, key, ruleId);
+        if (walk.unloadable() != null)
+        {
+            String message = "'" + key + "' resolves to a split supplemental family whose "
+                    + walk.unloadable() + INVALID_TAIL;
+            LOGGER.log(Level.WARNING, "[{0}] {1}", ruleIdOr(ruleId), message);
+            return new DomainResolution.Invalid(key, message);
+        }
+        return unionOrInvalid(walk.members(), key, "split supplemental family", ruleId);
     }
 
 
@@ -624,12 +685,17 @@ public final class SplitDomainResolution
     /**
      * The family walk (D3): the exactly-named table first, then every {@code SUPP} / {@code SQ}
      * -named inventory entry (the D2 pre-filter — nothing else is resolved) whose
-     * {@link DatasetIdentity#suppFamilyKey} is the family; fault-tolerant per entry, sorted.
+     * {@link DatasetIdentity#suppFamilyKey} is the family, sorted. An entry whose supplier throws
+     * is the family's load failure when it is a <em>plausible</em> member — named after the family
+     * ({@code SUPPAE2} for {@code SUPPAE}, {@code supplbch} for {@code SUPPLB}) — and is skipped
+     * otherwise. ⚠ Unlike {@link #walkMembers}, the family walk is not fault-tolerant for a
+     * plausible member (review L2).
      */
-    private static List<IDataTable> walkSuppFamily(DatasetResolver.WithInventory inv, String key,
+    private static FamilyWalk walkSuppFamily(DatasetResolver.WithInventory inv, String key,
             @Nullable String ruleId)
     {
         List<IDataTable> members = new ArrayList<>();
+        String unloadable = null;
         IDataTable exact = byName(inv, key);
         if (exact != null)
         {
@@ -659,13 +725,24 @@ public final class SplitDomainResolution
             }
             catch (RuntimeException e)
             {
+                // a plausible member — named after the family, its RDOMAIN unreadable — makes
+                // the family Invalid (review L2); an unreadable supplemental of another family
+                // (SUPPDM while resolving SUPPAE) says nothing about this one
+                if (dsName.toUpperCase(Locale.ROOT).startsWith(key))
+                {
+                    if (unloadable == null)
+                    {
+                        unloadable = "member " + dsName + " cannot be loaded: " + e;
+                    }
+                    continue;
+                }
                 LOGGER.log(Level.DEBUG,
                         "[{0}] skipping unreadable dataset {1} while resolving family {2}: {3}",
                         ruleIdOr(ruleId), dsName, key, e.toString());
             }
         }
         members.sort(Comparator.comparing(SplitDomainResolution::upperNameOf));
-        return members;
+        return new FamilyWalk(List.copyOf(members), unloadable);
     }
 
 

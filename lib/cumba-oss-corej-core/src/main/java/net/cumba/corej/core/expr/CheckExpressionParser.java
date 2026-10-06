@@ -289,7 +289,46 @@ public final class CheckExpressionParser
             // declaration, so its argument is a whole expression without the parentheses an
             // ordinary boolean argument needs (`filter=(A == "b")`, D9 / D12 — that arm stays
             // exactly as it was for every other call). ExpressionPrinter prints it bare again.
+            // A keyword or a second argument is named for what it is (review C8 L3).
+            if (peek().type() == TokenType.IDENT && peekAt(1).type() == TokenType.EQ)
+            {
+                throw new ExpressionException(
+                        "joined(…) takes exactly one condition, not a keyword argument",
+                        peek().position());
+            }
             args.add(parseOr());
+            if (peek().type() == TokenType.COMMA)
+            {
+                throw new ExpressionException("joined(…) takes exactly one condition",
+                        peek().position());
+            }
+        }
+        else if (net.cumba.corej.core.exec.JoinedRowFold.isQuantifier(name)
+                && peek().type() != TokenType.RPAREN)
+        {
+            // a quantifier whose argument fails to parse hints the one shape it takes
+            try
+            {
+                parseArg(args, kwargs);
+                while (peek().type() == TokenType.COMMA)
+                {
+                    advance();
+                    parseArg(args, kwargs);
+                }
+            }
+            catch (ExpressionException e)
+            {
+                ExpressionException hinted = new ExpressionException(
+                        e.getMessage() + " — " + name + "(…) takes joined(<condition>)",
+                        e.getPosition());
+                hinted.initCause(e);
+                throw hinted;
+            }
+            if (peek().type() != TokenType.RPAREN)
+            {
+                throw new ExpressionException("Expected ')' but found '" + peek().text() + "' — "
+                        + name + "(…) takes joined(<condition>)", peek().position());
+            }
         }
         else if (peek().type() != TokenType.RPAREN)
         {

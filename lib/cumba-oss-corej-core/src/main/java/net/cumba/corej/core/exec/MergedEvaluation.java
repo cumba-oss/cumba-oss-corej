@@ -465,6 +465,7 @@ public final class MergedEvaluation
             domain = DatasetIdentity.domainOfDataset(dataset, resolver);
             if (domain != null && !domain.isEmpty())
             {
+                refuseUnloadableFamily(resolver, domain, ruleId);
                 // the one chooser (D4 (b)): the primary's own SUPP and the domain-level members
                 // of its family, as tables; a SUPP merge is asked of the view only when there
                 // is a supplemental dataset to merge
@@ -914,10 +915,30 @@ public final class MergedEvaluation
         {
             return null;
         }
+        refuseUnloadableFamily(resolver, domain, ruleId);
         List<String> supp = chosen.add(
                 SplitDomainResolution.suppMergeSources(resolver, partner, dsName, domain, ruleId));
         return supp.isEmpty() ? null
                 : SuppMergeSpec.builder().suppDatasets(supp).keys(suppKeys).build();
+    }
+
+
+    /**
+     * D3 for a family a member of which cannot be loaded ({@code PLAN-split-supp-resolution} review
+     * L2; B5 W1 fold M5): the view is refused — MERGE_REFUSED on every rule whose view feeds that
+     * family — never built over the members that happened to load.
+     *
+     * @throws net.cumba.datatable.merge.MergeException
+     *             the refusal
+     */
+    private static void refuseUnloadableFamily(DatasetResolver resolver, String domain,
+            @Nullable String ruleId)
+    {
+        String failure = SplitDomainResolution.suppFamilyLoadFailure(resolver, domain, ruleId);
+        if (failure != null)
+        {
+            throw new net.cumba.datatable.merge.MergeException(failure);
+        }
     }
 
 

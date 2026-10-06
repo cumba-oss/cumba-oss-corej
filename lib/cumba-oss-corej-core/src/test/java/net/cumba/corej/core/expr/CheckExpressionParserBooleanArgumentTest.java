@@ -3,6 +3,7 @@ package net.cumba.corej.core.expr;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import net.cumba.corej.core.expr.ast.Expr;
 import org.junit.jupiter.api.Test;
@@ -89,5 +90,33 @@ class CheckExpressionParserBooleanArgumentTest
         assertEquals("all(joined(SE.EPOCH in [\"A\", \"B\"] or empty(SE.EPOCH)))",
                 ExpressionPrinter.print(CheckExpressionParser
                         .parse("all(joined(SE.EPOCH in [\"A\", \"B\"] or empty(SE.EPOCH)))")));
+    }
+
+
+    /** Review C8 L3: the joined arm names its shape when the argument is not one condition. */
+    @Test
+    void joinedWithMoreThanOneConditionNamesItsShape()
+    {
+        ExpressionException two = assertThrows(ExpressionException.class,
+                () -> CheckExpressionParser.parse("any(joined(A == 1, B == 2))"));
+        assertTrue(two.getMessage().contains("joined(…) takes exactly one condition"),
+                two.getMessage());
+        ExpressionException keyword = assertThrows(ExpressionException.class,
+                () -> CheckExpressionParser.parse("any(joined(x = 1))"));
+        assertTrue(keyword.getMessage().contains("joined(…) takes exactly one condition"),
+                keyword.getMessage());
+    }
+
+
+    @Test
+    void aQuantifierWhoseArgumentFailsToParseHintsTheShape()
+    {
+        ExpressionException e = assertThrows(ExpressionException.class,
+                () -> CheckExpressionParser.parse("any(joined(A ==))"));
+        assertTrue(e.getMessage().contains("any(…) takes joined(<condition>)"), e.getMessage());
+        ExpressionException none = assertThrows(ExpressionException.class,
+                () -> CheckExpressionParser.parse("none(A == )"));
+        assertTrue(none.getMessage().contains("none(…) takes joined(<condition>)"),
+                none.getMessage());
     }
 }

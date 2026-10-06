@@ -54,8 +54,11 @@ class SplitDomainResolutionTest
 
         final AtomicInteger walks = new AtomicInteger();
 
-        /** Every name the resolver was asked for, in order. */
-        final List<String> resolved = new ArrayList<>();
+        /**
+         * Every name the resolver was asked for, in order (the concurrency case writes it from 8
+         * threads).
+         */
+        final List<String> resolved = java.util.Collections.synchronizedList(new ArrayList<>());
 
         CountingInventory(IDataTable... tables)
         {

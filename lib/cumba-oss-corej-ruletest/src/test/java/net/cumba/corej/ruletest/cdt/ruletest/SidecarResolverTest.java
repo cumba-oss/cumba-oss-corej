@@ -324,24 +324,32 @@ class SidecarResolverTest
                 outside.toString()).redirectErrorStream(true).start();
         String output = new String(mklink.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         assertEquals(0, mklink.waitFor(), "mklink /J failed: " + output);
-        assertTrue(Files.isDirectory(junction), "the junction must be a directory: " + output);
-        assertFalse(Files.isSymbolicLink(junction),
-                "the premise: a junction is no symbolic link to isSymbolicLink");
+        try
+        {
+            assertTrue(Files.isDirectory(junction), "the junction must be a directory: " + output);
+            assertFalse(Files.isSymbolicLink(junction),
+                    "the premise: a junction is no symbolic link to isSymbolicLink");
 
-        SidecarResolver r = SidecarResolver.rootedAt(aRoot.resolve("suites"));
-        IOException e = assertThrows(IOException.class,
-                () -> r.resolve(scenario, "junction/lib.yaml"));
-        assertTrue(e.getMessage().contains("symbolic link, junction or other redirection"),
-                e.getMessage());
-        assertFalse(e.getMessage().contains(aRoot.toRealPath().toString()), e.getMessage());
-        assertFalse(e.getMessage().contains(outside.toRealPath().toString()), e.getMessage());
-        IOException opened = assertThrows(IOException.class,
-                () -> r.open(scenario, "junction/lib.yaml"));
-        assertFalse(opened.getMessage().contains(aRoot.toRealPath().toString()),
-                opened.getMessage());
-        // the control: a sidecar beside the scenario is unaffected by the junction beside it
-        assertEquals(scenario.resolveSibling("lib.yaml").toRealPath(),
-                r.resolve(scenario, "lib.yaml"));
+            SidecarResolver r = SidecarResolver.rootedAt(aRoot.resolve("suites"));
+            IOException e = assertThrows(IOException.class,
+                    () -> r.resolve(scenario, "junction/lib.yaml"));
+            assertTrue(e.getMessage().contains("symbolic link, junction or other redirection"),
+                    e.getMessage());
+            assertFalse(e.getMessage().contains(aRoot.toRealPath().toString()), e.getMessage());
+            assertFalse(e.getMessage().contains(outside.toRealPath().toString()), e.getMessage());
+            IOException opened = assertThrows(IOException.class,
+                    () -> r.open(scenario, "junction/lib.yaml"));
+            assertFalse(opened.getMessage().contains(aRoot.toRealPath().toString()),
+                    opened.getMessage());
+            // the control: a sidecar beside the scenario is unaffected by the junction beside it
+            assertEquals(scenario.resolveSibling("lib.yaml").toRealPath(),
+                    r.resolve(scenario, "lib.yaml"));
+        }
+        finally
+        {
+            // the junction itself, never its target, before @TempDir cleans the tree (review L4)
+            Files.deleteIfExists(junction);
+        }
     }
 
 

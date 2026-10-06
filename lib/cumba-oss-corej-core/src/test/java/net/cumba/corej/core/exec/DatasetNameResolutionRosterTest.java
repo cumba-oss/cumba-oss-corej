@@ -41,7 +41,22 @@ class DatasetNameResolutionRosterTest
      * fully-qualified {@code net.cumba.corej.core.exec.SplitDomainResolution} wraps there).
      */
     private static final Pattern CALL = Pattern.compile(
-            "\\b(?:(SplitDomainResolution|DatasetIdentity|CheckConditionTransformer)\\s*\\.\\s*(resolve|resolveTableOrThrow|isPresentAsDomain|byName|membersOf|suppFamilyMembers|suppMergeSources|isSuppFamilyName|resolveWildcard|resolveDatasetWildcard|resolveDatasetHalf|resolveTextWildcard)|(resolver|inv|inventory|parents)\\.(resolve))\\(");
+            "\\b(?:(SplitDomainResolution|DatasetIdentity|CheckConditionTransformer)\\s*\\.\\s*(resolve|resolveTableOrThrow|isPresentAsDomain|byName|membersOf|suppFamilyMembers|suppMergeSources|isSuppFamilyName|resolveWildcard|resolveDatasetWildcard|resolveDatasetHalf|resolveTextWildcard)|(\\w+|getDatasetResolver\\(\\))\\s*\\.\\s*(resolve))\\(");
+
+    /**
+     * A receiver counts as a dataset resolver when the file declares it with that type — a
+     * parameter, field or local of {@code DatasetResolver}, {@code DatasetResolver.WithInventory}
+     * or the datatable's {@code net.cumba.datatable.merge.DatasetResolver} — or when it is the
+     * context's {@code getDatasetResolver()} (review M2: a receiver list missed
+     * {@code ScopeClassLadder}'s {@code aResolver}).
+     */
+    private static boolean datasetResolverReceiver(String stripped, String receiver)
+    {
+        return "getDatasetResolver()".equals(receiver) || Pattern.compile(
+                "\\b(?:net\\.cumba\\.datatable\\.merge\\.)?DatasetResolver(?:\\.WithInventory)?\\s+(?:@\\w+\\s+)?"
+                        + Pattern.quote(receiver) + "\\b")
+                .matcher(stripped).find();
+    }
 
     /** A method (or compact constructor) declaration line: modifiers, a type, the name, `(`. */
     private static final Pattern DECLARATION = Pattern.compile(
@@ -180,8 +195,8 @@ class DatasetNameResolutionRosterTest
                     "§9 an inventory walk by member name (R4 moves the family key of a lower-case member)"),
             Map.entry("exec/ChildEntries#pointerKind:parents.resolve",
                     "§9 a Child parent is a domain, resolved through the datatable callback (D11)"),
-            Map.entry("expr/eval/DynamicColumnRead#vector:resolver.resolve",
-                    "§9 DynamicColumnRead's own per-row column Resolver, not a dataset resolver")));
+            Map.entry("metadata/ScopeClassLadder#classOf:aResolver.resolve",
+                    "§9 the AP parent looked up by its code for the class ladder (exact, as before the plan) — filed: a split or lower-case parent domain leaves the AP class undetermined")));
 
     @Test
     void everyResolutionSiteIsClassified_andEveryClassifiedSiteExists() throws IOException
@@ -254,6 +269,10 @@ class DatasetNameResolutionRosterTest
                 Matcher m = CALL.matcher(stripped);
                 while (m.find())
                 {
+                    if (m.group(1) == null && !datasetResolverReceiver(stripped, m.group(3)))
+                    {
+                        continue; // some other type's resolve (a Path, a VlmResolver, ...)
+                    }
                     String kind = m.group(1) != null ? m.group(1) + "." + m.group(2)
                             : m.group(3) + "." + m.group(4);
                     int line = lineOf(stripped, m.start());

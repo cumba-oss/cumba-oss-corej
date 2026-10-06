@@ -340,6 +340,20 @@ class SplitSuppFamilyResolutionTest
                                         "SUPP-- joined the family: "
                                                 + res.getViolations().get(0).getValues());
                             }),
+                    new Site("ExprCompiler — a Check reading SUPP--.QVAL through the SUPP-- join",
+                            f ->
+                            {
+                                // review M1: a dotted reference whose dataset half carries `--`
+                                // compiles
+                                // natively (the specialiser rewrites it), so the Check form reads
+                                // the
+                                // joined family: QVAL is N on the second subject only
+                                RuleExecutionResult res = executed(f,
+                                        rule(keyed(f, "SUPP--"), "SUPP--.QVAL != \\\"Y\\\""));
+                                assertEquals(1, res.getViolations().size(),
+                                        "only the N flag fires: " + res.getViolations());
+                                assertEquals(2L, res.getViolations().get(0).getRowNumber());
+                            }),
                     new Site("RuleRunner.resolveOutputVarName — Output_Variables SUPP--.QNAM", f ->
                     {
                         Rule r = load("{\"Core\":{\"Id\":\"X-1\"}," + keyed(f, "SUPP--")
@@ -587,6 +601,12 @@ class SplitSuppFamilyResolutionTest
                 DatasetIdentity.resolveDatasetWildcard("SUPP--", SUPP.member1.get()));
         assertEquals("SUPPMH", DatasetIdentity.resolveDatasetWildcard("SUPP--", SQAP.member1.get()),
                 "SQAPMH1 -> Fix #33 strips the SQAP prefix -> parent MH -> today's SUPPMH, unchanged");
+        // review L3 (R4): a lower-case SUPP / SQAP primary keeps Fix #33 too
+        IDataTable lower = supp("suppae1", "AE", "USUBJID", "001", "AESEQ", "AETRTEM", "Y");
+        assertTrue(
+                "SUPPAE".equalsIgnoreCase(DatasetIdentity.resolveDatasetWildcard("SUPP--", lower)),
+                "a lower-case suppae1 primary: the parent prefix, never SUPPsuppae1");
+        assertTrue("SUPPAE".equalsIgnoreCase(DatasetIdentity.resolveWildcard("SUPP--", lower)));
         // every other shape is resolveWildcard's
         assertEquals("AE1", DatasetIdentity.resolveDatasetWildcard("--1", SUPP.base.get()));
         assertEquals("DM", DatasetIdentity.resolveDatasetWildcard("DM", SUPP.base.get()));
@@ -651,6 +671,78 @@ class SplitSuppFamilyResolutionTest
         assertTrue(
                 merged.getStatusMessage().startsWith(MergedEvaluation.MERGE_REFUSED_MESSAGE_PREFIX),
                 merged.getStatusMessage());
+    }
+
+
+    /**
+     * Review L2 (B5 W1 fold M5: a split SUPP that fails to load is never a fallback): a plausible
+     * member — a {@code SUPP} / {@code SQ} entry named after the family — whose supplier throws
+     * makes the family {@code Invalid}: present, a reader's ERROR, refused by the merge; the gates
+     * still read the members that load. An unreadable supplemental of another family leaves this
+     * one intact.
+     */
+    @Test
+    void anUnloadableMemberMakesTheFamilyInvalid_neverASilentDrop()
+    {
+        IDataTable ae = SUPP.base.get();
+        IDataTable one = SUPP.member1.get();
+        Map<String, IDataTable> tables = new LinkedHashMap<>();
+        tables.put("AE", ae);
+        tables.put("SUPPAE1", one);
+        DatasetResolver.WithInventory inv = throwing(tables, "SUPPAE2", "SUPPDM");
+        DomainResolution r = SplitDomainResolution.resolve(inv, "SUPPAE", "R");
+        DomainResolution.Invalid invalid = assertInstanceOf(DomainResolution.Invalid.class, r,
+                "an unreadable SUPPAE2 cannot be dropped silently");
+        assertTrue(invalid.message().contains("SUPPAE2"), invalid.message());
+        assertTrue(invalid.message().contains("cannot be loaded"), invalid.message());
+        assertTrue(invalid.message().endsWith("; the domain cannot be joined"), invalid.message());
+        assertTrue(SplitDomainResolution.isPresentAsDomain(inv, "SUPPAE"), "present (D3)");
+        assertThrows(InvalidJoinedDomainException.class,
+                () -> SplitDomainResolution.resolveTableOrThrow(inv, "SUPPAE", "R"));
+        assertEquals(List.of(one), SplitDomainResolution.suppFamilyMembers(inv, "SUPPAE", "R"),
+                "the gates read the members that load, no gate throws");
+        RuleExecutionResult merged = run(rule("", "empty(AETERM)"), ae, inv);
+        assertEquals(RuleExecutionStatus.ERROR, merged.getStatus());
+        assertTrue(
+                merged.getStatusMessage().startsWith(MergedEvaluation.MERGE_REFUSED_MESSAGE_PREFIX),
+                merged.getStatusMessage());
+        // the control: an unreadable SUPPDM is no plausible SUPPAE member
+        Map<String, IDataTable> healthy = new LinkedHashMap<>();
+        healthy.put("AE", ae);
+        healthy.put("SUPPAE1", one);
+        healthy.put("SUPPAE2", SUPP.member2.get());
+        assertEquals(2, SplitDomainResolution
+                .resolveTableOrThrow(throwing(healthy, "SUPPDM"), "SUPPAE", "R").getRowCount(),
+                "SUPPDM's failure leaves SUPPAE valid");
+    }
+
+
+    /** An inventory whose named entries throw on resolve (a corrupt file). */
+    static DatasetResolver.WithInventory throwing(Map<String, IDataTable> tables, String... bad)
+    {
+        Set<String> names = new java.util.LinkedHashSet<>(tables.keySet());
+        names.addAll(List.of(bad));
+        Set<String> broken = Set.of(bad);
+        return new DatasetResolver.WithInventory()
+        {
+
+            @Override
+            public @Nullable IDataTable resolve(String name)
+            {
+                if (name != null && broken.contains(name.toUpperCase(Locale.ROOT)))
+                {
+                    throw new IllegalStateException("corrupt file " + name);
+                }
+                return name == null ? null : tables.get(name.toUpperCase(Locale.ROOT));
+            }
+
+
+            @Override
+            public Set<String> availableDatasets()
+            {
+                return names;
+            }
+        };
     }
 
     // ---------------------------------------------------------------- the bound (D2)

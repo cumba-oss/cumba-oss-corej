@@ -2022,8 +2022,9 @@ public final class ExprCompiler
      * the evaluation table's real rows per run — one fused plan, no {@code list<boolean>} value.
      * The inner condition may be the maximal pure subtree (then {@link #cachedBool} wraps it and
      * its bit set can be a shared cache entry): the fold reads it and writes a new set. A nested
-     * quantifier, or an argument that is not {@code joined(<condition>)}, is refused here as at
-     * stage A (P4, which parks the rule first).
+     * quantifier ({@code any(joined(none(joined(…))))}), or an argument that is not
+     * {@code joined(<condition>)}, is refused here as at stage A (P4, which parks the rule first;
+     * the refusal here holds for a rule compiled without it — review C8 L2).
      */
     private static ExprProgram.BoolPlan compileJoinedQuantifier(Expr.Call c)
     {
@@ -2040,9 +2041,72 @@ public final class ExprCompiler
         {
             throw unsupported("joined(…) takes exactly one boolean condition");
         }
+        String nested = nestedQuantifier(joined.args().get(0));
+        if (nested != null)
+        {
+            throw unsupported("a quantifier cannot nest inside joined(…): " + c.name()
+                    + "(joined(… " + nested + "(…) …)) — one quantifier folds the record's rows,"
+                    + " write the inner condition without " + nested);
+        }
         ExprProgram.BoolPlan condition = compileBool(joined.args().get(0));
         return run -> net.cumba.corej.core.exec.JoinedRowFold.fold(quantifier, condition.eval(run),
                 run.ctx(), run.rowCount());
+    }
+
+
+    /** The name of the first quantifier call inside {@code e}, or {@code null} for none. */
+    private static @Nullable String nestedQuantifier(Expr e)
+    {
+        return switch (e)
+        {
+        case Expr.Call call ->
+        {
+            if (net.cumba.corej.core.exec.JoinedRowFold.isQuantifier(call.name()))
+            {
+                yield call.name();
+            }
+            for (Expr arg : call.args())
+            {
+                String found = nestedQuantifier(arg);
+                if (found != null)
+                {
+                    yield found;
+                }
+            }
+            for (Expr arg : call.kwargs().values())
+            {
+                String found = nestedQuantifier(arg);
+                if (found != null)
+                {
+                    yield found;
+                }
+            }
+            yield null;
+        }
+        case Expr.Binary bin ->
+        {
+            String left = nestedQuantifier(bin.left());
+            yield left != null ? left : nestedQuantifier(bin.right());
+        }
+        case Expr.And and -> nestedQuantifierIn(and.parts());
+        case Expr.Or or -> nestedQuantifierIn(or.parts());
+        case Expr.Not not -> nestedQuantifier(not.inner());
+        default -> null;
+        };
+    }
+
+
+    private static @Nullable String nestedQuantifierIn(List<Expr> parts)
+    {
+        for (Expr part : parts)
+        {
+            String found = nestedQuantifier(part);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+        return null;
     }
 
 
@@ -4910,7 +4974,7 @@ public final class ExprCompiler
                 // list-valued `${*}` — needs machinery the native backend lacks and is rejected as
                 // unsupported, so the rule reports the "no native expression form" ERROR; there is
                 // no other evaluator to fall back to.
-                if (isDomainPrefixWildcard(r.name()))
+                if (isDomainPrefixWildcard(r.name()) || isDottedDomainPrefixReference(r.name()))
                 {
                     yield namePosition ? nameRefPlan(r.name()) : valueRefPlan(r.name());
                 }
@@ -5185,6 +5249,30 @@ public final class ExprCompiler
     private static boolean isDomainPrefixWildcard(String name)
     {
         return name.startsWith("--") && name.indexOf('.') < 0;
+    }
+
+
+    /**
+     * Whether {@code name} is a dot-qualified reference whose dataset half carries the {@code --}
+     * domain wildcard ({@code SUPP--.QVAL}, {@code SUPP--.--QVAL}) and whose column half is a plain
+     * name or a {@code --}-prefix wildcard — the shape the bind-time specialiser rewrites on both
+     * halves ({@code CheckConditionTransformer.resolveTextWildcard}: {@code SUPPAE.QVAL} on
+     * {@code AE}, {@code SQAPMH.QVAL} on {@code APMH}), so the support probe admits it like
+     * {@code --SEQ} ({@code PLAN-split-supp-resolution} review M1: it used to fall to "wildcard /
+     * prefix operand … not native-supported", so a Check could not read a {@code SUPP--} join). A
+     * column half carrying {@code *}, {@code **} or {@code ${…}} stays declined.
+     */
+    private static boolean isDottedDomainPrefixReference(String name)
+    {
+        int dot = name.indexOf('.');
+        if (dot <= 0 || dot == name.length() - 1)
+        {
+            return false;
+        }
+        String dataset = name.substring(0, dot);
+        String column = name.substring(dot + 1);
+        return dataset.contains("--") && column.indexOf('*') < 0 && !column.contains("${")
+                && column.indexOf('.') < 0;
     }
 
 
@@ -5547,9 +5635,9 @@ public final class ExprCompiler
      */
     public static String resolveDomainPrefixForName(String name, EvaluationContext ctx)
     {
-        if (!isDomainPrefixWildcard(name))
+        if (!isDomainPrefixWildcard(name) && !isDottedDomainPrefixReference(name))
         {
-            return name;
+            return name; // a dotted `SUPP--.X` the specialiser did not rewrite throws too
         }
         throw new ExpressionException(
                 "[" + (ctx.getRuleId() != null ? ctx.getRuleId() : "?") + "] unresolved '--' name '"

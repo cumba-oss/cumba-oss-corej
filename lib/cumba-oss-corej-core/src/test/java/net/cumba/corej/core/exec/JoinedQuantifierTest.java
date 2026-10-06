@@ -8,11 +8,16 @@ import static net.cumba.corej.core.exec.QualifiedNameFixture.outcome;
 import static net.cumba.corej.core.exec.QualifiedNameFixture.ruleJson;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.BitSet;
 import java.util.Set;
 import java.util.TreeSet;
+import net.cumba.corej.core.expr.CheckExpressionParser;
+import net.cumba.corej.core.expr.ExpressionException;
+import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.databuffer.DataBufferFactory;
@@ -268,9 +273,10 @@ class JoinedQuantifierTest
     void aSharedCachedConditionIsLeftUnchanged()
     {
         // The pure leaf J.S == "b" is the maximal pure subtree inside the quantifier and is the
-        // whole Check of the second rule: one cache entry, read by both. A fold that flipped the
-        // cached bit set in place would hand the second rule (and the first on a re-run) the
-        // negation.
+        // whole Check of the second rule: one cache entry, read by both — this pins the SHARING
+        // (one entry, two readers, the same answers on a re-run). It cannot see a fold writing
+        // into the set: cachedBool hands every reader its own clone (review C8 L1). The
+        // never-mutated guarantee is theFoldWritesANewSet's, over a repeating table.
         JoinCache joins = new JoinCache(new JoinCache.SharedIndexCache());
         ExpressionResultCache cache = new ExpressionResultCache();
         Rule none = rule("T-A", match("J", "K", "inner"), "none(joined(J.S == \"b\"))", "K");
@@ -297,20 +303,52 @@ class JoinedQuantifierTest
     @DisplayName("JoinedRowFold never writes into the condition it folds")
     void theFoldWritesANewSet()
     {
+        // Over a REPEATING table from a real 1:n run (k1 twice, k2 once; k3 dropped by the inner
+        // join), so the fold takes its record branch — a non-row-mapped table only reaches the
+        // "every record is its one row" branch (review C8 L1). Sabotage JoinedRowFold's record
+        // branch to write in place and both assertions go red.
+        MergedEvaluation.Built built = MergedEvaluation.build(
+                rule("T-F", match("J", "K", "inner"), "J.S == \"b\"", "K"), p(), p(),
+                exactInventory(p(), j()), null, "R", null);
+        assertNotNull(built);
+        IDataTable table = built.table();
+        assertEquals(3, table.getRowCount(), "k1 twice, k2 once");
+        assertNotNull(RealRows.ofRepeating(table), "the premise: a record repeats");
+        EvaluationContext ctx = EvaluationContext.builder().table(table).build();
         BitSet condition = new BitSet();
-        condition.set(1);
+        condition.set(1); // k1's second row (J.S == "b")
         BitSet copy = (BitSet) condition.clone();
-        EvaluationContext ctx = EvaluationContext.builder().table(p()).build();
         for (JoinedRowFold.Quantifier q : JoinedRowFold.Quantifier.values())
         {
             BitSet out = JoinedRowFold.fold(q, condition, ctx, 3);
             assertTrue(out != condition, q + " answers a new set");
             assertEquals(copy, condition, q + " left the condition unchanged");
         }
-        assertEquals(bits(1), JoinedRowFold.fold(JoinedRowFold.Quantifier.ANY, condition, ctx, 3));
-        assertEquals(bits(1), JoinedRowFold.fold(JoinedRowFold.Quantifier.ALL, condition, ctx, 3));
-        assertEquals(bits(0, 2),
-                JoinedRowFold.fold(JoinedRowFold.Quantifier.NONE, condition, ctx, 3));
+        assertEquals(bits(0, 1),
+                JoinedRowFold.fold(JoinedRowFold.Quantifier.ANY, condition, ctx, 3),
+                "k1's two rows");
+        assertEquals(bits(), JoinedRowFold.fold(JoinedRowFold.Quantifier.ALL, condition, ctx, 3),
+                "k1 has a false row, k2's only row is false");
+        assertEquals(bits(2), JoinedRowFold.fold(JoinedRowFold.Quantifier.NONE, condition, ctx, 3),
+                "k2 alone has no true row");
+    }
+
+
+    @Test
+    @DisplayName("a quantifier nested inside joined(…) is refused by the compiler, as at stage A")
+    void aNestedQuantifierIsRefusedByTheCompilerToo()
+    {
+        // review C8 L2: compileJoinedQuantifier's javadoc promised the refusal stage A makes
+        // (P4) — the compiler now makes it too, so a rule reaching it without stage A (an
+        // embedder's direct compile) cannot fold a quantifier over a quantifier
+        Expr nested = CheckExpressionParser.parse("any(joined(none(joined(J.S == \"b\"))))");
+        ExpressionException e = assertThrows(ExpressionException.class,
+                () -> ExprCompiler.compile(nested));
+        assertTrue(e.getMessage().contains("nest"), e.getMessage());
+        assertTrue(e.getMessage().contains("none"), e.getMessage());
+        // the control: one quantifier compiles
+        assertNotNull(
+                ExprCompiler.compile(CheckExpressionParser.parse("any(joined(J.S == \"b\"))")));
     }
 
 
