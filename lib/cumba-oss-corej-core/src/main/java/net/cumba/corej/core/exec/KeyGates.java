@@ -179,8 +179,9 @@ final class KeyGates
 
 
     /**
-     * The ordinary entry named {@code qualifier} (exactly) declared before {@code md}, or
-     * {@code null}.
+     * The ordinary entry named {@code qualifier} declared before {@code md}, or {@code null} — the
+     * name matched ignoring letter case (P-19, §3.2: {@code dm.RPATHCD} names the {@code DM} entry,
+     * as the loader's D-SRC already reads it), so a loaded rule never reaches the bypass refusal.
      */
     private static @Nullable MatchDataset earlierEntryNamed(List<MatchDataset> entries,
             MatchDataset md, String qualifier)
@@ -192,7 +193,7 @@ final class KeyGates
                 return null;
             }
             if (e != null && JoinKeyTypes.governedByKeyTypeCheck(e)
-                    && qualifier.equals(e.getName()))
+                    && qualifier.equalsIgnoreCase(e.getName()))
             {
                 return e;
             }

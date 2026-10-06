@@ -458,6 +458,23 @@ class QualifiedMatchKeyTest
         assertTrue(ex.getMessage().contains("DM.RPATHCD"), ex.getMessage());
     }
 
+
+    /**
+     * P-19 (§3.2): a dataset name is case-insensitive, so {@code dm.RPATHCD} names the earlier
+     * {@code DM} entry exactly as {@code DM.RPATHCD} does — the loader's D-SRC already matches it
+     * ignoring case; the run-time source lookup must too, or the loaded rule meets an
+     * {@link IllegalStateException} (a generic ERROR) on every execution.
+     */
+    @Test
+    void aLowerCaseQualifierNamesTheEarlierEntryIgnoringCase()
+    {
+        MatchDataset lower = md(
+                "{\"Name\":\"TP\",\"Keys\":[\"dm.RPATHCD\",\"RPHASE\"],\"Join_Type\":\"inner\"}");
+        MergedEvaluation.Built built = view(bw("S1/P1", "S2/P1"), List.of(dmEntry(), lower),
+                resolver(dm("S1/A", "S2/B"), tp("A/1/P1/0", "A/2/P1/0", "B/1/P1/1")));
+        assertEquals(List.of("S1:A->A/1", "S1:A->A/2", "S2:B->B/1"), bindings(built));
+    }
+
     // -----------------------------------------------------------------------
     // Through RuleRunner — the loaded rule, its declarations and the ERROR channel
     // -----------------------------------------------------------------------
