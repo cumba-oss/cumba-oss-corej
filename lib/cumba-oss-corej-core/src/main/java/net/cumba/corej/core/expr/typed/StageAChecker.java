@@ -367,10 +367,14 @@ public final class StageAChecker
             checker.checkBindingOrder();
             checker.checkListFunctionReads(roots);
             checker.checkMatchDatasets(roots.stream().map(Root::expr).toList());
-            // the bindings' aggregates count over the same view as the Check's (once, here: the
-            // Precondition pass drops the bindings' findings)
-            checker.checkAggregatesOverRepeatedRows(
-                    rule.bindingOrder().stream().map(CompiledBinding::expression).toList());
+            // the bindings' aggregates count over the same view as the Check's — ONE walk over
+            // the Check roots, the Precondition and the bindings, so an operand both a binding
+            // and the Check read is reported once (PLAN-merge-followups item 4); here, not in
+            // the Precondition pass, which drops the bindings' findings
+            List<Expr> aggregateRoots = new ArrayList<>(roots.size() + rule.bindingOrder().size());
+            roots.forEach(r -> aggregateRoots.add(r.expr()));
+            rule.bindingOrder().forEach(b -> aggregateRoots.add(b.expression()));
+            checker.checkAggregatesOverRepeatedRows(aggregateRoots);
             checker.fileUnclaimedBindingElements();
         }
         catch (RuntimeException ex)
@@ -2346,7 +2350,8 @@ public final class StageAChecker
         {
             return;
         }
-        checkAggregatesOverRepeatedRows(roots);
+        // (the OD-6 gap lint, checkAggregatesOverRepeatedRows, runs once from check() over the
+        // Check roots AND the bindings — not here, which would report a shared operand twice)
         // ⭐ Phase 6b (D110g(iii) — the ambiguity load-error D88b routed to the binding model):
         // the merged view keys its parts' lookups BY NAME (EvaluationContext.joins), so a rule
         // declaring two entries under one Name silently reads only the surviving entry — with the
@@ -2396,6 +2401,9 @@ public final class StageAChecker
      * reference, a {@code ${…}} splice or a {@code *} / {@code **} pattern — the operands OD-6
      * never judges primary-only, so the operator counts merged rows. A call carrying
      * {@code domain=} reads another dataset and is not judged; its operands are not this view's.
+     * One finding per (operator, operand) over all of {@code roots} — the Check roots, the
+     * Precondition and the bindings in one call — so an operand read in both a binding and the
+     * Check is reported once ({@code PLAN-merge-followups} item 4).
      */
     private void checkAggregatesOverRepeatedRows(java.util.Collection<Expr> roots)
     {

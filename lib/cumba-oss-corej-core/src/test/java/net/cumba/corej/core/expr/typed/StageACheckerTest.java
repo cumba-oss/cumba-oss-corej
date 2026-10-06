@@ -2032,4 +2032,34 @@ class StageACheckerTest
         // and nothing without a join at all
         assertEquals(0, repeatedRowsLints(check(new Rule(), tripping.get(1))));
     }
+
+
+    /**
+     * {@code PLAN-merge-followups} item 4: the lint walked the Check roots and the bindings in two
+     * calls, each with its own {@code reported} set, so a {@code $} operand a counting operator
+     * reads in BOTH a binding and the Check was reported twice. One walk over the union reports it
+     * once; two different operands are still two findings (the planted control), and a binding-only
+     * operand is still found.
+     */
+    @Test
+    void anOperandReadByBothABindingAndTheCheckIsReportedOnce()
+    {
+        String counting = "record_count(group=[USUBJID], filter=($flag == \"Y\"))";
+        Rule shared = ruleJoining("CM", "left", "USUBJID");
+        shared.setCompiledBindings(List.of(binding("$n", counting)));
+        StageAReport report = check(shared, counting + " > 1");
+        assertEquals(1, repeatedRowsLints(report), String.valueOf(report.findings()));
+
+        // control: two different operands stay two findings
+        Rule distinct = ruleJoining("CM", "left", "USUBJID");
+        distinct.setCompiledBindings(
+                List.of(binding("$n", "record_count(group=[USUBJID], filter=($other == \"Y\"))")));
+        StageAReport two = check(distinct, counting + " > 1");
+        assertEquals(2, repeatedRowsLints(two), String.valueOf(two.findings()));
+
+        // and a binding-only operand is still reported
+        Rule bindingOnly = ruleJoining("CM", "left", "USUBJID");
+        bindingOnly.setCompiledBindings(List.of(binding("$n", counting)));
+        assertEquals(1, repeatedRowsLints(check(bindingOnly, "$n > 1")));
+    }
 }
