@@ -89,6 +89,56 @@ class OutputVariableListingTest
 
 
     @Test
+    void anAuthoredNameThatIsAlsoExcludedShowsOnlyAsExcluded() throws IOException
+    {
+        // P3: X and !X together is a load error (the loader refuses "both authored and
+        // excluded"), so no derivation ran; the effective list applies the exclusion, and a
+        // surface that marks the effective list and strikes the excluded one shows X only as !X.
+        Rule rule = load(",\"Output_Variables\":[\"AESEV\",\"!AESEV\"]");
+        assertTrue(rule.getLoadError() != null, "premise: X with !X is refused at load");
+        OutputVariableListing l = OutputVariableListing.of(rule);
+        assertFalse(l.derived());
+        assertEquals(List.of("AESEV"), l.excluded());
+        assertFalse(l.effective().contains("AESEV"), "excluded wins over the authored include");
+    }
+
+
+    @Test
+    void aHandBuiltRuleDerivesOnFirstRead()
+    {
+        Rule rule = new Rule();
+        Outcome outcome = new Outcome();
+        outcome.setOutputVariables(List.of("USUBJID", "!AESER"));
+        rule.setOutcome(outcome);
+        OutputVariableListing l = OutputVariableListing.of(rule);
+        assertTrue(l.derived(), "no load error: the derivation runs on first read");
+        assertEquals(List.of("USUBJID"), l.effective());
+        assertEquals(List.of("USUBJID"), l.authored());
+        assertEquals(List.of("AESER"), l.excluded());
+        assertEquals(l, OutputVariableListing.of(rule), "memoised: a second read is equal");
+    }
+
+
+    @Test
+    void thePerVariableHoistLeadsButIsNotAuthored() throws IOException
+    {
+        // D7 / R-9.7: on the per-variable path variable_name is hoisted to index 0 by the
+        // deriver; it is derived, so it is not marked as authored.
+        Map<String, Rule> rules = RulePackageLoader
+                .loadFromString(PACKAGE_HEAD.replace("AESEV == \\\"MILD\\\" and AESER == \\\"Y\\\"",
+                        "varname() == \\\"AETERM\\\"") + ",\"Output_Variables\":[\"AETERM\"]}}}}")
+                .getRules();
+        Rule rule = rules.get("CDISC-XX0001");
+        assertEquals(null, rule.getLoadError());
+        OutputVariableListing l = OutputVariableListing.of(rule);
+        assertEquals("variable_name", l.effective().getFirst(), "hoisted lead");
+        assertFalse(l.isAuthored("variable_name"));
+        assertTrue(l.isAuthored("AETERM"));
+        assertTrue(l.effective().contains("AETERM"));
+    }
+
+
+    @Test
     void theListsAreImmutableCopies()
     {
         java.util.ArrayList<String> src = new java.util.ArrayList<>(List.of("A"));

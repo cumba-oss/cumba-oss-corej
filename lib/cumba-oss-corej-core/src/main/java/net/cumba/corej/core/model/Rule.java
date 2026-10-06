@@ -1179,12 +1179,14 @@ public class Rule
      * The effective Output_Variables — the authored {@code Outcome.Output_Variables} plus every
      * entry {@link net.cumba.corej.core.exec.OutputVariableDeriver} could derive from the Check,
      * the bindings and the rule type (EC-37, {@code PLAN-auto-output-variables}). Populated only at
-     * runtime by {@code RulePackageLoader#deriveOutputVariables}; never serialised, so
-     * {@code /api/rules/full}, the XLSX export and every offline tool keep showing exactly what the
-     * author wrote (which, since the 2026-10-04 sweep, is only what the engine cannot derive).
-     * {@code null} until the derivation ran, and permanently for a rule that failed to load —
-     * consumers read {@link #effectiveOutputVariablesOrAuthored()}, which derives on first read for
-     * the former and falls back to the authored list only for the latter.
+     * runtime by {@code RulePackageLoader#deriveOutputVariables}; never serialised, so a serialised
+     * rule — including the packaged release corpus ({@code rules-*.json}), which stays
+     * authored-only by design because the engine derives at load — shows the authored list (which,
+     * since the 2026-10-04 sweep, is only what the engine cannot derive); surfaces that show a
+     * rule's outputs read {@link OutputVariableListing}. {@code null} until the derivation ran, and
+     * permanently for a rule that failed to load — consumers read
+     * {@link #effectiveOutputVariablesOrAuthored()}, which derives on first read for the former and
+     * falls back to the authored list only for the latter.
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
     @lombok.EqualsAndHashCode.Exclude
