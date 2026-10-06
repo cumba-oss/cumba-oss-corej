@@ -1155,10 +1155,13 @@ public final class RuleRunner
      *
      * <p>
      * <b>The unit on an expanded table</b> (P-5): the producing site stamps today's unit plus the
-     * merged row it was read on ({@link Violation.Unit.Row#onMergedRow}) — a weaker level's finding
-     * on a <em>different related record</em> of a primary row a stricter level claimed is a
-     * different finding and survives; the same merged row is the same unit and is claimed. Never
-     * the level, never the whole {@code values} map (grouped anchors differ per level, see
+     * merged-cell part of the finding's §3.8 identity ({@link Violation.Unit.Row#onMerged},
+     * {@link FindingIdentity.Key#cells()}) — a weaker level's finding that prints a <em>different
+     * related record</em> of a primary row a stricter level claimed is a different finding and
+     * survives; one that prints the same thing is the same unit and is claimed, whichever merged
+     * row each level fired on first (T2 review MED-1: the claiming merged row made the count depend
+     * on the related records' order, and widening a weaker level lowered it). Never the level,
+     * never the whole {@code values} map (grouped anchors differ per level, see
      * {@link FindingUnit}).
      * </p>
      *
@@ -1230,7 +1233,8 @@ public final class RuleRunner
             // accumulated into `claimedHere` and folded in only once the level completes. A
             // level's own violations are distinct findings by construction — the emit sites
             // already collapsed equal findings of an expanded table (§3.8, W3e), and the ones left
-            // carry distinct units (an expanded row's unit names its merged row, P-5). Pinned by
+            // carry distinct units (an expanded row's unit names its identity's merged cells, P-5,
+            // T2 MED-1 — theCrossLevelUnitIsTheFindingIdentityNotTheClaimingRow). Pinned by
             // RuleCheckLevelsExecutionTest's oneLevelReportsEachDistinctFindingOnce,
             // aWeakerRungStillDoesNotReReportAStricterRungsUnit,
             // expandedJoinRowsAreOneFindingAtTheClaimingRungAndTheWeakerRungAddsNone and
@@ -1698,29 +1702,32 @@ public final class RuleRunner
             int visited = 0;
             // §3.8 (MET #22, P-18): on a table whose rows repeat a primary record, a finding equal
             // to one already stored is the same finding — claimed by identity before anything else
-            // is built, dropped uncounted; null (nothing claimed) on every other table.
+            // is built (the values included: the identity decides them, LOW-1), dropped
+            // uncounted; null (nothing claimed) on every other table.
             FindingIdentity identity = RealRows.ofRepeating(ctx.getTable()) == null ? null
                     : FindingIdentity.of(ctx, outputVars);
             for (int r = violationBits.nextSetBit(0); r >= 0
                     && violations.wantsMore(); r = violationBits.nextSetBit(r + 1))
             {
                 visited++;
-                Map<String, String> values = extractOutputValues(ctx.getTable(), ctx, outputVars,
-                        r);
                 long realRow = ctx.getTable().getRealRowIndex(r);
-                if (identity != null
-                        && !violations.claim(identity.at(ctx.getTable(), r, realRow, null, values)))
+                FindingIdentity.Key key = identity == null ? null
+                        : identity.at(ctx.getTable(), r, realRow, null);
+                if (key != null && !violations.claim(key))
                 {
                     continue;
                 }
+                Map<String, String> values = extractOutputValues(ctx.getTable(), ctx, outputVars,
+                        r);
                 RowIdentity ri = readRowIdentity(ctx.getTable(), ctx.getDomainName(), r);
-                long mergedRow = identity != null ? r : Violation.Unit.NO_MERGED_ROW;
+                // P-5 (MED-1): the cross-level unit carries the identity's merged cells, never r
+                List<Object> merged = key == null ? null : key.cells();
                 // A RECORD-level site (Unit.Row): the raw columns' cells are the finding's values
                 // and nothing is listed by name (V1; the shared empty list, no per-row allocation).
                 violations.store(new Violation(realRow, values, ri.usubjid(), ri.seq(),
                         RecordKeyResolver.readRowKeys(ctx.getTable(), keySpec, r), null,
-                        stamp(ctx, () -> new Violation.Unit.Row(realRow).onMergedRow(mergedRow)),
-                        null, List.of()));
+                        stamp(ctx, () -> new Violation.Unit.Row(realRow).onMerged(merged)), null,
+                        List.of()));
             }
             // P-6: past the cap the unvisited rows are counted as they are — an upper bound on an
             // expanded table (duplicates included), exact below the cap.
@@ -3375,6 +3382,18 @@ public final class RuleRunner
                 && violations.wantsMore(); r = rowBits.nextSetBit(r + 1))
         {
             visited++;
+            // The stamp carries the (column, row) pair even when the author's Output_Variables
+            // exclude variable_name — without it, two columns firing on one row materialise the
+            // same values map and first-claim would collapse them into one unit. The identity is
+            // claimed before the values are projected (LOW-1: a duplicate costs no projection;
+            // the cursor's column is a primary column, so the real row decides its cell).
+            long realRow = ctx.getTable().getRealRowIndex(r);
+            FindingIdentity.Key key = identity == null ? null
+                    : identity.at(ctx.getTable(), r, realRow, colMeta.getName());
+            if (key != null && !violations.claim(key))
+            {
+                continue;
+            }
             Map<String, String> values = new LinkedHashMap<>();
             if (!outputVars.isEmpty())
             {
@@ -3446,21 +3465,12 @@ public final class RuleRunner
                 }
                 values.keySet().removeAll(excludedOutputVars); // E-2, as in buildVariableViolation
             }
-            // The stamp carries the (column, row) pair even when the author's Output_Variables
-            // exclude variable_name — without it, two columns firing on one row materialise the
-            // same values map and first-claim would collapse them into one unit.
-            long realRow = ctx.getTable().getRealRowIndex(r);
-            if (identity != null && !violations
-                    .claim(identity.at(ctx.getTable(), r, realRow, colMeta.getName(), values)))
-            {
-                continue;
-            }
-            long mergedRow = identity != null ? r : Violation.Unit.NO_MERGED_ROW;
+            // P-5 (MED-1): the cross-level unit carries the identity's merged cells, never r
+            List<Object> merged = key == null ? null : key.cells();
             // A RECORD-level site (a (column, row) unit WITH a row): cells are values, nothing is
             // listed by name (V1 — the shared empty list, no per-row allocation).
-            violations.store(new Violation(realRow, values, null, null, Map.of(), null,
-                    stamp(ctx, () -> new Violation.Unit.Column(colMeta.getName(), realRow)
-                            .onMergedRow(mergedRow)),
+            violations.store(new Violation(realRow, values, null, null, Map.of(), null, stamp(ctx,
+                    () -> new Violation.Unit.Column(colMeta.getName(), realRow).onMerged(merged)),
                     null, List.of()));
         }
         // P-6: an upper bound past the cap on an expanded table (see the row path).

@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import net.cumba.corej.core.expr.eval.TypedValue;
 import net.cumba.corej.core.expr.eval.Vector;
 import net.cumba.corej.core.model.MatchDataset;
@@ -18,8 +17,11 @@ import org.jspecify.annotations.Nullable;
  * The de-duplication identity of a <b>record-level</b> finding on an expanded table
  * ({@code PLAN-merged-evaluation-table} §3.8, MET #22, P-4, P-18): two findings of one (rule,
  * dataset, level) execution are <b>one</b> when equal in their unit (the real row; + the column of
- * a per-(column, row) finding), the full {@code values} map (its key set included) and the
- * <em>value identity</em> of every entry that can differ between two rows of one primary record.
+ * a per-(column, row) finding) and the <em>value identity</em> of every entry that can differ
+ * between two rows of one primary record. Those two decide the whole {@code values} map, its key
+ * set included (an entry the row's merge does not carry is the {@code ABSENT} identity), so the key
+ * is built <b>before</b> the values are projected and a duplicate costs no projection (T2 review
+ * LOW-1).
  *
  * <p>
  * <b>Which entries can differ.</b> Two merged rows of one real row read the same primary record, so
@@ -32,6 +34,13 @@ import org.jspecify.annotations.Nullable;
  * site — a missing is its {@link MissingValue} (so {@code MIS} and {@code MIS_A} are two values,
  * D11), a present value its text, a collection the collection itself — never the rendered string,
  * which makes a missing and a literal {@code "."} equal (P-4, P-18).
+ * </p>
+ *
+ * <p>
+ * &#9733; <b>Across levels too</b> (T2 review MED-1): the merged-cell part of the key,
+ * {@link Key#cells()}, is the merged-part discriminator of the finding's cross-level unit
+ * ({@code Violation.Unit.Row#merged}), so two levels' findings that print the same thing are one
+ * unit whichever merged row each level fired on first.
  * </p>
  *
  * <p>
@@ -117,14 +126,11 @@ final class FindingIdentity
      *            the real row
      * @param column
      *            the column of a per-(column, row) finding, else {@code null}
-     * @param values
-     *            the finding's values map
      * @param cells
      *            the identities of the merged entries, in effective order, or {@code null} when the
      *            projection reads none
      */
-    private record Key(long realRow, @Nullable String column, Map<String, String> values,
-            @Nullable List<Object> cells)
+    record Key(long realRow, @Nullable String column, @Nullable List<Object> cells)
     {
     }
 
@@ -204,23 +210,20 @@ final class FindingIdentity
      *            its real row
      * @param column
      *            the column of a per-(column, row) finding, else {@code null}
-     * @param values
-     *            the finding's values map
      * @return the key
      */
-    Object at(IDataTable table, int row, long realRow, @Nullable String column,
-            Map<String, String> values)
+    Key at(IDataTable table, int row, long realRow, @Nullable String column)
     {
         if (entries.length == 0)
         {
-            return new Key(realRow, column, values, null);
+            return new Key(realRow, column, null);
         }
         Object[] cells = new Object[entries.length];
         for (int i = 0; i < cells.length; i++)
         {
             cells[i] = entries[i].identityAt(table, row);
         }
-        return new Key(realRow, column, values, Arrays.asList(cells));
+        return new Key(realRow, column, Arrays.asList(cells));
     }
 
 

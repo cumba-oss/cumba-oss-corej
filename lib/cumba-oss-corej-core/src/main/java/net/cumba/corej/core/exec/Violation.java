@@ -198,33 +198,33 @@ public class Violation
         {
         }
 
-        /**
-         * The {@code mergedRow} of a unit read on a table whose rows are distinct records — every
-         * unit of a non-expanded table carries it, so its stamps are exactly the pre-W3e ones.
-         */
-        long NO_MERGED_ROW = -1L;
 
         /**
          * One data row, identified by its real (uncollapsed) row index — and, on an expanded table
-         * only, by the merged row it was read on (P-5).
+         * only, by the cells of the merged entries its finding reads (P-5).
          *
          * <p>
          * &#9733; <b>The merged-part discriminator</b> ({@code PLAN-merged-evaluation-table} §3.8,
          * P-5, MET #22): on a table whose one-to-many merge gives a primary record several rows,
          * those rows are the record with <em>different related records</em>, and a weaker level's
          * finding on a different related record is a different finding — so first-claim must not
-         * let a stricter level's claim on one of them suppress it. The merged row is that
-         * discriminator: within one execution every level evaluates the same merged table, and a
-         * merged row is exactly one combination of part rows. It is {@link #NO_MERGED_ROW} on every
-         * other table, never the level and never the {@code values} map.
+         * let a stricter level's claim on one of them suppress it. The discriminator is the
+         * merged-cell part of the finding's §3.8 identity ({@code FindingIdentity}): the value
+         * identities of the merged entries its {@code Output_Variables} read, in effective order —
+         * never the merged row that happened to claim it first (T2 review MED-1: that made the
+         * count depend on the related records' order, and widening a weaker level lowered it). Two
+         * findings that print the same thing are one unit across levels exactly as within one. It
+         * is {@code null} on every other table, and on an expanded table whose findings read no
+         * merged entry (the real row then decides everything the finding prints); never the level
+         * and never the {@code values} map.
          * </p>
          *
          * @param row
          *            the real row index
-         * @param mergedRow
-         *            the merged row on an expanded table, else {@link #NO_MERGED_ROW}
+         * @param merged
+         *            the merged entries' cell identities on an expanded table, else {@code null}
          */
-        record Row(long row, long mergedRow) implements Unit
+        record Row(long row, @Nullable List<Object> merged) implements Unit
         {
 
             /**
@@ -235,21 +235,21 @@ public class Violation
              */
             public Row(long row)
             {
-                this(row, NO_MERGED_ROW);
+                this(row, null);
             }
 
 
             /**
-             * This unit read on merged row {@code aMergedRow} ({@link #NO_MERGED_ROW} keeps it as
-             * it is).
+             * This unit discriminated by the merged entries' cells ({@code null} keeps it as it
+             * is).
              *
-             * @param aMergedRow
-             *            the merged row, or {@link #NO_MERGED_ROW}
+             * @param aMerged
+             *            the merged entries' cell identities, or {@code null}
              * @return the discriminated unit
              */
-            public Row onMergedRow(long aMergedRow)
+            public Row onMerged(@Nullable List<Object> aMerged)
             {
-                return aMergedRow == mergedRow ? this : new Row(row, aMergedRow);
+                return aMerged == null ? this : new Row(row, aMerged);
             }
         }
 
@@ -264,11 +264,11 @@ public class Violation
          *            the column (or Define ItemDef) name
          * @param row
          *            the real row index, or the site's row-key convention where no row exists
-         * @param mergedRow
-         *            the merged row of a per-(column, row) finding on an expanded table (P-5, see
-         *            {@link Row}), else {@link #NO_MERGED_ROW}
+         * @param merged
+         *            the merged entries' cell identities of a per-(column, row) finding on an
+         *            expanded table (P-5, see {@link Row}), else {@code null}
          */
-        record Column(String column, long row, long mergedRow) implements Unit
+        record Column(String column, long row, @Nullable List<Object> merged) implements Unit
         {
 
             /**
@@ -282,21 +282,21 @@ public class Violation
              */
             public Column(String column, long row)
             {
-                this(column, row, NO_MERGED_ROW);
+                this(column, row, null);
             }
 
 
             /**
-             * This unit read on merged row {@code aMergedRow} ({@link #NO_MERGED_ROW} keeps it as
-             * it is).
+             * This unit discriminated by the merged entries' cells ({@code null} keeps it as it
+             * is).
              *
-             * @param aMergedRow
-             *            the merged row, or {@link #NO_MERGED_ROW}
+             * @param aMerged
+             *            the merged entries' cell identities, or {@code null}
              * @return the discriminated unit
              */
-            public Column onMergedRow(long aMergedRow)
+            public Column onMerged(@Nullable List<Object> aMerged)
             {
-                return aMergedRow == mergedRow ? this : new Column(column, row, aMergedRow);
+                return aMerged == null ? this : new Column(column, row, aMerged);
             }
         }
 

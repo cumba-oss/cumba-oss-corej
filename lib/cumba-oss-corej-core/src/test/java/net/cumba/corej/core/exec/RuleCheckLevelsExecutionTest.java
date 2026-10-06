@@ -588,6 +588,65 @@ class RuleCheckLevelsExecutionTest
     }
 
 
+    /**
+     * T2 review MED-1 ({@code PLAN-merged-evaluation-table} §3.8, P-5): the cross-level unit is the
+     * finding's §3.8 identity — the real row and the merged entries' cells — never the first merged
+     * row that claimed it. With {@code Output_Variables [USUBJID]} (the Check's operands excluded,
+     * E-2) the two AE records of P1 print the same thing, so ERROR (firing on both) and INFO
+     * (firing on the second only) report ONE finding. RED before: the unit carried the claiming
+     * merged row, so the answer depended on the related records' order (2 vs 1) and widening INFO
+     * lowered the count (2 → 1).
+     */
+    @Test
+    @DisplayName("P-5: the cross-level unit is the finding's identity, not the claiming merged row")
+    void theCrossLevelUnitIsTheFindingIdentityNotTheClaimingRow() throws IOException
+    {
+        String narrow = """
+                Check:
+                  ERROR:
+                    expression: >-
+                      AE.AESEQ != ""
+                  INFO:
+                    expression: >-
+                      AE.AESDTH == "N"
+                """;
+        String widened = """
+                Check:
+                  ERROR:
+                    expression: >-
+                      AE.AESEQ != ""
+                  INFO:
+                    expression: >-
+                      AE.AESDTH == "N" or AE.AESDTH == "Y"
+                """;
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "P1", "P1").str("AESEQ", "1", "2")
+                .str("AESDTH", "Y", "N").build();
+        IDataTable swapped = RealTables.of("AE").str("USUBJID", "P1", "P1").str("AESEQ", "2", "1")
+                .str("AESDTH", "N", "Y").build();
+        record Case(String name, String check, IDataTable child)
+        {
+        }
+        for (Case c : List.of(new Case("as authored", narrow, ae),
+                new Case("related records swapped", narrow, swapped),
+                new Case("INFO widened", widened, ae)))
+        {
+            Rule rule = joinedRule(c.check());
+            Outcome outcome = rule.getOutcome();
+            assertNotNull(outcome);
+            // the Check's operands excluded (E-2): the findings print [USUBJID] only
+            outcome.setOutputVariables(List.of("USUBJID", "!AE.AESEQ", "!AE.AESDTH"));
+            RuleExecutionResult r = RuleRunnerCalls.execute(rule, joinPrimary(),
+                    name -> "AE".equals(name) ? c.child() : null, "DM", null, null, null,
+                    Integer.MAX_VALUE, null, null, null, Set.of(), Set.of(), Severity.INFO);
+            assertEquals(List.of(Severity.ERROR),
+                    r.getViolations().stream().map(Violation::getLevel).toList(),
+                    c.name() + ": ERROR claims P1's one finding and INFO re-reports nothing: "
+                            + r.getViolations().stream().map(Violation::getValues).toList());
+            assertEquals(1, r.getViolationCount(), c.name());
+        }
+    }
+
+
     /** INFO-stamped findings sitting on {@code aRow}. */
     private static long infoOnRow(RuleExecutionResult aResult, long aRow)
     {
