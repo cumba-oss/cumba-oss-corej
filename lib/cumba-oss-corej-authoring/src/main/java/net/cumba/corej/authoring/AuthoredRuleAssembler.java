@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -17,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import net.cumba.corej.authoring.RuleDiagnostic.Document;
 import net.cumba.corej.authoring.RuleDiagnostic.Severity;
 import net.cumba.corej.authoring.RuleDiagnostic.TextRange;
 import net.cumba.corej.authoring.RuleDiagnostic.YamlPath;
@@ -65,6 +67,14 @@ public final class AuthoredRuleAssembler
 
     private static final ObjectMapper YAML = new ObjectMapper(new YAMLFactory());
 
+    /**
+     * The tree reader every authored file goes through — the editor's {@link #assemble} and the
+     * corpus tools' {@link #readYamlTree} alike: a token after the first document's root is an
+     * error, not a silently dropped second document (pack-2 review 8a-A F4).
+     */
+    private static final ObjectReader YAML_TREE = YAML.readerFor(JsonNode.class)
+            .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+
     private static final ObjectMapper JSON = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT);
 
@@ -91,6 +101,20 @@ public final class AuthoredRuleAssembler
     private static final String REFERENCES = "References";
 
     private static final String CITATIONS = "Citations";
+
+    private static final String ORGANIZATION = "Organization";
+
+    /** The code of a check (or docs sidecar) that holds a second YAML document. */
+    public static final String MULTI_DOCUMENT = "MULTI_DOCUMENT";
+
+    /** The code of a {@code Standards} block {@link #buildAuthorities} cannot join. */
+    public static final String STANDARDS_SHAPE = "STANDARDS_SHAPE";
+
+    /** The code of a load failure whose root cause is an expression the parser refused. */
+    public static final String EXPRESSION_SYNTAX = "EXPRESSION_SYNTAX";
+
+    /** The code of a docs sidecar whose {@code Core} names another rule. */
+    public static final String DOC_CORE_MISMATCH = "DOC_CORE_MISMATCH";
 
     private AuthoredRuleAssembler()
     {
@@ -124,8 +148,13 @@ public final class AuthoredRuleAssembler
         Objects.requireNonNull(aPackageStandards, "package standards");
         List<RuleDiagnostic> diagnostics = new ArrayList<>();
         YamlLocations locations = YamlLocations.index(aCheckYaml);
+        if (locations.secondDocument() != null)
+        {
+            diagnostics.add(multiDocument("check", locations, Document.CHECK));
+            return new AssembledRule(UNKNOWN_ID, null, null, null, diagnostics, false);
+        }
 
-        JsonNode check = readYaml(aCheckYaml, "YAML_SYNTAX", "check", diagnostics);
+        JsonNode check = readYaml(aCheckYaml, "YAML_SYNTAX", "check", diagnostics, Document.CHECK);
         if (check == null || !check.isObject())
         {
             if (check != null)
@@ -143,8 +172,7 @@ public final class AuthoredRuleAssembler
                     "Core.Id is missing", path, locations.rangeOf(path)));
             coreId = UNKNOWN_ID;
         }
-        JsonNode doc = aDocYaml == null ? null
-                : readYaml(aDocYaml, "DOC_YAML_SYNTAX", "docs", diagnostics);
+        JsonNode doc = readDoc(aDocYaml, coreId, diagnostics);
 
         boolean parked = isParked(check);
         if (parked)
@@ -170,6 +198,15 @@ public final class AuthoredRuleAssembler
                         String.valueOf(e.getMessage()), path, locations.rangeOf(path)));
             }
         }
+        ShapeProblem shape = standardsShapeProblem(check);
+        if (shape != null)
+        {
+            // buildAuthorities cannot join this shape — no node rather than an NPE / CCE out of a
+            // method that never throws for a defect in the rule (review 8a-A F2)
+            diagnostics.add(new RuleDiagnostic(STANDARDS_SHAPE, Severity.ERROR, shape.message(),
+                    shape.path(), locations.rangeOf(shape.path())));
+            return new AssembledRule(coreId, null, null, null, diagnostics, parked);
+        }
         ObjectNode canonical = assembleNode(check, doc);
         JsonNode packaged = packagedRuleNode(canonical, coreId);
 
@@ -178,8 +215,10 @@ public final class AuthoredRuleAssembler
         {
             try
             {
-                RulePackage pkg = RulePackageLoader
-                        .loadFromString(packageJson(packaged, coreId, aPackageStandards));
+                // DEBUG, not INFO: here one package is one edit, not one run (editor note)
+                RulePackage pkg = RulePackageLoader.loadFromString(
+                        packageJson(packaged, coreId, aPackageStandards),
+                        System.Logger.Level.DEBUG);
                 rule = pkg.getRules() == null ? null : pkg.getRules().get(coreId);
                 if (rule == null)
                 {
@@ -218,6 +257,11 @@ public final class AuthoredRuleAssembler
                 {
                     segments.add(ref.getFieldName());
                 }
+                else if (ref.getIndex() >= 0)
+                {
+                    // a sequence element (Bindings[2]): kept, so the path reaches its expression
+                    segments.add(Integer.toString(ref.getIndex()));
+                }
             }
             // rules -> <id> -> <field> ...: the authored path starts after the rule's key.
             int idAt = segments.indexOf(aCoreId);
@@ -237,8 +281,14 @@ public final class AuthoredRuleAssembler
             range = aLocations.rangeOf(path);
             if (root instanceof ExpressionException ee && ee.getPosition() >= 0)
             {
-                // The expression leaf is `<path>/expression`; a level-keyed Check nests one deeper.
-                YamlLocations.ValueLocation value = aLocations.valueOf(path.child("expression"));
+                // The expression leaf is `<path>/expression` (a level-keyed Check nests one
+                // deeper) — or the path itself when the reference chain already ends there. The
+                // value index maps the offset in every scalar style, or answers null and the key's
+                // range stands (review 8a-A F1).
+                List<String> segs = path.segments();
+                YamlPath leaf = !segs.isEmpty() && "expression".equals(segs.getLast()) ? path
+                        : path.child("expression");
+                YamlLocations.ValueLocation value = aLocations.valueOf(leaf);
                 TextRange at = value == null ? null : value.rangeAt(ee.getPosition());
                 if (at != null)
                 {
@@ -249,17 +299,18 @@ public final class AuthoredRuleAssembler
         String message = root == aFailure || root.getMessage() == null
                 ? String.valueOf(aFailure.getMessage())
                 : root.getMessage();
-        return new RuleDiagnostic("PACKAGE_LOAD", Severity.ERROR,
-                "the packaged rule could not be loaded: " + message, path, range);
+        return new RuleDiagnostic(
+                root instanceof ExpressionException ? EXPRESSION_SYNTAX : "PACKAGE_LOAD",
+                Severity.ERROR, "the packaged rule could not be loaded: " + message, path, range);
     }
 
 
     private static @Nullable JsonNode readYaml(String aText, String aCode, String aWhat,
-            List<RuleDiagnostic> aDiagnostics)
+            List<RuleDiagnostic> aDiagnostics, Document aDocument)
     {
         try
         {
-            return YAML.readTree(aText);
+            return YAML_TREE.readTree(aText);
         }
         catch (JacksonException e)
         {
@@ -268,8 +319,164 @@ public final class AuthoredRuleAssembler
                     : TextRange.at(loc.getLineNr(), loc.getColumnNr(), 1);
             aDiagnostics.add(new RuleDiagnostic(aCode, Severity.ERROR,
                     "the " + aWhat + " file is not valid YAML: " + e.getOriginalMessage(), null,
-                    range));
+                    range, aDocument));
             return null;
+        }
+    }
+
+
+    /**
+     * The docs sidecar, read as the corpus reads it: one document, and its {@code Core} naming this
+     * rule — the corpus joins a sidecar to the rule its {@code Core} names, so a mismatch would
+     * carry these citations elsewhere (editor note, review 8a-A).
+     */
+    private static @Nullable JsonNode readDoc(@Nullable String aDocYaml, String aCoreId,
+            List<RuleDiagnostic> aDiagnostics)
+    {
+        if (aDocYaml == null)
+        {
+            return null;
+        }
+        YamlLocations docLocations = YamlLocations.index(aDocYaml);
+        if (docLocations.secondDocument() != null)
+        {
+            aDiagnostics.add(multiDocument("docs", docLocations, Document.DOCS));
+            return null;
+        }
+        JsonNode doc = readYaml(aDocYaml, "DOC_YAML_SYNTAX", "docs", aDiagnostics, Document.DOCS);
+        if (doc != null && !UNKNOWN_ID.equals(aCoreId))
+        {
+            String docCore = textOrNull(doc.get("Core"));
+            if (!aCoreId.equals(docCore))
+            {
+                YamlPath core = YamlPath.of("Core");
+                aDiagnostics.add(new RuleDiagnostic(DOC_CORE_MISMATCH, Severity.ERROR,
+                        "the docs sidecar's Core is "
+                                + (docCore == null ? "missing" : "\"" + docCore + "\"")
+                                + ", not this rule's " + aCoreId
+                                + " — the corpus joins a sidecar to the rule its Core names",
+                        core, docLocations.rangeOf(core), Document.DOCS));
+            }
+        }
+        return doc;
+    }
+
+
+    private static RuleDiagnostic multiDocument(String aWhat, YamlLocations aLocations,
+            Document aDocument)
+    {
+        return new RuleDiagnostic(MULTI_DOCUMENT, Severity.ERROR, "the " + aWhat
+                + " file holds a second YAML document; only one is read, so everything after"
+                + " this marker would be dropped silently — remove it or move it to its own file",
+                null, aLocations.secondDocument(), aDocument);
+    }
+
+    /**
+     * Where and why a {@code Standards} block cannot be joined.
+     *
+     * @param path
+     *            the offending node's path
+     * @param message
+     *            what is wrong
+     */
+    record ShapeProblem(YamlPath path, String message)
+    {
+    }
+
+    /**
+     * The first shape in a check's {@code Standards} block that {@link #buildAuthorities} cannot
+     * join, or {@code null}: a sequence of authorities, each a mapping with an {@code Organization}
+     * and a sequence of standards, each a mapping whose optional {@code References} is a sequence
+     * of mappings. An absent (or null) block joins to no authorities, as it always did.
+     *
+     * @param aCheck
+     *            the check node
+     * @return the problem, or {@code null}
+     */
+    static @Nullable ShapeProblem standardsShapeProblem(JsonNode aCheck)
+    {
+        JsonNode standards = aCheck.get(STANDARDS);
+        if (standards == null || standards.isNull())
+        {
+            return null;
+        }
+        YamlPath top = YamlPath.of(STANDARDS);
+        if (!standards.isArray())
+        {
+            return new ShapeProblem(top, "Standards must be a sequence of authorities");
+        }
+        for (int i = 0; i < standards.size(); i++)
+        {
+            JsonNode authority = standards.get(i);
+            YamlPath at = top.child(Integer.toString(i));
+            if (!authority.isObject())
+            {
+                return new ShapeProblem(at, "Standards[" + i + "] must be a mapping with "
+                        + ORGANIZATION + " and " + STANDARDS);
+            }
+            if (!authority.has(ORGANIZATION))
+            {
+                return new ShapeProblem(at, "Standards[" + i + "] has no " + ORGANIZATION);
+            }
+            JsonNode stds = authority.get(STANDARDS);
+            if (stds == null || !stds.isArray())
+            {
+                return new ShapeProblem(stds == null ? at : at.child(STANDARDS),
+                        "Standards[" + i + "]." + STANDARDS + " must be a sequence of standards");
+            }
+            for (int j = 0; j < stds.size(); j++)
+            {
+                ShapeProblem p = standardShapeProblem(stds.get(j), at.child(STANDARDS),
+                        "Standards[" + i + "].Standards[" + j + "]", j);
+                if (p != null)
+                {
+                    return p;
+                }
+            }
+        }
+        return null;
+    }
+
+
+    private static @Nullable ShapeProblem standardShapeProblem(JsonNode aStd, YamlPath aParent,
+            String aLabel, int aIndex)
+    {
+        YamlPath at = aParent.child(Integer.toString(aIndex));
+        if (!aStd.isObject())
+        {
+            return new ShapeProblem(at, aLabel + " must be a mapping");
+        }
+        JsonNode refs = aStd.get(REFERENCES);
+        if (refs == null || refs.isNull())
+        {
+            return null;
+        }
+        if (!refs.isArray())
+        {
+            return new ShapeProblem(at.child(REFERENCES),
+                    aLabel + "." + REFERENCES + " must be a sequence");
+        }
+        for (int k = 0; k < refs.size(); k++)
+        {
+            if (!refs.get(k).isObject())
+            {
+                return new ShapeProblem(at.child(REFERENCES).child(Integer.toString(k)),
+                        aLabel + "." + REFERENCES + "[" + k + "] must be a mapping");
+            }
+        }
+        return null;
+    }
+
+
+    /** {@link #standardsShapeProblem} as the corpus gate's loud refusal. */
+    private static void requireStandardsShape(JsonNode aCheck)
+    {
+        ShapeProblem p = standardsShapeProblem(aCheck);
+        if (p != null)
+        {
+            throw new IllegalStateException(
+                    "Rule " + aCheck.path("Core").path("Id").asText(UNKNOWN_ID) + ": " + p.message()
+                            + " (at " + p.path() + ")");
         }
     }
 
@@ -327,11 +534,13 @@ public final class AuthoredRuleAssembler
      *            the docs sidecar node, or {@code null}
      * @return the canonical rule node
      * @throws IllegalStateException
-     *             when {@code Sensitivity} is absent and cannot be derived — a silent omission
-     *             would ship an unloadable rule
+     *             when the {@code Standards} block has a shape the join cannot read
+     *             ({@link #standardsShapeProblem}), or {@code Sensitivity} is absent and cannot be
+     *             derived — a silent omission would ship an unloadable rule
      */
     public static ObjectNode rebuildRule(JsonNode aCheck, @Nullable JsonNode aDoc)
     {
+        requireStandardsShape(aCheck);
         requireDerivableSensitivity(aCheck);
         return assembleNode(aCheck, aDoc);
     }
@@ -651,10 +860,13 @@ public final class AuthoredRuleAssembler
     }
 
 
-    /** The YAML reader the corpus tools share. */
+    /**
+     * The YAML reader the corpus tools share — strict about a second document, as {@link #assemble}
+     * is.
+     */
     public static JsonNode readYamlTree(String aText) throws JsonProcessingException
     {
-        return YAML.readTree(aText);
+        return YAML_TREE.readTree(aText);
     }
 
 

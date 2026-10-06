@@ -11,8 +11,15 @@ import net.cumba.corej.core.model.Rule;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Turns the engine's per-rule load channel — {@code Rule.loadError} and {@code Rule.loadWarning},
- * each a {@code "; "}-joined string — into {@link RuleDiagnostic}s, one per segment.
+ * Turns the engine's per-rule load channel — {@code Rule.getLoadErrors()} and
+ * {@code Rule.getLoadWarnings()}, the entries the loader filed one by one — into
+ * {@link RuleDiagnostic}s, one per entry.
+ *
+ * <p>
+ * ⛔ Never split the joined {@code Rule.getLoadError()} string: a single loader message may itself
+ * contain {@code "; "} ("an empty entry … matches nothing; remove it …"), and splitting cut it into
+ * a second, pathless diagnostic (pack-2 review 8a-A F3).
+ * </p>
  *
  * <p>
  * The loader writes its messages as {@code "[<rule id>] <Key>[.<Key>…]: <text>"} wherever it knows
@@ -30,8 +37,6 @@ public final class LoadErrorDiagnostics
 
     /** The diagnostic code of a load warning segment. */
     public static final String LOAD_WARNING = "LOAD_WARNING";
-
-    private static final String SEPARATOR = "; ";
 
     /**
      * {@code [id] } prefix, then the dotted key chain the message opens with — followed by a colon
@@ -58,22 +63,18 @@ public final class LoadErrorDiagnostics
     public static List<RuleDiagnostic> of(Rule aRule, @Nullable YamlLocations aLocations)
     {
         List<RuleDiagnostic> out = new ArrayList<>();
-        append(out, aRule.getLoadError(), LOAD_ERROR, Severity.ERROR, aLocations);
-        append(out, aRule.getLoadWarning(), LOAD_WARNING, Severity.WARNING, aLocations);
+        append(out, aRule.getLoadErrors(), LOAD_ERROR, Severity.ERROR, aLocations);
+        append(out, aRule.getLoadWarnings(), LOAD_WARNING, Severity.WARNING, aLocations);
         return out;
     }
 
 
-    private static void append(List<RuleDiagnostic> aOut, @Nullable String aJoined, String aCode,
+    private static void append(List<RuleDiagnostic> aOut, List<String> aEntries, String aCode,
             Severity aSeverity, @Nullable YamlLocations aLocations)
     {
-        if (aJoined == null || aJoined.isBlank())
+        for (String entry : aEntries)
         {
-            return;
-        }
-        for (String segment : aJoined.split(SEPARATOR, -1))
-        {
-            String text = segment.strip();
+            String text = entry.strip();
             if (text.isEmpty())
             {
                 continue;
@@ -89,7 +90,7 @@ public final class LoadErrorDiagnostics
      * The key path a load message names, or {@code null}.
      *
      * @param aMessage
-     *            one segment of the load channel
+     *            one entry of the load channel
      * @return the path when the message opens with a bound rule key chain
      */
     public static @Nullable YamlPath pathOf(String aMessage)

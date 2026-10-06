@@ -100,6 +100,50 @@ class CorpusIndexTest
     }
 
 
+    /**
+     * Review 8a-A F6: {@code withEquivalenceRegister} / {@code withParentage} copied the map but
+     * not its lists, so adding a register to a derived index appended to the lists the earlier
+     * index still held — an "immutable" index that changed under its reader.
+     */
+    @Test
+    void addingARegisterLeavesTheEarlierIndexUnchanged() throws Exception
+    {
+        String register = """
+                classes:
+                - id: %s
+                  kind: cross-family
+                  members:
+                  - FDA-SD0047
+                  - PMDA-SD0047
+                """;
+        String parentage = "CDISC-CG9672\tCDISC-CG0425\tsister\t%s\n";
+        CorpusIndex base = CorpusIndex.of(Map.of("FDA-SD0047", check("FDA-SD0047", "o", "a")));
+        CorpusIndex one = base.withEquivalenceRegister(register.formatted("EQ-0001"))
+                .withParentage(parentage.formatted("first"));
+        CorpusIndex two = one.withEquivalenceRegister(register.formatted("EQ-0002"))
+                .withParentage(parentage.formatted("second"));
+        assertEquals(1, one.classesOf("FDA-SD0047").size(), one.classesOf("FDA-SD0047").toString());
+        assertEquals(2, two.classesOf("FDA-SD0047").size());
+        assertEquals(1, one.parentageOf("CDISC-CG9672").size());
+        assertEquals(2, two.parentageOf("CDISC-CG9672").size());
+    }
+
+
+    /**
+     * Review 8a-A F6 nit: the reference's rule id was cut out of the locator key, so a {@code #} in
+     * an id was stripped (the {@code #n} tiebreak sits on the LAST field) and a {@code |} shifted
+     * every field. The id is read off the reference itself now.
+     */
+    @Test
+    void aReferenceIdIsTakenVerbatim() throws Exception
+    {
+        assertEquals(List.of(new ReferenceKey("o", "XX#1")),
+                CorpusIndex.referencesOf(check("A", "o", "XX#1")));
+        assertEquals(List.of(new ReferenceKey("o", "A|B")),
+                CorpusIndex.referencesOf(check("A", "o", "A|B")));
+    }
+
+
     @Test
     void anUnknownRuleHasNothing() throws Exception
     {

@@ -35,11 +35,14 @@ class LoadErrorDiagnosticsTest
 
 
     @Test
-    void segmentsBecomeOneDiagnosticEach()
+    void entriesBecomeOneDiagnosticEach()
     {
         Rule rule = new Rule();
-        rule.setLoadError("[X] Check: first; [X] Scope: second");
-        rule.setLoadWarning("[X] Outcome: soft");
+        rule.addLoadError("[X] Check: first");
+        rule.addLoadError("[X] Scope: second");
+        rule.addLoadWarning("[X] Outcome: soft");
+        assertEquals("[X] Check: first; [X] Scope: second", rule.getLoadError(),
+                "the joined channel is what it always was");
         List<RuleDiagnostic> out = LoadErrorDiagnostics.of(rule, null);
         assertEquals(3, out.size());
         assertEquals(Severity.ERROR, out.get(0).severity());
@@ -48,6 +51,26 @@ class LoadErrorDiagnosticsTest
         assertEquals(Severity.WARNING, out.get(2).severity());
         assertEquals(LoadErrorDiagnostics.LOAD_WARNING, out.get(2).code());
         assertNull(out.get(2).range());
+    }
+
+
+    /**
+     * Pack-2 review 8a-A F3: an entry is never split, whatever it contains — a stated whole channel
+     * ({@code setLoadError}) is one entry too.
+     */
+    @Test
+    void anEntryContainingTheSeparatorStaysOneDiagnostic()
+    {
+        Rule rule = new Rule();
+        rule.addLoadError("[X] Scope.Domains.Include: names nothing; remove it");
+        assertEquals(1, LoadErrorDiagnostics.of(rule, null).size());
+        assertEquals("/Scope/Domains/Include",
+                String.valueOf(LoadErrorDiagnostics.of(rule, null).getFirst().path()));
+        rule.setLoadError("[X] Check: one; [X] Scope: stated whole");
+        assertEquals(List.of("[X] Check: one; [X] Scope: stated whole"), rule.getLoadErrors());
+        assertEquals(1, LoadErrorDiagnostics.of(rule, null).size());
+        rule.setLoadError(null);
+        assertEquals(List.of(), rule.getLoadErrors());
     }
 
 

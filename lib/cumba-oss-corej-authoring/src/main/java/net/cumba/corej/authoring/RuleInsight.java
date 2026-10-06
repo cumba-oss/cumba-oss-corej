@@ -21,6 +21,7 @@ import net.cumba.corej.core.expr.eval.Parameter;
 import net.cumba.corej.core.expr.typed.ExprType;
 import net.cumba.corej.core.gen.WildcardExpander;
 import net.cumba.corej.core.metadata.AdamDataStructureDetector;
+import net.cumba.corej.core.metadata.MetadataLibraryProvider;
 import net.cumba.corej.core.metadata.MetadataProductKeys;
 import net.cumba.corej.core.metadata.store.MetadataStore;
 import net.cumba.corej.core.metadata.store.StoredClass;
@@ -536,12 +537,20 @@ public final class RuleInsight
                 {
                     continue;
                 }
-                // The structure token the scope axes judge (BASIC DATA STRUCTURE, ...): an
-                // ADaMIG 1.3 product spells it in className, an older one spells the short
-                // label (BDS) there too — the detector's declared-class mapping resolves both;
-                // the name stays the short label (ADSL, BDS, TTE) an author knows the structure by.
-                String token = structureToken(s);
-                String mismatch = judge(aRule, s.name(), token, token, subclassesOf(s));
+                // The structure token the scope axes judge (BASIC DATA STRUCTURE, ...): ADaMIG 1.3
+                // spells it in className, the older products spell a short label there (BDS,
+                // OCCDS, ADAE) and adam-tte-1-0 publishes none at all — read through the engine's
+                // own mapping (aliases + per-product overrides), the one MetadataLibraryProvider
+                // resolves a declared product with (review 8a-A F7: this used to be a parallel
+                // table here); the name stays the label an author knows the structure by.
+                String token = MetadataLibraryProvider.structureTokenOf(aProduct.key(), s);
+                if (token == null)
+                {
+                    token = s.className();
+                }
+                String sub = MetadataLibraryProvider.subClassOf(aProduct.key(), s);
+                String mismatch = judge(aRule, s.name(), token, token,
+                        sub == null ? List.of() : List.of(sub));
                 aEntries.add(new ScopeEntry(aProduct.key(), s.name(), token, token,
                         mismatch == null, mismatch));
                 if (mismatch == null)
@@ -559,6 +568,17 @@ public final class RuleInsight
     }
 
 
+    /**
+     * The scope axes production judges a dataset on, in its order: domain, dataset, class, data
+     * structure (with its supertypes — a medical-device BDS is a BDS, exactly as
+     * {@code AdamDataStructureDetector.structureSet} feeds {@code RuleRunner}), subclass.
+     *
+     * <p>
+     * ⚠ The {@code Use_Case} axis is deliberately not judged: it filters by the <em>run's</em> use
+     * case, which a universe over a standard's datasets has none of — every dataset would be in or
+     * out together, whatever the rule says about it.
+     * </p>
+     */
     private static @Nullable String judge(Rule aRule, String aName, @Nullable String aClassName,
             @Nullable String aStructure, List<String> aSubclasses)
     {
@@ -580,85 +600,13 @@ public final class RuleInsight
         {
             return mismatch;
         }
-        mismatch = ScopeMatcher.describeDataStructureMismatch(aRule,
-                aStructure == null ? List.of() : List.of(aStructure));
+        mismatch = ScopeMatcher.describeDataStructureMismatch(aRule, aStructure == null ? List.of()
+                : AdamDataStructureDetector.structureSet(aStructure));
         if (mismatch != null)
         {
             return mismatch;
         }
         return ScopeMatcher.describeSubclassMismatch(aRule, aSubclasses);
-    }
-
-    /**
-     * The short labels the pre-1.3 ADaM products file their structures under (ADaMIG 1.3 and the
-     * later products spell the token itself in {@code className}), mapped to the engine's tokens.
-     * {@code ADAE} and {@code BDS for TTE} are a structure plus its subclass.
-     */
-    private static final Map<String, String> SHORT_LABEL_TOKENS = Map.of(//
-            "BDS", AdamDataStructureDetector.BDS, //
-            "OCCDS", AdamDataStructureDetector.OCCDS, //
-            "ADSL", AdamDataStructureDetector.ADSL, //
-            "ADAE", AdamDataStructureDetector.OCCDS, //
-            "BDS FOR TTE", AdamDataStructureDetector.BDS, //
-            "TTE", AdamDataStructureDetector.BDS);
-
-    private static final Map<String, String> SHORT_LABEL_SUBCLASSES = Map.of(//
-            "ADAE", "ADVERSE EVENT", //
-            "BDS FOR TTE", "TIME-TO-EVENT", //
-            "TTE", "TIME-TO-EVENT");
-
-    /**
-     * The ADaM structure token of a stored data structure: its class name when that is a token,
-     * else the short label (class name or name) mapped through {@link #SHORT_LABEL_TOKENS}.
-     */
-    private static @Nullable String structureToken(StoredDataStructure aStructure)
-    {
-        for (String candidate : new String[]
-        {
-                aStructure.className(), aStructure.name()
-        })
-        {
-            if (candidate == null)
-            {
-                continue;
-            }
-            String token = AdamDataStructureDetector.structureTokenFromDeclaredClass(candidate);
-            if (token != null)
-            {
-                return token;
-            }
-            String mapped = SHORT_LABEL_TOKENS.get(candidate.strip().toUpperCase(Locale.ROOT));
-            if (mapped != null)
-            {
-                return mapped;
-            }
-        }
-        return aStructure.className();
-    }
-
-
-    /** The structure's subclass: the stored one, else the one its short label implies. */
-    private static List<String> subclassesOf(StoredDataStructure aStructure)
-    {
-        if (aStructure.subClass() != null)
-        {
-            return List.of(aStructure.subClass());
-        }
-        for (String candidate : new String[]
-        {
-                aStructure.className(), aStructure.name()
-        })
-        {
-            if (candidate != null)
-            {
-                String sub = SHORT_LABEL_SUBCLASSES.get(candidate.strip().toUpperCase(Locale.ROOT));
-                if (sub != null)
-                {
-                    return List.of(sub);
-                }
-            }
-        }
-        return List.of();
     }
 
 
@@ -768,7 +716,9 @@ public final class RuleInsight
      *            the rule's references ({@link CorpusIndex#referencesOf})
      * @param aIndex
      *            the corpus index
-     * @return the related rules, distinct by (id, relation), self excluded
+     * @return the related rules, self excluded — distinct as {@link RelatedRule} records, i.e. by
+     *         (id, relation, via): a rule sharing two references with this one is listed once per
+     *         reference, each naming what established it
      */
     public static List<RelatedRule> related(String aCoreId,
             Collection<CorpusIndex.ReferenceKey> aReferences, CorpusIndex aIndex)

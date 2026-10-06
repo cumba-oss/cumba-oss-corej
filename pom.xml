@@ -1804,6 +1804,9 @@
                         <includeOnlyProperties>
                             <includeOnlyProperty>git.commit.id</includeOnlyProperty>
                             <includeOnlyProperty>git.commit.id.abbrev</includeOnlyProperty>
+                            <!-- a jar built from a dirty tree carries HEAD's id but not HEAD's
+                                 bytes: AuthoringProvenance refuses it (pack-2 review 8a-A F5) -->
+                            <includeOnlyProperty>git.dirty</includeOnlyProperty>
                             <includeOnlyProperty>git.branch</includeOnlyProperty>
                             <includeOnlyProperty>git.commit.time</includeOnlyProperty>
                             <includeOnlyProperty>git.build.time</includeOnlyProperty>

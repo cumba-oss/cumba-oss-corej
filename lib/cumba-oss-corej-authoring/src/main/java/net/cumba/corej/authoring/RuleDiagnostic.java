@@ -27,9 +27,13 @@ import org.jspecify.annotations.Nullable;
  *            the authored YAML path the message is about, or {@code null} when unknown
  * @param range
  *            the location of {@code path}'s key in the authored text, or {@code null} when unknown
+ * @param document
+ *            which authored file {@code path} and {@code range} are in — the check or its docs
+ *            sidecar (pack-2 review 8a-A, editor note: a docs-YAML syntax error's range is a
+ *            position in the docs file)
  */
 public record RuleDiagnostic(String code, Severity severity, String message,
-        @Nullable YamlPath path, @Nullable TextRange range)
+        @Nullable YamlPath path, @Nullable TextRange range, Document document)
 {
 
     public RuleDiagnostic
@@ -37,7 +41,39 @@ public record RuleDiagnostic(String code, Severity severity, String message,
         Objects.requireNonNull(code, "code");
         Objects.requireNonNull(severity, "severity");
         Objects.requireNonNull(message, "message");
+        Objects.requireNonNull(document, "document");
     }
+
+
+    /**
+     * A diagnostic about the check file.
+     *
+     * @param code
+     *            the code
+     * @param severity
+     *            the severity
+     * @param message
+     *            the message
+     * @param path
+     *            the path, or {@code null}
+     * @param range
+     *            the range, or {@code null}
+     */
+    public RuleDiagnostic(String code, Severity severity, String message, @Nullable YamlPath path,
+            @Nullable TextRange range)
+    {
+        this(code, severity, message, path, range, Document.CHECK);
+    }
+
+    /** The authored file a diagnostic's path and range point into. */
+    public enum Document
+    {
+        /** The check file ({@code rules-src/checks/…}). */
+        CHECK,
+        /** The docs sidecar ({@code rules-src/docs/…}). */
+        DOCS
+    }
+
 
     /** The weight of a diagnostic. */
     public enum Severity

@@ -3,6 +3,7 @@ package net.cumba.corej.authoring;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URISyntaxException;
+import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.CodeSource;
@@ -10,6 +11,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import net.cumba.corej.core.expr.convert.CheckLevelNodes;
 
 /**
  * The build provenance of this module's jar — the engine commit it was built from, read from the
@@ -25,6 +27,14 @@ import java.util.jar.JarFile;
  * commit produced its assembler and records it. With {@code -Dcorej.authoring.expectedCommit} set,
  * {@link #requireCommit(String)} refuses a mismatch before a single file is written.
  * </p>
+ *
+ * <p>
+ * ⚠ Two jars, both checked (pack-2 review 8a-A F5): the assembly runs in this module <em>and</em>
+ * in the engine's core module ({@code CheckLevelNodes}, the loader), installed separately — a fresh
+ * authoring jar over a stale core one is the same hazard one level down. And a jar built from a
+ * working tree with uncommitted changes carries its HEAD's id but not its HEAD's bytes, so
+ * {@code git.dirty} is recorded (the parent pom includes it) and a dirty jar is refused.
+ * </p>
  */
 public final class AuthoringProvenance
 {
@@ -33,6 +43,10 @@ public final class AuthoringProvenance
     public static final String EXPECTED_COMMIT_PROPERTY = "corej.authoring.expectedCommit";
 
     private static final String RESOURCE_NAME = "git.properties";
+
+    private static final String COMMIT = "git.commit.id";
+
+    private static final String DIRTY = "git.dirty";
 
     private AuthoringProvenance()
     {
@@ -47,24 +61,34 @@ public final class AuthoringProvenance
      */
     public static Optional<String> commitId()
     {
-        Properties props;
-        try
-        {
-            props = loadOwnGitProperties();
-        }
-        catch (IOException | URISyntaxException _)
-        {
-            return Optional.empty();
-        }
-        String id = props.getProperty("git.commit.id");
+        return commitOf(gitPropertiesOf(AuthoringProvenance.class));
+    }
+
+
+    /** Whether this jar was built from a working tree with uncommitted changes. */
+    public static boolean dirty()
+    {
+        return isDirty(gitPropertiesOf(AuthoringProvenance.class));
+    }
+
+
+    private static Optional<String> commitOf(Properties aProps)
+    {
+        String id = aProps.getProperty(COMMIT);
         return id == null || id.isBlank() ? Optional.empty() : Optional.of(id.strip());
     }
 
 
+    private static boolean isDirty(Properties aProps)
+    {
+        return Boolean.parseBoolean(String.valueOf(aProps.getProperty(DIRTY)).strip());
+    }
+
+
     /**
-     * Load the {@code git.properties} that sits beside THIS class — in its jar, or in its
+     * The {@code git.properties} that sits beside {@code aClass} — in its jar, or in its
      * {@code target/classes} directory — never the first one on the classpath. Empty when there is
-     * none.
+     * none, or when the code source is no file this can open (a class nested in a fat jar).
      *
      * <p>
      * ⚠ {@code getResourceAsStream("/git.properties")} is wrong here, measured 2026-10-06: the
@@ -74,63 +98,95 @@ public final class AuthoringProvenance
      * cannot be shadowed.
      * </p>
      */
-    private static Properties loadOwnGitProperties() throws IOException, URISyntaxException
+    static Properties gitPropertiesOf(Class<?> aClass)
     {
         Properties props = new Properties();
-        CodeSource source = AuthoringProvenance.class.getProtectionDomain().getCodeSource();
-        if (source == null || source.getLocation() == null)
+        try
         {
-            return props;
-        }
-        Path location = Path.of(source.getLocation().toURI());
-        if (Files.isDirectory(location))
-        {
-            Path file = location.resolve(RESOURCE_NAME);
-            if (Files.isRegularFile(file))
+            CodeSource source = aClass.getProtectionDomain().getCodeSource();
+            if (source == null || source.getLocation() == null)
             {
-                try (InputStream in = Files.newInputStream(file))
+                return props;
+            }
+            Path location = Path.of(source.getLocation().toURI());
+            if (Files.isDirectory(location))
+            {
+                Path file = location.resolve(RESOURCE_NAME);
+                if (Files.isRegularFile(file))
                 {
-                    props.load(in);
+                    try (InputStream in = Files.newInputStream(file))
+                    {
+                        props.load(in);
+                    }
+                }
+                return props;
+            }
+            if (!Files.isRegularFile(location))
+            {
+                return props;
+            }
+            try (JarFile jar = new JarFile(location.toFile()))
+            {
+                JarEntry entry = jar.getJarEntry(RESOURCE_NAME);
+                if (entry != null)
+                {
+                    try (InputStream in = jar.getInputStream(entry))
+                    {
+                        props.load(in);
+                    }
                 }
             }
             return props;
         }
-        if (!Files.isRegularFile(location))
+        catch (IOException | URISyntaxException | IllegalArgumentException
+                | FileSystemNotFoundException | SecurityException _)
         {
-            return props;
+            // FileSystemNotFoundException / IllegalArgumentException for a URI no default file
+            // system serves (review 8a-A F5): no provenance, not a crash
+            return new Properties();
         }
-        try (JarFile jar = new JarFile(location.toFile()))
-        {
-            JarEntry entry = jar.getJarEntry(RESOURCE_NAME);
-            if (entry != null)
-            {
-                try (InputStream in = jar.getInputStream(entry))
-                {
-                    props.load(in);
-                }
-            }
-        }
-        return props;
     }
 
 
-    /** The abbreviated commit id, or {@code "unknown"}. */
+    /** The abbreviated commit id ({@code -dirty} appended for a dirty build), or "unknown". */
     public static String describe()
     {
-        return commitId().map(id -> id.length() > 12 ? id.substring(0, 12) : id).orElse("unknown");
+        return commitId().map(
+                id -> (id.length() > 12 ? id.substring(0, 12) : id) + (dirty() ? "-dirty" : ""))
+                .orElse("unknown");
     }
 
 
     /**
-     * Refuse to proceed unless this jar was built from {@code aExpectedCommit}. A full or
-     * abbreviated id is accepted (prefix match, at least 7 characters).
+     * Refuse to proceed unless both engine jars the assembly runs in — this one and the core
+     * module's — were built from {@code aExpectedCommit}, from a clean tree. A full or abbreviated
+     * id is accepted (prefix match, at least 7 characters).
      *
      * @param aExpectedCommit
      *            the commit the caller requires
      * @throws IllegalStateException
-     *             when the jar carries no provenance or names another commit
+     *             when a jar carries no provenance, names another commit, or was built dirty
      */
     public static void requireCommit(String aExpectedCommit)
+    {
+        check(aExpectedCommit, "authoring", gitPropertiesOf(AuthoringProvenance.class));
+        check(aExpectedCommit, "core", gitPropertiesOf(CheckLevelNodes.class));
+    }
+
+
+    /**
+     * The check {@link #requireCommit} runs per jar, over its {@code git.properties}.
+     *
+     * @param aExpectedCommit
+     *            the commit the caller requires
+     * @param aJar
+     *            which engine jar ({@code authoring} / {@code core}), for messages
+     * @param aProps
+     *            its {@code git.properties}
+     * @throws IllegalStateException
+     *             as {@link #requireCommit}
+     */
+    static void check(String aExpectedCommit, String aJar, Properties aProps)
     {
         String expected = aExpectedCommit.strip();
         if (expected.length() < 7)
@@ -138,14 +194,23 @@ public final class AuthoringProvenance
             throw new IllegalStateException("expected commit '" + expected
                     + "' is too short to identify a commit (at least 7 characters)");
         }
-        String actual = commitId().orElseThrow(() -> new IllegalStateException(
-                "the cumba-corej-authoring jar carries no git.properties, so its engine"
-                        + " commit cannot be verified against " + expected));
+        String actual = commitOf(aProps).orElseThrow(() -> new IllegalStateException("the engine's "
+                + aJar
+                + " jar carries no git.properties, so its engine commit cannot be verified against "
+                + expected));
         if (!actual.startsWith(expected) && !expected.startsWith(actual))
         {
-            throw new IllegalStateException("the cumba-corej-authoring jar on the classpath was"
+            throw new IllegalStateException("the engine's " + aJar + " jar on the classpath was"
                     + " built from commit " + actual + ", not the expected " + expected
                     + " — install the current engine before regenerating the corpus");
+        }
+        if (isDirty(aProps))
+        {
+            throw new IllegalStateException("the engine's " + aJar + " jar on the classpath was"
+                    + " built from commit " + actual
+                    + " WITH uncommitted changes, so its bytes are not that"
+                    + " commit's — commit the engine and install it again before regenerating the"
+                    + " corpus");
         }
     }
 

@@ -3,6 +3,7 @@ package net.cumba.corej.core.model;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSetter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -1099,7 +1100,21 @@ public class Rule
      * </p>
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
+    @Setter(AccessLevel.NONE)
     private @Nullable String loadError;
+
+    /**
+     * {@link #loadError}'s entries one by one, in filing order — the same facts, unjoined (pack-2
+     * review 8a-A F3: a consumer that split the joined string on {@code "; "} cut every message
+     * that itself contains {@code "; "} in two). Runtime state like the joined form: no part of
+     * {@code equals} / {@code hashCode} / {@code toString}, never serialised.
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @lombok.Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
+    private @Nullable List<String> loadErrorEntries;
 
     /**
      * A non-fatal load finding ({@code PLAN-derive-rule-type-sensitivity} open question 2, resolved
@@ -1115,7 +1130,16 @@ public class Rule
      * </p>
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
+    @Setter(AccessLevel.NONE)
     private @Nullable String loadWarning;
+
+    /** {@link #loadWarning}'s entries one by one, as {@link #loadErrorEntries}. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @lombok.Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
+    private @Nullable List<String> loadWarningEntries;
 
     /**
      * Loader gate <b>R7</b>'s channel: a {@code Match_Datasets[].Name} this rule joins against but
@@ -1307,4 +1331,102 @@ public class Rule
         return coreId != null ? coreId : getId();
     }
 
+
+    /**
+     * Replace the load error with one entry ({@code null} clears it). The loader files through
+     * {@link #addLoadError}; this setter is for a caller that states the whole channel.
+     *
+     * @param aLoadError
+     *            the error, or {@code null}
+     */
+    public void setLoadError(@Nullable String aLoadError)
+    {
+        loadError = aLoadError;
+        loadErrorEntries = aLoadError == null ? null : new ArrayList<>(List.of(aLoadError));
+    }
+
+
+    /**
+     * File one more load error: appended to the joined {@link #getLoadError()} with {@code "; "} —
+     * byte for byte what every loader site used to concatenate — and kept as its own entry in
+     * {@link #getLoadErrors()}. A {@code null} (an exception without a message) is spelled as the
+     * concatenation always spelled it: nothing on an empty channel, {@code "null"} after an earlier
+     * entry.
+     *
+     * @param aError
+     *            the error
+     */
+    public void addLoadError(@Nullable String aError)
+    {
+        if (aError == null && loadError == null)
+        {
+            return;
+        }
+        String entry = String.valueOf(aError);
+        loadError = loadError == null ? entry : loadError + "; " + entry;
+        if (loadErrorEntries == null)
+        {
+            loadErrorEntries = new ArrayList<>();
+        }
+        loadErrorEntries.add(entry);
+    }
+
+
+    /**
+     * The load errors one by one, in filing order; empty for a rule that loaded cleanly.
+     *
+     * @return an unmodifiable list
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public List<String> getLoadErrors()
+    {
+        return loadErrorEntries == null ? List.of() : List.copyOf(loadErrorEntries);
+    }
+
+
+    /**
+     * Replace the load warning with one entry ({@code null} clears it).
+     *
+     * @param aLoadWarning
+     *            the warning, or {@code null}
+     */
+    public void setLoadWarning(@Nullable String aLoadWarning)
+    {
+        loadWarning = aLoadWarning;
+        loadWarningEntries = aLoadWarning == null ? null : new ArrayList<>(List.of(aLoadWarning));
+    }
+
+
+    /**
+     * File one more load warning, as {@link #addLoadError}.
+     *
+     * @param aWarning
+     *            the warning
+     */
+    public void addLoadWarning(@Nullable String aWarning)
+    {
+        if (aWarning == null && loadWarning == null)
+        {
+            return;
+        }
+        String entry = String.valueOf(aWarning);
+        loadWarning = loadWarning == null ? entry : loadWarning + "; " + entry;
+        if (loadWarningEntries == null)
+        {
+            loadWarningEntries = new ArrayList<>();
+        }
+        loadWarningEntries.add(entry);
+    }
+
+
+    /**
+     * The load warnings one by one, in filing order.
+     *
+     * @return an unmodifiable list
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public List<String> getLoadWarnings()
+    {
+        return loadWarningEntries == null ? List.of() : List.copyOf(loadWarningEntries);
+    }
 }

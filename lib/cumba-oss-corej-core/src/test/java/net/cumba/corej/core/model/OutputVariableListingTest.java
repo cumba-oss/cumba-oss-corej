@@ -2,6 +2,7 @@ package net.cumba.corej.core.model;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -99,6 +100,8 @@ class OutputVariableListingTest
         OutputVariableListing l = OutputVariableListing.of(rule);
         assertFalse(l.derived());
         assertEquals(List.of("AESEV"), l.excluded());
+        assertEquals(List.of("AESEV"), l.authored(),
+                "the author wrote the include: authored is not a subset of effective here");
         assertFalse(l.effective().contains("AESEV"), "excluded wins over the authored include");
     }
 
@@ -115,7 +118,9 @@ class OutputVariableListingTest
         assertEquals(List.of("USUBJID"), l.effective());
         assertEquals(List.of("USUBJID"), l.authored());
         assertEquals(List.of("AESER"), l.excluded());
-        assertEquals(l, OutputVariableListing.of(rule), "memoised: a second read is equal");
+        assertEquals(l, OutputVariableListing.of(rule), "a second read is equal");
+        assertSame(l.effective(), OutputVariableListing.of(rule).effective(),
+                "memoised: a second read returns the stored list itself, not a re-derivation");
     }
 
 

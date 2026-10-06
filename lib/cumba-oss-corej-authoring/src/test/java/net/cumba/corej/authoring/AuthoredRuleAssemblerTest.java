@@ -105,15 +105,17 @@ class AuthoredRuleAssemblerTest
     void aMalformedExpressionIsAPathedDiagnosticAtItsCharacter()
     {
         // A malformed Check fails at bind time, so the whole one-rule package refuses to load:
-        // no rule, one PACKAGE_LOAD diagnostic naming /Check and the character the parser
-        // stopped at (ExpressionException.getPosition()).
+        // no rule, one diagnostic naming /Check and the character the parser stopped at
+        // (ExpressionException.getPosition()) — EXPRESSION_SYNTAX, since the root cause is the
+        // expression (editor note, review 8a-A).
         String broken = CHECK.replace("AESEV == \"MILD\"", "AESEV == ==");
         AssembledRule r = AuthoredRuleAssembler.assemble(broken, null, STANDARDS);
         assertNull(r.rule());
         assertEquals(1, r.diagnostics().size(), r.diagnostics().toString());
         RuleDiagnostic d = r.diagnostics().getFirst();
-        assertEquals("PACKAGE_LOAD", d.code());
+        assertEquals(AuthoredRuleAssembler.EXPRESSION_SYNTAX, d.code());
         assertEquals(Severity.ERROR, d.severity());
+        assertEquals(RuleDiagnostic.Document.CHECK, d.document());
         assertEquals("/Check", String.valueOf(d.path()));
         assertTrue(d.message().contains("(at position 9)"), d.message());
         assertNotNull(d.range());
@@ -121,6 +123,101 @@ class AuthoredRuleAssemblerTest
         // 15 with the quote, so position 9 is column 15 + 1 + 9.
         assertEquals(12, d.range().startLine());
         assertEquals(25, d.range().startColumn());
+    }
+
+
+    /**
+     * Review 8a-A F1, the CDISC-CG0270 repro: in a {@code >-} block (most of the corpus) the
+     * expression's character was placed on the {@code >} line, one line above the text.
+     */
+    @Test
+    void aMalformedExpressionInAFoldedBlockIsLocatedOnItsCharacter()
+    {
+        String broken = CHECK.replace("  expression: 'AESEV == \"MILD\" and AESER == \"Y\"'\n",
+                "  expression: >-\n    AESEV == == and AESER == \"Y\"\n");
+        assertFalse(broken.equals(CHECK), "the mutation must land");
+        AssembledRule r = AuthoredRuleAssembler.assemble(broken, null, STANDARDS);
+        RuleDiagnostic d = r.errors().getFirst();
+        assertEquals("/Check", String.valueOf(d.path()));
+        assertTrue(d.message().contains("(at position 9)"), d.message());
+        assertEquals(new RuleDiagnostic.TextRange(13, 14, 13, 14), d.range());
+    }
+
+
+    /**
+     * Review 8a-A F2: a half-typed {@code Standards} block threw NPE / CCE out of the editor's
+     * never-throwing entry point, and out of the corpus gate as a bare NPE. A shape diagnostic with
+     * the path now — and a loud, worded refusal from {@code rebuildRule}.
+     */
+    @Test
+    void aHalfTypedStandardsBlockIsAShapeDiagnostic() throws Exception
+    {
+        String head = CHECK.substring(0, CHECK.indexOf("Standards:"));
+        String[] shapes =
+        {
+                // no Organization
+                "Standards:\n- Standards:\n  - Name: \"SDTMIG\"\n    Version: \"3.4\"\n",
+                // cut right after the Organization
+                "Standards:\n- Organization: \"CDISC\"\n",
+                // a null authority
+                "Standards: [null]\n",
+                // a null standard
+                "Standards:\n- Organization: \"CDISC\"\n  Standards: [null]\n",
+                // a scalar reference
+                "Standards:\n- Organization: \"CDISC\"\n  Standards:\n  - Name: \"SDTMIG\"\n"
+                        + "    Version: \"3.4\"\n    References: [\"XX0001\"]\n"
+        };
+        for (String shape : shapes)
+        {
+            String yaml = head + shape;
+            AssembledRule r = AuthoredRuleAssembler.assemble(yaml, null, STANDARDS);
+            RuleDiagnostic d = r.errors().stream().filter(e -> "STANDARDS_SHAPE".equals(e.code()))
+                    .findFirst().orElse(null);
+            assertNotNull(d, shape + " -> " + r.diagnostics());
+            assertNotNull(d.path(), d.toString());
+            assertTrue(String.valueOf(d.path()).startsWith("/Standards"), d.toString());
+            assertNull(r.canonicalNode(), "no node from a refused shape");
+            assertNull(r.rule());
+            JsonNode check = AuthoredRuleAssembler.readYamlTree(yaml);
+            IllegalStateException e = org.junit.jupiter.api.Assertions.assertThrows(
+                    IllegalStateException.class,
+                    () -> AuthoredRuleAssembler.rebuildRule(check, null), shape);
+            assertTrue(e.getMessage().contains("CDISC-XX0001"), e.getMessage());
+        }
+    }
+
+
+    /**
+     * Review 8a-A F3: a single loader message containing {@code "; "} (here gate 3's "an empty
+     * entry names nothing; remove it …") was split into a second, pathless diagnostic. The engine
+     * keeps its load errors one by one now.
+     */
+    @Test
+    void aLoadMessageContainingASemicolonIsOneDiagnostic()
+    {
+        String withEmptyEntry = CHECK.replace("    - \"AE\"\n", "    - \"\"\n    - \"AE\"\n");
+        AssembledRule r = AuthoredRuleAssembler.assemble(withEmptyEntry, null, STANDARDS);
+        assertNotNull(r.rule());
+        assertTrue(r.rule().getLoadError().contains("; "), "premise: " + r.rule().getLoadError());
+        assertEquals(1, r.errors().size(), r.errors().toString());
+        assertEquals(r.rule().getLoadError(), r.errors().getFirst().message());
+    }
+
+
+    /**
+     * Review 8a-A F4: a second YAML document was dropped silently — the reader took the first, the
+     * location walk ran on into the second.
+     */
+    @Test
+    void aSecondDocumentIsAnError()
+    {
+        AssembledRule r = AuthoredRuleAssembler.assemble(CHECK + "---\nCore:\n  Id: \"other\"\n",
+                null, STANDARDS);
+        RuleDiagnostic d = r.errors().stream().filter(e -> "MULTI_DOCUMENT".equals(e.code()))
+                .findFirst().orElse(null);
+        assertNotNull(d, r.diagnostics().toString());
+        assertNotNull(d.range());
+        assertEquals(28, d.range().startLine(), "the second document's marker");
     }
 
 
@@ -211,6 +308,44 @@ class AuthoredRuleAssemblerTest
         assertTrue(r.canonicalNode().at("/Authorities/0/Standards/0/References/0/Citations")
                 .isMissingNode());
         assertEquals(List.of(), r.diagnostics());
+    }
+
+
+    /**
+     * Editor notes (review 8a-A): a docs sidecar is read as the corpus reads it — one document, its
+     * {@code Core} naming this rule — and its diagnostics say they are about the docs file.
+     */
+    @Test
+    void theDocSidecarIsCheckedAsTheCorpusJoinsIt()
+    {
+        AssembledRule other = AuthoredRuleAssembler.assemble(CHECK,
+                DOC.replace("Core: \"CDISC-XX0001\"", "Core: \"CDISC-XX0002\""), STANDARDS);
+        RuleDiagnostic mismatch = other.errors().getFirst();
+        assertEquals(AuthoredRuleAssembler.DOC_CORE_MISMATCH, mismatch.code());
+        assertEquals(RuleDiagnostic.Document.DOCS, mismatch.document());
+        assertEquals(new RuleDiagnostic.TextRange(1, 1, 1, 4), mismatch.range());
+        assertNotNull(other.rule(), "the rule itself still assembles");
+
+        AssembledRule two = AuthoredRuleAssembler.assemble(CHECK, DOC + "---\nCore: x\n",
+                STANDARDS);
+        assertEquals(AuthoredRuleAssembler.MULTI_DOCUMENT, two.errors().getFirst().code());
+        assertEquals(RuleDiagnostic.Document.DOCS, two.errors().getFirst().document());
+
+        AssembledRule broken = AuthoredRuleAssembler.assemble(CHECK, "Core: [x\n", STANDARDS);
+        assertEquals("DOC_YAML_SYNTAX", broken.errors().getFirst().code());
+        assertEquals(RuleDiagnostic.Document.DOCS, broken.errors().getFirst().document());
+        assertEquals(List.of(), AuthoredRuleAssembler.assemble(CHECK, DOC, STANDARDS).diagnostics(),
+                "the matching sidecar raises nothing");
+    }
+
+
+    /** Review 8a-A F4: the corpus tools' reader refuses a second document too. */
+    @Test
+    void theSharedReaderRefusesASecondDocument()
+    {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.fasterxml.jackson.core.JsonProcessingException.class,
+                () -> AuthoredRuleAssembler.readYamlTree("a: 1\n---\nb: 2\n"));
     }
 
 

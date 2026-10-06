@@ -963,9 +963,17 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * A structure's {@code subClass}, canonicalised; {@code null} when it is a base structure.
      * Reads {@link #SUBCLASS_OVERRIDES} first — a published null is an <em>absence of
      * information</em>, and for the two structures listed there the published variable content
-     * supplies what the field omits.
+     * supplies what the field omits. Public so the authoring API's scope universe
+     * ({@code RuleInsight}) reads a stored structure exactly as this provider does, rather than
+     * through a parallel table (pack-2 review 8a-A F7).
+     *
+     * @param aCacheKey
+     *            the declaring product's cache key ({@code standards/adam/...})
+     * @param aStructure
+     *            a published ADaM data structure
+     * @return the canonical subclass, or {@code null} for a base structure
      */
-    private static @Nullable String subClassOf(String aCacheKey, StoredDataStructure aStructure)
+    public static @Nullable String subClassOf(String aCacheKey, StoredDataStructure aStructure)
     {
         String override = SUBCLASS_OVERRIDES.get(StructureRef.of(aCacheKey, aStructure.name()));
         if (override != null)
@@ -1001,7 +1009,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
      *            a published ADaM data structure
      * @return the canonical structure token, or {@code null} when the structure maps to none
      */
-    static @Nullable String structureTokenOf(String aCacheKey, StoredDataStructure aStructure)
+    public static @Nullable String structureTokenOf(String aCacheKey,
+            StoredDataStructure aStructure)
     {
         String override = STRUCTURE_CLASS_OVERRIDES
                 .get(StructureRef.of(aCacheKey, aStructure.name()));

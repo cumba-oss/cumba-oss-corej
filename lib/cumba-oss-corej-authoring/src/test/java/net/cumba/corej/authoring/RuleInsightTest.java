@@ -161,6 +161,117 @@ class RuleInsightTest
     }
 
 
+    /**
+     * Review 8a-A F7: the ADaM structures are judged the way production judges them — the structure
+     * set with its supertypes ({@code AdamDataStructureDetector.structureSet}: a medical-device BDS
+     * IS a BDS), and the token / subclass a stored structure maps onto read through the engine's
+     * own choke point, not a parallel short-label table.
+     */
+    @Test
+    void adamStructuresAreJudgedAsProductionJudgesThem()
+    {
+        AssembledRule assembled = AuthoredRuleAssembler.assemble("""
+                Core:
+                  Id: "CDISC-AD9001"
+                  Status: "Published"
+                  Version: "1"
+                Description: "a BDS rule"
+                Executability: "Fully Executable"
+                Scope:
+                  Data_Structures:
+                    Include:
+                    - "BASIC DATA STRUCTURE"
+                Check:
+                  expression: 'not empty(PARAMCD)'
+                Outcome:
+                  Message: "PARAMCD is empty"
+                """, null, List.of(new StandardRef("adamig-1-3", StandardRef.Role.PRIMARY)));
+        Rule rule = assembled.rule();
+        assertNotNull(rule, assembled.diagnostics().toString());
+        ScopeUniverse u = RuleInsight.scopeUniverse(rule, new AdamStore(),
+                List.of("standards/adam/adamig-1-3", "standards/adam/adam-tte-1-0",
+                        "standards/adam/adam-adae-1-0"));
+        Map<String, ScopeEntry> byName = new java.util.HashMap<>();
+        u.entries().forEach(e -> byName.put(e.dataset(), e));
+        assertTrue(byName.get("ADMDBDS").inScope(),
+                "a medical-device BDS is a BDS: " + byName.get("ADMDBDS"));
+        assertTrue(byName.get("BDS for TTE").inScope(), byName.get("BDS for TTE").toString());
+        assertEquals("BASIC DATA STRUCTURE", byName.get("BDS for TTE").datasetClass(),
+                "the engine's class override for a structure published without a class");
+        assertFalse(byName.get("ADAE").inScope(), byName.get("ADAE").toString());
+        assertEquals("OCCURRENCE DATA STRUCTURE", byName.get("ADAE").datasetClass());
+    }
+
+    /** Three ADaM products, one data structure each. */
+    private static final class AdamStore implements MetadataStore
+    {
+
+        private static StoredDataStructure structure(String aName, String aClass)
+        {
+            return new StoredDataStructure(aName, aName, null, aClass, null, List.of(), null);
+        }
+
+
+        @Override
+        public Optional<StoredProduct> product(String aKey)
+        {
+            StoredDataStructure s = switch (aKey)
+            {
+            case "standards/adam/adamig-1-3" -> structure("ADMDBDS",
+                    "MEDICAL DEVICE BASIC DATA STRUCTURE");
+            case "standards/adam/adam-tte-1-0" -> structure("BDS for TTE", null);
+            case "standards/adam/adam-adae-1-0" -> structure("ADAE", "ADAE");
+            default -> null;
+            };
+            return s == null ? Optional.empty()
+                    : Optional.of(StoredProduct.builder().key(aKey).name("ADaM").version("1")
+                            .classes(List.of()).datasets(List.of()).dataStructures(List.of(s))
+                            .build());
+        }
+
+
+        @Override
+        public Optional<StoredCtPackage> ctPackage(String aId)
+        {
+            return Optional.empty();
+        }
+
+
+        @Override
+        public List<String> publishedCtPackages()
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public Presence presence(String aCtPackageId)
+        {
+            return Presence.ABSENT;
+        }
+
+
+        @Override
+        public List<String> productCatalogue()
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public StoreManifest manifest()
+        {
+            throw new UnsupportedOperationException("no manifest in the fake");
+        }
+
+
+        @Override
+        public void close()
+        {
+            // nothing to release
+        }
+    }
+
     @Test
     void productKeysFollowTheStoreConvention()
     {

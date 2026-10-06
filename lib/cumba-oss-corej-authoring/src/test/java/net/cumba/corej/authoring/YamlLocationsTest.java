@@ -70,6 +70,132 @@ class YamlLocationsTest
     }
 
 
+    private static @org.jspecify.annotations.Nullable TextRange at(String aDoc, int aOffset)
+    {
+        YamlLocations.ValueLocation v = YamlLocations.index(aDoc)
+                .valueOf(YamlPath.of("Check/expression"));
+        assertNotNull(v, "the expression value is indexed");
+        return v.rangeAt(aOffset);
+    }
+
+
+    /**
+     * Review 8a-A F1, measured on CDISC-CG0270: a {@code >-} block scalar (3 480 of the corpus's ~4
+     * 540 expressions) was located on its {@code >} indicator, a line above the content.
+     */
+    @Test
+    void aFoldedBlockScalarIsLocatedOnItsContentLine()
+    {
+        String doc = """
+                Check:
+                  expression: >-
+                    TSPARMCD == == "AGEMAX"
+                """;
+        assertEquals(TextRange.at(3, 17, 1), at(doc, 12));
+        assertEquals(TextRange.at(3, 5, 1), at(doc, 0));
+    }
+
+
+    /** A folded block over several lines: each line break folded to a space, offsets carried. */
+    @Test
+    void aMultiLineFoldedBlockIsLocatedLineByLine()
+    {
+        String doc = """
+                Check:
+                  expression: >-
+                    A == "x" and
+                    B == == "y"
+                """;
+        assertEquals(TextRange.at(3, 5, 1), at(doc, 0));
+        assertEquals(TextRange.at(4, 10, 1), at(doc, 18));
+    }
+
+
+    /** A literal block keeps its line breaks; offsets still land on their characters. */
+    @Test
+    void aLiteralBlockIsLocatedLineByLine()
+    {
+        String doc = """
+                Check:
+                  expression: |
+                    A ==
+                    B == == y
+                """;
+        // "A ==\nB == == y\n": offset 10 is the second "==" of the second line
+        assertEquals(TextRange.at(4, 10, 1), at(doc, 10));
+    }
+
+
+    /** Review 8a-A F1: {@code \"} shifted every later offset (777 corpus expressions). */
+    @Test
+    void aDoubleQuotedScalarWithEscapesIsLocatedPastThem()
+    {
+        String doc = """
+                Check:
+                  expression: "X == \\"A\\" and == Y"
+                """;
+        assertEquals(TextRange.at(2, 31, 1), at(doc, 13));
+        assertEquals(TextRange.at(2, 16, 1), at(doc, 0));
+    }
+
+
+    /** Review 8a-A F1: a {@code \} line continuation (303 corpus expressions). */
+    @Test
+    void aDoubleQuotedContinuationIsLocatedOnTheContinuedLine()
+    {
+        String doc = """
+                Check:
+                  expression: "date_diff(A,\\
+                    \\ B) == =="
+                """;
+        assertEquals(TextRange.at(3, 13, 1), at(doc, 19));
+        assertEquals(TextRange.at(3, 7, 1), at(doc, 13));
+    }
+
+
+    /** A single-quoted scalar's {@code ''} is one character of the value. */
+    @Test
+    void aSingleQuotedScalarWithADoubledQuoteIsLocatedPastIt()
+    {
+        String doc = """
+                Check:
+                  expression: 'X == ''A'' and == Y'
+                """;
+        assertEquals(TextRange.at(2, 31, 1), at(doc, 13));
+    }
+
+
+    /** A plain scalar, on one line and folded over two. */
+    @Test
+    void aPlainScalarIsLocated()
+    {
+        assertEquals(TextRange.at(2, 20, 1), at("Check:\n  expression: X == == Y\n", 5));
+        assertEquals(TextRange.at(3, 8, 1), at("Check:\n  expression: X ==\n    Y == == Z\n", 8));
+        // a tag (or an anchor) before the scalar is not part of its text
+        assertEquals(TextRange.at(2, 26, 1), at("Check:\n  expression: !!str X == == Y\n", 5));
+    }
+
+
+    /**
+     * The verify-or-null guard: where the source cannot be mapped character for character (an alias
+     * carries another node's text), no range rather than a wrong one — the caller falls back to the
+     * key.
+     */
+    @Test
+    void aValueTheIndexCannotMapHasNoRange()
+    {
+        String doc = """
+                Shared: &e 'X == == Y'
+                Check:
+                  expression: *e
+                """;
+        YamlLocations.ValueLocation alias = YamlLocations.index(doc)
+                .valueOf(YamlPath.of("Check/expression"));
+        assertTrue(alias == null || alias.rangeAt(5) == null, String.valueOf(alias));
+        assertNull(at("Check:\n  expression: X == == Y\n", 99), "past the end");
+    }
+
+
     @Test
     void pathsRoundTripThroughTheirSpellings()
     {

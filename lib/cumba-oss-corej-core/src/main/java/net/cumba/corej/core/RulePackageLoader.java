@@ -65,13 +65,36 @@ public class RulePackageLoader
 
     public static RulePackage load(InputStream inputStream) throws IOException
     {
-        return finishLoad(MAPPER.readValue(inputStream, RulePackage.class));
+        return finishLoad(MAPPER.readValue(inputStream, RulePackage.class),
+                System.Logger.Level.INFO);
     }
 
 
     public static RulePackage loadFromString(String json) throws IOException
     {
-        return finishLoad(MAPPER.readValue(json, RulePackage.class));
+        return finishLoad(MAPPER.readValue(json, RulePackage.class), System.Logger.Level.INFO);
+    }
+
+
+    /**
+     * {@link #loadFromString(String)} with the once-per-package summary of LIKELY derivations
+     * logged at {@code aDerivationSummaryLevel} instead of INFO — for a caller that loads one rule
+     * at a time, over and over (the rule editor's {@code AuthoredRuleAssembler.assemble}): there,
+     * once per package is once per edit, not once per run (pack-2 review 8a-A, editor note).
+     *
+     * @param json
+     *            the package document
+     * @param aDerivationSummaryLevel
+     *            the summary's level
+     * @return the loaded package
+     * @throws IOException
+     *             when the document cannot be read
+     */
+    public static RulePackage loadFromString(String json,
+            System.Logger.Level aDerivationSummaryLevel)
+        throws IOException
+    {
+        return finishLoad(MAPPER.readValue(json, RulePackage.class), aDerivationSummaryLevel);
     }
 
 
@@ -164,7 +187,9 @@ public class RulePackageLoader
      * returning {@code null} to the caller.
      * </p>
      */
-    private static RulePackage finishLoad(@Nullable RulePackage pkg) throws IOException
+    private static RulePackage finishLoad(@Nullable RulePackage pkg,
+            System.Logger.Level aDerivationSummaryLevel)
+        throws IOException
     {
         if (pkg == null)
         {
@@ -199,7 +224,7 @@ public class RulePackageLoader
         materialiseBindings(pkg);
         // Derivation (Sensitivity) runs BEFORE the field gates, whose Group-consistency check
         // reads the derived value; the shipped rules/ corpus does not author it.
-        deriveOmittedFields(pkg);
+        deriveOmittedFields(pkg, aDerivationSummaryLevel);
         validateOperandSubstitution(pkg);
         validateEnumFields(pkg);
         // Sequenced with its sibling load gates, and deliberately BEFORE retainNativeExpr, so it
@@ -585,8 +610,7 @@ public class RulePackageLoader
         {
             // Preserve any earlier load error (e.g. an enum/scope validation failure) rather
             // than clobbering it — the rule ERRORs either way, but the first cause is kept.
-            String prior = rule.getLoadError();
-            rule.setLoadError(prior != null ? prior + "; " + ex.getMessage() : ex.getMessage());
+            rule.addLoadError(ex.getMessage());
         }
     }
 
@@ -2177,8 +2201,7 @@ public class RulePackageLoader
         catch (net.cumba.corej.core.expr.RuleDefinitionException ex)
         {
             String error = ex.getMessage();
-            rule.setLoadError(
-                    rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
+            rule.addLoadError(error);
             return true;
         }
     }
@@ -2267,8 +2290,7 @@ public class RulePackageLoader
             {
                 String error = "binding `" + binding.name() + "` has no native expression form: "
                         + ex.getMessage();
-                rule.setLoadError(
-                        rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
+                rule.addLoadError(error);
                 return;
             }
             installed.add(binding.withDomain(kinds.domainOf(binding.name())));
@@ -2371,16 +2393,14 @@ public class RulePackageLoader
                         + net.cumba.corej.core.expr.ExpressionPrinter.print(pre)
                         + "` has no native expression form (" + nativeRefusal(pre)
                         + ") — a refused gate would be silently ignored";
-                rule.setLoadError(
-                        rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
+                rule.addLoadError(error);
             }
         }
         catch (net.cumba.corej.core.expr.RuleDefinitionException ex)
         {
             // Same disposition as the Check: a definitionally invalid Precondition (e.g. the
             // retired generic exists) is a rule load error, never a propagating throw.
-            rule.setLoadError(rule.getLoadError() == null ? ex.getMessage()
-                    : rule.getLoadError() + "; " + ex.getMessage());
+            rule.addLoadError(ex.getMessage());
         }
     }
 
@@ -2496,7 +2516,7 @@ public class RulePackageLoader
                 + " Check has no native expression form — the expansion/cursor exclusivity cannot"
                 + " be decided, and the rule could not be evaluated in any case; fix the Check or"
                 + " drop the Expansion block";
-        rule.setLoadError(rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
+        rule.addLoadError(error);
     }
 
 
@@ -2600,7 +2620,7 @@ public class RulePackageLoader
                 + domain.label() + ") — the two multiply: one rule per variable, each iterating"
                 + " every variable again. Use the expansion OR the cursor (varname(), value(),"
                 + " an arity-1 var_* accessor, a vlm_* call, a per-variable $-operation), not both";
-        rule.setLoadError(rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
+        rule.addLoadError(error);
     }
 
 
@@ -2653,8 +2673,7 @@ public class RulePackageLoader
                     + " evaluation domain " + domain.label() + " has no variable cursor — the"
                     + " universe configures the VAR cursor, so it is meaningless here; drop the"
                     + " field or read the cursor (varname(), a var_* accessor)";
-            rule.setLoadError(
-                    rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
+            rule.addLoadError(error);
             return;
         }
         if (universe == net.cumba.corej.core.model.VariableUniverse.DEFINE && domain.rowCursor())
@@ -2666,8 +2685,7 @@ public class RulePackageLoader
                     + " evaluation domain " + domain.label() + " also carries the row cursor —"
                     + " the Define-XML ItemDefs have no rows to iterate, so the universe is not"
                     + " supported on a per-(variable, row) Check; drop the field or the cell read";
-            rule.setLoadError(
-                    rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
+            rule.addLoadError(error);
             return;
         }
         if (universe != net.cumba.corej.core.model.VariableUniverse.DEFINE && domain.varCursor()
@@ -3033,9 +3051,9 @@ public class RulePackageLoader
                 // that
                 // reachable — a rule with an authored Precondition AND a silencing consumer lost
                 // the first diagnosis entirely and reported only R8's.
-                String joined = String.join("; ", errors);
-                rule.setLoadError(
-                        rule.getLoadError() == null ? joined : rule.getLoadError() + "; " + joined);
+                // one entry per error: the joined loadError is byte-identical, and
+                // Rule.getLoadErrors() keeps them apart (pack-2 review 8a-A F3)
+                errors.forEach(rule::addLoadError);
             }
         }
     }
@@ -4390,8 +4408,7 @@ public class RulePackageLoader
                             + " — allowed (ruling D4), each"
                             + " group stays independently satisfiable, but check the duplication"
                             + " is intended";
-                    rule.setLoadWarning(rule.getLoadWarning() == null ? warning
-                            : rule.getLoadWarning() + "; " + warning);
+                    rule.addLoadWarning(warning);
                     LOGGER.log(System.Logger.Level.WARNING, "{0}", warning);
                 }
             }
@@ -4715,18 +4732,11 @@ public class RulePackageLoader
         // which DomainScan reads as the row cursor; the domain forces the row path by construction.
         if (!warnings.isEmpty())
         {
-            String joinedWarnings = String.join("; ", warnings);
-            rule.setLoadWarning(rule.getLoadWarning() == null ? joinedWarnings
-                    : rule.getLoadWarning() + "; " + joinedWarnings);
-            LOGGER.log(System.Logger.Level.WARNING, "{0}", joinedWarnings);
+            warnings.forEach(rule::addLoadWarning);
+            LOGGER.log(System.Logger.Level.WARNING, "{0}", String.join("; ", warnings));
         }
-        if (errors.isEmpty())
-        {
-            return;
-        }
-        String joined = String.join("; ", errors);
-        rule.setLoadError(
-                rule.getLoadError() == null ? joined : rule.getLoadError() + "; " + joined);
+        // one entry per error (pack-2 review 8a-A F3); the joined loadError is byte-identical
+        errors.forEach(rule::addLoadError);
     }
 
     // ---------------------------------------------------------------------
@@ -4992,8 +5002,7 @@ public class RulePackageLoader
                 + (undefined.size() == 1 ? " " : "s ") + String.join(", ", undefined)
                 + " which no binding defines: the name never enters the evaluation"
                 + " context, so the leaf yields no rows and the rule silently checks nothing";
-        rule.setLoadError(
-                rule.getLoadError() == null ? message : rule.getLoadError() + "; " + message);
+        rule.addLoadError(message);
     }
 
     // ---------------------------------------------------------------------
@@ -5095,8 +5104,7 @@ public class RulePackageLoader
                 + " a static, non-blank string literal, so the rule is defective — fix the rule by"
                 + " declaring external_dictionary_type as a non-blank string literal; installing"
                 + " dictionaries cannot help";
-        rule.setLoadError(
-                rule.getLoadError() == null ? message : rule.getLoadError() + "; " + message);
+        rule.addLoadError(message);
     }
 
 
@@ -5321,7 +5329,7 @@ public class RulePackageLoader
      * reported as itself rather than being silently replaced.
      * </p>
      */
-    private static void deriveOmittedFields(RulePackage pkg)
+    private static void deriveOmittedFields(RulePackage pkg, System.Logger.Level aSummaryLevel)
     {
         if (pkg.getRules() == null)
         {
@@ -5338,7 +5346,7 @@ public class RulePackageLoader
         {
             // No package identifier is available to name here: RulePackage models only `rules`
             // and `unknownKeys`, with no name/id of its own.
-            LOGGER.log(System.Logger.Level.INFO,
+            LOGGER.log(aSummaryLevel,
                     "{0} rule(s) applied a LIKELY derivation: {1} (per-rule detail at DEBUG)",
                     likely.values().stream().mapToInt(Integer::intValue).sum(), likely);
         }
@@ -5346,9 +5354,9 @@ public class RulePackageLoader
 
 
     /**
-     * Per-rule variant of {@link #deriveOmittedFields(RulePackage)}, also applied by
-     * {@code LibraryRuleMapper} (until cache P4 retired it) so CDISC-Library-sourced rules derived
-     * identically.
+     * Per-rule variant of {@link #deriveOmittedFields(RulePackage, System.Logger.Level)}, also
+     * applied by {@code LibraryRuleMapper} (until cache P4 retired it) so CDISC-Library-sourced
+     * rules derived identically.
      *
      * <p>
      * Public because the corpus no longer carries these fields: anything that binds a {@link Rule}
@@ -5671,7 +5679,7 @@ public class RulePackageLoader
 
     private static void appendLoadError(Rule rule, String error)
     {
-        rule.setLoadError(rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
+        rule.addLoadError(error);
     }
 
 
@@ -5758,8 +5766,7 @@ public class RulePackageLoader
         }
         String message = "[" + ruleId(rule) + "] Outcome.Output_Variables: "
                 + String.join("; ", errors);
-        rule.setLoadError(
-                rule.getLoadError() == null ? message : rule.getLoadError() + "; " + message);
+        rule.addLoadError(message);
     }
 
 

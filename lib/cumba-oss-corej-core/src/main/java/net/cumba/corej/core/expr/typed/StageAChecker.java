@@ -313,8 +313,7 @@ public final class StageAChecker
         {
             String joined = String.join("; ", armed.stream().map(StageAFinding::toString).toList());
             String error = "stage A: " + joined;
-            rule.setLoadError(
-                    rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
+            rule.addLoadError(error);
         }
         for (StageAFinding failure : report.findings())
         {

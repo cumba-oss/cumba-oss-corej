@@ -1,8 +1,6 @@
 package net.cumba.corej.core.model;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 /**
  * The three lists a surface that shows a rule's {@code Output_Variables} needs, in one place
@@ -19,7 +17,10 @@ import java.util.Set;
  * @param effective
  *            the report columns in order: {@link Rule#effectiveOutputVariablesOrAuthored()}
  * @param authored
- *            the names the author wrote (exclusions removed), in authored order
+ *            the include entries the author wrote (exclusion tokens removed), in authored order — ⚠
+ *            not necessarily a subset of {@code effective}: a rule that writes {@code X} and
+ *            {@code !X} fails to load, and its {@code X} stays here while the effective list
+ *            applies the exclusion (pack-2 review 15b L1)
  * @param excluded
  *            the names the author excluded with {@code !X}, in authored order
  * @param derived
@@ -49,25 +50,12 @@ public record OutputVariableListing(List<String> effective, List<String> authore
     {
         List<String> entries = aRule.getOutcome() == null ? null
                 : aRule.getOutcome().getOutputVariables();
-        List<String> authored = OutputVariableToken.includes(entries);
-        Set<String> exclusionSet = OutputVariableToken.exclusions(entries);
-        List<String> excluded = new ArrayList<>();
-        if (entries != null)
-        {
-            for (String entry : entries)
-            {
-                if (OutputVariableToken.isExclusion(entry))
-                {
-                    String name = OutputVariableToken.name(entry);
-                    if (exclusionSet.contains(name) && !excluded.contains(name))
-                    {
-                        excluded.add(name);
-                    }
-                }
-            }
-        }
-        return new OutputVariableListing(aRule.effectiveOutputVariablesOrAuthored(), authored,
-                excluded, aRule.getLoadError() == null);
+        // exclusions(): every !X name, deduplicated, in first-appearance order, a bare "!"
+        // contributing nothing — exactly the list this method used to rebuild entry by entry
+        // (pack-2 review 15b: the rebuild's contains() test was the same set again)
+        return new OutputVariableListing(aRule.effectiveOutputVariablesOrAuthored(),
+                OutputVariableToken.includes(entries),
+                List.copyOf(OutputVariableToken.exclusions(entries)), aRule.getLoadError() == null);
     }
 
 

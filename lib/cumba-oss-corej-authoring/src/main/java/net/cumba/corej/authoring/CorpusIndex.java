@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -66,10 +67,29 @@ public final class CorpusIndex
             Map<String, List<RegisterClass>> aClassesByRule,
             Map<String, List<Parentage>> aParentageByRule)
     {
-        byReference = aByReference;
-        referencesByRule = aReferencesByRule;
-        classesByRule = aClassesByRule;
-        parentageByRule = aParentageByRule;
+        // Frozen on the way in — maps AND their lists (pack-2 review 8a-A F6: a shallow copy let
+        // the next with…() append to this index's lists).
+        byReference = frozen(aByReference);
+        referencesByRule = frozen(aReferencesByRule);
+        classesByRule = frozen(aClassesByRule);
+        parentageByRule = frozen(aParentageByRule);
+    }
+
+
+    private static <K, V> Map<K, List<V>> frozen(Map<K, List<V>> aMap)
+    {
+        Map<K, List<V>> out = new LinkedHashMap<>();
+        aMap.forEach((k, v) -> out.put(k, List.copyOf(v)));
+        return Collections.unmodifiableMap(out);
+    }
+
+
+    /** A mutable copy of a frozen map — new lists, so adding to them leaves the source alone. */
+    private static <K, V> Map<K, List<V>> thawed(Map<K, List<V>> aMap)
+    {
+        Map<K, List<V>> out = new LinkedHashMap<>();
+        aMap.forEach((k, v) -> out.put(k, new ArrayList<>(v)));
+        return out;
     }
 
 
@@ -106,25 +126,41 @@ public final class CorpusIndex
      */
     public static List<ReferenceKey> referencesOf(JsonNode aCheck)
     {
+        // Read off the references themselves, walked in AuthoredRuleAssembler.walkReferences'
+        // order — not cut back out of its locator key, whose '|' fields an id may contain and
+        // whose '#n' tiebreak sits on the LAST field (pack-2 review 8a-A F6).
         List<ReferenceKey> out = new ArrayList<>();
-        for (AuthoredRuleAssembler.RefCitations rc : AuthoredRuleAssembler
-                .walkReferences(aCheck.get("Standards")))
+        JsonNode standards = aCheck.get("Standards");
+        if (standards == null || !standards.isArray())
         {
-            // key = org|name|version|substandard|ruleId|ruleVersion[#n]
-            String[] parts = rc.key().split("\\|", -1);
-            if (parts.length < 6)
+            return out;
+        }
+        for (JsonNode authority : standards)
+        {
+            JsonNode stds = authority.get("Standards");
+            if (stds == null)
             {
                 continue;
             }
-            String ruleId = parts[4].contains("#") ? parts[4].substring(0, parts[4].indexOf('#'))
-                    : parts[4];
-            String origin = originOf(aCheck, rc.key());
-            if (!ruleId.isEmpty())
+            for (JsonNode std : stds)
             {
-                ReferenceKey key = new ReferenceKey(origin, ruleId);
-                if (!out.contains(key))
+                JsonNode refs = std.get("References");
+                if (refs == null)
                 {
-                    out.add(key);
+                    continue;
+                }
+                for (JsonNode ref : refs)
+                {
+                    JsonNode rid = ref.get("Rule_Identifier");
+                    String ruleId = rid == null ? "" : text(rid.get("Id"));
+                    if (!ruleId.isEmpty())
+                    {
+                        ReferenceKey key = new ReferenceKey(text(ref.get("Origin")), ruleId);
+                        if (!out.contains(key))
+                        {
+                            out.add(key);
+                        }
+                    }
                 }
             }
         }
@@ -132,53 +168,9 @@ public final class CorpusIndex
     }
 
 
-    /**
-     * The {@code Origin} of the reference under a locator key — walked the same way the key was
-     * produced, so the n-th key meets the n-th reference.
-     */
-    private static String originOf(JsonNode aCheck, String aKey)
+    private static String text(@Nullable JsonNode aNode)
     {
-        List<AuthoredRuleAssembler.RefCitations> keys = AuthoredRuleAssembler
-                .walkReferences(aCheck.get("Standards"));
-        int index = -1;
-        for (int i = 0; i < keys.size(); i++)
-        {
-            if (keys.get(i).key().equals(aKey))
-            {
-                index = i;
-                break;
-            }
-        }
-        int n = 0;
-        JsonNode standards = aCheck.get("Standards");
-        if (standards != null && index >= 0)
-        {
-            for (JsonNode authority : standards)
-            {
-                JsonNode stds = authority.get("Standards");
-                if (stds == null)
-                {
-                    continue;
-                }
-                for (JsonNode std : stds)
-                {
-                    JsonNode refs = std.get("References");
-                    if (refs == null)
-                    {
-                        continue;
-                    }
-                    for (JsonNode ref : refs)
-                    {
-                        if (n++ == index)
-                        {
-                            JsonNode origin = ref.get("Origin");
-                            return origin == null || origin.isNull() ? "" : origin.asText();
-                        }
-                    }
-                }
-            }
-        }
-        return "";
+        return aNode == null || aNode.isNull() ? "" : aNode.asText();
     }
 
 
@@ -196,7 +188,7 @@ public final class CorpusIndex
     public CorpusIndex withEquivalenceRegister(String aYaml) throws JsonProcessingException
     {
         JsonNode root = AuthoredRuleAssembler.readYamlTree(aYaml);
-        Map<String, List<RegisterClass>> byRule = new LinkedHashMap<>(classesByRule);
+        Map<String, List<RegisterClass>> byRule = thawed(classesByRule);
         addClasses(root.get("classes"), true, byRule);
         addClasses(root.get("relations"), false, byRule);
         return new CorpusIndex(byReference, referencesByRule, byRule, parentageByRule);
@@ -240,7 +232,7 @@ public final class CorpusIndex
      */
     public CorpusIndex withParentage(String aTsv)
     {
-        Map<String, List<Parentage>> byRule = new LinkedHashMap<>(parentageByRule);
+        Map<String, List<Parentage>> byRule = thawed(parentageByRule);
         for (String line : aTsv.split("\\R", -1))
         {
             if (line.isBlank() || line.startsWith("#"))
