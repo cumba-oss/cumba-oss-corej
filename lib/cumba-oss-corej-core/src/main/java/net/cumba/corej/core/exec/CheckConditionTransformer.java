@@ -6,9 +6,11 @@ import org.jspecify.annotations.Nullable;
  * Resolves {@code --} / {@code **} domain-prefix wildcards in textual operand names.
  * <p>
  * For example, when the domain prefix is {@code "AE"}, the name {@code "--STDTC"} is resolved to
- * {@code "AESTDTC"}. A dot-qualified {@code **} such as {@code "RELREC.**DECOD"} is deliberately
- * PRESERVED (Fix #5) for per-row resolution by {@code RelrecExpandedLookup}; only the dataset half
- * of such a reference is resolved here.
+ * {@code "AESTDTC"}. A dot-qualified {@code **} such as {@code "AE.**DECOD"} is deliberately
+ * PRESERVED (Fix #5): the column half belongs to the joined side, never to the primary's prefix;
+ * only the dataset half of such a reference is resolved here. (Until W5 of
+ * {@code PLAN-merged-evaluation-table} the RELREC expansion resolved it per row; a
+ * {@code RELREC.**} read is a stage-A load error now.)
  * </p>
  * <p>
  * ⭐ Phase 7d of {@code PLAN-typed-expression-engine} (D121): the
@@ -53,9 +55,9 @@ public final class CheckConditionTransformer
             String colHalf = text.substring(dot + 1);
             String newDs = dsHalf.replace(WILDCARD, datasetPrefix).replace(DOUBLE_WILDCARD,
                     datasetPrefix);
-            // Fix #5: a `**` in the COLUMN half is deferred to RelrecExpandedLookup, which resolves
-            // it per row against the RELREC-paired parent — a rule-prep substitution would collapse
-            // cross-domain relationships into one. A `--` there is an ordinary variable name.
+            // Fix #5: a `**` in the COLUMN half is the joined side's — a rule-prep substitution
+            // on the primary's prefix would name the wrong domain's variable. A `--` there is an
+            // ordinary variable name.
             String newCol = colHalf.contains(DOUBLE_WILDCARD) ? colHalf
                     : colHalf.replace(WILDCARD, prefix);
             return dsHalf.equals(newDs) && colHalf.equals(newCol) ? null : newDs + "." + newCol;

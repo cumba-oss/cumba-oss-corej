@@ -47,8 +47,9 @@ class CheckConditionTransformerTest
     @Test
     void dotQualifiedDoubleWildcardColumnHalfIsPreserved()
     {
-        // Fix #5: RELREC.**DECOD keeps the ** column half for per-row resolution by
-        // RelrecExpandedLookup — pre-resolving would collapse cross-domain relationships.
+        // Fix #5: a dotted ** column half is never resolved on the primary's prefix — it is the
+        // joined side's; since W5 of PLAN-merged-evaluation-table nothing resolves it per row
+        // and a RELREC.** read is a stage-A load error, but the text policy is unchanged.
         assertNull(CheckConditionTransformer.resolveTextWildcard("RELREC.**DECOD", "AE", "AE"));
     }
 

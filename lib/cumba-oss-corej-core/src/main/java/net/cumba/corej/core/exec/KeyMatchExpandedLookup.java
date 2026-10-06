@@ -9,7 +9,8 @@ import org.jspecify.annotations.Nullable;
  * {@link KeyMatchRowExpander}. Keyed by the row index of the <em>expanded</em> evaluation table:
  * every expanded row binds to exactly one child row (or to none, for a {@code left}-join row with
  * no match), so a scalar {@link #lookup} is exact — it returns the matched child's value, never a
- * first-wins guess. Mirrors {@link RelrecExpandedLookup} for plain key joins.
+ * first-wins guess. Mirrored the RELREC expansion's lookup (retired in W5 of
+ * {@code PLAN-merged-evaluation-table}) for plain key joins; itself retired in W6.
  *
  * <p>
  * The {@code table} argument is ignored — the expanded row index alone selects the bound child row.
@@ -66,7 +67,7 @@ final class KeyMatchExpandedLookup implements JoinLookup
             // regression). Identical to DatasetLookup.lookupValue's arm, deliberately.
             //
             // ⚠ THIS SITE WAS MISSED TWICE: it is the THIRD production implementation of this arm,
-            // and the plan's §9c names only two (DatasetLookup and RelrecExpandedLookup). A fix
+            // and the plan's §9c names only two (DatasetLookup and the RELREC expansion's). A fix
             // applied to the two named ones would have left this one — the corpus path for plain
             // named Match_Dataset entries — answering the old unconditional "". ⛔ When this arm
             // changes again, change all three or none.

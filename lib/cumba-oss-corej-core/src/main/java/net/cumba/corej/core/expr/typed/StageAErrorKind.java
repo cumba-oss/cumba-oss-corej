@@ -207,6 +207,21 @@ public enum StageAErrorKind
     DOTTED_REF_UNDECLARED(false),
 
     /**
+     * A value read of the forward RELREC entry itself — {@code RELREC.<column>} or
+     * {@code RELREC.**<suffix>} in a Check, a binding, {@code Output_Variables} or a {@code colref}
+     * / {@code find_vars} literal ({@code PLAN-merged-evaluation-table} W5, §3.6.5, MET #17). The
+     * RELREC entry carries no columns of its own in the one-table model: a related record's column
+     * is read qualified with its domain ({@code PC.PCRFTDTC}), guarded by {@code <D>._matched_}
+     * where the domain may be absent; the per-row alias the retired expander served has no single
+     * answer on a cross-product row. Undeclared in the strict sense of
+     * {@link #DOTTED_REF_UNDECLARED} (no join ever serves the name) but <b>armed</b>: the entry
+     * exists, so the silent not-supplied default would pass as a verdict. Dataset-independent and
+     * decidable at load, like {@link #MATCHED_FLAG_INVALID}. Measured 0 in both corpora after the
+     * seven forward-RELREC rules were respelled in W5.
+     */
+    DOTTED_REF_RELREC_ENTRY(true),
+
+    /**
      * Two {@code Match_Datasets} entries sharing one {@code Name} (phase 6b — D110g(iii), the
      * 2026-08 join-match-flag plan's ambiguity load-error, routed here by D88b as part of the
      * binding model): {@code RuleRunner.buildJoinedDatasets} keys the join lookups by name,

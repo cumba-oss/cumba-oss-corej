@@ -83,8 +83,8 @@ class JoinLookupProductionOverrideGuardTest
 
     /**
      * A column name no fixture below declares, so every probe lands in the absent-column arm —
-     * {@code DatasetLookup:346}, {@code KeyMatchExpandedLookup:78},
-     * {@code RelrecExpandedLookup:139} — which is the one arm that reads {@code numericExpected}.
+     * {@code DatasetLookup:346}, {@code KeyMatchExpandedLookup:78} — which is the one arm that
+     * reads {@code numericExpected}.
      */
     private static final String ABSENT_COLUMN = "ZZNOSUCHCOLUMN";
 
@@ -116,13 +116,6 @@ class JoinLookupProductionOverrideGuardTest
                 {
                         0
                 }), primary, 0));
-        out.put("RelrecExpandedLookup", new Probe(new RelrecExpandedLookup(List.of(child), new int[]
-        {
-                0
-        }, new long[]
-        {
-                0
-        }), primary, 0));
         // W3a: the merged-view lookup reads a built view (real tables: the view copies column
         // metadata), its keyed part DM left-joined on USUBJID.
         IDataTable viewPrimary = RealTables.of("AE").str("USUBJID", "S1").build();
@@ -185,8 +178,8 @@ class JoinLookupProductionOverrideGuardTest
                         + " which cannot honour the three-way non-value contract: an absent CHARACTER"
                         + " column reads as a computed MissingValue.MIS where the constant \"\" is"
                         + " owed, and a present-but-missing cell loses its own missing identity."
-                        + " Override it, as DatasetLookup / KeyMatchExpandedLookup /"
-                        + " RelrecExpandedLookup do: " + notDeclared);
+                        + " Override it, as DatasetLookup / KeyMatchExpandedLookup do: "
+                        + notDeclared);
         assertTrue(ignoresTheExpectation.isEmpty(),
                 "⛔⛔ these production JoinLookup implementations DECLARE the expectation-aware"
                         + " lookupValue and do not HONOUR it: for a column absent from the joined"

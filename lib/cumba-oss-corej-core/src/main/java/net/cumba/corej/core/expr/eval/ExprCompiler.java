@@ -487,7 +487,14 @@ public final class ExprCompiler
      * joined dataset is stage B's business (declared &#8658; the Requirements gate already SKIPPED;
      * suppressed &#8658; {@code AbsentDatasetSkip} already folded the reader; neither &#8658; the
      * armed {@code MATCHED_FLAG_UNRESOLVABLE} bind error) — so a {@code null} lookup reaching this
-     * plan is an engine sequencing defect, reported as the rule's ERROR.
+     * plan is an engine sequencing defect, reported as the rule's ERROR. The one exception is
+     * ruled: under a forward RELREC entry ({@code PLAN-merged-evaluation-table} W5, P-14) a
+     * qualifier no entry names is a related domain, and one no relationship reaches on this study
+     * has no part — its flag ("this row carries a D record") is {@code false} on every row, the
+     * not-supplied answer (P-1), never a flood: the flag guards a read of that domain, it is not
+     * negated over an absent dataset.
+     * {@link net.cumba.corej.core.exec.MergedEvaluation.Built#relrecDeclared} says which case this
+     * is.
      * </p>
      */
     private static ExprProgram.BoolPlan matchedFlagPlan(String flagName)
@@ -497,13 +504,18 @@ public final class ExprCompiler
         {
             EvaluationContext ctx = run.ctx();
             JoinLookup lookup = ctx.getJoinedDatasets().get(dataset);
+            int rc = run.rowCount();
             if (lookup == null)
             {
+                net.cumba.corej.core.exec.MergedEvaluation.Built view = ctx.getMergedView();
+                if (view != null && view.relrecDeclared())
+                {
+                    return new BitSet(rc); // a related domain no relationship reaches: not supplied
+                }
                 throw new IllegalStateException("the join-match flag " + flagName + " has no "
                         + "built join for dataset " + dataset + " — stage B should have skipped "
                         + "or errored this (rule, dataset) before evaluation");
             }
-            int rc = run.rowCount();
             BitSet matched = new BitSet(rc);
             for (int row = 0; row < rc; row++)
             {
@@ -3657,9 +3669,11 @@ public final class ExprCompiler
 
 
     /**
-     * A dot-qualified {@code **} reference ({@code RELREC.**TERM}): the column part after the first
-     * dot starts with {@code **}, resolved per row by the joined-dataset lookup itself
-     * ({@code RelrecExpandedLookup}).
+     * A dot-qualified {@code **} reference ({@code AE.**TERM}): the column part after the first dot
+     * starts with {@code **}. It reads through the join of its concrete qualifier like any dotted
+     * name (QNU N27 judges an undeclared one); since W5 of {@code PLAN-merged-evaluation-table} no
+     * lookup resolves the {@code **} per row — the forward-RELREC alias it served is a load error
+     * ({@code DOTTED_REF_RELREC_ENTRY}).
      */
     private static boolean isDottedStarStar(String name)
     {
@@ -4869,12 +4883,11 @@ public final class ExprCompiler
                 {
                     yield substitutedScalarPlan(scalar);
                 }
-                // P5b: a dot-qualified `**` reference (RELREC.**TERM) resolves per row through the
-                // SAME engine-agnostic joined-dataset lookup the legacy ValueResolver consults —
-                // RelrecExpandedLookup (registered under the dataset key by RelrecRowExpander)
-                // itself resolves the `**` prefix against the bound target row's domain. The
-                // dotted plan already routes through that lookup, so this is a scalar per-row
-                // read with no arity change.
+                // P5b: a dot-qualified `**` reference (AE.**TERM) routes through the SAME
+                // engine-agnostic joined-dataset lookup the legacy ValueResolver consults — a
+                // scalar per-row read with no arity change. (Until W5 of
+                // PLAN-merged-evaluation-table the forward-RELREC lookup resolved the `**` per
+                // bound row; the related domains are parts now and the rules name them.)
                 if (isDottedStarStar(r.name()))
                 {
                     yield namePosition ? nameRefPlan(r.name()) : valueRefPlan(r.name());
@@ -5392,9 +5405,10 @@ public final class ExprCompiler
      * </p>
      *
      * <p>
-     * ⭐ <b>The three sibling not-supplied arms now apply the SAME rule, by a different channel</b>
-     * — {@code DatasetLookup.lookupValue}, {@code KeyMatchExpandedLookup.lookupValue} and
-     * {@code RelrecExpandedLookup.lookupValue} each read the expectation through
+     * ⭐ <b>The sibling not-supplied arms now apply the SAME rule, by a different channel</b> —
+     * {@code DatasetLookup.lookupValue}, {@code KeyMatchExpandedLookup.lookupValue} (and, until W5
+     * of {@code PLAN-merged-evaluation-table}, the RELREC expansion's) each read the expectation
+     * through
      * {@link JoinLookup#lookupValue(net.cumba.datatable.IDataTable, long, String, boolean)}, whose
      * {@code numericExpected} flag carries the one fact that seam previously could not see (it
      * landed as a four-argument overload beside a three-argument form; the three-argument form is

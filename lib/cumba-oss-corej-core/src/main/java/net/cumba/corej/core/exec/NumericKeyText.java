@@ -6,8 +6,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The exact-decimal canonical text of a numeric join-key token — the ONE rule behind the numeric
- * arm of the two text-carried foreign-key joins: {@code RelrecRowExpander.normKey} (the RELREC
- * {@code IDVAR} value on both the record-level {@code IDVAR == IDVARVAL} filter and the
+ * arm of the two text-carried foreign-key joins: the retired {@code RelrecRowExpander.normKey} (W5;
+ * the RELREC {@code IDVAR} value on both the record-level {@code IDVAR == IDVARVAL} filter and the
  * dataset-level equi-join) and {@link #childJoinToken} (the SUPP-- / CO / RELREC {@code IDVAR} join
  * token the legacy SUPP pivot and {@code distinct}'s join-token columns read; the merged view
  * matches through the datatable's own {@code JoinToken}). Ruled by PLAN-relrec-idvar-key-precision

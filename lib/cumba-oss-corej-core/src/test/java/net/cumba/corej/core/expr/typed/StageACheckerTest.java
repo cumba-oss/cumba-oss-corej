@@ -21,6 +21,7 @@ import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.datatable.report.Severity;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -603,6 +604,87 @@ class StageACheckerTest
         assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED), kinds(report));
         assertTrue(report.findings().get(0).toString().contains("child dataset itself"),
                 report.findings().toString());
+    }
+
+    // ------------------------------------------------------------------
+    // W5 of PLAN-merged-evaluation-table (§3.6, P-14): the forward RELREC entry's qualifiers.
+    // ------------------------------------------------------------------
+
+
+    /** A forward RELREC entry: {@code Name: RELREC}, no keys, not Child. */
+    private static Rule ruleWithForwardRelrec(@Nullable String joinType)
+    {
+        return ruleJoining("RELREC", joinType);
+    }
+
+
+    /**
+     * P-14: under a forward RELREC entry every concrete qualifier no entry names is a related
+     * domain (the data's {@code RDOMAIN} set is unknown here) — its columns and its
+     * {@code _matched_} flag are declared, under any {@code Join_Type} of the entry (a domain the
+     * relationship does not name is not supplied on that row, inner or left). Never a {@code SUPP}
+     * / {@code SQ} dataset.
+     */
+    @Test
+    void aRelatedDomainNoEntryNamesIsDeclaredUnderAForwardRelrecEntry()
+    {
+        Rule rule = ruleWithForwardRelrec(null);
+        assertEquals(List.of(), check(rule, "PPRFTDTC != PC.PCRFTDTC").findings());
+        assertEquals(List.of(), check(rule, "AE._matched_ and FAOBJ != AE.AETERM").findings());
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED),
+                kinds(check(rule, "SUPPAE.QVAL == \"x\"")), "a SUPP dataset is never related");
+        // control: without the entry both are undeclared
+        Rule none = new Rule();
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED),
+                kinds(check(none, "PPRFTDTC != PC.PCRFTDTC")));
+        assertEquals(List.of(StageAErrorKind.MATCHED_FLAG_INVALID),
+                kinds(check(none, "not AE._matched_")));
+    }
+
+
+    /**
+     * {@code RELREC._matched_} is "the record has any relationship" (P-14): served under
+     * {@code left}; constant-true under the entry's {@code inner} default (D88e), exactly as a
+     * keyed entry's flag.
+     */
+    @Test
+    void theForwardRelrecEntrysOwnFlagFollowsItsJoinType()
+    {
+        assertEquals(List.of(),
+                check(ruleWithForwardRelrec("left"), "not RELREC._matched_").findings());
+        assertEquals(List.of(StageAErrorKind.MATCHED_FLAG_INNER_JOIN),
+                kinds(check(ruleWithForwardRelrec(null), "not RELREC._matched_")));
+        assertEquals(List.of(StageAErrorKind.MATCHED_FLAG_INNER_JOIN),
+                kinds(check(ruleWithForwardRelrec("inner"), "not RELREC._matched_")));
+    }
+
+
+    /**
+     * The RELREC entry carries no columns of its own in the one-table model: a value read
+     * {@code RELREC.<column>} / {@code RELREC.**<suffix>} (the per-row alias of the retired
+     * expander, which has no single answer on a cross-product row — MET #17) is an armed load error
+     * naming the respelling, on every surface: the Check, a binding, {@code Output_Variables} and a
+     * {@code colref} literal.
+     */
+    @Test
+    void aValueReadOfTheRelrecEntryItselfIsAnArmedError()
+    {
+        Rule rule = ruleWithForwardRelrec(null);
+        StageAReport report = check(rule, "PPRFTDTC != RELREC.PCRFTDTC");
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_RELREC_ENTRY), kinds(report));
+        assertTrue(report.findings().get(0).kind().armed());
+        assertTrue(report.findings().get(0).toString().contains("PC.PCRFTDTC"),
+                report.findings().toString());
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_RELREC_ENTRY),
+                kinds(check(rule, "FAOBJ != RELREC.**TERM")));
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_RELREC_ENTRY),
+                kinds(check(rule, "colref(\"RELREC.PCTEST\") != PPCAT")));
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_RELREC_ENTRY),
+                kinds(check(withOutputs(ruleWithForwardRelrec(null), "RELREC.PCTEST"),
+                        "not empty(PPCAT)")));
+        // a keyed RELREC entry (not forward) keeps today's reads; a Child RELREC primary too
+        Rule keyed = ruleJoining("RELREC", null, "USUBJID");
+        assertEquals(List.of(), check(keyed, "PPRFTDTC != RELREC.IDVAR").findings());
     }
 
 

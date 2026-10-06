@@ -309,7 +309,7 @@ public class MatchDataset
      * Left/primary-side join key names. A bare-string entry contributes its own name; a sided
      * {@code {left, right}} entry contributes its {@code left} name. Returns {@code null} when no
      * keys are declared, matching the historical field accessor so existing callers
-     * ({@code RelrecRowExpander}, {@code KeyMatchRowExpander}, {@code ChildEntries},
+     * ({@code RelrecEntries}, {@code KeyMatchRowExpander}, {@code ChildEntries},
      * {@code RuleRunner.buildJoinedDatasets}) stay byte-identical for the bare-string shape.
      */
     @JsonIgnore

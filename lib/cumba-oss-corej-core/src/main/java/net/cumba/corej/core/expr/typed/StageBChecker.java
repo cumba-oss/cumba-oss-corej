@@ -646,6 +646,16 @@ public final class StageBChecker
             {
                 continue; // reader already folded; the absence is reported by the presence rule
             }
+            if (net.cumba.corej.core.exec.RelrecEntries.hasForwardEntry(rule.getMatchDatasets())
+                    && !"RELREC".equalsIgnoreCase(dataset)
+                    && MatchDataset.declaredFor(rule.getMatchDatasets(), dataset) == null)
+            {
+                // W5 of PLAN-merged-evaluation-table (P-14, P-1): under a forward RELREC entry a
+                // qualifier no entry names is a related domain, whose flag the merged view
+                // answers — false on every row when no relationship reaches it on this study.
+                // Never the flood this gate exists for: the flag guards a read of that domain.
+                continue;
+            }
             if (declaresDataset(rule, dataset))
             {
                 skips.add("Rule skipped — " + flag + "'s joined dataset " + dataset

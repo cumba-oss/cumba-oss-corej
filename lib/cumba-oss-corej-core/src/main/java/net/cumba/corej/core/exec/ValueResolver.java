@@ -150,8 +150,8 @@ public final class ValueResolver
                 // ⚠ The two cases are indistinguishable from the VALUE alone on a numeric column —
                 // unmatched yields MIS and a matched missing may also be MIS — which is precisely
                 // why
-                // this asks the join, not the value. All three production JoinLookups answer
-                // matchedRow (DatasetLookup, KeyMatchExpandedLookup, RelrecExpandedLookup).
+                // this asks the join, not the value. Every production JoinLookup answers
+                // matchedRow (DatasetLookup, KeyMatchExpandedLookup, MergedViewLookup).
                 IDataValue dv = lookup.lookupValue(ctx.getTable(), row, colName, false);
                 MissingValue identity = TypedValue.missingIdentityOf(dv);
                 if (identity != null && lookup.matchedRow(ctx.getTable(), row))

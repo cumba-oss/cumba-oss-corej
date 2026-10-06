@@ -129,19 +129,40 @@ class MergedTableAuthoringGatesTest
                 "Join_Type 'inner' on Child: true Match_Datasets entry 'SUPP--' — a Child entry"
                         + " keeps every record (left)");
         assertClean(load(CHILD.formatted("") + ",{\"Name\":\"RELREC\",\"Child\":true}", ""));
-        assertError(load(CHILD.formatted("") + ",{\"Name\":\"RELREC\"}", ""),
-                "a Child: true Match_Datasets entry on a rule that carries a forward RELREC entry"
-                        + " or a chained qualified key");
+        // W5: a forward RELREC entry is a part of the same view — a Child entry beside it is served
+        assertClean(load(CHILD.formatted("") + ",{\"Name\":\"RELREC\"}", ""));
+        assertError(
+                loadAuthored(CHAINED.formatted(",{\"Name\":\"SUPP--\",\"Child\":true,"
+                        + "\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]}")),
+                "a Child: true Match_Datasets entry on a rule that carries a chained qualified"
+                        + " key");
     }
 
 
+    /**
+     * W5: a forward RELREC entry's {@code Cardinality} is served by the view — an authored value
+     * overrides every relationship's RELTYPE default (OD-9) — so every spelling loads; a keyless
+     * entry that is not RELREC still builds no part and cannot be checked.
+     */
     @Test
-    void aForwardRelrecEntryAcceptsOnlyNToMBeforeW5() throws IOException
+    void aForwardRelrecEntryAcceptsEveryCardinality() throws IOException
     {
         assertClean(load("{\"Name\":\"RELREC\",\"Cardinality\":\"n:m\"}", ""));
-        assertError(load("{\"Name\":\"RELREC\",\"Cardinality\":\"n:1\"}", ""),
-                "a keyless entry (forward RELREC) runs its own expansion until"
-                        + " PLAN-merged-evaluation-table W5");
+        assertClean(load("{\"Name\":\"RELREC\",\"Cardinality\":\"n:1\"}", ""));
+        assertClean(load("{\"Name\":\"RELREC\",\"Cardinality\":\"1:1\"}", ""));
+        assertError(load("{\"Name\":\"DS\",\"Cardinality\":\"n:1\"}", ""),
+                "a keyless entry builds no part");
+    }
+
+
+    /** W5: the forward RELREC entry is served by the view, never by the legacy arm. */
+    @Test
+    void aForwardRelrecEntryOnAChainedKeyRuleIsALoadError() throws IOException
+    {
+        assertClean(loadAuthored(CHAINED.formatted("")));
+        assertError(loadAuthored(CHAINED.formatted(",{\"Name\":\"RELREC\"}")),
+                "a forward RELREC Match_Datasets entry on a rule that carries a chained qualified"
+                        + " key");
     }
 
 
@@ -149,20 +170,36 @@ class MergedTableAuthoringGatesTest
     void aRuleOnTheLegacyArmCannotAuthorACheckingCardinality() throws IOException
     {
         // A chained qualified key keeps the whole rule on the legacy pipeline, which checks none.
-        // The key declaration is the shape PLAN-rprfdy-offset-tp-join C1 requires.
-        String chained = "{\"Core\":{\"Id\":\"T-W3F\"},\"Sensitivity\":\"Record\","
-                + "\"Requirements\":{\"Variables\":{\"All\":[\"USUBJID\",\"DM.RPATHCD\"],"
-                + "\"All_Or_None\":[[\"USUBJID\",\"DM.USUBJID\"],[\"DM.RPATHCD\",\"TP.RPATHCD\"],"
-                + "[\"RPHASE\",\"TP.RPHASE\"]]}},"
-                + "\"Match_Datasets\":[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"]%s},"
-                + "{\"Name\":\"TP\",\"Keys\":[\"DM.RPATHCD\",\"RPHASE\"]}],"
-                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]},"
-                + "\"Check\":{\"expression\":\"not empty(USUBJID)\"}}";
-        assertClean(loadAuthored(chained.formatted("")));
-        assertError(loadAuthored(chained.formatted(",\"Cardinality\":\"n:1\"")),
+        assertClean(loadAuthored(CHAINED.formatted("")));
+        assertError(loadAuthored(CHAINED_DM_EXTRA.formatted(",\"Cardinality\":\"n:1\"")),
                 "Cardinality n:1 on Match_Datasets entry 'DM' would not be checked: the rule"
-                        + " carries a forward RELREC entry or a chained qualified key");
+                        + " carries a chained qualified key");
     }
+
+    /**
+     * A rule with a chained qualified key (the shape {@code PLAN-rprfdy-offset-tp-join} C1
+     * requires) — the one population still on the legacy arm after W5; {@code %s} takes further
+     * {@code Match_Datasets} entries.
+     */
+    private static final String CHAINED = "{\"Core\":{\"Id\":\"T-W3F\"},\"Sensitivity\":\"Record\","
+            + "\"Requirements\":{\"Variables\":{\"All\":[\"USUBJID\",\"DM.RPATHCD\"],"
+            + "\"All_Or_None\":[[\"USUBJID\",\"DM.USUBJID\"],[\"DM.RPATHCD\",\"TP.RPATHCD\"],"
+            + "[\"RPHASE\",\"TP.RPHASE\"]]}},"
+            + "\"Match_Datasets\":[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"]},"
+            + "{\"Name\":\"TP\",\"Keys\":[\"DM.RPATHCD\",\"RPHASE\"]}%s],"
+            + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]},"
+            + "\"Check\":{\"expression\":\"not empty(USUBJID)\"}}";
+
+    /** {@link #CHAINED} with {@code %s} inside the DM entry instead. */
+    private static final String CHAINED_DM_EXTRA = CHAINED
+            .replace("{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"]}",
+                    "{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"]%s}")
+            .replace("\"RPHASE\"]}%s]", "\"RPHASE\"]}]");
+
+    /** {@link #CHAINED} with {@code %s} before {@code Match_Datasets} (top-level keys). */
+    private static final String CHAINED_TOP_EXTRA = CHAINED
+            .replace("\"Match_Datasets\":[", "%s\"Match_Datasets\":[")
+            .replace("\"RPHASE\"]}%s]", "\"RPHASE\"]}]");
 
     // ---- Supp_Keys
 
@@ -229,7 +266,10 @@ class MergedTableAuthoringGatesTest
     @Test
     void suppKeysOnALegacyArmedRuleIsALoadError() throws IOException
     {
-        assertError(load("{\"Name\":\"RELREC\"}", "\"Supp_Keys\":[\"USUBJID\"],"),
-                "Supp_Keys would not be read: the rule carries a forward RELREC entry");
+        // W5: a forward RELREC rule reads its SUPP through the view; the chained key is the one
+        // shape still on the legacy arm
+        assertClean(load("{\"Name\":\"RELREC\"}", "\"Supp_Keys\":[\"USUBJID\"],"));
+        assertError(loadAuthored(CHAINED_TOP_EXTRA.formatted("\"Supp_Keys\":[\"USUBJID\"],")),
+                "Supp_Keys would not be read: the rule carries a chained qualified key");
     }
 }

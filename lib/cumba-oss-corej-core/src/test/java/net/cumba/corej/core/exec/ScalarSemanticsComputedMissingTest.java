@@ -235,7 +235,7 @@ class ScalarSemanticsComputedMissingTest
         for (String required : List.of("ExprCompiler.substitutedScalarCell",
                 "ExprCompiler.arithmeticCell", "JoinLookup.lookupValue",
                 "ScalarSemantics.computedMissing", "DatasetLookup.lookupValue",
-                "KeyMatchExpandedLookup.lookupValue", "RelrecExpandedLookup.lookupValue"))
+                "KeyMatchExpandedLookup.lookupValue", "MergedViewLookup.lookupValue"))
         {
             assertTrue(found.contains(required),
                     "CONTROL FAILED: the discovery did not find " + required
@@ -755,7 +755,10 @@ class ScalarSemanticsComputedMissingTest
     // StringArrayColumn.getDataValue (-3); ChildEntries.TokenColumn.getDataValue came (+1) — read:
     // the J5 pointer token where it differs from the stored IDVARVAL text, else the original
     // column's own cell, identity kept. Never null.
-    private static final int EXPECTED_VALUE_PRODUCERS = 42;
+    // 42 -> 41 (PLAN-merged-evaluation-table W5): RelrecExpandedLookup.lookupValue went with the
+    // RELREC row expander (-1); the related domains are MergedViewLookup parts, whose lookupValue
+    // was already counted (W3a).
+    private static final int EXPECTED_VALUE_PRODUCERS = 41;
 
     private static Method declared(Class<?> owner, String name)
     {

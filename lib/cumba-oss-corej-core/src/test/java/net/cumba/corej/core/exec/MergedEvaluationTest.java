@@ -353,13 +353,19 @@ class MergedEvaluationTest
 
 
     @Test
-    void aForwardRelrecRuleAndNothingToMergeStayOnTheLegacyArm()
+    void aForwardRelrecRuleIsServedAndNothingToMergeStaysOnTheLegacyArm()
     {
         IDataTable ae = ae();
+        // W5: a forward RELREC rule builds the view even when RELREC does not resolve — the entry
+        // is declared, its related-domain reads take the not-supplied default (P-1)
         Rule relrec = load("{\"Core\":{\"Id\":\"X-1\"},\"Match_Datasets\":[{\"Name\":\"RELREC\","
                 + "\"Keys\":[]}],\"Check\":{\"expression\":\"AETERM == \\\"A\\\"\"},"
                 + "\"Outcome\":{\"Message\":\"m\"}}");
-        assertNull(MergedEvaluation.build(relrec, ae, ae, resolver(ae), null, "X-1", "AE"));
+        MergedEvaluation.Built served = MergedEvaluation.build(relrec, ae, ae, resolver(ae), null,
+                "X-1", "AE");
+        assertNotNull(served, "W5: served by the view (RelrecEntries)");
+        assertTrue(served.relrecDeclared());
+        assertEquals(Map.of(), served.lookups(), "RELREC absent: no part, nothing row-mapped");
         Rule plain = load("{\"Core\":{\"Id\":\"X-1\"},\"Supp_Merge\":false,"
                 + "\"Check\":{\"expression\":\"AETERM == \\\"A\\\"\"},"
                 + "\"Outcome\":{\"Message\":\"m\"}}");

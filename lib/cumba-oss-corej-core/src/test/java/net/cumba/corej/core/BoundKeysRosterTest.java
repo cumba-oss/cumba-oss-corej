@@ -197,7 +197,7 @@ class BoundKeysRosterTest
                             r(SCOPE_MATCHER, "allOrNoneUnion"))),
             Map.entry(net.cumba.corej.core.model.Binding.class,
                     Map.of("name", r(LOADER, "getName"), "expression", r(LOADER, "getExpression"))),
-            Map.entry(MatchDataset.class, Map.of("Name", r(P + "exec.RelrecRowExpander", "getName"),
+            Map.entry(MatchDataset.class, Map.of("Name", r(P + "exec.RelrecEntries", "getName"),
                     "Keys", r(KEY_MATCH, "getKeys"), "Child",
                     r(P + "exec.ChildEntries", "getChild"), "Join_Type",
                     r(KEY_MATCH, "getJoinType"), "Join_As_String", r(KEY_MATCH, "joinKeysAsString"),

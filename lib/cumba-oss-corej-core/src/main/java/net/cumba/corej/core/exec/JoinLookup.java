@@ -10,8 +10,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Common interface for cross-dataset lookup strategies used by Match_Datasets. Implementations
- * include key-based joins ({@link DatasetLookup}) and relationship-based joins
- * ({@link RelrecExpandedLookup}).
+ * include key-based joins ({@link DatasetLookup}) and, since W3a of
+ * {@code PLAN-merged-evaluation-table}, the parts of the merged evaluation view
+ * ({@link MergedViewLookup} — keyed, Child, RELREC).
  */
 public interface JoinLookup
 {
@@ -37,9 +38,8 @@ public interface JoinLookup
      * semantics) from "the column exists but the value is missing" (keep it as a null/empty value).
      * <p>
      * The default returns {@code true} (assume present), preserving the historical behaviour for
-     * key-based joins. Relationship lookups whose related domain may lack a wildcard-resolved
-     * column (e.g. {@link RelrecExpandedLookup} resolving {@code **TRT} against a parent with no
-     * {@code AETRT}) override this.
+     * key-based joins. A lookup whose column set is known ({@link MergedViewLookup}) answers from
+     * it; the retired RELREC expansion (W5) answered per row.
      * </p>
      *
      * @param primaryTable
@@ -124,13 +124,14 @@ public interface JoinLookup
      *
      * <p>
      * ⭐ <b>All three production implementations override it</b> and rule those cases properly (D72
-     * / D72a-1 / D75a / §9c): {@link DatasetLookup}, {@code KeyMatchExpandedLookup} and
-     * {@code RelrecExpandedLookup}. ⚠ The last one deliberately does NOT also override
-     * {@link #declaredTypeOf}: it binds a different target table per expanded row, so no single
-     * declared type is correct and {@code MISSING} ("unknown") is the honest publication — while
-     * the numeric EXPECTATION passed here is a property of the RULE and is constant for the whole
-     * vector, so it stays well defined per row. ⛔ So this default is reached by TEST doubles only —
-     * keep it, but treat a new production implementation that relies on it as a defect.
+     * / D72a-1 / D75a / §9c): {@link DatasetLookup}, {@code KeyMatchExpandedLookup} and (until W5
+     * of {@code PLAN-merged-evaluation-table}) the RELREC expansion's. ⚠ That last one deliberately
+     * did NOT also override {@link #declaredTypeOf}: it bound a different target table per expanded
+     * row, so no single declared type was correct and {@code MISSING} ("unknown") the honest
+     * publication — while the numeric EXPECTATION passed here is a property of the RULE and is
+     * constant for the whole vector, so it stays well defined per row. ⛔ So this default is reached
+     * by TEST doubles only — keep it, but treat a new production implementation that relies on it
+     * as a defect.
      * </p>
      *
      * @param primaryTable
@@ -167,7 +168,7 @@ public interface JoinLookup
      *
      * <p>
      * The default is {@code false} — <em>unknown</em>: a row-expanded lookup that binds a different
-     * target table per row ({@code RelrecExpandedLookup}) cannot say, and keeps its per-row
+     * target table per row (the RELREC expansion, until W5) could not say, and kept its per-row
      * {@link #lookupValue} default.
      * </p>
      *
@@ -311,9 +312,9 @@ public interface JoinLookup
      * <p>
      * ⭐ <b>Extracted 2026-09-21</b> ({@code PLAN-join-key-missing-semantics} phase 6b(3)). It had
      * THREE production implementations — {@link DatasetLookup}, {@code KeyMatchExpandedLookup} and
-     * {@code RelrecExpandedLookup} — and the third one's own comment recorded the reason to
-     * extract: <i>"THIS SITE WAS MISSED TWICE … ⛔ When this arm changes again, change all three or
-     * none."</i> Now there is nothing to keep in step.
+     * the RELREC expansion's (retired in W5) — and the third one's own comment recorded the reason
+     * to extract: <i>"THIS SITE WAS MISSED TWICE … ⛔ When this arm changes again, change all three
+     * or none."</i> Now there is nothing to keep in step.
      * </p>
      *
      * @param numericExpected

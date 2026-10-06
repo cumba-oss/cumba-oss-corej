@@ -56,10 +56,6 @@ class EngineErrorMessageContractTest
     private static final Path SRC = Path.of(System.getProperty("projectBasedir"), "src", "main",
             "java", "net", "cumba", "corej", "core", "exec");
 
-    /** Verbatim copy of {@code ViolationNormaliser.RELREC_KEY_EXPANSION_MESSAGE}. */
-    private static final String RELREC_KEY_EXPANSION_MESSAGE = "forward RELREC join combined with a key-based Match_Datasets row "
-            + "expansion is not supported on the same rule";
-
     /** Verbatim copy of {@code ViolationNormaliser.NO_NATIVE_CHECK_EXPR_MESSAGE}. */
     private static final String NO_NATIVE_CHECK_EXPR_MESSAGE = "Rule error — the Check has no native expression form; the "
             + "legacy evaluator has been retired";
@@ -282,7 +278,11 @@ class EngineErrorMessageContractTest
         // (pinned below), the classifier's keys: ViolationNormaliser carries MERGE_ERROR and
         // MERGE_REFUSED, and MergeErrorReasonReachabilityTest in the rules repository drives the
         // engine to both.
-        Assertions.assertEquals(11, sites,
+        // 11 -> 10 (PLAN-merged-evaluation-table W5, MQ11): the "forward RELREC join combined
+        // with a key-based Match_Datasets row expansion" sentinel is gone with the RELREC row
+        // expander — the merged view composes the two row maps. ViolationNormaliser's
+        // RELREC_KEY_EXPANSION reason retired with it.
+        Assertions.assertEquals(10, sites,
                 "RuleRunner's ERROR-producing sites changed. Re-derive the ErrorReason vocabulary "
                         + "in the rules repository's ViolationNormaliser before accepting this.");
     }
@@ -396,13 +396,6 @@ class EngineErrorMessageContractTest
                 "read_value's ONLY-ambiguity message tail moved or was reworded — every such ERROR "
                         + "would classify as OTHER; update this constant AND ViolationNormaliser's "
                         + "READ_VALUE_AMBIGUOUS_MESSAGE_SUFFIX in the rules repository");
-    }
-
-
-    @Test
-    void theRelrecMessageIsStillTheEngineSWording() throws IOException
-    {
-        assertSourceContains(RELREC_KEY_EXPANSION_MESSAGE, 1);
     }
 
 

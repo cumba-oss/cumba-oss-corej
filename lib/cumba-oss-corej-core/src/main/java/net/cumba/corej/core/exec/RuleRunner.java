@@ -48,8 +48,6 @@ import org.jspecify.annotations.Nullable;
 public final class RuleRunner
 {
 
-    private static final String RELREC = "RELREC";
-
     /**
      * EC-12: compiled column-match {@link Pattern} per {@code ${*}} Output_Variables template.
      * Keyed by the template string so the pattern is compiled once per template, not per row. (The
@@ -274,10 +272,10 @@ public final class RuleRunner
             // Fix #358 (ruling 1): a Match_Datasets name / RDOMAIN value resolved to a split
             // domain whose members cannot be unioned (e.g. a column type clash). A malformed
             // split is a submission defect the sponsor must see, so the rule reports ERROR with
-            // the same "__error__" sentinel shape as the unsupported RELREC×key-expansion
-            // combination — never a silent skip, never a coerced union. The throwing resolution
-            // sites are spread across the whole execution body (preMerge, the RELREC / key-match
-            // expanders, buildJoinedDatasets, and the Check-side dotted resolvers), which is why
+            // the same "__error__" sentinel shape as a load error — never a silent skip, never a
+            // coerced union. The throwing resolution sites are spread across the whole execution
+            // body (the merged view build, the key-match expander, buildJoinedDatasets, and the
+            // Check-side dotted resolvers), which is why
             // the catch wraps the body rather than any one block.
             String errorMsg = String.valueOf(e.getMessage());
             LOGGER.log(System.Logger.Level.WARNING, "[{0}] {1}",
@@ -656,14 +654,14 @@ public final class RuleRunner
 
         // -----------------------------------------------------------------------
         // Phase ordering (see `core-engine-update-plan.md` §2 Cluster C):
-        // 2a.6–2a.7 — RELREC / key-match row expansion (legacy arm) or the merged view produce the
+        // 2a.6–2a.7 — the merged view (or, legacy arm, the key-match row expansion) produce the
         // merged,
         // row-expanded `evalTable` (every later phase uses `evalTable`, not `table`). These run
         // BEFORE Operations, mirroring Python (preprocess precedes perform_rule_operations), so an
         // Operation aggregating over the primary sees the expanded row set.
         // 2a — Execute Operations (already `--`-concrete: RuleSpecialiser resolved them at the
         // top of this method, stashing `originalName` — Fix #1 / D92a)
-        // 2b — Build Match_Datasets join lookups (Fix #7 multi-row, Fix #5 per-row RELREC)
+        // 2b — Build Match_Datasets join lookups (Fix #7 multi-row)
         // (2c is gone — D77: the Check tree arrives concrete from the specialisation stage)
         // 2e — Evaluate Rule.Precondition (Fix #13 — currently deferred per OQ#4)
         // 3 — Check evaluation
@@ -761,16 +759,16 @@ public final class RuleRunner
         // (AE.AESMIE), never merged bare into the evaluation table (ChildEntries).
 
         // Phases 2a.6–2b (W3a of PLAN-merged-evaluation-table): the merged evaluation view — the
-        // keyed Match_Datasets parts and the primary's SUPP<domain> qualifiers as columns of ONE
-        // table (§3.1) — replaces the key-match row expansion (2a.7), the key-join lookups (2b)
-        // and the SUPP pivot's reader sites. Its primary part is the evaluation table, its keyed
-        // parts are the context's JoinLookups, its qualifier columns are what SuppPivot hands out;
-        // built once per (dataset, merge signature) through the JoinCache (P-3). The legacy arm
-        // below stays for a forward RELREC rule (W5; MQ11's ERROR when combined with a key
-        // expansion) and for a chained qualified key (composed by the engine), and is what the
-        // corpus differential compares the view against (MergedEvaluation.setLegacyForTests).
+        // keyed Match_Datasets parts, the Child parents (W4), the forward RELREC related domains
+        // (W5, the cross product per relationship) and the primary's SUPP<domain> qualifiers as
+        // columns of ONE table (§3.1) — replaces the RELREC row expansion (2a.6), the key-match
+        // row expansion (2a.7), the key-join lookups (2b) and the SUPP pivot's reader sites. Its
+        // primary part is the evaluation table, its parts are the context's JoinLookups, its
+        // qualifier columns are what SuppPivot hands out; built once per (dataset, merge
+        // signature) through the JoinCache (P-3). The legacy arm below stays for a chained
+        // qualified key (composed by the engine) until W6, and is what the corpus differential
+        // compares the view against (MergedEvaluation.setLegacyForTests).
         List<MatchDataset> joinMatchDatasets = rule.getMatchDatasets();
-        RelrecRowExpander.RelrecExpansion relrecExpansion = null;
         KeyMatchRowExpander.KeyMatchExpansion keyExpansion = null;
         MergedEvaluation.Built mergedView = MergedEvaluation.build(rule, evalTable, table, resolver,
                 joinCache, ruleId, domainPrefix);
@@ -794,26 +792,9 @@ public final class RuleRunner
         }
         else
         {
-            // Phase 2a.6: Forward RELREC row expansion (dataset-level + one-to-many). Replaces the
-            // primary eval table with one expanded row per (primary record, related record) pair
-            // (inner-join), mirroring the Python engine's merge_relrec_datasets preprocessing. The
-            // related columns are reached via an expanded-row-aware RELREC JoinLookup (below).
-            MatchDataset forwardRelrec = RelrecRowExpander
-                    .findForwardRelrec(rule.getMatchDatasets());
-            if (forwardRelrec != null)
-            {
-                relrecExpansion = RelrecRowExpander.expand(evalTable, rule.getMatchDatasets(),
-                        resolver, ruleId);
-                if (relrecExpansion != null)
-                {
-                    evalTable = relrecExpansion.table();
-                    // Exclude the forward RELREC entry; its columns are served by the expanded
-                    // RELREC
-                    // lookup.
-                    joinMatchDatasets = new ArrayList<>(rule.getMatchDatasets());
-                    joinMatchDatasets.remove(relrecExpansion.forwardEntry());
-                }
-            }
+            // Phase 2a.6 is gone (W5 of PLAN-merged-evaluation-table, §3.6): a forward RELREC
+            // entry is served by the view above (RelrecEntries); a rule carrying one never
+            // reaches this arm (RulePackageLoader.checkRelrecEntryServed).
 
             // Phase 2a.7: key-based Match_Datasets row expansion (mirrors Python merge_datasets).
             // One
@@ -830,31 +811,9 @@ public final class RuleRunner
                     ruleId, joinCache != null ? joinCache.getSharedIndexCache() : null);
             if (keyExpansion != null)
             {
-                if (relrecExpansion != null)
-                {
-                    // A forward RELREC expansion and a key-based row expansion on the same rule
-                    // would
-                    // each re-index the eval table independently: the RELREC JoinLookup is built
-                    // against the RELREC-expanded row indices, but the key-match expansion replaces
-                    // the
-                    // table with its own (further-expanded) indices, so the RELREC lookup would be
-                    // read
-                    // with the wrong row index and serve corrupted related-record values. No
-                    // bundled
-                    // rule combines the two; surface a rule-execution ERROR ("virtual finding")
-                    // rather
-                    // than silently producing a wrong result — same sentinel pattern as the
-                    // load-error
-                    // path above.
-                    String comboMsg = "forward RELREC join combined with a key-based Match_Datasets row "
-                            + "expansion is not supported on the same rule";
-                    LOGGER.log(System.Logger.Level.WARNING, "[{0}] {1}",
-                            ruleId != null ? ruleId : "?", comboMsg);
-                    Violation sentinel = new Violation(0, Map.of("__error__", comboMsg));
-                    return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                            .violations(List.of(sentinel)).totalRows(RealRows.count(table))
-                            .status(RuleExecutionStatus.ERROR).statusMessage(comboMsg).build();
-                }
+                // (MQ11, W5: a forward RELREC entry beside a key expansion is served by the view,
+                // which composes the row maps — the "not supported on the same rule" ERROR this
+                // arm raised is gone with the expander)
                 evalTable = keyExpansion.table();
                 // Expanded entries are served by the bound-child lookups; drop them from key-join
                 // build.
@@ -906,8 +865,8 @@ public final class RuleRunner
         // context variable, and the SD0004 DOMAIN-column shape evaluates identically with and
         // without the injection.)
 
-        // Phase 2b: the joined dataset lookups — the view's keyed parts, or (legacy arm) built
-        // from Match_Datasets plus the RELREC / key-expansion lookups.
+        // Phase 2b: the joined dataset lookups — the view's parts, or (legacy arm) built from
+        // Match_Datasets plus the key-expansion lookups.
         Map<String, JoinLookup> joinedDatasets;
         if (mergedView != null)
         {
@@ -917,11 +876,6 @@ public final class RuleRunner
         {
             joinedDatasets = buildJoinedDatasets(joinMatchDatasets, evalTable, resolver, joinCache,
                     ruleId);
-            if (relrecExpansion != null)
-            {
-                joinedDatasets = new LinkedHashMap<>(joinedDatasets);
-                joinedDatasets.put(RELREC, relrecExpansion.lookup());
-            }
             if (keyExpansion != null)
             {
                 joinedDatasets = new LinkedHashMap<>(joinedDatasets);
@@ -4232,9 +4186,9 @@ public final class RuleRunner
                 {
                     continue;
                 }
-                // ⚠ T2 r1: hasColumn is ROW-dependent for a RELREC-expanded lookup (the parent
-                // domain varies per row), so a row the lookup does not serve contributes no
-                // member — never the not-supplied default as a phantom distinct value.
+                // ⚠ T2 r1: hasColumn may be ROW-dependent for a legacy lookup (until W6), so a
+                // row the lookup does not serve contributes no member — never the not-supplied
+                // default as a phantom distinct value. A view part answers for every row.
                 cellAt = row -> lookup.hasColumn(table, row, joinedColumn)
                         ? lookup.lookupValue(table, row, joinedColumn, false)
                         : null;
@@ -4266,7 +4220,7 @@ public final class RuleRunner
                 IDataValue dv = cellAt.apply(row);
                 if (dv == null)
                 {
-                    continue; // a row the joined lookup does not serve (RELREC per-row parent)
+                    continue; // a row the joined lookup does not serve (legacy lookup, W6)
                 }
                 MissingValue missing = net.cumba.corej.core.expr.eval.TypedValue
                         .missingIdentityOf(dv);
@@ -4574,9 +4528,9 @@ public final class RuleRunner
 
             if (md.getKeys() == null || md.getKeys().isEmpty())
             {
-                // No join keys. Forward RELREC joins are handled by row expansion
-                // (RelrecRowExpander) before this method and removed from the list; any other
-                // keyless Match_Dataset has no usable join key and is skipped.
+                // No join keys. A forward RELREC entry is served by the merged view (W5) and
+                // never reaches this legacy arm; any other keyless Match_Dataset has no usable
+                // join key and is skipped.
                 LOGGER.log(System.Logger.Level.DEBUG,
                         "[{0}] Match_Dataset {1} has no join keys, skipping",
                         ruleId != null ? ruleId : "?", dsName);
@@ -5498,9 +5452,9 @@ public final class RuleRunner
      * view, a single joined dataset — answers from it, whatever the row count
      * ({@code PLAN-merged-evaluation-table} W3b: on an empty primary the row-0 probe below used to
      * take the lookup's existence for the column's, and an absent joined column was listed by
-     * name). Only a row-dependent lookup (the RELREC expansion, until W5) is still asked at row 0 —
-     * a column-level finding has no row of its own — and on an empty primary its existence decides.
-     * Used by the column-level per-variable paths, which have no row to read.
+     * name). Only a legacy row-dependent lookup (until W6) is still asked at row 0 — a column-level
+     * finding has no row of its own — and on an empty primary its existence decides. Used by the
+     * column-level per-variable paths, which have no row to read.
      */
     private static boolean columnPresent(EvaluationContext ctx, String name)
     {

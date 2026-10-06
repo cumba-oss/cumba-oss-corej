@@ -17,7 +17,7 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * Implemented as a self-contained {@link AbstractDataTable} — using only the contract types present
  * across engine variants ({@link IDataTable}, {@link IDataBufferNumeric}) — rather than a
- * {@code datatable-impl} view class. This keeps {@link RelrecRowExpander} portable and avoids
+ * {@code datatable-impl} view class. This kept the retired RELREC expander (W5) portable and avoids
  * rebuilding the base metadata (which is unnecessary here, since {@link #getRowCount} is overridden
  * and the engine iterates via {@code table.getRowCount()}).
  * </p>

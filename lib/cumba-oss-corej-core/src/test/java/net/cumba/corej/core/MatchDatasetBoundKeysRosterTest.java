@@ -48,7 +48,7 @@ class MatchDatasetBoundKeysRosterTest
 
     /** Bound JSON key → the production class that reads it. */
     private static final Map<String, String> READERS = Map.of("Name",
-            "net.cumba.corej.core.exec.RelrecRowExpander", "Keys",
+            "net.cumba.corej.core.exec.RelrecEntries", "Keys",
             "net.cumba.corej.core.exec.KeyMatchRowExpander", "Child",
             "net.cumba.corej.core.exec.ChildEntries", "Join_Type",
             "net.cumba.corej.core.exec.KeyMatchRowExpander", "Join_As_String",

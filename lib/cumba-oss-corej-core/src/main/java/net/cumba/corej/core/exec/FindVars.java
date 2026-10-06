@@ -315,8 +315,8 @@ public final class FindVars
             char first = e.charAt(0);
             // Not a pattern entry of this step: a $-binding, a !-exclusion, a ${…} entry (its own
             // unchanged expansion, Q8), and the rule-EXPANSION vocabulary — a leading `*` ADaM
-            // capture (`*DTM`, `*GRyN`) and a RELREC `**` reference, which the WildcardExpander /
-            // RelrecExpandedLookup resolve (measured: 97 such corpus entries).
+            // capture (`*DTM`, `*GRyN`) and a dotted `**` reference, which the WildcardExpander
+            // resolves (measured: 97 such corpus entries).
             if (first == '$' || first == '!' || first == '*' || e.contains("${")
                     || e.contains("**"))
             {

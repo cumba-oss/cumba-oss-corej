@@ -64,9 +64,10 @@ class ViolationConstructionSitesTest
     /**
      * The {@code __error__} sentinel sites (2-arg form). 7 -> 9 (PLAN-merged-evaluation-table W3a):
      * {@code RuleRunner.mergeErrorGate} (a rule references a merged column carrying MERGE_ERROR,
-     * OD-7) and the {@code MergeException | MergeErrorReadException} catch.
+     * OD-7) and the {@code MergeException | MergeErrorReadException} catch. 9 -> 8 (W5, MQ11): the
+     * forward-RELREC × key-expansion combination sentinel went with the RELREC row expander.
      */
-    private static final int SENTINEL_SITES = 9;
+    private static final int SENTINEL_SITES = 8;
 
     /** Record-level and Group sites: the shared empty constant. */
     private static final int EMPTY_LIST_SITES = 5;

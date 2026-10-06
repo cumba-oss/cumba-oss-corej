@@ -2325,7 +2325,7 @@ public final class StageAChecker
      * ({@link StageAErrorKind#MATCHED_FLAG_INVALID}); per dotted operand, a qualifier naming no
      * entry ({@link StageAErrorKind#DOTTED_REF_UNDECLARED} — the value-read sibling of that same
      * dangling-qualifier arm; under a {@code Child: true} entry the parent domains are declared,
-     * P-14, {@link #childParentQualifier}); and the D62 unqualified-merged-column heuristic
+     * P-14, {@link #declaredDomainQualifier}); and the D62 unqualified-merged-column heuristic
      * (observe-only by ruling).
      */
     private void checkMatchDatasets(java.util.Collection<Expr> roots)
@@ -2561,7 +2561,7 @@ public final class StageAChecker
             noteQualifierCase(flag, qualifier, entry);
             if (entry == null)
             {
-                if (!templates && !childParentQualifier(qualifier, entries))
+                if (!templates && !declaredDomainQualifier(qualifier, entries))
                 {
                     find(StageAErrorKind.MATCHED_FLAG_INVALID,
                             flag + " references no " + "Match_Datasets entry named " + qualifier
@@ -2580,7 +2580,10 @@ public final class StageAChecker
                 }
                 continue; // a parent domain's flag: served, and left by construction (P-14)
             }
-            if (entry.getKeys() == null || entry.getKeys().isEmpty())
+            // W5 (P-14): a forward RELREC entry's own flag is "the record has any relationship",
+            // served by the merged view; like a keyed flag it is constant-true under inner (D88e)
+            if (!net.cumba.corej.core.exec.RelrecEntries.isForwardEntry(entry)
+                    && (entry.getKeys() == null || entry.getKeys().isEmpty()))
             {
                 find(StageAErrorKind.MATCHED_FLAG_INVALID, flag + " names an entry with no Keys "
                         + "— without join keys there is nothing to match");
@@ -2744,10 +2747,11 @@ public final class StageAChecker
      * parent domains are declared qualifiers: the merged view serves {@code AE.AESMIE} from the
      * parent part of the rows whose {@code RDOMAIN} is {@code AE}. The entry's own {@code Name}
      * labels it, and a qualifier no entry names is a parent domain too ({@link
-     * #childParentQualifier} — the data's {@code RDOMAIN} set is unknown here). The one qualifier a
-     * Child entry does not declare is its own {@code --} template ({@code SUPP--.QVAL} / {@code
-     * SUPPAE.QVAL}: the child dataset itself) — judged as undeclared. A typo in a parent read is
-     * the corpus existence census's to catch ({@code ChildParentExistenceCensusTest}).
+     * #declaredDomainQualifier} — the data's {@code RDOMAIN} set is unknown here; under a forward
+     * RELREC entry (W5) likewise a related domain). The one qualifier a Child entry does not
+     * declare is its own {@code --} template ({@code SUPP--.QVAL} / {@code SUPPAE.QVAL}: the child
+     * dataset itself) — judged as undeclared. A typo in a parent read is the corpus existence
+     * census's to catch ({@code ChildParentExistenceCensusTest}).
      * </p>
      */
     private void checkDottedRefs(java.util.Collection<Expr> roots,
@@ -2803,8 +2807,12 @@ public final class StageAChecker
                     find(StageAErrorKind.DOTTED_REF_UNDECLARED, childSelfMessage(ref, entry));
                 }
             }
+            else if (net.cumba.corej.core.exec.RelrecEntries.isForwardEntry(entry))
+            {
+                find(StageAErrorKind.DOTTED_REF_RELREC_ENTRY, relrecEntryMessage(ref, qualifier));
+            }
             else if (entry == null && !templates && isConcreteQualifier(qualifier)
-                    && !childParentQualifier(qualifier, entries))
+                    && !declaredDomainQualifier(qualifier, entries))
             {
                 // QNU N27: a qualified TEMPLATE operand (DM.${V}, ADSL.X${*}, AE.**TERM) reads
                 // through the join of its CONCRETE qualifier exactly as DM.X does, so an
@@ -2836,7 +2844,13 @@ public final class StageAChecker
                 }
                 continue;
             }
-            if (templates || entry != null || childParentQualifier(qualifier, entries))
+            if (net.cumba.corej.core.exec.RelrecEntries.isForwardEntry(entry))
+            {
+                find(StageAErrorKind.DOTTED_REF_RELREC_ENTRY, relrecEntryMessage(
+                        "the column name " + name + " (a colref / find_vars argument)", qualifier));
+                continue;
+            }
+            if (templates || entry != null || declaredDomainQualifier(qualifier, entries))
             {
                 continue;
             }
@@ -2860,11 +2874,17 @@ public final class StageAChecker
                 {
                     find(StageAErrorKind.DOTTED_REF_UNDECLARED, childSelfMessage(ref, entry));
                 }
+                // W5 (§3.6.5): the forward RELREC entry carries no columns of its own — armed
+                else if (net.cumba.corej.core.exec.RelrecEntries.isForwardEntry(entry))
+                {
+                    find(StageAErrorKind.DOTTED_REF_RELREC_ENTRY,
+                            relrecEntryMessage(ref, qualifier));
+                }
                 continue;
             }
-            if (templates || childParentQualifier(qualifier, entries))
+            if (templates || declaredDomainQualifier(qualifier, entries))
             {
-                continue; // a name not concrete yet, or a Child parent domain (P-14)
+                continue; // a name not concrete yet, or a Child parent / RELREC related domain
             }
             find(StageAErrorKind.DOTTED_REF_UNDECLARED,
                     ref + " references no Match_Datasets entry named " + qualifier
@@ -2877,24 +2897,40 @@ public final class StageAChecker
 
 
     /**
-     * P-14 for {@code Child: true} entries ({@code PLAN-merged-evaluation-table} W4, MQ1): a
-     * concrete qualifier no entry names is declared when the rule carries a {@code Child} entry —
-     * it is a parent domain, which the data's {@code RDOMAIN} decides per row, so this checker
-     * cannot know the set. A {@code SUPP} / {@code SQ} dataset is never a parent and stays
-     * undeclared.
+     * P-14 for {@code Child: true} entries ({@code PLAN-merged-evaluation-table} W4, MQ1) and for
+     * the forward RELREC entry (W5, §3.6): a concrete qualifier no entry names is declared when the
+     * rule carries a {@code Child} entry — it is a parent domain, which the data's {@code RDOMAIN}
+     * decides per row — or a forward RELREC entry — it is a related domain, which the study's
+     * RELREC names; this checker cannot know either set. A {@code SUPP} / {@code SQ} dataset is
+     * never a parent nor a related domain and stays undeclared.
      *
      * @param qualifier
      *            the qualifier as written
      * @param entries
      *            the rule's {@code Match_Datasets}
-     * @return whether the qualifier is a declared Child parent domain
+     * @return whether the qualifier is a declared Child parent domain or RELREC related domain
      */
-    static boolean childParentQualifier(String qualifier, List<MatchDataset> entries)
+    static boolean declaredDomainQualifier(String qualifier, List<MatchDataset> entries)
     {
         String upper = qualifier.toUpperCase(java.util.Locale.ROOT);
         return isConcreteQualifier(qualifier) && !upper.startsWith("SUPP")
                 && !upper.startsWith("SQ")
-                && net.cumba.corej.core.exec.ChildEntries.hasChildEntry(entries);
+                && (net.cumba.corej.core.exec.ChildEntries.hasChildEntry(entries)
+                        || net.cumba.corej.core.exec.RelrecEntries.hasForwardEntry(entries));
+    }
+
+
+    /**
+     * The message of {@link StageAErrorKind#DOTTED_REF_RELREC_ENTRY}: {@code what} reads the
+     * forward RELREC entry itself, which carries no columns in the one-table model (W5, §3.6.5).
+     */
+    private static String relrecEntryMessage(String what, String qualifier)
+    {
+        return what + " reads the forward RELREC entry " + qualifier + " itself, which carries no"
+                + " columns of its own: a related record's column is read qualified with its"
+                + " domain (PC.PCRFTDTC, CM.CMTRT), guarded by <D>._matched_ where the domain may be"
+                + " absent — the per-row RELREC.<column> / RELREC.**<suffix> alias has no single"
+                + " answer on a cross-product row (PLAN-merged-evaluation-table W5, MET #17)";
     }
 
 
@@ -3007,10 +3043,16 @@ public final class StageAChecker
                 }
                 continue;
             }
-            if (entry != null || templates || !isConcreteQualifier(qualifier)
-                    || childParentQualifier(qualifier, entries))
+            if (net.cumba.corej.core.exec.RelrecEntries.isForwardEntry(entry))
             {
-                continue; // declared (ignoring case, P-19; a Child parent, P-14), or not judgeable
+                find(StageAErrorKind.DOTTED_REF_RELREC_ENTRY,
+                        relrecEntryMessage("Output_Variables entry " + name, qualifier));
+                continue;
+            }
+            if (entry != null || templates || !isConcreteQualifier(qualifier)
+                    || declaredDomainQualifier(qualifier, entries))
+            {
+                continue; // declared (ignoring case, P-19; a Child parent / RELREC domain, P-14)
             }
             if (variableDomain == null)
             {

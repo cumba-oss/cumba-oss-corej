@@ -4688,6 +4688,7 @@ public class RulePackageLoader
         checkKeepMissingsOnUngovernedEntry(rule, errors);
         checkChildEntryNames(rule, errors);
         checkChildEntryServed(rule, errors);
+        checkRelrecEntryServed(rule, errors);
         checkSidedKeys(rule, errors);
         checkQualifiedKeys(rule, errors);
         checkQualifiedGroupMembers(rule, errors);
@@ -6174,9 +6175,9 @@ public class RulePackageLoader
                 if (RETIRED_MATCH_DATASET_WILDCARD.equals(key))
                 {
                     errors.add("[" + ruleId(rule) + "] retired key 'Wildcard' under " + where
-                            + ": the engine never read it. A RELREC.<column> read takes the bound"
-                            + " related record's column by its literal name, and"
-                            + " RELREC.**<suffix> resolves per related record — delete the key");
+                            + ": the engine never read it. A related record's column is read"
+                            + " qualified with its domain (PC.PCRFTDTC), guarded by <D>._matched_"
+                            + " where the domain may be absent — delete the key");
                 }
                 else
                 {
@@ -6208,13 +6209,14 @@ public class RulePackageLoader
      * may name a grouping variable addressing many parent records). A RELREC relationship's RELTYPE
      * is data, so its disagreement is the merge's own run-time WARNING (OD-5 / OD-9), not this
      * one.</li>
-     * <li><b>Not served yet</b> — an authored cardinality that would check something (anything but
-     * {@code n:m}) on an entry the merged evaluation table does not build yet: a keyless entry
-     * (forward RELREC until W5), and every keyed entry of a rule that runs the legacy arm
-     * ({@code MergedEvaluation#legacyArmed}: a forward RELREC entry or a chained qualified key).
-     * Those paths never check a cardinality, so the value would be silently ignored; a load error
-     * says so instead. {@code n:m} checks nothing and is accepted everywhere. Zero corpus entries
-     * are affected (W3f census).</li>
+     * <li><b>Not served</b> — an authored cardinality that would check something (anything but
+     * {@code n:m}) on an entry the merged evaluation table builds no part for: a keyless entry
+     * other than the forward RELREC entry (W5 serves that one: the authored value overrides every
+     * relationship's RELTYPE default, OD-9), and every keyed entry of a rule that runs the legacy
+     * arm ({@code MergedEvaluation#legacyArmed}: a chained qualified key, until W6). Those paths
+     * never check a cardinality, so the value would be silently ignored; a load error says so
+     * instead. {@code n:m} checks nothing and is accepted everywhere. Zero corpus entries are
+     * affected (W3f census).</li>
      * </ul>
      *
      * @param rule
@@ -6263,15 +6265,17 @@ public class RulePackageLoader
                         + " grouping variable addressing many parent records); the authored"
                         + " value wins");
             }
-            // A Child entry's cardinality is checked by the merged view (P-16, W4); a Child entry
-            // on a legacy-armed rule is its own load error (checkChildEntryServed).
-            String notServed = child ? null
+            // A Child entry's cardinality is checked by the merged view (P-16, W4), a forward
+            // RELREC entry's too (W5: the authored value overrides every relationship's RELTYPE
+            // default, OD-9); either on a legacy-armed rule is its own load error
+            // (checkChildEntryServed / checkRelrecEntryServed).
+            boolean relrec = net.cumba.corej.core.exec.RelrecEntries.isForwardEntry(md);
+            String notServed = child || relrec ? null
                     : !net.cumba.corej.core.exec.MergedEvaluation.servedAsKeyedPart(md)
-                            ? "a keyless entry (forward RELREC) runs its own expansion until "
-                                    + MERGED_TABLE_PLAN + " W5"
+                            ? "a keyless entry builds no part"
                             : legacyArmed
-                                    ? "the rule carries a forward RELREC entry or a chained"
-                                            + " qualified key, so it runs the legacy join pipeline"
+                                    ? "the rule carries a chained qualified key, so it runs the"
+                                            + " legacy join pipeline"
                                     : null;
             if (notServed != null)
             {
@@ -6368,9 +6372,9 @@ public class RulePackageLoader
         }
         if (net.cumba.corej.core.exec.MergedEvaluation.legacyArmed(rule.getMatchDatasets()))
         {
-            errors.add(id + " would not be read: the rule carries a forward RELREC entry or a"
-                    + " chained qualified key, so it runs the legacy join pipeline, whose SUPP"
-                    + " pivot keys on the IG's key only (" + MERGED_TABLE_PLAN + " W5 / W6)");
+            errors.add(id + " would not be read: the rule carries a chained qualified key, so it"
+                    + " runs the legacy join pipeline, whose SUPP pivot keys on the IG's key only ("
+                    + MERGED_TABLE_PLAN + " W6)");
         }
     }
 
@@ -6777,6 +6781,16 @@ public class RulePackageLoader
         String unqualified = key.substring(qualifier.length() + 1);
         if (s < 0)
         {
+            if (net.cumba.corej.core.exec.RelrecEntries.hasForwardEntry(matches))
+            {
+                // P-14 (W5): under a forward RELREC entry the qualifier is a declared related
+                // domain — but a RELREC part is no ordinary keyed join, so it cannot source a
+                // qualified key or group member (D-SRC) any more than a Child parent can
+                return "names no keyed Match_Datasets entry " + qualifier + " of this rule — a"
+                        + " RELREC related domain is a declared qualifier (P-14) but not an"
+                        + " ordinary keyed join: a qualified variable reads a record bound by the"
+                        + " rule's own keyed entry " + qualifier;
+            }
             return "names no Match_Datasets entry " + qualifier + " of this rule — a qualified"
                     + " variable names where the record-side value comes from: the rule's own"
                     + " entry " + qualifier + ", read at the row's bound " + qualifier + " record";
@@ -6862,9 +6876,9 @@ public class RulePackageLoader
      * ⭐⭐ <b>A load error, not silence.</b> The flag is read at exactly one site,
      * {@code KeyMatchRowExpander.keySpec}, reached only through {@code expandableEntries} — i.e.
      * only for an entry {@link net.cumba.corej.core.exec.JoinKeyTypes#governedByKeyTypeCheck}
-     * admits. The text-carried family's own merge ({@code ChildEntries}, {@code RelrecRowExpander})
-     * and the hashed {@code DatasetLookup} the remaining keyed non-Child shapes reach KEEP a blank
-     * key unconditionally ({@code JKM R4}'s default) and never consult the flag — and since
+     * admits. The text-carried family's own merge ({@code ChildEntries}, {@code RelrecEntries}) and
+     * the hashed {@code DatasetLookup} the remaining keyed non-Child shapes reach KEEP a blank key
+     * unconditionally ({@code JKM R4}'s default) and never consult the flag — and since
      * {@code JKM R7}'s one-side rule landed on the hashed arm too, an absent key column there is
      * present-but-blank on every row, exactly the rows an authored {@code false} claims to drop. An
      * author who writes the flag there believes they have chosen DROP and has not. An authored
@@ -6981,10 +6995,38 @@ public class RulePackageLoader
         if (net.cumba.corej.core.exec.MergedEvaluation.legacyArmed(matches))
         {
             errors.add("[" + ruleId(rule) + "] a Child: true Match_Datasets entry on a rule that"
-                    + " carries a forward RELREC entry or a chained qualified key: such a rule"
-                    + " runs the legacy join pipeline, which builds no Child part, so every"
-                    + " parent column would read the not-supplied default — split the rule ("
-                    + MERGED_TABLE_PLAN + " W5 / W6 serve both shapes)");
+                    + " carries a chained qualified key: such a rule runs the legacy join"
+                    + " pipeline, which builds no Child part, so every parent column would read"
+                    + " the not-supplied default — split the rule (" + MERGED_TABLE_PLAN
+                    + " W6 serves both shapes)");
+        }
+    }
+
+
+    /**
+     * Tags a forward RELREC entry ({@code Name: RELREC}, no {@code Keys}) on a rule the legacy arm
+     * still runs ({@code MergedEvaluation#legacyArmed}: a chained qualified key) with a load error
+     * ({@code PLAN-merged-evaluation-table} W5): the related domains are parts of the merged
+     * evaluation view only, so on that arm every {@code <D>.<column>} would read the not-supplied
+     * default and every {@code <D>._matched_} would be false — a silent PASS. Exposure 0 in both
+     * corpora (no chained-key rule); retires with the arm in W6.
+     *
+     * @param rule
+     *            the rule to check.
+     * @param errors
+     *            the collector to append to.
+     */
+    private static void checkRelrecEntryServed(Rule rule, List<String> errors)
+    {
+        List<net.cumba.corej.core.model.MatchDataset> matches = rule.getMatchDatasets();
+        if (matches != null && net.cumba.corej.core.exec.RelrecEntries.hasForwardEntry(matches)
+                && net.cumba.corej.core.exec.MergedEvaluation.legacyArmed(matches))
+        {
+            errors.add("[" + ruleId(rule) + "] a forward RELREC Match_Datasets entry on a rule"
+                    + " that carries a chained qualified key: such a rule runs the legacy join"
+                    + " pipeline, which builds no RELREC part, so every related-domain column"
+                    + " would read the not-supplied default — split the rule (" + MERGED_TABLE_PLAN
+                    + " W6 serves both shapes)");
         }
     }
 

@@ -28,6 +28,7 @@ import net.cumba.datatable.merge.MergeRequest;
 import net.cumba.datatable.merge.MergedPart;
 import net.cumba.datatable.merge.MergedTable;
 import net.cumba.datatable.merge.MergedTables;
+import net.cumba.datatable.merge.RelrecPartSpec;
 import net.cumba.datatable.merge.SuppMergeSpec;
 import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
@@ -52,18 +53,25 @@ import org.jspecify.annotations.Nullable;
  * (OD-7);</li>
  * <li>every {@code Child: true} parent domain is a part qualified with that domain (W4, MQ1 —
  * {@link ChildEntries}), a {@link MergedViewLookup} under the domain like a keyed part, supplied on
- * the rows whose parent is that domain.</li>
+ * the rows whose parent is that domain;</li>
+ * <li>every related domain a forward RELREC entry reaches is a part qualified with that domain (W5,
+ * §3.6 — {@link RelrecEntries}), the rows the cross product of the related records per relationship
+ * (MET #17, OD-4); each domain's {@link MergedViewLookup} sits under the domain and the
+ * {@code RELREC} entry's own under {@code RELREC}, whose {@code _matched_} is "the record has any
+ * relationship" (P-14). A related domain the rule names but no relationship reaches has no part:
+ * its reads take the not-supplied default and its flag is false ({@link Built#relrecDeclared},
+ * P-1).</li>
  * </ul>
  *
  * <p>
- * <b>What stays on today's pipeline until its wave</b> (the legacy arm in {@code RuleRunner}): a
- * rule with a forward RELREC entry (W5, MQ11's ERROR when combined with a key expansion) and a rule
+ * <b>What stays on today's pipeline until W6</b> (the legacy arm in {@code RuleRunner}): a rule
  * with a chained qualified key (composed by the engine; the datatable refuses it) — a {@code Child}
- * entry on such a rule is a load error ({@code RulePackageLoader}), the view being the only reader
- * of a parent. {@link #setLegacyForTests} routes every execution without a {@code Child} entry to
- * that arm, which is what the corpus differential compares the view against; a {@code Child} rule
- * reads its parents through the view on both arms (the pre-merge it replaced is gone), so the
- * differential's subjects are the keyed and SUPP parts.
+ * or a forward RELREC entry on such a rule is a load error ({@code RulePackageLoader}), the view
+ * being their only reader. {@link #setLegacyForTests} routes every execution without a
+ * {@code Child} or forward RELREC entry to that arm, which is what the corpus differential compares
+ * the view against; a {@code Child} or RELREC rule reads those parts through the view on both arms
+ * (the pre-merge and the expander they replaced are gone), so the differential's subjects are the
+ * keyed and SUPP parts.
  * </p>
  *
  * <p>
@@ -135,7 +143,8 @@ public final class MergedEvaluation
      * the IG's).
      */
     record ViewKey(List<KeyedMergeSpec> keyed, List<String> supp,
-            @Nullable List<KeyColumn> suppKeys, @Nullable ChildMergeSpec child)
+            @Nullable List<KeyColumn> suppKeys, @Nullable ChildMergeSpec child,
+            @Nullable RelrecPartSpec relrec)
     {
 
         ViewKey
@@ -164,13 +173,18 @@ public final class MergedEvaluation
         /** Whether the view is the dataset's cached one for its merge signature (P-3). */
         private final boolean shared;
 
+        /** Whether the rule declares a forward RELREC entry (W5, P-14). */
+        private final boolean relrecDeclared;
+
         /** name → {@link ViewColumn}, the flag (a String) of a flagged column, or {@link #NONE}. */
         private final ConcurrentHashMap<String, Object> suppColumns = new ConcurrentHashMap<>();
 
         private static final Object NONE = new Object();
 
+        @SuppressWarnings("checkstyle:ParameterNumber")
         private Built(MergedTable aView, IDataTable aTable, Map<String, JoinLookup> aLookups,
-                Map<String, String> aFlagged, boolean aSuppShifted, boolean aShared)
+                Map<String, String> aFlagged, boolean aSuppShifted, boolean aShared,
+                boolean aRelrecDeclared)
         {
             view = aView;
             table = aTable;
@@ -178,6 +192,21 @@ public final class MergedEvaluation
             flagged = Collections.unmodifiableMap(aFlagged);
             suppShifted = aSuppShifted;
             shared = aShared;
+            relrecDeclared = aRelrecDeclared;
+        }
+
+
+        /**
+         * Whether the rule declares a forward RELREC entry (W5, P-14): every concrete qualifier the
+         * rule reads that names no entry and no part is then a related domain no relationship
+         * reaches on this study — its {@code _matched_} flag is {@code false} on every row and its
+         * columns read the not-supplied default (P-1), never a missing-join error.
+         *
+         * @return whether a declared-but-unserved qualifier is a RELREC related domain
+         */
+        public boolean relrecDeclared()
+        {
+            return relrecDeclared;
         }
 
 
@@ -345,11 +374,13 @@ public final class MergedEvaluation
     {
         ChildMergeSpec child = resolver == null ? null
                 : ChildEntries.spec(rule.getMatchDatasets(), primary);
-        if ((legacyForTests && child == null) || resolver == null
+        RelrecPartSpec relrec = RelrecEntries.spec(rule.getMatchDatasets());
+        if ((legacyForTests && child == null && relrec == null) || resolver == null
                 || legacyArmed(rule.getMatchDatasets()))
         {
-            // (a hand-built execution without a resolver has nothing to merge; a Child parent is
-            // read through the view on either arm — the bare pre-merge is gone)
+            // (a hand-built execution without a resolver has nothing to merge; a Child parent and
+            // a RELREC related domain are read through the view on either arm — the bare pre-merge
+            // and the row expander are gone)
             return null;
         }
         List<KeyedMergeSpec> keyed = new ArrayList<>();
@@ -380,7 +411,7 @@ public final class MergedEvaluation
                 }
             }
         }
-        if (keyed.isEmpty() && supp.isEmpty() && child == null)
+        if (keyed.isEmpty() && supp.isEmpty() && child == null && relrec == null)
         {
             // nothing to merge: the legacy arm expands nothing, joins nothing and pivots nothing,
             // so the execution is the same on either and no empty view is built
@@ -395,22 +426,23 @@ public final class MergedEvaluation
                 .resolveTableOrThrow(resolver, name, ruleId);
         if (joinCache != null && primary == original)
         {
-            return joinCache.mergedView(new ViewKey(keyed, supp, suppKeys, child),
-                    () -> construct(primary, keyed, suppSpec, child, primaryDomain, datasets,
-                            true));
+            return joinCache.mergedView(new ViewKey(keyed, supp, suppKeys, child, relrec),
+                    () -> construct(primary, keyed, suppSpec, child, relrec, primaryDomain,
+                            datasets, true));
         }
-        return construct(primary, keyed, suppSpec, child, primaryDomain, datasets, false);
+        return construct(primary, keyed, suppSpec, child, relrec, primaryDomain, datasets, false);
     }
 
 
     /**
      * Whether a rule runs today's pipeline rather than the merged view, whatever the data: it
-     * carries a forward RELREC entry (W5; MQ11's ERROR when combined with a key expansion) or a
-     * keyed entry with a chained qualified key ({@code DM.RPATHCD}, composed by the engine; the
-     * datatable refuses it). The one statement of the legacy arm's population, read by
-     * {@link #build} and by the loader's gates on the fields only the view serves
-     * ({@code Cardinality}, {@code Supp_Keys} — {@code RulePackageLoader.checkCardinality} /
-     * {@code checkSuppKeys}).
+     * carries a keyed entry with a chained qualified key ({@code DM.RPATHCD}, composed by the
+     * engine; the datatable refuses it). The one statement of the legacy arm's population, read by
+     * {@link #build} and by the loader's gates on the fields and entries only the view serves
+     * ({@code Cardinality}, {@code Supp_Keys}, a {@code Child} or forward RELREC entry —
+     * {@code RulePackageLoader.checkCardinality} / {@code checkSuppKeys} /
+     * {@code checkChildEntryServed} / {@code checkRelrecEntryServed}). Empty once W6 serves the
+     * chained key.
      *
      * @param entries
      *            the rule's {@code Match_Datasets}, possibly {@code null}
@@ -421,10 +453,6 @@ public final class MergedEvaluation
         if (entries == null)
         {
             return false;
-        }
-        if (RelrecRowExpander.findForwardRelrec(entries) != null)
-        {
-            return true;
         }
         for (MatchDataset md : entries)
         {
@@ -455,15 +483,15 @@ public final class MergedEvaluation
     @SuppressWarnings("checkstyle:ParameterNumber")
     private static Built construct(IDataTable dataset, List<KeyedMergeSpec> keyed,
             @Nullable SuppMergeSpec supp, @Nullable ChildMergeSpec child,
-            @Nullable String primaryDomain, net.cumba.datatable.merge.DatasetResolver datasets,
-            boolean shared)
+            @Nullable RelrecPartSpec relrec, @Nullable String primaryDomain,
+            net.cumba.datatable.merge.DatasetResolver datasets, boolean shared)
     {
         // J5 (ChildEntries): a Child primary's IDVARVAL reads as the pointer's join token
         IDataTable primary = child == null ? dataset
                 : ChildEntries.withPointerTokens(dataset, child, datasets);
-        MergedTable view = MergedTables.build(
-                MergeRequest.builder().primary(primary).primaryDomain(primaryDomain).keyed(keyed)
-                        .supp(supp).child(child).resolver(datasets).matchedFlags(true).build());
+        MergedTable view = MergedTables.build(MergeRequest.builder().primary(primary)
+                .primaryDomain(primaryDomain).keyed(keyed).supp(supp).child(child).relrec(relrec)
+                .resolver(datasets).matchedFlags(true).build());
         MergeKind plant = plantForTests;
         IDataTable table = primary;
         if (view.isRowMapped())
@@ -482,7 +510,10 @@ public final class MergedEvaluation
         Map<String, JoinLookup> lookups = new LinkedHashMap<>();
         for (MergedPart part : view.parts())
         {
-            if (part.kind() == MergeKind.KEYED || part.kind() == MergeKind.CHILD)
+            // a keyed partner, a Child parent domain, a RELREC related domain — and the RELREC
+            // entry's own flag part (qualifier RELREC, one column: "has any relationship", P-14)
+            if (part.kind() == MergeKind.KEYED || part.kind() == MergeKind.CHILD
+                    || part.kind() == MergeKind.RELREC)
             {
                 lookups.put(part.qualifier(),
                         new MergedViewLookup(view, part, plant == part.kind()));
@@ -502,7 +533,8 @@ public final class MergedEvaluation
                 flagged.put(column.getName(), String.valueOf(flag));
             }
         }
-        return new Built(view, table, lookups, flagged, plant == MergeKind.SUPP, shared);
+        return new Built(view, table, lookups, flagged, plant == MergeKind.SUPP, shared,
+                relrec != null);
     }
 
 

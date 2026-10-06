@@ -699,6 +699,42 @@ class StageBCheckerTest
 
 
     /**
+     * W5 of {@code PLAN-merged-evaluation-table} (P-14, P-1): under a forward RELREC entry a
+     * related domain's flag ({@code AE._matched_} — "this row carries an AE record") is the view's
+     * to answer, false on every row when the study has no AE or no relationship names it — never
+     * {@code MATCHED_FLAG_UNRESOLVABLE}. The entry's own flag ({@code RELREC._matched_}) is judged
+     * on the RELREC dataset as before.
+     */
+    @Test
+    void aRelatedDomainFlagUnderAForwardRelrecEntryIsTheViewsToAnswer()
+    {
+        Rule rule = rule("not AE._matched_");
+        MatchDataset match = new MatchDataset();
+        match.setName("RELREC");
+        match.setJoinType("left");
+        rule.setMatchDatasets(List.of(match));
+        IDataTable primary = MockTable.of().col("USUBJID", "P1").build();
+        StageBReport report = StageBChecker.check(rule, primary, true, ds -> null, Set.of());
+        assertEquals(List.of(), of(report, StageBErrorKind.MATCHED_FLAG_UNRESOLVABLE));
+        // the entry's own flag still needs the RELREC dataset
+        Rule own = rule("not RELREC._matched_");
+        own.setMatchDatasets(List.of(match));
+        StageBReport ownReport = StageBChecker.check(own, primary, true, ds -> null, Set.of());
+        assertEquals(1, of(ownReport, StageBErrorKind.MATCHED_FLAG_UNRESOLVABLE).size());
+        // control: the same flag on a keyed entry named otherwise stays an armed bind error
+        MatchDataset keyed = new MatchDataset();
+        keyed.setName("DM");
+        keyed.setKeys(List.of("USUBJID"));
+        keyed.setJoinType("left");
+        Rule control = rule("not AE._matched_");
+        control.setMatchDatasets(List.of(keyed));
+        StageBReport controlReport = StageBChecker.check(control, primary, true, ds -> null,
+                Set.of());
+        assertEquals(1, of(controlReport, StageBErrorKind.MATCHED_FLAG_UNRESOLVABLE).size());
+    }
+
+
+    /**
      * The {@code declaresDataset} half of M2 (review round 2, T-L1): a {@code TV.} entry that lives
      * only in an {@code All_Or_None} group does not declare TV for a {@code _matched_} flag — the
      * group is satisfied when both sides are absent, so the rule runs and the flag over the missing
