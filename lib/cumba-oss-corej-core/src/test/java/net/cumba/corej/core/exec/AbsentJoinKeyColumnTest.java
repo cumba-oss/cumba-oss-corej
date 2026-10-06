@@ -30,7 +30,7 @@ import org.junit.jupiter.api.Test;
  * </p>
  *
  * <p>
- * ⚠⚠ <b>Why this class exists separately from {@link KeyMatchMissingJoinKeyTest}:</b> that class
+ * ⚠⚠ <b>Why this class exists separately from {@link MissingValueJoinKeyTest}:</b> that class
  * varies the <em>cell</em>, this one varies the <em>column</em>. They are different rulings — R4/R5
  * govern a missing value, R7 governs an absent column — and the two builders in this package
  * disagreed on R7 while agreeing on nothing about R4. {@code KeyHashing:131} already dropped a
@@ -214,11 +214,11 @@ class AbsentJoinKeyColumnTest
      * behind the retired {@code DatasetLookup}), which answered <i>no match</i> for a
      * one-side-absent component until 2026-09-25 ({@code PLAN-hashed-join-arm-absent-columns}
      * landed JKM R7 there). Since W6 every keyed entry is a part of the merged view, so these pins
-     * now hold the view's lookup to the same answers, the falsifier in each message the pre-fix
-     * one.
+     * now hold the view's lookup to the same answers, the falsifier in each message the pre-fix one
+     * (named {@code TheHashedArm} until T1).
      */
     @Nested
-    class TheHashedArm
+    class ThroughTheKeyedPartLookup
     {
 
         private JoinLookup lookupOver(IDataTable primary, IDataTable joined, List<String> keys)

@@ -113,7 +113,7 @@ class TargetInvariantMarkerCensusTest
             "lib/cumba-oss-corej-core/src/main/java/net/cumba/corej/core"
                     + "/expr/typed/TypeExpectations.java ×1",
             "lib/cumba-oss-corej-core/src/test/java/net/cumba/corej/core"
-                    + "/exec/KeyMatchMissingJoinKeyTest.java ×1",
+                    + "/exec/MissingValueJoinKeyTest.java ×1",
             "lib/cumba-oss-corej-core/src/test/java/net/cumba/corej/core"
                     + "/exec/ScalarSemanticsComputedMissingTest.java ×2",
             "lib/cumba-oss-corej-core/src/test/java/net/cumba/corej/core"

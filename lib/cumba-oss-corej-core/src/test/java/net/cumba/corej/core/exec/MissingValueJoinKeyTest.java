@@ -13,8 +13,12 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * ⭐⭐ ⚑ TARGET-INVARIANT(null-free-value-channel), §1b: <b>a {@code MissingValue} IS a joinable key,
- * and this class pins what the engine does BEFORE that is implemented.</b>
+ * ⭐⭐ ⚑ TARGET-INVARIANT(null-free-value-channel), §1b: <b>a {@code MissingValue} IS a joinable
+ * key</b> — the merged view's keyed part pairs two equal missing key cells ({@code JKM R4} /
+ * {@code R5}, KEEP by default since 2026-09-21; {@code MIS} joins {@code MIS}, never {@code ""} nor
+ * {@code MIS_A}). Named {@code KeyMatchMissingJoinKeyTest} until T1 of
+ * {@code PLAN-merged-evaluation-table}, after the retired key-match expander it first pinned; the
+ * history below records how the behaviour moved.
  *
  * <p>
  * ⛔⛔ <b>RETIRED CLAIM, corrected 2026-09-21.</b> This javadoc used to assert <i>"a
@@ -96,7 +100,7 @@ import org.junit.jupiter.api.Test;
  * not which testkit jar happens to be in the local repository.
  * </p>
  */
-class KeyMatchMissingJoinKeyTest
+class MissingValueJoinKeyTest
 {
 
     private static final String AE = "AE";
