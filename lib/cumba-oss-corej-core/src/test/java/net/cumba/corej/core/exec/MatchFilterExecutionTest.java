@@ -263,11 +263,12 @@ class MatchFilterExecutionTest
     /**
      * {@code PLAN-merge-followups} item 4, the KeyGates / D40 probe: the four
      * {@code KeyGates.check} refusals (a D4 key-type mismatch here) are thrown from inside
-     * {@code MergedEvaluation.build} — before the merge itself — and are {@code MergeException}s,
-     * so the T2 L3 catch that lets a DECLARED Stage B skip beat a merge refusal covers them too:
-     * the skip wins, and without a declared skip the D4 refusal stands as the rule's ERROR (the
-     * control proves the probe reached KeyGates: the message is D4's, not the Cardinality
-     * refusal's).
+     * {@code MergedEvaluation.build} — before the merge itself. They are the engine's own
+     * {@code RuntimeException}s, NOT the datatable's {@code MergeException}s, so the T2 L3 catch
+     * that lets a DECLARED Stage B skip beat a merge refusal names the four of them besides
+     * {@code MergeException}: the skip wins, and without a declared skip the D4 refusal stands as
+     * the rule's ERROR (the control proves the probe reached KeyGates: the message is D4's, not the
+     * Cardinality refusal's).
      */
     @Test
     @DisplayName("a declared Stage B skip beats a KeyGates refusal too (D40)")

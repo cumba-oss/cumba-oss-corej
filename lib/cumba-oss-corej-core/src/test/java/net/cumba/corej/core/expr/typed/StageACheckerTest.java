@@ -2062,4 +2062,27 @@ class StageACheckerTest
         bindingOnly.setCompiledBindings(List.of(binding("$n", counting)));
         assertEquals(1, repeatedRowsLints(check(bindingOnly, "$n > 1")));
     }
+
+
+    /**
+     * Pack-1 review 1b LOW-3: the precondition-only entry (an engine-internal Precondition
+     * installed on a loaded rule) runs the repeated-rows lint over its root — the call left
+     * {@code checkMatchDatasets} with item 4 and this pass lost it. The control: a counting operand
+     * a binding reads is not re-reported by this pass (the bindings were judged at load).
+     */
+    @Test
+    void thePreconditionOnlyEntryRunsTheRepeatedRowsLint()
+    {
+        Rule repeating = ruleJoining("CM", "left", "USUBJID");
+        StageAReport report = StageAChecker.runAndApplyPrecondition(repeating,
+                pre("record_count(group=[USUBJID], filter=($flag == \"Y\")) > 1"));
+        assertEquals(1, repeatedRowsLints(report), String.valueOf(report.findings()));
+
+        Rule bindingOnly = ruleJoining("CM", "left", "USUBJID");
+        bindingOnly.setCompiledBindings(
+                List.of(binding("$n", "record_count(group=[USUBJID], filter=($flag == \"Y\"))")));
+        StageAReport control = StageAChecker.runAndApplyPrecondition(bindingOnly,
+                pre("library_available()"));
+        assertEquals(0, repeatedRowsLints(control), String.valueOf(control.findings()));
+    }
 }

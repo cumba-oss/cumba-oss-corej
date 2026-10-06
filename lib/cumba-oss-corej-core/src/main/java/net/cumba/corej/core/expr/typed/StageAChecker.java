@@ -262,8 +262,9 @@ public final class StageAChecker
      *
      * <p>
      * The rule-level {@code Match_Datasets} checks run over this one root plus the bindings' dotted
-     * references, as at load. Only an observe-only kind can be re-reported by that: an armed one
-     * would have parked the rule at load, and the caller skips a parked rule.
+     * references, as at load, and the repeated-rows lint ({@code AGGREGATE_OVER_REPEATED_ROWS})
+     * over this one root. Only an observe-only kind can be re-reported by that: an armed one would
+     * have parked the rule at load, and the caller skips a parked rule.
      * </p>
      *
      * @param rule
@@ -287,6 +288,10 @@ public final class StageAChecker
             typed = checker.walkPrecondition(precondition);
             checker.listFunctionReads(precondition, "the Precondition");
             checker.checkMatchDatasets(List.of(precondition));
+            // the OD-6 gap lint left checkMatchDatasets (one walk from check(), item 4); this
+            // pass calls it itself, over the Precondition only: the bindings were judged at load
+            // (pack-1 review 1b LOW-3)
+            checker.checkAggregatesOverRepeatedRows(List.of(precondition));
             checker.fileUnclaimedBindingElements();
         }
         catch (RuntimeException ex)
