@@ -538,9 +538,9 @@ public final class ScenarioRunner
     {
         // Production enforces the Domains/Classes scope axes upstream of RuleRunner
         // (DatasetRuleResolver -> ScopeMatcher), so mirror that gate here: an out-of-scope primary
-        // dataset means the rule never runs -> "executed, zero violations". This makes Scope fixes
-        // testable (an expect=noViolation scenario on out-of-scope data). The class axis is only
-        // judged when the scenario declares a dataset class (`dataset NAME class=...`).
+        // dataset means the rule never runs (a non-execution); only expect=skipped passes — see
+        // below. The class axis is only judged when the scenario declares a dataset class
+        // (`dataset NAME class=...`).
         String scopeMismatch = ScenarioScopeGate.describeScopeMismatch(aRule, aPrimary);
         if (scopeMismatch != null)
         {
@@ -650,7 +650,7 @@ public final class ScenarioRunner
                 + aScopeMismatch + " — the rule cannot error on data it is never given; declare"
                 + " 'expect=skipped', or give the fixture a primary dataset the rule's scope"
                 + " admits.";
-        default -> aScenario.getCoreId() + " declares expect=" + aScenario.getExpect()
+        default -> aScenario.getCoreId() + " declares expect=" + aScenario.getExpect().token()
                 + " but the rule never runs on this dataset: " + aScopeMismatch
                 + " — declare 'expect=skipped', which is what being out of scope means.";
         };

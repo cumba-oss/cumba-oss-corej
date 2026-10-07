@@ -413,6 +413,7 @@ class ScenarioRunnerTest
         assertEquals(Outcome.FAIL, violation.outcome(),
                 violation.code() + " " + violation.detail());
         assertEquals("VERDICT", violation.code());
+        assertTrue(violation.detail().contains("but the rule ERRORED"), violation.detail());
     }
 
 
