@@ -287,12 +287,7 @@ get_dataset_filtered_variables.key_value: literal
 get_model_filtered_variables.key_name: literal {core,definition,describedValueDomain,description,examples,label,name,notes,ordinal,role,roleDescription,simpleDatatype,usageRestrictions,variableCcode}
 get_model_filtered_variables.key_value: literal
 get_model_filtered_variables.model_class: literal {ASSOCIATED PERSONS,EVENTS,FINDINGS,FINDINGS ABOUT,GENERAL OBSERVATIONS,INTERVENTIONS,RELATIONSHIP,SPECIAL PURPOSE,STUDY REFERENCE,TRIAL DESIGN}
-minus.subtract: binding-or-list
-minus.value: binding-or-list
 row_max.name_pattern: literal
-union.first: binding-or-list
-union.more: binding-or-list
-union.second: binding-or-list
 valid_codelist_dates.ct_package_types: literal-list
 valid_external_dictionary_code.case_sensitive: literal
 valid_external_dictionary_code.dictionary_term_type: literal

@@ -68,6 +68,10 @@ class BindingReaderCensusTest
                     "R23 renders the bindings from bindingOrder()"),
             Map.entry("core/expr/eval/BindingDomains.java",
                     "R9 a binding's domain from its derived domain, authored order"),
+            Map.entry("core/expr/eval/ListOperandLevel.java",
+                    "W1a U3: a $-operand of minus / union by its installed domain, else"
+                            + " DomainScan over forRule — the one level derivation both spellings"
+                            + " share (PLAN-union-function §3.3)"),
             Map.entry("core/expr/typed/StageAChecker.java",
                     "R24 types compiled bindings with the Check's checker, R25 order,"
                             + " minus() of a per-row binding, R26 dotted refs"),

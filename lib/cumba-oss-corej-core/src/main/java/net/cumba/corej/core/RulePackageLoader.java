@@ -822,6 +822,18 @@ public class RulePackageLoader
                 validateInlineMissingValues(binding.expression(), stageAJudged, earlier);
                 earlier.put(binding.name(), binding.expression());
             }
+            // PLAN-union-function §3.3 (runbook W1a U3): stage A judges a set function's operand
+            // levels only where it walks the rule; a Check-less rule's bindings it never walks,
+            // so a per-row operand there — `$p` or its expression inline — read row 0 silently.
+            // The same derivation (ListOperandLevel) is the loader's here.
+            if (!stageAJudged)
+            {
+                for (net.cumba.corej.core.model.CompiledBinding binding : compiled)
+                {
+                    rejectPerRowListOperands(binding.expression(), rule,
+                            "the binding " + binding.name());
+                }
+            }
         }
         // Review r1 seams L2 (C6): a Match_Datasets Filter is compiled at RUN time (MatchFilter)
         // and never type-walked by stage A, so its registry calls meet every seam here, at load —
@@ -844,6 +856,8 @@ public class RulePackageLoader
                 if (filter != null)
                 {
                     validateRegistryCallSeams(filter, false);
+                    rejectPerRowListOperands(filter, rule,
+                            "the Match_Datasets Filter of '" + match.getName() + "'");
                 }
             }
         }
@@ -1153,6 +1167,26 @@ public class RulePackageLoader
         if (d != null && d.parameters().size() == 1 && "name".equals(d.parameters().get(0).name()))
         {
             net.cumba.corej.core.expr.eval.ArgumentBinder.bind(d, call);
+        }
+    }
+
+
+    /**
+     * The loader's twin of stage A's {@code checkListFunctionCall} ({@code PLAN-union-function}
+     * §3.3, runbook W1a U3): a per-row or per-variable operand of {@code minus} / {@code union} in
+     * an expression stage A does not walk is the rule's load error, with the same message.
+     *
+     * @throws net.cumba.corej.core.expr.RuleDefinitionException
+     *             for the first such operand
+     */
+    private static void rejectPerRowListOperands(net.cumba.corej.core.expr.ast.Expr expr, Rule rule,
+            String where)
+    {
+        String refusal = net.cumba.corej.core.expr.eval.ListOperandLevel.firstRefusal(expr, rule,
+                where);
+        if (refusal != null)
+        {
+            throw new net.cumba.corej.core.expr.RuleDefinitionException(refusal);
         }
     }
 
@@ -2346,6 +2380,8 @@ public class RulePackageLoader
             if (compiled != null)
             {
                 compiled.forEach(b -> validateRegistryCallSeams(b.expression(), false));
+                compiled.forEach(b -> rejectPerRowListOperands(b.expression(), rule,
+                        "the binding " + b.name()));
             }
             return false;
         }

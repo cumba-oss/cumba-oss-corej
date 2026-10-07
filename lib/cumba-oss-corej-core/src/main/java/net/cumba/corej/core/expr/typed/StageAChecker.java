@@ -2349,12 +2349,12 @@ public final class StageAChecker
 
 
     /**
-     * §5.0's hand-over contract, row 3, for the one reader left that takes a {@code $}-binding as a
-     * <b>dataset-level list</b>: {@code minus} ({@code not empty(minus($a, subtract=$p))}), written
-     * in the Check or nested in a compiled binding. A per-row or per-variable compiled binding
-     * among its operands is a load error ({@link StageAErrorKind#OPERATION_READS_CURSOR_BINDING}),
-     * never a run-time backstop throw. (Until runbook W8 an inline operation was held to the same
-     * rule through the fields it read.)
+     * §5.0's hand-over contract, row 3, for the readers that take an operand as a <b>dataset-level
+     * list</b>: {@code minus} and {@code union} ({@code not empty(minus($a, subtract=$p))}),
+     * written in the Check or nested in a compiled binding. A per-row or per-variable operand — a
+     * compiled binding or, since W1a U3, the same expression inline — is a load error
+     * ({@link StageAErrorKind#OPERATION_READS_CURSOR_BINDING}), never a run-time backstop throw.
+     * (Until runbook W8 an inline operation was held to the same rule through the fields it read.)
      */
     private void checkListFunctionReads(Iterable<Root> roots)
     {
@@ -2412,11 +2412,13 @@ public final class StageAChecker
 
 
     /**
-     * Wave 4 ({@code PLAN-list-functions} D-W4-4): {@code minus} reads its two operands as
-     * dataset-level lists — exactly the hand-over form the retired MINUS operation read through
-     * {@code BindingValue.forOperation}, whose runtime guard refused a cursor binding. The guard is
-     * kept, at load: a {@code $}-reference to a per-row or per-variable binding bound to
-     * {@code minus} is the same finding as an operation reading one.
+     * Wave 4 ({@code PLAN-list-functions} D-W4-4), widened by {@code PLAN-union-function} §3.3
+     * (runbook W1a U3, ruled by D3 / D16): {@code minus} / {@code union} read every operand as a
+     * dataset-level list, so EVERY operand is judged by its level — a {@code $}-reference by its
+     * installed domain, any other expression by {@code DomainScan} — through the one derivation
+     * {@link net.cumba.corej.core.expr.eval.ListOperandLevel}; a per-row or per-variable operand is
+     * the same finding, bound or inline. (Until U3 only a {@code $}-reference was judged here and
+     * the compiler refused every inline operand by shape.)
      */
     private void checkListFunctionCall(Expr.Call c, String where)
     {
@@ -2424,18 +2426,11 @@ public final class StageAChecker
         operands.addAll(c.kwargs().values());
         for (Expr operand : operands)
         {
-            if (operand instanceof Expr.Ref ref
-                    && ref.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF)
+            if (net.cumba.corej.core.expr.eval.ListOperandLevel.needsCursor(operand, rule))
             {
-                CompiledBinding read = rule.compiledBinding(ref.name());
-                if (read != null && read.needsCursor())
-                {
-                    find(StageAErrorKind.OPERATION_READS_CURSOR_BINDING,
-                            "the list function " + c.name() + "(…) in " + where
-                                    + " cannot read the per-row or per-variable binding "
-                                    + ref.name() + " — " + setOperation(c.name())
-                                    + " reads only dataset-level lists");
-                }
+                find(StageAErrorKind.OPERATION_READS_CURSOR_BINDING,
+                        net.cumba.corej.core.expr.eval.ListOperandLevel.refusal(c.name(), where,
+                                operand));
             }
         }
     }
@@ -2444,15 +2439,7 @@ public final class StageAChecker
      * The set functions whose operands are dataset-level lists ({@code minus}, {@code union} —
      * {@code PLAN-union-function} §3.4).
      */
-    private static final Set<String> LIST_SET_FUNCTIONS = Set
-            .of(net.cumba.corej.core.exec.Minus.NAME, net.cumba.corej.core.exec.Union.NAME);
-
-    private static String setOperation(String function)
-    {
-        return net.cumba.corej.core.exec.Union.NAME.equals(function) ? "a set union"
-                : "a set difference";
-    }
-
+    private static final Set<String> LIST_SET_FUNCTIONS = net.cumba.corej.core.expr.eval.ListOperandLevel.LIST_SET_FUNCTIONS;
 
     /** The {@code $}-references a compiled binding's expression makes. */
     private static Set<String> compiledBindingRefs(CompiledBinding compiled)

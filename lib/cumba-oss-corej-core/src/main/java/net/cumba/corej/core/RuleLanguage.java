@@ -254,9 +254,10 @@ public final class RuleLanguage
     /**
      * One line per <b>(function, parameter)</b> the compiler holds to a literal: {@code literal} (a
      * string literal; with its closed vocabulary in braces where one exists), {@code literal-list}
-     * (a list literal of string literals), {@code binding-or-list} (a {@code $}-binding or a list
-     * literal, never an inline expression) and the dictionary functions' {@code case_sensitive}
-     * flag (a boolean literal). A unit that widens a parameter to computed values drops its line.
+     * (a list literal of string literals) and the dictionary functions' {@code case_sensitive} flag
+     * (a boolean literal). A unit that widens a parameter to computed values drops its line (W1a U3
+     * dropped {@code minus}'s / {@code union}'s {@code binding-or-list} lines: an operand is judged
+     * by its level, {@code PLAN-union-function} §3.3).
      */
     private static List<String> staticParameterLines()
     {
@@ -283,13 +284,6 @@ public final class RuleLanguage
             for (String param : e.getValue())
             {
                 out.add(e.getKey() + "." + param + ": literal-list");
-            }
-        }
-        for (Map.Entry<String, Set<String>> e : ExprCompiler.listExpressionParameters().entrySet())
-        {
-            for (String param : e.getValue())
-            {
-                out.add(e.getKey() + "." + param + ": binding-or-list");
             }
         }
         for (FunctionDescriptor d : FunctionRegistry.all())

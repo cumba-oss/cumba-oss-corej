@@ -8246,8 +8246,8 @@ public final class ExprCompiler
      * string literals only — {@code codelists=[DOMAIN]} would otherwise compile silently, since
      * {@code DOMAIN} is a real column (R1: a bare name is a column, a quoted one a string). The
      * static ones ({@code codelists}, {@code ct_package_types}) must BE a list literal (read once
-     * per call); {@code minus}'s operands are a {@code $}-binding or a list literal, never an
-     * inline expression.
+     * per call); {@code minus}'s / {@code union}'s operands are any dataset-level list expression
+     * ({@code PLAN-union-function} §3.3) — a list literal written there is held to the member rule.
      */
     private static final Map<String, Set<String>> STATIC_LIST_PARAMETERS = Map.of(
             net.cumba.corej.core.exec.LibraryLists.CODELIST_TERMS,
@@ -8398,17 +8398,6 @@ public final class ExprCompiler
 
 
     /**
-     * The {@code (function → parameters)} that take a {@code $}-binding or a list literal, never an
-     * inline expression ({@link #LIST_EXPRESSION_PARAMETERS}), read-only — for the language
-     * surface.
-     */
-    public static Map<String, Set<String>> listExpressionParameters()
-    {
-        return LIST_EXPRESSION_PARAMETERS;
-    }
-
-
-    /**
      * Whether a variable-scope accessor takes the {@code dataset=} keyword at the DATA level
      * ({@link #metadataPlan}: the join-free cross-dataset read of {@code var_label} /
      * {@code var_type} / {@code var_length} / {@code var_format}) — for the language surface.
@@ -8476,19 +8465,13 @@ public final class ExprCompiler
                     throw unsupported("argument '" + name + "' of '" + descriptor.name()
                             + "' takes a static list of string literals, not " + describe(e));
                 }
-                else if (!(e instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF))
-                {
-                    // Combined review of runbook W2–W8, W4 M3: a list-expression operand is read
-                    // ONCE per call (row 0 of a non-constant vector), so a column, a per-row call
-                    // or any other inline expression would silently stand for every row. Only a
-                    // $-binding (Stage A refuses one that needs a cursor —
-                    // OPERATION_READS_CURSOR_BINDING) or a list literal is a dataset-level list.
-                    throw unsupported("argument '" + name + "' of '" + descriptor.name()
-                            + "' takes a dataset-level list — a $-binding of one or a list"
-                            + " literal — not `" + ExpressionPrinter.print(e) + "`: an inline"
-                            + " operand is read once, at row 0, and would stand for every row;"
-                            + " bind it and read the binding ($x)");
-                }
+                // PLAN-union-function §3.3 (runbook W1a U3, D3 / D16): a list-expression operand
+                // that is not a literal is judged by its LEVEL, not its shape — stage A's
+                // OPERATION_READS_CURSOR_BINDING where it walks the rule, the loader's seam pass
+                // (ListOperandLevel.firstRefusal) where it does not. The shape refusal that stood
+                // here ("takes a dataset-level list — a $-binding of one or a list literal") sent
+                // the author to bind the operand, where the same level finding met it one step
+                // later.
             }
         }
     }

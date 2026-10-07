@@ -359,7 +359,7 @@ class CompiledBindingTest
         // (minus is a registry function since wave 4; the same load-time finding — stage A's
         // OPERATION_READS_CURSOR_BINDING — keeps the retired operation's runtime refusal.)
         assertNotNull(rule.getLoadError(), "§5.0 row 3: a per-row value has no row to pick");
-        assertTrue(rule.getLoadError().contains("cannot read the per-row or per-variable binding"),
+        assertTrue(rule.getLoadError().contains("cannot read the per-row or per-variable operand"),
                 rule.getLoadError());
     }
 
