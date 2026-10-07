@@ -1409,6 +1409,8 @@ public final class BuiltinFunctions implements FunctionProvider
                 net.cumba.corej.core.exec.LibraryLists::columnOrderFromLibrary, library);
         listFn(fns, net.cumba.corej.core.exec.LibraryLists.GET_MODEL_COLUMN_ORDER, List.of(),
                 net.cumba.corej.core.exec.LibraryLists::modelColumnOrder, library);
+        listFn(fns, net.cumba.corej.core.exec.LibraryLists.GET_PERMITTED_COLUMN_ORDER, List.of(),
+                net.cumba.corej.core.exec.LibraryLists::permittedColumnOrder, library);
         listFn(fns, net.cumba.corej.core.exec.LibraryLists.VARIABLE_NAMES, List.of(),
                 net.cumba.corej.core.exec.LibraryLists::variableNames, library);
         listFn(fns, net.cumba.corej.core.exec.LibraryLists.STANDARD_DOMAINS, List.of(),

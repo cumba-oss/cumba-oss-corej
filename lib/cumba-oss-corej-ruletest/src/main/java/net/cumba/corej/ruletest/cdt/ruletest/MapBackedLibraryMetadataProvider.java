@@ -496,6 +496,35 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
     }
 
 
+    /**
+     * {@code PLAN-permitted-addition-position} C10 (P9, zero radius): the <b>null-member</b> call —
+     * the library / product class the production provider answers when no member name keys its
+     * Define-XML tier — serves the {@code #library dataset-class} map for the CDISC domain, so
+     * {@code get_permitted_column_order()}'s class gate opens in a scenario as it does in
+     * production. Every member-keyed call keeps the interface default ({@code null}), so
+     * {@code ReferencedDomainClass} and {@code ScopeClassLadder.classOf} (both always pass a
+     * member) see no change in any scenario.
+     */
+    @Override
+    public @Nullable String getDatasetClass(@Nullable String aMemberName, String aCdiscDomain)
+    {
+        if (aMemberName != null)
+        {
+            return getDatasetClass(aCdiscDomain);
+        }
+        return getDatasetMetadata(aCdiscDomain).get("className");
+    }
+
+
+    /** C10: the column-aware form, same zero-radius split as the two-argument one. */
+    @Override
+    public @Nullable String getDatasetClass(@Nullable String aMemberName, String aCdiscDomain,
+            @Nullable Set<String> aActualColumns)
+    {
+        return getDatasetClass(aMemberName, aCdiscDomain);
+    }
+
+
     @Override
     public java.util.Optional<Boolean> isCodelistExtensible(String aCodelistName)
     {

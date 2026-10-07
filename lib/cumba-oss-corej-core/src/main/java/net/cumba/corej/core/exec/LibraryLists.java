@@ -55,6 +55,9 @@ public final class LibraryLists
     /** {@code get_model_column_order()}. */
     public static final String GET_MODEL_COLUMN_ORDER = "get_model_column_order";
 
+    /** {@code get_permitted_column_order()} ({@code PLAN-permitted-addition-position}). */
+    public static final String GET_PERMITTED_COLUMN_ORDER = "get_permitted_column_order";
+
     /** {@code variable_names()} (EC-13). */
     public static final String VARIABLE_NAMES = "variable_names";
 
@@ -391,6 +394,39 @@ public final class LibraryLists
                     "no model column order for domain " + table.getMetaData().getName());
         }
         return ListFunctionSupport.broadcast(GET_MODEL_COLUMN_ORDER, order);
+    }
+
+
+    /**
+     * {@code get_permitted_column_order()} — {@link #modelColumnOrder}'s model order with every
+     * role-known additional variable of a special-purpose dataset placed where SDTMIG sec. 4.1.1.4
+     * puts it ({@link PermittedColumnOrder}); any other dataset answers the model order itself.
+     * Only the model order can SKIP, with {@code get_model_column_order()}'s disposition verbatim
+     * (P10): a missing role table or IG answers the model order.
+     *
+     * @param run
+     *            the evaluation run
+     * @param args
+     *            no arguments
+     * @return the broadcast list, never empty
+     */
+    public static Vector permittedColumnOrder(EvalRun run, List<Vector> args)
+    {
+        MetadataProvider provider = ListFunctionSupport.library(run, GET_PERMITTED_COLUMN_ORDER);
+        IDataTable table = run.ctx().getTable();
+        List<String> order = PermittedColumnOrder.resolve(provider, table,
+                run.ctx().getDatasetResolver());
+        if (order == null || order.isEmpty())
+        {
+            LOGGER.log(System.Logger.Level.INFO,
+                    "[{0}] {1}: no model column order for domain {2} — rule will be skipped",
+                    ListFunctionSupport.ruleId(run), GET_PERMITTED_COLUMN_ORDER,
+                    table.getMetaData().getName());
+            throw ListFunctionSupport.unusable(GET_PERMITTED_COLUMN_ORDER,
+                    ProviderNeed.Kind.LIBRARY,
+                    "no model column order for domain " + table.getMetaData().getName());
+        }
+        return ListFunctionSupport.broadcast(GET_PERMITTED_COLUMN_ORDER, order);
     }
 
 

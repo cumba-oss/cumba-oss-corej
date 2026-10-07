@@ -540,15 +540,16 @@ public class DatasetRuleResolver
     // Cat 4: CDISC-CG0016
 
     // generateVariableOrderRule removed — handled by static rule CDISC-CG0330, which binds
-    // $model_column_order = get_model_column_order() and
-    // $column_order_from_dataset = get_column_order_from_dataset(), and checks
-    // not empty($model_column_order)
-    // and not is_ordered_subset_of($column_order_from_dataset, $model_column_order)
+    // $permitted_column_order = get_permitted_column_order() and
+    // $column_order_from_dataset = get_column_order_from_dataset(), keeps the dataset columns the
+    // reference knows ($known_order) and checks not empty($permitted_column_order)
+    // and not is_ordered_subset_of($known_order, $permitted_column_order_upper)
+    // (PLAN-permitted-addition-position; $known_order since cumba-corej-rules 9004d362).
     // ⚠ This comment used to name `get_column_order_from_library` and `is_not_ordered_subset_of`.
     // Both operators are real — `get_column_order_from_library()` is bound by ~20 CDISC-AD/SEND
     // rules and `is_not_ordered_subset_of` is a live engine operator (probed by
     // CompilerDispatchDriftGateTest) — but neither is what CG0330 authors. Corrected against
-    // rules-src/checks/CDISC/CDISC-CG0330.yaml, 2026-09-19.
+    // rules-src/checks/CDISC/CDISC-CG0330.yaml, 2026-09-19 and 2026-10-07.
 
     // Categories 7-9 (TESTCD/TEST, TSPARMCD/TSPARM, FL/FN) have no generator here; their
     // built-in template carriers were retired with rules-templates.json (Fix #366).

@@ -38,15 +38,16 @@ public final class ListFunctionSupport
     /** The dataset-level list functions ported by wave 4, by their authored names. */
     public static final Set<String> FUNCTION_NAMES = Set.of(LibraryLists.REQUIRED_VARIABLES,
             LibraryLists.EXPECTED_VARIABLES, LibraryLists.GET_COLUMN_ORDER_FROM_LIBRARY,
-            LibraryLists.GET_MODEL_COLUMN_ORDER, LibraryLists.VARIABLE_NAMES,
-            LibraryLists.STANDARD_DOMAINS, LibraryLists.GET_DATASET_FILTERED_VARIABLES,
-            LibraryLists.NATURAL_KEY_VARIABLES, LibraryLists.GET_MODEL_FILTERED_VARIABLES,
-            LibraryLists.VALID_CODELIST_DATES, LibraryLists.CODELIST_TERMS,
-            ParentModelColumnOrder.NAME, DefineLists.DEFINE_VARIABLE_NAMES,
-            DefineLists.DEFINE_DATASET_NAMES, DefineLists.DEFINE_KEY_VARIABLES,
-            InventoryLists.GET_COLUMN_ORDER_FROM_DATASET, InventoryLists.DATASET_NAMES,
-            InventoryLists.STUDY_DOMAINS, InventoryLists.SPLIT_SIBLING_LENGTH_MISMATCH,
-            InventoryLists.DUPLICATE_LABEL_VARIABLES, Minus.NAME);
+            LibraryLists.GET_MODEL_COLUMN_ORDER, LibraryLists.GET_PERMITTED_COLUMN_ORDER,
+            LibraryLists.VARIABLE_NAMES, LibraryLists.STANDARD_DOMAINS,
+            LibraryLists.GET_DATASET_FILTERED_VARIABLES, LibraryLists.NATURAL_KEY_VARIABLES,
+            LibraryLists.GET_MODEL_FILTERED_VARIABLES, LibraryLists.VALID_CODELIST_DATES,
+            LibraryLists.CODELIST_TERMS, ParentModelColumnOrder.NAME,
+            DefineLists.DEFINE_VARIABLE_NAMES, DefineLists.DEFINE_DATASET_NAMES,
+            DefineLists.DEFINE_KEY_VARIABLES, InventoryLists.GET_COLUMN_ORDER_FROM_DATASET,
+            InventoryLists.DATASET_NAMES, InventoryLists.STUDY_DOMAINS,
+            InventoryLists.SPLIT_SIBLING_LENGTH_MISMATCH, InventoryLists.DUPLICATE_LABEL_VARIABLES,
+            Minus.NAME);
 
     private ListFunctionSupport()
     {

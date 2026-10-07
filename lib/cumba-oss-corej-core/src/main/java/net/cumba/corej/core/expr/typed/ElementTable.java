@@ -112,6 +112,7 @@ public final class ElementTable
             Map.entry("expected_variables", new ListOf(Primitive.STRING)),
             Map.entry("get_column_order_from_library", new ListOf(Primitive.STRING)),
             Map.entry("get_model_column_order", new ListOf(Primitive.STRING)),
+            Map.entry("get_permitted_column_order", new ListOf(Primitive.STRING)),
             Map.entry("variable_names", new ListOf(Primitive.STRING)),
             Map.entry("standard_domains", new ListOf(Primitive.STRING)),
             Map.entry("get_dataset_filtered_variables", new ListOf(Primitive.STRING)),

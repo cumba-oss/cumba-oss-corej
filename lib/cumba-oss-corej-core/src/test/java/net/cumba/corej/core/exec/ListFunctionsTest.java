@@ -75,10 +75,11 @@ class ListFunctionsTest
         }
         for (String name : List.of(LibraryLists.REQUIRED_VARIABLES, LibraryLists.EXPECTED_VARIABLES,
                 LibraryLists.GET_COLUMN_ORDER_FROM_LIBRARY, LibraryLists.GET_MODEL_COLUMN_ORDER,
-                LibraryLists.VARIABLE_NAMES, LibraryLists.STANDARD_DOMAINS,
-                LibraryLists.GET_DATASET_FILTERED_VARIABLES, LibraryLists.NATURAL_KEY_VARIABLES,
-                LibraryLists.GET_MODEL_FILTERED_VARIABLES, LibraryLists.VALID_CODELIST_DATES,
-                LibraryLists.CODELIST_TERMS, ParentModelColumnOrder.NAME))
+                LibraryLists.GET_PERMITTED_COLUMN_ORDER, LibraryLists.VARIABLE_NAMES,
+                LibraryLists.STANDARD_DOMAINS, LibraryLists.GET_DATASET_FILTERED_VARIABLES,
+                LibraryLists.NATURAL_KEY_VARIABLES, LibraryLists.GET_MODEL_FILTERED_VARIABLES,
+                LibraryLists.VALID_CODELIST_DATES, LibraryLists.CODELIST_TERMS,
+                ParentModelColumnOrder.NAME))
         {
             assertEquals(ProviderNeed.LIBRARY, descriptor(name).provider(), name);
         }
@@ -94,7 +95,7 @@ class ListFunctionsTest
         {
             assertNull(descriptor(name).provider(), name + " needs no provider");
         }
-        assertEquals(21, ListFunctionSupport.FUNCTION_NAMES.size());
+        assertEquals(22, ListFunctionSupport.FUNCTION_NAMES.size());
     }
 
     // ============================================================ the LIBRARY walks
@@ -115,6 +116,28 @@ class ListFunctionsTest
         lib.columnOrder = null;
         assertUnusable(LibraryLists.GET_COLUMN_ORDER_FROM_LIBRARY, ProviderNeed.Kind.LIBRARY,
                 () -> LibraryLists.columnOrderFromLibrary(run(dm(), lib), List.of()));
+    }
+
+
+    /**
+     * {@code PLAN-permitted-addition-position} C9: the permitted order SKIPs exactly where the
+     * model order does, and answers the model order itself on a dataset the class gate keeps closed
+     * (this fake answers no class) — the placement is {@code PermittedColumnOrderTest}'s.
+     */
+    @Test
+    void permittedColumnOrderSkipsWithTheModelOrderAndElseBroadcastsIt()
+    {
+        Library lib = new Library();
+        lib.modelColumnOrder.put("AE", List.of("STUDYID", "USUBJID", "AESEQ"));
+        assertEquals(List.of("STUDYID", "USUBJID", "AESEQ"), list(LibraryLists
+                .permittedColumnOrder(run(table("AE", "AESPID", "1"), lib), List.of())));
+        assertUnusable(LibraryLists.GET_PERMITTED_COLUMN_ORDER, ProviderNeed.Kind.LIBRARY,
+                () -> LibraryLists.permittedColumnOrder(run(table("XYZ", "X", "1"), lib),
+                        List.of()));
+        lib.modelColumnOrder.put("XYZ", List.of());
+        assertUnusable(LibraryLists.GET_PERMITTED_COLUMN_ORDER, ProviderNeed.Kind.LIBRARY,
+                () -> LibraryLists.permittedColumnOrder(run(table("XYZ", "X", "1"), lib),
+                        List.of()));
     }
 
 
@@ -936,8 +959,9 @@ class ListFunctionsTest
         assertLoads("minus([\"AGEU\", \"SDESIGN\"], subtract=$p)", "$p", "distinct(TSPARMCD)");
         assertLoads("minus(subtract=$p, value=[\"AGEU\"])", "$p", "distinct(TSPARMCD)");
         for (String zeroArg : List.of("required_variables", "expected_variables",
-                "get_column_order_from_library", "get_model_column_order", "variable_names",
-                "standard_domains", "get_dataset_filtered_variables", "natural_key_variables",
+                "get_column_order_from_library", "get_model_column_order",
+                "get_permitted_column_order", "variable_names", "standard_domains",
+                "get_dataset_filtered_variables", "natural_key_variables",
                 "get_model_filtered_variables", "define_variable_names", "define_dataset_names",
                 "define_key_variables", "get_column_order_from_dataset", "dataset_names",
                 "study_domains", "split_sibling_length_mismatch", "duplicate_label_variables"))

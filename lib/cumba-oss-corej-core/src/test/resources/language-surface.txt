@@ -1,4 +1,4 @@
-LEVEL=4
+LEVEL=5
 functions:
 abs(x:unknown) kind=value
 all(list:list<boolean>) kind=boolean
@@ -54,6 +54,7 @@ get_dataset_filtered_variables(key_name:string?, key_value:string?) kind=value a
 get_model_column_order() kind=value aggregate provider=library
 get_model_filtered_variables(key_name:string?, key_value:string?, model_class:string?) kind=value aggregate provider=library
 get_parent_model_column_order(name:column-reference) kind=value provider=library
+get_permitted_column_order() kind=value aggregate provider=library
 has_alpha(x:unknown) kind=boolean
 has_digit(x:unknown) kind=boolean
 has_equal_length(name:unknown, length:unknown) kind=boolean

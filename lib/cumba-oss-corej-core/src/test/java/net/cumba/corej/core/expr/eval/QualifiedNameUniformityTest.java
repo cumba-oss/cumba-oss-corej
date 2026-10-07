@@ -186,6 +186,7 @@ class QualifiedNameUniformityTest
             get_model_filtered_variables | key_name | - | a metadata key
             get_model_filtered_variables | key_value | - | a metadata value
             get_model_filtered_variables | model_class | - | static string
+            get_permitted_column_order | - | - | nullary
             get_parent_model_column_order | name | N | X:provider — operandPlan channel; needs a LIBRARY fixture ; C4:V:count(get_parent_model_column_order(@S))
             has_alpha | x | N | B:has_alpha(@S)
             has_digit | x | N | B:has_digit(@D)
@@ -808,9 +809,10 @@ class QualifiedNameUniformityTest
     {
         // +1 descriptor / +2 parameters / +1 accessor since PLAN-library-template-label-resolution
         // (matches_label_template(label, template) and label_template(…, "LIBRARY")).
-        assertEquals(171, FunctionRegistry.all().size(),
+        assertEquals(172, FunctionRegistry.all().size(),
                 "registered descriptors (165 + any / all / none / joined, PLAN-cg0218; + 2"
-                        + " column-status predicates, PLAN-present-empty-column-fold)");
+                        + " column-status predicates, PLAN-present-empty-column-fold; + the nullary"
+                        + " get_permitted_column_order, PLAN-permitted-addition-position)");
         assertEquals(289,
                 FunctionRegistry.all().stream().mapToInt(d -> d.parameters().size()).sum(),
                 "declared parameters (283 + one each for any / all / none / joined + one each"
@@ -840,8 +842,9 @@ class QualifiedNameUniformityTest
         // T2 r2 L5: the non-name class is pinned too — a row that flips to '-' to dodge a probe
         // moves this count. +1 for label_template's stem= keyword (R2-3), a static selector.
         // +4 for the quantifier family (PLAN-cg0218): any / all / none take joined(…), joined
-        // takes a condition — none of the four slots can carry a column name itself.
-        assertEquals(141, rows.stream().filter(r -> !r.name()).count(), "non-name rows");
+        // takes a condition — none of the four slots can carry a column name itself. +1 for the
+        // nullary get_permitted_column_order (PLAN-permitted-addition-position).
+        assertEquals(142, rows.stream().filter(r -> !r.name()).count(), "non-name rows");
     }
 
     // ------------------------------------------------------------------
