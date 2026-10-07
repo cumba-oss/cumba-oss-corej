@@ -123,48 +123,7 @@ public final class NameSlots
             return p != null && isNameSlot(p);
         }
         MetadataAttribute attr = MetadataAttribute.fromFunction(call.name());
-        return attr != null && position == accessorNamePosition(attr, call);
-    }
-
-
-    /**
-     * Whether {@code e} is a metadata-level string literal ({@code "DATA"}, {@code "DEFINE"},
-     * {@code "LIBRARY"}, any case) — the one spelling that is a LEVEL, never a name, in an
-     * accessor's one-argument form.
-     */
-    public static boolean isLevelLiteral(Expr e)
-    {
-        return e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
-                && MetadataLevel.tryParse((String) lit.value()) != null;
-    }
-
-
-    /**
-     * The positional index of a metadata accessor call's NAME argument, or {@code -1} when the call
-     * carries none: {@code 0} in the two-argument form {@code (name, level)}; in the one-argument
-     * form {@code 0} for a variable-scope accessor whose argument is not a level literal
-     * ({@code var_label(AETERM)} / {@code var_label("AETERM")} / {@code var_label($c)} — the name
-     * at the default {@code DATA} level, {@code PLAN-metadata-accessor-default-level} D3), else
-     * {@code -1} (the level form {@code var_label("DATA")}, the default form {@code ds_name()}, and
-     * every one-argument {@code ds_*} call — a dataset name always needs its level, D3). <b>The one
-     * judgement</b> the name-slot inliner, the load-time fill
-     * ({@code MetadataOperandMapping.canonicalizeMetadataOperands}), stage A and the compiler
-     * share, so a {@code $}-bound name and a spelled name take the same path (runbook W1a MA-r1,
-     * V12).
-     */
-    public static int accessorNamePosition(MetadataAttribute attr, Expr.Call call)
-    {
-        int arity = call.args().size();
-        if (arity == 2)
-        {
-            return 0;
-        }
-        if (arity == 1 && attr.scope() == MetadataAttribute.Scope.VARIABLE
-                && !isLevelLiteral(call.args().get(0)))
-        {
-            return 0;
-        }
-        return -1;
+        return attr != null && position == 0 && call.args().size() == 2;
     }
 
 

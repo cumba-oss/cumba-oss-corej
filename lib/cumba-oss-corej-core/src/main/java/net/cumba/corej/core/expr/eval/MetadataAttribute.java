@@ -27,14 +27,6 @@ import org.jspecify.annotations.Nullable;
  * levels are held as an immutable {@code int} bitmask over {@link MetadataLevel#bit()} so the enum
  * has no mutable state.
  * </p>
- *
- * <p>
- * <b>The default level is {@code DATA}</b> ({@code PLAN-metadata-accessor-default-level} D1,
- * runbook W1a MA-r1): a call with no level — {@code ds_name()}, {@code var_label()},
- * {@code var_label(AETERM)} — reads the DATA level; {@code MetadataOperandMapping} fills the
- * literal in at load. An attribute without a DATA level called without one is a load error naming
- * {@link #supportedLevels()} (D2).
- * </p>
  */
 public enum MetadataAttribute
 {
@@ -307,40 +299,6 @@ public enum MetadataAttribute
     {
         return this == VAR_CODELIST_CODED_CODES || this == VAR_CODELIST_CODED_VALUES
                 || this == VAR_CODELIST_EXTENDED_VALUES;
-    }
-
-
-    /**
-     * The load error for a call to an attribute without a {@code DATA} level that names no level
-     * ({@code PLAN-metadata-accessor-default-level} D2 / P2): <em>"var_role has no DATA level —
-     * write var_role("DEFINE") or var_role("LIBRARY")"</em>; with the spelled name argument when
-     * the call carries one. Stage A files it and the compiler raises it defensively.
-     *
-     * @param spelledName
-     *            the call's name argument as the author spelled it, or {@code null} for the
-     *            level-only form
-     * @return the message
-     */
-    public String noDataLevelMessage(@Nullable String spelledName)
-    {
-        StringBuilder sb = new StringBuilder(96);
-        sb.append(functionName).append(" has no DATA level — write ");
-        boolean first = true;
-        for (MetadataLevel level : supportedLevels())
-        {
-            if (!first)
-            {
-                sb.append(" or ");
-            }
-            first = false;
-            sb.append(functionName).append('(');
-            if (spelledName != null)
-            {
-                sb.append(spelledName).append(", ");
-            }
-            sb.append('"').append(level.name()).append("\")");
-        }
-        return sb.toString();
     }
 
 

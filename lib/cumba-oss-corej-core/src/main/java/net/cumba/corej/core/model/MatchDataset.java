@@ -298,12 +298,7 @@ public class MatchDataset
         net.cumba.corej.core.expr.ast.Expr cached = filterExprCache;
         if (cached == null)
         {
-            // Canonicalised once here (PLAN-metadata-accessor-default-level V11, runbook W1a
-            // MA-r1): the Filter is the one expression surface RulePackageLoader.installNativeExpr
-            // does not pass through MetadataOperandMapping, so the metadata-operand lowering and
-            // the DATA-level fill of a level-less accessor hold on this path too.
-            cached = net.cumba.corej.core.expr.MetadataOperandMapping.canonicalizeMetadataOperands(
-                    net.cumba.corej.core.expr.CheckExpressionParser.parse(text));
+            cached = net.cumba.corej.core.expr.CheckExpressionParser.parse(text);
             filterExprCache = cached;
         }
         return cached;

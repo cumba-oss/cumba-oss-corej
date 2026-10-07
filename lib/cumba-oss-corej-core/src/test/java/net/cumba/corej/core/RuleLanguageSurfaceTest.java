@@ -117,11 +117,12 @@ class RuleLanguageSurfaceTest
     {
         String surface = RuleLanguage.surface();
         assertTrue(surface.contains("\naccessors:\n"), surface);
-        assertTrue(surface.contains(
-                "\nds_name scope=dataset levels=DATA,DEFINE,LIBRARY result=string default=DATA\n"),
+        assertTrue(
+                surface.contains(
+                        "\nds_name scope=dataset levels=DATA,DEFINE,LIBRARY result=string\n"),
                 surface);
         assertTrue(surface.contains(
-                "\nvar_label scope=variable levels=DATA,DEFINE,LIBRARY result=string default=DATA kwargs=dataset\n"),
+                "\nvar_label scope=variable levels=DATA,DEFINE,LIBRARY result=string kwargs=dataset\n"),
                 surface);
         assertTrue(surface.contains(
                 "\nlabel_template scope=variable levels=LIBRARY result=string kwargs=stem\n"),
@@ -130,7 +131,7 @@ class RuleLanguageSurfaceTest
                 "\nvar_codelist_coded_codes scope=variable levels=DEFINE,LIBRARY result=list<string>\n"),
                 surface);
         assertTrue(surface.contains("\nvar_length scope=variable levels=DATA,DEFINE,LIBRARY"
-                + " result=number default=DATA kwargs=dataset\n"), surface);
+                + " result=number kwargs=dataset\n"), surface);
         assertTrue(surface.contains("\noperators: "), surface);
         assertTrue(surface.contains(" =~ "), "the regex-match operator is listed");
         assertTrue(surface.contains(" !~ "), "the regex-non-match operator is listed");
