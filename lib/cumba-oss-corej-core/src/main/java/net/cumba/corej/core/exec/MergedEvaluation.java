@@ -797,7 +797,10 @@ public final class MergedEvaluation
                     : null;
             // An entry outside the key-type check (a SUPP-named or wildcard-named partner) was a
             // first-wins lookup that never dropped a primary row, whatever Join_Type the loader
-            // stamped: it keeps every row (left). An expandable entry honours its Join_Type.
+            // stamped: it keeps every row (left). An expandable entry honours its Join_Type. An
+            // AUTHORED inner on a keyed SUPP* / SQ* / RELREC entry is refused at load
+            // (RulePackageLoader.checkJoinTypeOnLeftOnlyEntry, PLAN-silently-ignored-authoring-
+            // inputs E4), so the LEFT below never overrides what an author wrote.
             // ⚠ The CARDINALITY of such an entry (SUPP- / SQ / -- named, a keyed RELREC) did
             // change: the retired lookup took the FIRST matching partner row; the view expands
             // n:m like every keyed part (Cardinality unset ⇒ MANY_TO_MANY), so two partner rows

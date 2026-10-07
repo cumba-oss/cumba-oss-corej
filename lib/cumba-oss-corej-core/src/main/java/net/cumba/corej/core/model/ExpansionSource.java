@@ -15,6 +15,15 @@ import org.jspecify.annotations.Nullable;
  * {@code token -> value} binding and rewrites the rule, with no knowledge of how the binding was
  * derived.
  * </p>
+ *
+ * <p>
+ * Each constant also declares the {@link Selector}s its resolver reads ({@link #reads}). The loader
+ * refuses every other present selector, for <b>every</b> source
+ * ({@code RulePackageLoader.rejectUnusedSelectors}, {@code PLAN-silently-ignored-authoring-inputs}
+ * E1): a selector nothing reads would otherwise vanish without a trace, and the author's intended
+ * narrowing with it. {@link #reads} is an exhaustive switch expression, so a new source cannot be
+ * added without stating what it reads.
+ * </p>
  */
 public enum ExpansionSource
 {
@@ -24,7 +33,8 @@ public enum ExpansionSource
      * named by {@code with:}. Needs an inventory-capable resolver
      * ({@code net.cumba.corej.core.exec.ScopeVariableSource}); when the foreign dataset is absent
      * or the resolver is blind the rule is <b>skipped with a stated reason</b>, never expanded to
-     * zero rules.
+     * zero rules. Reads {@code with:} only; a {@code pattern:} or {@code known_domain_only:} is a
+     * load error.
      */
     SHARED_VARIABLES("shared_variables"),
 
@@ -35,6 +45,7 @@ public enum ExpansionSource
      * survives only when the captured text is a domain the library attests
      * ({@code MetadataProvider.getStandardDatasetNames}); that is what keeps ADaM's own
      * {@code ASEQ} / {@code SRCSEQ} / {@code RECSEQ} out, without a hand-maintained deny-list.
+     * Reads {@code pattern:} and {@code known_domain_only:}; a {@code with:} is a load error.
      */
     DOMAIN_FROM_VARIABLE("domain_from_variable"),
 
@@ -81,11 +92,72 @@ public enum ExpansionSource
      */
     ALL_CHARACTER_VARIABLES("all_character_variables");
 
+    /**
+     * The optional fields of an {@code Expansion[]} entry that narrow or name a source's values —
+     * the selectors a source may or may not read ({@link ExpansionSource#reads}).
+     */
+    public enum Selector
+    {
+
+        /** {@code with:} — the foreign dataset {@link ExpansionSource#SHARED_VARIABLES} reads. */
+        WITH("with"),
+
+        /**
+         * {@code pattern:} — the column pattern {@link ExpansionSource#DOMAIN_FROM_VARIABLE} scans.
+         */
+        PATTERN("pattern"),
+
+        /**
+         * {@code known_domain_only:} — the library filter of
+         * {@link ExpansionSource#DOMAIN_FROM_VARIABLE}.
+         */
+        KNOWN_DOMAIN_ONLY("known_domain_only");
+
+        private final String jsonKey;
+
+        Selector(String aJsonKey)
+        {
+            jsonKey = aJsonKey;
+        }
+
+
+        /**
+         * The key an author writes in the {@code Expansion[]} entry.
+         *
+         * @return the JSON/YAML key of this selector
+         */
+        public String getJsonKey()
+        {
+            return jsonKey;
+        }
+    }
+
     private final String jsonValue;
 
     ExpansionSource(String aJsonValue)
     {
         jsonValue = aJsonValue;
+    }
+
+
+    /**
+     * Whether this source's resolver reads {@code selector}. Every other present selector is a load
+     * error ({@code RulePackageLoader.rejectUnusedSelectors}).
+     *
+     * @param selector
+     *            the selector to ask about
+     * @return whether the source reads it
+     */
+    public boolean reads(Selector selector)
+    {
+        // an exhaustive switch EXPRESSION: a new source does not compile without its arm
+        return switch (this)
+        {
+        case SHARED_VARIABLES -> selector == Selector.WITH;
+        case DOMAIN_FROM_VARIABLE -> selector == Selector.PATTERN
+                || selector == Selector.KNOWN_DOMAIN_ONLY;
+        case ALL_VARIABLES, ALL_NUMERIC_VARIABLES, ALL_CHARACTER_VARIABLES -> false;
+        };
     }
 
 

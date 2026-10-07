@@ -277,4 +277,62 @@ class MergedTableAuthoringGatesTest
         assertClean(load("{\"Name\":\"RELREC\"}", "\"Supp_Keys\":[\"USUBJID\"],"));
         assertClean(loadAuthored(CHAINED_TOP_EXTRA.formatted("\"Supp_Keys\":[\"USUBJID\"],")));
     }
+
+    // ---- Join_Type where nothing honours it (PLAN-silently-ignored-authoring-inputs E4, E5)
+
+    private static final String KEYED = "{\"Name\":\"%s\",\"Keys\":[\"STUDYID\",\"USUBJID\"]%s}";
+
+    /**
+     * E4 (S3): a keyed, non-Child {@code SUPP*} / {@code SQ*} / {@code RELREC} entry always runs as
+     * {@code left} ({@code MergedEvaluation.keyedSpecs}), so an authored {@code inner} would be
+     * silently ignored — a load error. {@code left} and an absent {@code Join_Type} load clean
+     * (D-e), and a non-SUPP {@code --} template honours its {@code Join_Type} after the specialiser
+     * renames it (D-b2), so {@code inner} on {@code AE--} is clean. Red-first: every refusal loaded
+     * clean before E4.
+     */
+    @Test
+    void anInnerJoinTypeOnALeftOnlyEntryIsALoadError() throws IOException
+    {
+        for (String name : new String[]
+        {
+                "SUPPAE", "SUPP--", "SQAPMH", "SQAP--", "RELREC", "suppae"
+        })
+        {
+            assertError(load(KEYED.formatted(name, ",\"Join_Type\":\"inner\""), ""),
+                    "Join_Type 'inner' on Match_Datasets entry '" + name + "' has no effect");
+            assertError(load(KEYED.formatted(name, ",\"Join_Type\":\"INNER\""), ""),
+                    "Join_Type 'INNER' on Match_Datasets entry '" + name + "' has no effect");
+            assertClean(load(KEYED.formatted(name, ",\"Join_Type\":\"left\""), ""));
+            assertClean(load(KEYED.formatted(name, ""), ""));
+        }
+        // the planted controls: the ordinary and the renamed-template entries honour inner
+        assertClean(load(KEYED.formatted("AE--", ",\"Join_Type\":\"inner\""), ""));
+        assertClean(load(KEYED.formatted("DM", ",\"Join_Type\":\"inner\""), ""));
+        assertClean(load(KEYED.formatted("SE", ",\"Join_Type\":\"inner\""), ""));
+    }
+
+
+    /**
+     * E5: {@code Join_Type} on an entry that builds no keyed part and is neither {@code Child} nor
+     * a forward {@code RELREC} entry has no reader at all — a keyless non-RELREC entry, and a keyed
+     * entry without a {@code Name}. Any authored value is a load error; the forward RELREC, the
+     * Child and the named keyed entries keep reading theirs. Red-first: every refusal loaded clean
+     * before E5.
+     */
+    @Test
+    void aJoinTypeOnAnEntryNothingReadsIsALoadError() throws IOException
+    {
+        assertError(load("{\"Name\":\"DS\",\"Join_Type\":\"left\"}", ""),
+                "Join_Type 'left' on Match_Datasets entry 'DS' has no effect");
+        assertError(load("{\"Name\":\"DS\",\"Join_Type\":\"inner\"}", ""),
+                "Join_Type 'inner' on Match_Datasets entry 'DS' has no effect");
+        assertError(load("{\"Keys\":[\"STUDYID\",\"USUBJID\"],\"Join_Type\":\"left\"}", ""),
+                "Join_Type 'left' on Match_Datasets entry without a Name has no effect");
+        // controls: the same value where a reader exists
+        assertClean(load("{\"Name\":\"DS\"}", ""));
+        assertClean(load("{\"Name\":\"RELREC\",\"Join_Type\":\"left\"}", ""));
+        assertClean(load("{\"Name\":\"RELREC\",\"Join_Type\":\"inner\"}", ""));
+        assertClean(load(DM.formatted(",\"Join_Type\":\"left\""), ""));
+        assertClean(load(CHILD.formatted(",\"Join_Type\":\"left\""), ""));
+    }
 }

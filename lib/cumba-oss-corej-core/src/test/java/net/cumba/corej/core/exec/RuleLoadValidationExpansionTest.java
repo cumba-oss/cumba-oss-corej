@@ -764,6 +764,86 @@ class RuleLoadValidationExpansionTest
     }
 
 
+    /**
+     * E1 of {@code PLAN-silently-ignored-authoring-inputs} (S2 ruling, "everywhere"): EVERY source
+     * refuses every selector it does not read, not only the {@code all_*} sources. The table below
+     * is this test's own oracle of what each source's resolver in {@code TokenExpander} reads — it
+     * is deliberately NOT {@code ExpansionSource}'s declaration, so the two must agree — and it
+     * must name every source, so a new {@code ExpansionSource} fails here until its selectors are
+     * stated. Red-first: before E1 the {@code shared_variables} × {@code pattern} /
+     * {@code known_domain_only} and {@code domain_from_variable} × {@code with} cells loaded clean.
+     */
+    @Test
+    void everySourceRefusesExactlyTheSelectorsItDoesNotRead() throws IOException
+    {
+        java.util.Map<ExpansionSource, java.util.Set<String>> reads = java.util.Map.of(
+                ExpansionSource.SHARED_VARIABLES, java.util.Set.of("with"),
+                ExpansionSource.DOMAIN_FROM_VARIABLE,
+                java.util.Set.of("pattern", "known_domain_only"), ExpansionSource.ALL_VARIABLES,
+                java.util.Set.of(), ExpansionSource.ALL_NUMERIC_VARIABLES, java.util.Set.of(),
+                ExpansionSource.ALL_CHARACTER_VARIABLES, java.util.Set.of());
+        assertEquals(java.util.EnumSet.allOf(ExpansionSource.class), reads.keySet(),
+                "the oracle must state the selectors of every source");
+        java.util.Map<String, String> fragment = java.util.Map.of("with", "\"with\": \"ADSL\"",
+                "pattern", "\"pattern\": \"&VAR&SEQ\"", "known_domain_only",
+                "\"known_domain_only\": true");
+        java.util.Map<String, String> refusal = java.util.Map.of("with",
+                "does not take a 'with' dataset name", "pattern", "does not take a 'pattern'",
+                "known_domain_only", "does not take 'known_domain_only'");
+        int refused = 0;
+        int accepted = 0;
+        for (ExpansionSource source : ExpansionSource.values())
+        {
+            for (String selector : List.of("with", "pattern", "known_domain_only"))
+            {
+                // the operand the source requires, plus the selector under test
+                java.util.Set<String> fields = new java.util.LinkedHashSet<>();
+                if (source == ExpansionSource.SHARED_VARIABLES)
+                {
+                    fields.add("with");
+                }
+                else if (source == ExpansionSource.DOMAIN_FROM_VARIABLE)
+                {
+                    fields.add("pattern");
+                }
+                fields.add(selector);
+                StringBuilder directive = new StringBuilder("{\"token\": \"&VAR&\", \"over\": \"")
+                        .append(source.getJsonValue()).append('"');
+                for (String f : fields)
+                {
+                    directive.append(", ").append(fragment.get(f));
+                }
+                directive.append('}');
+                String id = "TEST-E1-" + source.name() + "-" + selector;
+                Rule rule = load("""
+                        {
+                          "Core": {"Id": "%s"},
+                          "Expansion": [%s],
+                          "Check": {"all": [{"expression": "not empty(&VAR&)"}]}
+                        }
+                        """.formatted(id, directive));
+                String error = rule.getLoadError();
+                String expected = "Expansion over '" + source.getJsonValue() + "' "
+                        + refusal.get(selector);
+                if (reads.get(source).contains(selector))
+                {
+                    accepted++;
+                    assertTrue(error == null || !error.contains(expected), id
+                            + ": the source reads '" + selector + "', so it must load: " + error);
+                }
+                else
+                {
+                    refused++;
+                    assertNotNull(error, id + ": an unread '" + selector + "' must be refused");
+                    assertTrue(error.contains(expected), id + ": " + error);
+                }
+            }
+        }
+        assertEquals(12, refused, "5 sources x 3 selectors minus the 3 read cells");
+        assertEquals(3, accepted, "the planted controls: the three selectors a source reads");
+    }
+
+
     /** The sensitivity arm: a well-formed all_* directive must NOT be rejected. */
     @Test
     void aBareAllVariablesDirectiveLoadsCleanly() throws IOException

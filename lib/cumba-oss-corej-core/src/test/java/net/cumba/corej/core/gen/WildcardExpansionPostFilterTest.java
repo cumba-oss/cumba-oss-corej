@@ -192,4 +192,48 @@ class WildcardExpansionPostFilterTest
         assertEquals(List.of("WCP-4-AE"), reportedExpansions(pkg));
     }
 
+
+    /**
+     * {@code PLAN-silently-ignored-authoring-inputs} D-b3 (review R1-2): the loader's template-only
+     * gates (E2 {@code wildcardExclude}, E3 {@code skipIfLibraryDefined: true}) and the expander
+     * decide "is this a template" by ONE method, {@link WildcardExpander#isTemplate}. Pinned here
+     * as the observable agreement: for each shape, the gate refuses the field exactly when
+     * {@code tryExpand} answers {@code NotApplicable} — and the shapes include the eleven released
+     * cursor rules' {@code varname()} form, whose {@code "DT"} literal is not a collected name.
+     */
+    @Test
+    @DisplayName("the template-only gates refuse exactly what tryExpand does not expand")
+    void theTemplateGateAgreesWithTryExpand() throws java.io.IOException
+    {
+        IDataTable table = net.cumba.corej.core.exec.RealTables.of("ADSL").str("TRT01P", "A")
+                .str("TRTSDT", "2014-01-02").str("AETERM", "x").build();
+        Map<String, Boolean> templates = new java.util.LinkedHashMap<>();
+        templates.put("not empty(TRTxxP)", true);
+        templates.put("var_exists(\\\"TRTxxP\\\")", true);
+        templates.put("not empty(AETERM)", false);
+        templates.put(
+                "ends_with(upper(varname()), \\\"DT\\\") and var_type(\\\"DATA\\\") != \\\"Num\\\"",
+                false);
+        templates.put("var_type(\\\"DATA\\\") == \\\"Char\\\"", false);
+        for (Map.Entry<String, Boolean> e : templates.entrySet())
+        {
+            for (String directive : List.of("\"skipIfLibraryDefined\": true",
+                    "\"wildcardExclude\": [\"^ZZZ\"]"))
+            {
+                Rule loaded = net.cumba.corej.core.RulePackageLoader
+                        .loadFromString("{\"rules\":{\"r\":{\"Core\":{\"Id\":\"T-PIN\"},"
+                                + directive + ",\"Check\":{\"all\":[{\"expression\":\"" + e.getKey()
+                                + "\"}]}}}}")
+                        .getRules().get("r");
+                assertEquals(e.getValue(), WildcardExpander.isTemplate(loaded), e.getKey());
+                boolean expanded = !(WildcardExpander.tryExpand(loaded, table
+                        .getMetaData()) instanceof WildcardExpander.ExpansionResult.NotApplicable);
+                boolean refused = loaded.getLoadError() != null && loaded.getLoadError()
+                        .contains("has no effect on a rule that is not a" + " wildcard template");
+                assertEquals(e.getValue(), expanded, "tryExpand on " + e.getKey());
+                assertEquals(!expanded, refused,
+                        directive + " on " + e.getKey() + ": " + loaded.getLoadError());
+            }
+        }
+    }
 }

@@ -885,8 +885,11 @@ public class Rule
     private @Nullable List<ExpansionDirective> expansion;
 
     /**
-     * When {@code true}, expanded rules are skipped for variables that have CDISC Library
-     * definitions (since Library-driven checks are more precise).
+     * When {@code true}, the expansions of a wildcard template are skipped for variables that have
+     * CDISC Library definitions (since Library-driven checks are more precise) —
+     * {@code DatasetRuleResolver.applyTemplatePostFilters}. Honoured only on a template
+     * ({@code WildcardExpander.isTemplate}); on any other rule it is read by nothing and
+     * {@code true} is a load error ({@code PLAN-silently-ignored-authoring-inputs} E3).
      */
     @JsonProperty("skipIfLibraryDefined")
     private @Nullable Boolean skipIfLibraryDefined;
@@ -996,10 +999,13 @@ public class Rule
      * Fix #84 (Group B / B4): root-name exclusion list for empty-suffix wildcard pairing. Each
      * entry is a variable-name pattern (literal such as {@code TRTPN}, or wildcard such as
      * {@code *DTC} / {@code *FN}) that must NOT be treated as a pairing secondary during expansion
-     * of a bare- {@code *} / {@code *N} / {@code *C} template. Applied by {@code WildcardExpander}
-     * against the anchored ({@code *N} / {@code *C}) secondary columns: any secondary column
-     * matching an exclusion is dropped, so its pair never seeds a tuple. Populated from the PMDA
-     * ADaM sheet's verbatim "Exceptions:" lists (e.g. AD0376 / AD1011).
+     * of a template. Applied by {@code WildcardExpander.expand} on <b>any</b> template, not only a
+     * bare-{@code *} / {@code *N} / {@code *C} pairing one: every column a non-bare-{@code *}
+     * wildcard matches is tested, and one matching an exclusion is dropped (on a pairing template,
+     * so its pair never seeds a tuple). Populated from the PMDA ADaM sheet's verbatim "Exceptions:"
+     * lists (e.g. AD0376 / AD1011). On a rule that is not a template
+     * ({@code WildcardExpander.isTemplate}) it is read by nothing and a non-empty list is a load
+     * error ({@code PLAN-silently-ignored-authoring-inputs} E2).
      * <p>
      * Engine extension beyond the upstream rule format; specified in
      * {@code corej-rules/documentation/CORE-RULES-SPECIFICATION.md}, Engine Fields &#167;

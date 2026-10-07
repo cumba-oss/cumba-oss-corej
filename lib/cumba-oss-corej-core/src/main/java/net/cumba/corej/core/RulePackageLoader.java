@@ -4848,6 +4848,7 @@ public class RulePackageLoader
         checkKeepMissingsOnUngovernedEntry(rule, errors);
         checkChildEntryNames(rule, errors);
         checkChildEntryServed(rule, errors);
+        checkJoinTypeOnLeftOnlyEntry(rule, errors);
         checkSidedKeys(rule, errors);
         checkQualifiedKeys(rule, errors);
         checkQualifiedGroupMembers(rule, errors);
@@ -7125,6 +7126,83 @@ public class RulePackageLoader
 
 
     /**
+     * {@code PLAN-silently-ignored-authoring-inputs} E4 / E5 (owner S3, S2, D1): an authored
+     * {@code Join_Type} that nothing honours is a load error, judged on the AUTHORED value — this
+     * gate runs in {@link #validateEnumFields(Rule)}, before {@code normalizeJoinTypes} stamps
+     * {@code inner} onto an absent one, exactly as {@link #checkChildEntryServed} does.
+     *
+     * <ul>
+     * <li><b>E4 — {@code inner} on a keyed, non-{@code Child} entry named {@code SUPP*},
+     * {@code SQ*} (incl. {@code SUPP--}, {@code SQAP--}) or {@code RELREC}.</b>
+     * {@code MergedEvaluation.keyedSpecs} runs such an entry as {@code left} whatever it says (it
+     * is outside {@code JoinKeyTypes.governedByKeyTypeCheck}). {@code left} and an absent
+     * {@code Join_Type} load clean. ⚠ Not {@code JoinKeyTypes.textCarriedForeignKeyFamily}: that
+     * also admits any {@code --} name, and a non-SUPP {@code --} template ({@code AE--}) is renamed
+     * to its dataset by {@code RuleSpecialiser} before the view is built and honours its
+     * {@code Join_Type}.</li>
+     * <li><b>E5 — any {@code Join_Type} on an entry with no reader</b>: not a keyed part
+     * ({@code !MergedEvaluation.servedAsKeyedPart} — a keyless entry, or a keyed one without a
+     * {@code Name}), not {@code Child: true} ({@code ChildEntries}) and not a forward
+     * {@code RELREC} entry ({@code RelrecEntries.spec}).</li>
+     * </ul>
+     * An unrecognised value is {@link #checkJoinTypes}' error alone.
+     *
+     * @param rule
+     *            the rule to check.
+     * @param errors
+     *            the load-error collector.
+     */
+    private static void checkJoinTypeOnLeftOnlyEntry(Rule rule, List<String> errors)
+    {
+        List<net.cumba.corej.core.model.MatchDataset> matches = rule.getMatchDatasets();
+        if (matches == null)
+        {
+            return;
+        }
+        for (net.cumba.corej.core.model.MatchDataset md : matches)
+        {
+            if (md == null || Boolean.TRUE.equals(md.getChild()))
+            {
+                continue;
+            }
+            String jt = md.getJoinType();
+            net.cumba.corej.core.model.JoinType authored = net.cumba.corej.core.model.JoinType
+                    .fromJson(jt);
+            if (authored == null)
+            {
+                continue; // absent, or checkJoinTypes' unrecognised value
+            }
+            String name = md.getName();
+            String entry = name == null ? "Match_Datasets entry without a Name"
+                    : "Match_Datasets entry '" + name + "'";
+            if (net.cumba.corej.core.exec.MergedEvaluation.servedAsKeyedPart(md))
+            {
+                String upper = java.util.Objects.requireNonNull(name)
+                        .toUpperCase(java.util.Locale.ROOT);
+                boolean leftOnly = upper.startsWith("SUPP") || upper.startsWith("SQ")
+                        || net.cumba.corej.core.exec.RelrecEntries.RELREC.equals(upper);
+                if (leftOnly && authored == net.cumba.corej.core.model.JoinType.INNER)
+                {
+                    errors.add("[" + ruleId(rule) + "] Join_Type '" + jt + "' on " + entry
+                            + " has no effect — a keyed SUPP-- / SQ-- / RELREC entry always runs"
+                            + " as left (every record is kept; an unmatched one reads the entry's"
+                            + " columns as not supplied); remove the Join_Type or author \"left\"");
+                }
+            }
+            else if (!net.cumba.corej.core.exec.RelrecEntries.isForwardEntry(md))
+            {
+                errors.add("[" + ruleId(rule) + "] Join_Type '" + jt + "' on " + entry
+                        + " has no effect — "
+                        + (name == null ? "the entry has no Name, so no keyed part is built for it"
+                                : "the entry declares no Keys and is neither Child nor a forward"
+                                        + " RELREC entry, so no join is built for it")
+                        + " and nothing reads its Join_Type; remove it");
+            }
+        }
+    }
+
+
+    /**
      * Tags a {@code Child: true} entry whose {@code Name} is not a concrete dataset name and not a
      * template with a <b>trailing</b> {@code --} such as {@code SUPP--} — a {@code *},
      * {@code ${...}} or {@code &TOKEN&} name, a bare {@code --}, or a {@code --} anywhere but at
@@ -7311,6 +7389,7 @@ public class RulePackageLoader
     private static void validateWildcardFilters(Rule rule, List<String> errors)
     {
         validateWildcardPairDirectives(rule, errors);
+        validateTemplateOnlyDirectives(rule, errors);
         Map<String, net.cumba.corej.core.model.WildcardFilter> filters = rule.getWildcards();
         if (filters == null || filters.isEmpty())
         {
@@ -7382,6 +7461,58 @@ public class RulePackageLoader
                 errors.add("wildcardPairCatalogue requires a bare '*' primary leaf and a '*N'/'*C'"
                         + " secondary leaf (present: " + names + ")");
             }
+        }
+    }
+
+
+    /**
+     * {@code PLAN-silently-ignored-authoring-inputs} E2 / E3 (owner S2, D1): the two directives
+     * only the wildcard expander reads are a load error on a rule that is not a template —
+     * {@link net.cumba.corej.core.gen.WildcardExpander#isTemplate}, the very decision
+     * {@code tryExpand} makes, so the gate refuses exactly what the expander ignores.
+     *
+     * <ul>
+     * <li><b>E2 — a non-empty {@code wildcardExclude}.</b> {@code WildcardExpander.expand} drops an
+     * excluded secondary on <em>any</em> template (every non-bare-{@code *} wildcard), so on a
+     * template it is honoured; on a non-template nothing is expanded and nothing reads the list.
+     * (No Check tree is {@link #validateWildcardPairDirectives}' message already.)</li>
+     * <li><b>E3 — {@code skipIfLibraryDefined: true}.</b> Read only by
+     * {@code DatasetRuleResolver.applyTemplatePostFilters}, on a template's expansions; a
+     * {@code varname()} cursor rule is not a template, so the field never took effect there (owner
+     * Q1 (a) removed it from the eleven released carriers). {@code false} states the default and
+     * loads.</li>
+     * </ul>
+     * A rule that also declares {@code Expansion:} is left to {@link #validateExpansionDirectives},
+     * which refuses the combination with one message.
+     *
+     * @param rule
+     *            the rule to check
+     * @param errors
+     *            load errors, appended to
+     */
+    private static void validateTemplateOnlyDirectives(Rule rule, List<String> errors)
+    {
+        boolean exclude = rule.getWildcardExclude() != null && !rule.getWildcardExclude().isEmpty()
+                && rule.getCheck() != null;
+        boolean skipIfLibraryDefined = Boolean.TRUE.equals(rule.getSkipIfLibraryDefined());
+        boolean expansion = rule.getExpansion() != null && !rule.getExpansion().isEmpty();
+        if ((!exclude && !skipIfLibraryDefined) || expansion
+                || net.cumba.corej.core.gen.WildcardExpander.isTemplate(rule))
+        {
+            return;
+        }
+        String why = " has no effect on a rule that is not a wildcard template — no Check level"
+                + " names an engine-owned wildcard marker (xx/zz/y/w/*), so nothing is expanded";
+        if (exclude)
+        {
+            errors.add("[" + ruleId(rule) + "] wildcardExclude" + why
+                    + " and there is no secondary to exclude; remove it");
+        }
+        if (skipIfLibraryDefined)
+        {
+            errors.add("[" + ruleId(rule) + "] skipIfLibraryDefined" + why
+                    + " and no expansion to drop (a varname() cursor rule is not a template);"
+                    + " remove it");
         }
     }
 
@@ -7564,22 +7695,27 @@ public class RulePackageLoader
                 }
             }
         }
-        // ⚠⚠ This is a switch STATEMENT, not an expression: it is NOT exhaustiveness-checked, so a
-        // new ExpansionSource compiles clean here with no arm and NO WARNING, and a stray
-        // `with:` / `pattern:` on it would then be silently ignored. These three arms exist
-        // precisely because javac will not ask for them — the one guard is the test.
-        case ALL_VARIABLES, ALL_NUMERIC_VARIABLES, ALL_CHARACTER_VARIABLES -> rejectUnusedSelectors(
-                over, directive, errors);
+        case ALL_VARIABLES, ALL_NUMERIC_VARIABLES, ALL_CHARACTER_VARIABLES ->
+        {
+            // no required operand
         }
+        }
+        // E1 (PLAN-silently-ignored-authoring-inputs): every source, not only the all_* ones —
+        // what a source reads is its own declaration (ExpansionSource#reads), so a new source
+        // cannot silently ignore a stray selector.
+        rejectUnusedSelectors(over, directive, errors);
     }
 
 
     /**
-     * The {@code all_*} sources enumerate the dataset under validation and take no selector, so a
-     * present {@code with:} / {@code pattern:} / {@code known_domain_only:} is an authoring
-     * mistake. Rejecting it is not pedantry: the field would otherwise be read by nothing, and the
-     * author's intent — a narrowing they believed they had expressed — would vanish without a
-     * trace.
+     * A present selector ({@code with:} / {@code pattern:} / {@code known_domain_only:}) that the
+     * source does not read ({@link net.cumba.corej.core.model.ExpansionSource#reads}) is an
+     * authoring mistake: {@code shared_variables} reads only {@code with:},
+     * {@code domain_from_variable} only {@code pattern:} and {@code known_domain_only:}, the
+     * {@code all_*} sources enumerate the dataset under validation and read none. Rejecting it is
+     * not pedantry: the field would otherwise be read by nothing, and the author's intent — a
+     * narrowing they believed they had expressed — would vanish without a trace
+     * ({@code PLAN-silently-ignored-authoring-inputs} E1, owner S2 / D1: a load error, everywhere).
      *
      * @param over
      *            the source being validated, named in the message
@@ -7592,17 +7728,29 @@ public class RulePackageLoader
             net.cumba.corej.core.model.ExpansionDirective directive, List<String> errors)
     {
         String name = over.getJsonValue();
-        if (directive.getWith() != null)
+        for (net.cumba.corej.core.model.ExpansionSource.Selector selector : net.cumba.corej.core.model.ExpansionSource.Selector
+                .values())
         {
-            errors.add("Expansion over '" + name + "' does not take a 'with' dataset name");
-        }
-        if (directive.getPattern() != null)
-        {
-            errors.add("Expansion over '" + name + "' does not take a 'pattern'");
-        }
-        if (directive.getKnownDomainOnly() != null)
-        {
-            errors.add("Expansion over '" + name + "' does not take 'known_domain_only'");
+            if (over.reads(selector))
+            {
+                continue;
+            }
+            // exhaustive switch EXPRESSIONS: a new Selector does not compile without its arms
+            boolean present = switch (selector)
+            {
+            case WITH -> directive.getWith() != null;
+            case PATTERN -> directive.getPattern() != null;
+            case KNOWN_DOMAIN_ONLY -> directive.getKnownDomainOnly() != null;
+            };
+            if (present)
+            {
+                errors.add("Expansion over '" + name + "' does not take " + switch (selector)
+                {
+                case WITH -> "a 'with' dataset name";
+                case PATTERN -> "a 'pattern'";
+                case KNOWN_DOMAIN_ONLY -> "'known_domain_only'";
+                });
+            }
         }
     }
 

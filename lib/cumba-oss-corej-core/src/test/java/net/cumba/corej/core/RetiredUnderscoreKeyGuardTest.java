@@ -142,8 +142,10 @@ class RetiredUnderscoreKeyGuardTest
     void skipIfLibraryDefinedStaysUsableOnACorpusRule() throws IOException
     {
         // §9 ruling 2: D is renamed everywhere but remains a legal corpus field — only the `_`
-        // spelling is rejected, never the field.
-        Rule rule = loadOne("\"skipIfLibraryDefined\": true");
+        // spelling is rejected, never the field. Legal on a wildcard TEMPLATE, the only rule that
+        // reads it (PLAN-silently-ignored-authoring-inputs E3: on a non-template a load error).
+        Rule rule = loadOne("\"skipIfLibraryDefined\": true,"
+                + "\"Check\": {\"all\": [{\"expression\": \"var_exists(\\\"TRTxxP\\\")\"}]}");
         assertNull(rule.getLoadError(), String.valueOf(rule.getLoadError()));
         assertEquals(true, rule.getSkipIfLibraryDefined());
     }

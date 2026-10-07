@@ -214,4 +214,78 @@ class RuleLoadValidationWildcardsTest
         assertNull(rule.getLoadError(),
                 "filter targeting y group on *GRy wildcard should not tag loadError");
     }
+
+    // ---- PLAN-silently-ignored-authoring-inputs E2 / E3: the template-only directives
+
+
+    private static Rule load(String ruleJson) throws IOException
+    {
+        return onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
+    }
+
+
+    private static String rule(String id, String expression, String directive)
+    {
+        return """
+                {
+                  "Core": {"Id": "%s"},
+                  %s,
+                  "Check": {"all": [{"expression": "%s"}]}
+                }
+                """.formatted(id, directive, expression.replace("\"", "\\\""));
+    }
+
+    /** The eleven released cursor rules' shape: a {@code stem=}-like literal is not a marker. */
+    private static final String CURSOR = "ends_with(upper(varname()), \"DT\")"
+            + " and var_type(\"DATA\") != \"Num\"";
+
+    /** An {@code xx} template that is NOT a bare-{@code *} pairing template (review R1-1). */
+    private static final String XX_TEMPLATE = "not empty(TRTxxP)";
+
+    /**
+     * E2: {@code wildcardExclude} drops an excluded secondary of ANY template
+     * ({@code WildcardExpander.expand}, every non-bare-{@code *} wildcard); on a rule that is not a
+     * template nothing is expanded and the list is read by nothing — a load error. Red-first: the
+     * refusal loaded clean before E2.
+     */
+    @Test
+    void wildcardExcludeOnANonTemplateIsALoadError() throws IOException
+    {
+        String error = load(
+                rule("TEST-E2-A", "not empty(AETERM)", "\"wildcardExclude\": [\"^AE\"]"))
+                        .getLoadError();
+        assertNotNull(error, "a wildcardExclude nothing reads must be refused");
+        assertTrue(error.contains("[TEST-E2-A] wildcardExclude has no effect on a rule that is not"
+                + " a wildcard template"), error);
+        String cursor = load(rule("TEST-E2-B", CURSOR, "\"wildcardExclude\": [\"^AE\"]"))
+                .getLoadError();
+        assertNotNull(cursor, "a varname() cursor rule is not a template");
+        // the planted control: any template honours it, not only a pairing template (R1-1)
+        assertNull(load(rule("TEST-E2-C", XX_TEMPLATE, "\"wildcardExclude\": [\"^TRT02\"]"))
+                .getLoadError());
+    }
+
+
+    /**
+     * E3: {@code skipIfLibraryDefined: true} is read only by {@code applyTemplatePostFilters}, on a
+     * template's expansions; on a non-template — the eleven released {@code varname()} cursor
+     * rules' shape — it is read by nothing, a load error. {@code false} states the default and
+     * loads. Red-first: the refusals loaded clean before E3.
+     */
+    @Test
+    void skipIfLibraryDefinedOnANonTemplateIsALoadError() throws IOException
+    {
+        String error = load(rule("TEST-E3-A", CURSOR, "\"skipIfLibraryDefined\": true"))
+                .getLoadError();
+        assertNotNull(error, "a skipIfLibraryDefined nothing reads must be refused");
+        assertTrue(error.contains("[TEST-E3-A] skipIfLibraryDefined has no effect on a rule that is"
+                + " not a wildcard template"), error);
+        assertNotNull(load(rule("TEST-E3-B", "not empty(AETERM)", "\"skipIfLibraryDefined\": true"))
+                .getLoadError());
+        // the planted controls
+        assertNull(load(rule("TEST-E3-C", XX_TEMPLATE, "\"skipIfLibraryDefined\": true"))
+                .getLoadError());
+        assertNull(
+                load(rule("TEST-E3-D", CURSOR, "\"skipIfLibraryDefined\": false")).getLoadError());
+    }
 }

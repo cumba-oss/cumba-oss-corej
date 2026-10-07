@@ -153,11 +153,7 @@ public final class WildcardExpander
      */
     public static ExpansionResult tryExpand(Rule rule, DataTableMeta meta)
     {
-        // ⚑ Plan C §3.3: a marker in ANY declared level makes the rule a template — the
-        // substitution below rewrites every level, so the detection must span every level too, or
-        // a weaker level would keep its unresolved token as a literal column name.
-        if (rule.getCheck() == null
-                || rule.checkConditions().stream().noneMatch(WildcardExpander::hasRealWildcards))
+        if (!isTemplate(rule))
         {
             return new ExpansionResult.NotApplicable();
         }
@@ -222,8 +218,7 @@ public final class WildcardExpander
     public static ExpansionResult tryExpand(Rule rule, DataTableMeta meta,
             @Nullable ScopeVariableSource foreign)
     {
-        if (rule.getCheck() == null
-                || rule.checkConditions().stream().noneMatch(WildcardExpander::hasRealWildcards))
+        if (!isTemplate(rule))
         {
             return new ExpansionResult.NotApplicable();
         }
@@ -233,6 +228,38 @@ public final class WildcardExpander
             return new ExpansionResult.NoMatch("Template did not match any columns in dataset");
         }
         return new ExpansionResult.Expanded(expanded);
+    }
+
+
+    /**
+     * Whether {@code rule} is an engine-owned wildcard <b>template</b> — the one decision both
+     * {@code tryExpand} overloads make before expanding (anything else is
+     * {@link ExpansionResult.NotApplicable}). A rule has a Check and some level of it carries a
+     * real marker ({@link #hasRealWildcards}).
+     *
+     * <p>
+     * ⚑ Plan C §3.3: a marker in ANY declared level makes the rule a template — the substitution
+     * rewrites every level, so the detection must span every level too, or a weaker level would
+     * keep its unresolved token as a literal column name.
+     * </p>
+     *
+     * <p>
+     * ⭐ The loader's template-only gates ({@code RulePackageLoader}: {@code wildcardExclude} and
+     * {@code skipIfLibraryDefined: true} on a non-template are load errors,
+     * {@code PLAN-silently-ignored-authoring-inputs} E2 / E3) call this same method, so the gate
+     * refuses exactly what the expander ignores; {@code WildcardExpansionPostFilterTest} pins the
+     * two together. A {@code varname()} cursor rule is not a template: its {@code "DT"} /
+     * {@code stem=} literal is a string, never a collected name.
+     * </p>
+     *
+     * @param rule
+     *            the rule to classify
+     * @return whether the expander treats it as a template
+     */
+    public static boolean isTemplate(Rule rule)
+    {
+        return rule.getCheck() != null
+                && rule.checkConditions().stream().anyMatch(WildcardExpander::hasRealWildcards);
     }
 
 
