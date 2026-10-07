@@ -59,7 +59,7 @@ class BuiltinFunctionsRegistrationTest
             "get_column_order_from_dataset/0/VALUE", "get_column_order_from_library/0/VALUE",
             "get_dataset_filtered_variables/0-2/VALUE", "get_model_column_order/0/VALUE",
             "get_permitted_column_order/0/VALUE", "get_model_filtered_variables/0-3/VALUE",
-            "get_parent_model_column_order/1/VALUE", "minus/2/VALUE",
+            "get_parent_model_column_order/1/VALUE", "minus/2/VALUE", "union/2+/VALUE",
             "natural_key_variables/0/VALUE", "required_variables/0/VALUE",
             "split_sibling_length_mismatch/0/VALUE", "standard_domains/0/VALUE",
             "study_domains/0/VALUE", "valid_codelist_dates/0-1/VALUE", "variable_names/0/VALUE",
