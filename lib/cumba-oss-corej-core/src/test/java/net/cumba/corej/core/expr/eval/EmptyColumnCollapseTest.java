@@ -110,44 +110,51 @@ class EmptyColumnCollapseTest
                 .colSasMissing("C", "", null).build();
         EvaluationContext ctx = EvaluationContext.builder().table(t).build();
         Expr check = parse("empty(A) and empty(B) and is_missing(C) and empty(ZZ) and empty(DM.A)");
-        assertEquals(Set.of("A", "ZZ"), EmptyColumnCollapse.foldableColumns(check, ctx, Set.of()),
-                "A is all \"\"; B is FILLED; C is row-dependent for is_missing; ZZ is ABSENT (P3:"
-                        + " empty over an absent column folds); DM.A is dotted (R5)");
+        assertEquals(Set.of("A"), EmptyColumnCollapse.foldableColumns(check, ctx, Set.of()),
+                "A is all \"\"; B is FILLED; C is row-dependent for is_missing; ZZ is ABSENT (never"
+                        + " a trigger, HIGH-1); DM.A is dotted (R5)");
         assertEquals(Set.of("A", "C"),
                 EmptyColumnCollapse.foldableColumns(parse("empty(A) and empty(C)"), ctx, Set.of()),
                 "empty over \"\" mixed with missing is constant TRUE");
-        assertEquals(Set.of("ZZ"), EmptyColumnCollapse.foldableColumns(check, ctx, Set.of("a")),
+        assertEquals(Set.of(), EmptyColumnCollapse.foldableColumns(check, ctx, Set.of("a")),
                 "Keep_Row_Findings, case-insensitive");
         IDataTable noRows = MockTable.of().name("AE").col("A").build();
         assertEquals(Set.of(), EmptyColumnCollapse.foldableColumns(parse("empty(A)"),
                 EvaluationContext.builder().table(noRows).build(), Set.of()), "C5");
     }
 
-    // ---- P3: an absent column is a trigger for any operator ----------------------------------
+    // ---- HIGH-1: an absent column is never a trigger; only polarity-live leaves are -----------
 
 
     @Test
-    void anAbsentColumnOfAnEmptyFamilyLeafIsATriggerAndNothingElseIs()
+    void anAbsentColumnIsNeverATriggerAndOnlyAPolarityLiveLeafIs()
     {
-        IDataTable t = MockTable.of().name("AE").col("AESEV", "SEVERE", "MILD").build();
+        IDataTable t = MockTable.of().name("AE").col("AESEV", "SEVERE", "MILD")
+                .col("AEBLANK", "", "").col("AEFULL", "x", "y").build();
         EvaluationContext ctx = EvaluationContext.builder().table(t).build();
-        assertEquals(Set.of("AEBDSYCD"),
+        assertEquals(Set.of(),
                 EmptyColumnCollapse.foldableColumns(
                         parse("empty(AEBDSYCD) and AESEV == \"SEVERE\""), ctx, Set.of()),
-                "P3: empty over an absent column folds as over a column of fill MISSING");
-        assertEquals(Set.of("AEBDSYCD"),
-                EmptyColumnCollapse.foldableColumns(
-                        parse("non_empty(AEBDSYCD) and AESEV == \"SEVERE\""), ctx, Set.of()),
-                "the whole empty family (the row evaluation decides the polarity)");
+                "HIGH-1 (per Q3): an ABSENT column never triggers — the absent-column fold reports"
+                        + " an absence, the row path keeps a residual's findings per row");
         assertEquals(Set.of(),
                 EmptyColumnCollapse.foldableColumns(
                         parse("AEBDSYCD != \"X\" and AESEV == \"SEVERE\""), ctx, Set.of()),
-                "any other operator over an absent column stays per row (D111; the wide P3 was not"
-                        + " taken — an absent guard column would collapse per-record findings)");
+                "any other operator over an absent column stays per row");
+        assertEquals(Set.of("AEBLANK"), EmptyColumnCollapse
+                .foldableColumns(parse("empty(AEBLANK) and AESEV == \"SEVERE\""), ctx, Set.of()),
+                "a PRESENT column blank on every record triggers (C7 D5)");
         assertEquals(Set.of(),
-                EmptyColumnCollapse.foldableColumns(
-                        parse("empty(AEBDSYCD) and AESEV == \"SEVERE\""), ctx, Set.of("aebdsycd")),
-                "Keep_Row_Findings: never a trigger, absent or present (R1)");
+                EmptyColumnCollapse.foldableColumns(parse("empty(AEFULL) or not empty(AEBLANK)"),
+                        ctx, Set.of()),
+                "polarity: not empty(blank) is FALSE on every row and decides nothing in the Or");
+        assertEquals(Set.of("AEBLANK"),
+                EmptyColumnCollapse.foldableColumns(parse("not non_empty(AEBLANK)"), ctx, Set.of()),
+                "polarity through the Not of the leaf: TRUE on every row, a trigger");
+        assertEquals(Set.of(),
+                EmptyColumnCollapse.foldableColumns(parse("empty(AEBLANK) and AESEV == \"SEVERE\""),
+                        ctx, Set.of("aeblank")),
+                "Keep_Row_Findings: never a trigger (R1)");
         assertEquals(Set.of(),
                 EmptyColumnCollapse.foldableColumns(
                         parse("any(joined(empty(AEBDSYCD))) and AESEV == \"SEVERE\""), ctx,

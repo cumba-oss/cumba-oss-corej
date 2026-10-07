@@ -314,19 +314,7 @@ public final class FoldCapability
      */
     public static AbsentFoldCensus absentTrueCapable(Rule specialised, EvaluationContext ctx)
     {
-        List<Expr> roots = new ArrayList<>();
-        List<CheckConditionExpression> authored = authoredConditions(specialised);
-        if (authored.size() <= 1 && specialised.getCheckExpr() != null)
-        {
-            roots.add(specialised.getCheckExpr());
-        }
-        else
-        {
-            for (CheckConditionExpression ce : authored)
-            {
-                roots.add(ce.expr());
-            }
-        }
+        List<Expr> roots = compiledRoots(specialised);
         boolean capable = false;
         boolean collapsible = false;
         Set<String> columns = new LinkedHashSet<>();
@@ -372,34 +360,30 @@ public final class FoldCapability
      * {@code present} / {@code is_present} FALSE; every other leaf undecided), leave the Check TRUE
      * (every record fires: one finding, no residual) or UNKNOWN (a residual some record must meet).
      * A column whose blankness makes the Check FALSE — the {@code not empty(X)} guard — never
-     * reports and is not a trigger.</li>
-     * <li>{@code absent}: the same analysis for a plain {@code empty}-family leaf column that is
-     * ungated (absent on the census context): an absent column reads as all-missing, so its leaves
-     * fold as over a column of fill {@code MISSING} (P3, C7 D9 read literally; any other operator
-     * over an absent column stays per row).</li>
+     * reports and is not a trigger: only a polarity-live leaf (its constant, negated once per
+     * enclosing {@code Not}, TRUE) triggers, exactly as at data time
+     * ({@code EmptyColumnCollapse.collectLive}).</li>
      * </ul>
+     * An ABSENT column is never a trigger (PACK 4 review HIGH-1, per Q3): it is reported by the
+     * absent-column fold alone, which {@link #absentTrueCapable} censuses.
      *
      * @param blank
      *            trigger column → TRUE (no residual) or UNKNOWN (a residual remains)
-     * @param absent
-     *            trigger column → TRUE or UNKNOWN, as above
      */
-    public record Triggers(Map<String, BroadcastFold.Verdict> blank,
-            Map<String, BroadcastFold.Verdict> absent)
+    public record Triggers(Map<String, BroadcastFold.Verdict> blank)
     {
 
-        /** Defensive, unmodifiable copies (SpotBugs EI_EXPOSE_REP). */
+        /** Defensive, unmodifiable copy (SpotBugs EI_EXPOSE_REP). */
         public Triggers
         {
             blank = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(blank));
-            absent = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(absent));
         }
 
 
         /** Whether the collapse can report this rule at all. */
         public boolean any()
         {
-            return !blank.isEmpty() || !absent.isEmpty();
+            return !blank.isEmpty();
         }
     }
 
@@ -419,63 +403,62 @@ public final class FoldCapability
             Set<String> keepRowFindings)
     {
         Map<String, BroadcastFold.Verdict> blank = new java.util.LinkedHashMap<>();
-        Map<String, BroadcastFold.Verdict> absent = new java.util.LinkedHashMap<>();
-        List<Expr> roots = new ArrayList<>();
-        List<CheckConditionExpression> authored = authoredConditions(specialised);
-        if (authored.size() <= 1 && specialised.getCheckExpr() != null)
-        {
-            roots.add(specialised.getCheckExpr());
-        }
-        else
-        {
-            for (CheckConditionExpression ce : authored)
-            {
-                roots.add(ce.expr());
-            }
-        }
+        List<Expr> roots = compiledRoots(specialised);
         for (Expr root : roots)
         {
-            for (String x : plainColumnLeafNames(root))
+            // the same polarity-aware walk the runtime takes (EmptyColumnCollapse.collectLive),
+            // every plain empty-family leaf column assumed blank on every record
+            Set<String> live = new LinkedHashSet<>();
+            EmptyColumnCollapse.collectLive(root, false, keepRowFindings,
+                    (c, name) -> "empty".equals(c.name()) || "is_missing".equals(c.name())
+                            ? BroadcastFold.Verdict.TRUE
+                            : BroadcastFold.Verdict.FALSE,
+                    live);
+            for (String x : live)
             {
-                if (containsIgnoreCase(keepRowFindings, x) || blank.containsKey(x))
+                if (blank.containsKey(x))
                 {
                     continue;
                 }
-                boolean[] decided = new boolean[1];
-                BroadcastFold.Verdict v = foldWith(root,
-                        leaf -> noting(blankLeafVerdict(leaf, x), decided));
-                if (decided[0] && v != BroadcastFold.Verdict.FALSE)
+                BroadcastFold.Verdict v = foldWith(root, leaf -> blankLeafVerdict(leaf, x));
+                if (v != BroadcastFold.Verdict.FALSE)
                 {
                     blank.put(x, v);
                 }
             }
-            for (String x : plainColumnLeafNames(root))
-            {
-                if (containsIgnoreCase(keepRowFindings, x) || absent.containsKey(x)
-                        || x.indexOf('*') >= 0 || BroadcastFold.bindColumnLevel(x,
-                                ctx) != BroadcastFold.BindColumnLevel.DATASET_ABSENT)
-                {
-                    continue;
-                }
-                // P3 (the literal D9 reading): an absent column reads as all-missing, so its
-                // empty-family leaves fold exactly as over a column of fill MISSING
-                boolean[] decided = new boolean[1];
-                BroadcastFold.Verdict v = foldWith(root,
-                        leaf -> noting(blankLeafVerdict(leaf, x), decided));
-                if (decided[0] && v != BroadcastFold.Verdict.FALSE)
-                {
-                    absent.put(x, v);
-                }
-            }
         }
-        return new Triggers(blank, absent);
+        return new Triggers(blank);
     }
 
 
-    private static BroadcastFold.Verdict noting(BroadcastFold.Verdict v, boolean[] decided)
+    /**
+     * The compiled roots the census and the trigger analysis fold: the per-level expressions where
+     * the rule declares check levels, else the single compiled Check. Always the compiled form
+     * (PACK 4 review LOW-2): a nested {@code all} / {@code any} / {@code not} authored Check keeps
+     * its combinators and its negation here, which the flattened {@link #authoredConditions name
+     * walk} loses — that walk serves name collection only.
+     */
+    static List<Expr> compiledRoots(Rule specialised)
     {
-        decided[0] |= v != BroadcastFold.Verdict.UNKNOWN;
-        return v;
+        List<Expr> roots = new ArrayList<>();
+        if (specialised.getCheckLevelExprs() != null)
+        {
+            roots.addAll(specialised.getCheckLevelExprs().values());
+        }
+        else if (specialised.getCheckExpr() != null)
+        {
+            roots.add(specialised.getCheckExpr());
+        }
+        if (roots.isEmpty())
+        {
+            // no compiled form (a fixture the native compiler declined): the authored leaves, as
+            // before — the shipped corpus never takes this branch (every shipped rule compiles)
+            for (CheckConditionExpression ce : authoredConditions(specialised))
+            {
+                roots.add(ce.expr());
+            }
+        }
+        return roots;
     }
 
 
@@ -968,6 +951,11 @@ public final class FoldCapability
     }
 
 
+    /**
+     * The authored expression leaves, nested forms flattened — for NAME collection only
+     * ({@link #mayAbsentFold}, {@link #keepRowFindingsErrors}); anything that folds reads
+     * {@link #compiledRoots} (PACK 4 review LOW-2).
+     */
     static List<CheckConditionExpression> authoredConditions(Rule rule)
     {
         List<CheckConditionExpression> out = new ArrayList<>();

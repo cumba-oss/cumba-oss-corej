@@ -4,14 +4,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.exec.Violation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
+import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.report.ValidationFinding;
 import net.cumba.datatable.report.ValidationReport;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -68,5 +73,50 @@ class FoldedUnitMessageTest
     void aFoldedUnitPrintsMessageFolded()
     {
         assertEquals("folded message", reported(Violation.Unit.DATASET_FOLDED));
+    }
+
+
+    /** A level-keyed opted-in rule, run end to end: the runner stamps, the report resolves. */
+    private static String reportedEndToEnd(String errorCheck, IDataTable table) throws Exception
+    {
+        String json = "{\"rules\":{\"T\":{\"Core\":{\"Id\":\"Q6-LEVELS\"},\"Sensitivity\":\"Record\","
+                + "\"Severity\":\"Error\"," + "\"Check\":{\"ERROR\":{\"expression\":\"" + errorCheck
+                + "\"}," + "\"WARNING\":{\"expression\":\"empty(AEBODSYS)\"}},"
+                + "\"Outcome\":{\"Message\":\"per-row message\",\"Message_Folded\":\"folded message\","
+                + "\"Output_Variables\":[\"AEBDSYCD\"]}}}}";
+        Rule rule = RulePackageLoader.loadFromString(json).getRules().get("T");
+        assertEquals(null, rule.getLoadError(), rule.getLoadError());
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, _ -> null, "AE", null,
+                null, null, Integer.MAX_VALUE, null, null, null, Set.of(), Set.of());
+        assertEquals(1, result.getViolationCount(), "one dataset finding: " + result);
+        ValidationReport report = new ValidationReportBuilder().add("AE", "ae.xpt", rule, result)
+                .build();
+        List<ValidationFinding> findings = report.getMembers().get(0).getFindings();
+        assertEquals(1, findings.size(), findings.toString());
+        return findings.get(0).getMessage();
+    }
+
+
+    @Test
+    @DisplayName("LOW-5 — a levelled rule's absent-decided broadcast fold prints Message_Folded end to end")
+    void aLevelledAbsentDecidedFoldPrintsMessageFolded() throws Exception
+    {
+        // AEBDSYCD absent: the ERROR level's fold decides TRUE by the absence (DATASET_FOLDED);
+        // AEBODSYS populated: the WARNING level fires nowhere. The report reads the unit's flag —
+        // `folded ? DATASET_FOLDED : DATASET` sabotaged to DATASET prints "per-row message".
+        IDataTable noCode = MockTable.of().name("AE").col("USUBJID", "01", "02")
+                .col("AEBODSYS", "Cardiac", "Renal").build();
+        assertEquals("folded message", reportedEndToEnd("empty(AEBDSYCD)", noCode));
+    }
+
+
+    @Test
+    @DisplayName("LOW-5 — a levelled rule's dataset-constant verdict prints Message end to end")
+    void aLevelledDatasetConstantVerdictPrintsMessage() throws Exception
+    {
+        IDataTable full = MockTable.of().name("AE").col("USUBJID", "01", "02")
+                .col("AEBODSYS", "Cardiac", "Renal").col("AEBDSYCD", "1", "2").build();
+        assertEquals("per-row message",
+                reportedEndToEnd("empty(AEBDSYCD) or record_count() > 0", full));
     }
 }

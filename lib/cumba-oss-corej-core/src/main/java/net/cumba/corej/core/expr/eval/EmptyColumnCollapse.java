@@ -86,6 +86,17 @@ import org.jspecify.annotations.Nullable;
  * triggers on its content (R5); a column named in {@code Keep_Row_Findings} never triggers (R1,
  * D9), absent or present; a 0-row table never collapses (C5).
  * </p>
+ *
+ * <p>
+ * <b>An absent column never triggers</b> (PACK 4 review HIGH-1 of
+ * {@code PLAN-message-folded-corpus-alignment}, applied per the owner's Q3 — <i>absent column:
+ * count UNCHANGED</i>): the trigger is a column PRESENT and blank on every record; an absent column
+ * read by the same Check folds, inside that collapse, to the constant the absent-column contract
+ * gives it (P3), and on its own it is reported only by the absent-column fold
+ * ({@code BroadcastFold}, D111, opt-in through the same key). Only a <b>polarity-live</b> leaf
+ * triggers: its constant, negated once per enclosing {@code Not}, is TRUE — {@code not empty(X)}
+ * over a blank {@code X} decides nothing the collapse may report and keeps the row path.
+ * </p>
  */
 public final class EmptyColumnCollapse
 {
@@ -134,15 +145,57 @@ public final class EmptyColumnCollapse
     private static void collectFoldable(Expr e, EvaluationContext ctx, Set<String> keep,
             Set<String> out)
     {
+        collectLive(e, false, keep, (c, name) ->
+        {
+            ColumnContent content = presentColumnContent(ctx, name);
+            // ⭐ A column ABSENT from the evaluation table is NEVER a trigger (PACK 4 review
+            // HIGH-1, applied per Q3 "absent column — count UNCHANGED"): its leaves fold by P3 to
+            // their evaluated constant INSIDE a collapse some present-but-empty column triggered,
+            // and the absent-column FOLD (BroadcastFold, D111) is the only thing that reports an
+            // absence on its own. A present column triggers on its content (R5).
+            return (content != null && rowConstant(c.name(), content))
+                    ? (leafConstant(c.name(), content) ? BroadcastFold.Verdict.TRUE
+                            : BroadcastFold.Verdict.FALSE)
+                    : BroadcastFold.Verdict.UNKNOWN;
+        }, out);
+    }
+
+
+    /**
+     * The polarity-aware trigger walk, shared with the census ({@code FoldCapability.triggers}): a
+     * plain {@code empty}-family leaf over a column outside {@code keep} is a trigger iff
+     * {@code constantOf} answers its truth-table constant ({@code UNKNOWN}: not row-constant) and
+     * that constant, negated once per enclosing {@code Not}, is TRUE — the leaf contributes TRUE on
+     * every row (polarity-live). A leaf constant FALSE decides nothing the collapse may report — in
+     * an {@code And} it kills the rule (no row fires either way), in an {@code Or} the other branch
+     * decides per row — so it never triggers (PACK 4 review HIGH-1, polarity). Leaves under a
+     * quantifier or inside a target-table reader are never triggers (R5's spirit, MED-2).
+     *
+     * @param e
+     *            the (sub)expression
+     * @param negated
+     *            whether an odd number of {@code Not}s encloses {@code e}
+     * @param keep
+     *            the resolved {@code Keep_Row_Findings} names
+     * @param constantOf
+     *            (leaf call, plain column name) → the leaf's constant, or {@code UNKNOWN}
+     * @param out
+     *            the trigger columns, as named in the Check
+     */
+    static void collectLive(Expr e, boolean negated, Set<String> keep,
+            java.util.function.BiFunction<Expr.Call, String, BroadcastFold.Verdict> constantOf,
+            Set<String> out)
+    {
         switch (e)
         {
-        case Expr.Not not -> collectFoldable(not.inner(), ctx, keep, out);
-        case Expr.And and -> and.parts().forEach(p -> collectFoldable(p, ctx, keep, out));
-        case Expr.Or or -> or.parts().forEach(p -> collectFoldable(p, ctx, keep, out));
+        case Expr.Not not -> collectLive(not.inner(), !negated, keep, constantOf, out);
+        case Expr.And and -> and.parts()
+                .forEach(p -> collectLive(p, negated, keep, constantOf, out));
+        case Expr.Or or -> or.parts().forEach(p -> collectLive(p, negated, keep, constantOf, out));
         case Expr.Binary b ->
         {
-            collectFoldable(b.left(), ctx, keep, out);
-            collectFoldable(b.right(), ctx, keep, out);
+            collectLive(b.left(), negated, keep, constantOf, out);
+            collectLive(b.right(), negated, keep, constantOf, out);
         }
         case Expr.Call c ->
         {
@@ -159,19 +212,15 @@ public final class EmptyColumnCollapse
             String name = plainColumnLeaf(c);
             if (name != null && !FoldCapability.containsIgnoreCase(keep, name))
             {
-                ColumnContent content = presentColumnContent(ctx, name);
-                if (content != null ? rowConstant(c.name(), content)
-                        : BroadcastFold.bindColumnLevel(name,
-                                ctx) == BroadcastFold.BindColumnLevel.DATASET_ABSENT)
+                BroadcastFold.Verdict constant = constantOf.apply(c, name);
+                boolean effectiveTrue = constant == BroadcastFold.Verdict.TRUE;
+                if (constant != BroadcastFold.Verdict.UNKNOWN && effectiveTrue != negated)
                 {
-                    // present and row-constant by its fill, or ABSENT (P3): the column reads as
-                    // all-missing on every row, so the leaf is row-constant exactly as over a
-                    // column of fill MISSING
                     out.add(name);
                 }
             }
-            c.args().forEach(a -> collectFoldable(a, ctx, keep, out));
-            c.kwargs().values().forEach(a -> collectFoldable(a, ctx, keep, out));
+            c.args().forEach(a -> collectLive(a, negated, keep, constantOf, out));
+            c.kwargs().values().forEach(a -> collectLive(a, negated, keep, constantOf, out));
         }
         default ->
         {
@@ -182,8 +231,27 @@ public final class EmptyColumnCollapse
 
 
     /**
+     * The constant a row-constant {@code empty}-family leaf evaluates to over a column of this
+     * content ({@link #rowConstant} must hold): {@code empty} TRUE, {@code is_missing} TRUE on a
+     * MISSING fill and FALSE on an all-{@code ""} one (D50), {@code non_empty} / {@code present} /
+     * {@code is_present} FALSE.
+     *
+     * @param function
+     *            the leaf's function name
+     * @param content
+     *            the column's content
+     * @return the constant
+     */
+    public static boolean leafConstant(String function, ColumnContent content)
+    {
+        return "empty".equals(function)
+                || ("is_missing".equals(function) && content.fill() == ColumnContent.Fill.MISSING);
+    }
+
+
+    /**
      * The content of a column PRESENT in the evaluation table's metadata, {@code null} when the
-     * table lacks it (an absent column triggers through its level, P3).
+     * table lacks it (an absent column is never a trigger; inside a collapse it folds by P3).
      */
     private static @Nullable ColumnContent presentColumnContent(EvaluationContext ctx, String name)
     {

@@ -5,8 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.model.CheckConditionExpression;
@@ -65,7 +67,7 @@ class AbsentFoldOptInRunnerTest
     private static IDataTable aeWithoutBdsycd()
     {
         return MockTable.of().name("AE").col("USUBJID", "01", "02", "03")
-                .col("AEBODSYS", "Cardiac", "", "Renal").build();
+                .col("AEBODSYS", "Cardiac", "", "Renal").col("AESEV", "x", "y", "x").build();
     }
 
 
@@ -168,5 +170,37 @@ class AbsentFoldOptInRunnerTest
                 aeWithoutBdsycd());
         assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(), r.getStatusMessage());
         assertTrue(r.getViolations().isEmpty(), "\"\" is empty on every record: " + r);
+    }
+
+
+    @Test
+    @DisplayName("MED-1 — a FALSE the full fold decides reads no row, with or without the key")
+    void aFoldDecidedFalseReadsNoRow()
+    {
+        // non_empty(absent) is FALSE on every row: the full fold decides FALSE, so the row path
+        // is never entered — a rule without the key used to fold absent-blind (UNKNOWN) and scan
+        // every row to find nothing (PACK 4 review MED-1).
+        IDataTable real = aeWithoutBdsycd();
+        AtomicInteger cellReads = new AtomicInteger();
+        IDataTable counting = (IDataTable) Proxy.newProxyInstance(IDataTable.class.getClassLoader(),
+                new Class<?>[]
+                {
+                        IDataTable.class
+                }, (proxy, method, args) ->
+                {
+                    if (method.getName().startsWith("getValue")
+                            || method.getName().startsWith("getData")
+                            || (method.getName().startsWith("getRow")
+                                    && !"getRowCount".equals(method.getName())))
+                    {
+                        cellReads.incrementAndGet();
+                    }
+                    return method.invoke(real, args);
+                });
+        RuleExecutionResult r = run(
+                rule("Q6-FALSE", "non_empty(AEBDSYCD) and AESEV == \"x\"", null), counting);
+        assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(), r.getStatusMessage());
+        assertEquals(0, r.getViolationCount(), r.toString());
+        assertEquals(0, cellReads.get(), "the fold decided FALSE: no row was read");
     }
 }

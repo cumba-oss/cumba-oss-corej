@@ -271,6 +271,8 @@ public final class LevelInstrument
         {
             return;
         }
+        // the trigger columns are PRESENT and blank on every record (an absent column never
+        // triggers, HIGH-1; inside the collapse it folds by P3 and is not listed here)
         emit("level-collapse rule=" + ruleIdOf(ctx) + " dataset=" + datasetOf(ctx)
                 + " reason=present-but-empty columns=" + new java.util.TreeSet<>(columns));
     }

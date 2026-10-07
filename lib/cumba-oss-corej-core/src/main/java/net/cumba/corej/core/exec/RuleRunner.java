@@ -1632,26 +1632,42 @@ public final class RuleRunner
         // finding is a FOLD (Unit.DATASET_FOLDED, Message_Folded); TRUE under both ⇒ a
         // dataset-constant leaf did ⇒ a plain dataset verdict (Unit.DATASET, Message). There is
         // no `Message_Folded ?? Message` fallback any more: the message is the unit's.
+        //
+        // ⚠ Fold in FULL first, for every rule (PACK 4 review MED-1): a FALSE the full fold
+        // decides is FALSE on every row of the per-row path too (the same absent-column constants,
+        // D111 / EC-43 — P4 equivalence), so an unkeyed rule over an absent column answers "no
+        // findings" without a row scan; only a TRUE asks the absent-blind fold what decided it.
+        // The instrument sees the full verdict (its FOLD_DECLINED class is about the full fold).
         if (checkExprOf(rule, ctx) != null)
         {
             Expr foldExpr = Objects.requireNonNull(checkExprOf(rule, ctx));
             String messageFolded = rule.getOutcome() == null ? null
                     : rule.getOutcome().getMessageFolded();
-            boolean optedIn = messageFolded != null;
-            net.cumba.corej.core.expr.eval.BroadcastFold.Verdict v = net.cumba.corej.core.expr.eval.BroadcastFold
-                    .fold(foldExpr, ctx, false, !optedIn);
+            net.cumba.corej.core.expr.eval.BroadcastFold.Verdict full = net.cumba.corej.core.expr.eval.BroadcastFold
+                    .fold(foldExpr, ctx, false, false);
             // Phase 5 (typed-expression plan): compare the static level against the runtime fold
             // verdict. Observation only — the runtime verdict decides, exactly as before; the
             // disagreement classes are the phase's finding (see LevelInstrument).
-            LevelInstrument.onFold(rule, ctx, foldExpr, "check", v);
-            if (v != net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.UNKNOWN)
+            LevelInstrument.onFold(rule, ctx, foldExpr, "check", full);
+            if (full == net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.FALSE)
             {
-                boolean verdict = v == net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.TRUE;
-                boolean absentDecided = verdict && optedIn
-                        && net.cumba.corej.core.expr.eval.BroadcastFold.fold(foldExpr, ctx, false,
-                                true) != net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.TRUE;
-                return datasetBroadcastResult(ruleId, absentDecided ? messageFolded : message,
-                        outputVars, ctx, verdict, absentDecided);
+                return datasetBroadcastResult(ruleId, message, outputVars, ctx, false, false);
+            }
+            if (full == net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.TRUE)
+            {
+                boolean datasetConstant = net.cumba.corej.core.expr.eval.BroadcastFold.fold(
+                        foldExpr, ctx, false,
+                        true) == net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.TRUE;
+                if (datasetConstant)
+                {
+                    return datasetBroadcastResult(ruleId, message, outputVars, ctx, true, false);
+                }
+                if (messageFolded != null)
+                {
+                    return datasetBroadcastResult(ruleId, messageFolded, outputVars, ctx, true,
+                            true);
+                }
+                // absent-decided, no key: the per-row path below (Q6)
             }
         }
 
@@ -1746,8 +1762,10 @@ public final class RuleRunner
         // (EmptyColumnCollapse's truth table; Keep_Row_Findings columns excepted, D9), the
         // per-row result above IS the evaluation of D5's residual on every row, and the rule's
         // verdict is a dataset fact: one DATASET-unit finding iff some row fired, none otherwise.
-        // Never on 0 rows (C5), never from an absent column (R3: BroadcastFold's, above), never
-        // from a dotted / SUPP-qualifier argument (R5). A rule without the key never gets here.
+        // Never on 0 rows (C5), never TRIGGERED by an absent column (PACK 4 review HIGH-1, per Q3:
+        // an absence is the absent-column fold's to report, above; inside a collapse a present
+        // blank column triggered, an absent column folds to its constant, P3), never from a
+        // dotted / SUPP-qualifier argument (R5). A rule without the key never collapses.
         String foldedMessage = rule.getOutcome() == null ? null
                 : rule.getOutcome().getMessageFolded();
         if (rowBased && foldedMessage != null && ctx.rowCount() > 0)

@@ -321,8 +321,6 @@ class FoldCapabilityTest
         FoldCapability.Triggers pair = triggers(
                 record("not empty(AETERM) and empty(AEBDSYCD)", "{\"All\":[\"AETERM\"]}", ""));
         assertEquals(Map.of("AEBDSYCD", BroadcastFold.Verdict.UNKNOWN), pair.blank());
-        assertEquals(Map.of("AEBDSYCD", BroadcastFold.Verdict.UNKNOWN), pair.absent(),
-                "absent AEBDSYCD: empty(absent) is TRUE, the guard remains");
         // A lone `empty(X)`: TRUE, no residual.
         assertEquals(Map.of("AEBDSYCD", BroadcastFold.Verdict.TRUE),
                 triggers(record("empty(AEBDSYCD)", "", "")).blank());
@@ -334,13 +332,25 @@ class FoldCapabilityTest
         // only).
         assertFalse(triggers(record("empty(AEBDSYCD)", "{\"All\":[\"AEBDSYCD\"]}",
                 ",\"Keep_Row_Findings\":[\"AEBDSYCD\"]")).any());
-        assertTrue(
-                triggers(record("AEBDSYCD != \\\"X\\\" and AETERM == \\\"x\\\"",
-                        "{\"All\":[\"AETERM\"]}", "")).absent().isEmpty(),
-                "P3 narrowed: a != absent leaf stays per row");
-        assertEquals(Map.of("AEBDSYCD", BroadcastFold.Verdict.UNKNOWN), triggers(
-                record("empty(AEBDSYCD) and AETERM == \\\"x\\\"", "{\"All\":[\"AETERM\"]}", ""))
-                        .absent());
+        // HIGH-1 (polarity): a leaf constant FALSE over a blank column decides nothing — the
+        // negated family in an Or is no trigger; negated through a Not of the leaf it is TRUE.
+        assertEquals(Set.of("AEBDSYCD"), triggers(record("empty(AEBDSYCD) or not empty(AETERM)",
+                "{\"All\":[\"AETERM\",\"AEBDSYCD\"]}", "")).blank().keySet());
+        assertEquals(Map.of("AEBDSYCD", BroadcastFold.Verdict.TRUE),
+                triggers(record("not non_empty(AEBDSYCD)", "", "")).blank());
+    }
+
+
+    @Test
+    void theCensusFoldsTheCompiledCheckSoANestedFormKeepsItsNegation() throws IOException
+    {
+        // PACK 4 review LOW-2: `not(all[AEXX == "Y"])` with AEXX absent is TRUE on every row
+        // (absent reads "", "" != "Y"); a census over the FLATTENED authored leaves saw only
+        // `AEXX == "Y"` (FALSE) and called the rule not capable.
+        Rule nested = load("\"Sensitivity\":\"Record\","
+                + "\"Check\":{\"not\":{\"all\":[{\"expression\":\"AEXX == \\\"Y\\\"\"}]}},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}");
+        assertTrue(census(nested).capable(), "the compiled Not(And(==)) folds TRUE on absent AEXX");
     }
 
     // ---- P5: the monotonicity property ------------------------------------------------------
