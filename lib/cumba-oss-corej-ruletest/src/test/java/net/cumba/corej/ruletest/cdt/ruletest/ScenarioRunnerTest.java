@@ -160,20 +160,21 @@ class ScenarioRunnerTest
 
 
     /**
-     * ⚠ The pre-existing hole, preserved so the lift moves nothing: an out-of-scope primary with
-     * {@code expect=executionError} passes without the rule running.
-     * {@code PLAN-scenario-scope-gate-execution-error} closes it; when it does, this test flips to
-     * {@code FAIL} / {@code SCOPE}.
+     * {@code PLAN-scenario-scope-gate-execution-error} C1: an out-of-scope primary with
+     * {@code expect=executionError} is a {@code SCOPE} failure — the rule never runs, so it cannot
+     * error; before the plan it passed while asserting nothing (the hole this test used to pin).
      */
     @Test
-    void theScopeGateStillAcceptsExecutionErrorOnAnOutOfScopePrimary() throws IOException
+    void theScopeGateRejectsExecutionErrorOnAnOutOfScopePrimary() throws IOException
     {
         String cm = AE.replace("dataset AE label=\"Adverse Events\"", "dataset CM label=\"CM\"");
         ScenarioRunResult r = ScenarioRunner.run(rule(),
                 scenario("#test CDISC-XX0001 expect=executionError domain=CM\n", cm), null,
                 environment(NO_STORE), null);
-        assertEquals(Outcome.PASS, r.outcome());
+        assertEquals(Outcome.FAIL, r.outcome(), r.detail());
+        assertEquals("SCOPE", r.code());
         assertFalse(r.scopeGate().inScope());
+        assertTrue(r.detail().contains("declares expect=executionError"), r.detail());
     }
 
 
@@ -352,10 +353,10 @@ class ScenarioRunnerTest
 
 
     /**
-     * Review 8a-B L6: a {@code #library-ref} scenario whose rule does not execute aborts
-     * ({@code REF_NOT_EXECUTED}) — and, review 8a-B's observation for
-     * {@code PLAN-scenario-scope-gate-execution-error}, so does one whose rule ERRORED: the rescue
-     * does not look at {@code errored()}.
+     * Review 8a-B L6: a {@code #library-ref} scenario whose rule does not execute — and did not
+     * error (the degraded-Library shape: the rule reports SKIPPED) — aborts
+     * ({@code REF_NOT_EXECUTED}). An errored run is judged instead
+     * ({@link #aLibraryRefScenarioWhoseRuleErroredIsJudged}).
      */
     @Test
     void aLibraryRefScenarioWhoseRuleDidNotRunAborts() throws IOException
@@ -373,6 +374,56 @@ class ScenarioRunnerTest
         assertEquals("REF_NOT_EXECUTED", r.code());
         assertNotNull(r.skip());
         assertEquals(SkipReason.Kind.REQUIREMENTS, r.skip().kind(), r.skip().text());
+    }
+
+
+    /**
+     * {@code PLAN-scenario-scope-gate-execution-error} C6 / C7: the {@code #library-ref} rescue
+     * aborts only a run that neither executed nor errored. A rule that ERRORED is judged: an
+     * {@code expect=executionError} scenario passes (before the plan it was aborted
+     * {@code REF_NOT_EXECUTED} and could never pass), an {@code expect=violation} one fails the
+     * verdict (before, an ERROR showed as a skip, not a red).
+     */
+    @Test
+    void aLibraryRefScenarioWhoseRuleErroredIsJudged() throws IOException
+    {
+        Rule errors = erroringRule();
+        ScenarioRunResult plain = ScenarioRunner.run(errors,
+                scenario("#test CDISC-XX0001 expect=executionError domain=AE\n", AE), null,
+                environment(NO_STORE), null);
+        assertEquals(Outcome.PASS, plain.outcome(),
+                "the control: the rule errors " + plain.detail());
+
+        ScenarioRunResult error = ScenarioRunner.run(errors,
+                scenario("#test CDISC-XX0001 expect=executionError domain=AE\n"
+                        + "#library-ref standard=sdtmig version=3-4\n", AE),
+                null, environment(store(false)), null);
+        assertEquals(Outcome.PASS, error.outcome(), error.code() + " " + error.detail());
+    }
+
+
+    /** C7's second arm: an errored {@code #library-ref} run fails a violation verdict. */
+    @Test
+    void aLibraryRefScenarioWhoseRuleErroredFailsAViolationVerdict() throws IOException
+    {
+        ScenarioRunResult violation = ScenarioRunner.run(erroringRule(),
+                scenario("#test CDISC-XX0001 expect=violation domain=AE\n"
+                        + "#library-ref standard=sdtmig version=3-4\n", AE),
+                null, environment(store(false)), null);
+        assertEquals(Outcome.FAIL, violation.outcome(),
+                violation.code() + " " + violation.detail());
+        assertEquals("VERDICT", violation.code());
+    }
+
+
+    /** A numeric function over a Char column: a column-type mismatch, so the rule ERRORS. */
+    private static Rule erroringRule() throws IOException
+    {
+        Rule errors = RulePackageLoader.loadFromString(
+                PACKAGE.replace("AESEV == \\\"MILD\\\" and AESER == \\\"Y\\\"", "abs(AESEV) > 1"))
+                .getRules().get("CDISC-XX0001");
+        assertNull(errors.getLoadError(), errors.getLoadError());
+        return errors;
     }
 
 

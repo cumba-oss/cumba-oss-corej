@@ -64,11 +64,12 @@ import org.jspecify.annotations.Nullable;
  * <td>{@link Outcome#FAIL} {@code NO_PRIMARY}</td>
  * </tr>
  * <tr>
- * <td>scope pre-gate assertFalse ×2</td>
- * <td>out of scope with {@code expect=violation} / {@code noViolation}</td>
- * <td>{@link Outcome#FAIL} {@code SCOPE}; every other expectation {@link Outcome#PASS} with
- * {@link ScopeGate#inScope()} false (⚠ {@code expect=executionError} included — the pre-existing
- * hole, preserved so the lift moves nothing; {@code PLAN-scenario-scope-gate-execution-error})</td>
+ * <td>scope pre-gate</td>
+ * <td>out of scope with any expectation but {@code expect=skipped} ({@code violation},
+ * {@code noViolation}, {@code executionError}, and any future verdict)</td>
+ * <td>{@link Outcome#FAIL} {@code SCOPE}; {@code expect=skipped} {@link Outcome#PASS} with
+ * {@link ScopeGate#inScope()} false ({@code PLAN-scenario-scope-gate-execution-error} C1: the rule
+ * never runs on the dataset, so it can neither fire nor error)</td>
  * </tr>
  * <tr>
  * <td>{@code ScenarioLibrarySupport.resolveOrSkip} assertFalse(fatal)</td>
@@ -102,8 +103,10 @@ import org.jspecify.annotations.Nullable;
  * <td>{@link Outcome#FAIL} {@code DICTIONARIES}</td>
  * </tr>
  * <tr>
- * <td>{@code skipRefIfNotExecuted} assumeTrue(executed)</td>
- * <td>{@code #library-ref}, {@code expect≠skipped}, rule did not execute</td>
+ * <td>{@code #library-ref} rescue in {@code judge}</td>
+ * <td>{@code #library-ref}, {@code expect≠skipped}, the rule neither executed nor errored (a
+ * degraded Library ⇒ SKIPPED); an ERRORED run is judged by {@code ExecutionVerdictCheck}
+ * ({@code PLAN-scenario-scope-gate-execution-error} C6)</td>
  * <td>{@link Outcome#ABORTED} {@code REF_NOT_EXECUTED}</td>
  * </tr>
  * <tr>
@@ -547,22 +550,14 @@ public final class ScenarioRunner
             // `expect=noViolation` scenario here passes while exercising nothing, which is the
             // same rot the verdict switch exists to prevent. `expect=skipped` is the honest
             // contract.
+            // PLAN-scenario-scope-gate-execution-error C1: the guard is inverted — every
+            // expectation but `skipped` fails here, so expect=executionError (the rule cannot
+            // error on data it is never given) and any future verdict cannot pass silently.
             ScopeGate gate = new ScopeGate(false, scopeMismatch);
-            if (aScenario.getExpect() == RuleTestScenario.Verdict.VIOLATION)
+            if (aScenario.getExpect() != RuleTestScenario.Verdict.SKIPPED)
             {
                 return new ScenarioEvaluation(gate, null, List.of(),
-                        new Stop(Outcome.FAIL, "SCOPE", aScenario.getCoreId()
-                                + " expected a violation but the primary dataset is outside "
-                                + "the rule's scope: " + scopeMismatch));
-            }
-            if (aScenario.getExpect() == RuleTestScenario.Verdict.NO_VIOLATION)
-            {
-                return new ScenarioEvaluation(gate, null, List.of(),
-                        new Stop(Outcome.FAIL, "SCOPE", aScenario.getCoreId()
-                                + " declares expect=noViolation but the rule never runs on this"
-                                + " dataset: " + scopeMismatch
-                                + " — the scenario is not exercising the rule; declare"
-                                + " 'expect=skipped', which is what being out of scope means."));
+                        new Stop(Outcome.FAIL, "SCOPE", scopeFailure(aScenario, scopeMismatch)));
             }
             return new ScenarioEvaluation(gate, null, List.of(), null);
         }
@@ -638,6 +633,30 @@ public final class ScenarioRunner
     }
 
 
+    /** The {@code SCOPE} failure text for an out-of-scope primary, per declared verdict. */
+    private static String scopeFailure(RuleTestScenario aScenario, String aScopeMismatch)
+    {
+        return switch (aScenario.getExpect())
+        {
+        case VIOLATION -> aScenario.getCoreId()
+                + " expected a violation but the primary dataset is outside the rule's scope: "
+                + aScopeMismatch;
+        case NO_VIOLATION -> aScenario.getCoreId()
+                + " declares expect=noViolation but the rule never runs on this dataset: "
+                + aScopeMismatch + " — the scenario is not exercising the rule; declare"
+                + " 'expect=skipped', which is what being out of scope means.";
+        case EXECUTION_ERROR -> aScenario.getCoreId()
+                + " declares expect=executionError but the rule never runs on this dataset: "
+                + aScopeMismatch + " — the rule cannot error on data it is never given; declare"
+                + " 'expect=skipped', or give the fixture a primary dataset the rule's scope"
+                + " admits.";
+        default -> aScenario.getCoreId() + " declares expect=" + aScenario.getExpect()
+                + " but the rule never runs on this dataset: " + aScopeMismatch
+                + " — declare 'expect=skipped', which is what being out of scope means.";
+        };
+    }
+
+
     /**
      * The verdict half: the scenario's declared execution state and its optional location
      * assertions, judged against an evaluation.
@@ -660,7 +679,8 @@ public final class ScenarioRunner
         EvalOutcome outcome = aEvaluation.outcome();
         if (outcome == null)
         {
-            // out of scope with an expectation the gate accepts: passes without running
+            // out of scope with expect=skipped, the only expectation the gate accepts (C1):
+            // passes without running
             return new ScenarioRunResult(Outcome.PASS, "OK",
                     "out of scope: " + aEvaluation.scopeGate().mismatch(), aEvaluation.scopeGate(),
                     null, List.of(), SkipReason.of(SkipReason.Kind.SCOPE,
@@ -671,13 +691,16 @@ public final class ScenarioRunner
                 : SkipReason.classify(String.valueOf(outcome.notExecutedReason()),
                         outcome.errored());
 
-        // #library-ref only: a configured-but-degraded Library leaves every (sub-)rule
-        // SKIPPED/ERROR — abort rather than fail the verdict assertion.
+        // #library-ref only: a configured-but-degraded Library leaves every (sub-)rule SKIPPED —
+        // abort rather than fail the verdict assertion.
         // Review F6: a scenario that DECLARES expect=skipped must be asserted, not aborted. The
         // rescue exists for a #library-ref scenario degraded by a missing Library; applying it to
         // a deliberate skip would silently abort the very contract under test.
+        // PLAN-scenario-scope-gate-execution-error C6: an ERRORED run is not a degraded Library —
+        // it is judged below (ExecutionVerdictCheck), so an ERROR shows red, never as a skip, and
+        // an expect=executionError #library-ref scenario can pass.
         if (aScenario.getExpect() != RuleTestScenario.Verdict.SKIPPED
-                && aScenario.getLibraryRef() != null && !outcome.executed())
+                && aScenario.getLibraryRef() != null && !outcome.executed() && !outcome.errored())
         {
             return new ScenarioRunResult(Outcome.ABORTED, "REF_NOT_EXECUTED",
                     "metadata store available but rule not executable — skipping "
