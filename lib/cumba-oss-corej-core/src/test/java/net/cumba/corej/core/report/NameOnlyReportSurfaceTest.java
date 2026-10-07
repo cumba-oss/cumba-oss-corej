@@ -589,6 +589,34 @@ class NameOnlyReportSurfaceTest
 
 
         @Test
+        void aResolvedColumnWithAMetadataPrefixIsLocated()
+        {
+            // The vocabulary classifies Output_Variables ENTRIES, never a column a finding names:
+            // a provider may keep a lower-case column such as dataset_src, and a per-variable rule
+            // over all columns resolves variable_name to it. Partner-less, it is the name-only
+            // subject; with a partner, the collapsed slot; listed by the engine, a raw column.
+            Rule rule = rule("T-F3-RES", Domain.VARIABLE);
+            ValidationFinding nameOnly = onlyFinding(rule, result("T-F3-RES", List.of(
+                    nameOnly(0, values("variable_name", "dataset_src", "variable_size", "8")))));
+            assertEquals(List.of("dataset_src"), nameOnly.getNamedColumns());
+            assertEquals(List.of("variable_size"), nameOnly.getVariableNames());
+            assertEquals(List.of("dataset_src"), nameOnly.getLocation().getVariableNames(),
+                    "the subject stays located, the variable_size entry does not");
+
+            ValidationFinding slot = onlyFinding(rule,
+                    result("T-F3-RES", List.of(nameOnly(0, values("variable_name", "dataset_src",
+                            "variable_data_type", "Char", "variable_size", "8")))));
+            assertEquals(List.of("dataset_src", "variable_size"), slot.getVariableNames());
+            assertEquals(List.of("dataset_src"), slot.getLocation().getVariableNames());
+
+            ValidationFinding listed = onlyFinding(rule("T-F3-RES-ROW", Domain.ROW),
+                    result("T-F3-RES-ROW",
+                            List.of(nameOnly(0, values("record_count", "12"), "dataset_src"))));
+            assertEquals(List.of("dataset_src"), listed.getLocation().getVariableNames());
+        }
+
+
+        @Test
         void theV2LocationFollows()
         {
             Rule rule = rule("T-F3-V2", Domain.ROW);
