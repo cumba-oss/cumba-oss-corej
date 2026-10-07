@@ -287,4 +287,35 @@ class ExpressionLexerTest
         assertFalse(ex.getMessage().contains("separate"), ex.getMessage());
     }
 
+
+    /**
+     * The language-surface rosters ({@code PLAN-engine-language-runbook} §6.0 G): every spelling
+     * {@link ExpressionLexer#operators()} lists tokenises as its own non-identifier token, and
+     * every {@link ExpressionLexer#keywords()} entry as a keyword token — a roster entry nothing
+     * reads would list a surface that does not exist.
+     */
+    @Test
+    void theOperatorAndKeywordRostersAreWhatTheLexerReads()
+    {
+        for (String op : ExpressionLexer.operators())
+        {
+            String source = "!".equals(op) ? "! B" : "A " + op + " B";
+            List<Token> tokens = ExpressionLexer.tokenize(source);
+            Token operator = tokens.get("!".equals(op) ? 0 : 1);
+            assertEquals(op, operator.text(), source);
+            assertTrue(
+                    operator.type() != TokenType.IDENT && operator.type() != TokenType.STRING
+                            && operator.type() != TokenType.NUMBER,
+                    source + " -> " + operator.type());
+        }
+        assertEquals(16, ExpressionLexer.operators().size());
+        for (String keyword : ExpressionLexer.keywords())
+        {
+            Token token = ExpressionLexer.tokenize(keyword).get(0);
+            assertEquals(keyword, token.text());
+            assertTrue(token.type() != TokenType.IDENT, keyword + " -> " + token.type());
+        }
+        assertEquals(6, ExpressionLexer.keywords().size());
+        assertEquals(10, ExpressionLexer.literalForms().size());
+    }
 }

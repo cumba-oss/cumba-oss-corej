@@ -6,12 +6,24 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Function;
+import net.cumba.corej.core.exec.GroupedAggregate;
+import net.cumba.corej.core.exec.ReadValue;
+import net.cumba.corej.core.expr.BuiltinRegistry;
+import net.cumba.corej.core.expr.ExpressionLexer;
+import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionRegistry;
+import net.cumba.corej.core.expr.eval.MetadataAttribute;
+import net.cumba.corej.core.expr.eval.MetadataLevel;
 import net.cumba.corej.core.expr.eval.Parameter;
+import net.cumba.corej.core.expr.eval.ProviderNeed;
+import net.cumba.corej.core.expr.typed.ElementTable;
+import net.cumba.corej.core.expr.typed.ExprType;
+import net.cumba.corej.core.expr.typed.StageAChecker;
 import net.cumba.corej.core.model.Executability;
 import net.cumba.corej.core.model.ExpansionSource;
 import net.cumba.corej.core.model.Sensitivity;
@@ -60,15 +72,24 @@ public final class RuleLanguage
 
 
     /**
-     * The canonical listing of the language surface: every registered function with its parameters,
-     * the bound JSON property rosters of the rule model, and the authored enum values.
-     * Deterministic: sorted, one entry per line, no measured figures.
+     * The canonical listing of the language surface: every registered function with its parameters
+     * ({@code functions:}, always first), then — since {@code PLAN-engine-language-runbook} §6.0
+     * (G) — the metadata accessors with their scope, levels, result type and keywords
+     * ({@code accessors:}), the operator spellings, keywords and literal forms the lexer reads
+     * ({@code operators:}, {@code keywords:}, {@code literal-forms:}), the built-in operands
+     * ({@code operands:}), the retired call names ({@code retired:}), the static — literal-only —
+     * parameters with their vocabularies ({@code static-parameters:}), the enumerated parameter
+     * values read at plan build ({@code parameter-values:}), the keyed result types
+     * ({@code keyed-results:}), the bound JSON property rosters of the rule model ({@code keys:})
+     * and the authored enum values ({@code enums:}). Deterministic: sorted, one entry per line, no
+     * measured figures. Every element a wave of the runbook changes has a line here, so the golden
+     * sees the change.
      *
      * @return the listing (without the {@code LEVEL=} header)
      */
     public static String surface()
     {
-        StringBuilder sb = new StringBuilder(8192);
+        StringBuilder sb = new StringBuilder(16384);
         sb.append("functions:\n");
         List<String> functions = new ArrayList<>();
         for (FunctionDescriptor d : FunctionRegistry.all())
@@ -76,6 +97,49 @@ public final class RuleLanguage
             functions.add(describe(d));
         }
         functions.stream().distinct().sorted().forEach(line -> sb.append(line).append('\n'));
+        sb.append("accessors:\n");
+        for (String line : accessorLines())
+        {
+            sb.append(line).append('\n');
+        }
+        sb.append("operators: ").append(String.join(" ", sorted(ExpressionLexer.operators())))
+                .append('\n');
+        sb.append("keywords: ").append(String.join(",", sorted(ExpressionLexer.keywords())))
+                .append('\n');
+        sb.append("literal-forms: ").append(String.join(" ", ExpressionLexer.literalForms()))
+                .append('\n');
+        sb.append("operands:\n");
+        for (String name : sorted(BuiltinRegistry.names()))
+        {
+            sb.append(name).append('\n');
+        }
+        sb.append("retired:\n");
+        for (Map.Entry<String, String> e : new java.util.TreeMap<>(
+                RulePackageLoader.retiredFunctionNames()).entrySet())
+        {
+            sb.append(e.getKey()).append(" -> ").append(e.getValue()).append('\n');
+        }
+        sb.append("static-parameters:\n");
+        for (String line : staticParameterLines())
+        {
+            sb.append(line).append('\n');
+        }
+        sb.append("parameter-values:\n");
+        for (String line : parameterValueLines())
+        {
+            sb.append(line).append('\n');
+        }
+        sb.append("keyed-results:\n");
+        for (Map.Entry<String, Map<String, ExprType>> e : new java.util.TreeMap<>(
+                ElementTable.keyedResultTypes()).entrySet())
+        {
+            List<String> keyed = new ArrayList<>();
+            for (Map.Entry<String, ExprType> k : new java.util.TreeMap<>(e.getValue()).entrySet())
+            {
+                keyed.add(k.getKey() + ":" + k.getValue().describe());
+            }
+            sb.append(e.getKey()).append(": ").append(String.join(",", keyed)).append('\n');
+        }
         sb.append("keys:\n");
         for (String line : keyRosters())
         {
@@ -144,6 +208,151 @@ public final class RuleLanguage
             }
         }
         return sb.toString();
+    }
+
+
+    /**
+     * One line per {@link MetadataAttribute}: {@code name scope=… levels=… result=…}, then the
+     * keywords the accessor takes ({@code dataset=} on the four cross-dataset readers,
+     * {@code stem=} on {@code label_template}). Sorted by accessor name.
+     */
+    private static List<String> accessorLines()
+    {
+        List<String> out = new ArrayList<>();
+        for (MetadataAttribute attr : MetadataAttribute.values())
+        {
+            StringBuilder sb = new StringBuilder(96);
+            sb.append(attr.functionName()).append(" scope=")
+                    .append(attr.scope().name().toLowerCase(Locale.ROOT)).append(" levels=");
+            List<String> levels = new ArrayList<>();
+            for (MetadataLevel level : attr.supportedLevels())
+            {
+                levels.add(level.name());
+            }
+            sb.append(String.join(",", levels)).append(" result=")
+                    .append(StageAChecker.accessorType(attr).describe());
+            List<String> keywords = new ArrayList<>();
+            if (ExprCompiler.takesDatasetKeyword(attr))
+            {
+                keywords.add("dataset");
+            }
+            if (attr == MetadataAttribute.LABEL_TEMPLATE)
+            {
+                keywords.add(ExprCompiler.STEM_KEYWORD);
+            }
+            if (!keywords.isEmpty())
+            {
+                sb.append(" kwargs=").append(String.join(",", keywords));
+            }
+            out.add(sb.toString());
+        }
+        out.sort(null);
+        return out;
+    }
+
+
+    /**
+     * One line per <b>(function, parameter)</b> the compiler holds to a literal: {@code literal} (a
+     * string literal; with its closed vocabulary in braces where one exists), {@code literal-list}
+     * (a list literal of string literals), {@code binding-or-list} (a {@code $}-binding or a list
+     * literal, never an inline expression) and the dictionary functions' {@code case_sensitive}
+     * flag (a boolean literal). A unit that widens a parameter to computed values drops its line.
+     */
+    private static List<String> staticParameterLines()
+    {
+        Set<String> out = new TreeSet<>();
+        for (Map.Entry<String, Set<String>> e : ExprCompiler.staticStringParameters().entrySet())
+        {
+            for (String param : e.getValue())
+            {
+                out.add(e.getKey() + "." + param + ": literal");
+            }
+        }
+        for (Map.Entry<String, Map<String, Set<String>>> e : ExprCompiler.staticStringVocabularies()
+                .entrySet())
+        {
+            for (Map.Entry<String, Set<String>> p : e.getValue().entrySet())
+            {
+                Set<String> vocabulary = p.getValue();
+                out.add(e.getKey() + "." + p.getKey() + ": literal" + (vocabulary == null ? ""
+                        : " {" + String.join(",", sorted(vocabulary)) + "}"));
+            }
+        }
+        for (Map.Entry<String, Set<String>> e : ExprCompiler.staticListParameters().entrySet())
+        {
+            for (String param : e.getValue())
+            {
+                out.add(e.getKey() + "." + param + ": literal-list");
+            }
+        }
+        for (Map.Entry<String, Set<String>> e : ExprCompiler.listExpressionParameters().entrySet())
+        {
+            for (String param : e.getValue())
+            {
+                out.add(e.getKey() + "." + param + ": binding-or-list");
+            }
+        }
+        for (FunctionDescriptor d : FunctionRegistry.all())
+        {
+            ProviderNeed need = d.provider();
+            if (need != null && need.kind() == ProviderNeed.Kind.DICTIONARY
+                    && d.parameter("case_sensitive") != null)
+            {
+                out.add(d.name() + ".case_sensitive: literal");
+            }
+        }
+        return new ArrayList<>(out);
+    }
+
+
+    /**
+     * The enumerated values of parameters a function reads at plan build rather than per row —
+     * {@code read_value}'s {@code mode}, the {@code missing_values} policy, the next-record
+     * {@code relation} — one line per (function, parameter) that declares the parameter, plus the
+     * metadata level vocabulary of the accessors.
+     */
+    private static List<String> parameterValueLines()
+    {
+        Set<String> out = new TreeSet<>();
+        List<String> modes = new ArrayList<>();
+        for (ReadValue.Mode mode : ReadValue.Mode.values())
+        {
+            modes.add(mode.name());
+        }
+        Set<String> missingValues = Set.of(GroupedAggregate.MISSING_VALUES_SKIP,
+                GroupedAggregate.MISSING_VALUES_INDETERMINATE);
+        for (FunctionDescriptor d : FunctionRegistry.all())
+        {
+            if (ReadValue.NAME.equals(d.name()) && d.parameter("mode") != null)
+            {
+                out.add(d.name() + ".mode: " + String.join(",", sorted(modes)));
+            }
+            if (d.parameter(GroupedAggregate.MISSING_VALUES_PARAMETER) != null)
+            {
+                out.add(d.name() + "." + GroupedAggregate.MISSING_VALUES_PARAMETER + ": "
+                        + String.join(",", sorted(missingValues)));
+            }
+            if (d.parameter("relation") != null)
+            {
+                out.add(d.name() + ".relation: " + String.join(",",
+                        sorted(net.cumba.corej.core.model.NextRecordRelation.SPELLINGS)));
+            }
+        }
+        List<String> levels = new ArrayList<>();
+        for (MetadataLevel level : MetadataLevel.values())
+        {
+            levels.add(level.name());
+        }
+        out.add("metadata-level: " + String.join(",", levels));
+        return new ArrayList<>(out);
+    }
+
+
+    private static List<String> sorted(Collection<String> aValues)
+    {
+        List<String> out = new ArrayList<>(aValues);
+        out.sort(null);
+        return out;
     }
 
 

@@ -172,6 +172,141 @@ vlm_mandatory(name:unknown@name?) kind=value
 vlm_type_conforms(name:unknown@name?) kind=value
 vlm_value_length(name:unknown@name?) kind=value
 year(x:unknown) kind=value
+accessors:
+ds_class scope=dataset levels=DATA,DEFINE,LIBRARY result=string
+ds_domain scope=dataset levels=DATA result=string
+ds_label scope=dataset levels=DATA,DEFINE,LIBRARY result=string
+ds_name scope=dataset levels=DATA,DEFINE,LIBRARY result=string
+ds_structure scope=dataset levels=DEFINE,LIBRARY result=string
+label_template scope=variable levels=LIBRARY result=string kwargs=stem
+var_ccode scope=variable levels=DEFINE,LIBRARY result=string
+var_codelist scope=variable levels=DEFINE,LIBRARY result=string
+var_codelist_coded_codes scope=variable levels=DEFINE,LIBRARY result=list<string>
+var_codelist_coded_values scope=variable levels=DEFINE,LIBRARY result=list<string>
+var_codelist_extended_values scope=variable levels=DEFINE result=list<string>
+var_codelist_extensible scope=variable levels=LIBRARY result=boolean
+var_core scope=variable levels=DEFINE,LIBRARY result=string
+var_external_dictionary scope=variable levels=DEFINE result=string
+var_external_dictionary_version scope=variable levels=DEFINE result=string
+var_format scope=variable levels=DATA,DEFINE result=string kwargs=dataset
+var_has_codelist scope=variable levels=DEFINE result=boolean
+var_has_comment scope=variable levels=DEFINE result=boolean
+var_has_method scope=variable levels=DEFINE result=boolean
+var_label scope=variable levels=DATA,DEFINE,LIBRARY result=string kwargs=dataset
+var_length scope=variable levels=DATA,DEFINE,LIBRARY result=number kwargs=dataset
+var_mandatory scope=variable levels=DEFINE result=string
+var_name scope=variable levels=DATA,DEFINE,LIBRARY result=string
+var_ordinal scope=variable levels=DATA,DEFINE,LIBRARY result=number
+var_origin_type scope=variable levels=DEFINE result=string
+var_role scope=variable levels=DEFINE,LIBRARY result=string
+var_type scope=variable levels=DATA,DEFINE,LIBRARY result=string kwargs=dataset
+operators: ! != !~ && * + - / < <= = == =~ > >= ||
+keywords: and,false,in,not,or,true
+literal-forms: "string" number /regex/ [list] `quoted ref` &NAME& ${binding} --wildcard $binding DATASET.X
+operands:
+dataset_class
+dataset_domain
+dataset_label
+dataset_metadata
+dataset_name
+define_dataset_class
+define_dataset_label
+define_dataset_name
+define_variable_ccode
+define_variable_codelist
+define_variable_codelist_coded_codes
+define_variable_codelist_coded_values
+define_variable_codelist_extended_values
+define_variable_core
+define_variable_data_type
+define_variable_decode_matches
+define_variable_external_dictionary
+define_variable_external_dictionary_version
+define_variable_has_codelist
+define_variable_has_comment
+define_variable_has_method
+define_variable_label
+define_variable_length
+define_variable_name
+define_variable_ordinal
+define_variable_origin_type
+define_variable_role
+define_vlm_codelist_coded_codes
+define_vlm_codelist_coded_values
+define_vlm_codelist_extensible
+define_vlm_data_type
+define_vlm_decode_matches
+define_vlm_has_codelist
+define_vlm_length
+define_vlm_mandatory
+define_vlm_type_conforms
+library_dataset_class
+library_dataset_label
+library_dataset_name
+library_variable_ccode
+library_variable_code_pair_matches
+library_variable_codelist
+library_variable_codelist_coded_codes
+library_variable_codelist_coded_values
+library_variable_codelist_extensible
+library_variable_core
+library_variable_data_type
+library_variable_data_type_values
+library_variable_label
+library_variable_label_template
+library_variable_label_values
+library_variable_length
+library_variable_name
+library_variable_ordinal
+library_variable_role
+record_count
+variable_data_type
+variable_format
+variable_label
+variable_length
+variable_max_size
+variable_name
+variable_size
+variable_value
+variable_value_length
+retired:
+var_is_null -> var_is_empty
+static-parameters:
+codelist_terms.codelists: literal-list
+codelist_terms.level: literal {codelist,term}
+codelist_terms.returntype: literal {code,pref_term,value}
+column_series_metadata.name: literal
+column_series_metadata.name_pattern: literal
+cross_dataset_variable_metadata.domain: literal
+cross_dataset_variable_metadata.name: literal {data_type,format,label,length}
+dictionary_has_decode.case_sensitive: literal
+extract_metadata.name: literal
+get_dataset_filtered_variables.key_name: literal {core,definition,describedValueDomain,description,examples,label,name,notes,ordinal,role,roleDescription,simpleDatatype,usageRestrictions,variableCcode}
+get_dataset_filtered_variables.key_value: literal
+get_model_filtered_variables.key_name: literal {core,definition,describedValueDomain,description,examples,label,name,notes,ordinal,role,roleDescription,simpleDatatype,usageRestrictions,variableCcode}
+get_model_filtered_variables.key_value: literal
+get_model_filtered_variables.model_class: literal {ASSOCIATED PERSONS,EVENTS,FINDINGS,FINDINGS ABOUT,GENERAL OBSERVATIONS,INTERVENTIONS,RELATIONSHIP,SPECIAL PURPOSE,STUDY REFERENCE,TRIAL DESIGN}
+minus.subtract: binding-or-list
+minus.value: binding-or-list
+row_max.name_pattern: literal
+valid_codelist_dates.ct_package_types: literal-list
+valid_external_dictionary_code.case_sensitive: literal
+valid_external_dictionary_code.dictionary_term_type: literal
+valid_external_dictionary_code_term_pair.case_sensitive: literal
+valid_external_dictionary_hierarchy.case_sensitive: literal
+valid_external_dictionary_value.case_sensitive: literal
+valid_external_dictionary_value.dictionary_term_type: literal
+variable_count.name: literal
+variable_count.name_pattern: literal
+parameter-values:
+has_next_corresponding_record.relation: <=,==,>=
+max_date.missing_values: indeterminate,skip
+metadata-level: DATA,DEFINE,LIBRARY
+min_date.missing_values: indeterminate,skip
+read_value.mode: FIRST,MAX,MIN,ONLY
+keyed-results:
+cross_dataset_variable_metadata: data_type:string,format:string,label:string,length:number
+extract_metadata: dataset_label:string,dataset_location:string,dataset_name:string,dataset_size:number,encoding:string,encoding_source:string,file_format:string,filename:string
 keys:
 AUTHORITY: Organization,Rule_Ids,Standards
 AUTHORITY_STANDARD: Name,References,Substandard,Version

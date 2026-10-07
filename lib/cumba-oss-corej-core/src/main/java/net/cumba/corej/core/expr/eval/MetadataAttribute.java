@@ -269,6 +269,25 @@ public enum MetadataAttribute
 
 
     /**
+     * The levels this attribute models, in {@link MetadataLevel} order (DATA, DEFINE, LIBRARY) —
+     * the support matrix row, rendered by the language surface and by the load error for a
+     * level-less call to an attribute without a DATA level.
+     */
+    public java.util.List<MetadataLevel> supportedLevels()
+    {
+        java.util.List<MetadataLevel> out = new java.util.ArrayList<>(3);
+        for (MetadataLevel level : MetadataLevel.values())
+        {
+            if (supports(level))
+            {
+                out.add(level);
+            }
+        }
+        return java.util.Collections.unmodifiableList(out);
+    }
+
+
+    /**
      * Whether this attribute's value is a <em>list</em> (e.g. a codelist's coded codes) rather than
      * a scalar. A list attribute is carried JSON-encoded through the string-valued provider channel
      * ({@link net.cumba.corej.core.metadata.DefineMetadataListCodec}) and materialised by the

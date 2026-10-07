@@ -233,6 +233,18 @@ public final class ElementTable
 
 
     /**
+     * The whole keyed table ({@link #KEYED_RESULT_TYPES}), read-only — for the language surface
+     * ({@code RuleLanguage}, {@code PLAN-engine-language-runbook} §6.0 G).
+     *
+     * @return function → (key → result type)
+     */
+    public static Map<String, Map<String, ExprType>> keyedResultTypes()
+    {
+        return KEYED_RESULT_TYPES;
+    }
+
+
+    /**
      * The key literals {@link #resultType(String, String)} pins for a keyed value function — what
      * the load gate's message offers as the typed alternative to a reported binding over an
      * unpinned key ({@code RulePackageLoader.validateReportedBindingTypes}).

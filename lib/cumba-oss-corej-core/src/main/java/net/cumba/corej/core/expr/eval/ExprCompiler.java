@@ -8365,9 +8365,53 @@ public final class ExprCompiler
      * {@code PLAN-stage-a-parameter-type-arming}, which plants a NUMBER literal at each and expects
      * the armed stage A to refuse it (the S3 literal case stands down in the seam pass).
      */
-    static Map<String, Set<String>> staticStringParameters()
+    public static Map<String, Set<String>> staticStringParameters()
     {
         return STATIC_STRING_PARAMETERS;
+    }
+
+
+    /**
+     * The {@code (function → (parameter → vocabulary))} table of
+     * {@link #rejectNonLiteralListArguments} ({@link #STATIC_STRING_VOCABULARIES}), read-only — a
+     * {@code null} vocabulary is "any string literal". Exposed for the language surface
+     * ({@code RuleLanguage}, {@code PLAN-engine-language-runbook} §6.0 G).
+     */
+    public static Map<String, Map<String, @Nullable Set<String>>> staticStringVocabularies()
+    {
+        return java.util.Collections.unmodifiableMap(STATIC_STRING_VOCABULARIES);
+    }
+
+
+    /**
+     * The {@code (function → parameters)} that must be a list literal of string literals
+     * ({@link #STATIC_LIST_PARAMETERS}), read-only — for the language surface.
+     */
+    public static Map<String, Set<String>> staticListParameters()
+    {
+        return STATIC_LIST_PARAMETERS;
+    }
+
+
+    /**
+     * The {@code (function → parameters)} that take a {@code $}-binding or a list literal, never an
+     * inline expression ({@link #LIST_EXPRESSION_PARAMETERS}), read-only — for the language
+     * surface.
+     */
+    public static Map<String, Set<String>> listExpressionParameters()
+    {
+        return LIST_EXPRESSION_PARAMETERS;
+    }
+
+
+    /**
+     * Whether a variable-scope accessor takes the {@code dataset=} keyword at the DATA level
+     * ({@link #metadataPlan}: the join-free cross-dataset read of {@code var_label} /
+     * {@code var_type} / {@code var_length} / {@code var_format}) — for the language surface.
+     */
+    public static boolean takesDatasetKeyword(MetadataAttribute attr)
+    {
+        return attr.scope() == MetadataAttribute.Scope.VARIABLE && crossDatasetField(attr) != null;
     }
 
 

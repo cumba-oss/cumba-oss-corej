@@ -1055,6 +1055,16 @@ public class RulePackageLoader
             "var_is_empty");
 
     /**
+     * The retired call names with their replacements ({@link #RETIRED_FUNCTION_NAMES}), read-only —
+     * for the language surface ({@code RuleLanguage}, {@code PLAN-engine-language-runbook} §6.0 G).
+     */
+    static Map<String, String> retiredFunctionNames()
+    {
+        return RETIRED_FUNCTION_NAMES;
+    }
+
+
+    /**
      * A call to a {@linkplain #RETIRED_FUNCTION_NAMES retired function name}, at any depth, is a
      * load error naming the replacement. Before the generic registry seam check, so the author
      * reads the rename rather than "no native function".

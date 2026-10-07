@@ -105,6 +105,69 @@ class RuleLanguageSurfaceTest
     }
 
 
+    /**
+     * {@code PLAN-engine-language-runbook} §6.0 (unit G): the surface lists every language element
+     * the waves change, not only the registered functions — the metadata accessors with their
+     * levels and result types, the operators / keywords / literal forms, the built-in operands, the
+     * retired call names, the static (literal-only) parameters with their vocabularies, the
+     * enumerated parameter values and the keyed result types.
+     */
+    @Test
+    void theSurfaceListsTheWidenedSections()
+    {
+        String surface = RuleLanguage.surface();
+        assertTrue(surface.contains("\naccessors:\n"), surface);
+        assertTrue(
+                surface.contains(
+                        "\nds_name scope=dataset levels=DATA,DEFINE,LIBRARY result=string\n"),
+                surface);
+        assertTrue(surface.contains(
+                "\nvar_label scope=variable levels=DATA,DEFINE,LIBRARY result=string kwargs=dataset\n"),
+                surface);
+        assertTrue(surface.contains(
+                "\nlabel_template scope=variable levels=LIBRARY result=string kwargs=stem\n"),
+                surface);
+        assertTrue(surface.contains(
+                "\nvar_codelist_coded_codes scope=variable levels=DEFINE,LIBRARY result=list<string>\n"),
+                surface);
+        assertTrue(surface.contains("\nvar_length scope=variable levels=DATA,DEFINE,LIBRARY"
+                + " result=number kwargs=dataset\n"), surface);
+        assertTrue(surface.contains("\noperators: "), surface);
+        assertTrue(surface.contains(" =~ "), "the regex-match operator is listed");
+        assertTrue(surface.contains(" !~ "), "the regex-non-match operator is listed");
+        assertTrue(surface.contains("\nkeywords: and,false,in,not,or,true\n"), surface);
+        assertTrue(surface.contains("\nliteral-forms: "), surface);
+        assertTrue(surface.contains(" &NAME& "), "the expansion token form is listed");
+        assertTrue(surface.contains("\noperands:\n"), surface);
+        assertTrue(surface.contains("\nlibrary_variable_label_template\n"),
+                "every BuiltinRegistry operand is listed");
+        assertTrue(surface.contains("\ndataset_name\n"), surface);
+        assertTrue(surface.contains("\nretired:\nvar_is_null -> var_is_empty\n"), surface);
+        assertTrue(surface.contains("\nstatic-parameters:\n"), surface);
+        assertTrue(
+                surface.contains("\ncodelist_terms.returntype: literal {code,pref_term,value}\n"),
+                surface);
+        assertTrue(surface.contains("\nextract_metadata.name: literal\n"), surface);
+        assertTrue(surface.contains("\nrow_max.name_pattern: literal\n"), surface);
+        assertTrue(surface.contains("\ncodelist_terms.codelists: literal-list\n"), surface);
+        assertTrue(surface.contains("\nvalid_external_dictionary_code.case_sensitive: literal\n"),
+                surface);
+        assertTrue(surface.contains("\nparameter-values:\n"), surface);
+        assertTrue(surface.contains("\nread_value.mode: FIRST,MAX,MIN,ONLY\n"), surface);
+        assertTrue(surface.contains("\nmax_date.missing_values: indeterminate,skip\n"), surface);
+        assertTrue(surface.contains("\nhas_next_corresponding_record.relation: "), surface);
+        assertTrue(surface.contains("\nmetadata-level: DATA,DEFINE,LIBRARY\n"), surface);
+        assertTrue(surface.contains("\nkeyed-results:\n"), surface);
+        assertTrue(surface.contains("\nextract_metadata: dataset_label:string,"), surface);
+        assertTrue(surface.contains("encoding_source:string"), surface);
+        assertTrue(surface.contains("\ncross_dataset_variable_metadata: data_type:string,"
+                + "format:string,label:string,length:number\n"), surface);
+        // functions stay first: the authoring tools read the listing from the top
+        assertTrue(surface.indexOf("\naccessors:\n") > surface.indexOf("functions:\n"));
+        assertTrue(surface.indexOf("\nkeys:\n") > surface.indexOf("\nkeyed-results:\n"));
+    }
+
+
     @Test
     void theRegeneratorRefusesAChangedBodyWithoutABump(@org.junit.jupiter.api.io.TempDir Path aDir)
         throws IOException

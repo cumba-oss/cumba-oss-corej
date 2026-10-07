@@ -33,6 +33,26 @@ public final class ExpressionLexer
             TokenType.OR, "not", TokenType.NOT, "in", TokenType.IN, "true", TokenType.TRUE, "false",
             TokenType.FALSE);
 
+    /**
+     * The operator spellings {@link #scan()} recognises — the language surface's roster
+     * ({@code RuleLanguage}, {@code PLAN-engine-language-runbook} §6.0 G). {@code =} alone is the
+     * keyword-argument separator; the rest are the comparison, regex, arithmetic and boolean
+     * operators. {@code ExpressionLexerTest} proves each one tokenises as its own token.
+     */
+    private static final List<String> OPERATORS = List.of("=", "==", "!=", "<", ">", "<=", ">=",
+            "=~", "!~", "+", "-", "*", "/", "!", "&&", "||");
+
+    /**
+     * The literal and reference forms the lexer reads, by example spelling — the language surface's
+     * roster: a quoted string, a number, a {@code /regex/} literal, a {@code [list]}, a back-quoted
+     * reference, a bare expansion token {@code &NAME&}, a {@code ${binding}} substitution, a
+     * {@code --} wildcard, a {@code $binding} reference and a qualified {@code DATASET.X}
+     * reference.
+     */
+    private static final List<String> LITERAL_FORMS = List.of("\"string\"", "number", "/regex/",
+            "[list]", "`quoted ref`", "&NAME&", "${binding}", "--wildcard", "$binding",
+            "DATASET.X");
+
     private final String src;
 
     private int pos;
@@ -45,6 +65,27 @@ public final class ExpressionLexer
     private ExpressionLexer(String src)
     {
         this.src = src;
+    }
+
+
+    /** The operator spellings, in roster order ({@link #OPERATORS}). */
+    public static List<String> operators()
+    {
+        return OPERATORS;
+    }
+
+
+    /** The keyword spellings ({@link #KEYWORDS}), unordered. */
+    public static java.util.Set<String> keywords()
+    {
+        return KEYWORDS.keySet();
+    }
+
+
+    /** The literal and reference forms, by example spelling ({@link #LITERAL_FORMS}). */
+    public static List<String> literalForms()
+    {
+        return LITERAL_FORMS;
     }
 
 

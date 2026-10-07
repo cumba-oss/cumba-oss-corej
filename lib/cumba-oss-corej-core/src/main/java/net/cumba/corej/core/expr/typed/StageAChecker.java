@@ -1682,7 +1682,12 @@ public final class StageAChecker
     }
 
 
-    private ExprType accessorType(MetadataAttribute attr)
+    /**
+     * The result type of a metadata accessor: {@code list<string>} for a list attribute,
+     * {@code number} / {@code boolean} by its normalisation, else {@code string}. Public for the
+     * language surface ({@code RuleLanguage}, {@code PLAN-engine-language-runbook} §6.0 G).
+     */
+    public static ExprType accessorType(MetadataAttribute attr)
     {
         if (attr.isList())
         {
