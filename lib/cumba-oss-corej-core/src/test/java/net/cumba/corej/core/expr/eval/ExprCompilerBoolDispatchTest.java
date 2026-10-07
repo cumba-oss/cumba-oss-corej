@@ -62,7 +62,7 @@ class ExprCompilerBoolDispatchTest
 
     /** One representative call per dispatch branch that is drivable from plain columns. */
     private static final List<String> CALLS = List.of("ds_exists(DM)", "ds_not_exists(DM)",
-            "var_exists(AEDECOD)", "var_not_exists(NOSUCH)", "var_is_null(TSVAL)",
+            "var_exists(AEDECOD)", "var_not_exists(NOSUCH)", "var_is_empty(TSVAL)",
             "invalid_duration(TDSTOFF, negative=false)",
             "does_not_equal_string_part(NAME, VALUE, regex=\"^AB\")", "has_not_equal_length(X, 5)",
             "has_equal_length(X, 5)", "has_multiple_values_for(AEREL, AERELN)",

@@ -269,7 +269,7 @@ class StageAResidueDriftTest
         assertNotNull(tuple);
         assertEquals(List.of(), parameterTypeFindings(
                 callWith(tuple, 0, new Expr.Ref("ARMCD", OperandKind.COLUMN))));
-        for (String name : List.of("var_exists", "ds_exists", "var_is_null", "var_label",
+        for (String name : List.of("var_exists", "ds_exists", "var_is_empty", "var_label",
                 "vlm_length", "max_value_length", "date", "colref", "num"))
         {
             assertFalse(StageAChecker.judgesParameters(name), name);

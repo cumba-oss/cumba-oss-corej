@@ -144,6 +144,10 @@ public final class ExpansionSurfaces
         {
             add(out, "Outcome.Message", rule.getOutcome().getMessage());
             addAll(out, "Outcome.Output_Variables", rule.getOutcome().getOutputVariables());
+            // PLAN-present-empty-column-fold: the folded message is authored text like
+            // Outcome.Message, and Keep_Row_Findings names columns like Output_Variables.
+            add(out, "Outcome.Message_Folded", rule.getOutcome().getMessageFolded());
+            addAll(out, "Outcome.Keep_Row_Findings", rule.getOutcome().getKeepRowFindings());
         }
         List<MatchDataset> matchDatasets = rule.getMatchDatasets();
         if (matchDatasets != null)

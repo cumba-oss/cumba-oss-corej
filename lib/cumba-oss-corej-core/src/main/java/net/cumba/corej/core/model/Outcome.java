@@ -23,6 +23,28 @@ public class Outcome
     private @Nullable List<String> outputVariables;
 
     /**
+     * D7 ({@code PLAN-present-empty-column-fold}): the message of a <b>record-level</b> rule when
+     * its per-row findings are folded or collapsed to ONE dataset-level finding. Declaring it is
+     * the opt-in (D6) for the present-but-empty collapse ({@code EmptyColumnCollapse}): an
+     * {@code empty}-family leaf over a present column whose content is blank on every row makes the
+     * rule report once, under this message. A rule declaring it reports every broadcast TRUE of the
+     * dataset-level fold under it too (the fold's verdict does not say what decided it). A rule
+     * that can never collapse refuses the key at load (R2: no such leaf, a non-Record Sensitivity,
+     * or a variable-cursor Check). {@code null} — the shipped default — leaves every rule as it
+     * was.
+     */
+    @JsonProperty("Message_Folded")
+    private @Nullable String messageFolded;
+
+    /**
+     * D9: the columns whose {@code empty}-family leaves never trigger the collapse — a Type 1 rule
+     * keeps its per-row findings on them. {@code --} resolves like any variable reference; a name
+     * the Check does not read is a load error. Inert on a rule without {@link #messageFolded}.
+     */
+    @JsonProperty("Keep_Row_Findings")
+    private @Nullable List<String> keepRowFindings;
+
+    /**
      * JSON keys under a {@code Outcome} block that bound to no modelled property. The mapper runs
      * with {@code FAIL_ON_UNKNOWN_PROPERTIES} disabled, so without this collector a misspelt key
      * ({@code Mesage}, {@code Output_Variable}) is dropped and the rule reports with no message /

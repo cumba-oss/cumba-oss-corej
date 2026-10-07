@@ -112,6 +112,23 @@ class RuleInsightTest
 
 
     @Test
+    void aStringLiteralArgumentOfEachColumnStatusPredicateNamesAColumn()
+    {
+        // PLAN-present-empty-column-fold row 28a: the three predicates join NAME_LITERAL_CALLS.
+        String yaml = CHECK.replace("var_exists(\"AESER\")",
+                "var_is_empty(\"AESER\") and var_is_single_value(\"AESEV\")"
+                        + " and var_is_all_missing(\"AEREL\")");
+        AssembledRule r = AuthoredRuleAssembler.assemble(yaml, null,
+                List.of(new StandardRef("sdtmig-3-4", StandardRef.Role.PRIMARY)));
+        assertNotNull(r.rule(), r.diagnostics().toString());
+        List<VariableRef> refs = RuleInsight.referencedVariables(r.rule());
+        assertTrue(refs.contains(new VariableRef("AESER", "Check", true)), refs.toString());
+        assertTrue(refs.contains(new VariableRef("AESEV", "Check", true)), refs.toString());
+        assertTrue(refs.contains(new VariableRef("AEREL", "Check", true)), refs.toString());
+    }
+
+
+    @Test
     void referencedVariablesCoverEverySurface()
     {
         List<VariableRef> refs = RuleInsight.referencedVariables(load());

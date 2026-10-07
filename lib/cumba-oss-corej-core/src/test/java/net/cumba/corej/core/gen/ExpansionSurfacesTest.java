@@ -93,7 +93,8 @@ class ExpansionSurfacesTest
                        "WARNING": {"all": [{"expression": "var_exists(A2)"},
                                            {"not": {"expression": "var_exists(A3)"}}]}},
              "Precondition": {"any": [{"expression": "var_exists(P1)"}]},
-             "Outcome": {"Message": "msg", "Output_Variables": ["O1", "ADSL.O2"]},
+             "Outcome": {"Message": "msg", "Output_Variables": ["O1", "ADSL.O2"],
+                         "Message_Folded": "folded msg", "Keep_Row_Findings": ["O1"]},
              "Bindings": [{"name": "$b", "expression": "record_count(filter=(B1 == \\"1\\"))"}],
              "Match_Datasets": [{"Name": "ADSL", "Keys": ["DM.USUBJID", {"left": "DM.K2", "right": "K3"}],
                "Child": false, "Join_Type": "left", "Join_As_String": "true", "keep_missings": true,
@@ -532,14 +533,15 @@ class ExpansionSurfacesTest
         ExpansionSurfaces.surfaces(read(MAXIMAL)).forEach(s -> multi.add(s.where()));
         assertEquals(List.of("Check[ERROR]", "Check[WARNING]", "Precondition",
                 "Check[ERROR].Message", "Bindings[0]", "Description", "Outcome.Message",
-                "Outcome.Output_Variables", "Match_Datasets[0]", "Grouping.Variables",
-                "Grouping_Variables", "Supp_Keys", "Requirements.Variables.All",
-                "Requirements.Variables.Any", "Requirements.Variables.None",
-                "Requirements.Variables.All_Or_None", "Requirements.Datasets",
-                "Scope.Domains.Include", "Scope.Domains.Exclude", "Scope.Datasets.Include",
-                "Scope.Datasets.Exclude", "Scope.Classes.Include", "Scope.Classes.Exclude",
-                "Scope.Data_Structures.Include", "Scope.Data_Structures.Exclude",
-                "Scope.Subclasses.Include", "Scope.Subclasses.Exclude"), List.copyOf(multi));
+                "Outcome.Output_Variables", "Outcome.Message_Folded", "Outcome.Keep_Row_Findings",
+                "Match_Datasets[0]", "Grouping.Variables", "Grouping_Variables", "Supp_Keys",
+                "Requirements.Variables.All", "Requirements.Variables.Any",
+                "Requirements.Variables.None", "Requirements.Variables.All_Or_None",
+                "Requirements.Datasets", "Scope.Domains.Include", "Scope.Domains.Exclude",
+                "Scope.Datasets.Include", "Scope.Datasets.Exclude", "Scope.Classes.Include",
+                "Scope.Classes.Exclude", "Scope.Data_Structures.Include",
+                "Scope.Data_Structures.Exclude", "Scope.Subclasses.Include",
+                "Scope.Subclasses.Exclude"), List.copyOf(multi));
 
         Rule single = read("""
                 {"Core": {"Id": "SURF-2"},

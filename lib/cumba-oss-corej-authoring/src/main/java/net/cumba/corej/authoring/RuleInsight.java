@@ -71,7 +71,7 @@ public final class RuleInsight
 
     /** The calls whose first positional argument, when a string literal, names a column. */
     private static final Set<String> NAME_LITERAL_CALLS = Set.of("var_exists", "var_not_exists",
-            "var_is_null");
+            "var_is_empty", "var_is_single_value", "var_is_all_missing");
 
     private RuleInsight()
     {

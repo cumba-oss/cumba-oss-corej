@@ -187,8 +187,13 @@ public final class CompilerDispatchedCalls implements FunctionProvider
         bool(fns, "ds_not_exists", req("name"));
         bool(fns, "var_exists", req("name"));
         bool(fns, "var_not_exists", req("name"));
-        // T5a broadcast all-null cursor predicate: column reference, string, or varname().
-        bool(fns, "var_is_null", req("name"));
+        // The column-status predicates (PLAN-present-empty-column-fold D10): one dataset-wide fact
+        // about a NAMED column, read off its content status — column reference, string, or
+        // varname(). var_is_empty is the rename of var_is_null (same semantics; the old name is a
+        // load error with a hint, ExprCompiler.compileBoolCallPlan).
+        bool(fns, "var_is_empty", req("name"));
+        bool(fns, "var_is_single_value", req("name"));
+        bool(fns, "var_is_all_missing", req("name"));
         // Legacy string-part comparison: capture group 1 of regex= extracted from VALUE per row.
         bool(fns, "does_not_equal_string_part", req("name"), req("value"), regex(true));
         // String-length (in)equality against a per-row integral operand (literal, numeric column,

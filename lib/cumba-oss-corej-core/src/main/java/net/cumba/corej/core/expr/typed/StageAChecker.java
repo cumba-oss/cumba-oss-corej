@@ -1540,7 +1540,8 @@ public final class StageAChecker
 
 
     /**
-     * The level of a presence fact ({@code var_exists} family, {@code var_is_null}): a dataset
+     * The level of a presence fact ({@code var_exists} family, the column-status predicates
+     * {@code var_is_empty} / {@code var_is_single_value} / {@code var_is_all_missing}): a dataset
      * fact, unless it names the cursor variable (then per-variable) or carries a {@code ${...}}
      * per-row driver template (then per-row) — {@code DomainScan.existsCall}'s three answers.
      */

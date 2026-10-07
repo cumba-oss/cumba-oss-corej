@@ -64,7 +64,9 @@ class CompilerDispatchDriftGateTest
         probes.put("ds_not_exists", "ds_not_exists(DM)");
         probes.put("var_exists", "var_exists(AEDECOD)");
         probes.put("var_not_exists", "var_not_exists(AEDECOD)");
-        probes.put("var_is_null", "var_is_null(AEDECOD)");
+        probes.put("var_is_empty", "var_is_empty(AEDECOD)");
+        probes.put("var_is_single_value", "var_is_single_value(AEDECOD)");
+        probes.put("var_is_all_missing", "var_is_all_missing(AEDECOD)");
         probes.put("does_not_equal_string_part",
                 "does_not_equal_string_part(NAME, VALUE, regex=\"^AB\")");
         probes.put("has_not_equal_length", "has_not_equal_length(USUBJID, 5)");
@@ -113,9 +115,10 @@ class CompilerDispatchDriftGateTest
     @Test
     void declaredCountsArePinned()
     {
-        assertEquals(31, CompilerDispatchedCalls.booleanCallNames().size(),
-                "compileBoolCall-dispatched boolean calls (28 + the three quantifiers any / all /"
-                        + " none of PLAN-cg0218-transition-day-precision)");
+        assertEquals(33, CompilerDispatchedCalls.booleanCallNames().size(),
+                "compileBoolCall-dispatched boolean calls (30 + the three quantifiers any / all /"
+                        + " none of PLAN-cg0218-transition-day-precision; +2 column-status"
+                        + " predicates of PLAN-present-empty-column-fold)");
         assertEquals(2, CompilerDispatchedCalls.negationDispatchedBooleanCallNames().size(),
                 "negation-dispatched boolean calls (compileNot's Q1 arms)");
         assertEquals(20, CompilerDispatchedCalls.valueCallNames().size(),
@@ -124,7 +127,8 @@ class CompilerDispatchDriftGateTest
                         + " record_count, W7's distinct, PLAN-cg0218's joined)");
         int parameters = new CompilerDispatchedCalls().functions().stream()
                 .mapToInt(d -> d.parameters().size()).sum();
-        assertEquals(128, parameters, "declared parameter surfaces across the 53 descriptors —"
+        assertEquals(130, parameters, "declared parameter surfaces across the 55 descriptors (+2"
+                + " column-status predicates, PLAN-present-empty-column-fold) —"
                 + " update deliberately when a signature legitimately changes (W2a: read_value's"
                 + " four; W5: read_value's group / keep_missings, max's five, the two date"
                 + " extremes' six each; W6: record_count's five; W7: distinct's five;"

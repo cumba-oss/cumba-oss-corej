@@ -80,6 +80,13 @@ final class RowMappedTable extends AbstractDataTable
 
 
     @Override
+    protected long sourceContentGeneration()
+    {
+        return base.contentGeneration();
+    }
+
+
+    @Override
     public @Nullable Object getValue(long aRow, int aColumn) throws IndexOutOfBoundsException
     {
         return base.getValue(baseRow(aRow), aColumn);

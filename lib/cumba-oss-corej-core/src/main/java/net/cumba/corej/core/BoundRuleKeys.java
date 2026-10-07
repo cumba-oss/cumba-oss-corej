@@ -66,7 +66,8 @@ public final class BoundRuleKeys
 
     public static final Set<String> CORE = Set.of("Id", "Status", "Version");
 
-    public static final Set<String> OUTCOME = Set.of("Message", "Output_Variables");
+    public static final Set<String> OUTCOME = Set.of("Message", "Output_Variables",
+            "Message_Folded", "Keep_Row_Findings");
 
     public static final Set<String> EXECUTABILITY_HINT = Set.of("Category", "Detail");
 

@@ -72,8 +72,12 @@ class ViolationConstructionSitesTest
     /** Record-level and Group sites: the shared empty constant. */
     private static final int EMPTY_LIST_SITES = 5;
 
-    /** Dataset verdicts: the name-only projection's list. */
-    private static final int PROJECTION_SITES = 3;
+    /**
+     * Dataset verdicts: the name-only projection's list — the broadcast fold, the non-row-based
+     * collapse, the metadata broadcast, and (PLAN-present-empty-column-fold) the present-but-empty
+     * collapse {@code collapsedResult}.
+     */
+    private static final int PROJECTION_SITES = 4;
 
     /** Column-level per-variable sites: the list the resolver filled. */
     private static final int PER_VARIABLE_SITES = 2;

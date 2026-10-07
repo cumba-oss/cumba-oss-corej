@@ -1,8 +1,10 @@
 package net.cumba.corej.core.exec;
 
 import java.util.BitSet;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import net.cumba.datatable.ColumnContent;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
@@ -16,7 +18,7 @@ import org.jspecify.annotations.Nullable;
  * <strong>The class name is historical.</strong> This class no longer registers or dispatches
  * operators — the legacy per-row operator engine was removed once every shipped rule compiled to a
  * native {@code Expr}. What remains is the set of probes {@code ExprCompiler} calls when compiling
- * {@code exists} / {@code var_exists} / {@code ds_exists} / {@code var_is_null} /
+ * {@code exists} / {@code var_exists} / {@code ds_exists} / {@code var_is_empty} /
  * {@code max_value_length} plans (the SUPP existence half reads the merged schema's QNAM set,
  * {@link SuppQualifiers}, shared with {@link ScopeVariableSource} since W3d of
  * {@code PLAN-merged-evaluation-table}). A rename is deliberately deferred.
@@ -96,7 +98,7 @@ public final class OperatorRegistry
             return common;
         }
         // existsCommon decides every null name, so the local-schema lookup sees a real one.
-        String colName = java.util.Objects.requireNonNull(name);
+        String colName = Objects.requireNonNull(name);
         // W2a (C1 ruled (a)): a qualifier SUPP<domain> delivers for this table exists for the
         // existence surface too — the same pivot the value read uses, gated by Supp_Merge.
         return ctx.getTable().getMetaData().getOptionalColumn(colName) != null
@@ -105,39 +107,109 @@ public final class OperatorRegistry
 
 
     /**
-     * T5a — per-variable all-null: {@code true} when {@code name} is absent from the dataset under
-     * evaluation, or present but empty ("" / missing) for <em>every</em> record; {@code false} as
-     * soon as any row carries a value. A {@code null} name (an unresolved cursor) reads as
-     * all-null. Mirrors the retired executor's {@code variable_is_null} and the Python reference
-     * engine's {@code variable_is_null} ({@code (series.isnull() | (series == "")).all()}). Backs
-     * the native {@code var_is_null(X)} cursor predicate.
+     * The {@link ColumnContent} of the named column of the dataset under evaluation
+     * ({@code PLAN-present-empty-column-fold} D10): the evaluation table's own cached status for a
+     * column of its metadata; a scan in the same terms ({@link #columnContentOf}) for a
+     * SUPP-delivered qualifier read per record through the pivot (W2a, C1 ruled (a)) — its cells
+     * are not a column of the table (R5); {@code null} when the name is absent from both, or
+     * unresolved (a {@code null} cursor name). Backs the native {@code var_is_empty} /
+     * {@code var_is_single_value} / {@code var_is_all_missing} predicates
+     * ({@code ExprCompiler.compileColumnStatus}), whose absent-column answers are theirs to give.
+     *
+     * @param ctx
+     *            the evaluation context
+     * @param name
+     *            the column name, or {@code null} for an unresolved cursor
+     * @return the content status, or {@code null} when the column is absent
      */
-    public static boolean variableIsNull(EvaluationContext ctx, @Nullable String name)
+    public static @Nullable ColumnContent columnContent(EvaluationContext ctx,
+            @Nullable String name)
     {
         if (name == null)
         {
-            return true;
+            return null;
         }
         DataTableMeta meta = ctx.getTable().getMetaData();
         int colIdx = meta.getColumnIndex(name);
-        // W2a: a SUPP-delivered qualifier is readable per record (C1 ruled (a)), so its nullity is
-        // read over the pivoted column; an absent column stays null.
-        IDataTableColumn col = colIdx < 0 ? ctx.suppQualifier(name)
-                : ctx.getTable().getColumn(colIdx);
-        if (col == null)
+        if (colIdx >= 0)
         {
-            return true; // absent column => null
+            return ctx.getTable().getColumnContent(colIdx);
         }
-        int rowCount = ctx.rowCount();
+        IDataTableColumn supp = ctx.suppQualifier(name);
+        return supp == null ? null : columnContentOf(supp, ctx.rowCount());
+    }
+
+
+    /**
+     * {@code var_is_empty(X)}'s fact: {@code true} when {@code name} is absent from the dataset
+     * under evaluation, or present but blank ({@code ""} / missing) for <em>every</em> record;
+     * {@code false} as soon as any row carries a value (the retired {@code var_is_null}'s meaning,
+     * unchanged). A {@code null} name (an unresolved cursor) reads as empty.
+     *
+     * @param ctx
+     *            the evaluation context
+     * @param name
+     *            the column name, or {@code null}
+     * @return whether the column is empty on every record, or absent
+     */
+    public static boolean variableIsEmpty(EvaluationContext ctx, @Nullable String name)
+    {
+        ColumnContent content = columnContent(ctx, name);
+        return content == null || content.isBlank();
+    }
+
+
+    /**
+     * The content status of a column that is not part of the evaluated table (a SUPP-qualifier view
+     * column), scanned in the same terms as {@link net.cumba.datatable.ColumnContentScan}:
+     * {@link IDataTableColumn#isEmptyOrMissing(long)} /
+     * {@link IDataTableColumn#isMissingOrNull(long)} for the fill, value equality against row 0 for
+     * the uniformity. ⛔ Keep in step with {@code ExprCompiler.joinedColumnContent}, the
+     * joined-vector twin.
+     *
+     * @param column
+     *            the column
+     * @param rowCount
+     *            the evaluated row range
+     * @return the content status; {@link ColumnContent#NO_ROWS} for no rows
+     */
+    static ColumnContent columnContentOf(IDataTableColumn column, int rowCount)
+    {
+        if (rowCount <= 0)
+        {
+            return ColumnContent.NO_ROWS;
+        }
+        boolean anyFilled = false;
+        boolean allMissing = true;
+        boolean uniform = true;
+        Object first = column.getValue(0);
         for (int r = 0; r < rowCount; r++)
         {
-            IDataValue dv = col.getDataValue(r);
-            if (!dv.isMissingOrInvalid() && !dv.getValueAsString().isEmpty())
+            if (column.isEmptyOrMissing(r))
             {
-                return false;
+                if (allMissing && !column.isMissingOrNull(r))
+                {
+                    allMissing = false;
+                }
+            }
+            else
+            {
+                anyFilled = true;
+                allMissing = false;
+            }
+            if (uniform && r > 0 && !Objects.equals(column.getValue(r), first))
+            {
+                uniform = false;
+            }
+            if (anyFilled && !uniform)
+            {
+                break;
             }
         }
-        return true;
+        ColumnContent.Fill fill = anyFilled ? ColumnContent.Fill.FILLED
+                : allMissing ? ColumnContent.Fill.MISSING : ColumnContent.Fill.EMPTY;
+        return new ColumnContent(fill, uniform ? ColumnContent.Uniformity.SINGLE_VALUE
+                : ColumnContent.Uniformity.MULTI_VALUES);
     }
 
 
@@ -467,7 +539,7 @@ public final class OperatorRegistry
             // the dataset may be absent while its SUPP ships (review H2 of the scope gate): the
             // SUPP's qualifiers are still the merged schema's answer for the name
             String domainCode = foreign == null ? domain
-                    : java.util.Objects.requireNonNullElse(
+                    : Objects.requireNonNullElse(
                             DatasetIdentity.domainOfDataset(domain, ctx.getDatasetResolver()),
                             domain);
             return SuppQualifiers.of(foreign, domain, domainCode, ctx.getDatasetResolver(),

@@ -16,11 +16,12 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Verdict pins for {@link ExprCompiler}'s broadcast metadata / presence plans:
- * {@code var_*(dataset=)} cross-dataset reads and the §9.D keyword validation, {@code var_is_null},
- * {@code max_value_length}, the {@code varname()} cursor form of {@code var_exists}, and the
- * compile-time rejection of malformed {@code ds_exists} names. The keyword-validation cases pin
- * behaviour PIT reports as uncovered ({@code metadataPlan}'s kwarg guards): a mutant that lets a
- * bad keyword through silently reads the wrong metadata source for a correct rule.
+ * {@code var_*(dataset=)} cross-dataset reads and the §9.D keyword validation,
+ * {@code var_is_empty}, {@code max_value_length}, the {@code varname()} cursor form of
+ * {@code var_exists}, and the compile-time rejection of malformed {@code ds_exists} names. The
+ * keyword-validation cases pin behaviour PIT reports as uncovered ({@code metadataPlan}'s kwarg
+ * guards): a mutant that lets a bad keyword through silently reads the wrong metadata source for a
+ * correct rule.
  */
 class ExprCompilerMetadataExistsPlansTest
 {
@@ -90,7 +91,7 @@ class ExprCompilerMetadataExistsPlansTest
                 "a third positional operand must be rejected");
     }
 
-    // ---- var_is_null ------------------------------------------------------------
+    // ---- var_is_empty ------------------------------------------------------------
 
 
     @Test
@@ -98,13 +99,13 @@ class ExprCompilerMetadataExistsPlansTest
     {
         IDataTable t = MockTable.of().name("AE").col("P", "x", "").col("E", "", "").build();
         EvaluationContext c = EvaluationContext.builder().table(t).build();
-        assertEquals(bits(0, 1), eval("var_is_null(\"E\")", c),
+        assertEquals(bits(0, 1), eval("var_is_empty(\"E\")", c),
                 "an all-blank column is null — every row fires");
-        assertEquals(bits(), eval("var_is_null(\"P\")", c),
+        assertEquals(bits(), eval("var_is_empty(\"P\")", c),
                 "one populated value means NOT null — no row fires");
-        assertEquals(bits(0, 1), eval("var_is_null(\"ZZ\")", c),
+        assertEquals(bits(0, 1), eval("var_is_empty(\"ZZ\")", c),
                 "an absent column is null by definition");
-        assertEquals(bits(), eval("not var_is_null(\"E\")", c),
+        assertEquals(bits(), eval("not var_is_empty(\"E\")", c),
                 "the negation is the exact complement");
     }
 
@@ -117,9 +118,9 @@ class ExprCompilerMetadataExistsPlansTest
                 .variables(Map.of("variable_name", "E")).build();
         EvaluationContext populated = EvaluationContext.builder().table(t)
                 .variables(Map.of("variable_name", "P")).build();
-        assertEquals(bits(0), eval("var_is_null(varname())", empty),
+        assertEquals(bits(0), eval("var_is_empty(varname())", empty),
                 "the cursor must resolve to the CURRENT variable (all-blank E)");
-        assertEquals(bits(), eval("var_is_null(varname())", populated),
+        assertEquals(bits(), eval("var_is_empty(varname())", populated),
                 "the same expression over a populated cursor must not fire");
     }
 

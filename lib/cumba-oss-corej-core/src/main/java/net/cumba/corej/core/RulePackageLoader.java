@@ -248,10 +248,62 @@ public class RulePackageLoader
         normalizeJoinTypes(pkg);
         injectInlineOperationGates(pkg);
         retainNativeExpr(pkg);
+        // PLAN-present-empty-column-fold R2 / D6 / D9 — AFTER retainNativeExpr (the (c) arm reads
+        // the installed evaluation domain) and after the Sensitivity derivation (the (b) arm reads
+        // the derived value): Outcome.Message_Folded on a rule that can never collapse, and a
+        // Keep_Row_Findings entry the Check does not read, are load errors.
+        validateEmptyColumnCollapse(pkg);
         // AFTER retainNativeExpr: the OV derivation reads the installed checkExpr and compiled
         // bindings, so it runs once retainNativeExpr has put them in place.
         deriveOutputVariables(pkg);
         return pkg;
+    }
+
+
+    /**
+     * Package-level driver for {@link #validateEmptyColumnCollapse(Rule)}.
+     */
+    private static void validateEmptyColumnCollapse(RulePackage pkg)
+    {
+        if (pkg.getRules() == null)
+        {
+            return;
+        }
+        for (Rule rule : pkg.getRules().values())
+        {
+            validateEmptyColumnCollapse(rule);
+        }
+    }
+
+
+    /**
+     * {@code PLAN-present-empty-column-fold} §4.3 load-time checks: a rule declaring
+     * {@code Outcome.Message_Folded} is refused when it can never collapse
+     * ({@link net.cumba.corej.core.expr.eval.EmptyColumnCollapse#refusals} — R2 (a) no
+     * {@code empty}-family leaf over a plain column reference outside {@code Keep_Row_Findings},
+     * (b) a non-{@code Record} Sensitivity, (c) a variable-cursor Check); and every
+     * {@code Keep_Row_Findings} entry must be a column the Check reads, compared as written. Public
+     * for the corpus lints; a {@code null} rule is a no-op.
+     *
+     * @param rule
+     *            the loaded rule, or {@code null}
+     */
+    public static void validateEmptyColumnCollapse(@Nullable Rule rule)
+    {
+        if (rule == null || rule.getOutcome() == null)
+        {
+            return;
+        }
+        List<String> errors = new ArrayList<>(
+                net.cumba.corej.core.expr.eval.EmptyColumnCollapse.keepRowFindingsErrors(rule));
+        if (rule.getOutcome().getMessageFolded() != null)
+        {
+            errors.addAll(net.cumba.corej.core.expr.eval.EmptyColumnCollapse.refusals(rule));
+        }
+        for (String error : errors)
+        {
+            rule.addLoadError("[" + ruleId(rule) + "] " + error);
+        }
     }
 
 
@@ -962,6 +1014,7 @@ public class RulePackageLoader
     private static void validateInlineMissingValues(net.cumba.corej.core.expr.ast.Expr expr,
             boolean stageAJudged)
     {
+        validateRetiredFunctionNames(expr);
         validateInlineCallShapes(expr);
         // Wave 4 (PLAN-list-functions D-W4-3), inverted by the combined review of runbook W2–W8
         // (W4 M4): every REGISTRY call in the expression — inline in a Check level or the
@@ -969,6 +1022,33 @@ public class RulePackageLoader
         // the tailored validators above, so their messages keep precedence; ONCE per root (W4 L1:
         // this ran at every level of the walk, re-walking each subtree — quadratic in the depth).
         validateRegistryCallSeams(expr, stageAJudged);
+    }
+
+    /**
+     * Retired function names, each mapped to its replacement — a call to one is a load error with
+     * the hint, never an alias ({@code PLAN-present-empty-column-fold} D10, owner 2026-10-05:
+     * {@code var_is_null} was renamed to {@code var_is_empty} because the old name contradicts the
+     * never-null doctrine; same semantics).
+     */
+    private static final Map<String, String> RETIRED_FUNCTION_NAMES = Map.of("var_is_null",
+            "var_is_empty");
+
+    /**
+     * A call to a {@linkplain #RETIRED_FUNCTION_NAMES retired function name}, at any depth, is a
+     * load error naming the replacement. Before the generic registry seam check, so the author
+     * reads the rename rather than "no native function".
+     */
+    private static void validateRetiredFunctionNames(net.cumba.corej.core.expr.ast.Expr expr)
+    {
+        if (expr instanceof net.cumba.corej.core.expr.ast.Expr.Call call
+                && RETIRED_FUNCTION_NAMES.containsKey(call.name()))
+        {
+            throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                    "retired function '" + call.name() + "': " + call.name() + " was renamed to "
+                            + RETIRED_FUNCTION_NAMES.get(call.name()) + " (same semantics) — spell "
+                            + RETIRED_FUNCTION_NAMES.get(call.name()) + "(…)");
+        }
+        childrenOf(expr).forEach(RulePackageLoader::validateRetiredFunctionNames);
     }
 
 

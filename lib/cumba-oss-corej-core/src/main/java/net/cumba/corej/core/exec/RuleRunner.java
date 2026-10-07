@@ -1201,6 +1201,12 @@ public final class RuleRunner
         RecordKeyResolver.KeySource keySource = RecordKeyResolver.KeySource.NONE;
         String skipReason = null;
         int evaluated = 0;
+        // PLAN-present-empty-column-fold: the merged result carries Message_Folded when every
+        // level that contributed a finding folded or collapsed (its own result says so); the
+        // report resolves the message per finding anyway (ValidationReportBuilder.messageOf).
+        String foldedMessage = foldedMessageOf(rule, message);
+        boolean allContributorsFolded = !Objects.equals(foldedMessage, message);
+        boolean anyContributor = false;
 
         for (CheckLevelPlan level : levels)
         {
@@ -1233,6 +1239,14 @@ public final class RuleRunner
             }
             evaluated++;
             totalRows = Math.max(totalRows, result.getTotalRows());
+            if (!result.getViolations().isEmpty())
+            {
+                anyContributor = true;
+                if (!Objects.equals(result.getMessage(), foldedMessage))
+                {
+                    allContributorsFolded = false;
+                }
+            }
             if (keySource == RecordKeyResolver.KeySource.NONE)
             {
                 keySource = result.getKeySource();
@@ -1284,7 +1298,8 @@ public final class RuleRunner
         // Math.max mirrors ViolationSink's defence: a raw negative cap would make subList throw.
         int cap = Math.max(0, ctx.getMaxErrorsPerRule());
         List<Violation> capped = merged.size() <= cap ? merged : merged.subList(0, cap);
-        return RuleExecutionResult.builder().ruleId(ruleId).message(message)
+        String mergedMessage = anyContributor && allContributorsFolded ? foldedMessage : message;
+        return RuleExecutionResult.builder().ruleId(ruleId).message(mergedMessage)
                 .violations(List.copyOf(capped)).totalViolationCount(Math.max(total, merged.size()))
                 .totalRows(totalRows).keySource(keySource).build();
     }
@@ -1606,8 +1621,12 @@ public final class RuleRunner
             LevelInstrument.onFold(rule, ctx, foldExpr, "check", v);
             if (v != net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.UNKNOWN)
             {
-                return datasetBroadcastResult(ruleId, message, outputVars, ctx,
-                        v == net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.TRUE);
+                // D7 (PLAN-present-empty-column-fold): a rule declaring Message_Folded reports
+                // the folded finding under it — every broadcast TRUE, absent-decided or
+                // dataset-constant alike (the verdict does not say what decided it; the
+                // follow-up plan narrows it). Otherwise Outcome.Message, as before.
+                return datasetBroadcastResult(ruleId, foldedMessageOf(rule, message), outputVars,
+                        ctx, v == net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.TRUE);
             }
         }
 
@@ -1695,6 +1714,30 @@ public final class RuleRunner
         // is NO runtime fallback (P7, decision 2): a native error propagates and surfaces as the
         // rule's ERROR result.
         BitSet violationBits = evaluateRowLevel(rule, ctx);
+
+        // PLAN-present-empty-column-fold §4.3 — the present-but-empty COLLAPSE, a reporting step
+        // on the row path, opt-in via Outcome.Message_Folded (D6): when an empty-family leaf of
+        // this Check reads a present column whose content makes the leaf row-constant
+        // (EmptyColumnCollapse's truth table; Keep_Row_Findings columns excepted, D9), the
+        // per-row result above IS the evaluation of D5's residual on every row, and the rule's
+        // verdict is a dataset fact: one DATASET-unit finding iff some row fired, none otherwise.
+        // Never on 0 rows (C5), never from an absent column (R3: BroadcastFold's, above), never
+        // from a dotted / SUPP-qualifier argument (R5). A rule without the key never gets here.
+        String foldedMessage = rule.getOutcome() == null ? null
+                : rule.getOutcome().getMessageFolded();
+        if (rowBased && foldedMessage != null && ctx.rowCount() > 0)
+        {
+            Set<String> folded = net.cumba.corej.core.expr.eval.EmptyColumnCollapse.foldableColumns(
+                    Objects.requireNonNull(checkExprOf(rule, ctx)), ctx,
+                    net.cumba.corej.core.expr.eval.EmptyColumnCollapse
+                            .resolveKeepRowFindings(rule.getOutcome(), ctx));
+            if (!folded.isEmpty())
+            {
+                folded.forEach(ctx::noteEmptyColumnCollapse);
+                LevelInstrument.onCollapse(rule, ctx, folded);
+                return collapsedResult(ruleId, foldedMessage, outputVars, ctx, violationBits);
+            }
+        }
 
         // EC-40: resolved once for the dataset, reused for every violating row (D8). Only the
         // row-based branch has per-row identity to key, and only a rule that actually fires needs
@@ -1913,8 +1956,25 @@ public final class RuleRunner
     private static void logAbsentColumnFolds(@Nullable String ruleId, IDataTable evalTable,
             EvaluationContext ctx)
     {
+        if (!LOGGER.isLoggable(System.Logger.Level.INFO))
+        {
+            return;
+        }
+        Set<String> collapsed = ctx.getEmptyColumnCollapses();
+        if (!collapsed.isEmpty())
+        {
+            // The same channel, the second reason (PLAN-present-empty-column-fold row 21): the
+            // column is PRESENT but blank on every row, and the rule opted in.
+            List<String> columns = new ArrayList<>(collapsed);
+            Collections.sort(columns);
+            LOGGER.log(System.Logger.Level.INFO,
+                    "[{0}] column(s) {1} present but empty on every row of dataset {2} — the"
+                            + " rule''s row findings collapsed to one dataset finding"
+                            + " (Outcome.Message_Folded)",
+                    ruleId != null ? ruleId : "?", columns, evalTable.getMetaData().getName());
+        }
         Set<String> folded = ctx.getAbsentColumnFolds();
-        if (folded.isEmpty() || !LOGGER.isLoggable(System.Logger.Level.INFO))
+        if (folded.isEmpty())
         {
             return;
         }
@@ -2267,6 +2327,44 @@ public final class RuleRunner
         return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(violations)
                 .totalRows(RealRows.count(ctx.getTable()))
                 .bindings(perVariable ? bindings.build() : null).build();
+    }
+
+
+    /**
+     * D7: the message a folded or collapsed finding reports — {@code Outcome.Message_Folded} when
+     * the rule declares it, else the rule's message as carried into the execution.
+     */
+    private static @Nullable String foldedMessageOf(Rule rule, @Nullable String message)
+    {
+        String folded = rule.getOutcome() == null ? null : rule.getOutcome().getMessageFolded();
+        return folded != null ? folded : message;
+    }
+
+
+    /**
+     * {@code PLAN-present-empty-column-fold} §4.3 (D4 = like 5c): the collapse's one dataset-level
+     * finding — anchored at the first firing row (the anchor the non-row-based collapse uses), the
+     * DATASET unit (so a level-keyed rule's first claim per unit keeps the strictest level's), the
+     * name-only projection ({@link #extractNameOnlyOutputValues}: raw columns by name, no row
+     * values; no record key is resolved), under {@code Message_Folded}. No firing row ⇒ no finding.
+     */
+    private static RuleExecutionResult collapsedResult(@Nullable String ruleId,
+            String foldedMessage, List<String> outputVars, EvaluationContext ctx,
+            BitSet violationBits)
+    {
+        List<Violation> violations = new ArrayList<>();
+        int r = violationBits.nextSetBit(0);
+        if (r >= 0)
+        {
+            NameOnlyProjection projected = extractNameOnlyOutputValues(ctx.getTable(), ctx,
+                    outputVars, r);
+            violations.add(new Violation(ctx.getTable().getRealRowIndex(r), projected.values(),
+                    null, null, Map.of(), null, stamp(ctx, () -> Violation.Unit.DATASET), null,
+                    projected.namedColumns()));
+        }
+        return RuleExecutionResult.builder().ruleId(ruleId).message(foldedMessage)
+                .violations(violations).totalViolationCount(violations.size())
+                .totalRows(RealRows.count(ctx.getTable())).build();
     }
 
 

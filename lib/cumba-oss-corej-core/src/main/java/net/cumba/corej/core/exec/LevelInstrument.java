@@ -253,6 +253,30 @@ public final class LevelInstrument
 
 
     /**
+     * Observes a present-but-empty column collapse ({@code EmptyColumnCollapse}): a data-time
+     * decision the static level calculus cannot see, so it is reported on its own line and never
+     * counted as a static-vs-runtime disagreement — {@link #onFold} keeps observing the
+     * {@code BroadcastFold} verdict only.
+     *
+     * @param rule
+     *            the rule
+     * @param ctx
+     *            the evaluation context
+     * @param columns
+     *            the folded columns
+     */
+    public static void onCollapse(Rule rule, EvaluationContext ctx, Set<String> columns)
+    {
+        if (!active())
+        {
+            return;
+        }
+        emit("level-collapse rule=" + ruleIdOf(ctx) + " dataset=" + datasetOf(ctx)
+                + " reason=present-but-empty columns=" + new java.util.TreeSet<>(columns));
+    }
+
+
+    /**
      * Derives and observes the effective granularity of one (rule, dataset) — SPEC §8: the declared
      * {@code Sensitivity} is the maximum, the derived level may coarsen it (D39, D39d). Observation
      * only; emission routing is untouched in phase 5.

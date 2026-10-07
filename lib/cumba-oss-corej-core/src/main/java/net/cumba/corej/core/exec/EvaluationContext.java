@@ -342,6 +342,16 @@ public class EvaluationContext
     Set<String> absentColumnFolds = ConcurrentHashMap.newKeySet();
 
     /**
+     * The present-but-empty columns whose {@code empty}-family leaves collapsed this rule's row
+     * findings to one dataset finding ({@code EmptyColumnCollapse}, opt-in via
+     * {@code Outcome.Message_Folded}) — the fold-note channel's second reason, logged beside
+     * {@link #absentColumnFolds} by {@code RuleRunner.logAbsentColumnFolds}. Shared across derived
+     * contexts like the absent record.
+     */
+    @Builder.Default
+    Set<String> emptyColumnCollapses = ConcurrentHashMap.newKeySet();
+
+    /**
      * D76 — the column names this rule's own expression <b>numeric-expects</b>
      * ({@code TypeExpectations.numericDefaultColumns()}, computed over the specialised rule's
      * expression roots by {@code RuleRunner} when it builds the context). Read by the
@@ -386,6 +396,13 @@ public class EvaluationContext
     public void noteAbsentColumnFold(String column)
     {
         getAbsentColumnFolds().add(column);
+    }
+
+
+    /** Records that {@code column} was present but blank on every row and collapsed the rule. */
+    public void noteEmptyColumnCollapse(String column)
+    {
+        getEmptyColumnCollapses().add(column);
     }
 
 

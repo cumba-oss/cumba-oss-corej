@@ -43,6 +43,7 @@ import net.cumba.corej.core.metadata.DefineMetadataListCodec;
 import net.cumba.corej.core.metadata.LibraryTemplates;
 import net.cumba.corej.core.metadata.VlmResolver;
 import net.cumba.corej.core.model.NextRecordRelation;
+import net.cumba.datatable.ColumnContent;
 import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
@@ -2166,6 +2167,14 @@ public final class ExprCompiler
         // DISPATCH_DRIFT_SENTINEL, held by CompilerDispatchDriftGateTest.)
         if (FunctionRegistry.descriptor(name) == null)
         {
+            if ("var_is_null".equals(name))
+            {
+                // D10 (PLAN-present-empty-column-fold, owner 2026-10-05): a load error with a
+                // hint, no alias — the old name contradicts the never-null doctrine.
+                throw unsupported("no native function 'var_is_null' — var_is_null was renamed to"
+                        + " var_is_empty (same semantics: the column is absent, or present and"
+                        + " blank on every record); spell var_is_empty(…)");
+            }
             throw unsupported("no native function '" + name + "'");
         }
         if (net.cumba.corej.core.exec.JoinedRowFold.isQuantifier(name))
@@ -2180,9 +2189,10 @@ public final class ExprCompiler
         {
             return compileExists(c, "var_not_exists".equals(name), ExistsMode.VARIABLE);
         }
-        if ("var_is_null".equals(name) && arity == 1)
+        if (("var_is_empty".equals(name) || "var_is_single_value".equals(name)
+                || "var_is_all_missing".equals(name)) && arity == 1)
         {
-            return compileVarIsNull(c);
+            return compileColumnStatus(c, ColumnStatus.of(name));
         }
         if ("invalid_duration".equals(name) && arity == 1)
         {
@@ -4076,19 +4086,32 @@ public final class ExprCompiler
 
 
     /**
-     * T5a — per-variable all-null cursor predicate {@code var_is_null(X)}. {@code X} is a plain
-     * column reference / string literal, or the current-variable cursor ({@code varname()} /
-     * {@code variable_name}) in a Variable Metadata Check. Broadcast-constant: the verdict is TRUE
-     * when the named column is absent from the dataset, or present but empty ("" / missing) for
-     * <em>every</em> record — mirroring the {@code variable_is_null} operation and the Python
-     * reference engine's {@code variable_is_null}
-     * ({@code (series.isnull() | (series == "")).all()}). The all-null scan reads the real dataset
-     * rows via {@link OperatorRegistry#variableIsNull}, so the single verdict is well-defined even
-     * under {@code evaluateBroadcast}'s 1-row range. A qualified {@code J.X} (reference or string)
-     * scans the joined column as the operand {@code J.X} reads it ({@link #joinedColumnOf}, QNU
-     * N4).
+     * The three column-status predicates ({@code PLAN-present-empty-column-fold} D10):
+     * {@code var_is_empty(X)} (the rename of {@code var_is_null}: TRUE when the column is absent,
+     * or present and blank — {@code ""} / missing — on <em>every</em> record),
+     * {@code var_is_single_value(X)} (TRUE when every row holds row 0's value, over at least one
+     * row) and {@code var_is_all_missing(X)} (TRUE when every cell is a missing value). {@code X}
+     * is a plain column reference / string literal, or the current-variable cursor
+     * ({@code varname()} / {@code variable_name}) in a Variable Metadata Check — exactly the three
+     * shapes {@code BroadcastFold.isBroadcastColumnPredicate} admits. Broadcast-constant: one
+     * verdict off the column's {@link ColumnContent} ({@link OperatorRegistry#columnContent}),
+     * painted over the whole row range, so it is well-defined even under
+     * {@code evaluateBroadcast}'s 1-row range. A qualified {@code J.X} (reference or string) reads
+     * the joined column as the operand {@code J.X} reads it ({@link #joinedColumnOf}, QNU N4) and
+     * takes a scan in content terms ({@link #joinedColumnContent}).
+     *
+     * <p>
+     * <b>An absent column</b> (register {@code D34 #3/#4}, {@code D43}): a present column holding
+     * its type's default in every row — {@code ""} for char, {@code MissingValue.MIS} for numeric —
+     * so {@code var_is_empty} and {@code var_is_single_value} answer TRUE for either type, and
+     * {@code var_is_all_missing} answers TRUE only where the column is <b>numeric-expected</b>. The
+     * type comes from the RULE ({@code D76}: numeric if the rule expects numeric, otherwise char —
+     * {@code TypeExpectations}, read per evaluation from the context, never bound at compile time:
+     * compiled plans are shared across rules), so a rule with no numeric expectation for {@code X}
+     * reads {@code var_is_all_missing(X)} as FALSE.
+     * </p>
      */
-    private static ExprProgram.BoolPlan compileVarIsNull(Expr.Call c)
+    private static ExprProgram.BoolPlan compileColumnStatus(Expr.Call c, ColumnStatus status)
     {
         Expr arg = c.args().get(0);
         boolean fromCursor = isCurrentVariableName(arg);
@@ -4100,7 +4123,7 @@ public final class ExprCompiler
             case Expr.Ref ref -> ref.name();
             case Expr.Lit lit when lit.kind() == Expr.LitKind.STRING -> (String) lit.value();
             default -> throw unsupported(
-                    "var_is_null expects a column reference, a string literal, or varname()");
+                    c.name() + " expects a column reference, a string literal, or varname()");
             };
         }
         boolean cursor = fromCursor;
@@ -4121,11 +4144,20 @@ public final class ExprCompiler
             // QNU N4 (D72): a qualified name reads the column THROUGH THE JOIN, like every other
             // J.X — it used to look the whole dotted text up on the primary and answer true.
             Vector joined = joinedColumnOf(ctx, colName);
-            boolean isNull = joined != null ? allNullOrEmpty(joined, ctx.rowCount())
-                    : OperatorRegistry.variableIsNull(ctx, colName);
+            boolean verdict;
+            if (joined != null)
+            {
+                verdict = status.test(joinedColumnContent(joined, ctx.rowCount()), ctx.rowCount());
+            }
+            else
+            {
+                ColumnContent content = OperatorRegistry.columnContent(ctx, colName);
+                verdict = content == null ? status.absent(ctx, colName)
+                        : status.test(content, ctx.rowCount());
+            }
             int rc = run.rowCount();
             BitSet result = new BitSet(rc);
-            if (isNull && rc > 0)
+            if (verdict && rc > 0)
             {
                 result.set(0, rc);
             }
@@ -4133,6 +4165,53 @@ public final class ExprCompiler
         };
     }
 
+    /** Which column-status predicate a plan evaluates, and its two answers. */
+    private enum ColumnStatus
+    {
+
+        /** {@code var_is_empty}: fill is EMPTY or MISSING; an absent column is empty. */
+        EMPTY,
+        /** {@code var_is_single_value}: SINGLE_VALUE over at least one row; absent is one value. */
+        SINGLE_VALUE,
+        /** {@code var_is_all_missing}: fill is MISSING; absent iff the rule numeric-expects it. */
+        ALL_MISSING;
+
+        static ColumnStatus of(String name)
+        {
+            return switch (name)
+            {
+            case "var_is_empty" -> EMPTY;
+            case "var_is_single_value" -> SINGLE_VALUE;
+            case "var_is_all_missing" -> ALL_MISSING;
+            default -> throw new IllegalArgumentException(name);
+            };
+        }
+
+
+        boolean test(ColumnContent content, int rowCount)
+        {
+            return switch (this)
+            {
+            case EMPTY -> content.isBlank();
+            case SINGLE_VALUE -> rowCount > 0
+                    && content.uniformity() == ColumnContent.Uniformity.SINGLE_VALUE;
+            case ALL_MISSING -> content.fill() == ColumnContent.Fill.MISSING;
+            };
+        }
+
+
+        /** The absent-column answer: the type-derived default column, D34 #3/#4 + D76. */
+        boolean absent(EvaluationContext ctx, @Nullable String colName)
+        {
+            return switch (this)
+            {
+            case EMPTY -> true;
+            case SINGLE_VALUE -> ctx.rowCount() > 0;
+            case ALL_MISSING -> colName != null
+                    && ctx.getNumericExpectedColumns().contains(colName);
+            };
+        }
+    }
 
     /**
      * Runbook W5 ({@code PLAN-grouped-aggregate-functions} §2.2) — {@code max} / {@code max_date} /
@@ -4253,7 +4332,7 @@ public final class ExprCompiler
 
 
     /**
-     * QNU N4 ({@code D72}): the column a qualified {@code var_is_null} / {@code max_value_length}
+     * QNU N4 ({@code D72}): the column a qualified {@code var_is_empty} / {@code max_value_length}
      * name reads — the joined column read through the {@code Match_Datasets} join exactly as the
      * operand {@code J.X} reads it ({@link #dottedVector}: an unmatched row reads the type default,
      * an absent column or undeclared join the authored default), over the evaluated dataset's FULL
@@ -4268,21 +4347,59 @@ public final class ExprCompiler
 
 
     /**
-     * {@link OperatorRegistry#variableIsNull}'s scan over a joined column: every row missing or
-     * {@code ""}. ⛔ Keep the two in step.
+     * {@link OperatorRegistry#columnContentOf}'s scan over a joined column, in content terms: the
+     * fill from each cell's missing / {@code ""} / value class, the uniformity against row 0's
+     * cell. The joined cells are not a column of the evaluated table, so they take this scan, never
+     * the table's cached status (R5). ⛔ Keep the two in step.
      */
-    private static boolean allNullOrEmpty(Vector column, int rowCount)
+    static ColumnContent joinedColumnContent(Vector column, int rowCount)
     {
+        if (rowCount <= 0)
+        {
+            return ColumnContent.NO_ROWS;
+        }
+        boolean anyFilled = false;
+        boolean allMissing = true;
+        boolean uniform = true;
+        Object first = joinedCellKey(column.value(0));
         for (int r = 0; r < rowCount; r++)
         {
             TypedValue tv = column.value(r);
             IDataValue dv = tv.cell();
-            if (!tv.isMissing() && !dv.isMissingOrInvalid() && !dv.getValueAsString().isEmpty())
+            boolean missing = tv.isMissing() || dv.isMissingOrInvalid();
+            if (!missing && !dv.getValueAsString().isEmpty())
             {
-                return false;
+                anyFilled = true;
+                allMissing = false;
+            }
+            else if (!missing)
+            {
+                allMissing = false;
+            }
+            if (uniform && r > 0 && !Objects.equals(joinedCellKey(tv), first))
+            {
+                uniform = false;
+            }
+            if (anyFilled && !uniform)
+            {
+                break;
             }
         }
-        return true;
+        ColumnContent.Fill fill = anyFilled ? ColumnContent.Fill.FILLED
+                : allMissing ? ColumnContent.Fill.MISSING : ColumnContent.Fill.EMPTY;
+        return new ColumnContent(fill, uniform ? ColumnContent.Uniformity.SINGLE_VALUE
+                : ColumnContent.Uniformity.MULTI_VALUES);
+    }
+
+
+    /** The value a joined cell compares by: its missing marker, else its raw value. */
+    private static @Nullable Object joinedCellKey(TypedValue tv)
+    {
+        if (tv.isMissing())
+        {
+            return tv.missing();
+        }
+        return tv.cell().getValue(); // a missing cell's raw value is its MissingValue
     }
 
 

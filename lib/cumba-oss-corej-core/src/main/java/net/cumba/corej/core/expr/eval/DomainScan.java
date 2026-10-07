@@ -189,7 +189,8 @@ public final class DomainScan
         }
         if (BroadcastFold.isBroadcastColumnPredicate(c))
         {
-            // One dataset-wide verdict about a NAMED column (ExprCompiler.compileVarIsNull paints
+            // One dataset-wide verdict about a NAMED column (ExprCompiler.compileColumnStatus
+            // paints
             // a single boolean over every row), so the argument's ROW cursor demand is absorbed —
             // but the argument analysis is shared with the exists family, so the cursor form keeps
             // its per-variable answer and a ${...} driver template stays per row.

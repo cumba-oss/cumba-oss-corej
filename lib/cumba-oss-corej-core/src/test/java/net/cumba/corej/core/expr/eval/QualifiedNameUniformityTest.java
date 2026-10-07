@@ -383,7 +383,9 @@ class QualifiedNameUniformityTest
             valid_external_dictionary_value | case_sensitive | - | static boolean
             value | - | - | nullary (the cursor variable's value)
             var_exists | name | N | B:var_exists(@S) ; S:var_exists("@S")
-            var_is_null | name | N | B:var_is_null(@S) ; S:var_is_null("@S")
+            var_is_all_missing | name | N | B:var_is_all_missing(@S) ; S:var_is_all_missing("@S")
+            var_is_empty | name | N | B:var_is_empty(@S) ; S:var_is_empty("@S")
+            var_is_single_value | name | N | B:var_is_single_value(@S) ; S:var_is_single_value("@S")
             var_not_exists | name | N | B:var_not_exists(@S) ; S:var_not_exists("@S")
             variable_count | name | N | X:selector — a template counted across the inventory (D92a, plan Q2) ; C4:V:variable_count("@S")
             variable_count | name_pattern | N | X:selector — a regex over the primary's columns (D92b, plan Q2) ; C4:V:variable_count(name_pattern="^@S$")
@@ -536,6 +538,11 @@ class QualifiedNameUniformityTest
             // untyped absent J.S reads its "" default (D34 #3, D76a) — FALSE again. The fixture's
             // data, not the engine, makes the two answers agree; `empty/x` stays sensitive.
             "is_missing/x",
+            // The same data fact for the strict all-missing predicate (PLAN-present-empty-column-
+            // fold): S carries no MissingValue, so var_is_all_missing answers FALSE through the
+            // join and FALSE for the absent "" default alike; var_is_empty / var_is_single_value
+            // stay sensitive (the "" cells make them TRUE on one side only).
+            "var_is_all_missing/name",
             // Under domain="J" the qualifier names the domain itself (W3c, N5 lifted per MQ8):
             // J.S is J's own S, read through the INVENTORY like the bare S, never the join.
             "read_value/name", "read_value/filter",
@@ -801,11 +808,13 @@ class QualifiedNameUniformityTest
     {
         // +1 descriptor / +2 parameters / +1 accessor since PLAN-library-template-label-resolution
         // (matches_label_template(label, template) and label_template(…, "LIBRARY")).
-        assertEquals(169, FunctionRegistry.all().size(),
-                "registered descriptors (165 + any / all / none / joined, PLAN-cg0218)");
-        assertEquals(287,
+        assertEquals(171, FunctionRegistry.all().size(),
+                "registered descriptors (165 + any / all / none / joined, PLAN-cg0218; + 2"
+                        + " column-status predicates, PLAN-present-empty-column-fold)");
+        assertEquals(289,
                 FunctionRegistry.all().stream().mapToInt(d -> d.parameters().size()).sum(),
-                "declared parameters (283 + one each for any / all / none / joined)");
+                "declared parameters (283 + one each for any / all / none / joined + one each"
+                        + " for var_is_single_value / var_is_all_missing)");
         assertEquals(27, MetadataAttribute.values().length, "metadata accessors");
         assertEquals(Set.of("date", "date_part", "num", "time", "time_part"),
                 new TreeSet<>(ExprCompiler.comparisonMarkers()), "comparison markers");
@@ -813,8 +822,8 @@ class QualifiedNameUniformityTest
         List<Row> rows = rows();
         long probed = rows.stream().filter(Row::probed).count();
         long nameClass = rows.stream().filter(Row::name).count();
-        assertEquals(255, nameClass, "name-bearing parameters in the hand table");
-        assertEquals(207, probed, "probed parameters in the hand table");
+        assertEquals(257, nameClass, "name-bearing parameters in the hand table");
+        assertEquals(209, probed, "probed parameters in the hand table");
         // T2 r1 L2: every unprobed name-bearing row states one of the three admitted reasons.
         List<String> unprobed = new ArrayList<>();
         for (Row r : rows)
@@ -883,7 +892,7 @@ class QualifiedNameUniformityTest
      * of that column, {@code alter} gives that column a DIFFERENT value set (C1j, T2 r2 L3: a
      * rotation left order-invariant probes blind): every character cell gains a {@code zz} suffix,
      * every present number 100, a missing keeps its identity; {@code blank} defaults EVERY cell of
-     * that column (the all-null variant {@code var_is_null} needs).
+     * that column (the all-null variant {@code var_is_empty} needs).
      */
     private static List<Col> columns(char except, char dflt, char alter)
     {
@@ -1872,6 +1881,6 @@ class QualifiedNameUniformityTest
             }
         }
         assertEquals(List.of(), invalid);
-        assertEquals(207, probed);
+        assertEquals(209, probed);
     }
 }

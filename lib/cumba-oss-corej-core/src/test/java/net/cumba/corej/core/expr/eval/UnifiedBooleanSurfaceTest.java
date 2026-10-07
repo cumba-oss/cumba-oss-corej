@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
  * <p>
  * ⚠ The inline-<em>operation</em> boolean-position path admitted every boolean-valued operation
  * that was not library-dependent — none since runbook W2a retired {@code variable_is_null} and
- * {@code variable_exists} (their sites are the {@code var_is_null(X)} / {@code var_exists(X)}
+ * {@code variable_exists} (their sites are the {@code var_is_empty(X)} / {@code var_exists(X)}
  * functions) — and went with the operation surface in runbook W8. {@code domain_is_custom} stays
  * excluded because it IS library-dependent (a bare/{@code not} use would mis-fire under invert
  * without a Library).

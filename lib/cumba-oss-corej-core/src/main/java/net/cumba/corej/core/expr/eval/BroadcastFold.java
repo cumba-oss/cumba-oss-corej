@@ -564,31 +564,39 @@ public final class BroadcastFold
      * </p>
      *
      * <p>
-     * Grounded in {@code ExprCompiler.compileVarIsNull}, which is documented <em>and
-     * implemented</em> as broadcast-constant: it computes one boolean and paints it over the whole
-     * row range.
+     * Grounded in {@code ExprCompiler.compileColumnStatus}, which is documented <em>and
+     * implemented</em> as broadcast-constant: it computes one boolean off the column's
+     * {@code ColumnContent} and paints it over the whole row range.
+     * </p>
+     *
+     * <p>
+     * ⚠ The present-but-empty <b>collapse</b> ({@code PLAN-present-empty-column-fold},
+     * {@code EmptyColumnCollapse}) is NOT this fold: it is a separate data-time reporting step on
+     * the row path, opt-in per rule, and it reads the column content, never
+     * {@link #bindColumnLevel} — a present column, whatever it holds, stays {@code ROW} here.
      * </p>
      *
      * <p>
      * <b>Single source</b> with the operator-leaf view in {@code RuleClassifier.nonDatasetReason}
      * and the raised-expression views in {@link DomainScan} and the corpus mixed-granularity lint,
      * exactly as {@link #WHOLE_COLUMN_VERDICT_OPERATORS} is: adding an operator here is the only
-     * place it needs adding. {@code var_is_null} being registered in <em>none</em> of these sets is
-     * what routed {@code FDA-SD9714} / {@code PMDA-SD9714} per record — one finding per row from a
-     * rule minted to report a dataset-wide absence once.
+     * place it needs adding. {@code var_is_null} (now {@code var_is_empty}) being registered in
+     * <em>none</em> of these sets is what routed {@code FDA-SD9714} / {@code PMDA-SD9714} per
+     * record — one finding per row from a rule minted to report a dataset-wide absence once.
      * </p>
      * <p>
      * ⛔ <b>Every member must accept exactly the three argument shapes
      * {@link #isBroadcastColumnPredicate} tests for</b> — the {@code varname()} cursor, an
-     * {@code Expr.Ref}, or a string {@code Expr.Lit}. That guard is written for {@code var_is_null}
-     * specifically, including its arity of 1. A member with a different surface (an arity-0 form,
-     * say) would be rejected by the guard in {@link DomainScan} and the corpus lint while still
-     * short-circuiting {@code RuleClassifier.nonDatasetReason}, which keys on the NAME alone — i.e.
-     * half-registered and split-brained, the exact failure this set exists to prevent. Such a
-     * member needs its own guard, not an entry here.
+     * {@code Expr.Ref}, or a string {@code Expr.Lit}. That guard is written for the three
+     * column-status predicates specifically, including their arity of 1. A member with a different
+     * surface (an arity-0 form, say) would be rejected by the guard in {@link DomainScan} and the
+     * corpus lint while still short-circuiting {@code RuleClassifier.nonDatasetReason}, which keys
+     * on the NAME alone — i.e. half-registered and split-brained, the exact failure this set exists
+     * to prevent. Such a member needs its own guard, not an entry here.
      * </p>
      */
-    public static final Set<String> BROADCAST_COLUMN_PREDICATES = Set.of("var_is_null");
+    public static final Set<String> BROADCAST_COLUMN_PREDICATES = Set.of("var_is_empty",
+            "var_is_single_value", "var_is_all_missing");
 
     /**
      * Whether {@code c} is a {@linkplain #BROADCAST_COLUMN_PREDICATES broadcast column predicate}
@@ -598,16 +606,18 @@ public final class BroadcastFold
      * &#9888; The shape check is <b>not</b> decoration. Callers hand an accepted call to
      * {@code DomainScan.existsCall}, which ends in {@code (String) ((Expr.Lit) arg).value()} and
      * casts blind; a name-and-arity-only guard would therefore hand it
-     * {@code var_is_null(upper(X))} or {@code var_is_null(3)} and throw {@link ClassCastException}
-     * on a path {@code DomainScan.infer} runs at <em>load</em>, for every rule. The accepted set is
-     * exactly {@code ExprCompiler.compileVarIsNull}'s: the current-variable cursor, a plain column
-     * reference, or a string literal. Anything else keeps falling through to the generic operand
-     * scan, which answers without throwing.
+     * {@code var_is_empty(upper(X))} or {@code var_is_empty(3)} and throw
+     * {@link ClassCastException} on a path {@code DomainScan.infer} runs at <em>load</em>, for
+     * every rule. The accepted set is exactly {@code ExprCompiler.compileColumnStatus}'s, for all
+     * three predicates: the current-variable cursor, a plain column reference, or a string literal.
+     * Anything else keeps falling through to the generic operand scan, which answers without
+     * throwing.
      * </p>
      *
      * <p>
      * {@link #isExistsCall}'s guard cannot be reused here: it rejects the {@code varname()}
-     * {@link Expr.Call} form, which {@code compileVarIsNull} accepts and {@code FDA-SD1078} uses.
+     * {@link Expr.Call} form, which {@code compileColumnStatus} accepts and {@code FDA-SD1078}
+     * uses.
      * </p>
      *
      * @param c

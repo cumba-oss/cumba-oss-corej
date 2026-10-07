@@ -1,4 +1,4 @@
-LEVEL=2
+LEVEL=3
 functions:
 abs(x:unknown) kind=value
 all(list:list<boolean>) kind=boolean
@@ -153,7 +153,9 @@ valid_external_dictionary_hierarchy(name:column-reference, dictionary_parent:col
 valid_external_dictionary_value(name:column-reference, external_dictionary_type:string, dictionary_term_type:string, case_sensitive:boolean?) kind=boolean provider=dictionary<external_dictionary_type>
 value() kind=value
 var_exists(name:unknown) kind=boolean
-var_is_null(name:unknown) kind=boolean
+var_is_all_missing(name:unknown) kind=boolean
+var_is_empty(name:unknown) kind=boolean
+var_is_single_value(name:unknown) kind=boolean
 var_not_exists(name:unknown) kind=boolean
 variable_count(name:string?, name_pattern:string?) kind=value aggregate
 variable_names() kind=value aggregate provider=library
@@ -185,7 +187,7 @@ GROUPING: Variables,keep_missings
 MATCH_DATASET: Cardinality,Child,Filter,Join_As_String,Join_Type,Keys,Name,keep_missings
 MATCH_KEY_ELEMENT: left,right
 NEVER_HINTED: Operations,Rule_Type,id
-OUTCOME: Message,Output_Variables
+OUTCOME: Keep_Row_Findings,Message,Message_Folded,Output_Variables
 REFERENCE: Citations,Origin,Rule_Identifier,Version
 REQUIREMENTS: Datasets,Define,Dictionary,Library,Variables
 RULE: Authorities,Bindings,Check,Core,Description,Executability,ExecutabilityHint,Expansion,Grouping,Grouping_Variables,Match_Datasets,Operations,Outcome,Precondition,Requirements,Rule_Type,Scope,Sensitivity,Severity,Supp_Keys,Supp_Merge,Variable_Universe,id,skipIfLibraryDefined,wildcardExclude,wildcardPairCatalogue,wildcards

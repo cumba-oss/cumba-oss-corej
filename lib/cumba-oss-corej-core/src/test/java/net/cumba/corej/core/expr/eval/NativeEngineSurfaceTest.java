@@ -129,7 +129,7 @@ class NativeEngineSurfaceTest
         m.put("ds_not_exists", "ds_not_exists(\"DM\")");
         m.put("var_exists", "var_exists(\"X\")");
         m.put("var_not_exists", "var_not_exists(\"X\")");
-        m.put("var_is_null", "var_is_null(X)");
+        m.put("var_is_empty", "var_is_empty(X)");
         // -- arithmetic comparisons -------------------------------------------------------------
         m.put("not_equal_to_divide", "X != (A / B)");
         m.put("not_equal_to_subtract", "X != (A - B)");

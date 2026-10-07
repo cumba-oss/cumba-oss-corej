@@ -732,6 +732,19 @@ public final class TokenExpander
             outcome.setOutputVariables(
                     outputVars.stream().map(v -> OutputVariableToken.mapName(v, rename)).toList());
         }
+        // PLAN-present-empty-column-fold: the two opt-in keys travel with the expansion —
+        // Message_Folded substituted like Message, Keep_Row_Findings renamed like Output_Variables.
+        if (template.getOutcome() != null)
+        {
+            String folded = template.getOutcome().getMessageFolded();
+            outcome.setMessageFolded(folded != null ? substitute(folded, substitutions) : null);
+            List<String> keep = template.getOutcome().getKeepRowFindings();
+            if (keep != null)
+            {
+                outcome.setKeepRowFindings(
+                        keep.stream().map(v -> OutputVariableToken.mapName(v, rename)).toList());
+            }
+        }
         rule.setOutcome(outcome);
 
         // Scope and Requirements carry over verbatim: a declared expansion token is barred from

@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test;
  * <em>classification</em>: which of those surfaces own their absent-column contract. The list must
  * therefore cover the operators the exclusion question is actually about, or the derivation is a
  * derivation over nothing. It now spans the whole of §2.6 <b>Table A</b> ({@code exists},
- * {@code not_exists}, {@code var_is_null}, {@code is_unique_set}, {@code is_unique_value},
+ * {@code not_exists}, {@code var_is_empty}, {@code is_unique_set}, {@code is_unique_value},
  * {@code has_multiple_values_for}, {@code has_same_values},
  * {@code inconsistent_enumerated_columns}, {@code is_inconsistent_across_dataset},
  * {@code present_on_multiple_rows_within}, {@code empty_within_except_last_row}) alongside the
@@ -86,7 +86,7 @@ class AbsentColumnContractTest
             // target by raw column name, so the fold cannot reach them and they answer the
             // presence question themselves; several therefore land in the derived set.
             "var_exists(\"TSVAL\")", "not var_exists(\"TSVAL\")", "var_not_exists(\"TSVAL\")",
-            "var_is_null(\"TSVAL\")", "not var_is_null(\"TSVAL\")",
+            "var_is_empty(\"TSVAL\")", "not var_is_empty(\"TSVAL\")",
             "is_unique_set([TSVAL, TSPARMCD])", "not is_unique_set([TSVAL, TSPARMCD])",
             "is_unique_value(TSVAL)", "is_not_unique_value(TSVAL)",
             "has_multiple_values_for(TSVAL, TSPARMCD)", "has_same_values(TSVAL)",

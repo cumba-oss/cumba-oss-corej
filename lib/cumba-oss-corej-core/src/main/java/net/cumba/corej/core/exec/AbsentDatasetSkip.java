@@ -174,7 +174,7 @@ public final class AbsentDatasetSkip
      * exists-family predicates minus the dataset-presence pair above.
      */
     private static final Set<String> NAME_ARG_CALLS = Set.of("exists", "not_exists", "var_exists",
-            "var_not_exists", "var_is_null");
+            "var_not_exists", "var_is_empty", "var_is_single_value", "var_is_all_missing");
 
     // ---------------------------------------------------------------- coverage derivation (K5)
 

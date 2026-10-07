@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Covers the name-existence and metadata probes that survived the removal of the legacy operator
  * engine — the exact entry points {@code ExprCompiler} calls when it compiles {@code var_exists} /
- * {@code ds_exists} / {@code var_is_null} / {@code max_value_length} plans, plus the two helpers
+ * {@code ds_exists} / {@code var_is_empty} / {@code max_value_length} plans, plus the two helpers
  * shared with {@link ScopeVariableSource} (a third sharer, {@code CohortRunner}, is retired —
  * {@code PLAN-retire-cohort-runner.md}).
  *
@@ -117,7 +117,7 @@ class ExistenceProbeTest
                 .datasetResolver(resolverOf(map())).build();
         assertFalse(OperatorRegistry.existsAsDataset(bare, null), "null name is not a dataset");
         assertFalse(OperatorRegistry.existsAsVariable(bare, null), "null name is not a column");
-        assertTrue(OperatorRegistry.variableIsNull(bare, null), "null name reads as all-null");
+        assertTrue(OperatorRegistry.variableIsEmpty(bare, null), "null name reads as all-null");
         assertEquals(0L, OperatorRegistry.maxValueLength(bare, null), "null name reads as 0");
         assertNull(bare.resolveVariable(null), "a null id resolves to no variable");
     }
@@ -239,18 +239,19 @@ class ExistenceProbeTest
         assertEquals(1, cache.suppQnamsBuildCount(), "one build for three probes");
     }
 
-    // ---- variableIsNull / maxValueLength ----
+    // ---- variableIsEmpty / maxValueLength ----
 
 
     @Test
-    void variableIsNullCoversNullAbsentEmptyAndPopulated()
+    void variableIsEmptyCoversNullAbsentEmptyAndPopulated()
     {
         IDataTable t = MockTable.of().col("ALLEMPTY", "", "").col("SOMEVAL", "", "x").build();
         EvaluationContext c = ctx(t, map());
-        assertTrue(OperatorRegistry.variableIsNull(c, null), "an unresolved cursor reads as null");
-        assertTrue(OperatorRegistry.variableIsNull(c, "NOSUCH"), "an absent column reads as null");
-        assertTrue(OperatorRegistry.variableIsNull(c, "ALLEMPTY"), "every value empty");
-        assertFalse(OperatorRegistry.variableIsNull(c, "SOMEVAL"), "one populated value is enough");
+        assertTrue(OperatorRegistry.variableIsEmpty(c, null), "an unresolved cursor reads as null");
+        assertTrue(OperatorRegistry.variableIsEmpty(c, "NOSUCH"), "an absent column reads as null");
+        assertTrue(OperatorRegistry.variableIsEmpty(c, "ALLEMPTY"), "every value empty");
+        assertFalse(OperatorRegistry.variableIsEmpty(c, "SOMEVAL"),
+                "one populated value is enough");
     }
 
 

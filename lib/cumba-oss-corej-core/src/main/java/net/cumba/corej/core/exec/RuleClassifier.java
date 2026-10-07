@@ -197,26 +197,29 @@ public final class RuleClassifier
      * corpus mixed-granularity lint go through {@code BroadcastFold.isBroadcastColumnPredicate},
      * which also tests the argument shape. An {@code Atom} carries no {@code Expr} tree, so there
      * is nothing here to inspect. For a shape the guard excludes the three views therefore disagree
-     * by construction — but no such rule can execute: {@code ExprCompiler.compileVarIsNull} throws
-     * {@code unsupported} for exactly those shapes, so the disagreement is unreachable rather than
-     * benign. Stated because the premise of the shared set is that these views cannot drift.
+     * by construction — but no such rule can execute: {@code ExprCompiler.compileColumnStatus}
+     * throws {@code unsupported} for exactly those shapes, so the disagreement is unreachable
+     * rather than benign. Stated because the premise of the shared set is that these views cannot
+     * drift.
      * </p>
      */
     private static final Set<String> BROADCAST_OPERATORS = BroadcastFold.WHOLE_COLUMN_VERDICT_OPERATORS;
 
     /**
      * Predicates whose verdict is one dataset-wide fact about a <b>named</b> column, even though
-     * the operand is spelled as an ordinary column reference — {@code var_is_null}, whose compiled
-     * plan ({@code ExprCompiler.compileVarIsNull}) computes a single boolean and paints it over
-     * every row.
+     * the operand is spelled as an ordinary column reference — {@code var_is_empty},
+     * {@code var_is_single_value}, {@code var_is_all_missing}, whose compiled plan
+     * ({@code ExprCompiler.compileColumnStatus}) computes a single boolean off the column's content
+     * status and paints it over every row.
      *
      * <p>
      * <b>Single source</b>, for the same reason as {@link #BROADCAST_OPERATORS}: the membership
      * list lives in {@link BroadcastFold#BROADCAST_COLUMN_PREDICATES} so this operator-leaf view
      * and the raised-expression views ({@code DomainScan}, the corpus mixed-granularity lint)
-     * cannot drift apart. {@code var_is_null} was in none of these sets until 2026-09-11, which is
-     * why {@code FDA-SD9714} / {@code PMDA-SD9714} — minted to report a dataset-wide absence
-     * <em>once</em> — derived {@code Record} and emitted one finding per record.
+     * cannot drift apart. {@code var_is_null} (now {@code var_is_empty}) was in none of these sets
+     * until 2026-09-11, which is why {@code FDA-SD9714} / {@code PMDA-SD9714} — minted to report a
+     * dataset-wide absence <em>once</em> — derived {@code Record} and emitted one finding per
+     * record.
      * </p>
      *
      * <p>

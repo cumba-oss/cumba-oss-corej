@@ -329,6 +329,13 @@ public final class GroupReadTable extends AbstractDataTable
 
 
     @Override
+    protected long sourceContentGeneration()
+    {
+        return base.contentGeneration();
+    }
+
+
+    @Override
     public @Nullable Object getValue(long aRow, int aColumn)
     {
         return aColumn < baseColumns ? base.getValue(aRow, aColumn)

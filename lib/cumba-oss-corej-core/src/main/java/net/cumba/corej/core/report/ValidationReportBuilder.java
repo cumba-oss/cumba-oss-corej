@@ -368,9 +368,9 @@ public final class ValidationReportBuilder
                     .kind(FindingKind.RULE_VIOLATION)
                     .severity(severityOf(e.getKey().level(), aResult, aRule))
                     .executability(executability).scope(scope)
-                    .message(messageOf(aRule, e.getKey().level(), aResult)).variableNames(names)
-                    .namedColumns(named).location(location).rows(slabBuilder.build())
-                    .keyRows(keySlab).build());
+                    .message(messageOf(aRule, e.getKey().level(), aResult, group))
+                    .variableNames(names).namedColumns(named).location(location)
+                    .rows(slabBuilder.build()).keyRows(keySlab).build());
         }
         return out;
     }
@@ -472,8 +472,19 @@ public final class ValidationReportBuilder
      * </p>
      */
     private static @Nullable String messageOf(Rule aRule, @Nullable Severity aLevel,
-            RuleExecutionResult aResult)
+            RuleExecutionResult aResult, List<Violation> aGroup)
     {
+        // PLAN-present-empty-column-fold D7: a rule declaring Outcome.Message_Folded reports every
+        // DATASET-unit finding under it — a fold or a collapse of its row findings to one. Exact
+        // for such a rule: it is Record (R2 b), so its only dataset-unit producers are the
+        // broadcast fold and the collapse. Before the level's own Message, which is a per-row
+        // message (§4.3 per-path table, executeLevels).
+        String folded = aRule.getOutcome() == null ? null : aRule.getOutcome().getMessageFolded();
+        if (folded != null && !aGroup.isEmpty()
+                && aGroup.getFirst().getUnit() == Violation.Unit.DATASET)
+        {
+            return folded;
+        }
         if (aLevel != null && aRule.getCheckLevels() != null)
         {
             net.cumba.corej.core.model.LevelCheck level = aRule.getCheckLevels().get(aLevel);

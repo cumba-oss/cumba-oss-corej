@@ -14,14 +14,14 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Native-compiler tests for the {@code var_is_null(X)} cursor predicate (T5a — per-variable
+ * Native-compiler tests for the {@code var_is_empty(X)} cursor predicate (T5a — per-variable
  * all-null). The verdict is TRUE when the named column is absent from the dataset, or present but
  * empty ("" / missing) for every record — the retired {@code variable_is_null} operation's fact and
  * the Python reference engine's {@code (series.isnull() | (series == "")).all()}. Exercises both
  * the plain-column form (a fixed name) and the {@code varname()} cursor form used per variable in a
  * Variable Metadata Check (FDA-SD1078 / FDA-SD1149).
  */
-class NativeVarIsNullTest
+class NativeVarIsEmptyTest
 {
 
     private static Expr parse(String source)
@@ -60,7 +60,7 @@ class NativeVarIsNullTest
     {
         IDataTable t = twoVarTable();
         assertEquals(allRows(2),
-                NativeExprEvaluator.evaluate(parse("var_is_null(EMPTYVAR)"), ctx(t, Map.of())),
+                NativeExprEvaluator.evaluate(parse("var_is_empty(EMPTYVAR)"), ctx(t, Map.of())),
                 "an all-empty column is null → fires every row");
     }
 
@@ -69,7 +69,7 @@ class NativeVarIsNullTest
     void anyPopulatedRowIsNotNull()
     {
         IDataTable t = twoVarTable();
-        assertTrue(NativeExprEvaluator.evaluate(parse("var_is_null(FULLVAR)"), ctx(t, Map.of()))
+        assertTrue(NativeExprEvaluator.evaluate(parse("var_is_empty(FULLVAR)"), ctx(t, Map.of()))
                 .isEmpty(), "a column with any value is not null → no rows fire");
     }
 
@@ -79,7 +79,7 @@ class NativeVarIsNullTest
     {
         IDataTable t = twoVarTable();
         assertEquals(allRows(2),
-                NativeExprEvaluator.evaluate(parse("var_is_null(NOSUCHVAR)"), ctx(t, Map.of())),
+                NativeExprEvaluator.evaluate(parse("var_is_empty(NOSUCHVAR)"), ctx(t, Map.of())),
                 "an absent column reads as null (Python parity)");
     }
 
@@ -88,8 +88,8 @@ class NativeVarIsNullTest
     void plainColumnFormIsNativelySupported()
     {
         // The plain-column operand must compile natively (NativeCoverageTest contract).
-        assertTrue(NativeExprEvaluator.isSupported(parse("var_is_null(AESEQ)")),
-                "var_is_null on a plain column compiles natively");
+        assertTrue(NativeExprEvaluator.isSupported(parse("var_is_empty(AESEQ)")),
+                "var_is_empty on a plain column compiles natively");
     }
 
     // ---- varname() cursor form (per variable) -------------------------------
@@ -99,7 +99,7 @@ class NativeVarIsNullTest
     void cursorFormResolvesTheCurrentVariablePerColumn()
     {
         IDataTable t = twoVarTable();
-        Expr expr = parse("var_is_null(varname())");
+        Expr expr = parse("var_is_empty(varname())");
         // Cursor bound to the all-empty column → fires.
         assertTrue(
                 NativeExprEvaluator.evaluateBroadcast(expr,
@@ -119,7 +119,7 @@ class NativeVarIsNullTest
         // The FDA-SD1078 / FDA-SD1149 shape: a Permissible/Expected-set guard plus the all-null
         // cursor predicate. Fires only for a variable that is both in the set AND all-empty.
         IDataTable t = twoVarTable();
-        Expr expr = parse("varname() in [\"EMPTYVAR\", \"FULLVAR\"] and var_is_null(varname())");
+        Expr expr = parse("varname() in [\"EMPTYVAR\", \"FULLVAR\"] and var_is_empty(varname())");
         assertTrue(
                 NativeExprEvaluator.evaluateBroadcast(expr,
                         ctx(t, Map.of("variable_name", "EMPTYVAR"))),
@@ -130,7 +130,7 @@ class NativeVarIsNullTest
                 "in-set but populated → does not fire");
         assertFalse(
                 NativeExprEvaluator.evaluateBroadcast(
-                        parse("varname() in [\"OTHER\"] and var_is_null(varname())"),
+                        parse("varname() in [\"OTHER\"] and var_is_empty(varname())"),
                         ctx(t, Map.of("variable_name", "EMPTYVAR"))),
                 "all-empty but not in the set → does not fire");
     }

@@ -63,7 +63,9 @@ class RuleClassifierTest
         {
         case "ds_not_exists" -> "ds_not_exists(\\\"" + name + "\\\")";
         case "var_not_exists" -> "var_not_exists(\\\"" + name + "\\\")";
-        case "var_is_null" -> "var_is_null(" + name + ")";
+        case "var_is_empty" -> "var_is_empty(" + name + ")";
+        case "var_is_single_value" -> "var_is_single_value(" + name + ")";
+        case "var_is_all_missing" -> "var_is_all_missing(" + name + ")";
         case "non_empty" -> "not empty(" + name + ")";
         default -> throw new IllegalArgumentException(operator);
         };
@@ -352,9 +354,9 @@ class RuleClassifierTest
          * </p>
          *
          * <p>
-         * Measured {@code Record}/{@code LIKELY} before {@code var_is_null} was registered in
+         * Measured {@code Record}/{@code LIKELY} before {@code var_is_empty} was registered in
          * {@code BroadcastFold.BROADCAST_COLUMN_PREDICATES}, with the rationale
-         * <i>"var_is_null(--ORRES) — --ORRES is a per-record column"</i>: the compiled plan paints
+         * <i>"var_is_empty(--ORRES) — --ORRES is a per-record column"</i>: the compiled plan paints
          * one boolean over every row, but no vocabulary told the classifier so.
          * </p>
          */
@@ -362,23 +364,37 @@ class RuleClassifierTest
         void aBroadcastColumnPredicateBesideAPresenceLeafIsDatasetNotAPerRecordFlood()
         {
             RuleClassifier.Derived<Sensitivity> s = RuleClassifier.deriveSensitivity(
-                    rule("{\"Check\":{\"expression\":\"not var_is_null(--ORRES) and not"
+                    rule("{\"Check\":{\"expression\":\"not var_is_empty(--ORRES) and not"
                             + " var_exists(\\\"--ORRESU\\\")\"}}"));
             assertEquals(Sensitivity.DATASET, s.value(),
                     () -> "Record here is one finding per record: " + s.rationale());
             assertEquals(RuleClassifier.Confidence.CERTAIN, s.confidence());
-            assertEquals(Sensitivity.DATASET, sensitivity(leaf("AEORRES", "var_is_null")));
+            assertEquals(Sensitivity.DATASET, sensitivity(leaf("AEORRES", "var_is_empty")));
+        }
+
+
+        @Test
+        void theTwoNewColumnStatusPredicatesDeriveDatasetLikeVarIsEmpty()
+        {
+            // PLAN-present-empty-column-fold: all three share BROADCAST_COLUMN_PREDICATES (the
+            // single source), so a rule built only on them is one dataset fact (SD9714 precedent).
+            assertEquals(Sensitivity.DATASET, sensitivity(leaf("AEORRES", "var_is_single_value")));
+            assertEquals(Sensitivity.DATASET, sensitivity(leaf("AEORRES", "var_is_all_missing")));
+            RuleClassifier.Derived<Sensitivity> s = RuleClassifier.deriveSensitivity(
+                    rule("{\"Check\":{\"expression\":\"var_is_single_value(AESEV) and not"
+                            + " var_is_all_missing(--STDTC)\"}}"));
+            assertEquals(Sensitivity.DATASET, s.value(), s.rationale());
         }
 
 
         /**
-         * The three cursor-form {@code var_is_null} rules ({@code FDA-SD1078}, {@code PMDA-SD1078},
-         * {@code FDA-SD1149}) must <b>not</b> move: one finding per variable is exactly right for
-         * <i>"every Permissible variable that is entirely null"</i>.
+         * The three cursor-form {@code var_is_empty} rules ({@code FDA-SD1078},
+         * {@code PMDA-SD1078}, {@code FDA-SD1149}) must <b>not</b> move: one finding per variable
+         * is exactly right for <i>"every Permissible variable that is entirely null"</i>.
          *
          * <p>
          * {@code nonDatasetReason} keys on the operator name alone, so the new short-circuit
-         * silences the {@code var_is_null} leaf for these rules too — but
+         * silences the {@code var_is_empty} leaf for these rules too — but
          * {@link RuleClassifier#deriveSensitivity} scans <em>every</em> leaf, and the sibling
          * {@code varname() in $…} leaf lowers to {@code is_contained_by(variable_name)}, which
          * classifies {@code VARIABLE_META} and yields a reason on its own. That leaf is first in
@@ -387,13 +403,13 @@ class RuleClassifierTest
          * </p>
          */
         @Test
-        void theCursorFormVarIsNullRulesKeepTheirRecordDerivationAndRationale()
+        void theCursorFormVarIsEmptyRulesKeepTheirRecordDerivationAndRationale()
         {
             RuleClassifier.Derived<Sensitivity> s = RuleClassifier
                     .deriveSensitivity(rule("{\"Bindings\":[{\"name\":\"$permissible_variables\","
                             + "\"expression\":\"get_dataset_filtered_variables(key_name=\\\"core\\\","
                             + " key_value=\\\"Perm\\\")\"}],\"Check\":{\"expression\":\"varname() in"
-                            + " $permissible_variables and var_is_null(varname())\"}}"));
+                            + " $permissible_variables and var_is_empty(varname())\"}}"));
             assertEquals(Sensitivity.RECORD, s.value());
             assertEquals(RuleClassifier.Confidence.LIKELY, s.confidence());
             assertEquals(
