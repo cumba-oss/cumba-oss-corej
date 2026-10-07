@@ -50,8 +50,9 @@ public final class GroupSplice
      * The splice lists {@code call} carries: the member list of {@code is_(not_)unique_set} and the
      * {@code group=} list of {@code record_count} — the two lists whose {@code $} members
      * {@link #splice} reads as column NAMES. The bind-time specialiser asks it
-     * ({@code RuleSpecialiser}, {@code PLAN-string-literal-prefix-rewrite} review MED-1): a binding
-     * read there is a name position, so its written {@code --} literal is specialised.
+     * ({@code RuleSpecialiser.inlineSplicedNames}, {@code PLAN-string-literal-prefix-rewrite}
+     * review MED-1): a {@code $} member whose binding holds a written name is that name written in
+     * the list (G1), inlined at the splice site only — never under {@code domain=}.
      *
      * @param call
      *            the call

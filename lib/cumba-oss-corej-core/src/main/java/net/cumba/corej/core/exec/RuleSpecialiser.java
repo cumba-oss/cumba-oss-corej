@@ -61,7 +61,8 @@ import org.jspecify.annotations.Nullable;
  * compares against it verbatim as {@code X == "--SEQ"} does, while {@code colref($c)} was already
  * rewritten to {@code colref("--SEQ")} by the loader
  * ({@code BindingInliner.inlineNameSlotBindings}, S8) and is specialised here at its name slot
- * (G1).</li>
+ * (G1). A {@code $} member of a splice list holding a written name is inlined at that SITE only
+ * ({@link #inlineSplicedNames}): the binding itself keeps its literal.</li>
  * <li>Record keys — the {@code --} candidates there are engine constants, not rule fields, and
  * {@code RecordKeyResolver} already resolves them through this same prefix authority.</li>
  * </ul>
@@ -123,6 +124,9 @@ public final class RuleSpecialiser
 
         // ---- compute every resolved field, tracking change per field ----
 
+        // the bindings a splice-list `$` member may inline (review MED-1 / MED-A)
+        Map<String, net.cumba.corej.core.expr.ast.Expr> bound = net.cumba.corej.core.expr.convert.BindingInliner
+                .compiledExpressions(rule);
         SequencedMap<Severity, LevelCheck> levels = rule.getCheckLevels();
         // Phase 7d (D121): the typed Check / Precondition trees are wildcard-resolved on their
         // EXPRESSIONS — the leaf-tree transformer is retired with the operator-leaf model, and a
@@ -138,7 +142,7 @@ public final class RuleSpecialiser
         };
         SequencedMap<Severity, LevelCheck> newLevels = LevelCheck.mapConditions(levels, c ->
         {
-            CheckCondition resolved = resolveTree(c, variablePrefix, datasetPrefix);
+            CheckCondition resolved = resolveTree(c, bound, variablePrefix, datasetPrefix);
             if (resolved != c)
             {
                 levelsChanged[0] = true;
@@ -148,15 +152,15 @@ public final class RuleSpecialiser
 
         CheckCondition check = rule.getCheck();
         CheckCondition newCheck = check == null ? null
-                : resolveTree(check, variablePrefix, datasetPrefix);
+                : resolveTree(check, bound, variablePrefix, datasetPrefix);
 
         CheckCondition precondition = rule.getPrecondition();
         CheckCondition newPrecondition = precondition == null ? null
-                : resolveTree(precondition, variablePrefix, datasetPrefix);
+                : resolveTree(precondition, bound, variablePrefix, datasetPrefix);
 
         net.cumba.corej.core.expr.ast.Expr checkExpr = rule.getCheckExpr();
         net.cumba.corej.core.expr.ast.Expr newCheckExpr = checkExpr == null ? null
-                : ExprPrefixResolver.resolve(checkExpr, variablePrefix, datasetPrefix);
+                : specialiseExpr(checkExpr, bound, variablePrefix, datasetPrefix);
 
         Map<Severity, net.cumba.corej.core.expr.ast.Expr> levelExprs = rule.getCheckLevelExprs();
         Map<Severity, net.cumba.corej.core.expr.ast.Expr> newLevelExprs = levelExprs;
@@ -166,7 +170,7 @@ public final class RuleSpecialiser
             boolean changed = false;
             for (Map.Entry<Severity, net.cumba.corej.core.expr.ast.Expr> e : levelExprs.entrySet())
             {
-                net.cumba.corej.core.expr.ast.Expr r = ExprPrefixResolver.resolve(e.getValue(),
+                net.cumba.corej.core.expr.ast.Expr r = specialiseExpr(e.getValue(), bound,
                         variablePrefix, datasetPrefix);
                 changed |= r != e.getValue();
                 resolved.put(e.getKey(), r);
@@ -179,7 +183,7 @@ public final class RuleSpecialiser
 
         net.cumba.corej.core.expr.ast.Expr preExpr = rule.getPreconditionExpr();
         net.cumba.corej.core.expr.ast.Expr newPreExpr = preExpr == null ? null
-                : ExprPrefixResolver.resolve(preExpr, variablePrefix, datasetPrefix);
+                : specialiseExpr(preExpr, bound, variablePrefix, datasetPrefix);
 
         // PLAN-binding-expressions R11: a compiled binding's expression is resolved exactly as the
         // Check's is — through ExprPrefixResolver — and SET on the copy below: shallowCopy copies
@@ -192,18 +196,10 @@ public final class RuleSpecialiser
             List<net.cumba.corej.core.model.CompiledBinding> resolved = new ArrayList<>(
                     compiledBindings.size());
             boolean changed = false;
-            // PLAN-string-literal-prefix-rewrite review MED-1: a binding read as a `$` member of
-            // a splice list is a list of column NAMES at run time (GroupSplice), so its written
-            // literal is specialised as at a name slot — `$k: "--TESTCD"` in
-            // is_unique_set([USUBJID, $k]) answers as [USUBJID, --TESTCD] does (G1).
-            Set<String> spliced = splicedBindings(rule);
             for (net.cumba.corej.core.model.CompiledBinding binding : compiledBindings)
             {
-                net.cumba.corej.core.expr.ast.Expr r = spliced.contains(binding.name())
-                        ? ExprPrefixResolver.resolveAsName(binding.expression(), variablePrefix,
-                                datasetPrefix)
-                        : ExprPrefixResolver.resolve(binding.expression(), variablePrefix,
-                                datasetPrefix);
+                net.cumba.corej.core.expr.ast.Expr r = specialiseExpr(binding.expression(), bound,
+                        variablePrefix, datasetPrefix);
                 changed |= r != binding.expression();
                 resolved.add(r == binding.expression() ? binding : binding.withExpression(r));
             }
@@ -319,117 +315,210 @@ public final class RuleSpecialiser
 
 
     /**
-     * The bindings read as a {@code $} member of a splice list ({@code GroupSplice.spliceLists}) in
-     * the rule's Check (every level), Precondition or another binding.
+     * {@code e} specialised: its splice-list {@code $} members holding a written name inlined
+     * ({@link #inlineSplicedNames}), then {@link ExprPrefixResolver#resolve}.
      */
-    private static Set<String> splicedBindings(Rule rule)
+    private static net.cumba.corej.core.expr.ast.Expr specialiseExpr(
+            net.cumba.corej.core.expr.ast.Expr e,
+            Map<String, net.cumba.corej.core.expr.ast.Expr> bound, String variablePrefix,
+            String datasetPrefix)
     {
-        Set<String> out = new LinkedHashSet<>();
-        List<net.cumba.corej.core.expr.ast.Expr> roots = new ArrayList<>();
-        if (rule.getCheckExpr() != null)
-        {
-            roots.add(rule.getCheckExpr());
-        }
-        if (rule.getCheckLevelExprs() != null)
-        {
-            roots.addAll(rule.getCheckLevelExprs().values());
-        }
-        if (rule.getPreconditionExpr() != null)
-        {
-            roots.add(rule.getPreconditionExpr());
-        }
-        if (rule.getCompiledBindings() != null)
-        {
-            rule.getCompiledBindings().forEach(b -> roots.add(b.expression()));
-        }
-        roots.forEach(root -> collectSpliced(root, out));
-        return out;
+        net.cumba.corej.core.expr.ast.Expr inlined = bound.isEmpty() ? e
+                : inlineSplicedNames(e, bound);
+        return ExprPrefixResolver.resolve(inlined, variablePrefix, datasetPrefix);
     }
 
 
-    private static void collectSpliced(net.cumba.corej.core.expr.ast.Expr e, Set<String> out)
+    /**
+     * ⭐ {@code PLAN-string-literal-prefix-rewrite} review MED-1 (confirmation look MED-A): a
+     * {@code $} member of a splice list ({@code GroupSplice.spliceLists} —
+     * {@code is_(not_)unique_set([…, $k])}, {@code record_count(group=[…, $k])}) is read as column
+     * NAMES at run time; when its binding holds a WRITTEN name — a string literal, or a list of
+     * them — the member is that name written in the list, so {@code $k: "--TESTCD"} answers as
+     * {@code [USUBJID, --TESTCD]} does (G1) and is specialised at its place in the list. Only the
+     * splice SITE changes: the binding keeps its literal, so {@code AETERM == $k} and an
+     * {@code Output_Variables} entry read {@code "--TESTCD"} verbatim (S3). Never under
+     * {@code domain=}: there a spliced {@code --} name must keep meeting {@code GroupSplice}'s
+     * refusal (it would resolve against the evaluated dataset, not the domain). A binding of a
+     * binding ({@code $j: $k}) is not written there and stays a run-time splice — a {@code --}
+     * reaching it is the loud D77b error.
+     */
+    private static net.cumba.corej.core.expr.ast.Expr inlineSplicedNames(
+            net.cumba.corej.core.expr.ast.Expr e,
+            Map<String, net.cumba.corej.core.expr.ast.Expr> bound)
     {
-        switch (e)
+        return switch (e)
         {
         case net.cumba.corej.core.expr.ast.Expr.Call c ->
         {
-            for (net.cumba.corej.core.expr.ast.Expr list : GroupSplice.spliceLists(c))
+            List<net.cumba.corej.core.expr.ast.Expr> lists = c.kwargs().containsKey(
+                    GroupedAggregate.DOMAIN_PARAMETER) ? List.of() : GroupSplice.spliceLists(c);
+            boolean changed = false;
+            List<net.cumba.corej.core.expr.ast.Expr> args = new ArrayList<>();
+            for (net.cumba.corej.core.expr.ast.Expr a : c.args())
             {
-                for (Object member : (List<?>) ((net.cumba.corej.core.expr.ast.Expr.Lit) list)
-                        .value())
-                {
-                    if (member instanceof net.cumba.corej.core.expr.ast.Expr.Ref ref
-                            && ref.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF)
-                    {
-                        out.add(ref.name());
-                    }
-                }
+                net.cumba.corej.core.expr.ast.Expr r = lists.contains(a) ? spliceList(a, bound)
+                        : inlineSplicedNames(a, bound);
+                changed |= r != a;
+                args.add(r);
             }
-            c.args().forEach(a -> collectSpliced(a, out));
-            c.kwargs().values().forEach(a -> collectSpliced(a, out));
+            Map<String, net.cumba.corej.core.expr.ast.Expr> kwargs = new LinkedHashMap<>();
+            for (Map.Entry<String, net.cumba.corej.core.expr.ast.Expr> kw : c.kwargs().entrySet())
+            {
+                net.cumba.corej.core.expr.ast.Expr v = kw.getValue();
+                net.cumba.corej.core.expr.ast.Expr r = lists.contains(v) ? spliceList(v, bound)
+                        : inlineSplicedNames(v, bound);
+                changed |= r != v;
+                kwargs.put(kw.getKey(), r);
+            }
+            yield changed ? new net.cumba.corej.core.expr.ast.Expr.Call(c.name(), args, kwargs) : c;
         }
         case net.cumba.corej.core.expr.ast.Expr.Binary b ->
         {
-            collectSpliced(b.left(), out);
-            collectSpliced(b.right(), out);
+            net.cumba.corej.core.expr.ast.Expr l = inlineSplicedNames(b.left(), bound);
+            net.cumba.corej.core.expr.ast.Expr r = inlineSplicedNames(b.right(), bound);
+            yield l == b.left() && r == b.right() ? b
+                    : new net.cumba.corej.core.expr.ast.Expr.Binary(b.op(), l, r);
         }
-        case net.cumba.corej.core.expr.ast.Expr.And a -> a.parts()
-                .forEach(p -> collectSpliced(p, out));
-        case net.cumba.corej.core.expr.ast.Expr.Or o -> o.parts()
-                .forEach(p -> collectSpliced(p, out));
-        case net.cumba.corej.core.expr.ast.Expr.Not n -> collectSpliced(n.inner(), out);
-        case net.cumba.corej.core.expr.ast.Expr.Lit lit ->
+        case net.cumba.corej.core.expr.ast.Expr.And a ->
         {
-            if (lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST
-                    && lit.value() instanceof List<?> items)
+            List<net.cumba.corej.core.expr.ast.Expr> parts = a.parts().stream()
+                    .map(p -> inlineSplicedNames(p, bound)).toList();
+            yield parts.equals(a.parts()) ? a : new net.cumba.corej.core.expr.ast.Expr.And(parts);
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Or o ->
+        {
+            List<net.cumba.corej.core.expr.ast.Expr> parts = o.parts().stream()
+                    .map(p -> inlineSplicedNames(p, bound)).toList();
+            yield parts.equals(o.parts()) ? o : new net.cumba.corej.core.expr.ast.Expr.Or(parts);
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Not n ->
+        {
+            net.cumba.corej.core.expr.ast.Expr inner = inlineSplicedNames(n.inner(), bound);
+            yield inner == n.inner() ? n : new net.cumba.corej.core.expr.ast.Expr.Not(inner);
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Lit lit -> lit;
+        case net.cumba.corej.core.expr.ast.Expr.Ref ref -> ref;
+        };
+    }
+
+
+    /** A splice list with each {@code $} member holding written names replaced by those names. */
+    private static net.cumba.corej.core.expr.ast.Expr spliceList(
+            net.cumba.corej.core.expr.ast.Expr list,
+            Map<String, net.cumba.corej.core.expr.ast.Expr> bound)
+    {
+        List<?> members = (List<?>) ((net.cumba.corej.core.expr.ast.Expr.Lit) list).value();
+        List<net.cumba.corej.core.expr.ast.Expr> out = new ArrayList<>();
+        boolean changed = false;
+        for (Object o : members)
+        {
+            if (!(o instanceof net.cumba.corej.core.expr.ast.Expr member))
             {
-                for (Object item : items)
-                {
-                    if (item instanceof net.cumba.corej.core.expr.ast.Expr x)
-                    {
-                        collectSpliced(x, out);
-                    }
-                }
+                return list;
+            }
+            List<net.cumba.corej.core.expr.ast.Expr> names = writtenNames(member, bound);
+            if (names == null)
+            {
+                out.add(member);
+            }
+            else
+            {
+                out.addAll(names);
+                changed = true;
             }
         }
-        case net.cumba.corej.core.expr.ast.Expr.Ref _ ->
+        return changed
+                ? new net.cumba.corej.core.expr.ast.Expr.Lit(
+                        net.cumba.corej.core.expr.ast.Expr.LitKind.LIST, out)
+                : list;
+    }
+
+
+    /**
+     * The names a {@code $} member's binding WRITES — a string literal, or a non-empty list of them
+     * — as references; {@code null} when the member is not such a binding reference, or a name does
+     * not classify (it then stays a run-time splice).
+     */
+    private static @Nullable List<net.cumba.corej.core.expr.ast.Expr> writtenNames(
+            net.cumba.corej.core.expr.ast.Expr member,
+            Map<String, net.cumba.corej.core.expr.ast.Expr> bound)
+    {
+        if (!(member instanceof net.cumba.corej.core.expr.ast.Expr.Ref ref)
+                || ref.kind() != net.cumba.corej.core.expr.OperandKind.OPERATION_REF
+                || !(bound.get(ref.name()) instanceof net.cumba.corej.core.expr.ast.Expr.Lit lit))
         {
-            // a reference splices nothing itself
+            return null;
         }
+        List<?> texts;
+        if (lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.STRING)
+        {
+            texts = List.of(lit);
         }
+        else if (lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST
+                && lit.value() instanceof List<?> items && !items.isEmpty())
+        {
+            texts = items;
+        }
+        else
+        {
+            return null;
+        }
+        List<net.cumba.corej.core.expr.ast.Expr> refs = new ArrayList<>(texts.size());
+        for (Object t : texts)
+        {
+            if (!(t instanceof net.cumba.corej.core.expr.ast.Expr.Lit s)
+                    || s.kind() != net.cumba.corej.core.expr.ast.Expr.LitKind.STRING
+                    || !(s.value() instanceof String name))
+            {
+                return null;
+            }
+            try
+            {
+                refs.add(new net.cumba.corej.core.expr.ast.Expr.Ref(name,
+                        net.cumba.corej.core.expr.OperandClassifier.classify(name, -1)));
+            }
+            catch (net.cumba.corej.core.expr.ExpressionException _)
+            {
+                return null;
+            }
+        }
+        return refs;
     }
 
 
     /** Resolves a Check / Precondition tree's expressions, preserving identity when unchanged. */
-    private static CheckCondition resolveTree(CheckCondition condition, String variablePrefix,
+    private static CheckCondition resolveTree(CheckCondition condition,
+            Map<String, net.cumba.corej.core.expr.ast.Expr> bound, String variablePrefix,
             String datasetPrefix)
     {
         return switch (condition)
         {
         case net.cumba.corej.core.model.CheckConditionAll all ->
         {
-            List<CheckCondition> resolved = resolveTreeList(all.getConditions(), variablePrefix,
-                    datasetPrefix);
+            List<CheckCondition> resolved = resolveTreeList(all.getConditions(), bound,
+                    variablePrefix, datasetPrefix);
             yield resolved == all.getConditions() ? all
                     : new net.cumba.corej.core.model.CheckConditionAll(resolved);
         }
         case net.cumba.corej.core.model.CheckConditionAny any ->
         {
-            List<CheckCondition> resolved = resolveTreeList(any.getConditions(), variablePrefix,
-                    datasetPrefix);
+            List<CheckCondition> resolved = resolveTreeList(any.getConditions(), bound,
+                    variablePrefix, datasetPrefix);
             yield resolved == any.getConditions() ? any
                     : new net.cumba.corej.core.model.CheckConditionAny(resolved);
         }
         case net.cumba.corej.core.model.CheckConditionNot not ->
         {
-            CheckCondition inner = resolveTree(not.getCondition(), variablePrefix, datasetPrefix);
+            CheckCondition inner = resolveTree(not.getCondition(), bound, variablePrefix,
+                    datasetPrefix);
             yield inner == not.getCondition() ? not
                     : new net.cumba.corej.core.model.CheckConditionNot(inner);
         }
         case net.cumba.corej.core.model.CheckConditionExpression expression ->
         {
-            net.cumba.corej.core.expr.ast.Expr resolved = ExprPrefixResolver
-                    .resolve(expression.expr(), variablePrefix, datasetPrefix);
+            net.cumba.corej.core.expr.ast.Expr resolved = specialiseExpr(expression.expr(), bound,
+                    variablePrefix, datasetPrefix);
             yield resolved == expression.expr() ? expression
                     : new net.cumba.corej.core.model.CheckConditionExpression(resolved,
                             net.cumba.corej.core.expr.ExpressionPrinter.print(resolved));
@@ -439,12 +528,14 @@ public final class RuleSpecialiser
 
 
     private static List<CheckCondition> resolveTreeList(List<CheckCondition> conditions,
-            String variablePrefix, String datasetPrefix)
+            Map<String, net.cumba.corej.core.expr.ast.Expr> bound, String variablePrefix,
+            String datasetPrefix)
     {
         List<CheckCondition> out = null;
         for (int i = 0; i < conditions.size(); i++)
         {
-            CheckCondition resolved = resolveTree(conditions.get(i), variablePrefix, datasetPrefix);
+            CheckCondition resolved = resolveTree(conditions.get(i), bound, variablePrefix,
+                    datasetPrefix);
             if (out == null && resolved != conditions.get(i))
             {
                 out = new ArrayList<>(conditions.subList(0, i));

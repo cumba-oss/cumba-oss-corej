@@ -3,6 +3,7 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -199,6 +200,12 @@ class ExprPrefixResolverTest
 
     private static Rule load(String check, String... bindings)
     {
+        return loadWithOutputs("\"USUBJID\"", check, bindings);
+    }
+
+
+    private static Rule loadWithOutputs(String outputs, String check, String... bindings)
+    {
         StringBuilder json = new StringBuilder(
                 "{\"rules\":{\"R\":{\"Core\":{\"Id\":\"T-SLP\"},\"Sensitivity\":\"Record\",\"Bindings\":[");
         for (int i = 0; i < bindings.length; i += 2)
@@ -208,7 +215,8 @@ class ExprPrefixResolverTest
         }
         json.append("],\"Check\":{\"expression\":\"")
                 .append(esc("not empty(USUBJID) and (" + check + ")"))
-                .append("\"},\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}");
+                .append("\"},\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[").append(outputs)
+                .append("]}}}}");
         Rule r;
         try
         {
@@ -269,7 +277,7 @@ class ExprPrefixResolverTest
     private static IDataTable duplicated()
     {
         return RealTables.of("AE").str("USUBJID", "S1", "S1", "S2").lng("AESEQ", 1L, 1L, 2L)
-                .str("AETERM", "a", "b", "c").build();
+                .str("AETERM", "a", "b", "--SEQ").build();
     }
 
 
@@ -356,5 +364,49 @@ class ExprPrefixResolverTest
                 fired("var_type($c, \"DATA\") == \"Char\"", "$c", "\"--TERM\""));
         assertEquals(fired("var_type(\"--TERM\", \"DATA\") == \"Char\"", "$c", "\"--TERM\""),
                 fired("var_type($c, \"DATA\") == \"Char\"", "$c", "\"--TERM\""));
+    }
+
+    // ------------------------------------------------------------------ confirmation look (MED-A)
+
+
+    /**
+     * The splice SITE reads the written name, every other read of the binding its literal: the
+     * splice groups on AESEQ (rows 1, 2), {@code AETERM == $k} compares against {@code "--SEQ"}
+     * (row 3) — the binding itself is never rewritten.
+     */
+    @Test
+    void aSpliceMemberReadsTheNameWhileTheBindingStaysItsLiteral()
+    {
+        assertEquals(List.of(1L, 2L, 3L), fired(duplicated(),
+                "not is_unique_set([USUBJID, $k]) or AETERM == $k", "$k", "\"--SEQ\""));
+        Rule r = loadWithOutputs("\"USUBJID\", \"$k\"", "not is_unique_set([USUBJID, $k])", "$k",
+                "\"--SEQ\"");
+        IDataTable primary = duplicated();
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                RealTables.inventoryOf(primary), "AE");
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        assertEquals(2, result.getViolations().size());
+        assertEquals("--SEQ", result.getViolations().get(0).getValues().get("$k"),
+                "an Output_Variables entry reads the binding verbatim");
+    }
+
+
+    /**
+     * Under {@code domain=} a spliced {@code --} name is never inlined: it meets
+     * {@code GroupSplice}'s refusal (it would resolve against AE and group DM by nothing) — the
+     * rule ERRORS, it does not silently group DM by USUBJID only.
+     */
+    @Test
+    void aSplicedDashNameUnderDomainStillErrors()
+    {
+        IDataTable primary = duplicated();
+        IDataTable dm = RealTables.of("DM").str("USUBJID", "S1", "S1").str("DMSEQ", "1", "1")
+                .build();
+        Rule r = load("record_count(group=[USUBJID, $k], domain=\"DM\") > 1", "$k", "\"--SEQ\"");
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                RealTables.inventoryOf(primary, dm), "AE");
+        assertEquals(RuleExecutionStatus.ERROR, result.getStatus(), result.getStatusMessage());
+        assertTrue(String.valueOf(result.getStatusMessage()).contains("under domain="),
+                result.getStatusMessage());
     }
 }

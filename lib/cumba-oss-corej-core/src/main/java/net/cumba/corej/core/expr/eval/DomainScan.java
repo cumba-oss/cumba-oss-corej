@@ -220,7 +220,8 @@ public final class DomainScan
         }
         if (VARNAME_ANCHORED_CALLS.contains(name))
         {
-            return c.args().isEmpty() || isCurrentVariableName(c.args().get(0)) ? Domain.VARIABLE
+            Expr nameArg = NameSlots.nameArgument(c);
+            return nameArg == null || isCurrentVariableName(nameArg) ? Domain.VARIABLE
                     : Domain.DATASET;
         }
         FunctionDescriptor declared = FunctionRegistry.descriptor(name);

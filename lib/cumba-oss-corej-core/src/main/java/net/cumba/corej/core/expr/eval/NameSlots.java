@@ -151,6 +151,24 @@ public final class NameSlots
 
 
     /**
+     * The NAME argument of a call whose optional parameter {@code name} is its only one
+     * ({@code max_value_length}, the {@code vlm_*} accessors, the two decode-pair accessors): the
+     * positional when given, else the {@code name=} keyword, else {@code null} (the cursor
+     * variable). ONE reading for the compiler arms, {@code DomainScan} and stage A
+     * ({@code PLAN-string-literal-prefix-rewrite} review LOW-5 / MED-B: the keyword was honoured by
+     * the compiler but routed as the cursor form by the other two).
+     *
+     * @param call
+     *            the call
+     * @return the name argument, or {@code null}
+     */
+    public static @Nullable Expr nameArgument(Expr.Call call)
+    {
+        return call.args().isEmpty() ? call.kwargs().get("name") : call.args().get(0);
+    }
+
+
+    /**
      * The parameter positional argument {@code position} binds to, or {@code null} when the call
      * carries more positionals than the descriptor declares (a binding error reported elsewhere).
      *

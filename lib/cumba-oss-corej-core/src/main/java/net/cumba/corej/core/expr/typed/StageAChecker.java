@@ -1174,7 +1174,8 @@ public final class StageAChecker
         }
         if (VARNAME_ANCHORED_CALLS.contains(name))
         {
-            Level level = c.args().isEmpty() || isCurrentVariableName(c.args().get(0))
+            Expr nameArg = net.cumba.corej.core.expr.eval.NameSlots.nameArgument(c);
+            Level level = nameArg == null || isCurrentVariableName(nameArg)
                     ? Level.VARIABLE_METADATA
                     : Level.DATASET;
             return new TypedExpr(c, ElementTable.resultType(name), level, children);

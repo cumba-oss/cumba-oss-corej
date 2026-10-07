@@ -115,27 +115,6 @@ public final class ExprPrefixResolver
 
 
     /**
-     * {@link #resolve(Expr, String, String)} for an expression whose VALUE is read as a name — a
-     * binding read at a splice member ({@code GroupSplice}): a STRING literal, or the STRING
-     * members of a LIST literal, at its root are specialised as at a name slot; anything else
-     * resolves as {@link #resolve(Expr, String, String)} does.
-     *
-     * @param e
-     *            the expression
-     * @param variablePrefix
-     *            the variable-name prefix
-     * @param datasetPrefix
-     *            the dataset-name prefix
-     * @return the resolved expression, or the same instance when nothing changed
-     */
-    public static Expr resolveAsName(Expr e, String variablePrefix, String datasetPrefix)
-    {
-        Pass pass = new Pass(variablePrefix, datasetPrefix, NameSlots.REGISTRY);
-        return e instanceof Expr.Lit lit ? pass.resolveLit(lit, true) : pass.resolve(e);
-    }
-
-
-    /**
      * {@link #resolve(Expr, String, String)} against an explicit name-slot lookup — the seam a
      * planted control uses to prove the resolver asks {@link NameSlots} and nothing else.
      */

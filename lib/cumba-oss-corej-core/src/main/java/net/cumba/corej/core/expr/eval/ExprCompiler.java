@@ -4295,7 +4295,7 @@ public final class ExprCompiler
     {
         // the descriptor declares `name` (optional), so name= is honoured as the positional is
         // (PLAN-string-literal-prefix-rewrite review LOW-5: it was silently ignored)
-        Expr arg = c.args().isEmpty() ? c.kwargs().get("name") : c.args().get(0);
+        Expr arg = NameSlots.nameArgument(c);
         boolean fromCursor = arg == null || isCurrentVariableName(arg);
         String literalName = null;
         if (!fromCursor)
@@ -4418,7 +4418,7 @@ public final class ExprCompiler
         String fn = c.name();
         // the descriptor declares `name` (optional), so name= is honoured as the positional is
         // (PLAN-string-literal-prefix-rewrite review LOW-5: it was silently ignored)
-        Expr arg = c.args().isEmpty() ? c.kwargs().get("name") : c.args().get(0);
+        Expr arg = NameSlots.nameArgument(c);
         boolean fromCursor = arg == null || isCurrentVariableName(arg);
         String literalName = null;
         if (!fromCursor)
@@ -4657,7 +4657,7 @@ public final class ExprCompiler
     {
         // the descriptor declares `name` (optional), so name= is honoured as the positional is
         // (PLAN-string-literal-prefix-rewrite review LOW-5: it was silently ignored)
-        Expr arg = c.args().isEmpty() ? c.kwargs().get("name") : c.args().get(0);
+        Expr arg = NameSlots.nameArgument(c);
         if (arg != null && !isCurrentVariableName(arg))
         {
             throw unsupported(DEFINE_VARIABLE_DECODE_MATCHES + " expects varname() or no argument");
@@ -4913,7 +4913,7 @@ public final class ExprCompiler
     {
         // the descriptor declares `name` (optional), so name= is honoured as the positional is
         // (PLAN-string-literal-prefix-rewrite review LOW-5: it was silently ignored)
-        Expr arg = c.args().isEmpty() ? c.kwargs().get("name") : c.args().get(0);
+        Expr arg = NameSlots.nameArgument(c);
         if (arg != null && !isCurrentVariableName(arg))
         {
             throw unsupported(LIBRARY_CODE_PAIR_MATCHES + " expects varname() or no argument");

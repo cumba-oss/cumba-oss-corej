@@ -806,7 +806,11 @@ public class RulePackageLoader
         {
             validateInlineMissingValues(level, stageAJudged, bound);
         }
-        validateInlineMissingValues(rule.getPrecondition(), stageAJudged, bound);
+        // The Precondition is judged as authored (Map.of()): inlineBoundNames never inlines it, so
+        // a seam judging an inlined form would admit what then runs un-inlined (confirmation look
+        // of the review fold; an authored Precondition is refused anyway,
+        // validateNoAuthoredPrecondition).
+        validateInlineMissingValues(rule.getPrecondition(), stageAJudged, Map.of());
         // PLAN-binding-expressions R2: an inline call INSIDE a compiled binding is on the inline
         // surface too, and gets the same value / operator rejections.
         List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
@@ -1125,6 +1129,24 @@ public class RulePackageLoader
                     net.cumba.corej.core.exec.Distinct::spec);
 
     /**
+     * A compiler-dispatched call whose ONE parameter is an optional {@code name}
+     * ({@code max_value_length}, the {@code vlm_*} accessors, the two decode-pair accessors) is
+     * bound against its descriptor at load: the name given both positionally and as {@code name=}
+     * is refused (D19a, {@link net.cumba.corej.core.expr.eval.ArgumentBinder}), never one of the
+     * two silently dropped ({@code PLAN-string-literal-prefix-rewrite} confirmation look of the
+     * review fold).
+     */
+    private static void bindNameAnchoredCall(net.cumba.corej.core.expr.ast.Expr.Call call)
+    {
+        net.cumba.corej.core.expr.eval.FunctionDescriptor d = net.cumba.corej.core.expr.eval.FunctionRegistry
+                .descriptor(call.name());
+        if (d != null && d.parameters().size() == 1 && "name".equals(d.parameters().get(0).name()))
+        {
+            net.cumba.corej.core.expr.eval.ArgumentBinder.bind(d, call);
+        }
+    }
+
+    /**
      * The registry names {@link #validateRegistryCallSeams} does NOT hand to the generic binder
      * seam ({@code ExprCompiler.validateRegistryCall}), checked once on first use by
      * {@link #registryCallSeamExemptions()}.
@@ -1261,6 +1283,10 @@ public class RulePackageLoader
                 {
                     net.cumba.corej.core.expr.eval.ExprCompiler.validateRegistryCall(call,
                             stageAJudged);
+                }
+                else
+                {
+                    bindNameAnchoredCall(call);
                 }
             }
             catch (net.cumba.corej.core.expr.ExpressionException ex)
