@@ -1762,10 +1762,10 @@ public final class RuleRunner
         // (EmptyColumnCollapse's truth table; Keep_Row_Findings columns excepted, D9), the
         // per-row result above IS the evaluation of D5's residual on every row, and the rule's
         // verdict is a dataset fact: one DATASET-unit finding iff some row fired, none otherwise.
-        // Never on 0 rows (C5), never TRIGGERED by an absent column (PACK 4 review HIGH-1, per Q3:
-        // an absence is the absent-column fold's to report, above; inside a collapse a present
-        // blank column triggered, an absent column folds to its constant, P3), never from a
-        // dotted / SUPP-qualifier argument (R5). A rule without the key never collapses.
+        // Never on 0 rows (C5); a trigger is a polarity-live empty-family leaf's column, blank on
+        // every record OR absent (owner 2026-10-07 — a collapse happens only on a column whose
+        // emptiness decides the rule), never a dotted / SUPP-qualifier argument (R5). A rule
+        // without the key never collapses.
         String foldedMessage = rule.getOutcome() == null ? null
                 : rule.getOutcome().getMessageFolded();
         if (rowBased && foldedMessage != null && ctx.rowCount() > 0)

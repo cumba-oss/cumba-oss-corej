@@ -88,14 +88,14 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * <b>An absent column never triggers</b> (PACK 4 review HIGH-1 of
- * {@code PLAN-message-folded-corpus-alignment}, applied per the owner's Q3 — <i>absent column:
- * count UNCHANGED</i>): the trigger is a column PRESENT and blank on every record; an absent column
- * read by the same Check folds, inside that collapse, to the constant the absent-column contract
- * gives it (P3), and on its own it is reported only by the absent-column fold
- * ({@code BroadcastFold}, D111, opt-in through the same key). Only a <b>polarity-live</b> leaf
- * triggers: its constant, negated once per enclosing {@code Not}, is TRUE — {@code not empty(X)}
- * over a blank {@code X} decides nothing the collapse may report and keeps the row path.
+ * <b>Only a polarity-live leaf triggers, absent or present</b> (owner ruling 2026-10-07,
+ * {@code PLAN-message-folded-corpus-alignment} fold part 2, after the CG0114 walkthrough): a
+ * collapse happens only on a column whose emptiness DECIDES the rule — its leaf's constant, negated
+ * once per enclosing {@code Not}, is TRUE — and never because some other column is absent. A column
+ * PRESENT and blank on every record and a column ABSENT trigger alike; {@code not empty(X)} over a
+ * blank or absent {@code X} is FALSE, decides nothing the collapse may report, and keeps the row
+ * path (CG0114: an absent CMDOSTXT is no trigger, only --DOSU is). An absent column of a non-live
+ * leaf folds, inside a collapse another column triggered, to its absent-column constant (P3).
  * </p>
  */
 public final class EmptyColumnCollapse
@@ -148,15 +148,25 @@ public final class EmptyColumnCollapse
         collectLive(e, false, keep, (c, name) ->
         {
             ColumnContent content = presentColumnContent(ctx, name);
-            // ⭐ A column ABSENT from the evaluation table is NEVER a trigger (PACK 4 review
-            // HIGH-1, applied per Q3 "absent column — count UNCHANGED"): its leaves fold by P3 to
-            // their evaluated constant INSIDE a collapse some present-but-empty column triggered,
-            // and the absent-column FOLD (BroadcastFold, D111) is the only thing that reports an
-            // absence on its own. A present column triggers on its content (R5).
-            return (content != null && rowConstant(c.name(), content))
-                    ? (leafConstant(c.name(), content) ? BroadcastFold.Verdict.TRUE
-                            : BroadcastFold.Verdict.FALSE)
-                    : BroadcastFold.Verdict.UNKNOWN;
+            if (content != null)
+            {
+                // a present column triggers on its content (R5)
+                return rowConstant(c.name(), content)
+                        ? (leafConstant(c.name(), content) ? BroadcastFold.Verdict.TRUE
+                                : BroadcastFold.Verdict.FALSE)
+                        : BroadcastFold.Verdict.UNKNOWN;
+            }
+            // ⭐ A column ABSENT from the evaluation table triggers exactly like one blank on every
+            // record — iff its leaf is polarity-live (owner, 2026-10-07, after the CG0114
+            // walkthrough: a collapse happens only on a column whose emptiness DECIDES the rule,
+            // never because some other column is absent). The leaf's constant is the one the
+            // absent-column contract gives it: empty TRUE; is_missing TRUE only where the column
+            // reads MIS (numeric-expected, D76) and FALSE where it reads ""; the negated family
+            // FALSE — so `not empty(CMDOSTXT)` over an absent CMDOSTXT decides nothing.
+            return BroadcastFold.bindColumnLevel(name,
+                    ctx) == BroadcastFold.BindColumnLevel.DATASET_ABSENT
+                            ? absentLeafConstant(c.name(), name, ctx)
+                            : BroadcastFold.Verdict.UNKNOWN;
         }, out);
     }
 
@@ -231,6 +241,36 @@ public final class EmptyColumnCollapse
 
 
     /**
+     * The constant an {@code empty}-family leaf evaluates to over an ABSENT column (the
+     * absent-column contract, EC-43 / D76): {@code empty} TRUE; {@code is_missing} TRUE where the
+     * column is numeric-expected (it reads MIS) and FALSE where it reads {@code ""};
+     * {@code non_empty} / {@code present} / {@code is_present} FALSE.
+     *
+     * @param function
+     *            the leaf's function name
+     * @param name
+     *            the column, as named in the Check
+     * @param ctx
+     *            the evaluation context (its type expectations)
+     * @return the constant
+     */
+    static BroadcastFold.Verdict absentLeafConstant(String function, String name,
+            EvaluationContext ctx)
+    {
+        if ("empty".equals(function))
+        {
+            return BroadcastFold.Verdict.TRUE;
+        }
+        if ("is_missing".equals(function))
+        {
+            return ctx.getNumericExpectedColumns().contains(name) ? BroadcastFold.Verdict.TRUE
+                    : BroadcastFold.Verdict.FALSE;
+        }
+        return BroadcastFold.Verdict.FALSE;
+    }
+
+
+    /**
      * The constant a row-constant {@code empty}-family leaf evaluates to over a column of this
      * content ({@link #rowConstant} must hold): {@code empty} TRUE, {@code is_missing} TRUE on a
      * MISSING fill and FALSE on an all-{@code ""} one (D50), {@code non_empty} / {@code present} /
@@ -251,7 +291,7 @@ public final class EmptyColumnCollapse
 
     /**
      * The content of a column PRESENT in the evaluation table's metadata, {@code null} when the
-     * table lacks it (an absent column is never a trigger; inside a collapse it folds by P3).
+     * table lacks it (an absent column triggers through its absent-column constant).
      */
     private static @Nullable ColumnContent presentColumnContent(EvaluationContext ctx, String name)
     {

@@ -364,8 +364,9 @@ public final class FoldCapability
      * enclosing {@code Not}, TRUE) triggers, exactly as at data time
      * ({@code EmptyColumnCollapse.collectLive}).</li>
      * </ul>
-     * An ABSENT column is never a trigger (PACK 4 review HIGH-1, per Q3): it is reported by the
-     * absent-column fold alone, which {@link #absentTrueCapable} censuses.
+     * An ABSENT column triggers exactly like a blank one when its leaf is polarity-live (owner
+     * 2026-10-07); on the census context every ungated column is absent, so {@code blank} covers
+     * both: the generator phrases an ungated trigger "absent or not populated".
      *
      * @param blank
      *            trigger column → TRUE (no residual) or UNKNOWN (a residual remains)

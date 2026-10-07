@@ -110,13 +110,13 @@ class EmptyColumnCollapseTest
                 .colSasMissing("C", "", null).build();
         EvaluationContext ctx = EvaluationContext.builder().table(t).build();
         Expr check = parse("empty(A) and empty(B) and is_missing(C) and empty(ZZ) and empty(DM.A)");
-        assertEquals(Set.of("A"), EmptyColumnCollapse.foldableColumns(check, ctx, Set.of()),
-                "A is all \"\"; B is FILLED; C is row-dependent for is_missing; ZZ is ABSENT (never"
-                        + " a trigger, HIGH-1); DM.A is dotted (R5)");
+        assertEquals(Set.of("A", "ZZ"), EmptyColumnCollapse.foldableColumns(check, ctx, Set.of()),
+                "A is all \"\"; B is FILLED; C is row-dependent for is_missing; ZZ is ABSENT and"
+                        + " empty(ZZ) is live (owner 2026-10-07); DM.A is dotted (R5)");
         assertEquals(Set.of("A", "C"),
                 EmptyColumnCollapse.foldableColumns(parse("empty(A) and empty(C)"), ctx, Set.of()),
                 "empty over \"\" mixed with missing is constant TRUE");
-        assertEquals(Set.of(), EmptyColumnCollapse.foldableColumns(check, ctx, Set.of("a")),
+        assertEquals(Set.of("ZZ"), EmptyColumnCollapse.foldableColumns(check, ctx, Set.of("a")),
                 "Keep_Row_Findings, case-insensitive");
         IDataTable noRows = MockTable.of().name("AE").col("A").build();
         assertEquals(Set.of(), EmptyColumnCollapse.foldableColumns(parse("empty(A)"),
@@ -132,11 +132,15 @@ class EmptyColumnCollapseTest
         IDataTable t = MockTable.of().name("AE").col("AESEV", "SEVERE", "MILD")
                 .col("AEBLANK", "", "").col("AEFULL", "x", "y").build();
         EvaluationContext ctx = EvaluationContext.builder().table(t).build();
-        assertEquals(Set.of(),
+        assertEquals(Set.of("AEBDSYCD"),
                 EmptyColumnCollapse.foldableColumns(
                         parse("empty(AEBDSYCD) and AESEV == \"SEVERE\""), ctx, Set.of()),
-                "HIGH-1 (per Q3): an ABSENT column never triggers — the absent-column fold reports"
-                        + " an absence, the row path keeps a residual's findings per row");
+                "owner 2026-10-07: an ABSENT column triggers iff its leaf is polarity-live —"
+                        + " empty(absent) is TRUE and decides");
+        assertEquals(Set.of(),
+                EmptyColumnCollapse.foldableColumns(parse("empty(AEFULL) and not empty(AEBDSYCD)"),
+                        ctx, Set.of()),
+                "not empty(absent) is FALSE and decides nothing: no trigger (CG0114's CMDOSTXT)");
         assertEquals(Set.of(),
                 EmptyColumnCollapse.foldableColumns(
                         parse("AEBDSYCD != \"X\" and AESEV == \"SEVERE\""), ctx, Set.of()),
