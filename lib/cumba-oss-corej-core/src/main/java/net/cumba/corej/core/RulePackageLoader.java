@@ -292,8 +292,10 @@ public class RulePackageLoader
      */
     public static void validateEmptyColumnCollapse(@Nullable Rule rule)
     {
-        if (rule == null || rule.getOutcome() == null)
+        if (rule == null || rule.getOutcome() == null || rule.getLoadError() != null)
         {
+            // an already-refused rule reports its first diagnosis, not a second one judged on a
+            // half-installed shape (no native expression, no evaluation domain)
             return;
         }
         List<String> errors = new ArrayList<>(

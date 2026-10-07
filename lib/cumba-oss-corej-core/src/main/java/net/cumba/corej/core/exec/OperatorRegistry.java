@@ -5,6 +5,7 @@ import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.cumba.datatable.ColumnContent;
+import net.cumba.datatable.ColumnContentScan;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
@@ -133,7 +134,11 @@ public final class OperatorRegistry
         int colIdx = meta.getColumnIndex(name);
         if (colIdx >= 0)
         {
-            return ctx.getTable().getColumnContent(colIdx);
+            // ⚠ Never let a null answer mean "absent" (PACK 4 review L4): a table that cannot
+            // answer (a plain mock) must fail loudly, not read as an all-empty column.
+            return Objects.requireNonNull(ctx.getTable().getColumnContent(colIdx),
+                    () -> "getColumnContent(" + colIdx + ") answered null on " + meta.getName()
+                            + " — a table must answer the content status");
         }
         IDataTableColumn supp = ctx.suppQualifier(name);
         return supp == null ? null : columnContentOf(supp, ctx.rowCount());
@@ -179,37 +184,12 @@ public final class OperatorRegistry
         {
             return ColumnContent.NO_ROWS;
         }
-        boolean anyFilled = false;
-        boolean allMissing = true;
-        boolean uniform = true;
-        Object first = column.getValue(0);
-        for (int r = 0; r < rowCount; r++)
+        ColumnContentScan.Accumulator acc = new ColumnContentScan.Accumulator();
+        for (int r = 0; r < rowCount && !acc.decided(); r++)
         {
-            if (column.isEmptyOrMissing(r))
-            {
-                if (allMissing && !column.isMissingOrNull(r))
-                {
-                    allMissing = false;
-                }
-            }
-            else
-            {
-                anyFilled = true;
-                allMissing = false;
-            }
-            if (uniform && r > 0 && !Objects.equals(column.getValue(r), first))
-            {
-                uniform = false;
-            }
-            if (anyFilled && !uniform)
-            {
-                break;
-            }
+            acc.add(column.isEmptyOrMissing(r), column.isMissingOrNull(r), column.getValue(r));
         }
-        ColumnContent.Fill fill = anyFilled ? ColumnContent.Fill.FILLED
-                : allMissing ? ColumnContent.Fill.MISSING : ColumnContent.Fill.EMPTY;
-        return new ColumnContent(fill, uniform ? ColumnContent.Uniformity.SINGLE_VALUE
-                : ColumnContent.Uniformity.MULTI_VALUES);
+        return acc.result();
     }
 
 

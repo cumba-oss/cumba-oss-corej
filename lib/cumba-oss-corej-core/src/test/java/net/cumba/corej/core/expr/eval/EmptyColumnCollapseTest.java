@@ -82,6 +82,28 @@ class EmptyColumnCollapseTest
 
 
     @Test
+    void aLeafInsideATargetTableReaderNamesTheOtherTablesColumnAndNeverTriggers()
+    {
+        // PACK 4 review MED-2: record_count(domain="EX", filter=(empty(EXDOSE))) reads EX, so
+        // its empty(EXDOSE) is no leaf over the evaluation table even if AE happens to carry a
+        // blank EXDOSE; the same for every domain= reader and the grouped aggregates.
+        IDataTable ae = MockTable.of().name("AE").col("AEBDSYCD", "", "").col("EXDOSE", "", "")
+                .build();
+        EvaluationContext ctx = EvaluationContext.builder().table(ae).build();
+        Expr check = parse(
+                "empty(AEBDSYCD) and record_count(domain=\"EX\", filter=(empty(EXDOSE))) > 0");
+        assertEquals(Set.of("AEBDSYCD"), EmptyColumnCollapse.foldableColumns(check, ctx, Set.of()),
+                "EXDOSE is EX's column inside the reader, never a trigger on AE");
+        assertEquals(Set.of("AEBDSYCD"), FoldCapability.plainColumnLeafNames(check),
+                "and no R2 leaf either");
+        assertEquals(Set.of(),
+                FoldCapability.plainColumnLeafNames(
+                        parse("read_value(EXDOSE, domain=\"EX\", filter=(empty(EXSTDTC))) == \"1\""
+                                + " and max(EXDOSE, domain=\"EX\", group=[USUBJID]) > 1")));
+    }
+
+
+    @Test
     void foldableColumnsReadsThePresentColumnsOfTheEvaluationTable()
     {
         IDataTable t = MockTable.of().name("AE").col("A", "", "").col("B", "x", "")

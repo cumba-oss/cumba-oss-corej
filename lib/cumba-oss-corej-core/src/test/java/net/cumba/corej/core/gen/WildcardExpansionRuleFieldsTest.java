@@ -3,6 +3,7 @@ package net.cumba.corej.core.gen;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -111,8 +112,40 @@ class WildcardExpansionRuleFieldsTest
         Outcome outcome = new Outcome();
         outcome.setMessage("TRTxxP is empty");
         outcome.setOutputVariables(List.of("TRTxxP"));
+        outcome.setMessageFolded("TRTxxP is empty on every record");
+        outcome.setKeepRowFindings(List.of("TRTxxP"));
         rule.setOutcome(outcome);
         return rule;
+    }
+
+
+    /**
+     * PACK 4 review HIGH-1 (PLAN-present-empty-column-fold): the expansion rebuilds {@code Outcome}
+     * field by field too, so a key the rebuild forgets is dropped from every child — measured for
+     * {@code Message_Folded} / {@code Keep_Row_Findings} on the 72 opted-in y / zz templates.
+     * Reflective over the bean's Jackson view, so the NEXT Outcome key cannot drop silently: every
+     * property of the template's Outcome must appear on the child with the wildcard substituted in
+     * its text leaves ({@code xx} → {@code 01}).
+     */
+    @Test
+    void everyOutcomePropertySurvivesTheExpansionWithTheWildcardSubstituted()
+    {
+        Rule concrete = expandOnce(authoredTemplate());
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.JsonNode templateView = mapper
+                .valueToTree(authoredTemplate().getOutcome());
+        com.fasterxml.jackson.databind.JsonNode concreteView = mapper
+                .valueToTree(concrete.getOutcome());
+        assertTrue(templateView.size() >= 4,
+                "the fixture must set every Outcome key: " + templateView);
+        java.util.Iterator<String> names = templateView.fieldNames();
+        while (names.hasNext())
+        {
+            String field = names.next();
+            String expected = templateView.get(field).toString().replace("xx", "01");
+            assertEquals(expected, String.valueOf(concreteView.get(field)),
+                    "Outcome." + field + " must survive the expansion, substituted");
+        }
     }
 
 

@@ -1416,6 +1416,22 @@ public final class WildcardExpander
         {
             outcome.setOutputVariables(outputVars);
         }
+        // PACK 4 review HIGH-1 (PLAN-present-empty-column-fold): the two opt-in keys of the
+        // collapse travel like their siblings — Message_Folded substituted like Message,
+        // Keep_Row_Findings renamed like Output_Variables — or every y / zz expansion of an
+        // opted-in template silently loses its fold (WildcardExpansionRuleFieldsTest pins every
+        // Outcome property reflectively, so the next key cannot drop).
+        if (template.getOutcome() != null)
+        {
+            outcome.setMessageFolded(
+                    substituteInText(template.getOutcome().getMessageFolded(), nameMap));
+            List<String> keep = template.getOutcome().getKeepRowFindings();
+            if (keep != null)
+            {
+                outcome.setKeepRowFindings(
+                        keep.stream().map(v -> OutputVariableToken.mapName(v, rename)).toList());
+            }
+        }
         rule.setOutcome(outcome);
 
         // Scope carries over BY REFERENCE: since PLAN-scope-requirements-split phase 5 every

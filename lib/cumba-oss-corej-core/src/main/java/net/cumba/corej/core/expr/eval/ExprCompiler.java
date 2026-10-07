@@ -44,6 +44,7 @@ import net.cumba.corej.core.metadata.LibraryTemplates;
 import net.cumba.corej.core.metadata.VlmResolver;
 import net.cumba.corej.core.model.NextRecordRelation;
 import net.cumba.datatable.ColumnContent;
+import net.cumba.datatable.ColumnContentScan;
 import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
@@ -4358,48 +4359,19 @@ public final class ExprCompiler
         {
             return ColumnContent.NO_ROWS;
         }
-        boolean anyFilled = false;
-        boolean allMissing = true;
-        boolean uniform = true;
-        Object first = joinedCellKey(column.value(0));
-        for (int r = 0; r < rowCount; r++)
+        ColumnContentScan.Accumulator acc = new ColumnContentScan.Accumulator();
+        for (int r = 0; r < rowCount && !acc.decided(); r++)
         {
             TypedValue tv = column.value(r);
             IDataValue dv = tv.cell();
             boolean missing = tv.isMissing() || dv.isMissingOrInvalid();
-            if (!missing && !dv.getValueAsString().isEmpty())
-            {
-                anyFilled = true;
-                allMissing = false;
-            }
-            else if (!missing)
-            {
-                allMissing = false;
-            }
-            if (uniform && r > 0 && !Objects.equals(joinedCellKey(tv), first))
-            {
-                uniform = false;
-            }
-            if (anyFilled && !uniform)
-            {
-                break;
-            }
+            boolean blank = missing || dv.getValueAsString().isEmpty();
+            // a missing cell compares by its marker (the typed read's, else the cell's raw
+            // value, which ColumnContentScan.normalise reads as the missing value it stands for)
+            Object value = tv.isMissing() ? tv.missing() : dv.getValue();
+            acc.add(blank, missing, value);
         }
-        ColumnContent.Fill fill = anyFilled ? ColumnContent.Fill.FILLED
-                : allMissing ? ColumnContent.Fill.MISSING : ColumnContent.Fill.EMPTY;
-        return new ColumnContent(fill, uniform ? ColumnContent.Uniformity.SINGLE_VALUE
-                : ColumnContent.Uniformity.MULTI_VALUES);
-    }
-
-
-    /** The value a joined cell compares by: its missing marker, else its raw value. */
-    private static @Nullable Object joinedCellKey(TypedValue tv)
-    {
-        if (tv.isMissing())
-        {
-            return tv.missing();
-        }
-        return tv.cell().getValue(); // a missing cell's raw value is its MissingValue
+        return acc.result();
     }
 
 

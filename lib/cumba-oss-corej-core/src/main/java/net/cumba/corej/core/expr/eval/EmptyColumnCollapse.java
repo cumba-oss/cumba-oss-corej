@@ -146,10 +146,14 @@ public final class EmptyColumnCollapse
         }
         case Expr.Call c ->
         {
-            if (net.cumba.corej.core.exec.JoinedRowFold.isQuantifier(c.name()))
+            if (net.cumba.corej.core.exec.JoinedRowFold.isQuantifier(c.name())
+                    || readsAnotherTable(c))
             {
-                // A leaf under joined(…) / any / all / none reads the joined rows, not a column
-                // of the evaluation table as the row path reads it: never a trigger (R5).
+                // Never a trigger: a leaf under any / all / none over joined(…) is evaluated per
+                // joined row of the merged table — a column that IS a column of the evaluation
+                // table, but the quantifier's verdict depends on the row set it folds, not on the
+                // leaf alone (kept out deliberately; R5's spirit) — and a leaf inside a
+                // target-table reader names the other table's column (MED-2).
                 return;
             }
             String name = plainColumnLeaf(c);
@@ -185,7 +189,34 @@ public final class EmptyColumnCollapse
     {
         DataTableMeta meta = ctx.getTable().getMetaData();
         int idx = meta.getColumnIndex(name);
-        return idx < 0 ? null : ctx.getTable().getColumnContent(idx);
+        // ⚠ Never let a null answer mean "absent" (PACK 4 review L4): a table that cannot answer
+        // (a plain mock) must fail loudly, or an opted-in rule silently loses its collapse.
+        return idx < 0 ? null
+                : java.util.Objects.requireNonNull(ctx.getTable().getColumnContent(idx),
+                        () -> "getColumnContent(" + idx + ") answered null on " + meta.getName()
+                                + " — a table must answer the content status");
+    }
+
+
+    /**
+     * Whether a call reads ANOTHER table's columns: the target-table readers ({@code read_value},
+     * {@code record_count}, {@code distinct}, the grouped aggregates {@code max} / {@code max_date}
+     * / {@code min_date}) and any call carrying a {@code domain=} keyword. A leaf inside such a
+     * call's arguments ({@code record_count(domain="EX", filter=(empty(EXDOSE)))}) names a column
+     * of THAT table, never of the evaluation table, so it is no collapse trigger and no R2 leaf
+     * (PACK 4 review MED-2).
+     *
+     * @param c
+     *            the call
+     * @return whether its arguments are read against another table
+     */
+    public static boolean readsAnotherTable(Expr.Call c)
+    {
+        return net.cumba.corej.core.exec.ReadValue.NAME.equals(c.name())
+                || net.cumba.corej.core.exec.RecordCount.NAME.equals(c.name())
+                || net.cumba.corej.core.exec.Distinct.NAME.equals(c.name())
+                || net.cumba.corej.core.exec.GroupedAggregate.isFunction(c.name())
+                || c.kwargs().containsKey("domain");
     }
 
 

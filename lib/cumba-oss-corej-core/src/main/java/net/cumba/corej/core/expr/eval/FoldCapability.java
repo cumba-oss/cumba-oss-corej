@@ -873,8 +873,11 @@ public final class FoldCapability
         }
         case Expr.Call c ->
         {
-            if (net.cumba.corej.core.exec.JoinedRowFold.isQuantifier(c.name()))
+            if (net.cumba.corej.core.exec.JoinedRowFold.isQuantifier(c.name())
+                    || EmptyColumnCollapse.readsAnotherTable(c))
             {
+                // the same exclusions as the data-time walk (EmptyColumnCollapse): a quantifier
+                // body, and a target-table reader's arguments (MED-2)
                 return;
             }
             String name = EmptyColumnCollapse.plainColumnLeaf(c);
