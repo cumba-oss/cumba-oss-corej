@@ -396,6 +396,40 @@ class EmptyColumnCollapseRunnerTest
 
 
     @Test
+    @DisplayName("OWNER refinement 2026-10-07 — a collapse only when EVERY polarity-live leaf is decided")
+    void collapseOnlyWhenEveryLiveLeafIsDecided()
+    {
+        // FDA-SD0021 on AE: AEENRF / AEENRTPT / AEDUR absent (decided), AEENDTC present and
+        // filled on some records (varies) — the rule stays PER ROW, count unchanged; the text
+        // "… absent or not populated in any record …" would be false here and never prints.
+        String sd0021 = "empty(AEENDTC) and empty(AEENRF) and empty(AEENRTPT) and empty(AEDUR)";
+        IDataTable endtcVaries = MockTable.of().name("AE").col("USUBJID", "01", "02", "03", "04")
+                .col("AEENDTC", "2020-01-01", "", "", "2020-02-02").build();
+        assertPerRow(run(rule("C7-SD0021", sd0021, FOLDED, List.of()), endtcVaries), 2);
+        // Every end column absent: every live leaf decided — one finding, the text true.
+        IDataTable allAbsent = MockTable.of().name("MH").col("USUBJID", "01", "02", "03").build();
+        assertCollapsedOnAbsent(run(rule("C7-SD0021", sd0021, FOLDED, List.of()), allAbsent), 0);
+        // Present and blank on every record counts as decided too (mixed with absent).
+        IDataTable endtcBlank = MockTable.of().name("AE").col("USUBJID", "01", "02", "03")
+                .col("AEENDTC", "", "", "").build();
+        assertCollapsedOnAbsent(run(rule("C7-SD0021", sd0021, FOLDED, List.of()), endtcBlank), 0);
+        // CDISC-CG0082 on MH: `not empty(--BODSYS)` is not live, `empty(--BDSYCD)` is the only
+        // live leaf and its column is absent — decided — one finding (the control).
+        IDataTable mh = MockTable.of().name("MH").col("USUBJID", "01", "02", "03")
+                .col("MHBODSYS", "Cardiac", "", "Renal").build();
+        assertCollapsedOnAbsent(
+                run(rule("C7-CG0082", "not empty(MHBODSYS) and empty(MHBDSYCD)", FOLDED, List.of()),
+                        mh),
+                0);
+        // Two live leaves in an Or, one varying: per row.
+        IDataTable orVaries = MockTable.of().name("AE").col("USUBJID", "01", "02", "03")
+                .col("AEBDSYCD", "", "x", "").build();
+        assertPerRow(run(rule("C7-OR", "empty(AEBDSYCD) or empty(AESOCCD)", FOLDED, List.of()),
+                orVaries), 3);
+    }
+
+
+    @Test
     @DisplayName("HIGH-1 (polarity) — a leaf constant FALSE over a blank column decides nothing and is no trigger")
     void aNegatedLeafOverABlankColumnIsNoTrigger()
     {

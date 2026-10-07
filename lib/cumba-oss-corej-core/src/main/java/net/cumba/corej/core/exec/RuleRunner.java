@@ -1662,12 +1662,21 @@ public final class RuleRunner
                 {
                     return datasetBroadcastResult(ruleId, message, outputVars, ctx, true, false);
                 }
-                if (messageFolded != null)
+                // Owner refinement 2026-10-07: the absence folds only when EVERY polarity-live
+                // empty-family leaf of the Check is decided (its column absent or blank on every
+                // record) — `empty(A) or empty(B)` with B absent and A varying is TRUE on every
+                // record, but A's leaf still varies, so the rule stays per row (one finding per
+                // record, under Message); the collapse below applies the same test.
+                if (messageFolded != null
+                        && net.cumba.corej.core.expr.eval.EmptyColumnCollapse.everyLiveLeafDecided(
+                                foldExpr, ctx, net.cumba.corej.core.expr.eval.EmptyColumnCollapse
+                                        .resolveKeepRowFindings(rule.getOutcome(), ctx)))
                 {
                     return datasetBroadcastResult(ruleId, messageFolded, outputVars, ctx, true,
                             true);
                 }
-                // absent-decided, no key: the per-row path below (Q6)
+                // absent-decided without the key, or a live leaf still varying: the per-row path
+                // below (Q6, the 2026-10-07 refinement)
             }
         }
 

@@ -409,13 +409,16 @@ public final class FoldCapability
         {
             // the same polarity-aware walk the runtime takes (EmptyColumnCollapse.collectLive),
             // every plain empty-family leaf column assumed blank on every record
-            Set<String> live = new LinkedHashSet<>();
+            // every plain empty-family leaf column assumed blank on every record: every live leaf
+            // is decided, and the columns named are ALL the live leaves — the refinement (owner
+            // 2026-10-07) folds only when every one of them is decided at data time
+            EmptyColumnCollapse.LiveLeaves acc = new EmptyColumnCollapse.LiveLeaves();
             EmptyColumnCollapse.collectLive(root, false, keepRowFindings,
                     (c, name) -> "empty".equals(c.name()) || "is_missing".equals(c.name())
                             ? BroadcastFold.Verdict.TRUE
                             : BroadcastFold.Verdict.FALSE,
-                    live);
-            for (String x : live)
+                    acc);
+            for (String x : acc.columns)
             {
                 if (blank.containsKey(x))
                 {

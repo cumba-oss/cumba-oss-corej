@@ -271,10 +271,19 @@ public final class LevelInstrument
         {
             return;
         }
-        // the trigger columns are PRESENT and blank on every record (an absent column never
-        // triggers, HIGH-1; inside the collapse it folds by P3 and is not listed here)
-        emit("level-collapse rule=" + ruleIdOf(ctx) + " dataset=" + datasetOf(ctx)
-                + " reason=present-but-empty columns=" + new java.util.TreeSet<>(columns));
+        // the trigger columns are the polarity-live leaves' columns, each ABSENT from the
+        // evaluation table or PRESENT and blank on every record (owner 2026-10-07: a collapse only
+        // when every live leaf is decided); the reason says which of the two, per column
+        java.util.TreeSet<String> absent = new java.util.TreeSet<>();
+        java.util.TreeSet<String> blank = new java.util.TreeSet<>();
+        for (String column : columns)
+        {
+            (ctx.getTable().getMetaData().getColumnIndex(column) < 0 ? absent : blank).add(column);
+        }
+        emit("level-collapse rule=" + ruleIdOf(ctx) + " dataset=" + datasetOf(ctx) + " reason="
+                + (absent.isEmpty() ? "present-but-empty"
+                        : blank.isEmpty() ? "absent" : "absent+present-but-empty")
+                + " columns=" + new java.util.TreeSet<>(columns) + " absent=" + absent);
     }
 
 

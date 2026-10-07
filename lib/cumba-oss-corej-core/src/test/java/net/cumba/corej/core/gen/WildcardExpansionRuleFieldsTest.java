@@ -1,6 +1,7 @@
 package net.cumba.corej.core.gen;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -142,6 +143,10 @@ class WildcardExpansionRuleFieldsTest
         while (names.hasNext())
         {
             String field = names.next();
+            // ⚠ The fixture sets every Outcome key: a null template value would compare equal to
+            // a null the expander dropped and pass vacuously (confirmation look L2).
+            assertFalse(templateView.get(field).isNull(),
+                    "the fixture must set Outcome." + field + ": " + templateView);
             String expected = templateView.get(field).toString().replace("xx", "01");
             assertEquals(expected, String.valueOf(concreteView.get(field)),
                     "Outcome." + field + " must survive the expansion, substituted");

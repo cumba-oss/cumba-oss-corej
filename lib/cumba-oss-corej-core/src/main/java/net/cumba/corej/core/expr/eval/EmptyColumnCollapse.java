@@ -132,18 +132,71 @@ public final class EmptyColumnCollapse
     public static Set<String> foldableColumns(Expr check, EvaluationContext ctx,
             Set<String> keepRowFindings)
     {
-        Set<String> out = new TreeSet<>();
         if (ctx.rowCount() <= 0)
         {
-            return out; // C5: a 0-row table never collapses
+            return new TreeSet<>(); // C5: a 0-row table never collapses
         }
-        collectFoldable(check, ctx, keepRowFindings, out);
-        return out;
+        LiveLeaves live = new LiveLeaves();
+        collectFoldable(check, ctx, keepRowFindings, live);
+        // ⭐ Owner refinement 2026-10-07: a collapse only when EVERY polarity-live leaf is decided —
+        // its column absent or blank on every record. One live leaf still varying per record keeps
+        // the rule per row (FDA-SD0021 on AE: AEENRF / AEENRTPT / AEDUR absent, AEENDTC filled on
+        // some records → per row, count unchanged; on MH every end column absent → one finding).
+        return live.allDecided() ? new TreeSet<>(live.columns) : new TreeSet<>();
     }
 
 
+    /**
+     * Whether every polarity-live {@code empty}-family leaf of {@code check} is decided on
+     * {@code ctx}'s table (owner refinement 2026-10-07) — the test the absent-column fold applies
+     * before it reports an opted-in rule's absent-decided TRUE once ({@code RuleRunner}), the same
+     * one {@link #foldableColumns} applies to the collapse. A Check without a live leaf answers
+     * {@code true} (nothing left to vary: the fold decided through other operators over the absent
+     * column, D111).
+     *
+     * @param check
+     *            the compiled Check
+     * @param ctx
+     *            the evaluation context
+     * @param keepRowFindings
+     *            the resolved {@code Keep_Row_Findings} names
+     * @return whether every live leaf is decided
+     */
+    public static boolean everyLiveLeafDecided(Expr check, EvaluationContext ctx,
+            Set<String> keepRowFindings)
+    {
+        LiveLeaves live = new LiveLeaves();
+        collectFoldable(check, ctx, keepRowFindings, live);
+        // vacuously true without a live leaf: the fold then decided through other operators over
+        // the absent column (`X != "literal"`, D111) and there is no live leaf left to vary
+        return live.decided == live.live;
+    }
+
+    /**
+     * The polarity-live {@code empty}-family leaves of a Check and the ones decided (their column
+     * absent or blank on every record, the leaf's effective constant TRUE): the collapse reports
+     * iff {@link #allDecided()}, naming {@link #columns}.
+     */
+    static final class LiveLeaves
+    {
+
+        /** Polarity-live leaves seen (a leaf counts once per occurrence). */
+        int live;
+
+        /** Live leaves decided TRUE-effective. */
+        int decided;
+
+        /** The decided leaves' columns, as named in the Check. */
+        final Set<String> columns = new LinkedHashSet<>();
+
+        boolean allDecided()
+        {
+            return live > 0 && decided == live;
+        }
+    }
+
     private static void collectFoldable(Expr e, EvaluationContext ctx, Set<String> keep,
-            Set<String> out)
+            LiveLeaves out)
     {
         collectLive(e, false, keep, (c, name) ->
         {
@@ -194,7 +247,7 @@ public final class EmptyColumnCollapse
      */
     static void collectLive(Expr e, boolean negated, Set<String> keep,
             java.util.function.BiFunction<Expr.Call, String, BroadcastFold.Verdict> constantOf,
-            Set<String> out)
+            LiveLeaves out)
     {
         switch (e)
         {
@@ -202,11 +255,6 @@ public final class EmptyColumnCollapse
         case Expr.And and -> and.parts()
                 .forEach(p -> collectLive(p, negated, keep, constantOf, out));
         case Expr.Or or -> or.parts().forEach(p -> collectLive(p, negated, keep, constantOf, out));
-        case Expr.Binary b ->
-        {
-            collectLive(b.left(), negated, keep, constantOf, out);
-            collectLive(b.right(), negated, keep, constantOf, out);
-        }
         case Expr.Call c ->
         {
             if (net.cumba.corej.core.exec.JoinedRowFold.isQuantifier(c.name())
@@ -220,21 +268,36 @@ public final class EmptyColumnCollapse
                 return;
             }
             String name = plainColumnLeaf(c);
-            if (name != null && !FoldCapability.containsIgnoreCase(keep, name))
+            if (name == null)
             {
-                BroadcastFold.Verdict constant = constantOf.apply(c, name);
-                boolean effectiveTrue = constant == BroadcastFold.Verdict.TRUE;
-                if (constant != BroadcastFold.Verdict.UNKNOWN && effectiveTrue != negated)
-                {
-                    out.add(name);
-                }
+                // L6 (conservative): a leaf inside another call's arguments is not in boolean
+                // position of the Check and is never live.
+                return;
             }
-            c.args().forEach(a -> collectLive(a, negated, keep, constantOf, out));
-            c.kwargs().values().forEach(a -> collectLive(a, negated, keep, constantOf, out));
+            if (FoldCapability.containsIgnoreCase(keep, name))
+            {
+                return;
+            }
+            // the leaf's polarity: empty / is_missing are TRUE over an empty column, the rest
+            // FALSE; negated once per enclosing Not — only a TRUE-polarity leaf is live
+            boolean positive = "empty".equals(c.name()) || "is_missing".equals(c.name());
+            if (positive == negated)
+            {
+                return; // `not empty(X)`, `non_empty(X)`: FALSE over an empty X, decides nothing
+            }
+            out.live++;
+            BroadcastFold.Verdict constant = constantOf.apply(c, name);
+            boolean effectiveTrue = constant == BroadcastFold.Verdict.TRUE;
+            if (constant != BroadcastFold.Verdict.UNKNOWN && effectiveTrue != negated)
+            {
+                out.decided++;
+                out.columns.add(name);
+            }
         }
         default ->
         {
-            // a reference or a literal: no leaf of its own
+            // a comparison (L6: a boolean leaf under `==` / `!=` is not in boolean position), a
+            // reference or a literal: no live leaf of its own
         }
         }
     }

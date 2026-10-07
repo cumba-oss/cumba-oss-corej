@@ -110,24 +110,29 @@ class EmptyColumnCollapseTest
                 .colSasMissing("C", "", null).build();
         EvaluationContext ctx = EvaluationContext.builder().table(t).build();
         Expr check = parse("empty(A) and empty(B) and is_missing(C) and empty(ZZ) and empty(DM.A)");
-        assertEquals(Set.of("A", "ZZ"), EmptyColumnCollapse.foldableColumns(check, ctx, Set.of()),
-                "A is all \"\"; B is FILLED; C is row-dependent for is_missing; ZZ is ABSENT and"
-                        + " empty(ZZ) is live (owner 2026-10-07); DM.A is dotted (R5)");
+        assertEquals(Set.of(), EmptyColumnCollapse.foldableColumns(check, ctx, Set.of()),
+                "B is FILLED and C row-dependent for is_missing: two live leaves still vary, so"
+                        + " nothing collapses (owner refinement 2026-10-07)");
+        Expr decided = parse("empty(A) and empty(ZZ) and empty(DM.A)");
+        assertEquals(Set.of("A", "ZZ"), EmptyColumnCollapse.foldableColumns(decided, ctx, Set.of()),
+                "A is all \"\"; ZZ is ABSENT and empty(ZZ) is live (owner 2026-10-07); DM.A is dotted"
+                        + " (R5): every live leaf decided");
         assertEquals(Set.of("A", "C"),
                 EmptyColumnCollapse.foldableColumns(parse("empty(A) and empty(C)"), ctx, Set.of()),
                 "empty over \"\" mixed with missing is constant TRUE");
-        assertEquals(Set.of("ZZ"), EmptyColumnCollapse.foldableColumns(check, ctx, Set.of("a")),
+        assertEquals(Set.of("ZZ"), EmptyColumnCollapse.foldableColumns(decided, ctx, Set.of("a")),
                 "Keep_Row_Findings, case-insensitive");
         IDataTable noRows = MockTable.of().name("AE").col("A").build();
         assertEquals(Set.of(), EmptyColumnCollapse.foldableColumns(parse("empty(A)"),
                 EvaluationContext.builder().table(noRows).build(), Set.of()), "C5");
     }
 
-    // ---- HIGH-1: an absent column is never a trigger; only polarity-live leaves are -----------
+    // ---- Owner 2026-10-07: only a polarity-live leaf triggers, absent or blank alike, and only
+    // ---- when EVERY live leaf is decided ----------------------------------------------------
 
 
     @Test
-    void anAbsentColumnIsNeverATriggerAndOnlyAPolarityLiveLeafIs()
+    void onlyAPolarityLiveLeafTriggersAndOnlyWhenEveryLiveLeafIsDecided()
     {
         IDataTable t = MockTable.of().name("AE").col("AESEV", "SEVERE", "MILD")
                 .col("AEBLANK", "", "").col("AEFULL", "x", "y").build();
@@ -168,5 +173,17 @@ class EmptyColumnCollapseTest
                 EmptyColumnCollapse.foldableColumns(
                         parse("var_exists(AEBDSYCD) and AESEV == \"SEVERE\""), ctx, Set.of()),
                 "a presence fact is not an empty-family leaf: not a trigger");
+        assertEquals(Set.of(),
+                EmptyColumnCollapse.foldableColumns(parse("empty(AEBLANK) and empty(AEFULL)"), ctx,
+                        Set.of()),
+                "refinement: AEFULL's live leaf varies per record — no collapse while any live leaf"
+                        + " is undecided");
+        assertEquals(Set.of("AEBLANK", "AEBDSYCD"),
+                EmptyColumnCollapse.foldableColumns(parse("empty(AEBLANK) and empty(AEBDSYCD)"),
+                        ctx, Set.of()),
+                "every live leaf decided (one blank, one absent): both are named");
+        assertEquals(Set.of(),
+                EmptyColumnCollapse.foldableColumns(parse("empty(AEBLANK) == true"), ctx, Set.of()),
+                "L6: a boolean leaf under a comparison is not in boolean position — not live");
     }
 }
