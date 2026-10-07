@@ -457,8 +457,8 @@ public final class FoldCapability
         }
         if (roots.isEmpty())
         {
-            // no compiled form (a fixture the native compiler declined): the authored leaves, as
-            // before — the shipped corpus never takes this branch (every shipped rule compiles)
+            // no compiled Check (a rule the native compiler declined, e.g. the shipped ADaM
+            // template rules CDISC-AD0304, CDISC-AD0377 and PMDA-AD0133B): the authored leaves
             for (CheckConditionExpression ce : authoredConditions(specialised))
             {
                 roots.add(ce.expr());
