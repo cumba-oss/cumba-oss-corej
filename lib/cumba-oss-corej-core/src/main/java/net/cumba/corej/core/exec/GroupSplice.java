@@ -4,6 +4,7 @@ import java.io.Serial;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.model.MatchDataset;
 
 /**
@@ -39,6 +40,36 @@ public final class GroupSplice
 
     private GroupSplice()
     {
+    }
+
+    /** The uniqueness-set operators whose argument 0 is a splice list (N15). */
+    private static final java.util.Set<String> UNIQUE_SET_CALLS = java.util.Set.of("is_unique_set",
+            "is_not_unique_set");
+
+    /**
+     * The splice lists {@code call} carries: the member list of {@code is_(not_)unique_set} and the
+     * {@code group=} list of {@code record_count} — the two lists whose {@code $} members
+     * {@link #splice} reads as column NAMES. The bind-time specialiser asks it
+     * ({@code RuleSpecialiser}, {@code PLAN-string-literal-prefix-rewrite} review MED-1): a binding
+     * read there is a name position, so its written {@code --} literal is specialised.
+     *
+     * @param call
+     *            the call
+     * @return the list literals that are spliced (empty when none)
+     */
+    public static List<Expr> spliceLists(Expr.Call call)
+    {
+        Expr list = null;
+        if (UNIQUE_SET_CALLS.contains(call.name()) && !call.args().isEmpty())
+        {
+            list = call.args().get(0);
+        }
+        else if (RecordCount.NAME.equals(call.name()))
+        {
+            list = call.kwargs().get(GroupedAggregate.GROUP_PARAMETER);
+        }
+        return list instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST ? List.of(lit)
+                : List.of();
     }
 
 

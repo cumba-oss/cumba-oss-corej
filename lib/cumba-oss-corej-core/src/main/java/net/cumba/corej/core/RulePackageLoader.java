@@ -794,18 +794,30 @@ public class RulePackageLoader
         // installNativeExpr runs it for a rule WITH a Check and no load error; a Check-less rule's
         // bindings meet every seam here.
         boolean stageAJudged = rule.getCheck() != null;
+        // PLAN-string-literal-prefix-rewrite review MED-2: the seams judge a name-slot argument
+        // that is a name-form binding as the name written there — the SAME inlining
+        // installNativeExpr applies before stage A and the compiler (inlineBoundNames): the Check
+        // against every binding, a binding against the ones authored before it. Without it a
+        // static-string name slot (column_series_metadata's name, cross_dataset_variable_metadata's
+        // domain) refused `$c` here while every other name slot took it (G1).
+        Map<String, net.cumba.corej.core.expr.ast.Expr> bound = net.cumba.corej.core.expr.convert.BindingInliner
+                .compiledExpressions(rule);
         for (CheckCondition level : rule.checkConditions())
         {
-            validateInlineMissingValues(level, stageAJudged);
+            validateInlineMissingValues(level, stageAJudged, bound);
         }
-        validateInlineMissingValues(rule.getPrecondition(), stageAJudged);
+        validateInlineMissingValues(rule.getPrecondition(), stageAJudged, bound);
         // PLAN-binding-expressions R2: an inline call INSIDE a compiled binding is on the inline
         // surface too, and gets the same value / operator rejections.
         List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
         if (compiled != null)
         {
-            compiled.forEach(
-                    binding -> validateInlineMissingValues(binding.expression(), stageAJudged));
+            Map<String, net.cumba.corej.core.expr.ast.Expr> earlier = new LinkedHashMap<>();
+            for (net.cumba.corej.core.model.CompiledBinding binding : compiled)
+            {
+                validateInlineMissingValues(binding.expression(), stageAJudged, earlier);
+                earlier.put(binding.name(), binding.expression());
+            }
         }
         // Review r1 seams L2 (C6): a Match_Datasets Filter is compiled at RUN time (MatchFilter)
         // and never type-walked by stage A, so its registry calls meet every seam here, at load —
@@ -936,7 +948,7 @@ public class RulePackageLoader
      * </p>
      */
     private static void validateInlineMissingValues(@Nullable CheckCondition condition,
-            boolean stageAJudged)
+            boolean stageAJudged, Map<String, net.cumba.corej.core.expr.ast.Expr> bound)
     {
         if (condition == null)
         {
@@ -952,12 +964,13 @@ public class RulePackageLoader
         switch (condition)
         {
         case net.cumba.corej.core.model.CheckConditionExpression expression -> validateInlineMissingValues(
-                expression.expr(), stageAJudged);
+                expression.expr(), stageAJudged, bound);
         case CheckConditionAll all -> all.getConditions()
-                .forEach(c -> validateInlineMissingValues(c, stageAJudged));
+                .forEach(c -> validateInlineMissingValues(c, stageAJudged, bound));
         case CheckConditionAny any -> any.getConditions()
-                .forEach(c -> validateInlineMissingValues(c, stageAJudged));
-        case CheckConditionNot not -> validateInlineMissingValues(not.getCondition(), stageAJudged);
+                .forEach(c -> validateInlineMissingValues(c, stageAJudged, bound));
+        case CheckConditionNot not -> validateInlineMissingValues(not.getCondition(), stageAJudged,
+                bound);
         }
     }
 
@@ -1016,7 +1029,7 @@ public class RulePackageLoader
 
 
     private static void validateInlineMissingValues(net.cumba.corej.core.expr.ast.Expr expr,
-            boolean stageAJudged)
+            boolean stageAJudged, Map<String, net.cumba.corej.core.expr.ast.Expr> bound)
     {
         validateRetiredFunctionNames(expr);
         validateInlineCallShapes(expr);
@@ -1025,7 +1038,7 @@ public class RulePackageLoader
         // Precondition, nested at any depth — meets the compiler's argument seams at load. After
         // the tailored validators above, so their messages keep precedence; ONCE per root (W4 L1:
         // this ran at every level of the walk, re-walking each subtree — quadratic in the depth).
-        validateRegistryCallSeams(expr, stageAJudged);
+        validateRegistryCallSeams(expr, stageAJudged, bound);
     }
 
     /**
@@ -1206,21 +1219,36 @@ public class RulePackageLoader
     private static void validateRegistryCallSeams(net.cumba.corej.core.expr.ast.Expr expr,
             boolean stageAJudged)
     {
+        validateRegistryCallSeams(expr, stageAJudged, Map.of());
+    }
+
+
+    /**
+     * {@link #validateRegistryCallSeams(net.cumba.corej.core.expr.ast.Expr, boolean)}, each call
+     * judged with its name-form binding arguments at name slots written inline ({@code bound}:
+     * binding name → expression; empty for an expression already inlined).
+     */
+    private static void validateRegistryCallSeams(net.cumba.corej.core.expr.ast.Expr expr,
+            boolean stageAJudged, Map<String, net.cumba.corej.core.expr.ast.Expr> bound)
+    {
         switch (expr)
         {
         case net.cumba.corej.core.expr.ast.Expr.And and -> and.parts()
-                .forEach(part -> validateRegistryCallSeams(part, stageAJudged));
+                .forEach(part -> validateRegistryCallSeams(part, stageAJudged, bound));
         case net.cumba.corej.core.expr.ast.Expr.Or or -> or.parts()
-                .forEach(part -> validateRegistryCallSeams(part, stageAJudged));
+                .forEach(part -> validateRegistryCallSeams(part, stageAJudged, bound));
         case net.cumba.corej.core.expr.ast.Expr.Not not -> validateRegistryCallSeams(not.inner(),
-                stageAJudged);
+                stageAJudged, bound);
         case net.cumba.corej.core.expr.ast.Expr.Binary b ->
         {
-            validateRegistryCallSeams(b.left(), stageAJudged);
-            validateRegistryCallSeams(b.right(), stageAJudged);
+            validateRegistryCallSeams(b.left(), stageAJudged, bound);
+            validateRegistryCallSeams(b.right(), stageAJudged, bound);
         }
-        case net.cumba.corej.core.expr.ast.Expr.Call call ->
+        case net.cumba.corej.core.expr.ast.Expr.Call authored ->
         {
+            net.cumba.corej.core.expr.ast.Expr.Call call = bound.isEmpty() ? authored
+                    : net.cumba.corej.core.expr.convert.BindingInliner
+                            .inlineNameSlotBinding(authored, bound);
             try
             {
                 java.util.function.Consumer<net.cumba.corej.core.expr.ast.Expr.Call> tailored = TAILORED_CALL_READERS
@@ -1241,8 +1269,9 @@ public class RulePackageLoader
                 throw new net.cumba.corej.core.expr.RuleDefinitionException(
                         String.valueOf(ex.getMessage()), ex);
             }
-            call.args().forEach(arg -> validateRegistryCallSeams(arg, stageAJudged));
-            call.kwargs().values().forEach(arg -> validateRegistryCallSeams(arg, stageAJudged));
+            call.args().forEach(arg -> validateRegistryCallSeams(arg, stageAJudged, bound));
+            call.kwargs().values()
+                    .forEach(arg -> validateRegistryCallSeams(arg, stageAJudged, bound));
         }
         case net.cumba.corej.core.expr.ast.Expr.Lit lit ->
         {
@@ -1253,7 +1282,7 @@ public class RulePackageLoader
                 {
                     if (item instanceof net.cumba.corej.core.expr.ast.Expr e)
                     {
-                        validateRegistryCallSeams(e, stageAJudged);
+                        validateRegistryCallSeams(e, stageAJudged, bound);
                     }
                 }
             }

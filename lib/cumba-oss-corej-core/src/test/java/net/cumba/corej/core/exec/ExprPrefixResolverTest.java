@@ -197,17 +197,22 @@ class ExprPrefixResolverTest
     }
 
 
-    private static List<Long> fired(String check, String bindingName, String bindingExpr)
+    private static Rule load(String check, String... bindings)
     {
-        String json = "{\"rules\":{\"R\":{\"Core\":{\"Id\":\"T-SLP\"},\"Sensitivity\":\"Record\","
-                + "\"Bindings\":[{\"name\":\"" + bindingName + "\",\"expression\":\""
-                + esc(bindingExpr) + "\"}],\"Check\":{\"expression\":\""
-                + esc("not empty(USUBJID) and (" + check + ")")
-                + "\"},\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}";
+        StringBuilder json = new StringBuilder(
+                "{\"rules\":{\"R\":{\"Core\":{\"Id\":\"T-SLP\"},\"Sensitivity\":\"Record\",\"Bindings\":[");
+        for (int i = 0; i < bindings.length; i += 2)
+        {
+            json.append(i == 0 ? "" : ",").append("{\"name\":\"").append(bindings[i])
+                    .append("\",\"expression\":\"").append(esc(bindings[i + 1])).append("\"}");
+        }
+        json.append("],\"Check\":{\"expression\":\"")
+                .append(esc("not empty(USUBJID) and (" + check + ")"))
+                .append("\"},\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}");
         Rule r;
         try
         {
-            r = RulePackageLoader.loadFromString(json).getRules().get("R");
+            r = RulePackageLoader.loadFromString(json.toString()).getRules().get("R");
         }
         catch (IOException e)
         {
@@ -215,7 +220,20 @@ class ExprPrefixResolverTest
         }
         assertNotNull(r);
         assertNull(r.getLoadError(), r.getLoadError());
-        IDataTable primary = ae();
+        return r;
+    }
+
+
+    private static List<Long> fired(String check, String bindingName, String bindingExpr)
+    {
+        return fired(ae(), check, bindingName, bindingExpr);
+    }
+
+
+    private static List<Long> fired(IDataTable primary, String check, String bindingName,
+            String bindingExpr)
+    {
+        Rule r = load(check, bindingName, bindingExpr);
         RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
                 RealTables.inventoryOf(primary), "AE");
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
@@ -242,5 +260,101 @@ class ExprPrefixResolverTest
         assertEquals(List.of(1L), fired("AETERM == $c", "$c", "\"--SEQ\""));
         assertEquals(fired("AETERM == \"--SEQ\"", "$c", "\"--SEQ\""),
                 fired("AETERM == $c", "$c", "\"--SEQ\""));
+    }
+
+    // ------------------------------------------------------------------ fold: the $-splice (MED-1)
+
+
+    /** AE with a duplicated (USUBJID, AESEQ) pair on rows 1 and 2. */
+    private static IDataTable duplicated()
+    {
+        return RealTables.of("AE").str("USUBJID", "S1", "S1", "S2").lng("AESEQ", 1L, 1L, 2L)
+                .str("AETERM", "a", "b", "c").build();
+    }
+
+
+    /**
+     * Review MED-1: a {@code $}-member of a splice list ({@code is_unique_set([…, $k])},
+     * {@code record_count(group=[…, $k])}) is a column NAME at run time ({@code GroupSplice}); a
+     * binding that holds a written {@code --} name answers there as the name written in the list —
+     * {@code $k: "--SEQ"} is {@code --SEQ}, specialised to {@code AESEQ}, never a D77b error.
+     */
+    @Test
+    void aBoundNameAtASpliceMemberAnswersAsTheNameWrittenInTheList()
+    {
+        assertEquals(List.of(1L, 2L),
+                fired(duplicated(), "not is_unique_set([USUBJID, --SEQ])", "$k", "\"--SEQ\""));
+        assertEquals(fired(duplicated(), "not is_unique_set([USUBJID, --SEQ])", "$k", "\"--SEQ\""),
+                fired(duplicated(), "not is_unique_set([USUBJID, $k])", "$k", "\"--SEQ\""));
+        assertEquals(List.of(1L, 2L),
+                fired(duplicated(), "record_count(group=[USUBJID, --SEQ]) > 1", "$k", "\"--SEQ\""));
+        assertEquals(
+                fired(duplicated(), "record_count(group=[USUBJID, --SEQ]) > 1", "$k", "\"--SEQ\""),
+                fired(duplicated(), "record_count(group=[USUBJID, $k]) > 1", "$k", "\"--SEQ\""));
+        // a list binding of written names splices element by element, each specialised
+        assertEquals(List.of(1L, 2L), fired(duplicated(), "record_count(group=[$k]) > 1", "$k",
+                "[\"USUBJID\", \"--SEQ\"]"));
+    }
+
+    // ------------------------------------------------------------------ fold: S8 reach (MED-2)
+
+
+    /** The loaded Check of {@code check} — after the loader's name-slot inlining. */
+    private static String loadedCheck(String check, String bindingName, String bindingExpr)
+    {
+        Expr loaded = load(check, bindingName, bindingExpr).getCheckExpr();
+        assertNotNull(loaded, check);
+        return ExpressionPrinter.print(loaded);
+    }
+
+
+    /**
+     * Review MED-2: a name-form binding at every name-slot family is the name written there (G1) —
+     * the metadata accessors' name, the static-string name / domain of the list functions, the VLM
+     * accessors, {@code max_value_length}, {@code find_vars}. Before S8 the first three were load
+     * refusals.
+     */
+    @Test
+    void aBoundNameAtEveryNameSlotFamilyIsTheNameWrittenThere()
+    {
+        String[][] pairs =
+        {
+                {
+                        "var_label($c, \"DATA\") == \"x\"",
+                        "var_label(\"--TERM\", \"DATA\") == \"x\""
+                },
+                {
+                        "column_series_metadata($c, name_pattern=\"^X[0-9]+$\") == true",
+                        "column_series_metadata(\"--TERM\", name_pattern=\"^X[0-9]+$\") == true"
+                },
+                {
+                        "vlm_length($c) > 1", "vlm_length(\"--TERM\") > 1"
+                },
+                {
+                        "max_value_length($c) > 1", "max_value_length(\"--TERM\") > 1"
+                },
+                {
+                        "not empty(colref(find_vars($c)))",
+                        "not empty(colref(find_vars(\"--TERM\")))"
+                }
+        };
+        for (String[] pair : pairs)
+        {
+            assertEquals(loadedCheck(pair[1], "$c", "\"--TERM\""),
+                    loadedCheck(pair[0], "$c", "\"--TERM\""), pair[0]);
+        }
+        // cross_dataset_variable_metadata answers a per-variable map, so it lives in a binding:
+        // its domain= reading $d is the name written there
+        Rule bound = load("var_label(\"DATA\") != $m", "$d", "\"DM\"", "$m",
+                "cross_dataset_variable_metadata(\"label\", $d)");
+        Rule inline = load("var_label(\"DATA\") != $m", "$d", "\"DM\"", "$m",
+                "cross_dataset_variable_metadata(\"label\", \"DM\")");
+        assertEquals(ExpressionPrinter.print(inline.getCompiledBindings().get(1).expression()),
+                ExpressionPrinter.print(bound.getCompiledBindings().get(1).expression()));
+        // and evaluated: var_type($c, "DATA") reads AETERM's type, as the inline name does
+        assertEquals(List.of(1L, 2L),
+                fired("var_type($c, \"DATA\") == \"Char\"", "$c", "\"--TERM\""));
+        assertEquals(fired("var_type(\"--TERM\", \"DATA\") == \"Char\"", "$c", "\"--TERM\""),
+                fired("var_type($c, \"DATA\") == \"Char\"", "$c", "\"--TERM\""));
     }
 }

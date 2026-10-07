@@ -192,10 +192,18 @@ public final class RuleSpecialiser
             List<net.cumba.corej.core.model.CompiledBinding> resolved = new ArrayList<>(
                     compiledBindings.size());
             boolean changed = false;
+            // PLAN-string-literal-prefix-rewrite review MED-1: a binding read as a `$` member of
+            // a splice list is a list of column NAMES at run time (GroupSplice), so its written
+            // literal is specialised as at a name slot — `$k: "--TESTCD"` in
+            // is_unique_set([USUBJID, $k]) answers as [USUBJID, --TESTCD] does (G1).
+            Set<String> spliced = splicedBindings(rule);
             for (net.cumba.corej.core.model.CompiledBinding binding : compiledBindings)
             {
-                net.cumba.corej.core.expr.ast.Expr r = ExprPrefixResolver
-                        .resolve(binding.expression(), variablePrefix, datasetPrefix);
+                net.cumba.corej.core.expr.ast.Expr r = spliced.contains(binding.name())
+                        ? ExprPrefixResolver.resolveAsName(binding.expression(), variablePrefix,
+                                datasetPrefix)
+                        : ExprPrefixResolver.resolve(binding.expression(), variablePrefix,
+                                datasetPrefix);
                 changed |= r != binding.expression();
                 resolved.add(r == binding.expression() ? binding : binding.withExpression(r));
             }
@@ -307,6 +315,88 @@ public final class RuleSpecialiser
         copy.setEffectiveOutputVariables(newEffectiveOut);
         copy.setExcludedOutputVariables(newExcludedOut);
         return copy;
+    }
+
+
+    /**
+     * The bindings read as a {@code $} member of a splice list ({@code GroupSplice.spliceLists}) in
+     * the rule's Check (every level), Precondition or another binding.
+     */
+    private static Set<String> splicedBindings(Rule rule)
+    {
+        Set<String> out = new LinkedHashSet<>();
+        List<net.cumba.corej.core.expr.ast.Expr> roots = new ArrayList<>();
+        if (rule.getCheckExpr() != null)
+        {
+            roots.add(rule.getCheckExpr());
+        }
+        if (rule.getCheckLevelExprs() != null)
+        {
+            roots.addAll(rule.getCheckLevelExprs().values());
+        }
+        if (rule.getPreconditionExpr() != null)
+        {
+            roots.add(rule.getPreconditionExpr());
+        }
+        if (rule.getCompiledBindings() != null)
+        {
+            rule.getCompiledBindings().forEach(b -> roots.add(b.expression()));
+        }
+        roots.forEach(root -> collectSpliced(root, out));
+        return out;
+    }
+
+
+    private static void collectSpliced(net.cumba.corej.core.expr.ast.Expr e, Set<String> out)
+    {
+        switch (e)
+        {
+        case net.cumba.corej.core.expr.ast.Expr.Call c ->
+        {
+            for (net.cumba.corej.core.expr.ast.Expr list : GroupSplice.spliceLists(c))
+            {
+                for (Object member : (List<?>) ((net.cumba.corej.core.expr.ast.Expr.Lit) list)
+                        .value())
+                {
+                    if (member instanceof net.cumba.corej.core.expr.ast.Expr.Ref ref
+                            && ref.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF)
+                    {
+                        out.add(ref.name());
+                    }
+                }
+            }
+            c.args().forEach(a -> collectSpliced(a, out));
+            c.kwargs().values().forEach(a -> collectSpliced(a, out));
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Binary b ->
+        {
+            collectSpliced(b.left(), out);
+            collectSpliced(b.right(), out);
+        }
+        case net.cumba.corej.core.expr.ast.Expr.And a -> a.parts()
+                .forEach(p -> collectSpliced(p, out));
+        case net.cumba.corej.core.expr.ast.Expr.Or o -> o.parts()
+                .forEach(p -> collectSpliced(p, out));
+        case net.cumba.corej.core.expr.ast.Expr.Not n -> collectSpliced(n.inner(), out);
+        case net.cumba.corej.core.expr.ast.Expr.Lit lit ->
+        {
+            if (lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST
+                    && lit.value() instanceof List<?> items)
+            {
+                for (Object item : items)
+                {
+                    if (item instanceof net.cumba.corej.core.expr.ast.Expr x)
+                    {
+                        collectSpliced(x, out);
+                    }
+                }
+            }
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Ref _ ->
+        {
+            // a reference splices nothing itself
+        }
+        }
     }
 
 

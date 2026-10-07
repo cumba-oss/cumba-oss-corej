@@ -103,6 +103,9 @@ class NameSlotRosterTest
 
     private static final String NEUTRAL = "a";
 
+    /** A literal of {@link #NAME}'s shape that names nothing in either world. */
+    private static final String SAME_SHAPE = "QQQN";
+
     enum Verdict
     {
         NAME, DATA, REFUSED, AMBIGUOUS, UNPROBEABLE
@@ -195,6 +198,9 @@ class NameSlotRosterTest
 
     private static List<Slot> roster;
 
+    /** The keyword spellings of the positional name slots ({@link #probeKeyword}). */
+    private static final List<Slot> keywords = new ArrayList<>();
+
     @BeforeAll
     static void measure() throws Exception
     {
@@ -238,6 +244,22 @@ class NameSlotRosterTest
         long data = roster.stream().filter(s -> s.verdict() == Verdict.DATA).count();
         assertTrue(names >= 60, "measured name slots: " + names);
         assertTrue(data >= 100, "measured data slots: " + data);
+    }
+
+
+    /**
+     * Review LOW-5: a name slot's keyword spelling ({@code vlm_length(name="X")}) answers as its
+     * positional one or is refused loudly — never silently ignored (DATA), which is what the
+     * {@code vlm_*} / {@code max_value_length} arms did when they read positionals only.
+     */
+    @Test
+    void theKeywordSpellingOfANameSlotIsNeverIgnored()
+    {
+        List<String> ignored = keywords.stream()
+                .filter(s -> s.verdict() != Verdict.NAME && s.verdict() != Verdict.REFUSED)
+                .map(s -> s.key() + " " + s.verdict() + " " + s.detail()).toList();
+        assertEquals(List.of(), ignored);
+        assertTrue(keywords.size() >= 15, "keyword spellings probed: " + keywords.size());
     }
 
 
@@ -294,6 +316,17 @@ class NameSlotRosterTest
                 field("net.cumba.corej.core.expr.eval.BroadcastFold", "EXISTS_CALLS"));
         sets.put("RuleClassifier.VARIABLE_PRESENCE",
                 field("net.cumba.corej.core.exec.RuleClassifier", "VARIABLE_PRESENCE"));
+        // review LOW-4: the other name sets whose argument 0 is a name
+        sets.put("RuleClassifier.DATASET_PRESENCE",
+                field("net.cumba.corej.core.exec.RuleClassifier", "DATASET_PRESENCE"));
+        sets.put("AbsentDatasetSkip.PRESENCE_CALLS",
+                field("net.cumba.corej.core.exec.AbsentDatasetSkip", "PRESENCE_CALLS"));
+        sets.put("BroadcastFold.BROADCAST_COLUMN_PREDICATES",
+                BroadcastFold.BROADCAST_COLUMN_PREDICATES);
+        sets.put("StudyRuleClassifier.STUDY_SAFE_CALLS",
+                field("net.cumba.corej.core.exec.StudyRuleClassifier", "STUDY_SAFE_CALLS"));
+        sets.put("WildcardExpander.EXISTS_NAME_CALLS",
+                field("net.cumba.corej.core.gen.WildcardExpander", "EXISTS_NAME_CALLS"));
         List<String> outside = new ArrayList<>();
         int members = 0;
         for (Map.Entry<String, Set<String>> e : sets.entrySet())
@@ -310,7 +343,7 @@ class NameSlotRosterTest
             }
         }
         assertEquals(List.of(), outside, "argument 0 of every hand-kept name call is a name slot");
-        assertEquals(12, members, "members checked (5 + 1 + 4 + 2)");
+        assertEquals(25, members, "members checked (5 + 1 + 4 + 2 + 2 + 2 + 3 + 2 + 4)");
         // BindingInliner's set is gone: it asks NameSlots (N6)
         assertFalse(java.util.Arrays
                 .stream(Class.forName("net.cumba.corej.core.expr.convert.BindingInliner")
@@ -413,7 +446,13 @@ class NameSlotRosterTest
         {
             for (int i = 0; i < d.parameters().size(); i++)
             {
-                out.add(probe(d, i));
+                Slot positional = probe(d, i);
+                out.add(positional);
+                Slot keyword = positional.verdict() == Verdict.NAME ? probeKeyword(d, i) : null;
+                if (keyword != null)
+                {
+                    keywords.add(keyword);
+                }
             }
         }
         for (MetadataAttribute attr : MetadataAttribute.values())
@@ -442,6 +481,67 @@ class NameSlotRosterTest
             return new Slot(d.name(), p.name(), Verdict.REFUSED, "stage A");
         }
         return classify(d.name(), p.name(), planted, control);
+    }
+
+
+    /**
+     * The KEYWORD spelling of a slot the base call binds as its last positional — {@code f(x)}
+     * written {@code f(name=x)} — or {@code null} when the base does not bind it that way (review
+     * LOW-5: a keyword the compiler silently ignores must not pass for a name slot).
+     */
+    private static @Nullable Slot probeKeyword(FunctionDescriptor d, int index)
+    {
+        Parameter p = d.parameters().get(index);
+        Expr base = baseCall(d, p);
+        if (base == null || p.collector())
+        {
+            return null;
+        }
+        Expr.Call target = firstCall(base, d.name());
+        if (target == null || index != target.args().size() - 1)
+        {
+            return null;
+        }
+        Expr planted = asKeyword(base, d, index, lit(NAME));
+        if (stageARefuses(planted, p.name()))
+        {
+            return new Slot(d.name(), p.name() + "=", Verdict.REFUSED, "stage A");
+        }
+        return classify(d.name(), p.name() + "=", planted, asKeyword(base, d, index, lit(NEUTRAL)));
+    }
+
+
+    private static Expr.@Nullable Call firstCall(Expr e, String fn)
+    {
+        List<Expr.Call> found = new ArrayList<>();
+        boolean[] done =
+        {
+                false
+        };
+        replaceCall(e, fn, c ->
+        {
+            found.add(c);
+            return c;
+        }, done);
+        return found.isEmpty() ? null : found.get(0);
+    }
+
+
+    /** {@code base} with its first {@code d} call's last positional moved to its keyword. */
+    private static Expr asKeyword(Expr base, FunctionDescriptor d, int index, Expr value)
+    {
+        Parameter p = d.parameters().get(index);
+        boolean[] done =
+        {
+                false
+        };
+        return replaceCall(base, d.name(), c ->
+        {
+            List<Expr> args = new ArrayList<>(c.args().subList(0, index));
+            Map<String, Expr> kwargs = new LinkedHashMap<>(c.kwargs());
+            kwargs.put(p.name(), value);
+            return new Expr.Call(c.name(), args, kwargs);
+        }, done);
     }
 
 
@@ -476,7 +576,20 @@ class NameSlotRosterTest
         String other = eval(planted, OTHER);
         if (isError(named) && isError(other))
         {
-            return new Slot(fn, parameter, Verdict.REFUSED, named);
+            // refused only when the slot refuses the neutral literal as well (review LOW-3): a
+            // literal that errors where "a" answers is not a refusal of literals but a reading of
+            // THIS literal — unexplained, so the roster may not file it
+            String neutral = eval(control, NAME);
+            if (isError(neutral))
+            {
+                return new Slot(fn, parameter, Verdict.REFUSED, named);
+            }
+            // a value check on the literal's SHAPE (lpad's one-character fill): a literal of the
+            // same shape that names nothing is refused too — a data slot refusing this value
+            String shape = eval(swap(planted, NAME, SAME_SHAPE), NAME);
+            return isError(shape) ? new Slot(fn, parameter, Verdict.REFUSED, named)
+                    : new Slot(fn, parameter, Verdict.AMBIGUOUS,
+                            named + " while the neutral literal answers " + neutral);
         }
         if (named.equals(other))
         {
@@ -647,6 +760,32 @@ class NameSlotRosterTest
             }
             return new Expr.Call(c.name(), args, kwargs);
         }, done);
+    }
+
+
+    /**
+     * {@code e} with every STRING literal {@code from} (list members included) spelled {@code to}.
+     */
+    private static Expr swap(Expr e, String from, String to)
+    {
+        return switch (e)
+        {
+        case Expr.Lit l when l.kind() == Expr.LitKind.STRING && from.equals(l.value()) -> lit(to);
+        case Expr.Lit l when l.kind() == Expr.LitKind.LIST
+                && l.value() instanceof List<?> items -> new Expr.Lit(Expr.LitKind.LIST,
+                        items.stream().map(i -> swap((Expr) i, from, to)).toList());
+        case Expr.Call c ->
+        {
+            List<Expr> args = c.args().stream().map(a -> swap(a, from, to)).toList();
+            Map<String, Expr> kwargs = new LinkedHashMap<>();
+            c.kwargs().forEach((k, v) -> kwargs.put(k, swap(v, from, to)));
+            yield new Expr.Call(c.name(), args, kwargs);
+        }
+        case Expr.Binary b -> new Expr.Binary(b.op(), swap(b.left(), from, to),
+                swap(b.right(), from, to));
+        case Expr.Not n -> new Expr.Not(swap(n.inner(), from, to));
+        default -> e;
+        };
     }
 
 
