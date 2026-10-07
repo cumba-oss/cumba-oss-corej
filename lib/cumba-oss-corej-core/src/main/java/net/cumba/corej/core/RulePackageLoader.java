@@ -7184,7 +7184,7 @@ public class RulePackageLoader
                 if (leftOnly && authored == net.cumba.corej.core.model.JoinType.INNER)
                 {
                     errors.add("[" + ruleId(rule) + "] Join_Type '" + jt + "' on " + entry
-                            + " has no effect — a keyed SUPP-- / SQ-- / RELREC entry always runs"
+                            + " has no effect — a keyed SUPP* / SQ* / RELREC entry always runs"
                             + " as left (every record is kept; an unmatched one reads the entry's"
                             + " columns as not supplied); remove the Join_Type or author \"left\"");
                 }

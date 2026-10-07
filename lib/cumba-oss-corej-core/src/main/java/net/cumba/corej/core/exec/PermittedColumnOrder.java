@@ -33,7 +33,9 @@ import org.jspecify.annotations.Nullable;
  * {@code getDatasetClass(null, cdiscDomain)}, whose {@code null} member skips the Define-XML tier —
  * normalised once; {@code SPECIAL PURPOSE} and {@code SPECIAL-PURPOSE} open it, anything else
  * answers {@code O}. A define declaring {@code AE} special-purpose therefore cannot open it (P5
- * rests on this gate alone).</li>
+ * rests on this gate alone). The gate's class is {@code O}'s class for an IG-defined domain; an
+ * IG-absent domain's {@code O} follows the scope ladder ({@code ScopeClassLadder.classOf}), whose
+ * class may come from tiers this gate does not read.</li>
  * <li><b>The role tables</b>: the model walks of the three general classes, each through the seam
  * {@code get_model_filtered_variables(model_class=)} reads (the class seam, else the legacy
  * class-keyed map with {@code --} substituted), never its SKIP disposition. The <b>Findings</b>

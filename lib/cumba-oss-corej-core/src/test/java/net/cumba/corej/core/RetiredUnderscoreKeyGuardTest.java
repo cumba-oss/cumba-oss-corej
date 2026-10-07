@@ -139,7 +139,7 @@ class RetiredUnderscoreKeyGuardTest
 
 
     @Test
-    void skipIfLibraryDefinedStaysUsableOnACorpusRule() throws IOException
+    void skipIfLibraryDefinedStaysUsableOnAWildcardTemplateRule() throws IOException
     {
         // §9 ruling 2: D is renamed everywhere but remains a legal corpus field — only the `_`
         // spelling is rejected, never the field. Legal on a wildcard TEMPLATE, the only rule that
