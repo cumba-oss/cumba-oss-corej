@@ -184,8 +184,9 @@ public final class AuthoredRuleAssembler
                     path, locations.rangeOf(path)));
         }
         // A parked rule is dropped by the corpus gate before anything is derived for it, so its
-        // Sensitivity is not derived here either (PACK 3 ride-along; the rule editor's
-        // RuleAnalyser used to drop the SENSITIVITY_UNDERIVABLE diagnostic of a parked rule).
+        // Sensitivity is not derived here either (PACK 3 ride-along; the rule editor's analysis in
+        // cumba-corej-rule-editor-rest filtered the SENSITIVITY_UNDERIVABLE diagnostic of a parked
+        // rule itself, a workaround this makes redundant).
         if (!parked)
         {
             try
