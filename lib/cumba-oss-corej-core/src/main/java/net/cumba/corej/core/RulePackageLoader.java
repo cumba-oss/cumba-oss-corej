@@ -1025,9 +1025,16 @@ public class RulePackageLoader
         if (!rootAllowed && expr instanceof net.cumba.corej.core.expr.ast.Expr.Call call
                 && answersPerVariable(call.name()))
         {
+            // PLAN-binding-substitutability Q5 (runbook W1a BS7): the one declared exception to
+            // D3 / D16 that is not a name or a literal — the binding is a CURSOR (D8), so `$x` is
+            // the current variable's value while the inline call is the whole map; the message says
+            // why, so an author does not read it as a shape refusal.
             throw new net.cumba.corej.core.expr.RuleDefinitionException(call.name()
-                    + " answers one value per variable and is read only through a binding: make it"
-                    + " a binding's whole expression and read the binding ($x)");
+                    + " answers one value per variable and is read only through a binding: that"
+                    + " binding is the rule's variable cursor (the rule runs once per variable, $x"
+                    + " is that variable's value), so the inline call — the whole map, not one"
+                    + " value — cannot stand for it; make it a binding's whole expression and read"
+                    + " the binding ($x)");
         }
         childrenOf(expr).forEach(child -> rejectInlinePerVariableCalls(child, false));
     }

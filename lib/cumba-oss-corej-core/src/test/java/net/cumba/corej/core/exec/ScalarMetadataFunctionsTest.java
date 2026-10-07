@@ -444,10 +444,13 @@ class ScalarMetadataFunctionsTest
                 .requireNonNull(RulePackageLoader.loadFromString(json).getRules().get("x"));
         String error = rule.getLoadError();
         assertNotNull(error, "an inline per-variable call must not load");
-        assertTrue(
-                error.contains(
-                        "answers one value per variable and is read only through a" + " binding"),
-                error);
+        // W1a BS7 (PLAN-binding-substitutability Q5): the exact message — it names the
+        // cursor-defining binding and WHY the inline call cannot stand for it.
+        assertEquals("cross_dataset_variable_metadata answers one value per variable and is read"
+                + " only through a binding: that binding is the rule's variable cursor (the rule"
+                + " runs once per variable, $x is that variable's value), so the inline call — the"
+                + " whole map, not one value — cannot stand for it; make it a binding's whole"
+                + " expression and read the binding ($x)", error);
     }
 
 
