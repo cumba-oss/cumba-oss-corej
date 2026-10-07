@@ -90,7 +90,7 @@ public final class StudyRuleClassifier
      * checked recursively.
      */
     private static final Set<String> STUDY_LEVEL_FUNCTIONS = Set.of("dataset_names",
-            "define_dataset_names", "study_domains", "standard_domains", "minus");
+            "define_dataset_names", "study_domains", "standard_domains", "minus", "union");
 
     /**
      * Whether {@code function} names a registry function whose result is a study-level fact — it

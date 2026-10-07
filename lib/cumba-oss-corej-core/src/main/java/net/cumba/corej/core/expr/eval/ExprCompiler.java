@@ -8269,7 +8269,11 @@ public final class ExprCompiler
     private static final Map<String, Set<String>> LIST_EXPRESSION_PARAMETERS = Map.of(
             net.cumba.corej.core.exec.Minus.NAME,
             Set.of(net.cumba.corej.core.exec.Minus.VALUE_PARAMETER,
-                    net.cumba.corej.core.exec.Minus.SUBTRACT_PARAMETER));
+                    net.cumba.corej.core.exec.Minus.SUBTRACT_PARAMETER),
+            net.cumba.corej.core.exec.Union.NAME,
+            Set.of(net.cumba.corej.core.exec.Union.FIRST_PARAMETER,
+                    net.cumba.corej.core.exec.Union.SECOND_PARAMETER,
+                    net.cumba.corej.core.exec.Union.MORE_PARAMETER));
 
     private static Map<String, @Nullable Set<String>> map1(String k1, @Nullable Set<String> v1)
     {
@@ -8446,10 +8450,13 @@ public final class ExprCompiler
         Set<String> listExpressions = LIST_EXPRESSION_PARAMETERS.getOrDefault(descriptor.name(),
                 Set.of());
         List<Parameter> params = descriptor.parameters();
-        for (int i = 0; i < params.size() && i < bound.size(); i++)
+        for (int i = 0; i < bound.size(); i++)
         {
             Expr e = bound.get(i);
-            String name = params.get(i).name();
+            // a collector descriptor binds its operands flat, so the 3rd slot on is the collector's
+            // (PLAN-union-function §3.3: the 4th operand was never checked while this walked
+            // i < params.size()) — the same mapping rejectLiteralColumnArguments uses
+            String name = params.get(Math.min(i, params.size() - 1)).name();
             if (e == null)
             {
                 continue;

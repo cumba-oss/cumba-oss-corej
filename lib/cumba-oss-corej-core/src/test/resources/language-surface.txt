@@ -145,6 +145,7 @@ time_contains(outer:time, inner:time) kind=boolean
 time_overlaps(a:time, b:time) kind=boolean
 trim(x:unknown) kind=value
 tuple(c1:column-reference, c2:column-reference, columns:list<column-reference>?...) kind=value
+union(first:list<unknown>, second:list<unknown>, more:list<list<unknown>>?...) kind=value aggregate
 upcase(x:unknown) kind=value
 upper(x:unknown) kind=value
 valid_codelist_dates(ct_package_types:list<string>?) kind=value aggregate provider=library
@@ -289,6 +290,9 @@ get_model_filtered_variables.model_class: literal {ASSOCIATED PERSONS,EVENTS,FIN
 minus.subtract: binding-or-list
 minus.value: binding-or-list
 row_max.name_pattern: literal
+union.first: binding-or-list
+union.more: binding-or-list
+union.second: binding-or-list
 valid_codelist_dates.ct_package_types: literal-list
 valid_external_dictionary_code.case_sensitive: literal
 valid_external_dictionary_code.dictionary_term_type: literal

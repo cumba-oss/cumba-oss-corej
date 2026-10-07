@@ -1473,6 +1473,15 @@ public final class BuiltinFunctions implements FunctionProvider
                 List.of(p(net.cumba.corej.core.exec.Minus.VALUE_PARAMETER),
                         p(net.cumba.corej.core.exec.Minus.SUBTRACT_PARAMETER)),
                 net.cumba.corej.core.exec.Minus::evaluate, null);
+        // union(a, b, more...) — PLAN-union-function (runbook W1a U1): two or more dataset-level
+        // list operands, typed list<unknown> so stage A refuses a scalar-typed operand
+        // (PARAMETER_TYPE) and joins the element types; the collector takes the 3rd operand on.
+        listFn(fns, net.cumba.corej.core.exec.Union.NAME, List.of(
+                p(net.cumba.corej.core.exec.Union.FIRST_PARAMETER, new ListOf(Unknown.UNKNOWN)),
+                p(net.cumba.corej.core.exec.Union.SECOND_PARAMETER, new ListOf(Unknown.UNKNOWN)),
+                Parameter.collector(net.cumba.corej.core.exec.Union.MORE_PARAMETER,
+                        new ListOf(new ListOf(Unknown.UNKNOWN)))),
+                net.cumba.corej.core.exec.Union::evaluate, null);
     }
 
 

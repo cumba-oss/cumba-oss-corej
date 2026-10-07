@@ -99,19 +99,30 @@ public final class Minus
      */
     private static List<Object> listOperand(@Nullable Vector operand, int rowCount)
     {
+        return normalizeToList(rawOperand(operand, rowCount));
+    }
+
+
+    /**
+     * The value a dataset-level list operand carries — a {@code ConstVector}'s member value,
+     * otherwise row 0's resolved value; {@code null} for an absent operand or a zero-row
+     * non-constant vector. Shared with {@link Union} (its list-only reader keys the same value).
+     */
+    static @Nullable Object rawOperand(@Nullable Vector operand, int rowCount)
+    {
         if (operand == null)
         {
-            return List.of();
+            return null;
         }
         if (operand instanceof ConstVector constant)
         {
-            return normalizeToList(constant.memberValue());
+            return constant.memberValue();
         }
         if (rowCount <= 0)
         {
-            return List.of();
+            return null;
         }
-        return normalizeToList(operand.value(0).resolved());
+        return operand.value(0).resolved();
     }
 
 

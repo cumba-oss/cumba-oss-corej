@@ -295,6 +295,9 @@ class QualifiedNameUniformityTest
             min_date | missing_values | - | static string
             minus | value | - | a $-binding holding a list, never a column
             minus | subtract | - | a $-binding holding a list, never a column
+            union | first | - | a $-binding holding a list or a list literal, never a column (PLAN-union-function)
+            union | second | - | a $-binding holding a list or a list literal, never a column
+            union | more | - | a $-binding holding a list or a list literal, never a column (the collector)
             month | x | N | V:month(@D)
             natural_key_variables | - | - | nullary
             non_empty | x | N | B:non_empty(@S)
@@ -809,14 +812,15 @@ class QualifiedNameUniformityTest
     {
         // +1 descriptor / +2 parameters / +1 accessor since PLAN-library-template-label-resolution
         // (matches_label_template(label, template) and label_template(…, "LIBRARY")).
-        assertEquals(172, FunctionRegistry.all().size(),
+        assertEquals(173, FunctionRegistry.all().size(),
                 "registered descriptors (165 + any / all / none / joined, PLAN-cg0218; + 2"
                         + " column-status predicates, PLAN-present-empty-column-fold; + the nullary"
-                        + " get_permitted_column_order, PLAN-permitted-addition-position)");
-        assertEquals(289,
+                        + " get_permitted_column_order, PLAN-permitted-addition-position; + union,"
+                        + " PLAN-union-function / runbook W1a U1)");
+        assertEquals(292,
                 FunctionRegistry.all().stream().mapToInt(d -> d.parameters().size()).sum(),
                 "declared parameters (283 + one each for any / all / none / joined + one each"
-                        + " for var_is_single_value / var_is_all_missing)");
+                        + " for var_is_single_value / var_is_all_missing + three for union)");
         assertEquals(27, MetadataAttribute.values().length, "metadata accessors");
         assertEquals(Set.of("date", "date_part", "num", "time", "time_part"),
                 new TreeSet<>(ExprCompiler.comparisonMarkers()), "comparison markers");
@@ -844,7 +848,8 @@ class QualifiedNameUniformityTest
         // +4 for the quantifier family (PLAN-cg0218): any / all / none take joined(…), joined
         // takes a condition — none of the four slots can carry a column name itself. +1 for the
         // nullary get_permitted_column_order (PLAN-permitted-addition-position).
-        assertEquals(142, rows.stream().filter(r -> !r.name()).count(), "non-name rows");
+        // +3 for union's three list operands (PLAN-union-function, runbook W1a U1).
+        assertEquals(145, rows.stream().filter(r -> !r.name()).count(), "non-name rows");
     }
 
     // ------------------------------------------------------------------

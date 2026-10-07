@@ -1785,6 +1785,40 @@ public final class StageAChecker
         checkParameterBinding(c, descriptor, children);
         ExprType type = descriptor.kind() == FunctionKind.BOOLEAN ? Primitive.BOOLEAN
                 : resultType(c, children);
+        if (net.cumba.corej.core.exec.Union.NAME.equals(c.name()))
+        {
+            // PLAN-union-function §3.4 (runbook W1a U1): the operands' element types joined as a
+            // list literal joins its elements — unknown contributes nothing, the first known type
+            // wins, an incompatible one is HETEROGENEOUS_LIST and the result list<unknown>
+            ExprType element = Unknown.UNKNOWN;
+            boolean heterogeneous = false;
+            for (TypedExpr child : children)
+            {
+                if (child.type().dereference() instanceof ListOf list)
+                {
+                    ExprType t = list.element();
+                    if (t == Unknown.UNKNOWN)
+                    {
+                        continue;
+                    }
+                    if (element == Unknown.UNKNOWN)
+                    {
+                        element = t;
+                    }
+                    else if (!ExprType.compatible(element, t))
+                    {
+                        heterogeneous = true;
+                    }
+                }
+            }
+            if (heterogeneous)
+            {
+                find(StageAErrorKind.HETEROGENEOUS_LIST, "the operands of union(…) must hold one"
+                        + " element type (spec §1.5); found mixed element types" + at(c));
+                element = Unknown.UNKNOWN;
+            }
+            type = new ListOf(element);
+        }
         // record_count() folds the row axis (§1.4) — by name, historically — and so does every
         // descriptor declared an aggregate (PLAN-binding-expressions §4.1: a ported list-valued
         // callable such as get_codelist_attributes); an aggregate keeps its operands' cursor.
@@ -2409,7 +2443,7 @@ public final class StageAChecker
         }
         case Expr.Call c ->
         {
-            if (net.cumba.corej.core.exec.Minus.NAME.equals(c.name()))
+            if (LIST_SET_FUNCTIONS.contains(c.name()))
             {
                 checkListFunctionCall(c, where);
             }
@@ -2455,11 +2489,24 @@ public final class StageAChecker
                     find(StageAErrorKind.OPERATION_READS_CURSOR_BINDING,
                             "the list function " + c.name() + "(…) in " + where
                                     + " cannot read the per-row or per-variable binding "
-                                    + ref.name() + " — a set difference reads only dataset-level"
-                                    + " lists");
+                                    + ref.name() + " — " + setOperation(c.name())
+                                    + " reads only dataset-level lists");
                 }
             }
         }
+    }
+
+    /**
+     * The set functions whose operands are dataset-level lists ({@code minus}, {@code union} —
+     * {@code PLAN-union-function} §3.4).
+     */
+    private static final Set<String> LIST_SET_FUNCTIONS = Set
+            .of(net.cumba.corej.core.exec.Minus.NAME, net.cumba.corej.core.exec.Union.NAME);
+
+    private static String setOperation(String function)
+    {
+        return net.cumba.corej.core.exec.Union.NAME.equals(function) ? "a set union"
+                : "a set difference";
     }
 
 

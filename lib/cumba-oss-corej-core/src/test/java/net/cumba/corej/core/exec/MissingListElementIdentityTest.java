@@ -89,6 +89,30 @@ class MissingListElementIdentityTest
     }
 
 
+    /**
+     * {@code PLAN-union-function} (runbook W1a U1): the union keys its members by the same identity
+     * {@code minus} removes by — a missing stays itself beside a present ".", and MIS_A ≠ MIS_B.
+     */
+    @Test
+    void unionKeepsAMissingElementBesideAPresentDot()
+    {
+        SyntheticDataTable dm = new SyntheticDataTable("DM", List.of("STUDYID"), new String[]
+        {
+                "S1"
+        }, 1);
+        Object answer = net.cumba.corej.core.exec.Union
+                .evaluate(
+                        net.cumba.corej.core.expr.eval.EvalRun
+                                .fullRange(EvaluationContext.builder().table(dm).build()),
+                        List.of(net.cumba.corej.core.expr.eval.ConstVector
+                                .of(List.of("X", MissingValue.MIS, ".")),
+                                net.cumba.corej.core.expr.eval.ConstVector
+                                        .of(List.of(".", MissingValue.MIS_A, MissingValue.MIS))))
+                .value(0).resolved();
+        assertEquals(List.of("X", MissingValue.MIS, ".", MissingValue.MIS_A), answer);
+    }
+
+
     private static Object minus(List<Object> minuend, List<Object> subtrahend)
     {
         // minus is a registry function since wave 4 (PLAN-list-functions D-W4-4); the claim is

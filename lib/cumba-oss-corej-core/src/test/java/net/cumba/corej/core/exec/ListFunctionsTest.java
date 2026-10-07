@@ -91,11 +91,11 @@ class ListFunctionsTest
         for (String name : List.of(InventoryLists.GET_COLUMN_ORDER_FROM_DATASET,
                 InventoryLists.DATASET_NAMES, InventoryLists.STUDY_DOMAINS,
                 InventoryLists.SPLIT_SIBLING_LENGTH_MISMATCH,
-                InventoryLists.DUPLICATE_LABEL_VARIABLES, Minus.NAME))
+                InventoryLists.DUPLICATE_LABEL_VARIABLES, Minus.NAME, "union"))
         {
             assertNull(descriptor(name).provider(), name + " needs no provider");
         }
-        assertEquals(22, ListFunctionSupport.FUNCTION_NAMES.size());
+        assertEquals(23, ListFunctionSupport.FUNCTION_NAMES.size());
     }
 
     // ============================================================ the LIBRARY walks
@@ -968,6 +968,49 @@ class ListFunctionsTest
         {
             assertLoads(zeroArg + "()");
         }
+    }
+
+    // ============================================================ union (PLAN-union-function)
+
+
+    /**
+     * {@code PLAN-union-function} §3.3 (runbook W1a U1): the list-literal member rule holds at
+     * every operand of a collector call — the 4th and later operands were never checked because the
+     * seam walked {@code i < params.size()} over the flat positional list.
+     */
+    @Test
+    void unionHoldsTheStringLiteralMemberRuleAtEveryOperand() throws Exception
+    {
+        for (String union : List.of("union([DOMAIN], $p)", "union($p, [DOMAIN])",
+                "union($p, $p, [DOMAIN])", "union($p, $p, $p, [DOMAIN])"))
+        {
+            assertLoadError(union, "takes a list of string literals", "\"DOMAIN\"");
+        }
+        Rule ok = rule("not empty($v)", List.of("$v"), "$p", "distinct(TSPARMCD)", "$v",
+                "union($p, [\"A\"], $p, [\"B\"])");
+        assertNull(ok.getLoadError(), "four dataset-level operands load: " + ok.getLoadError());
+        Rule one = rule("not empty($v)", List.of("$v"), "$p", "distinct(TSPARMCD)", "$v",
+                "union($p)");
+        assertNotNull(one.getLoadError(), "union needs two operands");
+        assertTrue(one.getLoadError().contains("requires at least 2 argument(s)"),
+                one.getLoadError());
+    }
+
+
+    @Test
+    void unionIsAStudyLevelListFunctionBesideMinus()
+    {
+        FunctionDescriptor d = Objects.requireNonNull(FunctionRegistry.descriptor("union"),
+                "union is registered");
+        assertTrue(d.aggregate());
+        assertNull(d.provider());
+        assertTrue(d.parameters().get(2).collector(), "more... collects the 3rd operand on");
+        assertEquals(List.of("first", "second", "more"), d.parameters().stream()
+                .map(net.cumba.corej.core.expr.eval.Parameter::name).toList());
+        assertTrue(ListFunctionSupport.FUNCTION_NAMES.contains("union"));
+        assertInstanceOf(ExprType.ListOf.class, ElementTable.resultType("union"));
+        assertTrue(StudyRuleClassifier.isStudyLevelFunction("union"),
+                "a Check over union(…) alone is study-level, as minus");
     }
 
     // ============================================================ rule-level runs

@@ -234,6 +234,59 @@ class StageACheckerTest
     }
 
 
+    /**
+     * {@code PLAN-union-function} §3.4 (runbook W1a U1): {@code union}'s result type is its
+     * operands' element types joined as a list literal joins elements — unknown contributes
+     * nothing, the first known type wins, an incompatible one is {@code HETEROGENEOUS_LIST}; a
+     * scalar-typed operand is {@code PARAMETER_TYPE}; one operand is {@code ARITY}.
+     */
+    @Test
+    void unionJoinsItsOperandsElementTypesAndRefusesAMixedOrScalarOne()
+    {
+        // dataset-level bindings (a derived domain, as the loader installs one): union's level
+        // judgement is OPERATION_READS_CURSOR_BINDING's, not this test's subject
+        Rule lists = new Rule();
+        List<CompiledBinding> bound = new java.util.ArrayList<>();
+        for (String[] b : new String[][]
+        {
+                {
+                        "$a", "[\"A\", \"B\"]"
+                },
+                {
+                        "$b", "distinct(AETERM)"
+                },
+                {
+                        "$n", "[1, 2]"
+                },
+                {
+                        "$s", "upper(AETERM)"
+                }
+        })
+        {
+            bound.add(new CompiledBinding(b[0], CheckExpressionParser.parse(b[1]), List.of(),
+                    net.cumba.corej.core.expr.eval.Domain.DATASET));
+        }
+        lists.setCompiledBindings(bound);
+        StageAReport strings = check(lists, "empty(union($a, $a))");
+        assertEquals(List.of(), kinds(strings));
+        assertEquals("list<string>", root(strings).children().get(0).type().describe());
+        StageAReport unknown = check(lists, "empty(union($a, $b))");
+        assertEquals(List.of(), kinds(unknown));
+        assertEquals("list<string>", root(unknown).children().get(0).type().describe(),
+                "unknown contributes nothing; the first known type wins");
+        StageAReport mixed = check(lists, "empty(union($a, $n))");
+        assertEquals(List.of(StageAErrorKind.HETEROGENEOUS_LIST), kinds(mixed));
+        assertTrue(mixed.findings().get(0).message().contains("union"),
+                mixed.findings().toString());
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check(lists, "empty(union($a, $s))")),
+                "a scalar-typed operand is a type conflict");
+        assertEquals(List.of(StageAErrorKind.ARITY), kinds(check(lists, "empty(union($a))")));
+        assertEquals(List.of(), kinds(check(lists, "AETERM in union($a, [\"C\"], $b)")),
+                "a list literal operand inline, and the membership over the union");
+    }
+
+
     @Test
     void anIllegalAttributeLevelPairIsAStageAError()
     {

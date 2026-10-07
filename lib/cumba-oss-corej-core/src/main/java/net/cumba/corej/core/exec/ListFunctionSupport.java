@@ -47,7 +47,7 @@ public final class ListFunctionSupport
             DefineLists.DEFINE_KEY_VARIABLES, InventoryLists.GET_COLUMN_ORDER_FROM_DATASET,
             InventoryLists.DATASET_NAMES, InventoryLists.STUDY_DOMAINS,
             InventoryLists.SPLIT_SIBLING_LENGTH_MISMATCH, InventoryLists.DUPLICATE_LABEL_VARIABLES,
-            Minus.NAME);
+            Minus.NAME, Union.NAME);
 
     private ListFunctionSupport()
     {

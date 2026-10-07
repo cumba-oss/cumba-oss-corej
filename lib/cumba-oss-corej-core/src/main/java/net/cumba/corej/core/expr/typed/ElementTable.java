@@ -130,6 +130,10 @@ public final class ElementTable
             Map.entry("split_sibling_length_mismatch", new ListOf(Primitive.STRING)),
             Map.entry("duplicate_label_variables", new ListOf(Primitive.STRING)),
             Map.entry("minus", new ListOf(Primitive.STRING)),
+            // PLAN-union-function (runbook W1a U1): union answers one list whose element type is
+            // its operands' (joined by StageAChecker; this name-keyed row routes the inline
+            // `X in union(…)` membership)
+            Map.entry("union", new ListOf(Unknown.UNKNOWN)),
             // runbook W7 (PLAN-distinct-function): distinct answers ONE list — of the column's
             // distinct values, or of the distinct row tuples over a list of columns — a set by
             // content, a list by carrier, whose element type is the target's (Unknown);

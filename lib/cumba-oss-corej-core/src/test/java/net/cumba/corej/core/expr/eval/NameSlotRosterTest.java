@@ -189,6 +189,7 @@ class NameSlotRosterTest
                 "present_on_multiple_rows_within(X, within=USUBJID)");
         BASE.put("printf", "printf(\"%s\", X)");
         BASE.put("minus", "minus([\"a\", \"b\"], [\"a\"])");
+        BASE.put("union", "union([\"a\"], [\"b\"], [\"c\"])");
         BASE.put("tuple", "tuple(X, Y)");
         BASE.put("variable_count", "variable_count(\"X\")");
         BASE.put("variable_count.name_pattern", "variable_count(name_pattern=\"^Q$\")");
