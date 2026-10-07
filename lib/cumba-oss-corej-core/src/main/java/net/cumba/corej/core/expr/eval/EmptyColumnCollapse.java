@@ -63,18 +63,28 @@ import org.jspecify.annotations.Nullable;
  * </table>
  *
  * <p>
- * <b>An ABSENT column of an {@code empty}-family leaf is a trigger too</b>
+ * <b>An ABSENT column of a polarity-live {@code empty}-family leaf is a trigger too</b>
  * ({@code PLAN-message-folded-corpus-alignment} P3, C7 D9 read literally: the sister retirement
- * <i>"makes the collapse treat an absent X like MISSING"</i>). The absent column reads as
- * all-missing on every row (D34 #3/#4, EC-43 / D76), so {@code empty(X)} over it is row-constant
- * TRUE exactly as over a column of fill {@code MISSING}, and the leaf's constant is folded into the
- * per-row verdict as D5's residual asks. ⛔ <b>Any other operator over an absent column stays per
- * row</b> (today's D111 shape): the plan's wider form — every leaf the level calculus folds — was
- * <em>not</em> taken, because it turns an absent <em>guard</em> column ({@code X != "N"} in an
- * {@code or}-branch, a qualifier the domain never carries) into one dataset finding for defects the
- * other conjuncts locate per record, which only a Type 1 verdict per column can rule (authoring
- * guideline §4.4, Q1). Only when the whole Check was left {@code UNKNOWN} by {@link BroadcastFold}
- * does the collapse see it. The calculus is <b>read</b>, never changed.
+ * <i>"makes the collapse treat an absent X like MISSING"</i>; owner ruling 2026-10-07). The absent
+ * column reads as all-missing on every row (D34 #3/#4, EC-43 / D76), so {@code empty(X)} over it is
+ * row-constant TRUE exactly as over a column of fill {@code MISSING}, and the leaf's constant is
+ * folded into the per-row verdict as D5's residual asks. ⛔ <b>Any other operator over an absent
+ * column stays per row</b> (today's D111 shape): the plan's wider form — every leaf the level
+ * calculus folds — was <em>not</em> taken, because it turns an absent <em>guard</em> column
+ * ({@code X != "N"} in an {@code or}-branch, a qualifier the domain never carries) into one dataset
+ * finding for defects the other conjuncts locate per record, which only a Type 1 verdict per column
+ * can rule (authoring guideline §4.4, Q1). Only when the whole Check was left {@code UNKNOWN} by
+ * {@link BroadcastFold} does the collapse see it. The calculus is <b>read</b>, never changed.
+ * </p>
+ *
+ * <p>
+ * <b>A collapse needs EVERY live leaf decided</b> (owner refinement 2026-10-07): a polarity-live
+ * leaf whose column is absent or blank on every record is a trigger; one whose column is filled on
+ * some record blocks the collapse and keeps the rule per row. <b>A leaf in a dead branch is not
+ * live</b> (PACK 4 confirmation MED-1): an {@code And} with a part constant FALSE, an {@code Or}
+ * with a part constant TRUE (presence and dataset facts only, never a column's absence) — its
+ * leaves neither trigger nor block. A column named in {@code Keep_Row_Findings} neither triggers
+ * nor blocks.
  * </p>
  *
  * <p>
@@ -83,8 +93,8 @@ import org.jspecify.annotations.Nullable;
  * ⇒ 0 findings; constant TRUE ⇔ every row fires ⇒ 1 finding; row-dependent ⇒ 1 finding iff some row
  * fires. No partial evaluator, no second evaluation. A dotted {@code J.X} or SUPP-qualifier
  * argument of a <em>present</em>-column leaf is not a column of the evaluation table and never
- * triggers on its content (R5); a column named in {@code Keep_Row_Findings} never triggers (R1,
- * D9), absent or present; a 0-row table never collapses (C5).
+ * triggers on its content (R5); a column named in {@code Keep_Row_Findings} never triggers nor
+ * blocks (R1, D9), absent or present; a 0-row table never collapses (C5).
  * </p>
  *
  * <p>
