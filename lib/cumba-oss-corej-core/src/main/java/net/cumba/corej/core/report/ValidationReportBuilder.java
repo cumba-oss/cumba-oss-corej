@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import net.cumba.corej.core.exec.OutputEntryKind;
 import net.cumba.corej.core.exec.RecordKeyResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.Violation;
@@ -349,13 +350,19 @@ public final class ValidationReportBuilder
             // column is <DOMAIN>SEQ. Leaving them in put a non-existent column into a field
             // documented as real-columns-only. Entries a rule genuinely declared in its own
             // Output_Variables are kept (see declaredNames).
+            // PLAN-name-only-followups F3: the location names DATA COLUMNS only, so the engine's
+            // metadata vocabulary (OutputEntryKind.isMetadataOrVirtual: variable_*,
+            // define_variable_*, record_count, …) is dropped too. Those entries stay reported
+            // columns (`names`, the values) — only the highlight loses them. The engine filters
+            // them itself because FindingLocations recognises token SHAPES only and cannot see
+            // this vocabulary (the datatable sits below the engine).
             // Name-only first: the collapsed variable used to be hoisted to the front of the
             // schema, so the finding's subject stays the first highlighted column.
             List<String> flaggedCandidates = new ArrayList<>(names.size() + named.size());
             flaggedCandidates.addAll(named);
             flaggedCandidates.addAll(names);
-            List<String> flagged = withoutInjectedIdentity(flaggedCandidates,
-                    declaredNames(aRule, group));
+            List<String> flagged = withoutMetadata(
+                    withoutInjectedIdentity(flaggedCandidates, declaredNames(aRule, group)));
             ValidationFindingLocation location = ValidationFindingLocation.builder()
                     .dataset(aDomain)
                     .variableNames(FindingLocations.columnsFor(scope, flagged, List.of(), Set.of()))
@@ -671,6 +678,29 @@ public final class ValidationReportBuilder
             boolean injectedIdentity = (USUBJID.equalsIgnoreCase(name)
                     || SEQ.equalsIgnoreCase(name)) && !aDeclared.contains(name);
             if (!injectedIdentity)
+            {
+                out.add(name);
+            }
+        }
+        return out;
+    }
+
+
+    /**
+     * Drops the engine's metadata vocabulary from a finding's location candidates
+     * ({@code PLAN-name-only-followups} F3): an entry for which
+     * {@link OutputEntryKind#isMetadataOrVirtual} holds names a metadata attribute or a dataset
+     * virtual, never a column of the data set. The same predicate {@link OutputEntryKind#of} uses
+     * to read such an entry as metadata, so the location and the value read cannot disagree — the
+     * one difference, {@code variable_value}, names the column cursor and is no column either.
+     * Case-sensitive, as the value read is: an upper-case {@code DATASET_NAME} is a column.
+     */
+    private static List<String> withoutMetadata(List<String> aNames)
+    {
+        List<String> out = new ArrayList<>(aNames.size());
+        for (String name : aNames)
+        {
+            if (!OutputEntryKind.isMetadataOrVirtual(name))
             {
                 out.add(name);
             }

@@ -20,7 +20,10 @@ import net.cumba.datatable.report.FindingScope;
 import net.cumba.datatable.report.ValidationFinding;
 import net.cumba.datatable.report.ValidationFindingLocation;
 import net.cumba.datatable.report.ValidationReport;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * {@code PLAN-finding-values-record-level-only} P2 — the report surfaces of the name-only state
@@ -188,11 +191,10 @@ class NameOnlyReportSurfaceTest
                 "the collapsed variable first, then the engine's own list");
         assertEquals("Topic", f.getRows().valueAt(0, 0));
         // The subject stays the first highlighted column (it used to be hoisted to the schema's
-        // front). ⚠ library_variable_role passing FindingLocations.filterColumns is pre-existing:
-        // the shared filter knows token SHAPES, not the engine's metadata names — surfaced, not
-        // changed here.
-        assertEquals(List.of("AETERM", "DOMAIN", "library_variable_role"),
-                f.getLocation().getVariableNames());
+        // front). library_variable_role is a metadata attribute, not a column: it stays reported
+        // above but is not located (PLAN-name-only-followups F3 — the engine drops its own
+        // metadata vocabulary, which the shape-only FindingLocations filter cannot see).
+        assertEquals(List.of("AETERM", "DOMAIN"), f.getLocation().getVariableNames());
         for (int c = 0; c < f.getRows().variableCount(); c++)
         {
             assertTrue(f.getRows().valueAt(0, c) != null, "no null slab cell (S7 retired)");
@@ -494,5 +496,110 @@ class NameOnlyReportSurfaceTest
         Map<String, Object> bareRow = v2Rows(onlyV2Finding(byBareSeq)).get(0);
         assertEquals("", bareRow.get("USUBJID"), "USUBJID is not a group variable here");
         assertEquals("2", bareRow.get("SEQ"), "a bare SEQ key, matched ignoring case");
+    }
+
+    /**
+     * {@code PLAN-name-only-followups} F3 — a finding's location names <b>data columns only</b>: an
+     * entry of the engine's metadata vocabulary ({@code OutputEntryKind.isMetadataOrVirtual} — a
+     * registered builtin or a {@code variable_} / {@code library_variable_} /
+     * {@code define_variable_} / {@code define_vlm_} / {@code dataset_} / {@code library_dataset_}
+     * / {@code define_dataset_} name, or {@code record_count}) stays a reported column
+     * ({@code getVariableNames()}, the values) but is never highlighted. The shared
+     * {@code FindingLocations} filter knows token shapes only, so the engine drops its own
+     * vocabulary before calling it.
+     */
+    @Nested
+    class LocationNamesDataColumnsOnly
+    {
+
+        @ParameterizedTest
+        @ValueSource(strings =
+        {
+                // a registered builtin
+                "define_variable_decode_matches",
+                // the prefix arms, each with a provider-copied key that is NOT a registered
+                // builtin, so the arm itself (not the builtin set) has to catch it
+                "variable_custom_fact", "library_variable_custom_fact",
+                "define_variable_custom_fact", "define_vlm_custom_fact", "dataset_custom_fact",
+                "library_dataset_custom_fact", "define_dataset_custom_fact",
+                // the one exact-name virtual
+                "record_count"
+        })
+        void aMetadataEntryIsReportedButNotLocated(String aToken)
+        {
+            Rule rule = rule("T-F3", Domain.ROW);
+            ValidationFinding f = onlyFinding(rule, result("T-F3",
+                    List.of(record(2, "S1", "1", values("AETERM", "HEADACHE", aToken, "x")))));
+            assertTrue(f.getVariableNames().contains(aToken),
+                    "the report columns are unchanged: " + f.getVariableNames());
+            assertEquals(List.of("AETERM"), f.getLocation().getVariableNames(),
+                    aToken + " names no column of the data set");
+        }
+
+
+        @Test
+        void aPartnerLessVariableValueIsNotLocated()
+        {
+            // P4: variable_value names the column cursor, not a column. Without a variable_name to
+            // collapse into, it survives into the schema — and stays out of the location.
+            Rule rule = rule("T-F3-VV", Domain.VARIABLE);
+            ValidationFinding f = onlyFinding(rule, result("T-F3-VV",
+                    List.of(nameOnly(0, values("variable_value", "x"), "AETERM"))));
+            assertEquals(List.of("variable_value"), f.getVariableNames());
+            assertEquals(List.of("AETERM"), f.getLocation().getVariableNames());
+        }
+
+
+        @Test
+        void realNameOnlyAndDeclaredColumnsStay()
+        {
+            // A real column, a name-only column and a column the rule reports itself (USUBJID,
+            // declared through its values) stay; only the metadata entry goes.
+            Rule rule = rule("T-F3-KEEP", Domain.ROW);
+            ValidationFinding f = onlyFinding(rule,
+                    result("T-F3-KEEP", List.of(nameOnly(0,
+                            values("AETERM", "HEADACHE", "variable_length", "200", "USUBJID", "S1"),
+                            "AEDECOD"))));
+            assertEquals(List.of("AETERM", "variable_length", "USUBJID"), f.getVariableNames());
+            assertEquals(List.of("AEDECOD", "AETERM", "USUBJID"),
+                    f.getLocation().getVariableNames());
+        }
+
+
+        @Test
+        void anUpperCaseColumnWithAMetadataPrefixStays()
+        {
+            // P3: the classification is case-sensitive, as OutputEntryKind.of reads it — an
+            // upper-case DATASET_NAME is read from the column, so it is located like a column.
+            Rule rule = rule("T-F3-UC", Domain.ROW);
+            ValidationFinding f = onlyFinding(rule, result("T-F3-UC", List
+                    .of(record(1, "S1", "1", values("DATASET_NAME", "AE", "dataset_name", "AE")))));
+            assertEquals(List.of("DATASET_NAME"), f.getLocation().getVariableNames());
+        }
+
+
+        @Test
+        void aDatasetScopedFindingStillLocatesNoColumn()
+        {
+            Rule rule = rule("T-F3-DS", Domain.DATASET);
+            ValidationFinding f = onlyFinding(rule, result("T-F3-DS",
+                    List.of(nameOnly(0, values("AETERM", "x", "record_count", "12"), "AEDTC"))));
+            assertEquals(List.of(), f.getLocation().getVariableNames());
+        }
+
+
+        @Test
+        void theV2LocationFollows()
+        {
+            Rule rule = rule("T-F3-V2", Domain.ROW);
+            ReportSections s = sections(rule, result("T-F3-V2", List.of(record(2, "S1", "1",
+                    values("AEBODSYS", "X", "define_variable_name", "AEBODSYS")))));
+            Map<String, Object> v2 = onlyV2Finding(s);
+            assertEquals(List.of("AEBODSYS", "define_variable_name"), v2.get("variables"),
+                    "the reported columns keep the metadata entry");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> location = (Map<String, Object>) v2.get("location");
+            assertEquals(List.of("AEBODSYS"), location.get("variables"));
+        }
     }
 }
