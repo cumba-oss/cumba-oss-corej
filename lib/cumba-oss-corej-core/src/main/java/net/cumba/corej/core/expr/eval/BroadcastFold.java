@@ -512,15 +512,16 @@ public final class BroadcastFold
      * expression written inline ({@code PLAN-binding-substitutability} G1; D3 / D16). A binding
      * holding a NAME FORM (a bare column, {@code DS.X}, a {@code ${…}} template, a string literal,
      * {@code varname()}) never reaches this predicate as a {@code $}-reference: the loader rewrites
-     * the call to {@code var_exists(<name>)} first ({@code BindingInliner.inlinePresenceNames}, T2
-     * review MEDIUM-2), so it is an exists call here like the inline one. A {@code $}-reference
+     * the call to {@code var_exists(<name>)} first ({@code BindingInliner.inlineNameSlotBindings},
+     * T2 review MEDIUM-2), so it is an exists call here like the inline one. A {@code $}-reference
      * that is still here holds a COMPUTED name ({@code PLAN-dynamic-column-corpus-respelling} §6.2,
      * owner ruling (a), 2026-10-04): exactly like {@code var_exists(<computed string>)} it is an
      * ordinary registered BOOLEAN call for every consumer of this predicate — the broadcast
      * verdicts, the absent-leaf fold, the dotted-reference walk, {@code TypeExpectations},
      * {@code DomainScan} and stage A's level — and {@code ExprCompiler.compileExists} evaluates it
-     * per row through the computed-name path. ({@code ds_exists($x)} is not covered by the ruling
-     * and keeps the name reading.)
+     * per row through the computed-name path. ({@code ds_exists($x)} is not covered by the ruling:
+     * a name-form binding is written inline there too — every name slot,
+     * {@code PLAN-string-literal-prefix-rewrite} S8 — and a computed one keeps the name reading.)
      * </p>
      */
     public static boolean isExistsCall(Expr.Call c)

@@ -3962,7 +3962,7 @@ public final class ExprCompiler
         // ⭐ PLAN-dynamic-column-corpus-respelling §6.2 (owner ruling (a), 2026-10-04): a
         // $-binding answers as its expression written inline (PLAN-binding-substitutability G1).
         // One holding a NAME FORM never reaches here — the loader rewrote var_exists($c) with
-        // `$c: TRT01P` to var_exists(TRT01P) (BindingInliner.inlinePresenceNames, T2 review
+        // `$c: TRT01P` to var_exists(TRT01P) (BindingInliner.inlineNameSlotBindings, T2 review
         // MEDIUM-2), so it takes the literal path below like the inline spelling. One still here
         // holds a COMPUTED name, and var_exists($n) tests the name $n's value names, per row. (It
         // used to take the literal path: existsAsVariable(ctx, "$n") asked for a column literally

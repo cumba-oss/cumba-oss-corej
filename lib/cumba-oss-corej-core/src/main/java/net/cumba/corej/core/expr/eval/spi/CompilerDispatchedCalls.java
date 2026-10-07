@@ -183,17 +183,18 @@ public final class CompilerDispatchedCalls implements FunctionProvider
         // Presence facts. `name` is a dataset name (ds_*) / column name (var_*), spelled as a
         // bareword reference or a quoted string (§1.2 equivalence; var_exists also takes
         // varname() and the ${...} per-row template form) — hence unknown, not column-reference.
-        bool(fns, "ds_exists", req("name"));
-        bool(fns, "ds_not_exists", req("name"));
-        bool(fns, "var_exists", req("name"));
-        bool(fns, "var_not_exists", req("name"));
+        // ⭐ A NAME SLOT (PLAN-string-literal-prefix-rewrite S2): the quoted spelling is the name.
+        bool(fns, "ds_exists", reqName("name"));
+        bool(fns, "ds_not_exists", reqName("name"));
+        bool(fns, "var_exists", reqName("name"));
+        bool(fns, "var_not_exists", reqName("name"));
         // The column-status predicates (PLAN-present-empty-column-fold D10): one dataset-wide fact
         // about a NAMED column, read off its content status — column reference, string, or
         // varname(). var_is_empty is the rename of var_is_null (same semantics; the old name is a
         // load error with a hint, ExprCompiler.compileBoolCallPlan).
-        bool(fns, "var_is_empty", req("name"));
-        bool(fns, "var_is_single_value", req("name"));
-        bool(fns, "var_is_all_missing", req("name"));
+        bool(fns, "var_is_empty", reqName("name"));
+        bool(fns, "var_is_single_value", reqName("name"));
+        bool(fns, "var_is_all_missing", reqName("name"));
         // Legacy string-part comparison: capture group 1 of regex= extracted from VALUE per row.
         bool(fns, "does_not_equal_string_part", req("name"), req("value"), regex(true));
         // String-length (in)equality against a per-row integral operand (literal, numeric column,
@@ -274,18 +275,21 @@ public final class CompilerDispatchedCalls implements FunctionProvider
     {
         List<FunctionDescriptor> fns = new ArrayList<>();
         // Each takes the current cursor variable when the argument is absent / varname(), or an
-        // explicitly named column (reference or string literal) — unknown by the union rule.
-        value(fns, "max_value_length");
-        value(fns, "vlm_data_type");
-        value(fns, "vlm_length");
-        value(fns, "vlm_mandatory");
-        value(fns, "vlm_codelist_coded_values");
-        value(fns, "vlm_codelist_coded_codes");
-        value(fns, "vlm_type_conforms");
-        value(fns, "vlm_codelist_extensible");
-        value(fns, "vlm_value_length");
-        value(fns, "vlm_has_codelist");
-        value(fns, "vlm_decode_matches");
+        // explicitly named column (reference or string literal) — unknown by the union rule, and
+        // a NAME SLOT (PLAN-string-literal-prefix-rewrite S2). The two decode-pair accessors take
+        // varname() or nothing (compileDefineDecodeMatches / the CT2003 arm refuse a name), so
+        // their parameter is not one.
+        namedValue(fns, "max_value_length");
+        namedValue(fns, "vlm_data_type");
+        namedValue(fns, "vlm_length");
+        namedValue(fns, "vlm_mandatory");
+        namedValue(fns, "vlm_codelist_coded_values");
+        namedValue(fns, "vlm_codelist_coded_codes");
+        namedValue(fns, "vlm_type_conforms");
+        namedValue(fns, "vlm_codelist_extensible");
+        namedValue(fns, "vlm_value_length");
+        namedValue(fns, "vlm_has_codelist");
+        namedValue(fns, "vlm_decode_matches");
         value(fns, "library_variable_code_pair_matches");
         value(fns, "define_variable_decode_matches");
         // PLAN-cg0218-transition-day-precision C1: joined(<boolean>) — the list<boolean> the
@@ -370,6 +374,15 @@ public final class CompilerDispatchedCalls implements FunctionProvider
     }
 
 
+    /** As {@link #value(List, String)}, the optional {@code name} declared a name slot. */
+    private static void namedValue(List<FunctionDescriptor> fns, String name)
+    {
+        fns.add(new FunctionDescriptor(name,
+                List.of(Parameter.optional("name", Unknown.UNKNOWN).asNameSlot()),
+                FunctionKind.VALUE, null));
+    }
+
+
     private static void value(List<FunctionDescriptor> fns, String name, Parameter... params)
     {
         fns.add(new FunctionDescriptor(name, List.of(params), FunctionKind.VALUE, null));
@@ -379,6 +392,13 @@ public final class CompilerDispatchedCalls implements FunctionProvider
     private static Parameter req(String name)
     {
         return Parameter.required(name, Unknown.UNKNOWN);
+    }
+
+
+    /** A required {@code unknown} parameter that is a name slot. */
+    private static Parameter reqName(String name)
+    {
+        return req(name).asNameSlot();
     }
 
 

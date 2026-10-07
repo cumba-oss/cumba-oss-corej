@@ -236,7 +236,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // column operand, so the level calculus would otherwise read it DATASET and broadcast
         // row 0's cell to every row — the row_max shape of XCUT H1. Stage A types colref RECORD
         // in its own arm; DomainScan and the hand-over contract read this flag.
-        fns.add(new FunctionDescriptor("colref", List.of(p("x")), FunctionKind.VALUE,
+        // ⭐ x is a NAME SLOT (PLAN-string-literal-prefix-rewrite S2): colref("--SEQ") names a
+        // column, so the bind-time specialiser rewrites it (and a list literal's members, S4).
+        fns.add(new FunctionDescriptor("colref", List.of(p("x").asNameSlot()), FunctionKind.VALUE,
                 (run, args) -> DynamicColumnRead.vector(run, args.get(0), false, false))
                         .readingRows());
 
@@ -244,7 +246,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // find_vars("<entry>"): the column NAMES one Requirements.Variables entry selects —
         // template / glob / DS./regex/ / literal, one parser and one matcher with that surface.
         fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.FindVars.NAME,
-                List.of(p("entry", Primitive.STRING)), FunctionKind.VALUE,
+                // ⭐ entry is a NAME SLOT: its template / glob / literal entries are specialised
+                // (D93c); a /regex/ entry is kept by the specialiser itself (SPEC §7.2 item 6).
+                List.of(p("entry", Primitive.STRING).asNameSlot()), FunctionKind.VALUE,
                 // ExprCompiler dispatches find_vars through its own arm, which knows whether the
                 // argument is a string LITERAL; a direct registry caller passes a vector only,
                 // so a broadcast one is taken as the literal it almost always is.
@@ -1489,10 +1493,12 @@ public final class BuiltinFunctions implements FunctionProvider
                 ScalarMetadataFunctions::extractMetadata, null);
         // cross_dataset_variable_metadata("label", domain="ADSL" | "*") — the attribute KEY and the
         // source dataset (or the `*` pattern), both string literals: a DATASET_REFERENCE (D10)
-        // cannot hold `*`. The answer is the per-variable map (D-W4b-1).
+        // cannot hold `*`. The answer is the per-variable map (D-W4b-1). ⭐ domain is a NAME SLOT
+        // (PLAN-string-literal-prefix-rewrite phase 0: a dataset name, measured by behaviour);
+        // the attribute key is a value.
         fns.add(new FunctionDescriptor(ScalarMetadataFunctions.CROSS_DATASET_VARIABLE_METADATA,
                 List.of(p(ScalarMetadataFunctions.NAME_PARAMETER, Primitive.STRING),
-                        p(ScalarMetadataFunctions.DOMAIN_PARAMETER, Primitive.STRING)),
+                        p(ScalarMetadataFunctions.DOMAIN_PARAMETER, Primitive.STRING).asNameSlot()),
                 FunctionKind.VALUE, ScalarMetadataFunctions::crossDatasetVariableMetadata)
                         .answeringPerVariable());
         // variable_count("--LNKGRP") | variable_count(name_pattern="^.+FL$") | variable_count():
@@ -1501,9 +1507,11 @@ public final class BuiltinFunctions implements FunctionProvider
                 List.of(opt(ScalarMetadataFunctions.NAME_PARAMETER, Primitive.STRING),
                         opt(ScalarMetadataFunctions.PATTERN_PARAMETER, Primitive.STRING)),
                 ScalarMetadataFunctions::variableCount, null);
-        // column_series_metadata("COVAL", name_pattern="^COVAL\\d+$", min_length=200)
+        // column_series_metadata("COVAL", name_pattern="^COVAL\\d+$", min_length=200) — ⭐ name,
+        // the un-numbered base column, is a NAME SLOT (PLAN-string-literal-prefix-rewrite phase
+        // 0); variable_count's name is not marked — D92a keeps its fold template.
         listFn(fns, ScalarMetadataFunctions.COLUMN_SERIES_METADATA,
-                List.of(opt(ScalarMetadataFunctions.NAME_PARAMETER, Primitive.STRING),
+                List.of(opt(ScalarMetadataFunctions.NAME_PARAMETER, Primitive.STRING).asNameSlot(),
                         p(ScalarMetadataFunctions.PATTERN_PARAMETER, Primitive.STRING),
                         opt(ScalarMetadataFunctions.MIN_LENGTH_PARAMETER, Primitive.NUMBER)),
                 ScalarMetadataFunctions::columnSeriesMetadata, null);

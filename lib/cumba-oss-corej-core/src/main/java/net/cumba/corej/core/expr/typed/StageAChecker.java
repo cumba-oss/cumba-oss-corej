@@ -1087,13 +1087,14 @@ public final class StageAChecker
 
     private TypedExpr call(Expr.Call c)
     {
-        Expr.Call probe = BindingInliner.inlinePresenceName(c, boundExpressions());
+        Expr.Call probe = BindingInliner.inlineNameSlotBinding(c, boundExpressions());
         if (probe != c)
         {
             // D3 / D16 (T2 review of the respelling's S2 round, MEDIUM-2): var_exists($x) over a
             // name-form binding is judged as the inline var_exists(<name>) — the loader rewrites
             // it before this walk (RulePackageLoader.installNativeExpr); a tree handed to stage A
-            // directly is held to the same reading here.
+            // directly is held to the same reading here. Every name slot since
+            // PLAN-string-literal-prefix-rewrite S8 (colref($c) as colref(<name>)).
             return call(probe);
         }
         String name = c.name();

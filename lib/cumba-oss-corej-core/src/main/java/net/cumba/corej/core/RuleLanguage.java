@@ -49,7 +49,7 @@ public final class RuleLanguage
 {
 
     /** The declared rule-language level. Bump it whenever {@link #surface()} changes. */
-    public static final int LEVEL = 3;
+    public static final int LEVEL = 4;
 
     /** The header line of the golden file. */
     public static final String LEVEL_HEADER = "LEVEL=";
@@ -106,6 +106,12 @@ public final class RuleLanguage
             }
             first = false;
             sb.append(p.name()).append(':').append(p.type().describe());
+            if (p.nameSlot())
+            {
+                // a name slot (PLAN-string-literal-prefix-rewrite S2; level 4): a quoted spelling
+                // here is a name, specialised at bind time — every other STRING literal is a value
+                sb.append("@name");
+            }
             if (!p.required())
             {
                 sb.append('?');

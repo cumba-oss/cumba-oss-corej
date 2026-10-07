@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.expr.eval.NameSlots;
 import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.Rule;
 import org.jspecify.annotations.Nullable;
@@ -33,8 +34,8 @@ import org.jspecify.annotations.Nullable;
  * binding once per context ({@code BindingValue}), and the inlined tree would evaluate it once per
  * occurrence. A forward or cyclic reference is a stage-A load error, so the recursion terminates on
  * every loadable rule; a guard stops it on a hand-built one (the reference is then left in place).
- * The one rewrite evaluation shares is {@link #inlinePresenceNames}: it moves a NAME into a
- * presence probe, never a value, so nothing is evaluated twice.
+ * The one rewrite evaluation shares is {@link #inlineNameSlotBindings}: it moves a NAME into a name
+ * slot, never a value, so nothing is evaluated twice.
  * </p>
  */
 public final class BindingInliner
@@ -209,23 +210,26 @@ public final class BindingInliner
         return positive ? condition : new Expr.Not(condition);
     }
 
-    /** The presence probes whose argument names a column ({@code ds_exists} is not one). */
-    private static final Set<String> VARIABLE_PRESENCE = Set.of("var_exists", "var_not_exists");
 
     /**
-     * ⭐ {@code expr} with every {@code var_exists($x)} / {@code var_not_exists($x)} whose binding
-     * holds a <b>name form</b> ({@link #isNameForm}) rewritten to the inline spelling
-     * {@code var_exists(<that name>)}; the very same instance when nothing is rewritten.
+     * ⭐ {@code expr} with every {@code $}-binding argument at a <b>name slot</b>
+     * ({@link NameSlots}) whose binding holds a <b>name form</b> ({@link #isNameForm}, or a list
+     * literal of string literals) replaced by that name, written inline — {@code var_exists($x)}
+     * becomes {@code var_exists(<the name>)}, {@code colref($c)} with {@code $c: "--SEQ"} becomes
+     * {@code colref("--SEQ")}; the very same instance when nothing is rewritten.
      *
      * <p>
      * D3 / D16 ({@code PLAN-binding-substitutability} G1): a {@code $}-binding answers as its
-     * expression written in place. A presence probe reads its argument as a NAME when it is one — a
-     * bare column, a dotted {@code DS.X}, a {@code ${…}} template, a string literal, the
-     * {@code varname()} cursor — and as a per-row VALUE otherwise ({@code ExprCompiler}'s computed
-     * path). So {@code $c: TRT01P} then {@code var_exists($c)} is {@code var_exists(TRT01P)} — the
-     * column's presence, one dataset fact, the {@code --} prefix specialised as for the literal —
-     * never TRT01P's cells read as names; {@code $n: concat(…)} stays a binding reference and is
-     * evaluated per row ({@code PLAN-dynamic-column-corpus-respelling} §6.2, T2 review MEDIUM-2).
+     * expression written in place. A name slot reads its argument as a NAME when it is one — a bare
+     * column, a dotted {@code DS.X}, a {@code ${…}} template, a string literal, the
+     * {@code varname()} cursor — so {@code $c: TRT01P} then {@code var_exists($c)} is
+     * {@code var_exists(TRT01P)} — the column's presence, one dataset fact — never TRT01P's cells
+     * read as names; {@code $n: concat(…)} stays a binding reference and is evaluated per row
+     * ({@code PLAN-dynamic-column-corpus-respelling} §6.2, T2 review MEDIUM-2). Since
+     * {@code PLAN-string-literal-prefix-rewrite} (S8) this is every marked name slot, not the
+     * {@code var_exists} / {@code var_not_exists} pair alone: a binding's STRING literal is a value
+     * where it is written (S3), so a name it holds reaches the bind-time {@code --} specialiser
+     * only by being moved, here, to the name slot that reads it.
      * </p>
      *
      * <p>
@@ -242,16 +246,16 @@ public final class BindingInliner
      *            the bindings the expression may read, name → expression
      * @return the rewritten expression
      */
-    public static Expr inlinePresenceNames(Expr expr, Map<String, Expr> bound)
+    public static Expr inlineNameSlotBindings(Expr expr, Map<String, Expr> bound)
     {
-        return bound.isEmpty() ? expr : presenceNames(expr, bound);
+        return bound.isEmpty() ? expr : nameSlotBindings(expr, bound);
     }
 
 
     /**
-     * {@link #inlinePresenceNames} for ONE call, not its arguments: {@code call} rewritten to
-     * {@code var_exists(<name>)} when it is a presence probe over a name-form binding, else the
-     * very same instance — for a walker that visits every call itself (stage A).
+     * {@link #inlineNameSlotBindings} for ONE call, not its nested calls: {@code call} with each
+     * name-slot argument that is a name-form binding written inline, else the very same instance —
+     * for a walker that visits every call itself (stage A).
      *
      * @param call
      *            the call
@@ -259,15 +263,58 @@ public final class BindingInliner
      *            binding name → expression
      * @return the inline spelling, or {@code call}
      */
-    public static Expr.Call inlinePresenceName(Expr.Call call, Map<String, Expr> bound)
+    public static Expr.Call inlineNameSlotBinding(Expr.Call call, Map<String, Expr> bound)
     {
-        if (VARIABLE_PRESENCE.contains(call.name()) && call.args().size() == 1
-                && call.kwargs().isEmpty() && isBindingReference(call.args().get(0)))
+        List<Expr> args = null;
+        for (int i = 0; i < call.args().size(); i++)
         {
-            Expr name = boundExpression(call.args().get(0), bound);
-            return isNameForm(name) ? new Expr.Call(call.name(), List.of(name), Map.of()) : call;
+            Expr arg = call.args().get(i);
+            Expr name = NameSlots.isNameSlot(call, i) ? boundName(arg, bound) : null;
+            if (name != null)
+            {
+                List<Expr> changed = args == null ? new ArrayList<>(call.args()) : args;
+                changed.set(i, name);
+                args = changed;
+            }
         }
-        return call;
+        Map<String, Expr> kwargs = null;
+        for (Map.Entry<String, Expr> kw : call.kwargs().entrySet())
+        {
+            Expr name = NameSlots.isNameSlot(call, kw.getKey()) ? boundName(kw.getValue(), bound)
+                    : null;
+            if (name != null)
+            {
+                Map<String, Expr> changed = kwargs == null ? new LinkedHashMap<>(call.kwargs())
+                        : kwargs;
+                changed.put(kw.getKey(), name);
+                kwargs = changed;
+            }
+        }
+        return args == null && kwargs == null ? call
+                : new Expr.Call(call.name(), args == null ? call.args() : args,
+                        kwargs == null ? call.kwargs() : kwargs);
+    }
+
+
+    /** The name a binding-reference argument stands for, or {@code null} (not one, or computed). */
+    private static @Nullable Expr boundName(Expr arg, Map<String, Expr> bound)
+    {
+        if (!isBindingReference(arg))
+        {
+            return null;
+        }
+        Expr name = boundExpression(arg, bound);
+        return name != arg && (isNameForm(name) || isNameList(name)) ? name : null;
+    }
+
+
+    /** A list literal of string literals — the list form of a name slot (S4: colref([…])). */
+    private static boolean isNameList(Expr e)
+    {
+        return e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
+                && lit.value() instanceof List<?> items && !items.isEmpty()
+                && items.stream().allMatch(item -> item instanceof Expr.Lit member
+                        && member.kind() == Expr.LitKind.STRING);
     }
 
 
@@ -301,7 +348,7 @@ public final class BindingInliner
 
 
     /**
-     * Whether {@code e} is an argument a presence probe reads as a NAME — the forms
+     * Whether {@code e} is an argument a name slot reads as a NAME — the forms
      * {@code ExprCompiler.compileExists}' literal path handles: a reference that is not a
      * {@code $}-binding (a bare column, a dotted {@code DS.X}, a {@code ${…}} template,
      * {@code variable_name}), a string literal, or the {@code varname()} cursor. Anything else — a
@@ -325,7 +372,7 @@ public final class BindingInliner
     }
 
 
-    private static Expr presenceNames(Expr e, Map<String, Expr> bound)
+    private static Expr nameSlotBindings(Expr e, Map<String, Expr> bound)
     {
         return switch (e)
         {
@@ -338,22 +385,18 @@ public final class BindingInliner
             }
             @SuppressWarnings("unchecked")
             List<Expr> items = (List<Expr>) lit.value();
-            List<Expr> out = presenceNamesAll(items, bound);
+            List<Expr> out = nameSlotBindingsAll(items, bound);
             yield out == items ? lit : new Expr.Lit(Expr.LitKind.LIST, out);
         }
         case Expr.Call call ->
         {
-            Expr.Call probe = inlinePresenceName(call, bound);
-            if (probe != call)
-            {
-                yield probe;
-            }
-            List<Expr> args = presenceNamesAll(call.args(), bound);
+            Expr.Call inlined = inlineNameSlotBinding(call, bound);
+            List<Expr> args = nameSlotBindingsAll(inlined.args(), bound);
             Map<String, Expr> kwargs = new LinkedHashMap<>();
-            boolean changed = args != call.args();
-            for (Map.Entry<String, Expr> kw : call.kwargs().entrySet())
+            boolean changed = inlined != call || args != inlined.args();
+            for (Map.Entry<String, Expr> kw : inlined.kwargs().entrySet())
             {
-                Expr value = presenceNames(kw.getValue(), bound);
+                Expr value = nameSlotBindings(kw.getValue(), bound);
                 changed |= value != kw.getValue();
                 kwargs.put(kw.getKey(), value);
             }
@@ -361,38 +404,38 @@ public final class BindingInliner
         }
         case Expr.Binary binary ->
         {
-            Expr left = presenceNames(binary.left(), bound);
-            Expr right = presenceNames(binary.right(), bound);
+            Expr left = nameSlotBindings(binary.left(), bound);
+            Expr right = nameSlotBindings(binary.right(), bound);
             yield left == binary.left() && right == binary.right() ? binary
                     : new Expr.Binary(binary.op(), left, right);
         }
         case Expr.And and ->
         {
-            List<Expr> parts = presenceNamesAll(and.parts(), bound);
+            List<Expr> parts = nameSlotBindingsAll(and.parts(), bound);
             yield parts == and.parts() ? and : new Expr.And(parts);
         }
         case Expr.Or or ->
         {
-            List<Expr> parts = presenceNamesAll(or.parts(), bound);
+            List<Expr> parts = nameSlotBindingsAll(or.parts(), bound);
             yield parts == or.parts() ? or : new Expr.Or(parts);
         }
         case Expr.Not not ->
         {
-            Expr inner = presenceNames(not.inner(), bound);
+            Expr inner = nameSlotBindings(not.inner(), bound);
             yield inner == not.inner() ? not : new Expr.Not(inner);
         }
         };
     }
 
 
-    /** {@link #presenceNames} element-wise; the same instance when no element changed. */
-    private static List<Expr> presenceNamesAll(List<Expr> items, Map<String, Expr> bound)
+    /** {@link #nameSlotBindings} element-wise; the same instance when no element changed. */
+    private static List<Expr> nameSlotBindingsAll(List<Expr> items, Map<String, Expr> bound)
     {
         List<Expr> out = null;
         for (int i = 0; i < items.size(); i++)
         {
             Expr item = items.get(i);
-            Expr rewritten = presenceNames(item, bound);
+            Expr rewritten = nameSlotBindings(item, bound);
             if (rewritten != item && out == null)
             {
                 out = new ArrayList<>(items.subList(0, i));

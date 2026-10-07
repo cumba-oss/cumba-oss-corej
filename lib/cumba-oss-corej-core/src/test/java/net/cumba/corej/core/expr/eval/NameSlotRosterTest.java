@@ -1,0 +1,983 @@
+package net.cumba.corej.core.expr.eval;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.lang.reflect.Field;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.SequencedMap;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.function.UnaryOperator;
+import net.cumba.cdisc.define.CheckValue;
+import net.cumba.cdisc.define.CodeList;
+import net.cumba.cdisc.define.CodeListItem;
+import net.cumba.cdisc.define.CodeListRef;
+import net.cumba.cdisc.define.Decode;
+import net.cumba.cdisc.define.ItemDef;
+import net.cumba.cdisc.define.ItemGroupDef;
+import net.cumba.cdisc.define.ItemRef;
+import net.cumba.cdisc.define.MetaDataVersion;
+import net.cumba.cdisc.define.RangeCheck;
+import net.cumba.cdisc.define.TranslatedText;
+import net.cumba.cdisc.define.ValueListDef;
+import net.cumba.cdisc.define.ValueListRef;
+import net.cumba.cdisc.define.WhereClauseDef;
+import net.cumba.cdisc.define.WhereClauseRef;
+import net.cumba.corej.core.exec.DatasetResolver;
+import net.cumba.corej.core.exec.EvaluationContext;
+import net.cumba.corej.core.exec.ExprPrefixResolver;
+import net.cumba.corej.core.exec.MetadataProvider;
+import net.cumba.corej.core.expr.CheckExpressionParser;
+import net.cumba.corej.core.expr.OperandKind;
+import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.expr.eval.spi.BuiltinFunctions;
+import net.cumba.corej.core.expr.eval.spi.CompilerDispatchedCalls;
+import net.cumba.corej.core.expr.typed.ExprType;
+import net.cumba.corej.core.expr.typed.ExprType.ListOf;
+import net.cumba.corej.core.expr.typed.ExprType.Primitive;
+import net.cumba.corej.core.expr.typed.StageAChecker;
+import net.cumba.corej.core.expr.typed.StageAErrorKind;
+import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
+import net.cumba.corej.core.metadata.ValueMapDictionary;
+import net.cumba.corej.core.metadata.VlmResolver;
+import net.cumba.corej.core.model.Rule;
+import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.report.Severity;
+import net.cumba.datatable.testkit.MockTable;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+
+/**
+ * ⭐ {@code PLAN-string-literal-prefix-rewrite} N5 — the name-slot roster <b>derived from
+ * behaviour</b>, in the manner of {@link StageAResidueDriftTest}: which call slots read a STRING
+ * literal as a <em>name</em> is measured, never listed, and the declarations ({@link NameSlots}:
+ * the registry's marked parameters, the metadata accessors' name positions) are held to the
+ * measurement in both directions.
+ *
+ * <p>
+ * <b>The instrument.</b> Two worlds that differ in ONE name {@code n} only — {@code ZZQN} in one,
+ * {@code ZZRN} in the other: a column {@code n} of the evaluated table (filled, and in a second
+ * variant all-missing, so a content-status predicate can tell), its decode partner, a dataset
+ * {@code n} in the study inventory, Define-XML and Library metadata for a variable and a dataset
+ * {@code n}, value-level metadata for {@code n}. The literal {@code "ZZQN"} is planted at a slot of
+ * a known-good call; the slot is a <b>name slot</b> when the call answers differently in the two
+ * worlds while a neutral literal {@code "a"} planted at the same slot answers alike (the world is
+ * not what moved). A slot whose literal stage A or the compiler refuses is <b>refused</b>; any
+ * other is <b>data</b>. Every parameter of every descriptor of both providers is probed (read
+ * directly, so a stub cannot hide a name), and every {@link MetadataAttribute}.
+ * </p>
+ *
+ * <p>
+ * <b>The contract.</b> A descriptor slot measures as a name slot exactly when it is marked
+ * ({@link NameSlots#isNameSlot(Parameter)}) — except a slot whose template the specialiser keeps
+ * ({@link ExprPrefixResolver#keepsTemplate}: D92a / D92b), which may read as a name and is never
+ * marked. A metadata accessor's measured name slot is marked, and a marked one is a name slot or
+ * refused. The hand-kept call sets that read argument 0 as a name are each a subset of the marked
+ * slots.
+ * </p>
+ *
+ * <p>
+ * Non-vacuity: every descriptor has a base call that evaluates in the fixture world; no slot may be
+ * left unmeasured or ambiguous; floors on the measured name slots; and a permanent planted control
+ * — the same comparison over a marker with {@code var_is_empty} unmarked names exactly that slot.
+ * </p>
+ */
+class NameSlotRosterTest
+{
+
+    private static final String NAME = "ZZQN";
+
+    private static final String OTHER = "ZZRN";
+
+    private static final String NEUTRAL = "a";
+
+    enum Verdict
+    {
+        NAME, DATA, REFUSED, AMBIGUOUS, UNPROBEABLE
+    }
+
+
+    /** One measured slot: {@code function.parameter}, its verdict and why. */
+    record Slot(String function, String parameter, Verdict verdict, String detail)
+    {
+
+        String key()
+        {
+            return function + "." + parameter;
+        }
+    }
+
+    /**
+     * A known-good call per function whose auto-built call does not evaluate (a static literal it
+     * needs, a negation-only dispatch, a provider answer); {@code "fn.param"} overrides it for one
+     * parameter. The planted call is the first call of that name inside the base expression.
+     */
+    private static final Map<String, String> BASE = new LinkedHashMap<>();
+
+    static
+    {
+        BASE.put("all", "all(joined(X == \"a\"))");
+        BASE.put("any", "any(joined(X == \"a\"))");
+        BASE.put("none", "none(joined(X == \"a\"))");
+        BASE.put("joined", "any(joined(X == \"a\"))");
+        BASE.put("codelist_terms", "codelist_terms([\"C1\"], \"term\", \"value\")");
+        BASE.put("contains_all", "contains_all(X, keys=[\"a\"])");
+        BASE.put("not_contains_all", "not_contains_all(X, keys=[\"a\"])");
+        BASE.put("shares_elements_with", "shares_elements_with(X, keys=[\"a\"])");
+        BASE.put("shares_no_elements_with", "shares_no_elements_with(X, keys=[\"a\"])");
+        BASE.put("is_ordered_subset_of", "is_ordered_subset_of(X, Y)");
+        BASE.put("is_not_ordered_subset_of", "is_not_ordered_subset_of(X, Y)");
+        BASE.put("cross_dataset_variable_metadata",
+                "cross_dataset_variable_metadata(\"label\", \"DM\")");
+        BASE.put("column_series_metadata",
+                "column_series_metadata(\"SER0\", name_pattern=\"^SER[0-9]+$\")");
+        BASE.put("dictionary_has_decode",
+                "dictionary_has_decode(X, external_dictionary_type=\"meddra\")");
+        BASE.put("valid_external_dictionary_code", "valid_external_dictionary_code(X,"
+                + " external_dictionary_type=\"meddra\", dictionary_term_type=\"PT\")");
+        BASE.put("valid_external_dictionary_value", "valid_external_dictionary_value(X,"
+                + " external_dictionary_type=\"meddra\", dictionary_term_type=\"PT\")");
+        BASE.put("valid_external_dictionary_code_term_pair",
+                "valid_external_dictionary_code_term_pair(X, Y,"
+                        + " external_dictionary_type=\"meddra\")");
+        BASE.put("valid_external_dictionary_hierarchy",
+                "valid_external_dictionary_hierarchy(X, Y, external_dictionary_type=\"meddra\")");
+        BASE.put("distinct", "distinct(X)");
+        BASE.put("max", "max(NUM, group=[USUBJID])");
+        BASE.put("max_date", "max_date(DT, group=[USUBJID])");
+        BASE.put("min_date", "min_date(DT, group=[USUBJID])");
+        BASE.put("read_value", "read_value(X, domain=\"DM\", mode=\"FIRST\")");
+        BASE.put("record_count", "record_count()");
+        BASE.put("does_not_equal_string_part", "does_not_equal_string_part(X, Y, regex=\"(a)\")");
+        BASE.put("empty_within_except_last_row",
+                "empty_within_except_last_row(X, USUBJID, ordering=AESEQ)");
+        BASE.put("get_codelist_attributes",
+                "get_codelist_attributes(CTREF, CTVER, ct_attribute=\"Term CCODE\")");
+        BASE.put("get_dataset_filtered_variables",
+                "get_dataset_filtered_variables(key_name=\"core\", key_value=\"Req\")");
+        BASE.put("get_model_filtered_variables",
+                "get_model_filtered_variables(key_name=\"core\", key_value=\"Req\")");
+        BASE.put("get_parent_model_column_order", "get_parent_model_column_order(RDOMAIN)");
+        BASE.put("has_equal_length", "has_equal_length(X, 1)");
+        BASE.put("has_not_equal_length", "has_not_equal_length(X, 1)");
+        BASE.put("has_multiple_values_for", "has_multiple_values_for(X, Y)");
+        BASE.put("has_next_corresponding_record",
+                "has_next_corresponding_record(X, Y, within=USUBJID, ordering=AESEQ)");
+        BASE.put("is_inconsistent_across_dataset",
+                "is_inconsistent_across_dataset(X, keys=[USUBJID])");
+        BASE.put("is_not_unique_relationship", "is_not_unique_relationship(X, Y)");
+        BASE.put("is_unique_relationship", "is_unique_relationship(X, Y)");
+        BASE.put("is_not_unique_set", "is_not_unique_set([X, USUBJID])");
+        BASE.put("is_unique_set", "is_unique_set([X, USUBJID])");
+        BASE.put("is_sorted_by", "is_sorted_by(AESEQ, by=[asc(AESEQ)], within=USUBJID)");
+        BASE.put("present_on_multiple_rows_within",
+                "present_on_multiple_rows_within(X, within=USUBJID)");
+        BASE.put("printf", "printf(\"%s\", X)");
+        BASE.put("minus", "minus([\"a\", \"b\"], [\"a\"])");
+        BASE.put("tuple", "tuple(X, Y)");
+        BASE.put("variable_count", "variable_count(\"X\")");
+        BASE.put("variable_count.name_pattern", "variable_count(name_pattern=\"^Q$\")");
+    }
+
+    private static RuntimeDictionaryProvider dictionary;
+
+    private static List<Slot> roster;
+
+    @BeforeAll
+    static void measure() throws Exception
+    {
+        dictionary = new RuntimeDictionaryProvider(
+                Map.of("meddra", ValueMapDictionary.load(Paths.get("dictionaries/meddra.json"))));
+        roster = measureRoster();
+    }
+
+    // ================================================================== the contract
+
+
+    @Test
+    void everyDescriptorSlotIsANameSlotExactlyWhenMarkedOrKept()
+    {
+        assertEquals(List.of(), mismatches(roster, null),
+                "a slot whose literal reads as a name must be marked (NameSlots), and a marked"
+                        + " slot must read as one — measured, not listed");
+    }
+
+
+    @Test
+    void noSlotIsLeftUnmeasuredAndTheRosterIsNotVacuous()
+    {
+        List<String> open = roster.stream()
+                .filter(s -> s.verdict() == Verdict.UNPROBEABLE || s.verdict() == Verdict.AMBIGUOUS)
+                .map(s -> s.key() + " " + s.verdict() + " " + s.detail()).toList();
+        assertEquals(List.of(), open, "every slot is measured NAME, DATA or REFUSED");
+        Set<String> probed = new TreeSet<>();
+        roster.forEach(s -> probed.add(s.function()));
+        Set<String> registry = new TreeSet<>();
+        // every descriptor with a parameter (a nullary one has no slot to probe)
+        providers().stream().filter(d -> !d.parameters().isEmpty())
+                .forEach(d -> registry.add(d.name()));
+        for (MetadataAttribute a : MetadataAttribute.values())
+        {
+            registry.add(a.functionName());
+        }
+        assertEquals(registry, probed,
+                "every descriptor with a parameter and every metadata accessor is probed");
+        long names = roster.stream().filter(s -> s.verdict() == Verdict.NAME).count();
+        long data = roster.stream().filter(s -> s.verdict() == Verdict.DATA).count();
+        assertTrue(names >= 60, "measured name slots: " + names);
+        assertTrue(data >= 100, "measured data slots: " + data);
+    }
+
+
+    @Test
+    void thePlantedControlNamesExactlyTheUnmarkedSlot()
+    {
+        // a marker that forgot var_is_empty: the very comparison above names that slot, and only it
+        List<String> found = mismatches(roster, "var_is_empty");
+        assertEquals(1, found.size(), found.toString());
+        assertTrue(found.get(0).startsWith("var_is_empty.name "), found.toString());
+    }
+
+
+    @Test
+    void theMetadataAccessorsNamePositionsAreTheMarkedOnes()
+    {
+        List<String> wrong = new ArrayList<>();
+        int names = 0;
+        for (Slot s : roster)
+        {
+            MetadataAttribute attr = MetadataAttribute.fromFunction(s.function());
+            if (attr == null || FunctionRegistry.descriptor(s.function()) != null)
+            {
+                continue;
+            }
+            boolean marked = metadataMarked(attr, s.parameter());
+            if (s.verdict() == Verdict.NAME)
+            {
+                names++;
+            }
+            boolean unmarkedName = s.verdict() == Verdict.NAME && !marked;
+            boolean markedData = marked && s.verdict() != Verdict.NAME
+                    && s.verdict() != Verdict.REFUSED;
+            boolean markedLevel = s.parameter().equals(LEVEL_FORM) && marked;
+            if (unmarkedName || markedData || markedLevel)
+            {
+                wrong.add(s.key() + " " + s.verdict() + " marked=" + marked);
+            }
+        }
+        assertEquals(List.of(), wrong);
+        assertTrue(names >= 50, "metadata accessor name slots measured: " + names);
+    }
+
+
+    @Test
+    void theHandKeptNameSetsAreSubsetsOfTheMarkedSlots() throws Exception
+    {
+        Map<String, Set<String>> sets = new TreeMap<>();
+        sets.put("AbsentDatasetSkip.NAME_ARG_CALLS",
+                field("net.cumba.corej.core.exec.AbsentDatasetSkip", "NAME_ARG_CALLS"));
+        sets.put("OutputVariableDeriver.NAME_LITERAL_TARGET_CALLS", field(
+                "net.cumba.corej.core.exec.OutputVariableDeriver", "NAME_LITERAL_TARGET_CALLS"));
+        sets.put("BroadcastFold.EXISTS_CALLS",
+                field("net.cumba.corej.core.expr.eval.BroadcastFold", "EXISTS_CALLS"));
+        sets.put("RuleClassifier.VARIABLE_PRESENCE",
+                field("net.cumba.corej.core.exec.RuleClassifier", "VARIABLE_PRESENCE"));
+        List<String> outside = new ArrayList<>();
+        int members = 0;
+        for (Map.Entry<String, Set<String>> e : sets.entrySet())
+        {
+            assertFalse(e.getValue().isEmpty(), e.getKey());
+            for (String fn : e.getValue())
+            {
+                members++;
+                Expr.Call call = new Expr.Call(fn, List.of(lit(NAME)), Map.of());
+                if (!NameSlots.isNameSlot(call, 0))
+                {
+                    outside.add(e.getKey() + ": " + fn);
+                }
+            }
+        }
+        assertEquals(List.of(), outside, "argument 0 of every hand-kept name call is a name slot");
+        assertEquals(12, members, "members checked (5 + 1 + 4 + 2)");
+        // BindingInliner's set is gone: it asks NameSlots (N6)
+        assertFalse(java.util.Arrays
+                .stream(Class.forName("net.cumba.corej.core.expr.convert.BindingInliner")
+                        .getDeclaredFields())
+                .anyMatch(f -> "VARIABLE_PRESENCE".equals(f.getName())));
+    }
+
+
+    @SuppressWarnings("unchecked")
+    private static Set<String> field(String className, String fieldName) throws Exception
+    {
+        Field f = Class.forName(className).getDeclaredField(fieldName);
+        f.setAccessible(true);
+        return (Set<String>) f.get(null);
+    }
+
+    // ================================================================== the comparison
+
+
+    /**
+     * The declarations under test — a descriptor slot is marked when {@link NameSlots} says so —
+     * with {@code unmarked}'s slots taken out (the planted control), or none.
+     */
+    private static boolean marked(FunctionDescriptor d, Parameter p, @Nullable String unmarked)
+    {
+        return !d.name().equals(unmarked) && NameSlots.isNameSlot(p);
+    }
+
+
+    /**
+     * The descriptor slots whose measurement disagrees with {@code marked} ∪ kept — the one
+     * comparison the contract test and the planted control both run.
+     */
+    private static List<String> mismatches(List<Slot> measured, @Nullable String unmarked)
+    {
+        List<String> out = new ArrayList<>();
+        for (FunctionDescriptor d : providers())
+        {
+            for (Parameter p : d.parameters())
+            {
+                Slot s = measured.stream().filter(
+                        m -> m.function().equals(d.name()) && m.parameter().equals(p.name()))
+                        .findFirst().orElse(null);
+                if (s == null)
+                {
+                    out.add(d.name() + "." + p.name() + " not measured");
+                    continue;
+                }
+                boolean isMarked = marked(d, p, unmarked);
+                boolean measuredName = s.verdict() == Verdict.NAME;
+                // a kept slot (D92a / D92b) is never specialised: it may read as a name (a fold
+                // template, a regex over the column names) and must not be marked
+                boolean kept = ExprPrefixResolver.keepsTemplate(d.name(), p.name());
+                if (kept ? isMarked : isMarked != measuredName)
+                {
+                    out.add(s.key() + " measured " + s.verdict() + ", marked=" + isMarked
+                            + ", kept=" + kept + " " + s.detail());
+                }
+            }
+        }
+        return out;
+    }
+
+    private static final String LEVEL_FORM = "arg0(level)";
+
+    private static boolean metadataMarked(MetadataAttribute attr, String parameter)
+    {
+        if (parameter.startsWith("arg0@"))
+        {
+            return NameSlots.isNameSlot(
+                    new Expr.Call(attr.functionName(), List.of(lit(NAME), lit("DATA")), Map.of()),
+                    0);
+        }
+        if (parameter.equals(LEVEL_FORM))
+        {
+            return NameSlots.isNameSlot(
+                    new Expr.Call(attr.functionName(), List.of(lit(NAME)), Map.of()), 0);
+        }
+        return NameSlots.isNameSlot(
+                new Expr.Call(attr.functionName(), List.of(lit("X"), lit("DATA")), Map.of()),
+                parameter);
+    }
+
+    // ================================================================== the measurement
+
+
+    private static List<FunctionDescriptor> providers()
+    {
+        List<FunctionDescriptor> all = new ArrayList<>();
+        all.addAll(new BuiltinFunctions().functions());
+        all.addAll(new CompilerDispatchedCalls().functions());
+        return all;
+    }
+
+
+    private static List<Slot> measureRoster()
+    {
+        List<Slot> out = new ArrayList<>();
+        for (FunctionDescriptor d : providers())
+        {
+            for (int i = 0; i < d.parameters().size(); i++)
+            {
+                out.add(probe(d, i));
+            }
+        }
+        for (MetadataAttribute attr : MetadataAttribute.values())
+        {
+            out.addAll(probeMetadata(attr));
+        }
+        return out;
+    }
+
+
+    private static Slot probe(FunctionDescriptor d, int index)
+    {
+        Parameter p = d.parameters().get(index);
+        boolean list = p.type() instanceof ListOf;
+        Expr plant = list ? list(lit(NAME)) : lit(NAME);
+        Expr neutral = list ? list(lit(NEUTRAL)) : lit(NEUTRAL);
+        Expr base = baseCall(d, p);
+        if (base == null)
+        {
+            return new Slot(d.name(), p.name(), Verdict.UNPROBEABLE, "no evaluating base call");
+        }
+        Expr planted = plant(base, d, index, plant);
+        Expr control = plant(base, d, index, neutral);
+        if (stageARefuses(planted, p.name()))
+        {
+            return new Slot(d.name(), p.name(), Verdict.REFUSED, "stage A");
+        }
+        return classify(d.name(), p.name(), planted, control);
+    }
+
+
+    private static List<Slot> probeMetadata(MetadataAttribute attr)
+    {
+        List<Slot> out = new ArrayList<>();
+        String fn = attr.functionName();
+        for (MetadataLevel level : MetadataLevel.values())
+        {
+            if (attr.supports(level))
+            {
+                out.add(classify(fn, "arg0@" + level,
+                        call(fn, List.of(lit(NAME), lit(level.name())), Map.of()),
+                        call(fn, List.of(lit(NEUTRAL), lit(level.name())), Map.of())));
+            }
+        }
+        if (attr.scope() == MetadataAttribute.Scope.VARIABLE)
+        {
+            out.add(classify(fn, "dataset",
+                    call(fn, List.of(lit("X"), lit("DATA")), Map.of("dataset", lit(NAME))),
+                    call(fn, List.of(lit("X"), lit("DATA")), Map.of("dataset", lit(NEUTRAL)))));
+        }
+        out.add(classify(fn, LEVEL_FORM, call(fn, List.of(lit(NAME)), Map.of()),
+                call(fn, List.of(lit(NEUTRAL)), Map.of())));
+        return out;
+    }
+
+
+    private static Slot classify(String fn, String parameter, Expr planted, Expr control)
+    {
+        String named = eval(planted, NAME);
+        String other = eval(planted, OTHER);
+        if (isError(named) && isError(other))
+        {
+            return new Slot(fn, parameter, Verdict.REFUSED, named);
+        }
+        if (named.equals(other))
+        {
+            return new Slot(fn, parameter, Verdict.DATA, named);
+        }
+        String c1 = eval(control, NAME);
+        String c0 = eval(control, OTHER);
+        return c1.equals(c0) ? new Slot(fn, parameter, Verdict.NAME, named + " / " + other)
+                : new Slot(fn, parameter, Verdict.AMBIGUOUS,
+                        named + " / " + other + " / " + c1 + " / " + c0);
+    }
+
+
+    private static boolean stageARefuses(Expr root, String parameter)
+    {
+        Expr checked = isBoolean(root) ? root : call("empty", List.of(root), Map.of());
+        SequencedMap<Severity, Expr> levels = new LinkedHashMap<>();
+        levels.put(Severity.ERROR, checked);
+        return StageAChecker.check(new Rule(), levels).findings().stream()
+                .anyMatch(f -> f.kind() == StageAErrorKind.PARAMETER_TYPE
+                        && f.message().contains("'" + parameter + "'"));
+    }
+
+    // ---------------------------------------------------------------- base calls
+
+
+    /** The base expression for planting at {@code p}: the explicit one, else an auto-built call. */
+    private static @Nullable Expr baseCall(FunctionDescriptor d, Parameter p)
+    {
+        String text = BASE.getOrDefault(d.name() + "." + p.name(), BASE.get(d.name()));
+        if (text != null)
+        {
+            Expr base = CheckExpressionParser.parse(text);
+            return isError(eval(base, NAME)) ? null : base;
+        }
+        return autoBase(d, d.parameters().indexOf(p));
+    }
+
+
+    /**
+     * A call binding every required parameter positionally, with the first combination of per-type
+     * candidates (the planted slot's included) that evaluates in the named world.
+     */
+    private static @Nullable Expr autoBase(FunctionDescriptor d, int planted)
+    {
+        List<Parameter> ps = d.parameters();
+        // positionals bind by position: every parameter up to the last required one (or the
+        // planted one) is given, so none shifts; a trailing collector only when it is planted
+        int last = planted;
+        for (int i = 0; i < ps.size(); i++)
+        {
+            if (ps.get(i).required())
+            {
+                last = Math.max(last, i);
+            }
+        }
+        int[] choice = new int[ps.size()];
+        for (int attempt = 0; attempt < 400; attempt++)
+        {
+            List<Expr> args = new ArrayList<>();
+            for (int i = 0; i <= last; i++)
+            {
+                Parameter p = ps.get(i);
+                if (!p.collector() || i == planted)
+                {
+                    List<Expr> c = candidates(p.type());
+                    args.add(c.get(choice[i] % c.size()));
+                }
+            }
+            Expr base = call(d.name(), args, Map.of());
+            if (!isError(eval(base, NAME)))
+            {
+                return base;
+            }
+            if (!advance(choice, ps, planted))
+            {
+                return null;
+            }
+        }
+        return null;
+    }
+
+
+    private static boolean advance(int[] choice, List<Parameter> ps, int planted)
+    {
+        for (int j = 0; j < ps.size(); j++)
+        {
+            if (j != planted && (!ps.get(j).required() || ps.get(j).collector()))
+            {
+                continue;
+            }
+            choice[j]++;
+            if (choice[j] < candidates(ps.get(j).type()).size())
+            {
+                return true;
+            }
+            choice[j] = 0;
+        }
+        return false;
+    }
+
+
+    private static List<Expr> candidates(ExprType t)
+    {
+        if (t == Primitive.STRING)
+        {
+            return List.of(lit(NEUTRAL), lit("DATA"), lit("X"));
+        }
+        if (t == Primitive.NUMBER)
+        {
+            return List.of(new Expr.Lit(Expr.LitKind.NUMBER, 1.0));
+        }
+        if (t == Primitive.BOOLEAN)
+        {
+            return List.of(new Expr.Lit(Expr.LitKind.BOOL, true),
+                    new Expr.Binary(Expr.BinOp.EQ, ref("X"), lit(NEUTRAL)));
+        }
+        if (t == Primitive.REGEX)
+        {
+            return List.of(new Expr.Lit(Expr.LitKind.REGEX, NEUTRAL));
+        }
+        if (t == Primitive.DATE || t == Primitive.TIME)
+        {
+            return List.of(ref("DT"), lit("2020-01-01"));
+        }
+        if (t == Primitive.COLUMN_REFERENCE)
+        {
+            return List.of(ref("X"));
+        }
+        if (t == Primitive.DATASET_REFERENCE)
+        {
+            return List.of(lit("DM"));
+        }
+        if (t instanceof ListOf)
+        {
+            return List.of(list(ref("X")), list(lit(NEUTRAL)));
+        }
+        return List.of(ref("X"), ref("NUM"), lit(NEUTRAL), list(ref("X")),
+                call("varname", List.of(), Map.of()));
+    }
+
+
+    /**
+     * {@code base} with parameter {@code index} of its first {@code d} call set to {@code value}.
+     */
+    private static Expr plant(Expr base, FunctionDescriptor d, int index, Expr value)
+    {
+        Parameter p = d.parameters().get(index);
+        boolean[] done =
+        {
+                false
+        };
+        return replaceCall(base, d.name(), c ->
+        {
+            List<Expr> args = new ArrayList<>(c.args());
+            Map<String, Expr> kwargs = new LinkedHashMap<>(c.kwargs());
+            if (p.collector())
+            {
+                args.add(value);
+            }
+            else if (index < args.size())
+            {
+                args.set(index, value);
+            }
+            else
+            {
+                kwargs.put(p.name(), value);
+            }
+            return new Expr.Call(c.name(), args, kwargs);
+        }, done);
+    }
+
+
+    private static Expr replaceCall(Expr e, String fn, UnaryOperator<Expr.Call> f, boolean[] done)
+    {
+        if (done[0])
+        {
+            return e;
+        }
+        return switch (e)
+        {
+        case Expr.Call c when c.name().equals(fn) ->
+        {
+            done[0] = true;
+            yield f.apply(c);
+        }
+        case Expr.Call c ->
+        {
+            List<Expr> args = new ArrayList<>();
+            c.args().forEach(a -> args.add(replaceCall(a, fn, f, done)));
+            Map<String, Expr> kwargs = new LinkedHashMap<>();
+            c.kwargs().forEach((k, v) -> kwargs.put(k, replaceCall(v, fn, f, done)));
+            yield new Expr.Call(c.name(), args, kwargs);
+        }
+        case Expr.Binary b -> new Expr.Binary(b.op(), replaceCall(b.left(), fn, f, done),
+                replaceCall(b.right(), fn, f, done));
+        case Expr.Not n -> new Expr.Not(replaceCall(n.inner(), fn, f, done));
+        default -> e;
+        };
+    }
+
+    // ---------------------------------------------------------------- evaluation
+
+
+    /** The call's answer in both content variants of the world named {@code n}. */
+    private static String eval(Expr root, String n)
+    {
+        String filled = eval1(root, n, false);
+        String missing = eval1(root, n, true);
+        return isError(filled) && isError(missing) ? filled : filled + " || " + missing;
+    }
+
+
+    private static boolean isError(String answer)
+    {
+        return answer.startsWith("ERR") && !answer.contains(" || ");
+    }
+
+
+    private static boolean isBoolean(Expr root)
+    {
+        if (root instanceof Expr.Call c)
+        {
+            FunctionDescriptor d = FunctionRegistry.descriptor(c.name());
+            return d != null && d.kind() == FunctionKind.BOOLEAN;
+        }
+        return !(root instanceof Expr.Lit) && !(root instanceof Expr.Ref);
+    }
+
+    private static final Set<String> NEGATION_ONLY = CompilerDispatchedCalls
+            .negationDispatchedBooleanCallNames();
+
+    private static String eval1(Expr root0, String n, boolean missing)
+    {
+        EvaluationContext ctx = world(n, missing);
+        Expr root = root0 instanceof Expr.Call c && NEGATION_ONLY.contains(c.name())
+                ? new Expr.Not(root0)
+                : root0;
+        try
+        {
+            if (isBoolean(root))
+            {
+                return "B" + NativeExprEvaluator.evaluate(root, ctx);
+            }
+            Vector v = ExprCompiler.evaluateValueExpression(root, ctx);
+            if (v == null)
+            {
+                return "null";
+            }
+            StringBuilder sb = new StringBuilder("V");
+            for (int r = 0; r < ctx.rowCount(); r++)
+            {
+                TypedValue tv = v.value(r);
+                sb.append('|')
+                        .append(tv == null || tv.cell() == null ? null : tv.cell().getValue());
+            }
+            return sb.toString();
+        }
+        catch (RuntimeException e)
+        {
+            return "ERR " + e.getClass().getSimpleName() + ": " + e.getMessage();
+        }
+    }
+
+    // ---------------------------------------------------------------- the two worlds
+
+
+    /**
+     * The world named {@code n}: everything that bears the name exists under {@code n} — the column
+     * (and its decode partner {@code n} minus its trailing {@code N}), a dataset, Define / Library
+     * metadata, value-level metadata; everything else is the same in both worlds.
+     */
+    private static EvaluationContext world(String n, boolean missing)
+    {
+        MockTable primary = MockTable.of().name("AE");
+        primary = missing ? primary.colSasMissing(n, null, null) : primary.col(n, "q1", "q2");
+        IDataTable ae = primary.col(n.substring(0, n.length() - 1), "Decoded1", "Other")
+                .colMeta(n, "Lbl", 8, "$8.").col("X", "a", "b").col("Y", "a", "a")
+                .col("USUBJID", "S1", "S2").col("AESEQ", "1", "2").colLong("NUM", 1L, 2L)
+                .col("DT", "2020-01-01", "2020-02-01").col("SER2", "s", "s").col("SER3", "s", "s")
+                .col("CTREF", "CDISC CT", "CDISC CT").col("CTVER", "2020-03-27", "2020-03-27")
+                .col("RDOMAIN", "DM", "DM").build();
+        IDataTable dm = MockTable.of().name("DM").col("USUBJID", "S1", "S2").col("X", "a", "b")
+                .build();
+        IDataTable named = MockTable.of().name(n).col("USUBJID", "S1", "S2").col("X", "a", "c")
+                .col(n, "q1", "q3").col("DT", "2021-01-01", "2021-02-01").colLong("NUM", 5L, 7L)
+                .colMeta("X", "OtherLbl", 4, "$4.").label("OtherDs").build();
+        Map<String, IDataTable> inventory = new LinkedHashMap<>();
+        inventory.put("AE", ae);
+        inventory.put("DM", dm);
+        inventory.put(n, named);
+        DatasetResolver.WithInventory resolver = new DatasetResolver.WithInventory()
+        {
+
+            @Override
+            public @Nullable IDataTable resolve(String name)
+            {
+                return name == null ? null : inventory.get(name.toUpperCase(Locale.ROOT));
+            }
+
+
+            @Override
+            public Set<String> availableDatasets()
+            {
+                return inventory.keySet();
+            }
+        };
+        Metadata metadata = new Metadata(n);
+        return EvaluationContext.builder().table(ae).datasetResolver(resolver).domainName("AE")
+                .domainPrefix("AE").variableWildcardPrefix("AE").className("EVENTS")
+                .defineProvider(metadata).libraryProvider(metadata).vlmResolver(vlm(n))
+                .dictionaryProvider(dictionary).variables(Map.of("variable_name", "X")).build();
+    }
+
+
+    /** VLM for variable {@code n}: where {@code X EQ "a"}, a float of length 3 with a decode. */
+    private static VlmResolver vlm(String n)
+    {
+        CheckValue a = new CheckValue();
+        a.setValue("a");
+        TranslatedText text = new TranslatedText();
+        text.setValue("Decoded1");
+        Decode decode = new Decode();
+        decode.setTranslatedTexts(List.of(text));
+        ItemDef x = ItemDef.builder().oid("IT.X").name("X").dataType("text").build();
+        ItemDef target = ItemDef.builder().oid("IT.N").name(n).dataType("text")
+                .valueListRef(ValueListRef.builder().valueListOID("VL.N").build()).build();
+        CodeList codes = CodeList.builder().oid("CL.U")
+                .codeListItems(
+                        List.of(CodeListItem.builder().codedValue("q1").decode(decode).build()))
+                .build();
+        ItemDef valueLevel = ItemDef.builder().oid("IT.N.A").name("SET_A").dataType("float")
+                .length(3).codeListRef(CodeListRef.builder().codeListOID("CL.U").build()).build();
+        WhereClauseDef where = WhereClauseDef.builder().oid("WC.A").rangeChecks(List.of(RangeCheck
+                .builder().comparator("EQ").itemOID("IT.X").checkValues(List.of(a)).build()))
+                .build();
+        ValueListDef values = ValueListDef.builder().oid("VL.N")
+                .itemRefs(List.of(ItemRef.builder().itemOID("IT.N.A").orderNumber(1)
+                        .mandatory("Yes")
+                        .whereClauseRefs(
+                                List.of(WhereClauseRef.builder().whereClauseOID("WC.A").build()))
+                        .build()))
+                .build();
+        ItemGroupDef group = ItemGroupDef.builder().oid("IG.AE").name("AE").domain("AE")
+                .itemRefs(List.of(ItemRef.builder().itemOID("IT.N").build(),
+                        ItemRef.builder().itemOID("IT.X").build()))
+                .build();
+        MetaDataVersion mdv = MetaDataVersion.builder().itemGroupDefs(List.of(group))
+                .itemDefs(List.of(x, target, valueLevel)).valueListDefs(List.of(values))
+                .whereClauseDefs(List.of(where)).codeLists(List.of(codes)).build();
+        return Objects.requireNonNull(VlmResolver.from(mdv));
+    }
+
+    /** Define / Library metadata that knows exactly one variable and one dataset: {@code n}. */
+    private static final class Metadata implements MetadataProvider
+    {
+
+        private final String name;
+
+        Metadata(String aName)
+        {
+            name = aName;
+        }
+
+
+        private static String sample(MetadataAttribute a)
+        {
+            return switch (a.normalization())
+            {
+            case NUMERIC -> "8";
+            case BOOLEAN, MANDATORY -> "Yes";
+            case TYPE -> "text";
+            case ROLE -> "Identifier";
+            case CORE -> "Req";
+            default -> a.isList() ? "[\"q1\"]" : "v";
+            };
+        }
+
+
+        private static Map<String, String> meta(MetadataAttribute.Scope scope)
+        {
+            Map<String, String> m = new HashMap<>();
+            for (MetadataAttribute a : MetadataAttribute.values())
+            {
+                if (a.scope() == scope)
+                {
+                    m.put(a.providerKey(), sample(a));
+                }
+            }
+            return m;
+        }
+
+
+        @Override
+        public List<String> getRequiredVariables(String domain)
+        {
+            return List.of("X");
+        }
+
+
+        @Override
+        public List<String> getExpectedVariables(String domain)
+        {
+            return List.of("X");
+        }
+
+
+        @Override
+        public List<String> getColumnOrder(String domain)
+        {
+            return List.of("X");
+        }
+
+
+        @Override
+        public boolean isDomainCustom(String domain)
+        {
+            return false;
+        }
+
+
+        @Override
+        public List<String> getCodelistTerms(String codelistCode)
+        {
+            return List.of(NEUTRAL);
+        }
+
+
+        @Override
+        public List<String> getCodelistAttribute(String aCtPackageId, String aCtAttribute)
+        {
+            return List.of("C1");
+        }
+
+
+        @Override
+        public @Nullable List<String> getStandardModelVariables(IDataTable aTable,
+                DatasetResolver aResolver)
+        {
+            return List.of("X");
+        }
+
+
+        @Override
+        public Map<String, String> getVariableMetadata(String domain, String variable)
+        {
+            return name.equalsIgnoreCase(variable) ? meta(MetadataAttribute.Scope.VARIABLE)
+                    : Map.of();
+        }
+
+
+        @Override
+        public List<Map<String, String>> getDomainVariables(String domain)
+        {
+            return List.of(Map.of("name", "X"));
+        }
+
+
+        @Override
+        public Map<String, String> getDatasetMetadata(String domain)
+        {
+            return name.equalsIgnoreCase(domain) ? meta(MetadataAttribute.Scope.DATASET) : Map.of();
+        }
+
+
+        @Override
+        public Optional<Boolean> isCodelistExtensible(String codelistName)
+        {
+            return Optional.of(Boolean.TRUE);
+        }
+
+
+        @Override
+        public String getStandard()
+        {
+            return "SDTMIG";
+        }
+    }
+
+    // ---------------------------------------------------------------- shorthand
+
+    private static Expr lit(String s)
+    {
+        return new Expr.Lit(Expr.LitKind.STRING, s);
+    }
+
+
+    private static Expr ref(String s)
+    {
+        return new Expr.Ref(s, OperandKind.COLUMN);
+    }
+
+
+    private static Expr list(Expr... members)
+    {
+        return new Expr.Lit(Expr.LitKind.LIST, List.of(members));
+    }
+
+
+    private static Expr call(String fn, List<Expr> args, Map<String, Expr> kwargs)
+    {
+        return new Expr.Call(fn, args, kwargs);
+    }
+}

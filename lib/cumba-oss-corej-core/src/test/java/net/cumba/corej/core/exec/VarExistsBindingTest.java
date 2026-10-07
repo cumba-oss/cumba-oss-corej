@@ -432,10 +432,11 @@ class VarExistsBindingTest
 
 
     /**
-     * The rewrite itself ({@code BindingInliner.inlinePresenceNames}): it moves a name form into a
-     * presence probe — through a binding of a binding, the {@code varname()} cursor included — and
-     * nothing else: a computed name, a number (the {@code PARAMETER_TYPE} path), {@code ds_exists}
-     * and an ordinary read of the binding stay as written, the very same instance.
+     * The rewrite itself ({@code BindingInliner.inlineNameSlotBindings}): it moves a name form into
+     * a name slot — through a binding of a binding, the {@code varname()} cursor included, and
+     * since {@code PLAN-string-literal-prefix-rewrite} S8 at every name slot ({@code ds_exists}
+     * too) — and nothing else: a computed name, a number (the {@code PARAMETER_TYPE} path) and an
+     * ordinary read of the binding stay as written, the very same instance.
      */
     @Test
     void theRewriteMovesOnlyNameForms()
@@ -448,14 +449,14 @@ class VarExistsBindingTest
         bound.put("$d", parse("$c"));
         assertEquals(parse("var_exists(varname())"),
                 net.cumba.corej.core.expr.convert.BindingInliner
-                        .inlinePresenceNames(parse("var_exists($v)"), bound));
-        assertEquals(parse("not var_not_exists(TRT01P) and ds_exists($c)"),
-                net.cumba.corej.core.expr.convert.BindingInliner.inlinePresenceNames(
+                        .inlineNameSlotBindings(parse("var_exists($v)"), bound));
+        assertEquals(parse("not var_not_exists(TRT01P) and ds_exists(TRT01P)"),
+                net.cumba.corej.core.expr.convert.BindingInliner.inlineNameSlotBindings(
                         parse("not var_not_exists($d) and ds_exists($c)"), bound));
         net.cumba.corej.core.expr.ast.Expr unchanged = parse(
                 "var_exists($n) or var_not_exists($k) or $c == \"X\" or var_exists($unknown)");
         assertSame(unchanged, net.cumba.corej.core.expr.convert.BindingInliner
-                .inlinePresenceNames(unchanged, bound));
+                .inlineNameSlotBindings(unchanged, bound));
     }
 
 

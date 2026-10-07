@@ -2167,8 +2167,10 @@ public class RulePackageLoader
         // DS.X, a ${…} template, a string literal, varname() — IS the inline spelling
         // var_exists(<name>): rewritten here, before canonicalisation, stage A, the compiler and
         // the domain scan, so every reader sees one tree and the computed path keeps only the
-        // computed names (concat, printf, a call).
-        inlineBoundPresenceNames(rule, levels);
+        // computed names (concat, printf, a call). Since PLAN-string-literal-prefix-rewrite (S8)
+        // every name slot (NameSlots), so colref($c) with $c: "--SEQ" is colref("--SEQ") and the
+        // bind-time specialiser rewrites it where it now stands.
+        inlineBoundNames(rule, levels);
         // ⚑ The Plan J3/J4 absent-column guard injection that stood here is DELETED
         // (2026-08-26, owner-ruled). Every guard the corpus needs is now AUTHORED — as
         // Requirements.Variables.All where absence means there is nothing to check, or as a
@@ -2292,13 +2294,13 @@ public class RulePackageLoader
 
 
     /**
-     * Rewrites every presence probe over a name-form {@code $}-binding to its inline spelling
-     * ({@link net.cumba.corej.core.expr.convert.BindingInliner#inlinePresenceNames}) — in the Check
-     * levels (against every binding) and in each binding's own expression (against the bindings
-     * authored BEFORE it only, so a forward reference stays a {@code $}-reference and meets stage
-     * A's armed {@code FORWARD_OR_CYCLIC_BINDING}). Idempotent.
+     * Rewrites every name-slot argument that is a name-form {@code $}-binding to its inline
+     * spelling ({@link net.cumba.corej.core.expr.convert.BindingInliner#inlineNameSlotBindings}) —
+     * in the Check levels (against every binding) and in each binding's own expression (against the
+     * bindings authored BEFORE it only, so a forward reference stays a {@code $}-reference and
+     * meets stage A's armed {@code FORWARD_OR_CYCLIC_BINDING}). Idempotent.
      */
-    private static void inlineBoundPresenceNames(Rule rule,
+    private static void inlineBoundNames(Rule rule,
             SequencedMap<Severity, net.cumba.corej.core.expr.ast.Expr> levels)
     {
         List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
@@ -2313,7 +2315,7 @@ public class RulePackageLoader
         for (net.cumba.corej.core.model.CompiledBinding binding : compiled)
         {
             net.cumba.corej.core.expr.ast.Expr e = net.cumba.corej.core.expr.convert.BindingInliner
-                    .inlinePresenceNames(binding.expression(), earlier);
+                    .inlineNameSlotBindings(binding.expression(), earlier);
             changed |= e != binding.expression();
             rewritten.add(e == binding.expression() ? binding : binding.withExpression(e));
             earlier.put(binding.name(), binding.expression());
@@ -2323,7 +2325,7 @@ public class RulePackageLoader
             rule.setCompiledBindings(rewritten);
         }
         levels.replaceAll((severity, level) -> net.cumba.corej.core.expr.convert.BindingInliner
-                .inlinePresenceNames(level, earlier));
+                .inlineNameSlotBindings(level, earlier));
     }
 
 

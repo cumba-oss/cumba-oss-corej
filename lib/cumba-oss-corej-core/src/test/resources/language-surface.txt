@@ -1,4 +1,4 @@
-LEVEL=3
+LEVEL=4
 functions:
 abs(x:unknown) kind=value
 all(list:list<boolean>) kind=boolean
@@ -9,13 +9,13 @@ ceil(x:unknown) kind=value
 char(x:unknown) kind=value
 coalesce(a:unknown, b:unknown, c:unknown?) kind=value
 codelist_terms(codelists:list<string>, level:string, returntype:string?) kind=value aggregate provider=library
-colref(x:unknown) kind=value perRow
-column_series_metadata(name:string?, name_pattern:string, min_length:number?) kind=value aggregate
+colref(x:unknown@name) kind=value perRow
+column_series_metadata(name:string@name?, name_pattern:string, min_length:number?) kind=value aggregate
 concat(a:unknown, b:unknown, c:unknown?) kind=value
 contains(x:unknown, value:unknown) kind=boolean
 contains_all(source:unknown, required:unknown?, keys:list<unknown>?) kind=boolean
 count(x:unknown) kind=value
-cross_dataset_variable_metadata(name:string, domain:string) kind=value aggregate perVariable
+cross_dataset_variable_metadata(name:string, domain:string@name) kind=value aggregate perVariable
 dataset_class_from_library() kind=value aggregate provider=library
 dataset_names() kind=value aggregate
 date(x:unknown) kind=value
@@ -33,8 +33,8 @@ distinct(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<co
 does_not_contain(x:unknown, value:unknown) kind=boolean
 does_not_equal_string_part(name:unknown, value:unknown, regex:string) kind=boolean
 domain_is_custom() kind=value aggregate provider=library
-ds_exists(name:unknown) kind=boolean
-ds_not_exists(name:unknown) kind=boolean
+ds_exists(name:unknown@name) kind=boolean
+ds_not_exists(name:unknown@name) kind=boolean
 duplicate_label_variables() kind=value aggregate
 dy(name:column-reference, reference:column-reference) kind=value
 earliest_date(a:date, b:date) kind=value
@@ -45,7 +45,7 @@ ends_with(x:unknown, value:unknown) kind=boolean
 equalsIgnoreCase(a:unknown, b:unknown) kind=boolean
 expected_variables() kind=value aggregate provider=library
 extract_metadata(name:string) kind=value aggregate
-find_vars(entry:string) kind=value
+find_vars(entry:string@name) kind=value
 floor(x:unknown) kind=value
 get_codelist_attributes(name:unknown, version:unknown, ct_attribute:string) kind=value aggregate provider=library
 get_column_order_from_dataset() kind=value aggregate
@@ -105,7 +105,7 @@ lpad(x:unknown, width:number, fill:string?) kind=value
 matches_label_template(label:string, template:string) kind=boolean
 max(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?) kind=value
 max_date(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?, missing_values:string?) kind=value
-max_value_length(name:unknown?) kind=value
+max_value_length(name:unknown@name?) kind=value
 min_date(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?, missing_values:string?) kind=value
 minus(value:unknown, subtract:unknown) kind=value aggregate
 month(x:unknown) kind=value
@@ -152,24 +152,24 @@ valid_external_dictionary_code_term_pair(name:column-reference, external_diction
 valid_external_dictionary_hierarchy(name:column-reference, dictionary_parent:column-reference, external_dictionary_type:string, case_sensitive:boolean?) kind=boolean provider=dictionary<external_dictionary_type>
 valid_external_dictionary_value(name:column-reference, external_dictionary_type:string, dictionary_term_type:string, case_sensitive:boolean?) kind=boolean provider=dictionary<external_dictionary_type>
 value() kind=value
-var_exists(name:unknown) kind=boolean
-var_is_all_missing(name:unknown) kind=boolean
-var_is_empty(name:unknown) kind=boolean
-var_is_single_value(name:unknown) kind=boolean
-var_not_exists(name:unknown) kind=boolean
+var_exists(name:unknown@name) kind=boolean
+var_is_all_missing(name:unknown@name) kind=boolean
+var_is_empty(name:unknown@name) kind=boolean
+var_is_single_value(name:unknown@name) kind=boolean
+var_not_exists(name:unknown@name) kind=boolean
 variable_count(name:string?, name_pattern:string?) kind=value aggregate
 variable_names() kind=value aggregate provider=library
 varname() kind=value
-vlm_codelist_coded_codes(name:unknown?) kind=value
-vlm_codelist_coded_values(name:unknown?) kind=value
-vlm_codelist_extensible(name:unknown?) kind=value
-vlm_data_type(name:unknown?) kind=value
-vlm_decode_matches(name:unknown?) kind=value
-vlm_has_codelist(name:unknown?) kind=value
-vlm_length(name:unknown?) kind=value
-vlm_mandatory(name:unknown?) kind=value
-vlm_type_conforms(name:unknown?) kind=value
-vlm_value_length(name:unknown?) kind=value
+vlm_codelist_coded_codes(name:unknown@name?) kind=value
+vlm_codelist_coded_values(name:unknown@name?) kind=value
+vlm_codelist_extensible(name:unknown@name?) kind=value
+vlm_data_type(name:unknown@name?) kind=value
+vlm_decode_matches(name:unknown@name?) kind=value
+vlm_has_codelist(name:unknown@name?) kind=value
+vlm_length(name:unknown@name?) kind=value
+vlm_mandatory(name:unknown@name?) kind=value
+vlm_type_conforms(name:unknown@name?) kind=value
+vlm_value_length(name:unknown@name?) kind=value
 year(x:unknown) kind=value
 keys:
 AUTHORITY: Organization,Rule_Ids,Standards

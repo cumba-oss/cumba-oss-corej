@@ -171,10 +171,14 @@ public final class AbsentDatasetSkip
     /**
      * Calls whose first argument is a <em>name</em> (bareword or the equivalent string literal)
      * rather than a value — so a dotted argument names a foreign dataset's column. The
-     * exists-family predicates minus the dataset-presence pair above.
+     * exists-family predicates minus the dataset-presence pair above. Each is a name slot at
+     * argument 0 ({@code NameSlots}; {@code NameSlotRosterTest} holds the set to that). The retired
+     * generic {@code exists} / {@code not_exists} pair is gone from it: a load error
+     * ({@code RulePackageLoader.GENERIC_PRESENCE_OPERATORS}), so no loaded rule carries one
+     * ({@code PLAN-string-literal-prefix-rewrite} phase 0).
      */
-    private static final Set<String> NAME_ARG_CALLS = Set.of("exists", "not_exists", "var_exists",
-            "var_not_exists", "var_is_empty", "var_is_single_value", "var_is_all_missing");
+    private static final Set<String> NAME_ARG_CALLS = Set.of("var_exists", "var_not_exists",
+            "var_is_empty", "var_is_single_value", "var_is_all_missing");
 
     // ---------------------------------------------------------------- coverage derivation (K5)
 

@@ -56,6 +56,12 @@ import org.jspecify.annotations.Nullable;
  * reference; resolving it would break split-SUPP child matching.</li>
  * <li>The D77d per-row forms ({@code ${VAR[:fmt]}}, a dot-qualified {@code **}) and the D92a / D92b
  * constructs — see {@link ExprPrefixResolver}.</li>
+ * <li>Every STRING literal outside a name slot ({@code PLAN-string-literal-prefix-rewrite} S3) — a
+ * binding's own literal included: {@code $c: "--SEQ"} stays {@code "--SEQ"}, so {@code X == $c}
+ * compares against it verbatim as {@code X == "--SEQ"} does, while {@code colref($c)} was already
+ * rewritten to {@code colref("--SEQ")} by the loader
+ * ({@code BindingInliner.inlineNameSlotBindings}, S8) and is specialised here at its name slot
+ * (G1).</li>
  * <li>Record keys — the {@code --} candidates there are engine constants, not rule fields, and
  * {@code RecordKeyResolver} already resolves them through this same prefix authority.</li>
  * </ul>
