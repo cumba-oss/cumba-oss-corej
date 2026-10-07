@@ -965,7 +965,7 @@ public final class StageAChecker
      * the columns its pattern matches), so their root alone qualifies; {@code coalesce} answers
      * whichever argument has a value, and {@code max} accepts any VALUE expression as its target
      * ({@code GroupedAggregate.readTarget}, D14 / D119c) — so
-     * {@code coalesce(extract_metadata("Compression"), extract_metadata("Encoding"))} or
+     * {@code coalesce(extract_metadata("Compression"), extract_metadata("Created"))} or
      * {@code max(extract_metadata("Compression"))} reads no column to take a type from.
      */
     private static boolean isTypeSourceArgument(Expr argument, Set<String> columnTypedEarlier)

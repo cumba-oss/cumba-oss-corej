@@ -18,6 +18,7 @@ import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.impl.support.OverlayDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.MissingValue;
@@ -572,6 +573,40 @@ class FindingValuesTypedDefaultTest
 
         assertEquals(MIS, v.get("$size"), "a numeric key with no value: MIS — " + v);
         assertEquals("", v.get("$name"), "a char key with no value: \"\" — " + v);
+        assertNullFree(v);
+    }
+
+
+    @Test
+    void theEncodingKeysAreStringsAndReportTheCharDefaultWithoutAValue() throws Exception
+    {
+        // PLAN-provider-encoding-metadata E9: extract_metadata("encoding") / ("encoding_source")
+        // are
+        // STRING; a table whose provider published neither reports "" — the raw "Encoding" key
+        // stays unpinned.
+        Rule rule = load(
+                """
+                        {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                         "Bindings":[{"name":"$enc","expression":"extract_metadata(\\"encoding\\")"},
+                                     {"name":"$src","expression":"extract_metadata(\\"encoding_source\\")"}],
+                         "Check":{"expression": "empty($enc)"},
+                         "Outcome":{"Message":"m","Output_Variables":["AETERM","$enc","$src"]}}""");
+        // A real table, no mock: it publishes no table metadata at all.
+        OverlayDataTable ae = OverlayDataTable.empty("AE", "AE", 1);
+        ae.addColumn("AETERM", DataValueType.STRING, "AETERM");
+        ae.setValue(0, 0, "X");
+
+        assertEquals(net.cumba.corej.core.expr.typed.ExprType.Primitive.STRING,
+                rule.staticBindingTypes().get("$enc"));
+        assertEquals(net.cumba.corej.core.expr.typed.ExprType.Primitive.STRING,
+                rule.staticBindingTypes().get("$src"));
+        assertEquals(net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN,
+                net.cumba.corej.core.expr.typed.ElementTable.resultType("extract_metadata",
+                        "Encoding"));
+        Map<String, String> v = single(RuleRunnerCalls.execute(rule, ae));
+
+        assertEquals("", v.get("$enc"), "a char key with no value: \"\" — " + v);
+        assertEquals("", v.get("$src"), "a char key with no value: \"\" — " + v);
         assertNullFree(v);
     }
 

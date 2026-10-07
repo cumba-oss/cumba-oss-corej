@@ -74,7 +74,7 @@ class ReportedBindingTypeSourceGateTest
     @Test
     void aReportedBindingOverAnUnpinnedMetadataKeyIsALoadError() throws Exception
     {
-        // The review's reach: "Compression" is not one of the six typed extract_metadata keys,
+        // The review's reach: "Compression" is not one of the eight typed extract_metadata keys,
         // so the binding is untyped at load; reporting it is refused, naming the binding.
         Rule rule = loadRaw(compression("[\"AETERM\",\"$c\"]"));
 
@@ -390,6 +390,32 @@ class ReportedBindingTypeSourceGateTest
                 result.getStatus() + " " + result.getStatusMessage());
         assertFalse(result.getViolations().get(0).getValues().containsKey("$v"),
                 result.getViolations().get(0).getValues().toString());
+    }
+
+
+    @Test
+    void theSnakeCaseEncodingKeysAreTypedWhileTheRawProviderKeyIsNot() throws Exception
+    {
+        // PLAN-provider-encoding-metadata E9: extract_metadata("encoding") / ("encoding_source")
+        // are STRING, so a binding over them may be reported; the raw, case-sensitive provider key
+        // "Encoding" stays an untyped lookup (the coalesce cases below rely on that).
+        Rule typed = load(
+                """
+                        {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                         "Bindings":[{"name":"$e","expression":"extract_metadata(\\"encoding\\")"},
+                                     {"name":"$s","expression":"extract_metadata(\\"encoding_source\\")"}],
+                         "Check":{"expression": "AETERM != \\"zz\\" and $e != \\"UTF-8\\" and not empty($s)"},
+                         "Outcome":{"Message":"m","Output_Variables":["AETERM","$e","$s"]}}""");
+        assertNull(typed.getLoadError(), "reporting a typed key loads");
+
+        Rule raw = loadRaw("""
+                {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                 "Bindings":[{"name":"$e","expression":"extract_metadata(\\"Encoding\\")"}],
+                 "Check":{"expression": "AETERM != \\"zz\\" and not empty($e)"},
+                 "Outcome":{"Message":"m","Output_Variables":["AETERM","$e"]}}""");
+        assertNotNull(raw.getLoadError(), "the raw provider key has no type source");
+        assertTrue(raw.getLoadError().contains("encoding_source"),
+                "the typed keys named by the error include the new ones: " + raw.getLoadError());
     }
 
 

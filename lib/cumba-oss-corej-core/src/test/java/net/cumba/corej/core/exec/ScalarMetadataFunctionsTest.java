@@ -193,6 +193,32 @@ class ScalarMetadataFunctionsTest
 
 
     @Test
+    void extractMetadataReadsTheDecodeCharsetUnderSnakeCaseKeys()
+    {
+        // PLAN-provider-encoding-metadata E9: the providers publish "Encoding" / "EncodingSource";
+        // the case-sensitive default arm would miss them under the rule spelling.
+        OverlayDataTable bw = OverlayDataTable.empty("BW", "Body Weight", 1);
+        bw.addColumn("STUDYID", DataValueType.STRING, "Study Identifier");
+        bw.setValue(0, 0, "S");
+        bw.setTableMetaData("Encoding", "windows-1252");
+        bw.setTableMetaData("EncodingSource", "DECLARED");
+        EvalRun run = run(bw, null);
+        assertEquals("windows-1252", extract(run, "encoding"));
+        assertEquals("DECLARED", extract(run, "encoding_source"));
+        assertEquals("windows-1252", extract(run, "Encoding"), "the raw key still reads raw");
+    }
+
+
+    @Test
+    void extractMetadataEncodingIsMissingOnATableWithoutIt()
+    {
+        EvalRun run = run(table("BW", "STUDYID", "S"), null);
+        assertNull(extract(run, "encoding"));
+        assertNull(extract(run, "encoding_source"));
+    }
+
+
+    @Test
     void extractMetadataLocationIsMissingWithoutASourceUri()
     {
         assertNull(extract(run(table("BW", "STUDYID", "S"), null), "dataset_location"));

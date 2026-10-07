@@ -173,16 +173,19 @@ public final class ElementTable
      * Result types of the value functions whose answer is the attribute their static key literal
      * names (P3, OPEN-T (c)): {@code extract_metadata(name)} — the keys its implementation
      * documents ({@code ScalarMetadataFunctions.extractMetadata}; {@code dataset_size} is the byte
-     * count, a {@code Long}) and {@code file_format} ({@code DataTableMetaSupport}); any other key
-     * is whatever the dataset's reader publishes, so it stays unknown — and
-     * {@code cross_dataset_variable_metadata(name, domain=)}, per variable, one of the four
-     * attributes its loader admits ({@code ScalarMetadataFunctions.VARIABLE_METADATA_FIELDS}).
+     * count, a {@code Long}; {@code encoding} and {@code encoding_source} name the decode charset)
+     * and {@code file_format} ({@code DataTableMetaSupport}); any other key is whatever the
+     * dataset's reader publishes, so it stays unknown — the raw, case-sensitive provider spellings
+     * of the charset keys included — and {@code cross_dataset_variable_metadata(name, domain=)},
+     * per variable, one of the four attributes its loader admits
+     * ({@code ScalarMetadataFunctions.VARIABLE_METADATA_FIELDS}).
      */
     private static final Map<String, Map<String, ExprType>> KEYED_RESULT_TYPES = Map.of(
             "extract_metadata",
             Map.of("dataset_name", Primitive.STRING, "dataset_label", Primitive.STRING,
                     "dataset_location", Primitive.STRING, "filename", Primitive.STRING,
-                    "file_format", Primitive.STRING, "dataset_size", Primitive.NUMBER),
+                    "file_format", Primitive.STRING, "dataset_size", Primitive.NUMBER, "encoding",
+                    Primitive.STRING, "encoding_source", Primitive.STRING),
             "cross_dataset_variable_metadata", Map.of("label", Primitive.STRING, "data_type",
                     Primitive.STRING, "format", Primitive.STRING, "length", Primitive.NUMBER));
 

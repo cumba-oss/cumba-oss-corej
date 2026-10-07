@@ -475,4 +475,49 @@ class CdtLoaderTest
         assertEquals("Baseline", table.getValue(0, 2));
         assertEquals("Different Label", table.getValue(1, 2));
     }
+
+    // ---- the decode charset (PLAN-provider-encoding-metadata, E7) -------------------------
+
+
+    private static OverlayDataTable withHeader(String aHeader)
+    {
+        return CdtLoader.parse(aHeader + "\ncol USUBJID type=Char\n---\nA\n---\n", "test");
+    }
+
+
+    @Test
+    void parse_undeclaredEncoding_isTheFormatsUtf8()
+    {
+        OverlayDataTable t = withHeader("dataset DM");
+        assertEquals("UTF-8", t.getMetaData().getMetaData("Encoding"));
+        assertEquals("FORMAT", t.getMetaData().getMetaData("EncodingSource"));
+    }
+
+
+    @Test
+    void parse_declaredEncoding_winsAndDefaultsToDeclared()
+    {
+        // How a scenario simulates a latin1 XPT for extract_metadata("encoding").
+        OverlayDataTable t = withHeader("dataset DM Encoding=ISO-8859-1");
+        assertEquals("ISO-8859-1", t.getMetaData().getMetaData("Encoding"));
+        assertEquals("DECLARED", t.getMetaData().getMetaData("EncodingSource"));
+    }
+
+
+    @Test
+    void parse_declaredEncodingAndSource_bothKept()
+    {
+        OverlayDataTable t = withHeader("dataset DM Encoding=ISO-8859-1 EncodingSource=CONFIGURED");
+        assertEquals("ISO-8859-1", t.getMetaData().getMetaData("Encoding"));
+        assertEquals("CONFIGURED", t.getMetaData().getMetaData("EncodingSource"));
+    }
+
+
+    @Test
+    void parse_loneDeclaredSource_isDropped()
+    {
+        OverlayDataTable t = withHeader("dataset DM EncodingSource=DEFAULT");
+        assertEquals("UTF-8", t.getMetaData().getMetaData("Encoding"));
+        assertEquals("FORMAT", t.getMetaData().getMetaData("EncodingSource"));
+    }
 }

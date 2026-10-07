@@ -163,8 +163,12 @@ public final class ScalarMetadataFunctions
     /**
      * {@code extract_metadata(name)} — one dataset-metadata value of the current table:
      * {@code dataset_name}, {@code dataset_label}, {@code dataset_size} (bytes, a {@code Long}),
-     * {@code dataset_location} / {@code filename} (the source-URI basename), or any other key the
-     * table's provider publishes ({@code file_format}, …). Missing when the table carries none.
+     * {@code dataset_location} / {@code filename} (the source-URI basename), {@code encoding} (the
+     * canonical name of the charset the provider decoded the table's text with, or {@code MIXED})
+     * and {@code encoding_source} ({@code DECLARED}, {@code FORMAT}, {@code CONFIGURED} or
+     * {@code DEFAULT}) — the provider's two decode-charset keys under snake-case names, because the
+     * lookup below is case-sensitive — or any other key the table's provider publishes
+     * ({@code file_format}, …). Missing when the table carries none.
      *
      * @param run
      *            the evaluation run
@@ -185,6 +189,10 @@ public final class ScalarMetadataFunctions
         case "dataset_name" -> meta.getName();
         case "dataset_label" -> meta.getLabel();
         case "dataset_size" -> meta.getMetaData("dataset_size");
+        // The provider keys are capitalised (DataTableMetaSupport); the rule spelling is
+        // snake_case like every other accessor key (PLAN-provider-encoding-metadata, E9).
+        case "encoding" -> meta.getMetaData("Encoding");
+        case "encoding_source" -> meta.getMetaData("EncodingSource");
         // Two keys, one value (the source-URI basename): dataset_location is the corpus spelling,
         // filename the intuitive alias. Both resolve identically.
         case "dataset_location", "filename" -> fileNameFromUri(meta.getTableURI());

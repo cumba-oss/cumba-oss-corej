@@ -112,6 +112,11 @@ import net.cumba.datatable.values.MissingValue;
 public final class CdtLoader
 {
 
+    /** The provider-side decode-charset table-meta keys (DataTableMetaSupport). */
+    private static final String ENCODING_KEY = "Encoding";
+
+    private static final String ENCODING_SOURCE_KEY = "EncodingSource";
+
     private static final Map<String, String> CLASS_SHORTCUTS = Map.of("ADSL",
             "SUBJECT LEVEL ANALYSIS DATASET", "BDS", "BASIC DATA STRUCTURE", "OCCDS",
             "OCCURRENCE DATA STRUCTURE", "MD-BDS", "MEDICAL DEVICE BASIC DATA STRUCTURE",
@@ -295,10 +300,30 @@ public final class CdtLoader
         {
             table.setTableURI(parseUri(uri, aDs.getName()));
         }
+        // The decode charset (PLAN-provider-encoding-metadata, E7), exactly as the provider-side
+        // CdtTableBuilder answers it, so a scenario and a real .cdt agree: a .cdt is UTF-8 by the
+        // format, but a declared Encoding attribute wins — how a scenario simulates another
+        // format's decode (a latin1 XPT) — with its declared source, else DECLARED. The two keys
+        // are one unit: a source declared without an encoding is dropped. Rules read them as
+        // extract_metadata("encoding") / ("encoding_source").
+        String declaredEncoding = aDs.getAttrs().get(ENCODING_KEY);
+        if (declaredEncoding != null)
+        {
+            String declaredSource = aDs.getAttrs().get(ENCODING_SOURCE_KEY);
+            table.setTableMetaData(ENCODING_KEY, declaredEncoding);
+            table.setTableMetaData(ENCODING_SOURCE_KEY,
+                    declaredSource != null ? declaredSource : "DECLARED");
+        }
+        else
+        {
+            table.setTableMetaData(ENCODING_KEY, StandardCharsets.UTF_8.name());
+            table.setTableMetaData(ENCODING_SOURCE_KEY, "FORMAT");
+        }
         for (Map.Entry<String, String> e : aDs.getAttrs().entrySet())
         {
             if ("class".equals(e.getKey()) || "structure".equals(e.getKey())
-                    || "subclass".equals(e.getKey()))
+                    || "subclass".equals(e.getKey()) || ENCODING_KEY.equals(e.getKey())
+                    || ENCODING_SOURCE_KEY.equals(e.getKey()))
             {
                 continue;
             }
