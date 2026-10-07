@@ -234,7 +234,8 @@ public final class MetadataOperandMapping
             // as len(variable_label) whose argument is the operand to migrate. The tree is rebuilt
             // unconditionally (records are cheap; this runs once at load), keeping the recursion
             // free of reference-equality short-circuits.
-            yield new Expr.Call(c.name(), mapList(c.args()), mapMap(c.kwargs()));
+            yield fillAccessorDefaults(
+                    new Expr.Call(c.name(), mapList(c.args()), mapMap(c.kwargs())));
         }
         case Expr.Binary b ->
         {
@@ -283,12 +284,53 @@ public final class MetadataOperandMapping
     }
 
 
-    /** A bare COLUMN reference as the string literal of its name; anything else unchanged. */
+    /**
+     * {@code PLAN-metadata-accessor-default-level} P1 / P3 (runbook W1a MA-r1): a metadata accessor
+     * call written without a level reads the {@code DATA} level — the {@code "DATA"} literal is
+     * appended here, once at load, so every downstream reader (stage A, the compiler, the domain
+     * scan, {@link #reverseToOperand}) sees the form it already handles: {@code ds_name()} →
+     * {@code ds_name("DATA")}, {@code var_label()} → {@code var_label("DATA")},
+     * {@code var_label(AETERM)} → {@code var_label("AETERM", "DATA")}. A bare column in the name
+     * position of a {@code var_*} accessor is lowered to its string literal in both arities (P3).
+     * An attribute with no {@code DATA} level is left unfilled for stage A's finding naming its
+     * levels (P2); a one-argument {@code ds_*} call is left alone — its argument is the level or,
+     * when it is not one, stage A's refusal with a hint (P4, D3). The name position is
+     * {@link net.cumba.corej.core.expr.eval.NameSlots#accessorNamePosition}'s, the judgement the
+     * name-slot inliner shares.
+     */
+    private static Expr fillAccessorDefaults(Expr.Call c)
+    {
+        MetadataAttribute attr = MetadataAttribute.fromFunction(c.name());
+        if (attr == null || c.args().size() > 2)
+        {
+            return c;
+        }
+        int namePosition = net.cumba.corej.core.expr.eval.NameSlots.accessorNamePosition(attr, c);
+        List<Expr> args = new ArrayList<>(c.args());
+        if (namePosition == 0 && attr.scope() == MetadataAttribute.Scope.VARIABLE)
+        {
+            args.set(0, columnNameToLiteral(args.get(0)));
+        }
+        boolean levelGiven = args.size() == 2 || (args.size() == 1 && namePosition < 0);
+        if (!levelGiven && attr.supports(MetadataLevel.DATA))
+        {
+            args.add(new Expr.Lit(Expr.LitKind.STRING, MetadataLevel.DATA.name()));
+        }
+        return args.equals(c.args()) ? c : new Expr.Call(c.name(), args, c.kwargs());
+    }
+
+
+    /**
+     * A bare COLUMN reference — or a qualified {@code DS.X} reference, which the accessor then
+     * judges as the literal {@code "DS.X"} does — as the string literal of its name; anything else
+     * unchanged.
+     */
     private static Expr columnNameToLiteral(Expr e)
     {
-        return e instanceof Expr.Ref r && r.kind() == OperandKind.COLUMN
-                ? new Expr.Lit(Expr.LitKind.STRING, r.name())
-                : e;
+        return e instanceof Expr.Ref r
+                && (r.kind() == OperandKind.COLUMN || r.kind() == OperandKind.DOTTED_REF)
+                        ? new Expr.Lit(Expr.LitKind.STRING, r.name())
+                        : e;
     }
 
 

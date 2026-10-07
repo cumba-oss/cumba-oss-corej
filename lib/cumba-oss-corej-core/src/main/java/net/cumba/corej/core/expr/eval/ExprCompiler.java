@@ -6386,46 +6386,25 @@ public final class ExprCompiler
                         + " does not take keyword argument '" + kw.getKey() + "'");
             }
         }
+        // The four forms (PLAN-metadata-accessor-default-level D1 / D3, runbook W1a MA-r1): (),
+        // (level), (name) and (name, level). The load-time fill (MetadataOperandMapping) normally
+        // hands the compiler the level form; a tree that skipped it is judged the same way — no
+        // level means DATA where the attribute has it (D1), else the D2 error naming its levels.
+        // var_<attr>(level) defaults the name to the current variable (change #6), exactly like
+        // var_<attr>(variable_name, level) — see the name handling below. The name position is
+        // NameSlots.accessorNamePosition's, the judgement stage A and the inliner share.
         List<Expr> args = c.args();
-        Expr nameExpr;
-        Expr levelExpr;
-        if (attr.scope() == MetadataAttribute.Scope.VARIABLE)
-        {
-            if (args.size() == 1)
-            {
-                // var_<attr>(level): the name defaults to the current variable (change #6),
-                // exactly like var_<attr>(variable_name, level) — see the name handling below.
-                nameExpr = null;
-                levelExpr = args.get(0);
-            }
-            else if (args.size() == 2)
-            {
-                nameExpr = args.get(0);
-                levelExpr = args.get(1);
-            }
-            else
-            {
-                throw new RuleDefinitionException(
-                        attr.functionName() + " requires (level) or (name, level)");
-            }
-        }
-        else if (args.size() == 1)
-        {
-            nameExpr = null;
-            levelExpr = args.get(0);
-        }
-        else if (args.size() == 2)
-        {
-            nameExpr = args.get(0);
-            levelExpr = args.get(1);
-        }
-        else
+        if (args.size() > 2)
         {
             throw new RuleDefinitionException(
-                    attr.functionName() + " requires (level) or (dataset_name, level)");
+                    attr.functionName() + " takes (), (level), (name) or (name, level), not "
+                            + args.size() + " argument(s)");
         }
-
-        MetadataLevel level = levelLiteral(attr, levelExpr);
+        int namePosition = NameSlots.accessorNamePosition(attr, c);
+        Expr nameExpr = namePosition < 0 ? null : args.get(namePosition);
+        boolean levelGiven = args.size() == 2 || (args.size() == 1 && namePosition < 0);
+        MetadataLevel level = levelGiven ? levelLiteral(attr, args.get(args.size() - 1))
+                : defaultLevel(attr, nameExpr);
         if (!attr.supports(level))
         {
             throw new RuleDefinitionException(attr.functionName() + " is not available at the "
@@ -6488,12 +6467,26 @@ public final class ExprCompiler
             // The variable_name operand or a varname() call — both name the current variable.
             variableNameRef = true;
         }
+        else if (attr.scope() == MetadataAttribute.Scope.VARIABLE
+                && nameExpr instanceof Expr.Ref ref
+                && (ref.kind() == OperandKind.COLUMN || ref.kind() == OperandKind.DOTTED_REF))
+        {
+            // P3 (D3): a bare column names the variable — the same read as its string literal;
+            // a qualified DS.X takes the "J.X" path above exactly as the literal "DS.X" does
+            literalName = ref.name();
+            int dot = literalName.indexOf('.');
+            if (dot > 0)
+            {
+                qualifier = literalName.substring(0, dot);
+                literalName = literalName.substring(dot + 1);
+            }
+        }
         else
         {
             throw new RuleDefinitionException(
                     attr.functionName() + " name must be a string" + " literal"
                             + (attr.scope() == MetadataAttribute.Scope.VARIABLE
-                                    ? " or the variable_name operand"
+                                    ? ", a bare column or the variable_name operand"
                                     : ""));
         }
 
@@ -6587,6 +6580,24 @@ public final class ExprCompiler
         return (e instanceof Expr.Ref ref && "variable_name".equals(ref.name()))
                 || (e instanceof Expr.Call c && "varname".equals(c.name()) && c.args().isEmpty()
                         && c.kwargs().isEmpty());
+    }
+
+
+    /**
+     * The level of an accessor call that names none: {@code DATA} where the attribute has it (D1),
+     * else the D2 error naming the levels it supports — the same text stage A files.
+     */
+    private static MetadataLevel defaultLevel(MetadataAttribute attr, @Nullable Expr nameExpr)
+    {
+        if (attr.supports(MetadataLevel.DATA))
+        {
+            return MetadataLevel.DATA;
+        }
+        String spelled = nameExpr == null ? null
+                : nameExpr instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
+                        ? "\"" + lit.value() + "\""
+                        : nameExpr instanceof Expr.Ref ref ? ref.name() : "<name>";
+        throw new RuleDefinitionException(attr.noDataLevelMessage(spelled));
     }
 
 

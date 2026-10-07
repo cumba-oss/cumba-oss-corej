@@ -245,11 +245,18 @@ class StageACheckerTest
         assertEquals(List.of(StageAErrorKind.METADATA_LEVEL_ILLEGAL),
                 kinds(check("not empty(label_template(\"DATA\"))")));
         assertEquals(List.of(), kinds(check("not empty(label_template(\"LIBRARY\"))")));
-        // unknown level spelling
+        // unknown level spelling (the one-argument non-level string is the NAME at DATA since
+        // PLAN-metadata-accessor-default-level D3, runbook W1a MA-r1 — so the level is the second)
         assertEquals(List.of(StageAErrorKind.METADATA_LEVEL_ILLEGAL),
-                kinds(check("var_label(\"BOGUS\") == \"L\"")));
-        // non-literal level
+                kinds(check("var_label(\"X\", \"BOGUS\") == \"L\"")));
+        assertEquals(List.of(), kinds(check("var_label(\"BOGUS\") == \"L\"")));
         assertEquals(List.of(StageAErrorKind.METADATA_LEVEL_ILLEGAL),
+                kinds(check("ds_name(\"BOGUS\") == \"L\"")), "a ds_* one-string stays a level");
+        // non-literal level (in the one-argument form a computed argument is a computed NAME,
+        // NON_STATIC_NAME — the level is the second argument since D3)
+        assertEquals(List.of(StageAErrorKind.METADATA_LEVEL_ILLEGAL),
+                kinds(check("var_label(\"X\", upper(AESEV)) == \"L\"")));
+        assertEquals(List.of(StageAErrorKind.NON_STATIC_NAME),
                 kinds(check("var_label(upper(AESEV)) == \"L\"")));
         assertTrue(StageAErrorKind.METADATA_LEVEL_ILLEGAL.armed());
     }

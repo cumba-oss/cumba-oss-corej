@@ -181,15 +181,19 @@ class MetadataFunctionsTest
         EvaluationContext ctx = ctx(defineProvider(), null);
         assertThrows(RuleDefinitionException.class,
                 () -> eval("var_label(\"AESEV\", \"FOO\") == \"x\"", ctx));
-        // arity-1 now means (level); "AESEV" is not a valid level, so it is still a rule error
-        assertThrows(RuleDefinitionException.class,
-                () -> eval("var_label(\"AESEV\") == \"x\"", ctx));
+        // arity-1 with a non-level string is the NAME at the default DATA level since
+        // PLAN-metadata-accessor-default-level D3 (runbook W1a MA-r1): "AESEV" is not a data
+        // column here, so the read is a missing — a value, no longer a rule error
+        assertEquals(bits(), eval("var_label(\"AESEV\") == \"x\"", ctx));
+        assertEquals(bits(0), eval("var_label(\"AETERM\") == \"Reported Term\"", ctx));
         // too many arguments for a variable accessor
         assertThrows(RuleDefinitionException.class,
                 () -> eval("var_label(\"AESEV\", \"DATA\", \"extra\") == \"x\"", ctx));
-        // name operand that is neither a string literal nor the current-variable form
+        // name operand that is neither a string literal, a bare column (D3, runbook W1a MA-r1)
+        // nor the current-variable form
         assertThrows(RuleDefinitionException.class,
-                () -> eval("var_label(AETERM, \"DATA\") == \"x\"", ctx));
+                () -> eval("var_label(upper(AETERM), \"DATA\") == \"x\"", ctx));
+        assertEquals(bits(0), eval("var_label(AETERM, \"DATA\") == \"Reported Term\"", ctx));
         // level must be a string literal, not a bare reference
         assertThrows(RuleDefinitionException.class,
                 () -> eval("var_label(\"AESEV\", DEFINE) == \"x\"", ctx));
