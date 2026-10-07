@@ -90,8 +90,10 @@ class EmptyColumnCollapseTest
         IDataTable ae = MockTable.of().name("AE").col("AEBDSYCD", "", "").col("EXDOSE", "", "")
                 .build();
         EvaluationContext ctx = EvaluationContext.builder().table(ae).build();
-        Expr check = parse(
-                "empty(AEBDSYCD) and record_count(domain=\"EX\", filter=(empty(EXDOSE))) > 0");
+        // (the reader is a dataset fact — 0 here, no EX is bound — so it sits in an Or with a
+        // per-row part: alone it would kill the And and, MED-1, leave no live leaf at all)
+        Expr check = parse("empty(AEBDSYCD) and (record_count(domain=\"EX\","
+                + " filter=(empty(EXDOSE))) > 0 or AESEV == \"X\")");
         assertEquals(Set.of("AEBDSYCD"), EmptyColumnCollapse.foldableColumns(check, ctx, Set.of()),
                 "EXDOSE is EX's column inside the reader, never a trigger on AE");
         assertEquals(Set.of("AEBDSYCD"), FoldCapability.plainColumnLeafNames(check),
@@ -185,5 +187,55 @@ class EmptyColumnCollapseTest
         assertEquals(Set.of(),
                 EmptyColumnCollapse.foldableColumns(parse("empty(AEBLANK) == true"), ctx, Set.of()),
                 "L6: a boolean leaf under a comparison is not in boolean position — not live");
+    }
+
+    // ---- PACK 4 confirmation look: a leaf is live only where blanking it can change the verdict
+
+
+    @Test
+    void aLeafInABranchAPresenceFactKillsIsNotLive()
+    {
+        // MED-1 (owner 2026-10-07: never because another column is absent): an And with a
+        // dataset-constant FALSE sibling is FALSE whatever its leaves read; an Or with a constant
+        // TRUE sibling is TRUE whatever they read — their empty-family leaves decide nothing.
+        IDataTable presp = MockTable.of().name("SV").col("SVPRESP", "Y", "N").col("VISIT", "A", "B")
+                .build();
+        EvaluationContext ctx = EvaluationContext.builder().table(presp).build();
+        Expr sv = parse(
+                "var_exists(\"SVPRESP\") and SVPRESP == \"Y\" or not var_exists(\"SVPRESP\")"
+                        + " and empty(SVUPDES)");
+        assertEquals(Set.of(), EmptyColumnCollapse.foldableColumns(sv, ctx, Set.of()),
+                "SVPRESP present: the SVUPDES branch is dead, no live leaf, no collapse");
+        assertTrue(EmptyColumnCollapse.everyLiveLeafDecided(sv, ctx, Set.of()),
+                "and nothing left to vary for the absent fold either");
+        assertEquals(Set.of(),
+                EmptyColumnCollapse.foldableColumns(
+                        parse("SVPRESP == \"Y\" and (var_exists(\"SVPRESP\") or empty(SVUPDES))"),
+                        ctx, Set.of()),
+                "an Or with a constant-TRUE sibling: its leaf decides nothing either");
+        IDataTable noPresp = MockTable.of().name("SV").col("VISIT", "A", "B").build();
+        EvaluationContext ctx2 = EvaluationContext.builder().table(noPresp).build();
+        assertEquals(Set.of("SVUPDES"), EmptyColumnCollapse.foldableColumns(sv, ctx2, Set.of()),
+                "control — SVPRESP absent: the branch is live and its absent SVUPDES decides");
+    }
+
+
+    @Test
+    void aKeepRowFindingsLeafNeitherTriggersNorBlocks()
+    {
+        // LOW-3 (the FDA-SD1320 shape): a Keep_Row_Findings column's leaf is not counted as live —
+        // blank, it does not trigger; filled on some records, it does not hold the other live
+        // leaves' collapse back.
+        IDataTable t = MockTable.of().name("AE").col("AEBLANK", "", "").col("AEFULL", "x", "")
+                .build();
+        EvaluationContext ctx = EvaluationContext.builder().table(t).build();
+        Expr check = parse("empty(AEBLANK) and empty(AEFULL)");
+        assertEquals(Set.of(), EmptyColumnCollapse.foldableColumns(check, ctx, Set.of()),
+                "control: AEFULL varies, so nothing collapses");
+        assertEquals(Set.of("AEBLANK"),
+                EmptyColumnCollapse.foldableColumns(check, ctx, Set.of("AEFULL")),
+                "AEFULL kept per row: it neither triggers nor blocks AEBLANK's collapse");
+        assertEquals(Set.of(), EmptyColumnCollapse.foldableColumns(check, ctx, Set.of("AEBLANK")),
+                "AEBLANK kept: not a trigger, and AEFULL still varies");
     }
 }

@@ -430,6 +430,35 @@ class EmptyColumnCollapseRunnerTest
 
 
     @Test
+    @DisplayName("PACK 4 confirmation MED-1 — a leaf in a branch a presence fact kills is not live")
+    void aLeafInADeadBranchNeverDecidesTheCollapse()
+    {
+        // The CDISC-CG0655 / FDA-SD1017 shape: the SVUPDES branch is guarded by
+        // `not var_exists("SVPRESP")`. With SVPRESP PRESENT that guard is FALSE for the whole
+        // dataset, so empty(SVUPDES) — absent here — can never make the Check true: it decides
+        // nothing, and the rule must not collapse "because another column is absent" (owner
+        // 2026-10-07). The SVPRESP == "Y" branch decides per row: two firing records, two findings.
+        String check = "(var_exists(\"SVPRESP\") and SVPRESP == \"Y\" or not var_exists(\"SVPRESP\")"
+                + " and empty(SVUPDES)) and VISITNUM != \"1\"";
+        IDataTable presp = MockTable.of().name("SV").col("USUBJID", "01", "02", "03", "04")
+                .col("VISITNUM", "2", "3", "4", "1").col("SVPRESP", "Y", "Y", "N", "Y").build();
+        assertPerRow(runOn(rule("MED1-SV", check, FOLDED, List.of()), presp, "SV"), 2);
+        // The control: SVPRESP ABSENT — the guard is TRUE, empty(SVUPDES) is the only live leaf
+        // and its column is absent: decided, one finding under Message_Folded.
+        IDataTable noPresp = MockTable.of().name("SV").col("USUBJID", "01", "02", "03")
+                .col("VISITNUM", "2", "3", "1").build();
+        assertCollapsedOnAbsent(runOn(rule("MED1-SV", check, FOLDED, List.of()), noPresp, "SV"), 0);
+    }
+
+
+    private static RuleExecutionResult runOn(Rule rule, IDataTable table, String domain)
+    {
+        return RuleRunnerCalls.execute(rule, table, _ -> null, domain, null, null, null,
+                Integer.MAX_VALUE, null, null, null, Set.of(), Set.of());
+    }
+
+
+    @Test
     @DisplayName("HIGH-1 (polarity) — a leaf constant FALSE over a blank column decides nothing and is no trigger")
     void aNegatedLeafOverABlankColumnIsNoTrigger()
     {

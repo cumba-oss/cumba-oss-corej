@@ -342,6 +342,26 @@ class FoldCapabilityTest
 
 
     @Test
+    void aLeafInABranchAGatedPresenceFactKillsIsNoTrigger() throws IOException
+    {
+        // PACK 4 confirmation MED-1, the census side: a presence fact about a GATED column holds in
+        // every dataset the rule runs on, so a branch it kills is dead everywhere — its leaves are
+        // no trigger (the key would be inert there).
+        assertFalse(triggers(record("not var_exists(\\\"AETERM\\\") and empty(AEBDSYCD)",
+                "{\"All\":[\"AETERM\"]}", "")).any(), "And with a FALSE sibling");
+        assertFalse(triggers(record("var_exists(\\\"AETERM\\\") or empty(AEBDSYCD)",
+                "{\"All\":[\"AETERM\"]}", "")).any(), "Or with a TRUE sibling");
+        // A presence fact about an UNGATED column differs from dataset to dataset: the census
+        // keeps the leaf a trigger (live wherever the column is absent) — the CG0655 / SD1017
+        // shape keeps its key for the SVPRESP-absent study.
+        assertEquals(Set.of("AEBDSYCD"), triggers(record(
+                "var_exists(\\\"AESEV\\\") and AESEV == \\\"Y\\\" or not var_exists(\\\"AESEV\\\")"
+                        + " and empty(AEBDSYCD)",
+                "", "")).blank().keySet());
+    }
+
+
+    @Test
     void theCensusFoldsTheCompiledCheckSoANestedFormKeepsItsNegation() throws IOException
     {
         // PACK 4 review LOW-2: `not(all[AEXX == "Y"])` with AEXX absent is TRUE on every row

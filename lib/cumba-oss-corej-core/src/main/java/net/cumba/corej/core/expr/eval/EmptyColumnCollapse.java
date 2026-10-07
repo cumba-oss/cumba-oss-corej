@@ -220,7 +220,11 @@ public final class EmptyColumnCollapse
                     ctx) == BroadcastFold.BindColumnLevel.DATASET_ABSENT
                             ? absentLeafConstant(c.name(), name, ctx)
                             : BroadcastFold.Verdict.UNKNOWN;
-        }, out);
+        },
+                // a branch's dataset-constant verdict from presence and dataset facts only —
+                // absent-blind, so a column's absence never kills a branch here (owner
+                // 2026-10-07: never because another column is absent)
+                branch -> BroadcastFold.fold(branch, ctx, false, true), out);
     }
 
 
@@ -234,6 +238,16 @@ public final class EmptyColumnCollapse
      * decides per row — so it never triggers (PACK 4 review HIGH-1, polarity). Leaves under a
      * quantifier or inside a target-table reader are never triggers (R5's spirit, MED-2).
      *
+     * <p>
+     * <b>A leaf in a dead branch is not live</b> (PACK 4 confirmation look MED-1, by the owner's
+     * 2026-10-07 ruling): a leaf is live only where blanking its column can change the Check's
+     * verdict. An {@code And} with a part {@code branchConstant} answers FALSE is FALSE whatever
+     * its leaves read, an {@code Or} with a part answering TRUE is TRUE — their leaves are skipped:
+     * neither triggers nor blocks. The CDISC-CG0655 / FDA-SD1017 shape:
+     * {@code var_exists("SVPRESP") and SVPRESP == "Y" or not var_exists("SVPRESP") and
+     * empty(SVUPDES)} with SVPRESP present must not collapse on an absent SVUPDES.
+     * </p>
+     *
      * @param e
      *            the (sub)expression
      * @param negated
@@ -242,19 +256,42 @@ public final class EmptyColumnCollapse
      *            the resolved {@code Keep_Row_Findings} names
      * @param constantOf
      *            (leaf call, plain column name) → the leaf's constant, or {@code UNKNOWN}
+     * @param branchConstant
+     *            a combinator part → its verdict where it is the same for every record of every
+     *            dataset this caller reasons about (presence and dataset facts), else
+     *            {@code UNKNOWN}
      * @param out
      *            the trigger columns, as named in the Check
      */
     static void collectLive(Expr e, boolean negated, Set<String> keep,
             java.util.function.BiFunction<Expr.Call, String, BroadcastFold.Verdict> constantOf,
-            LiveLeaves out)
+            java.util.function.Function<Expr, BroadcastFold.Verdict> branchConstant, LiveLeaves out)
     {
         switch (e)
         {
-        case Expr.Not not -> collectLive(not.inner(), !negated, keep, constantOf, out);
-        case Expr.And and -> and.parts()
-                .forEach(p -> collectLive(p, negated, keep, constantOf, out));
-        case Expr.Or or -> or.parts().forEach(p -> collectLive(p, negated, keep, constantOf, out));
+        case Expr.Not not -> collectLive(not.inner(), !negated, keep, constantOf, branchConstant,
+                out);
+        case Expr.And and ->
+        {
+            // MED-1: a part constant FALSE makes the And FALSE whatever its leaves read (a dead
+            // branch) — none of its leaves can change the verdict, none is live
+            if (and.parts().stream()
+                    .noneMatch(p -> branchConstant.apply(p) == BroadcastFold.Verdict.FALSE))
+            {
+                and.parts().forEach(
+                        p -> collectLive(p, negated, keep, constantOf, branchConstant, out));
+            }
+        }
+        case Expr.Or or ->
+        {
+            // ... and a part constant TRUE makes the Or TRUE whatever its leaves read
+            if (or.parts().stream()
+                    .noneMatch(p -> branchConstant.apply(p) == BroadcastFold.Verdict.TRUE))
+            {
+                or.parts().forEach(
+                        p -> collectLive(p, negated, keep, constantOf, branchConstant, out));
+            }
+        }
         case Expr.Call c ->
         {
             if (net.cumba.corej.core.exec.JoinedRowFold.isQuantifier(c.name())
@@ -276,6 +313,9 @@ public final class EmptyColumnCollapse
             }
             if (FoldCapability.containsIgnoreCase(keep, name))
             {
+                // a Type 1 column (Keep_Row_Findings) is not counted as live: blank or absent it
+                // never triggers, filled on some record it never blocks the other live leaves'
+                // collapse (the FDA-SD1320 shape)
                 return;
             }
             // the leaf's polarity: empty / is_missing are TRUE over an empty column, the rest
@@ -285,6 +325,15 @@ public final class EmptyColumnCollapse
             {
                 return; // `not empty(X)`, `non_empty(X)`: FALSE over an empty X, decides nothing
             }
+            // ⚑ A live leaf plays two roles (PACK 4 confirmation LOW-5): DECIDED (its column absent
+            // or blank on every record, constant TRUE-effective) it is a trigger and is named;
+            // UNDECIDED (the column filled on some record, or not row-constant: is_missing over ""
+            // mixed with missings) it BLOCKS the collapse — one undecided live leaf keeps the rule
+            // per row (owner refinement 2026-10-07). Speculative edges, kept conservative: a live
+            // leaf whose constant is FALSE-effective (is_missing over an absent character column,
+            // which reads "") counts as undecided and blocks; the same column under two leaves
+            // counts twice; liveness is syntactic below the dead-branch test (MED-1), so a leaf
+            // whose blanking could only keep an already-decided Or TRUE still counts.
             out.live++;
             BroadcastFold.Verdict constant = constantOf.apply(c, name);
             boolean effectiveTrue = constant == BroadcastFold.Verdict.TRUE;

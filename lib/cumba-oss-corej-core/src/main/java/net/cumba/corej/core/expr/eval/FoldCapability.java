@@ -417,7 +417,9 @@ public final class FoldCapability
                     (c, name) -> "empty".equals(c.name()) || "is_missing".equals(c.name())
                             ? BroadcastFold.Verdict.TRUE
                             : BroadcastFold.Verdict.FALSE,
-                    acc);
+                    // MED-1: a branch is dead for the census only where it is dead in EVERY
+                    // dataset the rule runs on — a presence fact about a gated column
+                    branch -> foldWith(branch, leaf -> gatedPresenceFact(leaf, ctx)), acc);
             for (String x : acc.columns)
             {
                 if (blank.containsKey(x))
@@ -463,6 +465,34 @@ public final class FoldCapability
             }
         }
         return roots;
+    }
+
+
+    /**
+     * The verdict of a {@code var_exists} / {@code var_not_exists} leaf over a column the rule
+     * GATES (present on the census context, so present in every dataset the rule runs on), else
+     * {@code UNKNOWN}: a presence fact about an ungated column differs from dataset to dataset and
+     * must not kill a branch for the census (PACK 4 confirmation MED-1).
+     */
+    private static BroadcastFold.Verdict gatedPresenceFact(Expr leaf, EvaluationContext ctx)
+    {
+        if (!(leaf instanceof Expr.Call c) || !BroadcastFold.isExistsCall(c)
+                || !c.name().startsWith("var_"))
+        {
+            return BroadcastFold.Verdict.UNKNOWN;
+        }
+        String name = switch (c.args().get(0))
+        {
+        case Expr.Ref r -> r.name();
+        case Expr.Lit lit when lit.value() instanceof String str -> str;
+        default -> null;
+        };
+        if (name == null || name.contains("${") || name.indexOf('*') >= 0
+                || BroadcastFold.bindColumnLevel(name, ctx) != BroadcastFold.BindColumnLevel.ROW)
+        {
+            return BroadcastFold.Verdict.UNKNOWN;
+        }
+        return BroadcastFold.fold(c, ctx, false, true);
     }
 
 
