@@ -1,7 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -35,7 +35,8 @@ import org.junit.jupiter.api.Test;
  * record. Pinned per outcome of D5 (residual FALSE / TRUE / row-dependent), per truth-table cell
  * (incl. the {@code is_missing} controls, {@code D50}), the 2-2 gate shape (D8), the Type 1 opt-out
  * (D9, incl. a {@code --} template), 0 rows (C5), the D2 control ({@code !=} never folds), the
- * absent column (BroadcastFold's, under {@code Message_Folded} — the wider scope), a dotted and a
+ * absent column (BroadcastFold's, under {@code Message_Folded} — the wider scope), P3's absent
+ * column inside the collapse ({@code PLAN-message-folded-corpus-alignment}), a dotted and a
  * SUPP-delivered argument (R5), and a level-keyed rule (per level, first claim).
  * </p>
  */
@@ -104,13 +105,33 @@ class EmptyColumnCollapseRunnerTest
         assertEquals(1, result.getViolationCount(), "one dataset finding: " + result);
         Violation v = result.getViolations().getFirst();
         // A plain rule stamps no unit (stamp() answers null without a level plan — the tuple is
-        // the unit); a level-keyed rule stamps the DATASET unit (levelKeyedRuleCollapsesPerLevel).
-        assertTrue(v.getUnit() == null || v.getUnit() == Violation.Unit.DATASET,
+        // the unit); a level-keyed rule stamps the folded dataset unit
+        // (levelKeyedRuleCollapsesPerLevel).
+        assertTrue(v.getUnit() == null || v.getUnit() == Violation.Unit.DATASET_FOLDED,
                 "never a row unit: " + v.getUnit());
         assertEquals(anchorRow, v.getRow(), "anchored at the first firing row");
         assertEquals(FOLDED, result.getMessage(), "reported under Message_Folded (D7)");
         assertTrue(v.getNamedColumns().contains("AEBDSYCD"),
                 "5c: the raw column is listed by name, no row value: " + v);
+        assertNull(v.getValues().get("AEBDSYCD"), "no row-0 cell printed (D4 = like 5c)");
+    }
+
+
+    /**
+     * P3's collapse over an ABSENT column: one DATASET finding under {@code Message_Folded},
+     * anchored at the first firing row; the absent column is not in the name-only projection (an
+     * absent column is never projected — the message names it), exactly as the absent fold's own
+     * finding.
+     */
+    private static void assertCollapsedOnAbsent(RuleExecutionResult result, long anchorRow)
+    {
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        assertEquals(1, result.getViolationCount(), "one dataset finding: " + result);
+        Violation v = result.getViolations().getFirst();
+        assertTrue(v.getUnit() == null || v.getUnit() == Violation.Unit.DATASET_FOLDED,
+                "never a row unit: " + v.getUnit());
+        assertEquals(anchorRow, v.getRow(), "anchored at the first firing row");
+        assertEquals(FOLDED, result.getMessage(), "reported under Message_Folded (D7)");
         assertNull(v.getValues().get("AEBDSYCD"), "no row-0 cell printed (D4 = like 5c)");
     }
 
@@ -121,7 +142,7 @@ class EmptyColumnCollapseRunnerTest
         assertEquals(rows, result.getViolationCount(), "one finding per firing record: " + result);
         for (Violation v : result.getViolations())
         {
-            assertNotSame(Violation.Unit.DATASET, v.getUnit(),
+            assertFalse(v.getUnit() instanceof Violation.Unit.Dataset,
                     "a row finding, never the dataset unit");
         }
         assertEquals("per-row message", result.getMessage());
@@ -338,6 +359,50 @@ class EmptyColumnCollapseRunnerTest
 
 
     @Test
+    @DisplayName("P3 — an ABSENT column of an empty-family leaf with a per-row residual collapses when opted in")
+    void absentColumnWithAResidualCollapsesWhenOptedIn()
+    {
+        // PLAN-message-folded-corpus-alignment P3 / row 2: AEBDSYCD absent, AESEV present and
+        // per row — the full fold is UNKNOWN (the residual), the row path evaluates the absent
+        // leaf as its type default on every row, and the collapse reports once iff a row fires.
+        IDataTable noCode = MockTable.of().name("AE").col("USUBJID", "01", "02", "03")
+                .col("AESEV", "SEVERE", "MILD", "SEVERE").build();
+        String check = "empty(AEBDSYCD) and AESEV == \"SEVERE\"";
+        assertCollapsedOnAbsent(run(optedIn(check), noCode), 0);
+        assertPerRow(run(notOptedIn(check), noCode), 2);
+        // is_missing over an absent CHAR column reads "" (D76: numeric-expected columns read MIS),
+        // which is not missing (D50): the leaf is a trigger but no row fires — 0 both ways.
+        assertEquals(0, run(optedIn("is_missing(AEBDSYCD) and AESEV == \"SEVERE\""), noCode)
+                .getViolationCount());
+        assertEquals(0, run(notOptedIn("is_missing(AEBDSYCD) and AESEV == \"SEVERE\""), noCode)
+                .getViolationCount());
+        // A residual no row meets: no finding at all (D5: the condition holds on no row).
+        assertEquals(0,
+                run(optedIn("empty(AEBDSYCD) and AESEV == \"FATAL\""), noCode).getViolationCount());
+        // The negated family over an absent column is FALSE on every row: 0 both ways.
+        assertEquals(0, run(optedIn("non_empty(AEBDSYCD) and AESEV == \"SEVERE\""), noCode)
+                .getViolationCount());
+        // ⛔ Any other operator over an absent column stays PER ROW, opted in or not (the wide
+        // P3 was not taken: an absent guard column must not collapse per-record findings).
+        assertPerRow(run(optedIn("AEBDSYCD != \"X\" and AESEV == \"SEVERE\""), noCode), 2);
+        assertPerRow(run(notOptedIn("AEBDSYCD != \"X\" and AESEV == \"SEVERE\""), noCode), 2);
+    }
+
+
+    @Test
+    @DisplayName("P3 — Keep_Row_Findings keeps an absent column's row findings (R1)")
+    void keepRowFindingsKeepsAnAbsentColumnPerRow()
+    {
+        IDataTable noCode = MockTable.of().name("AE").col("USUBJID", "01", "02", "03")
+                .col("AESEV", "SEVERE", "MILD", "SEVERE").build();
+        String check = "empty(AEBDSYCD) and AESEV == \"SEVERE\"";
+        assertPerRow(run(rule("C7-KEEP", check, FOLDED, List.of("AEBDSYCD")), noCode), 2);
+        // ⚠ The sensitivity control: the same rule without the opt-out collapses.
+        assertCollapsedOnAbsent(run(rule("C7-KEEP", check, FOLDED, List.of()), noCode), 0);
+    }
+
+
+    @Test
     @DisplayName("R5 — a dotted argument is never a trigger: empty(DM.X) over an all-blank joined X stays per row")
     void dottedArgumentNeverTriggers() throws Exception
     {
@@ -410,7 +475,7 @@ class EmptyColumnCollapseRunnerTest
         assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(), r.getStatusMessage());
         assertEquals(1, r.getViolationCount(), "both levels collapse; one DATASET unit: " + r);
         Violation v = r.getViolations().getFirst();
-        assertSame(Violation.Unit.DATASET, v.getUnit());
+        assertSame(Violation.Unit.DATASET_FOLDED, v.getUnit(), "a collapse is a FOLDED unit (Q6)");
         assertEquals(Severity.ERROR, v.getLevel(), "first claim: the strictest level's");
         assertEquals(FOLDED, r.getMessage(), "every contributor folded: the merged message");
     }

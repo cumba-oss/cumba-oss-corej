@@ -474,14 +474,16 @@ public final class ValidationReportBuilder
     private static @Nullable String messageOf(Rule aRule, @Nullable Severity aLevel,
             RuleExecutionResult aResult, List<Violation> aGroup)
     {
-        // PLAN-present-empty-column-fold D7: a rule declaring Outcome.Message_Folded reports every
-        // DATASET-unit finding under it — a fold or a collapse of its row findings to one. Exact
-        // for such a rule: it is Record (R2 b), so its only dataset-unit producers are the
-        // broadcast fold and the collapse. Before the level's own Message, which is a per-row
-        // message (§4.3 per-path table, executeLevels).
+        // PLAN-present-empty-column-fold D7, narrowed by PLAN-message-folded-corpus-alignment Q6 /
+        // P4: a rule declaring Outcome.Message_Folded reports a FOLDED finding under it — the
+        // absent-column fold's or the collapse's dataset unit (Violation.Unit.DATASET_FOLDED). A
+        // plain DATASET unit of the same rule is a dataset-constant verdict and keeps Message.
+        // Before the level's own Message, which is a per-row message (§4.3 per-path table,
+        // executeLevels).
         String folded = aRule.getOutcome() == null ? null : aRule.getOutcome().getMessageFolded();
         if (folded != null && !aGroup.isEmpty()
-                && aGroup.getFirst().getUnit() == Violation.Unit.DATASET)
+                && aGroup.getFirst().getUnit() instanceof Violation.Unit.Dataset unit
+                && unit.folded())
         {
             return folded;
         }

@@ -111,12 +111,23 @@ class MergedEvaluationTest
 
     private static Rule keyedRule(String check, String joinType)
     {
+        return keyedRule(check, joinType, "");
+    }
+
+
+    /**
+     * {@code outcomeExtra}: further {@code Outcome} entries, e.g. {@code Message_Folded} — Q6
+     * ({@code PLAN-message-folded-corpus-alignment}): the absent-column fold is opt-in through it.
+     */
+    private static Rule keyedRule(String check, String joinType, String outcomeExtra)
+    {
         return load("{\"Core\":{\"Id\":\"X-1\"},\"Requirements\":{\"Variables\":{"
                 + "\"All\":[\"STUDYID\",\"USUBJID\"],\"All_Or_None\":[[\"STUDYID\",\"DM.STUDYID\"],"
                 + "[\"USUBJID\",\"DM.USUBJID\"]]}},\"Match_Datasets\":[{\"Name\":\"DM\","
                 + "\"Keys\":[\"STUDYID\",\"USUBJID\"],\"Join_Type\":\"" + joinType + "\"}],"
                 + "\"Check\":{\"expression\":\"" + check + "\"},"
-                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"DM.AGE\",\"DM.SEX\"]}}");
+                + "\"Outcome\":{\"Message\":\"m\"," + outcomeExtra
+                + "\"Output_Variables\":[\"DM.AGE\",\"DM.SEX\"]}}");
     }
 
 
@@ -451,7 +462,10 @@ class MergedEvaluationTest
         // test reported 3 findings, one per row.
         IDataTable ae = ae();
         DatasetResolver r = resolver(ae, dm());
-        Rule rule = keyedRule("DM.ARMNRS != \\\"SCREEN FAILURE\\\"");
+        // Q6 (PLAN-message-folded-corpus-alignment): the fold is opt-in — the rule declares
+        // Message_Folded.
+        Rule rule = keyedRule("DM.ARMNRS != \\\"SCREEN FAILURE\\\"", "left",
+                "\"Message_Folded\":\"m (folded)\",");
         RuleExecutionResult on = RuleRunnerCalls.execute(rule, ae, r);
         assertEquals(RuleExecutionStatus.EXECUTED, on.getStatus(), String.valueOf(on));
         assertEquals(1, on.getViolations().size(), String.valueOf(on.getViolations()));

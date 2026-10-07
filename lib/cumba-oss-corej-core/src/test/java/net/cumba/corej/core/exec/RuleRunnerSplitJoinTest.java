@@ -524,6 +524,9 @@ class RuleRunnerSplitJoinTest
         rule.setSensitivity(Sensitivity.RECORD);
         Outcome outcome = new Outcome();
         outcome.setMessage("joined LBORRES is empty");
+        // Q6 (PLAN-message-folded-corpus-alignment): the absent-column fold is opt-in — the
+        // rule declares Message_Folded, so the DATASET-level granularity asserted below holds.
+        outcome.setMessageFolded("LBORRES is absent");
         outcome.setOutputVariables(List.of("USUBJID"));
         rule.setOutcome(outcome);
         rule.setMatchDatasets(List.of(md("LB", "left", "USUBJID", "LBSEQ")));

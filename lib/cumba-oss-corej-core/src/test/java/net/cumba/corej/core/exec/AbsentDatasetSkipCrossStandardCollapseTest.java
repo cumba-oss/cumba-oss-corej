@@ -186,9 +186,12 @@ class AbsentDatasetSkipCrossStandardCollapseTest
         assertEquals(RuleExecutionStatus.EXECUTED, before.getStatus());
         // W3d of PLAN-merged-evaluation-table (P-1, N24): DM.USUBJID of a DM the run does not
         // supply is an absent column of the merged schema — constant on every row, so the
-        // flood is ONE dataset-level finding (it was one per row, 2, until W3d)
-        assertEquals(1, before.getViolations().size(),
-                "an absent joined column folds to one dataset-level finding");
+        // flood WAS one dataset-level finding (one per row, 2, until W3d). Q6
+        // (PLAN-message-folded-corpus-alignment, 2026-10-07): the absent-column fold is opt-in
+        // through Outcome.Message_Folded, which this rule does not declare, so the flood is per
+        // row again — both rows fire. The treated run still silences both.
+        assertEquals(2, before.getViolations().size(),
+                "an absent joined column read by a rule without Message_Folded fires per row (Q6)");
         assertEquals(RuleExecutionStatus.SKIPPED, after.getStatus());
         assertEquals(0, after.getViolations().size(),
                 "the cross-standard arm DOES change findings on an unguarded collapse shape");

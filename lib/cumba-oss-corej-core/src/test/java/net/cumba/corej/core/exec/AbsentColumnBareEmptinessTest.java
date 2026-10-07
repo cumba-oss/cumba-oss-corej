@@ -14,6 +14,7 @@ import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -90,6 +91,16 @@ class AbsentColumnBareEmptinessTest
 
     private static Rule rule(String id, CheckCondition check)
     {
+        return rule(id, check, null);
+    }
+
+
+    /**
+     * Q6 ({@code PLAN-message-folded-corpus-alignment}): the absent-column fold is opt-in through
+     * {@code Outcome.Message_Folded}; a rule without it reports per row on an absent column.
+     */
+    private static Rule rule(String id, CheckCondition check, @Nullable String messageFolded)
+    {
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
         core.setId(id);
@@ -98,6 +109,7 @@ class AbsentColumnBareEmptinessTest
         rule.setSensitivity(Sensitivity.RECORD);
         Outcome outcome = new Outcome();
         outcome.setMessage("m");
+        outcome.setMessageFolded(messageFolded);
         outcome.setOutputVariables(List.of());
         rule.setOutcome(outcome);
         net.cumba.corej.core.RulePackageLoader.installNativeExpr(rule);
@@ -109,7 +121,10 @@ class AbsentColumnBareEmptinessTest
     @DisplayName("bare empty(absent) carries no injected guard and fires on every row")
     void bareEmptinessOverAnAbsentColumnFiresOnEveryRow()
     {
-        Rule bare = rule("CORE-BARE-1", expression("empty(TSVAL)"));
+        // Q6 (PLAN-message-folded-corpus-alignment): the fold is opt-in — the rule declares
+        // Message_Folded, so the absence is reported ONCE; without the key it reports per row
+        // (AbsentFoldOptInRunnerTest).
+        Rule bare = rule("CORE-BARE-1", expression("empty(TSVAL)"), "m (folded)");
 
         assertFalse(String.valueOf(bare.getCheckExpr()).contains("var_exists"),
                 () -> "the load-time pass must not re-inject the retired guard — "

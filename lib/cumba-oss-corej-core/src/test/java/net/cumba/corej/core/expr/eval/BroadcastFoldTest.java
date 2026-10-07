@@ -287,6 +287,35 @@ class BroadcastFoldTest
 
 
     @Test
+    void absentBlindFoldLeavesAbsentColumnLeavesUnknownButStillDecidesDatasetFacts()
+    {
+        // PLAN-message-folded-corpus-alignment P4 / row 4: the absent-blind entry skips the D111
+        // arm only. A rule without Message_Folded is folded this way (Q6: the absent-column fold
+        // is opt-in), and an opted-in rule's TRUE is re-folded this way to learn whether an absent
+        // column decided it.
+        Expr absentNeg = new Expr.Not(
+                new Expr.Binary(Expr.BinOp.EQ, new Expr.Ref("AEXX", OperandKind.COLUMN), LIT_A));
+        assertEquals(Verdict.TRUE, BroadcastFold.fold(absentNeg, ctx(), false, false));
+        assertEquals(Verdict.UNKNOWN, BroadcastFold.fold(absentNeg, ctx(), false, true),
+                "absent-blind: the leaf goes to the row path");
+        Expr presenceFact = new Expr.Call("var_not_exists",
+                List.of(new Expr.Ref("AEXX", OperandKind.COLUMN)), Map.of());
+        assertEquals(Verdict.TRUE, BroadcastFold.fold(presenceFact, ctx(), false, true),
+                "a dataset-constant leaf still decides");
+        // Kleene around it: any[presence TRUE, absent UNKNOWN] is TRUE both ways; all[…] differs.
+        assertEquals(Verdict.TRUE, BroadcastFold.fold(new Expr.Or(List.of(presenceFact, absentNeg)),
+                ctx(), false, true));
+        assertEquals(Verdict.UNKNOWN, BroadcastFold
+                .fold(new Expr.And(List.of(presenceFact, absentNeg)), ctx(), false, true));
+        assertEquals(Verdict.TRUE, BroadcastFold
+                .fold(new Expr.And(List.of(presenceFact, absentNeg)), ctx(), false, false));
+        assertEquals(BroadcastFold.fold(absentNeg, ctx(), false),
+                BroadcastFold.fold(absentNeg, ctx(), false, false),
+                "the three-argument entry is the full fold");
+    }
+
+
+    @Test
     void joinedDatasetSurfaceableColumnNOWFolds()
     {
         // ⭐⭐ INVERTED 2026-09-21. AEXX is absent from the primary and present on a joined

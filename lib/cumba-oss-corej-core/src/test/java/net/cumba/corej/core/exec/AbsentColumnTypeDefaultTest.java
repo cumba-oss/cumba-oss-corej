@@ -12,6 +12,7 @@ import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -77,6 +78,13 @@ class AbsentColumnTypeDefaultTest
 
     private static Rule rule(String id, String expression)
     {
+        return rule(id, expression, null);
+    }
+
+
+    /** Q6: the absent-column fold is opt-in through {@code Outcome.Message_Folded}. */
+    private static Rule rule(String id, String expression, @Nullable String messageFolded)
+    {
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
         core.setId(id);
@@ -86,6 +94,7 @@ class AbsentColumnTypeDefaultTest
         rule.setSensitivity(Sensitivity.RECORD);
         Outcome outcome = new Outcome();
         outcome.setMessage("m");
+        outcome.setMessageFolded(messageFolded);
         outcome.setOutputVariables(List.of());
         rule.setOutcome(outcome);
         net.cumba.corej.core.RulePackageLoader.installNativeExpr(rule);
@@ -268,8 +277,10 @@ class AbsentColumnTypeDefaultTest
     @DisplayName("empty(absent) stays TRUE at dataset level; empty(blank) stays TRUE per row")
     void emptyOverAbsentStaysTrueAndDatasetLevel()
     {
+        // Q6 (PLAN-message-folded-corpus-alignment): the fold is opt-in — the absent arm's rule
+        // declares Message_Folded; the blank control below does not and stays per row either way.
         RuleExecutionResult absent = RuleRunnerCalls
-                .execute(rule("CORE-ABSDEF-2", "empty(MHENDTC)"), absentEnd());
+                .execute(rule("CORE-ABSDEF-2", "empty(MHENDTC)", "m (folded)"), absentEnd());
         assertTrue(absent.hasViolations(), "empty(<absent>) is TRUE (D34 #7)");
         assertEquals(1, absent.getViolationCount(),
                 "the absent-column fact is reported once per dataset (D111a)");

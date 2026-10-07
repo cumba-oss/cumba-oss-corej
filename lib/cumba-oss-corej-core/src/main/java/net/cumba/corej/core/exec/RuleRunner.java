@@ -1202,10 +1202,14 @@ public final class RuleRunner
         String skipReason = null;
         int evaluated = 0;
         // PLAN-present-empty-column-fold: the merged result carries Message_Folded when every
-        // level that contributed a finding folded or collapsed (its own result says so); the
-        // report resolves the message per finding anyway (ValidationReportBuilder.messageOf).
-        String foldedMessage = foldedMessageOf(rule, message);
-        boolean allContributorsFolded = !Objects.equals(foldedMessage, message);
+        // level that contributed a finding folded or collapsed (its own result says so: a level's
+        // result message is Message_Folded iff the fold or the collapse produced it, Q6 / P4);
+        // the report resolves the message per finding anyway (ValidationReportBuilder.messageOf,
+        // keyed on the DATASET_FOLDED unit). A rule without the key never folds, so nothing to
+        // merge under.
+        String foldedMessage = rule.getOutcome() == null ? null
+                : rule.getOutcome().getMessageFolded();
+        boolean allContributorsFolded = foldedMessage != null;
         boolean anyContributor = false;
 
         for (CheckLevelPlan level : levels)
@@ -1355,8 +1359,13 @@ public final class RuleRunner
             if (v.getUnit() != null)
             {
                 // Normalise the tuple half so equal stamps compare equal whatever the violation
-                // happened to materialise around them.
-                return new FindingUnit(v.getUnit(), 0L, Map.of(), null, null);
+                // happened to materialise around them — and the dataset unit's `folded` flag
+                // away: a fold and a plain dataset verdict of one rule are the same unit for the
+                // first claim (Violation.Unit.DATASET_FOLDED), the flag only picks the message.
+                Violation.Unit unit = v.getUnit() instanceof Violation.Unit.Dataset
+                        ? Violation.Unit.DATASET
+                        : v.getUnit();
+                return new FindingUnit(unit, 0L, Map.of(), null, null);
             }
             return new FindingUnit(null, v.getRow(), v.getValues(), v.getUsubjid(), v.getSeq());
         }
@@ -1610,23 +1619,39 @@ public final class RuleRunner
         // nothing left for a carve-out to be faithful to. Every rule with a compiled expression
         // now folds, and the fold's own tri-state Kleene logic decides — which is the boundary
         // that was always doing the real work.
+        //
+        // ⭐⭐ THE ABSENT-COLUMN ARM IS OPT-IN (owner, 2026-10-05, PLAN-message-folded-corpus-
+        // alignment Q6: "I would expect the absent fold does not fire anymore if no
+        // Message_Folded is available. Like the all empty fold."). A rule declaring
+        // Outcome.Message_Folded folds in full (D111's absent arm included); every other rule
+        // folds ABSENT-BLIND (P4): a leaf over an absent column answers UNKNOWN, dataset-constant
+        // leaves still decide, and the per-row path below reads the absent column as its type
+        // default (EC-43/D76) — one finding per firing record, as the present-but-empty collapse
+        // already behaves. Of an opted-in rule's TRUE, P4's discriminator says what decided it:
+        // TRUE under the full fold but not under the absent-blind one ⇒ the absence did ⇒ the
+        // finding is a FOLD (Unit.DATASET_FOLDED, Message_Folded); TRUE under both ⇒ a
+        // dataset-constant leaf did ⇒ a plain dataset verdict (Unit.DATASET, Message). There is
+        // no `Message_Folded ?? Message` fallback any more: the message is the unit's.
         if (checkExprOf(rule, ctx) != null)
         {
             Expr foldExpr = Objects.requireNonNull(checkExprOf(rule, ctx));
+            String messageFolded = rule.getOutcome() == null ? null
+                    : rule.getOutcome().getMessageFolded();
+            boolean optedIn = messageFolded != null;
             net.cumba.corej.core.expr.eval.BroadcastFold.Verdict v = net.cumba.corej.core.expr.eval.BroadcastFold
-                    .fold(foldExpr, ctx, false);
+                    .fold(foldExpr, ctx, false, !optedIn);
             // Phase 5 (typed-expression plan): compare the static level against the runtime fold
             // verdict. Observation only — the runtime verdict decides, exactly as before; the
             // disagreement classes are the phase's finding (see LevelInstrument).
             LevelInstrument.onFold(rule, ctx, foldExpr, "check", v);
             if (v != net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.UNKNOWN)
             {
-                // D7 (PLAN-present-empty-column-fold): a rule declaring Message_Folded reports
-                // the folded finding under it — every broadcast TRUE, absent-decided or
-                // dataset-constant alike (the verdict does not say what decided it; the
-                // follow-up plan narrows it). Otherwise Outcome.Message, as before.
-                return datasetBroadcastResult(ruleId, foldedMessageOf(rule, message), outputVars,
-                        ctx, v == net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.TRUE);
+                boolean verdict = v == net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.TRUE;
+                boolean absentDecided = verdict && optedIn
+                        && net.cumba.corej.core.expr.eval.BroadcastFold.fold(foldExpr, ctx, false,
+                                true) != net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.TRUE;
+                return datasetBroadcastResult(ruleId, absentDecided ? messageFolded : message,
+                        outputVars, ctx, verdict, absentDecided);
             }
         }
 
@@ -1982,10 +2007,17 @@ public final class RuleRunner
         // iteration order is neither insertion nor deterministic.
         List<String> columns = new ArrayList<>(folded);
         Collections.sort(columns);
+        // Q6 (PLAN-message-folded-corpus-alignment): the fold record names the absent columns
+        // the evaluation READ — folded to one dataset finding where the rule declares
+        // Outcome.Message_Folded and the absence decided its Check, read per record as the
+        // type-derived default otherwise (the absent-blind fold notes nothing, so a rule without
+        // the key lists only the columns its row path touched).
         LOGGER.log(System.Logger.Level.INFO,
-                "[{0}] column(s) {1} absent from dataset {2} — evaluated as the type-derived"
-                        + " default (EC-43/D76: all-\"\", or all-missing where numeric-expected);"
-                        + " a leaf that must not fire there needs a guard",
+                "[{0}] column(s) {1} absent from dataset {2} — read as the type-derived default"
+                        + " (EC-43/D76: all-\"\", or all-missing where numeric-expected):"
+                        + " folded to one dataset finding under Outcome.Message_Folded where the"
+                        + " rule declares it and the absence decided the Check, evaluated per"
+                        + " record otherwise (Q6); a leaf that must not fire there needs a guard",
                 ruleId != null ? ruleId : "?", columns, evalTable.getMetaData().getName());
     }
 
@@ -2331,17 +2363,6 @@ public final class RuleRunner
 
 
     /**
-     * D7: the message a folded or collapsed finding reports — {@code Outcome.Message_Folded} when
-     * the rule declares it, else the rule's message as carried into the execution.
-     */
-    private static @Nullable String foldedMessageOf(Rule rule, @Nullable String message)
-    {
-        String folded = rule.getOutcome() == null ? null : rule.getOutcome().getMessageFolded();
-        return folded != null ? folded : message;
-    }
-
-
-    /**
      * {@code PLAN-present-empty-column-fold} §4.3 (D4 = like 5c): the collapse's one dataset-level
      * finding — anchored at the first firing row (the anchor the non-row-based collapse uses), the
      * DATASET unit (so a level-keyed rule's first claim per unit keeps the strictest level's), the
@@ -2359,8 +2380,8 @@ public final class RuleRunner
             NameOnlyProjection projected = extractNameOnlyOutputValues(ctx.getTable(), ctx,
                     outputVars, r);
             violations.add(new Violation(ctx.getTable().getRealRowIndex(r), projected.values(),
-                    null, null, Map.of(), null, stamp(ctx, () -> Violation.Unit.DATASET), null,
-                    projected.namedColumns()));
+                    null, null, Map.of(), null, stamp(ctx, () -> Violation.Unit.DATASET_FOLDED),
+                    null, projected.namedColumns()));
         }
         return RuleExecutionResult.builder().ruleId(ruleId).message(foldedMessage)
                 .violations(violations).totalViolationCount(violations.size())
@@ -2380,11 +2401,14 @@ public final class RuleRunner
      * column is listed by name and row 0's cell — which belonged to an arbitrary record — is no
      * longer printed; bindings, dataset facts and metadata keep their values. ⚠ This is the
      * producing site that decides, not the rule's Sensitivity: a Record rule whose Check the
-     * missing-column fold decided here is a dataset verdict too (§7 M1).
+     * missing-column fold decided here is a dataset verdict too (§7 M1). {@code folded} says the
+     * absence decided it (Q6 / P4): the unit is then {@link Violation.Unit#DATASET_FOLDED} and
+     * {@code message} is the rule's {@code Message_Folded}; otherwise the plain
+     * {@link Violation.Unit#DATASET} under {@code Message}.
      */
     private static RuleExecutionResult datasetBroadcastResult(@Nullable String ruleId,
             @Nullable String message, List<String> outputVars, EvaluationContext ctx,
-            boolean verdict)
+            boolean verdict, boolean folded)
     {
         List<Violation> violations = new ArrayList<>();
         if (verdict)
@@ -2392,7 +2416,9 @@ public final class RuleRunner
             NameOnlyProjection projected = extractNameOnlyOutputValues(ctx.getTable(), ctx,
                     outputVars, 0);
             violations.add(new Violation(0, projected.values(), null, null, Map.of(), null,
-                    stamp(ctx, () -> Violation.Unit.DATASET), null, projected.namedColumns()));
+                    stamp(ctx,
+                            () -> folded ? Violation.Unit.DATASET_FOLDED : Violation.Unit.DATASET),
+                    null, projected.namedColumns()));
         }
         return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(violations)
                 .totalRows(RealRows.count(ctx.getTable())).build();

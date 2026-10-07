@@ -213,10 +213,13 @@ class RuleRunnerNameOnlyProjectionTest
         // dataset level (empty("") is true for every row) — a dataset verdict through
         // datasetBroadcastResult, and row 0's AETERM is nobody's business: name-only. Keyed on
         // the rule's Sensitivity this finding would have printed a value (§7 M1).
-        Rule rule = load("""
-                {"Core":{"Id":"R1"},"Sensitivity":"Record",
-                 "Check":{"expression":"empty(AEDECOD)"},
-                 "Outcome":{"Message":"m","Output_Variables":["AETERM"]}}""");
+        // Q6 (PLAN-message-folded-corpus-alignment): the fold is opt-in — the rule declares
+        // Message_Folded (inert on the per-row table: AEDECOD is present and not blank throughout).
+        Rule rule = load(
+                """
+                        {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                         "Check":{"expression":"empty(AEDECOD)"},
+                         "Outcome":{"Message":"m","Message_Folded":"m (folded)","Output_Variables":["AETERM"]}}""");
         IDataTable perRow = MockTable.of().name("AE").col("USUBJID", "S1", "S2")
                 .col("AETERM", "H", "N").col("AEDECOD", "", "Headache").build();
         IDataTable folded = MockTable.of().name("AE").col("USUBJID", "S1", "S2")

@@ -146,9 +146,12 @@ class NativeGuardFallthroughParityTest
         //
         // (Note the two runs here are both the NATIVE backend — `nativ` and `legacy` invoke the
         // same `run`. This asserts a Java-internal shape, not Java/Python parity.)
+        // Q6 (PLAN-message-folded-corpus-alignment): the fold is opt-in — the rule declares
+        // Message_Folded.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Record\","
                 + "\"Check\":{\"not\":{\"all\":[{\"expression\": \"AEXX == \\\"Y\\\"\"}]}},"
-                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
+                + "\"Outcome\":{\"Message\":\"m\",\"Message_Folded\":\"m (folded)\","
+                + "\"Output_Variables\":[]}}");
         IDataTable t = MockTable.of().name("AE").col("AETERM", "x", "y", "z").build();
         RuleExecutionResult nativ = run(rule, t, _ -> null);
         RuleExecutionResult legacy = run(rule, t, _ -> null);

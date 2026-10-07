@@ -56,6 +56,9 @@ class CompleteDatePartRuleTest
         rule.setSensitivity(Sensitivity.RECORD);
         Outcome outcome = new Outcome();
         outcome.setMessage("date part is not complete");
+        // Q6 (PLAN-message-folded-corpus-alignment): the absent-column fold is opt-in; the key
+        // is inert while TSVAL is present (the per-row cases) and folds the absent case once.
+        outcome.setMessageFolded("date part is not complete (TSVAL absent)");
         outcome.setOutputVariables(List.of("TSVAL"));
         rule.setOutcome(outcome);
         RulePackageLoader.installNativeExpr(rule);

@@ -106,23 +106,51 @@ public final class BroadcastFold
      */
     public static Verdict fold(Expr expr, EvaluationContext ctx, boolean allowVariableMetadata)
     {
+        return fold(expr, ctx, allowVariableMetadata, false);
+    }
+
+
+    /**
+     * Folds {@code expr} against the runtime context, optionally <b>absent-blind</b>
+     * ({@code PLAN-message-folded-corpus-alignment} P4, row 4): with {@code absentBlind} the D111
+     * arm of {@link #foldLeaf} is skipped — a leaf dataset-level only by an absent column answers
+     * {@link Verdict#UNKNOWN} and goes to the row path, where the absent column reads as its type
+     * default (D34 #3/#4, D43) — while dataset-constant leaves (presence facts, dataset facts,
+     * runtime-scalar {@code $}-comparisons) still decide. The runner folds a rule without
+     * {@code Outcome.Message_Folded} absent-blind (Q6: the absent-column fold is opt-in), and
+     * re-folds an opted-in rule's TRUE absent-blind to learn whether an absent column decided it
+     * (then the finding reports under {@code Message_Folded}, else under {@code Message}).
+     *
+     * @param expr
+     *            the boolean expression
+     * @param ctx
+     *            the runtime context
+     * @param allowVariableMetadata
+     *            whether {@link VariableMetadataResult}-valued {@code $}-refs count as constants
+     * @param absentBlind
+     *            whether the absent-column arm is disabled
+     * @return the verdict
+     */
+    public static Verdict fold(Expr expr, EvaluationContext ctx, boolean allowVariableMetadata,
+            boolean absentBlind)
+    {
         return switch (expr)
         {
-        case Expr.And a -> foldAnd(a.parts(), ctx, allowVariableMetadata);
-        case Expr.Or o -> foldOr(o.parts(), ctx, allowVariableMetadata);
-        case Expr.Not n -> negate(fold(n.inner(), ctx, allowVariableMetadata));
-        default -> foldLeaf(expr, ctx, allowVariableMetadata);
+        case Expr.And a -> foldAnd(a.parts(), ctx, allowVariableMetadata, absentBlind);
+        case Expr.Or o -> foldOr(o.parts(), ctx, allowVariableMetadata, absentBlind);
+        case Expr.Not n -> negate(fold(n.inner(), ctx, allowVariableMetadata, absentBlind));
+        default -> foldLeaf(expr, ctx, allowVariableMetadata, absentBlind);
         };
     }
 
 
     private static Verdict foldAnd(List<Expr> parts, EvaluationContext ctx,
-            boolean allowVariableMetadata)
+            boolean allowVariableMetadata, boolean absentBlind)
     {
         boolean unknown = false;
         for (Expr p : parts)
         {
-            Verdict v = fold(p, ctx, allowVariableMetadata);
+            Verdict v = fold(p, ctx, allowVariableMetadata, absentBlind);
             if (v == Verdict.FALSE)
             {
                 return Verdict.FALSE; // all[…, FALSE, …] → FALSE, regardless of undecided parts
@@ -134,12 +162,12 @@ public final class BroadcastFold
 
 
     private static Verdict foldOr(List<Expr> parts, EvaluationContext ctx,
-            boolean allowVariableMetadata)
+            boolean allowVariableMetadata, boolean absentBlind)
     {
         boolean unknown = false;
         for (Expr p : parts)
         {
-            Verdict v = fold(p, ctx, allowVariableMetadata);
+            Verdict v = fold(p, ctx, allowVariableMetadata, absentBlind);
             if (v == Verdict.TRUE)
             {
                 return Verdict.TRUE; // any[…, TRUE, …] → TRUE, regardless of undecided parts
@@ -161,14 +189,15 @@ public final class BroadcastFold
     }
 
 
-    private static Verdict foldLeaf(Expr leaf, EvaluationContext ctx, boolean allowVariableMetadata)
+    private static Verdict foldLeaf(Expr leaf, EvaluationContext ctx, boolean allowVariableMetadata,
+            boolean absentBlind)
     {
         if (isDatasetConstantLeaf(leaf, ctx, allowVariableMetadata)
                 && NativeExprEvaluator.isSupported(leaf))
         {
             return NativeExprEvaluator.evaluateBroadcast(leaf, ctx) ? Verdict.TRUE : Verdict.FALSE;
         }
-        if (absentColumnLeafLevel(leaf, ctx) == AbsentLeafLevel.DATASET_WITH_ABSENT
+        if (!absentBlind && absentColumnLeafLevel(leaf, ctx) == AbsentLeafLevel.DATASET_WITH_ABSENT
                 && NativeExprEvaluator.isSupported(leaf))
         {
             // D111 / D39 / D39a — the absent-column dataset-level fold, by the LEVEL CALCULUS.
@@ -198,8 +227,12 @@ public final class BroadcastFold
     // same bind-time level calculus the typed walk uses (bindColumnLevel).
     // ------------------------------------------------------------------
 
-    /** The D39a level class of one leaf's operand tree; see {@link #absentColumnLeafLevel}. */
-    private enum AbsentLeafLevel
+    /**
+     * The D39a level class of one leaf's operand tree; see {@link #absentColumnLeafLevel}.
+     * Package-private since {@code PLAN-message-folded-corpus-alignment} (row 4): read by
+     * {@link EmptyColumnCollapse} (P3) and {@link FoldCapability} (P5), never written.
+     */
+    enum AbsentLeafLevel
     {
         /** Some operand is row/variable-level (or an unclassifiable shape) — not foldable here. */
         ROW,
@@ -233,7 +266,7 @@ public final class BroadcastFold
      * historically declines (the {@code UNSUPPORTED_SHAPE} instrument class) stay declined.
      * </p>
      */
-    private static AbsentLeafLevel absentColumnLeafLevel(Expr e, EvaluationContext ctx)
+    static AbsentLeafLevel absentColumnLeafLevel(Expr e, EvaluationContext ctx)
     {
         return switch (e)
         {

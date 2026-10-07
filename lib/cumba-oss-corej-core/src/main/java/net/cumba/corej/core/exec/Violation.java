@@ -190,11 +190,32 @@ public class Violation
     public sealed interface Unit
     {
 
-        /** The single dataset-level unit — a broadcast / collapsed verdict on the whole dataset. */
-        Unit DATASET = new Dataset();
+        /**
+         * The single dataset-level unit — a broadcast verdict on the whole dataset that a
+         * dataset-constant leaf decided (a presence fact, a dataset fact, a runtime scalar).
+         */
+        Unit DATASET = new Dataset(false);
 
-        /** The whole dataset; at most one per (rule, dataset, level) execution. */
-        record Dataset() implements Unit
+        /**
+         * The dataset-level unit of a <b>fold</b>: the absent-column fold decided the Check (D111,
+         * {@code PLAN-message-folded-corpus-alignment} P4), or the present-but-empty collapse
+         * reduced the row findings to one (C7 D5). The report prints {@code Outcome.Message_Folded}
+         * for exactly this unit ({@code ValidationReportBuilder.messageOf}); a plain
+         * {@link #DATASET} verdict of the same rule prints {@code Message}. The two are ONE unit
+         * for the cross-level first claim ({@code RuleRunner.FindingUnit} normalises the flag
+         * away): a rule has at most one dataset verdict per level, whatever decided it.
+         */
+        Unit DATASET_FOLDED = new Dataset(true);
+
+        /**
+         * The whole dataset; at most one per (rule, dataset, level) execution.
+         *
+         * @param folded
+         *            whether the absent-column fold or the present-but-empty collapse produced it
+         *            ({@link #DATASET_FOLDED}) rather than a dataset-constant leaf
+         *            ({@link #DATASET})
+         */
+        record Dataset(boolean folded) implements Unit
         {
         }
 

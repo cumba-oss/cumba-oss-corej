@@ -277,11 +277,13 @@ public class RulePackageLoader
 
 
     /**
-     * {@code PLAN-present-empty-column-fold} §4.3 load-time checks: a rule declaring
-     * {@code Outcome.Message_Folded} is refused when it can never collapse
-     * ({@link net.cumba.corej.core.expr.eval.EmptyColumnCollapse#refusals} — R2 (a) no
-     * {@code empty}-family leaf over a plain column reference outside {@code Keep_Row_Findings},
-     * (b) a non-{@code Record} Sensitivity, (c) a variable-cursor Check); and every
+     * {@code PLAN-present-empty-column-fold} §4.3 load-time checks, widened by
+     * {@code PLAN-message-folded-corpus-alignment} P2: a rule declaring
+     * {@code Outcome.Message_Folded} is refused when it can never fold <em>or</em> collapse
+     * ({@link net.cumba.corej.core.expr.eval.FoldCapability#refusals} — (a) no {@code empty}-family
+     * leaf over a plain column reference outside {@code Keep_Row_Findings} <b>and</b> every column
+     * the Check reads is required present by {@code Requirements.Variables}, (b) a
+     * non-{@code Record} Sensitivity, (c) a variable-cursor Check); and every
      * {@code Keep_Row_Findings} entry must be a column the Check reads, compared as written. Public
      * for the corpus lints; a {@code null} rule is a no-op.
      *
@@ -295,10 +297,10 @@ public class RulePackageLoader
             return;
         }
         List<String> errors = new ArrayList<>(
-                net.cumba.corej.core.expr.eval.EmptyColumnCollapse.keepRowFindingsErrors(rule));
+                net.cumba.corej.core.expr.eval.FoldCapability.keepRowFindingsErrors(rule));
         if (rule.getOutcome().getMessageFolded() != null)
         {
-            errors.addAll(net.cumba.corej.core.expr.eval.EmptyColumnCollapse.refusals(rule));
+            errors.addAll(net.cumba.corej.core.expr.eval.FoldCapability.refusals(rule));
         }
         for (String error : errors)
         {

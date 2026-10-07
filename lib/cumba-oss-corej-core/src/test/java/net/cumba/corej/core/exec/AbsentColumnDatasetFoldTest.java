@@ -13,6 +13,7 @@ import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -63,6 +64,13 @@ class AbsentColumnDatasetFoldTest
 
     private static Rule rule(String id, CheckCondition check)
     {
+        return rule(id, check, null);
+    }
+
+
+    /** Q6: the absent-column fold is opt-in through {@code Outcome.Message_Folded}. */
+    private static Rule rule(String id, CheckCondition check, @Nullable String messageFolded)
+    {
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
         core.setId(id);
@@ -71,6 +79,7 @@ class AbsentColumnDatasetFoldTest
         rule.setSensitivity(Sensitivity.RECORD);
         Outcome outcome = new Outcome();
         outcome.setMessage("m");
+        outcome.setMessageFolded(messageFolded);
         outcome.setOutputVariables(List.of());
         rule.setOutcome(outcome);
         net.cumba.corej.core.RulePackageLoader.installNativeExpr(rule);
@@ -82,7 +91,8 @@ class AbsentColumnDatasetFoldTest
     @DisplayName("a firing negative over an ABSENT column reports ONE dataset-level finding")
     void absentNegativeFoldsToOneDatasetFinding()
     {
-        Rule negative = rule("D111-NEG", expression("TSVAL != \"PLANNED\""));
+        // Q6 (PLAN-message-folded-corpus-alignment): opt-in — the rule declares Message_Folded.
+        Rule negative = rule("D111-NEG", expression("TSVAL != \"PLANNED\""), "m (folded)");
 
         RuleExecutionResult result = RuleRunnerCalls.execute(negative, absent());
         assertTrue(result.hasViolations(), "missing != populated literal fires");
