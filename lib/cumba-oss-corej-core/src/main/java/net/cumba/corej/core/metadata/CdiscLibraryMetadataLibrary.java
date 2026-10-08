@@ -150,8 +150,12 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
 
             for (StoredDataset dataset : klass.datasets())
             {
-                tables.add(buildSdtmTable(dataset, className, modelVariables,
-                        conceptIdToSubmissionValue));
+                // runbook W2 NN (W2-D5): a nameless store dataset is not served as a present ""
+                if (isNamed(dataset.name()))
+                {
+                    tables.add(buildSdtmTable(dataset, className, modelVariables,
+                            conceptIdToSubmissionValue));
+                }
             }
         }
 
@@ -238,8 +242,12 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
             List<StoredVariable> ordered = sortByOrdinal(flattened);
             List<Map<String, String>> modelVariables = adamModelVariables(ordered);
 
-            tables.add(buildAdamTable(ds, className, ordered, modelVariables,
-                    conceptIdToSubmissionValue));
+            // runbook W2 NN (W2-D5): a nameless data structure is not served as a present ""
+            if (isNamed(ds.name()))
+            {
+                tables.add(buildAdamTable(ds, className, ordered, modelVariables,
+                        conceptIdToSubmissionValue));
+            }
         }
 
         Map<String, Object> libMeta = new LinkedHashMap<>();
@@ -343,7 +351,7 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
             @Nullable String aClassName, List<Map<String, String>> aModelVariables,
             Map<String, String> aConceptIdToSubmissionValue)
     {
-        String name = aDataset.name() == null ? "" : aDataset.name();
+        String name = Objects.requireNonNull(aDataset.name(), "named by the caller");
         String label = aDataset.label();
         String structure = aDataset.datasetStructure();
 
@@ -352,10 +360,17 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
         int idx = 0;
         for (StoredVariable v : ordered)
         {
-            columns.add(buildColumn(
-                    new ColumnSpec(v.name() == null ? "" : v.name(), v.label(), v.simpleDatatype(),
-                            v.core(), v.role(), firstCodelistId(v), idx++),
-                    aConceptIdToSubmissionValue));
+            // runbook W2 NN (W2-D5; NNL §1 skip precedent): a nameless variable is skipped, not
+            // served as a present "", and consumes no ordinal — the served columns stay 0..n-1
+            String variableName = v.name();
+            if (variableName != null && isNamed(variableName))
+            {
+                columns.add(
+                        buildColumn(
+                                new ColumnSpec(variableName, v.label(), v.simpleDatatype(),
+                                        v.core(), v.role(), firstCodelistId(v), idx++),
+                                aConceptIdToSubmissionValue));
+            }
         }
 
         Map<String, Object> tableMeta = new LinkedHashMap<>();
@@ -402,6 +417,17 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
     }
 
 
+    /**
+     * Whether a store entry carries a name to serve it under — runbook W2 NN
+     * ({@code FINDINGS-unowned-residuals} I2, W2-D5): a {@code null} or blank name is no name, and
+     * the entry is skipped rather than served as a present {@code ""} (the NNL §1 skip precedent).
+     */
+    private static boolean isNamed(@Nullable String aName)
+    {
+        return aName != null && !aName.isBlank();
+    }
+
+
     private static List<StoredVariable> sortByOrdinal(List<StoredVariable> aVariables)
     {
         List<StoredVariable> copy = new ArrayList<>(aVariables);
@@ -441,17 +467,22 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
             List<Map<String, String>> aModelVariables,
             Map<String, String> aConceptIdToSubmissionValue)
     {
-        String name = aDs.name() == null ? "" : aDs.name();
+        String name = Objects.requireNonNull(aDs.name(), "named by the caller");
         String label = aDs.label();
 
         List<IColumnMetadata> columns = new ArrayList<>(aOrderedVariables.size());
         int idx = 0;
         for (StoredVariable v : aOrderedVariables)
         {
-            columns.add(buildColumn(
-                    new ColumnSpec(v.name() == null ? "" : v.name(), v.label(), v.simpleDatatype(),
-                            v.core(), /* role */ null, firstCodelistId(v), idx++),
-                    aConceptIdToSubmissionValue));
+            // runbook W2 NN (W2-D5): skipped without consuming an ordinal, as on the SDTM path
+            String variableName = v.name();
+            if (variableName != null && isNamed(variableName))
+            {
+                columns.add(buildColumn(
+                        new ColumnSpec(variableName, v.label(), v.simpleDatatype(), v.core(),
+                                /* role */ null, firstCodelistId(v), idx++),
+                        aConceptIdToSubmissionValue));
+            }
         }
 
         Map<String, Object> tableMeta = new LinkedHashMap<>();
