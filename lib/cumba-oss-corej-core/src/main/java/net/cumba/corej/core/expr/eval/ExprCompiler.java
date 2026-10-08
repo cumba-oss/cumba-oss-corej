@@ -3074,11 +3074,15 @@ public final class ExprCompiler
 
 
     /**
-     * The names a member list reads for this run: every {@code $} or computed member spliced on the
-     * run's context through the one {@code GroupSplice} (a qualified, scalar or unresolved value is
-     * the rule's ERROR), a plain name as authored. These readers never name {@code domain=}, so a
-     * spliced {@code --} name resolves against the evaluated dataset like a written one
-     * ({@link #resolveDomainPrefixes} runs after).
+     * The names a member list reads for this run — the {@code group=} /
+     * {@code qualifying_any_populated=} of {@code is_last_in_group} and
+     * {@code has_mixed_emptiness_within_group}, the {@code keys=} of the relationship / consistency
+     * operators: every {@code $} or computed member spliced on the run's context through the one
+     * {@code GroupSplice} (a scalar or unresolved value is the rule's ERROR), a plain name as
+     * authored. These readers never name {@code domain=} (the splice is not foreign), so a spliced
+     * {@code --} name resolves against the evaluated dataset like a written one
+     * ({@link #resolveDomainPrefixes} runs after) and a spliced qualified name is a column of the
+     * one evaluation table, as a written one is (W3c).
      */
     private static List<String> spliceMembers(String function, String parameter,
             List<net.cumba.corej.core.exec.GroupSplice.Member> members, EvaluationContext ctx)

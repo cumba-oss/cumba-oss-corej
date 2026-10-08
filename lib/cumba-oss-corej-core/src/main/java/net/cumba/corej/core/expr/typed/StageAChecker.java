@@ -2169,7 +2169,9 @@ public final class StageAChecker
                 continue;
             }
             if (isColumnReferenceList(declared) && splices(c, param)
-                    && isSpliceShape(arg, walked.type()) && isPerRow(walked))
+                    && (isSpliceShape(arg, walked.type()) || (walked.type() == Unknown.UNKNOWN
+                            && net.cumba.corej.core.exec.GroupSplice.spliced(arg) != null))
+                    && isPerRow(walked))
             {
                 findPerRowSplice(c, param, arg);
                 continue;
@@ -2427,6 +2429,15 @@ public final class StageAChecker
                 }
                 continue;
             }
+            if (type == Unknown.UNKNOWN && splicing
+                    && net.cumba.corej.core.exec.GroupSplice.spliced(element.node()) != null
+                    && isPerRow(element))
+            {
+                // W1a fold (R5 review BS2b LOW-4): a spliced member of unknown type is judged by
+                // its LEVEL all the same — a per-row computed member would read row 0 silently
+                findPerRowSplice(c, param, element.node());
+                continue;
+            }
             if (type == Primitive.COLUMN_REFERENCE || type == Unknown.UNKNOWN)
             {
                 continue;
@@ -2460,10 +2471,12 @@ public final class StageAChecker
      * list of column names at evaluation — the one roster {@code GroupSplice.SPLICE_SLOTS} (W1a
      * BS2b, {@code PLAN-binding-substitutability} C6 / Q2: every {@code list<column-reference>}
      * slot whose members are names — the {@code group=} of {@code record_count}, {@code max},
-     * {@code max_date}, {@code min_date}, {@code read_value} and {@code distinct}, the member list
-     * of {@code is_(not_)unique_set}, the {@code columns} of {@code values}), so a splice at
-     * {@code is_sorted_by}'s {@code by=} (sort-key descriptors) or {@code tuple}'s collector stays
-     * a finding.
+     * {@code max_date}, {@code min_date}, {@code read_value}, {@code distinct},
+     * {@code is_last_in_group} and {@code has_mixed_emptiness_within_group} (and its
+     * {@code qualifying_any_populated=}), the {@code keys=} of {@code is_(not_)unique_relationship}
+     * and {@code is_inconsistent_across_dataset}, the member list of {@code is_(not_)unique_set},
+     * the {@code columns} of {@code values}), so a splice at {@code is_sorted_by}'s {@code by=}
+     * (sort-key descriptors) or {@code tuple}'s collector stays a finding.
      */
     private static boolean splices(Expr.Call c, Parameter param)
     {
@@ -3092,11 +3105,7 @@ public final class StageAChecker
             {
             case DOTTED_REF, OPERATION_REF, MATCHED_FLAG -> find(
                     StageAErrorKind.FILTER_LEFT_REFERENCE,
-                    "the Filter on Match_Datasets entry " + entryName + " references '" + r.name()
-                            + "' — a filter is evaluated on " + entryName
-                            + "'s OWN rows before the join and may only reference its plain "
-                            + "columns (spec §3.3: a left-side reference would be a correlated "
-                            + "sub-join)");
+                    filterLeftReference(entryName, r.name()));
             case WILDCARD_COLUMN -> find(StageAErrorKind.FILTER_INVALID,
                     "the Filter on Match_Datasets entry " + entryName + " references the "
                             + "wildcard '" + r.name() + "' — filters are never specialised, so "
@@ -3128,6 +3137,27 @@ public final class StageAChecker
             c.kwargs().values().forEach(a -> checkFilterRefs(a, entryName));
         }
         }
+    }
+
+
+    /**
+     * The {@link StageAErrorKind#FILTER_LEFT_REFERENCE} sentence — shared with the loader's seam
+     * pass, which files it for a {@code $} reference in the Filter of a rule stage A does not walk
+     * (W1a fold, R5 review A-L2: {@code MatchFilter.mask} evaluates with no variables, so a
+     * {@code $} there would read missing silently).
+     *
+     * @param entryName
+     *            the {@code Match_Datasets} entry
+     * @param reference
+     *            the reference as written
+     * @return the message
+     */
+    public static String filterLeftReference(String entryName, String reference)
+    {
+        return "the Filter on Match_Datasets entry " + entryName + " references '" + reference
+                + "' — a filter is evaluated on " + entryName
+                + "'s OWN rows before the join and may only reference its plain "
+                + "columns (spec §3.3: a left-side reference would be a correlated sub-join)";
     }
 
 

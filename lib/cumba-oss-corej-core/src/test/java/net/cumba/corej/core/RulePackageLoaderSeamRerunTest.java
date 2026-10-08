@@ -161,6 +161,43 @@ class RulePackageLoaderSeamRerunTest
 
 
     /**
+     * Runbook W1a fold, R5 review A-L2: {@code MatchFilter.mask} evaluates a {@code Match_Datasets}
+     * Filter with no variables, so a {@code $} there reads missing silently — stage A refuses it
+     * where it walks ({@code FILTER_LEFT_REFERENCE}); the loader files the same sentence where it
+     * does not: a Check-less rule, and the re-run after a {@code CHECKER_FAILURE}.
+     */
+    @Test
+    void aBindingReferenceInAMatchFilterIsRefusedWhereStageADoesNotWalk() throws Exception
+    {
+        Map<String, Object> rule = new LinkedHashMap<>();
+        rule.put("Core", Map.of("Id", "CFX-FILTER"));
+        rule.put("Bindings", List.of(Map.of("name", "$p", "expression", "AETERM")));
+        rule.put("Match_Datasets", List.of(Map.of("Name", "AE"),
+                Map.of("Name", "SE", "Keys", List.of("USUBJID"), "Filter", "SEUPDES == $p")));
+        rule.put("Outcome", Map.of("Message", "m", "Output_Variables", List.of("$p")));
+        String json = new ObjectMapper().writeValueAsString(Map.of("rules", Map.of("x", rule)));
+        Rule loaded = RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(json)).getRules()
+                .get("x");
+        assertNotNull(loaded);
+        String error = String.valueOf(loaded.getLoadError());
+        assertTrue(error.contains("the Filter on Match_Datasets entry SE references '$p'"), error);
+        // the re-run: a rule that loaded clean meets the same sentence once its Filter reads a $
+        Rule rerun = checkLess();
+        rerun.getMatchDatasets().get(0).setFilter("AETERM == $p");
+        assertTrue(RulePackageLoader.rerunSeamsUnjudged(rerun,
+                levels(CheckExpressionParser.parse("empty(AETERM)")).values(), null));
+        assertTrue(rerun.getLoadError().contains("references '$p'"), rerun.getLoadError());
+        // control: a plain column in the Filter is not refused
+        Rule plain = checkLess();
+        plain.getMatchDatasets().get(0).setFilter("AETERM == \"x\"");
+        assertFalse(
+                RulePackageLoader.rerunSeamsUnjudged(plain,
+                        levels(CheckExpressionParser.parse("empty(AETERM)")).values(), null),
+                plain.getLoadError());
+    }
+
+
+    /**
      * A Check-less rule binding a per-row value {@code $p}, a per-variable value {@code $c} and a
      * name list {@code $keys} — it loads clean, so every refusal above is the re-run's own.
      */

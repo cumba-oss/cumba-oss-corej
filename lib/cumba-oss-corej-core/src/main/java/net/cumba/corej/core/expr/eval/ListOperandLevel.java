@@ -228,11 +228,12 @@ public final class ListOperandLevel
 
 
     /**
-     * The refusal's text for a per-row member of a splice slot (every {@code group=},
-     * {@code is_(not_)unique_set}'s members, {@code values}' columns — {@code GroupSplice}'s
-     * roster) — one sentence for both spellings; stage A files it as {@code PARAMETER_TYPE} (the
-     * splice is a shape of the {@code list<column-reference>} parameter), the loader's seam pass as
-     * the load error.
+     * The refusal's text for a per-row member of a splice slot (every slot of {@code GroupSplice}'s
+     * roster — {@code GroupSplice.SPLICING_READERS}: every {@code group=}, the
+     * {@code qualifying_any_populated=} and {@code keys=} lists, {@code is_(not_)unique_set}'s
+     * members, {@code values}' columns) — one sentence for both spellings; stage A files it as
+     * {@code PARAMETER_TYPE} (the splice is a shape of the {@code list<column-reference>}
+     * parameter), the loader's seam pass as the load error.
      *
      * @param function
      *            the splicing function

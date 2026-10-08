@@ -867,6 +867,10 @@ public class RulePackageLoader
                     validateRegistryCallSeams(filter, false);
                     rejectPerRowPerCallOperands(filter, rule,
                             "the Match_Datasets Filter of '" + match.getName() + "'");
+                    if (!stageAJudged)
+                    {
+                        rejectFilterBindingReference(match, filter);
+                    }
                 }
             }
         }
@@ -2440,6 +2444,19 @@ public class RulePackageLoader
             {
                 rejectUnjudgedLevels(precondition, rule, nameLists, "the Precondition");
             }
+            // R5 review A-L2: and a $ in a Match_Datasets Filter, which stage A may not have
+            // reached
+            List<net.cumba.corej.core.model.MatchDataset> matches = rule.getMatchDatasets();
+            for (net.cumba.corej.core.model.MatchDataset match : matches == null
+                    ? List.<net.cumba.corej.core.model.MatchDataset> of()
+                    : matches)
+            {
+                net.cumba.corej.core.expr.ast.Expr filter = parsedFilter(match);
+                if (filter != null)
+                {
+                    rejectFilterBindingReference(match, filter);
+                }
+            }
             return false;
         }
         catch (net.cumba.corej.core.expr.RuleDefinitionException ex)
@@ -2448,6 +2465,97 @@ public class RulePackageLoader
             rule.addLoadError(error);
             return true;
         }
+    }
+
+
+    /**
+     * Runbook W1a fold (R5 review A-L2): a {@code $} reference in a {@code Match_Datasets} Filter
+     * of a rule stage A does not walk is the load error stage A files where it walks
+     * ({@code FILTER_LEFT_REFERENCE}, the same sentence) — {@code MatchFilter.mask} evaluates the
+     * filter with no variables, so the reference would read missing silently.
+     *
+     * @throws net.cumba.corej.core.expr.RuleDefinitionException
+     *             for the first {@code $} reference
+     */
+    private static void rejectFilterBindingReference(net.cumba.corej.core.model.MatchDataset match,
+            net.cumba.corej.core.expr.ast.Expr filter)
+    {
+        String reference = firstBindingReference(filter);
+        if (reference != null)
+        {
+            throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                    net.cumba.corej.core.expr.typed.StageAChecker
+                            .filterLeftReference(String.valueOf(match.getName()), reference));
+        }
+    }
+
+
+    /** The parsed Filter of {@code match}, or {@code null} when absent or unparseable. */
+    private static net.cumba.corej.core.expr.ast.@Nullable Expr parsedFilter(
+            net.cumba.corej.core.model.MatchDataset match)
+    {
+        try
+        {
+            return match.filterExpr();
+        }
+        catch (net.cumba.corej.core.expr.ExpressionException unparseable)
+        {
+            return null;
+        }
+    }
+
+
+    private static @Nullable String firstBindingReference(net.cumba.corej.core.expr.ast.Expr e)
+    {
+        if (e instanceof net.cumba.corej.core.expr.ast.Expr.Ref r)
+        {
+            return r.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF ? r.name()
+                    : null;
+        }
+        List<net.cumba.corej.core.expr.ast.Expr> parts = new ArrayList<>();
+        switch (e)
+        {
+        case net.cumba.corej.core.expr.ast.Expr.And a -> parts.addAll(a.parts());
+        case net.cumba.corej.core.expr.ast.Expr.Or o -> parts.addAll(o.parts());
+        case net.cumba.corej.core.expr.ast.Expr.Not n -> parts.add(n.inner());
+        case net.cumba.corej.core.expr.ast.Expr.Binary b ->
+        {
+            parts.add(b.left());
+            parts.add(b.right());
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Call c ->
+        {
+            parts.addAll(c.args());
+            parts.addAll(c.kwargs().values());
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Lit lit ->
+        {
+            if (lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST
+                    && lit.value() instanceof List<?> members)
+            {
+                for (Object member : members)
+                {
+                    if (member instanceof net.cumba.corej.core.expr.ast.Expr inner)
+                    {
+                        parts.add(inner);
+                    }
+                }
+            }
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Ref _ ->
+        {
+            // handled above
+        }
+        }
+        for (net.cumba.corej.core.expr.ast.Expr part : parts)
+        {
+            String found = firstBindingReference(part);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+        return null;
     }
 
 

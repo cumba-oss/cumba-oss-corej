@@ -101,10 +101,12 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * The block map is memoised for the execution ({@code EvaluationContext.getAggregateMemo()}, keyed
  * by the primary table and the canonical call text), so a binding read by several contexts of one
- * execution groups once. The three aggregates admit no {@code $} reference in any argument, so the
- * call text is the whole key; a caller whose {@code group=} splices a {@code $}-list
- * ({@link RecordCount}, runbook W6 D-W6-8) keys on the call text PLUS the expanded names, because
- * the derived contexts of one execution share the memo while their variables maps may differ.
+ * execution groups once. A call whose {@code group=} splices — a {@code $} member or a computed one
+ * ({@link RecordCount}, runbook W6 D-W6-8; since W1a BS2b the three aggregates, {@code read_value}
+ * and {@code distinct} too, {@link #memoKey}) — keys on the call text PLUS the expanded names,
+ * because the derived contexts of one execution share the memo while their variables maps may
+ * differ. A {@code $} inside {@code filter=} (W1a BS3) holds one dataset-level value, handed in
+ * pre-resolved, so it never splits the key.
  * </p>
  */
 public final class GroupedAggregate

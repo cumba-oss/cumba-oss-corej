@@ -677,4 +677,39 @@ class BindingSubstitutabilityTest
         assertNotNull(loaded, "the rule parses");
         return loaded;
     }
+
+
+    @Test
+    void aPerRowSpliceMemberOfUnknownTypeIsTheLevelFindingToo() throws Exception
+    {
+        // R5 review BS2b LOW-4: stage A skipped the level of a spliced member it could not type
+        // (coalesce answers unknown), so the computed per-row member read row 0 silently
+        for (String check : List.of("not is_unique_set([USUBJID, coalesce(AETERM, AEDECOD)])",
+                "record_count(group=[USUBJID, coalesce(AETERM, AEDECOD)]) > 1"))
+        {
+            assertPerRowSplice(check);
+        }
+        // control: a dataset-level member of unknown type splices
+        assertNull(
+                load("not is_unique_set([USUBJID, coalesce(\"AETERM\", \"X\")])").getLoadError());
+    }
+
+
+    @Test
+    void aPerRowBareSpliceOperandOfUnknownTypeIsTheLevelFindingToo() throws Exception
+    {
+        // the same gap at the bare operand (f(<expression>) reads as f([<expression>]), C5)
+        assertPerRowSplice("not is_unique_set(coalesce(AETERM, AEDECOD))");
+        assertNull(load("not is_unique_set(coalesce(\"AETERM\", \"X\"))").getLoadError());
+    }
+
+
+    private static void assertPerRowSplice(String check) throws Exception
+    {
+        String error = String.valueOf(load(check).getLoadError());
+        assertTrue(
+                error.contains("PARAMETER_TYPE") && error
+                        .contains("cannot splice the per-row member `coalesce(AETERM, AEDECOD)`"),
+                check + " → " + error);
+    }
 }

@@ -19,12 +19,13 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * It is legal <b>only</b> where D1 names a read of column names (coordinator decision 9,
- * 2026-10-08): as the names in a splice slot — {@code record_count}'s {@code group=}, the members
- * of {@code is_(not_)unique_set}, {@code values}' columns ({@link GroupSplice#spliceSlots}) — and
- * so as the per-row values inside {@code values($keys)}. Anywhere else — a value position
- * ({@code X in $keys}, a comparison, a function's value argument, a binding of the binding),
- * {@code Output_Variables} — it is a load error carrying {@link #hint}: refusing keeps the
- * name/value distinction the rulings protect, the form is new (0 corpus carriers), and widening
+ * 2026-10-08): as the names in a splice slot — every {@code list<column-reference>} slot of the
+ * roster ({@link GroupSplice#spliceSlots}: {@link GroupSplice#SPLICING_READERS}), by keyword or by
+ * position — and so as the per-row values inside {@code values($keys)}. Under {@code domain=} a
+ * name list holding a {@code --} member is refused ({@link #domainPrefixRefusal}). Anywhere else —
+ * a value position ({@code X in $keys}, a comparison, a function's value argument, a binding of the
+ * binding), {@code Output_Variables} — it is a load error carrying {@link #hint}: refusing keeps
+ * the name/value distinction the rulings protect, the form is new (0 corpus carriers), and widening
  * later is cheap where a guessed meaning is not. Stage A files the finding where it walks the rule
  * ({@code StageAChecker}); {@link #firstValueRead} is the loader's twin for the paths stage A never
  * walks (a Check-less rule's bindings).
