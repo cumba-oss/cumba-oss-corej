@@ -736,7 +736,7 @@ class NativeExprEvaluatorTest
     @Test
     void parityForTargetIsNotSortedBy()
     {
-        // Group by GRP, order each group by ORD (numeric-aware), then check VAL is ascending. Group
+        // Group by GRP, order each group by ORD (text order), then check VAL is ascending. Group
         // A ordered by ORD is rows 1,0 -> VAL 5 then 3 -> not ascending -> whole group {0,1} fires;
         // group B is a singleton -> skipped.
         IDataTable t = MockTable.of().col("GRP", "A", "A", "B").col("ORD", "2", "1", "1")

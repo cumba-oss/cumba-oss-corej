@@ -4115,9 +4115,10 @@ public final class ExprCompiler
     /**
      * Native plan for {@code is_sorted_by(TARGET, by=[asc(COL), desc(COL)…], within=COL)} — emitted
      * only under {@code not} (the {@code target_is_not_sorted_by} surface, Q1). Extracts the
-     * target, the ordered sort-key column names from the {@code by=} descriptors (the asc/desc
-     * direction is ignored, matching the legacy operator) and the optional single {@code within}
-     * column, then delegates to the shared {@link GroupSemantics#targetIsNotSortedByViolations}.
+     * target, the ordered sort keys of {@code by=} — each with its direction and its {@code nulls=}
+     * placement (runbook W2 SB1; a blank or missing key first unless {@code nulls="last"}) — and
+     * the optional single {@code within} column, then delegates to the shared
+     * {@link GroupSemantics#targetIsNotSortedByViolations}.
      */
     private static ExprProgram.BoolPlan compileTargetIsNotSortedBy(Expr.Call c)
     {
@@ -4132,8 +4133,8 @@ public final class ExprCompiler
             throw unsupported("is_sorted_by requires a by=[…] sort-key list");
         }
         // W1b SK (O16): the one sort-key reader — a bare column is asc(COL), a descriptor's
-        // column or a bare member may be a $ / computed member spliced at evaluation; the
-        // direction is still ignored here (coordinator D20 — W2 SB1 honours it)
+        // column or a bare member may be a $ / computed member spliced at evaluation; W2 SB1
+        // honours each key's direction and nulls= (D20 retired)
         List<net.cumba.corej.core.exec.SortKeys.Key> keys;
         try
         {
@@ -4164,15 +4165,21 @@ public final class ExprCompiler
         {
             EvaluationContext ctx = run.ctx();
             String target = resolveDomainPrefix(rawTarget, ctx);
-            List<String> sortVars = resolveDomainPrefixes(
-                    net.cumba.corej.core.exec.SortKeys.columns(
-                            net.cumba.corej.core.exec.SortKeys.resolve(c.name(), keys, ctx, false)),
-                    ctx);
+            List<net.cumba.corej.core.exec.SortKeys.ResolvedKey> sortKeys = new ArrayList<>();
+            List<String> sortVars = new ArrayList<>();
+            for (net.cumba.corej.core.exec.SortKeys.ResolvedKey key : net.cumba.corej.core.exec.SortKeys
+                    .resolve(c.name(), keys, ctx, false))
+            {
+                String column = resolveDomainPrefix(key.column(), ctx);
+                sortKeys.add(new net.cumba.corej.core.exec.SortKeys.ResolvedKey(column,
+                        key.descending(), key.nulls()));
+                sortVars.add(column);
+            }
             String withinCol = within.isEmpty() ? null
                     : resolveDomainPrefix(spliceSingle(c.name(), "within", within, ctx), ctx);
             return GroupSemantics.targetIsNotSortedByViolations(
                     groupReadTable(ctx, List.of(sortVars), target, withinCol), run.rowCount(),
-                    target, sortVars, withinCol, policy);
+                    target, sortKeys, withinCol, policy);
         };
     }
 

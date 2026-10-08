@@ -93,7 +93,12 @@ public final class GroupSemanticsCalls
             @Nullable String targetCol, List<String> sortVars, @Nullable String withinColName,
             GroupKeyPolicy policy)
     {
-        return GroupSemantics.targetIsNotSortedByViolations(table, rowCount, targetCol, sortVars,
+        List<SortKeys.ResolvedKey> keys = new java.util.ArrayList<>(sortVars.size());
+        for (String column : sortVars)
+        {
+            keys.add(new SortKeys.ResolvedKey(column, false));
+        }
+        return GroupSemantics.targetIsNotSortedByViolations(table, rowCount, targetCol, keys,
                 withinColName, policy);
     }
 

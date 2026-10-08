@@ -22,9 +22,8 @@ import org.junit.jupiter.api.Test;
  * sort-key parameter everywhere — {@code is_last_in_group}, {@code has_next_corresponding_record}
  * and {@code empty_within_except_last_row} accept {@code by=} beside {@code ordering=}, exactly one
  * ascending key as today, more keys or {@code desc} a load error <i>"not supported for
- * &lt;f&gt;"</i>. {@code is_sorted_by} keeps reading the key NAMES only (a written {@code desc} /
- * {@code nulls=} ignored, D20 — W2 SB1 honours the direction), so every written form answers as
- * before.
+ * &lt;f&gt;"</i>. Every written form of a key answers alike; since W2 SB1 {@code is_sorted_by}
+ * honours the direction and {@code nulls=} ({@link IsSortedByDirectionTest}).
  */
 class SortKeysTest
 {
@@ -154,18 +153,25 @@ class SortKeysTest
 
 
     @Test
-    void isSortedByReadsTheKeyNamesOnlyUntilW2()
+    void isSortedByReadsEveryWrittenFormOfAKeyAlike()
     {
-        // D20: direction and nulls= stay ignored; a bare column, a bound name and a spliced name
-        // list read the same names
+        // a bare column, a bound name and a spliced name list read the same key; since W2 SB1 the
+        // direction is honoured (D20 retired), so a desc key reads its own answer — alike in
+        // every form
         List<Long> written = fired(se(),
                 "not is_sorted_by(SESEQ, by=[asc(SESTDTC)], within=USUBJID)");
         assertEquals(List.of(4L, 5L, 6L), written, "premise: S2's SESEQ is not in date order");
-        for (String by : List.of("[desc(SESTDTC)]", "[SESTDTC]", "SESTDTC", "$keys", "[$keys]",
-                "[asc($c)]", "[desc($c)]", "[asc(SESTDTC, nulls=\"first\")]"))
+        for (String by : List.of("[SESTDTC]", "SESTDTC", "$keys", "[$keys]", "[asc($c)]",
+                "[asc(SESTDTC, nulls=\"first\")]"))
         {
             assertEquals(written,
                     fired(se(), "not is_sorted_by(SESEQ, by=" + by + ", within=USUBJID)"), by);
+        }
+        for (String by : List.of("[desc(SESTDTC)]", "[desc($c)]"))
+        {
+            assertEquals(List.of(1L, 2L, 3L, 4L, 5L, 6L),
+                    fired(se(), "not is_sorted_by(SESEQ, by=" + by + ", within=USUBJID)"),
+                    by + ": S1 and S2 both run against descending dates");
         }
     }
 

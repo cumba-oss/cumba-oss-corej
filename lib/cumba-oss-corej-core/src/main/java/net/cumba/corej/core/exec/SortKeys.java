@@ -26,15 +26,17 @@ import org.jspecify.annotations.Nullable;
  * name, or a {@code $} / computed member spliced once per run ({@code asc($c)} with a dataset-level
  * name, {@code by=$keys} with a name list, each key ascending — O16 #2 / #3), judged at load for
  * its level by the splice roster ({@code GroupSplice.SPLICE_SLOTS}: stage A's G3 arm and the
- * loader's {@code ListOperandLevel.spliceRefusals} unwrap the descriptor). A descriptor's extra
- * keywords ({@code nulls=}) parse and are ignored, as before. A quoted name is a string, never a
- * column (R1).
+ * loader's {@code ListOperandLevel.spliceRefusals} unwrap the descriptor). A descriptor's
+ * {@code nulls="first"} / {@code nulls="last"} is read into the key ({@link Nulls}); any other
+ * keyword or value parses and is ignored (W4 SB3 refuses an unknown {@code nulls=} value). A quoted
+ * name is a string, never a column (R1).
  * </p>
  *
  * <p>
- * {@code is_sorted_by} reads the resolved NAMES only and ignores the direction (coordinator D20; W2
- * SB1 honours it); {@code sequence} orders by {@link CellOrder} with {@code desc} reversing the
- * cell order ({@link #sortRows}).
+ * {@code is_sorted_by} honours each key's direction and its {@code nulls=} placement — a blank or
+ * missing key first unless {@code nulls="last"}, under {@code desc} too (runbook W2 SB1, W2-D3);
+ * {@code sequence} orders by {@link CellOrder} with {@code desc} reversing the cell order
+ * ({@link #sortRows}) and does not read {@code nulls=}.
  * </p>
  */
 public final class SortKeys
@@ -49,6 +51,9 @@ public final class SortKeys
     /** The two sort-key descriptors. */
     private static final List<String> DESCRIPTORS = List.of("asc", "desc");
 
+    /** A descriptor's placement keyword ({@code asc(X, nulls="last")}). */
+    public static final String NULLS_PARAMETER = "nulls";
+
     /** The run length below which {@link #stableSort} sorts by insertion. */
     private static final int INSERTION_THRESHOLD = 16;
 
@@ -57,31 +62,73 @@ public final class SortKeys
     }
 
     /**
-     * One sort key as authored: its column member and its direction.
+     * Where a sort key's blank and missing cells go ({@code nulls=} on its descriptor) —
+     * independent of the direction (W2-D3).
+     */
+    public enum Nulls
+    {
+        /** Before every value — the placement when {@code nulls=} is omitted. */
+        FIRST,
+        /** After every value. */
+        LAST
+    }
+
+
+    /**
+     * One sort key as authored: its column member, its direction and its {@code nulls=} placement.
      *
      * @param member
      *            the column — a written name, or a spliced member
      * @param descending
      *            {@code true} for {@code desc(...)}
+     * @param nulls
+     *            the written {@code nulls=} placement; absent when omitted (or not {@code "first"}
+     *            / {@code "last"})
      */
-    public record Key(GroupSplice.Member member, boolean descending)
+    public record Key(GroupSplice.Member member, boolean descending, @Nullable Nulls nulls)
     {
 
     }
 
 
     /**
-     * One sort key resolved for a run: the column name (prefix resolved by the caller) and its
-     * direction.
+     * One sort key resolved for a run: the column name (prefix resolved by the caller), its
+     * direction and its {@code nulls=} placement.
      *
      * @param column
      *            the column name
      * @param descending
      *            {@code true} for {@code desc(...)}
+     * @param nulls
+     *            the written {@code nulls=} placement; absent when omitted
      */
-    public record ResolvedKey(String column, boolean descending)
+    public record ResolvedKey(String column, boolean descending, @Nullable Nulls nulls)
     {
 
+        /**
+         * A key with no written {@code nulls=}.
+         *
+         * @param column
+         *            the column name
+         * @param descending
+         *            {@code true} for {@code desc(...)}
+         */
+        public ResolvedKey(String column, boolean descending)
+        {
+            this(column, descending, null);
+        }
+
+
+        /**
+         * Whether this key's blank and missing cells go last ({@code nulls="last"}); first when
+         * omitted, whatever the direction.
+         *
+         * @return {@code true} for {@code nulls="last"}
+         */
+        public boolean nullsLast()
+        {
+            return nulls == Nulls.LAST;
+        }
     }
 
     /**
@@ -194,11 +241,12 @@ public final class SortKeys
         {
             boolean descending = member instanceof Expr.Call c && isDescriptor(c)
                     && "desc".equals(c.name());
+            Nulls nulls = nullsOf(member);
             Expr column = column(member);
             GroupSplice.Member spliced = GroupSplice.spliced(column);
             if (spliced != null)
             {
-                out.add(new Key(spliced, descending));
+                out.add(new Key(spliced, descending, nulls));
                 continue;
             }
             if (column instanceof Expr.Lit lit)
@@ -220,13 +268,37 @@ public final class SortKeys
                 throw new ExpressionException(fn + " sort key " + ExpressionPrinter.print(member)
                         + " must be a column, asc(COL) or desc(COL)");
             }
-            out.add(new Key(new GroupSplice.Name(ref.name()), descending));
+            out.add(new Key(new GroupSplice.Name(ref.name()), descending, nulls));
         }
         if (out.isEmpty())
         {
             throw new ExpressionException(fn + " " + PARAMETER + "=[] names no sort key");
         }
         return List.copyOf(out);
+    }
+
+
+    /**
+     * The {@code nulls=} placement a descriptor writes: {@code "first"} / {@code "last"}, else
+     * {@code null} — omitted, or a value W4 SB3 will refuse (it loads today and keeps the default).
+     */
+    private static @Nullable Nulls nullsOf(Expr member)
+    {
+        if (member instanceof Expr.Call c && isDescriptor(c)
+                && c.kwargs().get(NULLS_PARAMETER) instanceof Expr.Lit lit
+                && lit.kind() == Expr.LitKind.STRING)
+        {
+            Object value = lit.value();
+            if ("first".equals(value))
+            {
+                return Nulls.FIRST;
+            }
+            if ("last".equals(value))
+            {
+                return Nulls.LAST;
+            }
+        }
+        return null;
     }
 
 
@@ -334,14 +406,14 @@ public final class SortKeys
         {
             if (key.member() instanceof GroupSplice.Name name)
             {
-                out.add(new ResolvedKey(name.name(), key.descending()));
+                out.add(new ResolvedKey(name.name(), key.descending(), key.nulls()));
                 continue;
             }
             for (String column : GroupSplice.splice(fn, PARAMETER + "= sort key",
                     List.of(key.member()), ctx, foreign,
                     "a sort key is a column of the ordered table, written bare"))
             {
-                out.add(new ResolvedKey(column, key.descending()));
+                out.add(new ResolvedKey(column, key.descending(), key.nulls()));
             }
         }
         return List.copyOf(out);
@@ -349,7 +421,7 @@ public final class SortKeys
 
 
     /**
-     * The column names of resolved keys, in order (what {@code is_sorted_by} reads, D20).
+     * The column names of resolved keys, in order.
      *
      * @param keys
      *            resolved keys
