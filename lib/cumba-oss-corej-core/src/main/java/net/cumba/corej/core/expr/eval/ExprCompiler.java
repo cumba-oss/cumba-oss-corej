@@ -405,7 +405,7 @@ public final class ExprCompiler
         case Expr.And _ -> true;
         case Expr.Or _ -> true;
         case Expr.Not _ -> true;
-        case Expr.Binary b -> !isArith(b.op());
+        case Expr.Binary b -> !isValueBinary(b.op());
         case Expr.Ref r -> r.kind() == OperandKind.MATCHED_FLAG;
         case Expr.Call c -> isBooleanCall(c);
         case Expr.Lit _ -> false;
@@ -770,9 +770,10 @@ public final class ExprCompiler
         // Phase 3d (D83): arithmetic is a VALUE, not a condition. The parser cannot normally
         // produce a bare arithmetic root, but a direct API caller could; declining loudly here
         // keeps compileComparison's operator switch total over the comparison operators.
-        if (isArith(b.op()))
+        if (isValueBinary(b.op()))
         {
-            throw unsupported("arithmetic is a value, not a boolean condition");
+            throw unsupported(isArith(b.op()) ? "arithmetic is a value, not a boolean condition"
+                    : "a substitution (~) is a value, not a boolean condition");
         }
         return switch (b.op())
         {
@@ -787,6 +788,18 @@ public final class ExprCompiler
     {
         return op == Expr.BinOp.ADD || op == Expr.BinOp.SUB || op == Expr.BinOp.MUL
                 || op == Expr.BinOp.DIV;
+    }
+
+
+    /**
+     * Whether a binary operator is a VALUE, not a condition: the four arithmetic operators and the
+     * substitution {@code ~} ({@code PLAN-engine-gap-string-extract}, runbook W1b SX, coordinator
+     * decision D12 — the one helper every value-or-condition decision reads, so a value operator
+     * cannot be a condition at one site and a value at another).
+     */
+    private static boolean isValueBinary(Expr.BinOp op)
+    {
+        return isArith(op) || op == Expr.BinOp.SUBST;
     }
 
 
@@ -886,6 +899,79 @@ public final class ExprCompiler
         // 0 * ∞); a created non-value is a computed missing (D36 #8).
         return Double.isNaN(result) ? ScalarSemantics.computedMissing()
                 : DataValueDouble.builder().value(result).build();
+    }
+
+
+    /**
+     * The substitution operator {@code X ~ /pattern/replacement/} as a value plan
+     * ({@code PLAN-engine-gap-string-extract} §3, owner-ruled 2026-10-07; runbook W1b SX,
+     * coordinator decision D12): the first match of the pattern in the subject's text
+     * ({@code find}, as {@code =~}) replaced with {@code Matcher} replacement syntax, a STRING;
+     * <b>no match answers missing</b> (never the input — {@code coalesce(X ~ /a/b/, X)} keeps it);
+     * a missing subject is that missing (identity kept, D85c); a resolved numeric subject is the
+     * {@code =~} column-type error. Over a list subject the kernel is lifted element-wise
+     * ({@link ElementwiseLift#lift}); a statically scalar subject calls the kernel directly, as a
+     * lifted value call does. Stage A has compiled the pattern and checked the replacement's group
+     * references at load; the literal shape is re-checked here for a direct API caller.
+     */
+    private static ValuePlan substitutionPlan(Expr.Binary b)
+    {
+        if (!(b.right() instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.SUBSTITUTION)
+        {
+            throw new RuleDefinitionException(
+                    "the right-hand side of ~ must be a /pattern/replacement/ literal");
+        }
+        Expr.Substitution literal = (Expr.Substitution) lit.value();
+        Pattern pattern = Pattern.compile(literal.pattern());
+        String replacement = literal.replacement();
+        EvalFunction kernel = (run, args) -> substitute(run.rowCount(), args.get(0), pattern,
+                replacement);
+        EvalFunction fn = isStaticallyScalar(b.left()) ? kernel : ElementwiseLift.lift("~", kernel);
+        ValuePlan subjectP = operandPlan(b.left(), true);
+        return run ->
+        {
+            Vector subject = subjectP.eval(run);
+            if (subject == null)
+            {
+                return null;
+            }
+            return (Vector) fn.apply(run, List.of(subject));
+        };
+    }
+
+
+    /**
+     * The scalar kernel of {@link #substitutionPlan}: per row the first match replaced, a missing
+     * subject handed through as its own cell, no match the computed missing.
+     */
+    private static Vector substitute(int rowCount, Vector subject, Pattern pattern,
+            String replacement)
+    {
+        // Phase 3 (R9), as compileRegex: a resolved Num subject errors instead of substituting
+        // in a formatting decision.
+        ColumnTypeGate.requireCharacterRead(subject, "a substitution (~)");
+        return new ComputedVector(rowCount, DataValueType.STRING, row ->
+        {
+            TypedValue tv = subject.value(row);
+            if (tv.missing() != null)
+            {
+                return tv.cell();
+            }
+            String text = TextFunctions.text(tv);
+            if (text == null)
+            {
+                return ScalarSemantics.computedMissing();
+            }
+            Matcher m = pattern.matcher(text);
+            if (!m.find())
+            {
+                return ScalarSemantics.computedMissing();
+            }
+            StringBuilder out = new StringBuilder(text.length());
+            m.appendReplacement(out, replacement);
+            m.appendTail(out);
+            return out.toString();
+        });
     }
 
 
@@ -996,6 +1082,13 @@ public final class ExprCompiler
         return e instanceof Expr.Call call && FunctionRegistry.descriptor(call.name()) != null
                 && net.cumba.corej.core.expr.typed.ElementTable.resultType(
                         call.name()) instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf;
+    }
+
+
+    /** Whether {@code e} is a substitution {@code X ~ /pattern/replacement/} (runbook W1b SX). */
+    private static boolean isSubstitution(Expr e)
+    {
+        return e instanceof Expr.Binary b && b.op() == Expr.BinOp.SUBST;
     }
 
 
@@ -1358,9 +1451,10 @@ public final class ExprCompiler
         // ⭐ Review round 1 (lane A M2): so does colref over a $-binding — `TRTA in colref($vars)`
         // with `$vars: find_vars(…)` — whose list is known only per row; boundMembership reads a
         // row's list as its members and a scalar cell as a one-member set.
+        // a `~` substitution on the right (runbook W1b SX) is a value whose shape — a scalar or
+        // the element-wise list of a list subject — is read on the vector, as a `$` binding's is
         ValuePlan listCallP = isListValuedFunctionCall(right) || isColrefOverBinding(right)
-                ? valuePlan(right)
-                : null;
+                || isSubstitution(right) ? valuePlan(right) : null;
         // Phase 3 (R9): only a STATIC all-string list literal states a character expectation the
         // gate can hold a probe to; a $-list, wildcard, accessor or grouped set is dynamic and
         // never gates (mirroring numericMemberSet's literal-only classification). The explicit
@@ -1880,11 +1974,12 @@ public final class ExprCompiler
      */
     private static ColumnTypeGate.@Nullable Kind staticKind(Expr e)
     {
-        if (e instanceof Expr.Binary bin && isArith(bin.op()))
+        if (e instanceof Expr.Binary bin && isValueBinary(bin.op()))
         {
             // An arithmetic side states the numeric expectation the fused shapes used to state
-            // through their own requireNumericRead on the compared column.
-            return ColumnTypeGate.Kind.NUMERIC;
+            // through their own requireNumericRead on the compared column; a substitution side
+            // is a STRING (runbook W1b SX).
+            return isArith(bin.op()) ? ColumnTypeGate.Kind.NUMERIC : ColumnTypeGate.Kind.CHARACTER;
         }
         if ("num".equals(conversionOf(e)))
         {
@@ -5724,10 +5819,11 @@ public final class ExprCompiler
             }
             yield namePosition ? nameRefPlan(r.name()) : valueRefPlan(r.name());
         }
-        case Expr.Binary bin when isArith(bin.op()) ->
+        case Expr.Binary bin when isValueBinary(bin.op()) ->
                 // Phase 3d (D83): first-class arithmetic in any operand position — comparison
-                // side, function argument, nested inside another arithmetic expression.
-                arithmeticPlan(bin);
+                // side, function argument, nested inside another arithmetic expression; and the
+                // substitution operator (runbook W1b SX), a STRING value in the same positions.
+                isArith(bin.op()) ? arithmeticPlan(bin) : substitutionPlan(bin);
         case Expr.Call c ->
         {
             String conversion = conversionOf(c);
@@ -7121,7 +7217,10 @@ public final class ExprCompiler
         {
         case Expr.Ref r -> r.kind() != OperandKind.OPERATION_REF;
         case Expr.Lit lit -> lit.kind() != Expr.LitKind.LIST;
-        case Expr.Binary b -> isArith(b.op());
+        // arithmetic is scalar; a substitution has its subject's shape (a list subject answers a
+        // list — the element-wise lift)
+        case Expr.Binary b -> isValueBinary(b.op())
+                && (b.op() != Expr.BinOp.SUBST || isStaticallyScalar(b.left()));
         case Expr.Call c ->
         {
             if (COLREF.equals(c.name()) || isValuesCall(c))
@@ -8668,6 +8767,8 @@ public final class ExprCompiler
         case NUMBER -> lit.value(); // Double
         case BOOL -> lit.value();
         case LIST -> throw unsupported("a list literal is not a scalar operand");
+        case SUBSTITUTION -> throw unsupported(
+                "a /pattern/replacement/ literal is the right operand of ~, not a scalar operand");
         };
     }
 
@@ -8682,6 +8783,8 @@ public final class ExprCompiler
             case NUMBER -> numberText((Double) lit.value());
             case BOOL -> lit.value().toString();
             case LIST -> throw unsupported("list literal has no scalar text");
+            case SUBSTITUTION -> throw unsupported(
+                    "a /pattern/replacement/ literal has no scalar text");
             };
         }
         if (e instanceof Expr.Ref ref)

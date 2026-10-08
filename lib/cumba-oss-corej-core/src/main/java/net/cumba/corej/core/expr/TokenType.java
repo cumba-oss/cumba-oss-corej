@@ -40,6 +40,17 @@ public enum TokenType
     MATCH,
     /** {@code !~} regex non-match. */
     NMATCH,
+    /**
+     * {@code ~} substitution ({@code PLAN-engine-gap-string-extract}): its right operand is the
+     * {@link #SUBSTITUTION} literal, lexed only directly after it.
+     */
+    SUBST,
+    /**
+     * Substitution literal {@code /pattern/replacement/}, read only directly after {@link #SUBST};
+     * {@code text} holds the pattern and {@code replacement} the replacement, both without the
+     * delimiters and with the regex literal's escapes reversed.
+     */
+    SUBSTITUTION,
 
     /** Arithmetic {@code +} (only after an operand; otherwise unexpected). */
     PLUS,

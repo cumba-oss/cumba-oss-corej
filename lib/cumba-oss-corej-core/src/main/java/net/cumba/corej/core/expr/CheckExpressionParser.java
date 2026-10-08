@@ -10,9 +10,10 @@ import org.jspecify.annotations.Nullable;
 /**
  * Recursive-descent parser that turns an expression-syntax string into an {@link Expr} tree.
  * Precedence, loosest to tightest: logical-or, then logical-and, then unary-not, then the
- * comparison / membership / regex operators. Operands are literals (string, number, bool,
- * {@code /regex/}, list), bare references (classified by {@link OperandClassifier}), or function
- * calls with positional and {@code key=value} arguments.
+ * comparison / membership / regex operators, then additive and multiplicative arithmetic, then the
+ * postfix substitution {@code ~ /pattern/replacement/}. Operands are literals (string, number,
+ * bool, {@code /regex/}, list), bare references (classified by {@link OperandClassifier}), or
+ * function calls with positional and {@code key=value} arguments.
  *
  * <p>
  * The parser is purely syntactic — it does not know which functions exist or whether a construct
@@ -188,12 +189,41 @@ public final class CheckExpressionParser
 
     private Expr parseProduct()
     {
-        Expr left = parseAtom();
+        Expr left = parsePostfix();
         while (peek().type() == TokenType.STAR || peek().type() == TokenType.SLASH)
         {
             Expr.BinOp op = peek().type() == TokenType.STAR ? Expr.BinOp.MUL : Expr.BinOp.DIV;
             advance();
-            left = new Expr.Binary(op, left, parseAtom());
+            left = new Expr.Binary(op, left, parsePostfix());
+        }
+        return left;
+    }
+
+
+    /**
+     * The substitution operator {@code X ~ /pattern/replacement/}
+     * ({@code PLAN-engine-gap-string-extract} §3, runbook W1b SX): a postfix on a primary — the
+     * tightest binding, under {@code * /} — left-associative ({@code X ~ /a/b/ ~ /b/c/}), its right
+     * side exactly one substitution literal (the lexer reads it only directly behind {@code ~}, so
+     * a string, a reference or a parenthesised operand there is this parse error).
+     */
+    private Expr parsePostfix()
+    {
+        Expr left = parseAtom();
+        while (peek().type() == TokenType.SUBST)
+        {
+            advance();
+            Token literal = peek();
+            if (literal.type() != TokenType.SUBSTITUTION || literal.replacement() == null)
+            {
+                throw new ExpressionException(
+                        "the right-hand side of ~ must be a /pattern/replacement/ literal, not '"
+                                + literal.text() + "'",
+                        literal.position());
+            }
+            advance();
+            left = new Expr.Binary(Expr.BinOp.SUBST, left, new Expr.Lit(Expr.LitKind.SUBSTITUTION,
+                    new Expr.Substitution(literal.text(), literal.replacement())));
         }
         return left;
     }

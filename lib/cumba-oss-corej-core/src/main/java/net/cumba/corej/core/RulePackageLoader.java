@@ -8234,9 +8234,17 @@ public class RulePackageLoader
         {
         case net.cumba.corej.core.expr.ast.Expr.Lit lit ->
         {
-            if (lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.REGEX)
+            // a /regex/ literal, or the pattern half of a `~` substitution literal (W1b SX): the
+            // same hazard, the same refusal
+            String regex = switch (lit.kind())
             {
-                String regex = String.valueOf(lit.value());
+            case REGEX -> String.valueOf(lit.value());
+            case SUBSTITUTION -> ((net.cumba.corej.core.expr.ast.Expr.Substitution) lit.value())
+                    .pattern();
+            default -> null;
+            };
+            if (regex != null)
+            {
                 for (net.cumba.corej.core.expr.ExpansionTokens.Occurrence occurrence : net.cumba.corej.core.expr.ExpansionTokens
                         .scan(regex).occurrences())
                 {

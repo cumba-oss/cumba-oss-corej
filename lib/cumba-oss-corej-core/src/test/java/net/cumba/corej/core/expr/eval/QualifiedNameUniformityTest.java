@@ -513,6 +513,8 @@ class QualifiedNameUniformityTest
             op:MUL | right | N | V:2 * @N
             op:DIV | left | N | V:@N / 2
             op:DIV | right | N | V:2 / @N
+            op:SUBST | left | N | V:@S ~ /^a/b/
+            op:SUBST | right | - | a substitution literal
             """;
 
     /**
@@ -846,12 +848,13 @@ class QualifiedNameUniformityTest
         assertEquals(28, MetadataAttribute.values().length, "metadata accessors");
         assertEquals(Set.of("date", "date_part", "num", "time", "time_part"),
                 new TreeSet<>(ExprCompiler.comparisonMarkers()), "comparison markers");
-        assertEquals(14, Expr.BinOp.values().length, "operators");
+        assertEquals(15, Expr.BinOp.values().length, "operators (14 + the substitution ~, W1b SX)");
         List<Row> rows = rows();
         long probed = rows.stream().filter(Row::probed).count();
         long nameClass = rows.stream().filter(Row::name).count();
-        assertEquals(265, nameClass, "name-bearing parameters in the hand table");
-        assertEquals(212, probed, "probed parameters in the hand table");
+        assertEquals(266, nameClass,
+                "name-bearing parameters in the hand table (265 + ~ left, W1b SX)");
+        assertEquals(213, probed, "probed parameters in the hand table (212 + ~ left, W1b SX)");
         // T2 r1 L2: every unprobed name-bearing row states one of the three admitted reasons.
         List<String> unprobed = new ArrayList<>();
         for (Row r : rows)
@@ -873,7 +876,8 @@ class QualifiedNameUniformityTest
         // +3 for union's three list operands (PLAN-union-function, runbook W1a U1).
         // +6 for unit= / encoding= of len / length / max_value_length (runbook W1b BL1), +1 for
         // var_has_value_list's level, +1 for the nullary define_available (W1b DP1a / DV).
-        assertEquals(153, rows.stream().filter(r -> !r.name()).count(), "non-name rows");
+        assertEquals(154, rows.stream().filter(r -> !r.name()).count(),
+                "non-name rows (153 + the ~ literal, W1b SX)");
     }
 
     // ------------------------------------------------------------------
@@ -1913,6 +1917,6 @@ class QualifiedNameUniformityTest
             }
         }
         assertEquals(List.of(), invalid);
-        assertEquals(212, probed);
+        assertEquals(213, probed);
     }
 }

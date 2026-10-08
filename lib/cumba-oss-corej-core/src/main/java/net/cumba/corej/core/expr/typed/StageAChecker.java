@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import net.cumba.corej.core.exec.JoinedRowFold;
 import net.cumba.corej.core.expr.ExpressionException;
+import net.cumba.corej.core.expr.SubstitutionReplacement;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.convert.BindingInliner;
 import net.cumba.corej.core.expr.eval.ArgumentBinder;
@@ -631,8 +632,73 @@ public final class StageAChecker
             requireNumber(right, "the right operand of arithmetic", b);
             return new TypedExpr(b, Primitive.NUMBER, level, children);
         }
+        case SUBST ->
+        {
+            return new TypedExpr(b, substitution(b, left, right), level, children);
+        }
         }
         return new TypedExpr(b, Primitive.BOOLEAN, level, children);
+    }
+
+
+    /**
+     * The substitution operator {@code X ~ /pattern/replacement/}
+     * ({@code PLAN-engine-gap-string-extract} §3 / N4, runbook W1b SX, coordinator decision D12): a
+     * STRING over a string subject; over a list subject a {@code list<string>} — the operator is
+     * element-wise, so a list is typed as a lifted call is ({@link #resultType}); over an unknown
+     * (a {@code $} binding nobody typed) unknown, the shape being decided at evaluation. A numeric
+     * (or any other non-string) subject is the {@code =~} error. The pattern is compiled here, at
+     * load, and the replacement's {@code $n} / {@code ${name}} references are checked against the
+     * pattern's groups ({@link SubstitutionReplacement}) — each defect the armed PARAMETER_TYPE
+     * finding, a load error, never a per-row exception.
+     */
+    private ExprType substitution(Expr.Binary b, TypedExpr left, TypedExpr right)
+    {
+        ExprType subject = left.type().dereference();
+        ExprType result;
+        if (subject instanceof ListOf list)
+        {
+            ExprType element = list.element().dereference();
+            if (element != Unknown.UNKNOWN && element != Primitive.STRING)
+            {
+                find(StageAErrorKind.PARAMETER_TYPE, "the left operand of ~ must be a string or"
+                        + " a list of strings, not " + subject.describe() + at(b));
+            }
+            result = new ListOf(Primitive.STRING);
+        }
+        else
+        {
+            requireStringish(left, "the left operand of ~", b);
+            // a column reference dereferences to unknown (its cell type is a stage-B fact) but
+            // a cell is never a list, so the result is the scalar STRING; only a subject whose
+            // own type is unknown (a binding nobody typed) stays unknown, as a lift does
+            result = left.type() == Unknown.UNKNOWN ? Unknown.UNKNOWN : Primitive.STRING;
+        }
+        if (!(right.node() instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.SUBSTITUTION)
+        {
+            find(StageAErrorKind.PARAMETER_TYPE,
+                    "the right-hand side of ~ must be a /pattern/replacement/ literal" + at(b));
+            return result;
+        }
+        Expr.Substitution literal = (Expr.Substitution) lit.value();
+        java.util.regex.Pattern pattern;
+        try
+        {
+            pattern = java.util.regex.Pattern.compile(literal.pattern());
+        }
+        catch (java.util.regex.PatternSyntaxException bad)
+        {
+            find(StageAErrorKind.PARAMETER_TYPE, "the pattern of ~ is not a valid regular"
+                    + " expression: " + bad.getDescription() + at(b));
+            return result;
+        }
+        String problem = SubstitutionReplacement.problem(pattern, literal.replacement());
+        if (problem != null)
+        {
+            find(StageAErrorKind.PARAMETER_TYPE, "in ~ /" + literal.pattern() + "/"
+                    + literal.replacement() + "/: " + problem + at(b));
+        }
+        return result;
     }
 
 
@@ -791,7 +857,9 @@ public final class StageAChecker
         case STRING -> new TypedExpr(lit, Primitive.STRING, Level.STUDY, List.of());
         case NUMBER -> new TypedExpr(lit, Primitive.NUMBER, Level.STUDY, List.of());
         case BOOL -> new TypedExpr(lit, Primitive.BOOLEAN, Level.STUDY, List.of());
-        case REGEX -> new TypedExpr(lit, Primitive.REGEX, Level.STUDY, List.of());
+        // the /pattern/replacement/ literal of `~` is literal-only like a regex, judged by the
+        // operator (substitution), never an operand of anything else
+        case REGEX, SUBSTITUTION -> new TypedExpr(lit, Primitive.REGEX, Level.STUDY, List.of());
         case LIST -> listLiteral(lit);
         };
     }

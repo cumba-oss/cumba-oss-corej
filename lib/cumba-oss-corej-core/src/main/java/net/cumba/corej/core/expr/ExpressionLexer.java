@@ -40,18 +40,19 @@ public final class ExpressionLexer
      * operators. {@code ExpressionLexerTest} proves each one tokenises as its own token.
      */
     private static final List<String> OPERATORS = List.of("=", "==", "!=", "<", ">", "<=", ">=",
-            "=~", "!~", "+", "-", "*", "/", "!", "&&", "||");
+            "=~", "!~", "~", "+", "-", "*", "/", "!", "&&", "||");
 
     /**
      * The literal and reference forms the lexer reads, by example spelling — the language surface's
      * roster: a quoted string, a number, a {@code /regex/} literal, a {@code [list]}, a back-quoted
      * reference, a bare expansion token {@code &NAME&}, a {@code ${binding}} substitution, a
-     * {@code --} wildcard, a {@code $binding} reference and a qualified {@code DATASET.X}
-     * reference.
+     * {@code --} wildcard, a {@code $binding} reference, a qualified {@code DATASET.X} reference
+     * and the {@code /pattern/replacement/} literal of the {@code ~} operator
+     * ({@code PLAN-engine-gap-string-extract}, runbook W1b SX).
      */
     private static final List<String> LITERAL_FORMS = List.of("\"string\"", "number", "/regex/",
-            "[list]", "`quoted ref`", "&NAME&", "${binding}", "--wildcard", "$binding",
-            "DATASET.X");
+            "[list]", "`quoted ref`", "&NAME&", "${binding}", "--wildcard", "$binding", "DATASET.X",
+            "/pattern/replacement/");
 
     private final String src;
 
@@ -120,12 +121,14 @@ public final class ExpressionLexer
     /**
      * Whether the previous token ends an operand, so that a following {@code + - * /} is an
      * arithmetic operator rather than a wildcard-column marker, {@code /regex/} delimiter, or
-     * negative-number sign.
+     * negative-number sign. A substitution literal ends the {@code X ~ /p/r/} operand, so
+     * {@code X ~ /a/b/ / 2} divides.
      */
     private boolean afterOperand()
     {
         return prev == TokenType.IDENT || prev == TokenType.NUMBER || prev == TokenType.STRING
-                || prev == TokenType.RPAREN || prev == TokenType.RBRACKET;
+                || prev == TokenType.RPAREN || prev == TokenType.RBRACKET
+                || prev == TokenType.SUBSTITUTION;
     }
 
 
@@ -169,8 +172,10 @@ public final class ExpressionLexer
         case ']' -> single(TokenType.RBRACKET, "]", start);
         case ',' -> single(TokenType.COMMA, ",", start);
         case '"' -> scanString();
-        case '/' -> scanRegex();
+        // directly after `~` a `/` opens the /pattern/replacement/ literal, nowhere else
+        case '/' -> prev == TokenType.SUBST ? scanSubstitution() : scanRegex();
         case '=' -> scanEquals(start);
+        case '~' -> single(TokenType.SUBST, "~", start);
         case '!' -> scanBang(start);
         case '<' -> scanRelational(start, TokenType.LE, TokenType.LT);
         case '>' -> scanRelational(start, TokenType.GE, TokenType.GT);
@@ -252,6 +257,46 @@ public final class ExpressionLexer
     {
         int start = pos;
         pos++; // opening slash
+        String pattern = scanSlashDelimited();
+        if (pattern == null)
+        {
+            throw new ExpressionException("Unterminated regex literal", start);
+        }
+        return new Token(TokenType.REGEX, pattern, start);
+    }
+
+
+    /**
+     * The {@code /pattern/replacement/} literal of the {@code ~} operator
+     * ({@code PLAN-engine-gap-string-extract} §3, runbook W1b SX): two slash-delimited parts with
+     * the regex literal's escapes ({@code \/} the delimiter, {@code \\} a backslash, every other
+     * backslash sequence verbatim — so {@code \$} reaches {@code Matcher} as its literal dollar).
+     * {@code X ~ /re/} without the replacement part is the unterminated literal.
+     */
+    private Token scanSubstitution()
+    {
+        int start = pos;
+        pos++; // opening slash
+        String pattern = scanSlashDelimited();
+        String replacement = pattern == null ? null : scanSlashDelimited();
+        if (pattern == null || replacement == null)
+        {
+            throw new ExpressionException(
+                    "Unterminated substitution literal (expected /pattern/replacement/)", start);
+        }
+        return new Token(TokenType.SUBSTITUTION, pattern, start, replacement);
+    }
+
+
+    /**
+     * One slash-delimited part, {@code pos} just behind its opening slash: the decoded text, with
+     * {@code pos} behind the closing slash — or {@code null} when the source ends first. The
+     * printer escapes {@code '\'} as {@code \\} and the delimiter {@code '/'} as {@code \/}; both
+     * are reversed here, any other backslash sequence stays verbatim so a pattern reaches
+     * {@code Pattern.compile} unchanged.
+     */
+    private @Nullable String scanSlashDelimited()
+    {
         StringBuilder sb = new StringBuilder();
         while (pos < src.length())
         {
@@ -259,10 +304,6 @@ public final class ExpressionLexer
             if (c == '\\' && pos + 1 < src.length())
             {
                 char n = src.charAt(pos + 1);
-                // The printer escapes '\' -> \\ and the delimiter '/' -> \/; reverse both. Any
-                // other
-                // backslash sequence stays verbatim so the pattern reaches Pattern.compile
-                // unchanged.
                 if (n == '/')
                 {
                     sb.append('/');
@@ -281,12 +322,12 @@ public final class ExpressionLexer
             if (c == '/')
             {
                 pos++; // closing slash
-                return new Token(TokenType.REGEX, sb.toString(), start);
+                return sb.toString();
             }
             sb.append(c);
             pos++;
         }
-        throw new ExpressionException("Unterminated regex literal", start);
+        return null;
     }
 
 

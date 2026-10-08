@@ -94,6 +94,7 @@ public final class ExpressionPrinter
         case SUB -> "-";
         case MUL -> "*";
         case DIV -> "/";
+        case SUBST -> "~";
         };
         return value(b.left()) + " " + op + " " + value(b.right());
     }
@@ -132,7 +133,11 @@ public final class ExpressionPrinter
     }
 
 
-    /** Renders an operand (value-level node). */
+    /**
+     * Renders an operand (value-level node). A substitution {@code X ~ /p/r/} prints bare in
+     * operand position: it is the tightest-binding operator, so no parentheses are ever needed
+     * around it (and {@code X ~ /a/b/ ~ /b/c/} re-parses left-associatively, as built).
+     */
     private static String value(Expr e)
     {
         return switch (e)
@@ -140,6 +145,7 @@ public final class ExpressionPrinter
         case Expr.Ref r -> operand(r.name());
         case Expr.Lit l -> literal(l);
         case Expr.Call c -> call(c);
+        case Expr.Binary b when b.op() == Expr.BinOp.SUBST -> binary(b);
         default -> "(" + raw(e) + ")";
         };
     }
@@ -150,11 +156,23 @@ public final class ExpressionPrinter
         return switch (l.kind())
         {
         case STRING -> quote((String) l.value());
-        case REGEX -> "/" + ((String) l.value()).replace("\\", "\\\\").replace("/", "\\/") + "/";
+        case REGEX -> "/" + slashDelimited((String) l.value()) + "/";
         case NUMBER -> numberText((Double) l.value());
         case BOOL -> String.valueOf(l.value());
         case LIST -> listText(l);
+        case SUBSTITUTION ->
+        {
+            Expr.Substitution s = (Expr.Substitution) l.value();
+            yield "/" + slashDelimited(s.pattern()) + "/" + slashDelimited(s.replacement()) + "/";
+        }
         };
+    }
+
+
+    /** One slash-delimited part, the lexer's escapes applied: {@code \} and the delimiter. */
+    private static String slashDelimited(String text)
+    {
+        return text.replace("\\", "\\\\").replace("/", "\\/");
     }
 
 

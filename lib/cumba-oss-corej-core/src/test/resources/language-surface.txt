@@ -209,9 +209,9 @@ var_ordinal scope=variable levels=DATA,DEFINE,LIBRARY result=number default=DATA
 var_origin_type scope=variable levels=DEFINE result=string
 var_role scope=variable levels=DEFINE,LIBRARY result=string
 var_type scope=variable levels=DATA,DEFINE,LIBRARY result=string default=DATA kwargs=dataset
-operators: ! != !~ && * + - / < <= = == =~ > >= ||
+operators: ! != !~ && * + - / < <= = == =~ > >= || ~
 keywords: and,false,in,not,or,true
-literal-forms: "string" number /regex/ [list] `quoted ref` &NAME& ${binding} --wildcard $binding DATASET.X
+literal-forms: "string" number /regex/ [list] `quoted ref` &NAME& ${binding} --wildcard $binding DATASET.X /pattern/replacement/
 operands:
 dataset_class
 dataset_domain

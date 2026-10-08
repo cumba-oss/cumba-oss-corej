@@ -31,25 +31,42 @@ public sealed interface Expr
         Expr.Not
 {
 
-    /** Infix comparison / membership operators. */
+    /**
+     * Infix comparison / membership operators, the arithmetic operators and the substitution
+     * operator {@link #SUBST} ({@code X ~ /pattern/replacement/}, a STRING value —
+     * {@code PLAN-engine-gap-string-extract}, runbook W1b SX).
+     */
     enum BinOp
     {
-        EQ, NEQ, LT, GT, LE, GE, MATCH, NMATCH, IN, NOT_IN, ADD, SUB, MUL, DIV
+        EQ, NEQ, LT, GT, LE, GE, MATCH, NMATCH, IN, NOT_IN, ADD, SUB, MUL, DIV, SUBST
     }
 
 
     /** Lexical category of a literal. */
     enum LitKind
     {
-        STRING, NUMBER, BOOL, REGEX, LIST
+        STRING, NUMBER, BOOL, REGEX, LIST, SUBSTITUTION
     }
 
 
     /**
      * A literal value. {@code value} is a {@link String} (STRING/REGEX), {@link Double} (NUMBER),
-     * {@link Boolean} (BOOL), or {@code List<Expr>} of {@link Lit} (LIST).
+     * {@link Boolean} (BOOL), {@code List<Expr>} of {@link Lit} (LIST), or a {@link Substitution}
+     * (SUBSTITUTION — only ever the right operand of {@link BinOp#SUBST}).
      */
     record Lit(LitKind kind, Object value) implements Expr
+    {
+
+    }
+
+
+    /**
+     * The {@code /pattern/replacement/} literal of the substitution operator: a Java regular
+     * expression (passed to {@code Pattern.compile} unchanged) and a
+     * {@code java.util.regex.Matcher} replacement ({@code $n}, {@code ${name}}, {@code \\}
+     * escapes).
+     */
+    record Substitution(String pattern, String replacement)
     {
 
     }

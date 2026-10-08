@@ -593,8 +593,9 @@ public final class TypeExpectations
                 }
             }
         }
-        case MATCH, NMATCH ->
-                // compileRegex: the subject asserts a property of the TEXT form (R9).
+        case MATCH, NMATCH, SUBST ->
+                // compileRegex: the subject asserts a property of the TEXT form (R9); the
+                // substitution operator (runbook W1b SX) reads its subject as text the same way.
                 expect(left, Expectation.CHARACTER);
         case IN, NOT_IN -> membership(left, right);
         }

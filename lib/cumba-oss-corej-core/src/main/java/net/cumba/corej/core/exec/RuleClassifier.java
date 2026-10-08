@@ -865,7 +865,7 @@ public final class RuleClassifier
             Map.entry(Expr.BinOp.IN, "is_contained_by"),
             Map.entry(Expr.BinOp.NOT_IN, "is_not_contained_by"), Map.entry(Expr.BinOp.ADD, "add"),
             Map.entry(Expr.BinOp.SUB, "subtract"), Map.entry(Expr.BinOp.MUL, "multiply"),
-            Map.entry(Expr.BinOp.DIV, "divide"));
+            Map.entry(Expr.BinOp.DIV, "divide"), Map.entry(Expr.BinOp.SUBST, "substitute"));
 
     /**
      * The operand text of a node.

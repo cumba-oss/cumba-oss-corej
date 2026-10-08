@@ -100,6 +100,13 @@ class SyntheticExprCorpusRoundTripTest
     }
 
 
+    private static Expr.Lit subst(String aPattern, String aReplacement)
+    {
+        return new Expr.Lit(Expr.LitKind.SUBSTITUTION,
+                new Expr.Substitution(aPattern, aReplacement));
+    }
+
+
     private static Expr.Lit list(Expr... aItems)
     {
         return new Expr.Lit(Expr.LitKind.LIST, List.of(aItems));
@@ -187,6 +194,40 @@ class SyntheticExprCorpusRoundTripTest
             new Case("REGEX with escaped forward slash",
                     bin(Expr.BinOp.MATCH, col("TSVAL"), regex("^\\d+/\\d+$")),
                     "TSVAL =~ /^\\\\d+\\/\\\\d+$/"),
+
+            // -- the substitution operator (PLAN-engine-gap-string-extract, runbook W1b SX):
+            // postfix on a primary, tighter than arithmetic and comparison, left-associative
+            new Case("SUBST, anchored extract as a comparison operand",
+                    bin(Expr.BinOp.EQ,
+                            bin(Expr.BinOp.SUBST, col("AESTDTC"), subst("(?i)^(.*)DTC$", "$1")),
+                            str("AEST")),
+                    "AESTDTC ~ /(?i)^(.*)DTC$/$1/ == \"AEST\""),
+            new Case("SUBST, escaped delimiters in both parts and a named group",
+                    bin(Expr.BinOp.EQ,
+                            bin(Expr.BinOp.SUBST, col("TSVAL"),
+                                    subst("^(?<num>\\d+)/\\d+$", "${num}/x")),
+                            str("1/x")),
+                    "TSVAL ~ /^(?<num>\\\\d+)\\/\\\\d+$/${num}\\/x/ == \"1/x\""),
+            new Case("SUBST, chained inside a call",
+                    bin(Expr.BinOp.GT,
+                            call("num", bin(Expr.BinOp.SUBST,
+                                    bin(Expr.BinOp.SUBST, col("MIDS"),
+                                            subst("^.*?([0-9]+)$", "$1")),
+                                    subst("0", "9"))),
+                            num(0)),
+                    "num(MIDS ~ /^.*?([0-9]+)$/$1/ ~ /0/9/) > 0"),
+            new Case("SUBST under arithmetic binds tighter than +",
+                    bin(Expr.BinOp.EQ,
+                            bin(Expr.BinOp.ADD, bin(Expr.BinOp.SUBST, col("A"), subst("x", "1")),
+                                    num(1)),
+                            num(2)),
+                    "(A ~ /x/1/ + 1) == 2"),
+            new Case("SUBST over a parenthesised arithmetic subject",
+                    bin(Expr.BinOp.EQ,
+                            bin(Expr.BinOp.SUBST, bin(Expr.BinOp.ADD, col("A"), col("B")),
+                                    subst("x", "y")),
+                            str("z")),
+                    "(A + B) ~ /x/y/ == \"z\""),
 
             // -- OperandKinds not already covered ------------------------------
             new Case("WILDCARD_COLUMN, -- prefix",

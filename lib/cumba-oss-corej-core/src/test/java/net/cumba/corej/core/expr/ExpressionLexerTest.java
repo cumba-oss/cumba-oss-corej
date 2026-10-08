@@ -3,6 +3,7 @@ package net.cumba.corej.core.expr;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -287,6 +288,84 @@ class ExpressionLexerTest
         assertFalse(ex.getMessage().contains("separate"), ex.getMessage());
     }
 
+    // ---- the substitution operator `~` (PLAN-engine-gap-string-extract N1, runbook W1b SX) ----
+
+
+    @Test
+    void tildeIsTheSubstitutionOperatorAndItsLiteralFollowsIt()
+    {
+        List<Token> t = lex("AESTDTC ~ /(?i)^(.*)DTC$/$1/");
+        assertEquals(TokenType.IDENT, t.get(0).type());
+        assertEquals(TokenType.SUBST, t.get(1).type());
+        assertEquals("~", t.get(1).text());
+        assertEquals(TokenType.SUBSTITUTION, t.get(2).type());
+        // the pattern reaches Pattern.compile unchanged ((?i) included), the replacement verbatim
+        assertEquals("(?i)^(.*)DTC$", t.get(2).text());
+        assertEquals("$1", t.get(2).replacement());
+        assertEquals(TokenType.EOF, t.get(3).type());
+        // a token that is not a substitution literal carries no replacement
+        assertNull(t.get(0).replacement());
+    }
+
+
+    @Test
+    void theSubstitutionLiteralUsesTheRegexLiteralsEscapes()
+    {
+        // \/ is the delimiter in both parts, \\ a backslash, every other backslash sequence stays
+        List<Token> t = lex("X ~ /^\\d+\\/\\d+$/a\\/b\\$1/");
+        assertEquals(TokenType.SUBSTITUTION, t.get(2).type());
+        assertEquals("^\\d+/\\d+$", t.get(2).text());
+        assertEquals("a/b\\$1", t.get(2).replacement());
+        assertEquals("", lex("X ~ /a//").get(2).replacement(), "an empty replacement deletes");
+    }
+
+
+    @Test
+    void theSubstitutionLiteralCountsAsAnOperand()
+    {
+        // after the literal, `/` and `-` are arithmetic again, not a regex or a negative number
+        assertArrayEquals(new TokenType[]
+        {
+                TokenType.IDENT, TokenType.SUBST, TokenType.SUBSTITUTION, TokenType.SLASH,
+                TokenType.NUMBER, TokenType.MINUS, TokenType.NUMBER, TokenType.EOF
+        }, types("X ~ /a/b/ / 2 - 1"));
+        // a second `~` chains
+        assertArrayEquals(new TokenType[]
+        {
+                TokenType.IDENT, TokenType.SUBST, TokenType.SUBSTITUTION, TokenType.SUBST,
+                TokenType.SUBSTITUTION, TokenType.EOF
+        }, types("X ~ /a/b/ ~ /b/c/"));
+    }
+
+
+    @Test
+    void tildeLeavesTheMatchOperatorsAndDivisionAlone()
+    {
+        assertArrayEquals(new TokenType[]
+        {
+                TokenType.IDENT, TokenType.MATCH, TokenType.REGEX, TokenType.AND, TokenType.IDENT,
+                TokenType.NMATCH, TokenType.REGEX, TokenType.EOF
+        }, types("A =~ /x/ and B !~ /y/"));
+        assertArrayEquals(new TokenType[]
+        {
+                TokenType.IDENT, TokenType.SLASH, TokenType.IDENT, TokenType.EOF
+        }, types("A / B"));
+        // `/` only starts a substitution literal directly after `~`: elsewhere a regex literal
+        assertEquals(TokenType.REGEX, lex("X =~ /a/b/").get(2).type());
+    }
+
+
+    @Test
+    void anUnterminatedSubstitutionLiteralThrows()
+    {
+        ExpressionException noReplacement = assertThrows(ExpressionException.class,
+                () -> lex("X ~ /a/"));
+        assertTrue(noReplacement.getMessage().contains("Unterminated substitution literal"),
+                noReplacement.getMessage());
+        assertThrows(ExpressionException.class, () -> lex("X ~ /a/b"));
+        assertThrows(ExpressionException.class, () -> lex("X ~ /a"));
+    }
+
 
     /**
      * The language-surface rosters ({@code PLAN-engine-language-runbook} §6.0 G): every spelling
@@ -308,7 +387,7 @@ class ExpressionLexerTest
                             && operator.type() != TokenType.NUMBER,
                     source + " -> " + operator.type());
         }
-        assertEquals(16, ExpressionLexer.operators().size());
+        assertEquals(17, ExpressionLexer.operators().size());
         for (String keyword : ExpressionLexer.keywords())
         {
             Token token = ExpressionLexer.tokenize(keyword).get(0);
@@ -316,6 +395,6 @@ class ExpressionLexerTest
             assertTrue(token.type() != TokenType.IDENT, keyword + " -> " + token.type());
         }
         assertEquals(6, ExpressionLexer.keywords().size());
-        assertEquals(10, ExpressionLexer.literalForms().size());
+        assertEquals(11, ExpressionLexer.literalForms().size());
     }
 }
