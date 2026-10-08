@@ -224,7 +224,9 @@ class BindingSubstitutabilityTest
      */
     private static final List<String> SPLICE_SLOTS = List.of("is_unique_set([USUBJID, ‹arg›])",
             "not is_not_unique_set([USUBJID, ‹arg›])", "record_count(group=[USUBJID, ‹arg›]) > 1",
-            "is_unique_set(‹arg›)", "record_count(group=‹arg›) > 1");
+            "is_unique_set(‹arg›)", "record_count(group=‹arg›) > 1",
+            // the third splicing reader (runbook W1a E1): values' columns, list and bare operand
+            "\"S1\" in values([USUBJID, ‹arg›])", "\"S1\" in values(‹arg›)");
 
     @Test
     void aDatasetLevelListOfNamesSplicesBoundAndInlineAlike() throws Exception

@@ -2075,7 +2075,8 @@ public final class StageAChecker
                     + " the text \"" + name + "\", so the condition could never match — bind the"
                     + " whole list instead (write " + name + " alone as the operand) or spell the"
                     + " values in the literal; a $ binding of column names is spliced only in"
-                    + " record_count's group= and is_(not_)unique_set's members"));
+                    + " record_count's group=, is_(not_)unique_set's members and values'"
+                    + " columns"));
         }
     }
 
@@ -2114,9 +2115,11 @@ public final class StageAChecker
                     "argument '" + param.name() + "' of '" + c.name()
                             + "' takes list<column-reference>, not " + type.describe()
                             + " at element " + position + spelled
-                            + (splice ? " — a spliced list of names (a $ binding or a dataset-level"
-                                    + " expression) is read only by record_count's group= and"
-                                    + " is_(not_)unique_set's members" : "")
+                            + (splice
+                                    ? " — a spliced list of names (a $ binding or a dataset-level"
+                                            + " expression) is read only by record_count's group=,"
+                                            + " is_(not_)unique_set's members and values' columns"
+                                    : "")
                             + at(c));
         }
     }
@@ -2136,6 +2139,12 @@ public final class StageAChecker
         if (net.cumba.corej.core.exec.RecordCount.NAME.equals(c.name()))
         {
             return net.cumba.corej.core.exec.GroupedAggregate.GROUP_PARAMETER.equals(param.name());
+        }
+        if (net.cumba.corej.core.exec.GroupSplice.VALUES_CALL.equals(c.name()))
+        {
+            // the third splicing reader (PLAN-elementwise-list-functions §3.2, runbook W1a E1):
+            // values' columns list — ExprCompiler.valuesPlan splices through the same GroupSplice
+            return net.cumba.corej.core.exec.GroupSplice.VALUES_PARAMETER.equals(param.name());
         }
         return ("is_unique_set".equals(c.name()) || "is_not_unique_set".equals(c.name()))
                 && "members".equals(param.name());

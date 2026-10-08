@@ -192,6 +192,7 @@ class NameSlotRosterTest
         BASE.put("union", "union([\"a\"], [\"b\"], [\"c\"])");
         BASE.put("tuple", "tuple(X, Y)");
         BASE.put("variable_count", "variable_count(\"X\")");
+        BASE.put("values", "values([X, USUBJID])");
         BASE.put("variable_count.name_pattern", "variable_count(name_pattern=\"^Q$\")");
     }
 

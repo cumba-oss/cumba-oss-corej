@@ -15,9 +15,11 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The splice of a column-name list — ONE implementation for {@code record_count}'s {@code group=}
- * (D-W6-7, the retired executor's {@code expandGroupRefs}) and the member list of
+ * (D-W6-7, the retired executor's {@code expandGroupRefs}), the member list of
  * {@code is_unique_set} / {@code is_not_unique_set} ({@code PLAN-qualified-name-uniformity-review}
- * N15 / N29).
+ * N15 / N29) and, since runbook W1a E1, the {@code columns} list of {@code values}
+ * ({@code ExprCompiler.valuesPlan} — the third caller, {@code PLAN-elementwise-list-functions}
+ * §3.2).
  *
  * <p>
  * A member is a {@link Member}: a plain {@link Name} passes through; a {@link Bound} {@code $}
@@ -68,6 +70,18 @@ public final class GroupSplice
 
     /** The parameter name of the uniqueness operators' splice list, as the registry declares it. */
     public static final String MEMBERS_PARAMETER = "members";
+
+    /**
+     * The third caller of the one splice ({@code PLAN-elementwise-list-functions} §3.2, runbook W1a
+     * E1): {@code values(list<column-reference>)} reads the named columns' cells per row, and its
+     * {@link #VALUES_PARAMETER columns} list splices a {@code $} binding or a computed expression
+     * of names exactly as the two readers above do — {@code values($keys)} reads as
+     * {@code values([$keys])} (C5).
+     */
+    public static final String VALUES_CALL = "values";
+
+    /** The parameter name of {@code values}' splice list, as the registry declares it. */
+    public static final String VALUES_PARAMETER = "columns";
 
     /**
      * One member of a splice list, as the reader keeps it from load to evaluation.
@@ -229,6 +243,11 @@ public final class GroupSplice
             operand = call.kwargs().get(GroupedAggregate.GROUP_PARAMETER);
             parameter = GroupedAggregate.GROUP_PARAMETER;
         }
+        else if (VALUES_CALL.equals(call.name()) && !call.args().isEmpty())
+        {
+            operand = call.args().get(0);
+            parameter = VALUES_PARAMETER;
+        }
         else
         {
             return null;
@@ -248,12 +267,13 @@ public final class GroupSplice
 
 
     /**
-     * The splice lists {@code call} carries: the member list of {@code is_(not_)unique_set} and the
-     * {@code group=} list of {@code record_count} — the two lists whose {@code $} members
-     * {@link #splice} reads as column NAMES. The bind-time specialiser asks it
-     * ({@code RuleSpecialiser.inlineSplicedNames}, {@code PLAN-string-literal-prefix-rewrite}
-     * review MED-1): a {@code $} member whose binding holds a written name is that name written in
-     * the list (G1), inlined at the splice site only — never under {@code domain=}.
+     * The splice lists {@code call} carries: the member list of {@code is_(not_)unique_set}, the
+     * {@code group=} list of {@code record_count} and the {@code columns} list of {@code values} —
+     * the lists whose {@code $} members {@link #splice} reads as column NAMES. The bind-time
+     * specialiser asks it ({@code RuleSpecialiser.inlineSplicedNames},
+     * {@code PLAN-string-literal-prefix-rewrite} review MED-1): a {@code $} member whose binding
+     * holds a written name is that name written in the list (G1), inlined at the splice site only —
+     * never under {@code domain=}.
      *
      * @param call
      *            the call
@@ -262,7 +282,8 @@ public final class GroupSplice
     public static List<Expr> spliceLists(Expr.Call call)
     {
         Expr list = null;
-        if (UNIQUE_SET_CALLS.contains(call.name()) && !call.args().isEmpty())
+        if ((UNIQUE_SET_CALLS.contains(call.name()) || VALUES_CALL.equals(call.name()))
+                && !call.args().isEmpty())
         {
             list = call.args().get(0);
         }

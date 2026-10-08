@@ -154,6 +154,7 @@ valid_external_dictionary_code_term_pair(name:column-reference, external_diction
 valid_external_dictionary_hierarchy(name:column-reference, dictionary_parent:column-reference, external_dictionary_type:string, case_sensitive:boolean?) kind=boolean provider=dictionary<external_dictionary_type>
 valid_external_dictionary_value(name:column-reference, external_dictionary_type:string, dictionary_term_type:string, case_sensitive:boolean?) kind=boolean provider=dictionary<external_dictionary_type>
 value() kind=value
+values(columns:list<column-reference>) kind=value perRow
 var_exists(name:unknown@name) kind=boolean
 var_is_all_missing(name:unknown@name) kind=boolean
 var_is_empty(name:unknown@name) kind=boolean

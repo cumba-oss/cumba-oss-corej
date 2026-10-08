@@ -86,8 +86,10 @@ class BuiltinFunctionsRegistrationTest
             "valid_external_dictionary_code/3-4/BOOLEAN",
             "valid_external_dictionary_code_term_pair/3-4/BOOLEAN",
             "valid_external_dictionary_hierarchy/3-4/BOOLEAN",
-            "valid_external_dictionary_value/3-4/BOOLEAN", "value/0/VALUE", "varname/0/VALUE",
-            "year/1/VALUE",
+            "valid_external_dictionary_value/3-4/BOOLEAN", "value/0/VALUE",
+            // PLAN-elementwise-list-functions §3.2 (runbook W1a E1): the per-row list of named
+            // columns
+            "values/1/VALUE", "varname/0/VALUE", "year/1/VALUE",
             // wave 4b (PLAN-scalar-metadata-functions): the six dataset-level scalar functions
             "column_series_metadata/1-3/VALUE", "cross_dataset_variable_metadata/2/VALUE",
             "dataset_class_from_library/0/VALUE", "domain_is_custom/0/VALUE",

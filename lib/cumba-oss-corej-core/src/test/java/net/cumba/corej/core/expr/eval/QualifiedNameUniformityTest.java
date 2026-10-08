@@ -386,6 +386,7 @@ class QualifiedNameUniformityTest
             valid_external_dictionary_value | dictionary_term_type | - | static string
             valid_external_dictionary_value | case_sensitive | - | static boolean
             value | - | - | nullary (the cursor variable's value)
+            values | columns | N | V:values([@S, #K])
             var_exists | name | N | B:var_exists(@S) ; S:var_exists("@S")
             var_is_all_missing | name | N | B:var_is_all_missing(@S) ; S:var_is_all_missing("@S")
             var_is_empty | name | N | B:var_is_empty(@S) ; S:var_is_empty("@S")
@@ -812,15 +813,17 @@ class QualifiedNameUniformityTest
     {
         // +1 descriptor / +2 parameters / +1 accessor since PLAN-library-template-label-resolution
         // (matches_label_template(label, template) and label_template(…, "LIBRARY")).
-        assertEquals(173, FunctionRegistry.all().size(),
+        assertEquals(174, FunctionRegistry.all().size(),
                 "registered descriptors (165 + any / all / none / joined, PLAN-cg0218; + 2"
                         + " column-status predicates, PLAN-present-empty-column-fold; + the nullary"
                         + " get_permitted_column_order, PLAN-permitted-addition-position; + union,"
-                        + " PLAN-union-function / runbook W1a U1)");
-        assertEquals(292,
+                        + " PLAN-union-function / runbook W1a U1; + values,"
+                        + " PLAN-elementwise-list-functions / runbook W1a E1)");
+        assertEquals(293,
                 FunctionRegistry.all().stream().mapToInt(d -> d.parameters().size()).sum(),
                 "declared parameters (283 + one each for any / all / none / joined + one each"
-                        + " for var_is_single_value / var_is_all_missing + three for union)");
+                        + " for var_is_single_value / var_is_all_missing + three for union + one for"
+                        + " values)");
         assertEquals(27, MetadataAttribute.values().length, "metadata accessors");
         assertEquals(Set.of("date", "date_part", "num", "time", "time_part"),
                 new TreeSet<>(ExprCompiler.comparisonMarkers()), "comparison markers");
@@ -828,8 +831,8 @@ class QualifiedNameUniformityTest
         List<Row> rows = rows();
         long probed = rows.stream().filter(Row::probed).count();
         long nameClass = rows.stream().filter(Row::name).count();
-        assertEquals(257, nameClass, "name-bearing parameters in the hand table");
-        assertEquals(209, probed, "probed parameters in the hand table");
+        assertEquals(258, nameClass, "name-bearing parameters in the hand table");
+        assertEquals(210, probed, "probed parameters in the hand table");
         // T2 r1 L2: every unprobed name-bearing row states one of the three admitted reasons.
         List<String> unprobed = new ArrayList<>();
         for (Row r : rows)
@@ -1889,6 +1892,6 @@ class QualifiedNameUniformityTest
             }
         }
         assertEquals(List.of(), invalid);
-        assertEquals(209, probed);
+        assertEquals(210, probed);
     }
 }

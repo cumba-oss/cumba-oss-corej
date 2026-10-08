@@ -772,7 +772,12 @@ class ScalarSemanticsComputedMissingTest
     // SuppQnamIndex.Entry.qval and SuppPivot.SuppQnamColumn.getDataValue (-4);
     // RelrecExpandedTable.getDataValue is RowMappedTable.getDataValue under its new name (a
     // rename, the same body). MergedViewLookup.lookupValue is the one production lookup left.
-    private static final int EXPECTED_VALUE_PRODUCERS = 37;
+    // 37 -> 38 (PLAN-elementwise-list-functions, runbook W1a E1): ListVector.memberCell came
+    // (+1) — read: one member of a values([X, Y]) row in colref(list)'s representation — the
+    // carrier's own cell (TypedValue.cell(), never null: a missing cell with its identity, a
+    // numeric cell typed, a derived cell for a resolved payload), a present character value
+    // re-wrapped as its member-safe text (DataValues.of). Never null.
+    private static final int EXPECTED_VALUE_PRODUCERS = 38;
 
     private static Method declared(Class<?> owner, String name)
     {

@@ -929,6 +929,14 @@ public final class ExprCompiler
     }
 
 
+    /** Whether {@code e} is a {@code values(…)} call ({@link #valuesPlan}). */
+    private static boolean isValuesCall(Expr e)
+    {
+        return e instanceof Expr.Call call
+                && net.cumba.corej.core.exec.GroupSplice.VALUES_CALL.equals(call.name());
+    }
+
+
     /** Whether {@code e} is a one-argument {@code colref(…)} call. */
     private static boolean isColrefCall(Expr e)
     {
@@ -1101,8 +1109,11 @@ public final class ExprCompiler
         // ⭐ So does colref over a list (review round 1, lane A L1): `colref(find_vars(…)) in
         // [...]` asks whether ANY of the named cells is a member — the list-valued-accessor
         // semantics (D81d), never the list compared as one value.
+        // ⭐ And values([X, Y]) (PLAN-elementwise-list-functions Q8, runbook W1a E1): the list-LHS
+        // shape (D81d) — any of the named cells a member.
         boolean listLhs = isListAccessor(nameExpr)
-                || (isColrefCall(nameExpr) && isListValuedFunctionCall(nameExpr)) || dynamicLhs;
+                || (isColrefCall(nameExpr) && isListValuedFunctionCall(nameExpr))
+                || isValuesCall(nameExpr) || dynamicLhs;
         Expr right = b.right();
         // RHS is a list-valued metadata accessor (e.g. var_codelist_coded_values("LIBRARY")): under
         // the per-(variable, row) iteration it is a per-column constant list, so resolve it to the
@@ -5197,6 +5208,13 @@ public final class ExprCompiler
                 // close over its CALL SITE to read the site's absent-column kind (Q14 (b)).
                 yield colrefPlan(c);
             }
+            if (net.cumba.corej.core.exec.GroupSplice.VALUES_CALL.equals(c.name()))
+            {
+                // PLAN-elementwise-list-functions §3.2 (runbook W1a E1): a compiler arm, because
+                // the written elements compile through operandPlan and a spliced member through
+                // GroupSplice — neither is a registry argument vector.
+                yield valuesPlan(c);
+            }
             if (net.cumba.corej.core.exec.FindVars.NAME.equals(c.name()) && c.args().size() == 1
                     && c.kwargs().isEmpty())
             {
@@ -5343,6 +5361,130 @@ public final class ExprCompiler
             }
             boolean numericDefault = run.ctx().getNumericExpectedDynamicSites().contains(c);
             return DynamicColumnRead.vector(run, first, numericDefault, literal);
+        };
+    }
+
+
+    /**
+     * ⭐ {@code values([X, Y])} — the per-row list of the named columns' cells
+     * ({@code PLAN-elementwise-list-functions} §3.2 / §3.7, owner Q14; runbook W1a E1), the fast
+     * form (Q10): K column-wide element vectors held in a {@link ListVector}, a row's list
+     * materialised only for a consumer that asks.
+     *
+     * <p>
+     * The one argument is a list of column NAMES, judged member by member as the splicing readers
+     * judge theirs ({@code uniqueSetMembers}, {@code RecordCount.spec}): a written column reference
+     * — bare, {@code --}, qualified {@code DS.X} (D5) — compiles through {@link #operandPlan} in
+     * name position, so {@code --} resolution, the absent-column materialisation ({@code ""} for a
+     * character position, {@code MIS} where the rule expects a number — D34 #3/#4, D43) and the
+     * join read are the operand's own, not a copy; a {@code $} reference or a computed expression
+     * of names ({@link net.cumba.corej.core.exec.GroupSplice#spliced}) is spliced at evaluation
+     * through the ONE {@code GroupSplice}, each spliced name then read exactly as the authored name
+     * is ({@link #nameRefPlan}) — {@code values($keys)} reads as {@code values([$keys])} (C5). The
+     * LEVEL of a spliced member is judged at load (stage A's G3 arm, the loader's seam pass through
+     * {@code GroupSplice.spliceSlot}), so a per-row member never reads row 0 here. Anything else —
+     * a string literal (a quoted name is a string, never a column), a nested list, a bare column
+     * that is not a list — is a load error naming the parameter type: stage A's
+     * {@code PARAMETER_TYPE} where it walks, and a {@link RuleDefinitionException} here on every
+     * path (a Check-less binding too) — never {@code unsupported}, which would only degrade the
+     * rule to its run-time ERROR.
+     * </p>
+     *
+     * <p>
+     * An element plan that resolves to nothing ({@code null} — a name that is neither a column nor
+     * a foldable absent one) propagates, as for every value call; a spliced list that holds no
+     * names is {@code GroupSplice}'s rule ERROR (D2).
+     * </p>
+     */
+    private static ValuePlan valuesPlan(Expr.Call c)
+    {
+        String fn = c.name();
+        if (c.args().size() != 1 || !c.kwargs().isEmpty())
+        {
+            throw new RuleDefinitionException(fn
+                    + " takes exactly one argument: a list of column names — " + fn + "([X, Y])");
+        }
+        Expr operand = c.args().get(0);
+        List<Expr> items;
+        if (operand instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
+                && lit.value() instanceof List<?> written)
+        {
+            items = written.stream().filter(Expr.class::isInstance).map(Expr.class::cast).toList();
+        }
+        else if (!(operand instanceof Expr.Lit)
+                && net.cumba.corej.core.exec.GroupSplice.spliced(operand) != null)
+        {
+            // C5: the bare spliced operand is the one-member list
+            items = List.of(operand);
+        }
+        else
+        {
+            throw new RuleDefinitionException(
+                    "argument '" + net.cumba.corej.core.exec.GroupSplice.VALUES_PARAMETER + "' of '"
+                            + fn + "' takes list<column-reference>, not " + describe(operand)
+                            + " — write the columns as a list: " + fn + "([X, Y])");
+        }
+        if (items.isEmpty())
+        {
+            throw new RuleDefinitionException(fn + "([]) names no columns");
+        }
+        List<net.cumba.corej.core.exec.GroupSplice.Member> members = new ArrayList<>(items.size());
+        List<@Nullable ValuePlan> written = new ArrayList<>(items.size());
+        for (Expr item : items)
+        {
+            net.cumba.corej.core.exec.GroupSplice.Member spliced = item instanceof Expr.Lit ? null
+                    : net.cumba.corej.core.exec.GroupSplice.spliced(item);
+            if (spliced != null)
+            {
+                members.add(spliced);
+                written.add(null);
+                continue;
+            }
+            if (!(item instanceof Expr.Ref ref)
+                    || !(ref.kind() == OperandKind.COLUMN || ref.kind() == OperandKind.DOTTED_REF
+                            || (ref.kind() == OperandKind.WILDCARD_COLUMN
+                                    && isDomainPrefixWildcard(ref.name()))))
+            {
+                throw new RuleDefinitionException("argument '"
+                        + net.cumba.corej.core.exec.GroupSplice.VALUES_PARAMETER + "' of '" + fn
+                        + "' takes list<column-reference>, not " + describe(item)
+                        + " at a member — a quoted name is a string, never a column; write the"
+                        + " columns bare: " + fn + "([X, Y])");
+            }
+            members.add(new net.cumba.corej.core.exec.GroupSplice.Name(ref.name()));
+            written.add(operandPlan(item, true));
+        }
+        return run ->
+        {
+            List<Vector> elements = new ArrayList<>(members.size());
+            for (int i = 0; i < members.size(); i++)
+            {
+                ValuePlan plan = written.get(i);
+                if (plan != null)
+                {
+                    Vector v = plan.eval(run);
+                    if (v == null)
+                    {
+                        return null; // an unresolvable member propagates, as for every value call
+                    }
+                    elements.add(v);
+                    continue;
+                }
+                // a spliced member: its names, each read as the authored name is read
+                List<String> names = net.cumba.corej.core.exec.GroupSplice.splice(fn, "member",
+                        List.of(members.get(i)), run.ctx(), false, "a member of " + fn
+                                + " is a column of the dataset under evaluation, written bare");
+                for (String name : names)
+                {
+                    Vector v = nameRefPlan(name).eval(run);
+                    if (v == null)
+                    {
+                        return null;
+                    }
+                    elements.add(v);
+                }
+            }
+            return new ListVector(run.rowCount(), elements);
         };
     }
 

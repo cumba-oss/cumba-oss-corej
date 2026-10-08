@@ -242,6 +242,30 @@ public final class BuiltinFunctions implements FunctionProvider
                 (run, args) -> DynamicColumnRead.vector(run, args.get(0), false, false))
                         .readingRows());
 
+        // -- VALUE per-row list of named columns (values) ----------------------
+        // values([X, Y]): per row, the list of the named columns' cells in input order
+        // (PLAN-elementwise-list-functions §3.2, owner Q14, runbook W1a E1) — a missing cell stays
+        // at its position as its own missing (DCF Q4), an absent column reads as its type default
+        // (D34 #3/#4). Its argument is a list of column NAMES — a bare name, a `--` name, a
+        // qualified DS.X — never values: `colref` reads the column whose name a CELL holds,
+        // `values` the columns the rule names. ⚠ ExprCompiler dispatches values through its own
+        // arm (valuesPlan): each written element compiles through operandPlan (the read a bare
+        // operand takes), a `$` member or a computed expression of names is spliced through the
+        // one GroupSplice (`values($keys)` ≡ `values([$keys])`, C5) and the K element vectors are
+        // held in a ListVector (Q10, the fast form). This implementation is the site-less entry a
+        // direct registry caller reaches: a vector of names, dereferenced through the same
+        // DynamicColumnRead as colref(list).
+        // ⚠ Declared a ROW READER (FunctionDescriptor.readingRows): values($keys) has no column
+        // operand, so the level calculus would otherwise read it DATASET and broadcast row 0's
+        // list to every row (the XCUT H1 shape colref records). Stage A types it RECORD through
+        // the same flag; DomainScan and the hand-over contract read it.
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.GroupSplice.VALUES_CALL,
+                List.of(p(net.cumba.corej.core.exec.GroupSplice.VALUES_PARAMETER,
+                        new ListOf(Primitive.COLUMN_REFERENCE))),
+                FunctionKind.VALUE,
+                (run, args) -> DynamicColumnRead.vector(run, args.get(0), false, false))
+                        .readingRows());
+
         // -- VALUE column-set selector (PLAN-dynamic-column-functions §2.4, owner Q5/Q11/Q12) --
         // find_vars("<entry>"): the column NAMES one Requirements.Variables entry selects —
         // template / glob / DS./regex/ / literal, one parser and one matcher with that surface.

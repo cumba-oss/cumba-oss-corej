@@ -134,6 +134,12 @@ public final class ElementTable
             // its operands' (joined by StageAChecker; this name-keyed row routes the inline
             // `X in union(…)` membership)
             Map.entry("union", new ListOf(Unknown.UNKNOWN)),
+            // PLAN-elementwise-list-functions §3.2 (runbook W1a E1): values answers a per-row LIST
+            // of the named columns' cells — unlike colref it is a list BY NAME, so this name-keyed
+            // row is correct and routes the inline `X in values([…])` membership
+            // (ExprCompiler.isListValuedFunctionCall → boundMembership) with no new arm; the
+            // element type is the columns' (Unknown)
+            Map.entry("values", new ListOf(Unknown.UNKNOWN)),
             // runbook W7 (PLAN-distinct-function): distinct answers ONE list — of the column's
             // distinct values, or of the distinct row tuples over a list of columns — a set by
             // content, a list by carrier, whose element type is the target's (Unknown);
