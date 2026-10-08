@@ -2261,9 +2261,11 @@ public final class ExprCompiler
             EvalFunction registered)
     {
         String name = c.name();
-        Expr value = bound.get(0);
-        EvalFunction fn = value != null && isStaticallyScalar(value)
-                ? ElementwiseLift.kernelOf(registered)
+        // every caller binds a value operand (predicateAnswerPlan refuses an empty binding, the
+        // Check tail reaches here only with one): an absent one is a defect, named here
+        Expr value = Objects.requireNonNull(bound.get(0),
+                () -> "'" + name + "' reached the registry tail without a value operand");
+        EvalFunction fn = isStaticallyScalar(value) ? ElementwiseLift.kernelOf(registered)
                 : registered;
         ValuePlan compiledArg0 = operandPlan(value, true);
         // The availability gate reads an unusable provider answer as "not available" (§0.2 a).

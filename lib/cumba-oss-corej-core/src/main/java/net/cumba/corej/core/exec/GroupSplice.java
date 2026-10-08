@@ -289,6 +289,12 @@ public final class GroupSplice
      */
     public record Slot(String parameter, List<Expr> operands, Expr argument)
     {
+
+        /** The operands, copied — the authored list literal's own list is never handed out. */
+        public Slot
+        {
+            operands = List.copyOf(operands);
+        }
     }
 
     /**
