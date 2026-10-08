@@ -1179,6 +1179,28 @@ public final class ExprCompiler
 
 
     /**
+     * Whether {@code e}'s shape is decided only on the vector, so a row may hold a list or a scalar
+     * — the membership probe's per-row decision: a {@code $}-binding, a {@code colref($x)}, or a
+     * lifted (element-wise) value call over one of these (runbook W2 BS4, coordinator W2-D8). A
+     * lift over a statically list-shaped argument ({@code upper(values([A, B]))}) is a list on
+     * every row and is not this shape.
+     */
+    private static boolean isDynamicValue(Expr e)
+    {
+        if (e instanceof Expr.Ref ref)
+        {
+            return ref.kind() == OperandKind.OPERATION_REF;
+        }
+        if (isColrefOverBinding(e))
+        {
+            return true;
+        }
+        return e instanceof Expr.Call call && !call.args().isEmpty() && isElementwise(call.name())
+                && isDynamicValue(call.args().get(0));
+    }
+
+
+    /**
      * {@code plan}'s values carried as lists: a row's list as it is, any other value as a
      * one-element list of it — a present value re-carried as its text ({@code DataValues.of}, the
      * member a set keys it by), a missing one as its own cell (its identity kept, Q4). Review round
@@ -1241,7 +1263,7 @@ public final class ExprCompiler
     private static ExprProgram.BoolPlan compileMembershipAsWritten(Expr.Binary b)
     {
         Expr probe = isUpperCall(b.left()) ? ((Expr.Call) b.left()).args().get(0) : b.left();
-        if (!isColrefOverBinding(probe))
+        if (!isDynamicValue(probe))
         {
             return compileMembershipAsWritten(b, false);
         }
@@ -1251,6 +1273,13 @@ public final class ExprCompiler
         // accessor — exactly as the same probe would without the binding. Round 1 carried EVERY
         // row as a list, which sent a scalar binding past all of them (and past Q3's mixed-list
         // load error). The scalar plan is compiled FIRST, so its load errors surface.
+        // ⭐ PLAN-binding-substitutability C17, left side (runbook W2 BS4, coordinator W2-D8): so
+        // does a lifted call over such a value — `lower($s) in […]`, `upper($n) in […]` — whose
+        // shape is known only on the vector; it was read as one scalar probe (the list's text).
+        // And so does the bare `$u` that holds that call (lane decision, taken + why: G1 — the
+        // binding is the call's twin, so deciding the call per row and its binding by text would
+        // re-open the asymmetry BS4 closes; census 0 carriers, the corpus's three bare `$` probes
+        // are scalar bindings and no row of theirs holds a list).
         ExprProgram.BoolPlan scalar = compileMembershipAsWritten(b, false);
         ExprProgram.BoolPlan list = compileMembershipAsWritten(b, true);
         ValuePlan probeP = operandPlan(probe, true);
@@ -1260,6 +1289,12 @@ public final class ExprCompiler
             if (v == null)
             {
                 return new BitSet();
+            }
+            if (v instanceof ConstVector constant)
+            {
+                // one value for every row: one decision, no per-row scan
+                return constant.value(0).resolved() instanceof Collection<?> ? list.eval(run)
+                        : scalar.eval(run);
             }
             BitSet listRows = new BitSet(run.rowCount());
             for (int r = 0; r < run.rowCount(); r++)
@@ -1321,8 +1356,10 @@ public final class ExprCompiler
         Expr nameExpr = caseInsensitive ? ((Expr.Call) b.left()).args().get(0) : b.left();
         // PLAN-dynamic-column-functions (review round 1 lane A L1, round 2 engine 2): a colref
         // whose argument is a $-binding may yield a list on one row and a name's cell on another;
-        // the caller decides per row, and this is its element-wise half.
-        boolean dynamicLhs = listProbe && isColrefOverBinding(nameExpr);
+        // the caller decides per row, and this is its element-wise half. Runbook W2 BS4: so may a
+        // $ value and a lifted call over one (isDynamicValue) — the caller asks for this half for
+        // exactly those probe shapes.
+        boolean dynamicLhs = listProbe;
         // EC-43: fold the probe column. The list/accessor sources below keep their own guards.
         ValuePlan nameP = dynamicLhs ? asMemberLists(operandPlan(nameExpr, true))
                 : operandPlan(nameExpr, true);
@@ -1513,8 +1550,17 @@ public final class ExprCompiler
         // row's list as its members and a scalar cell as a one-member set.
         // a `~` substitution on the right (runbook W1b SX) is a value whose shape — a scalar or
         // the element-wise list of a list subject — is read on the vector, as a `$` binding's is
-        ValuePlan listCallP = isListValuedFunctionCall(right) || isColrefOverBinding(right)
-                || isSubstitution(right) ? valuePlan(right) : null;
+        // ⭐ PLAN-binding-substitutability C17 / C18 (runbook W2 BS4, coordinator W2-D8): EVERY
+        // right-hand call the arms above do not claim is read on its vector — routed by the VALUE,
+        // never by the function's name. `X in upper($names)` and `X in colref(upper($v))` reached
+        // buildSet and were a rule ERROR, while `$u: upper($names)` / `X in $u` answered: the
+        // name-keyed predicate (ElementTable's `upper` row is STRING) could not see that a lift
+        // over a list is a list. boundMembership folds the vector with the toSet contract — a
+        // dataset-level list its set, a per-row list its row's set, a scalar a singleton — so the
+        // call and its binding answer alike (G1). A statically scalar right side never gets here:
+        // Stage A's armed PARAMETER_TYPE ("must be a list or set").
+        ValuePlan listCallP = right instanceof Expr.Call || isSubstitution(right) ? valuePlan(right)
+                : null;
         // Phase 3 (R9): only a STATIC all-string list literal states a character expectation the
         // gate can hold a probe to; a $-list, wildcard, accessor or grouped set is dynamic and
         // never gates (mirroring numericMemberSet's literal-only classification). The explicit
