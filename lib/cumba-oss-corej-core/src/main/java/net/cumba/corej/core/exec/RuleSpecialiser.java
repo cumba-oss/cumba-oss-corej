@@ -458,6 +458,18 @@ public final class RuleSpecialiser
         else if (lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST
                 && lit.value() instanceof List<?> items && !items.isEmpty())
         {
+            if (net.cumba.corej.core.expr.eval.NameListBinding.isNameList(lit))
+            {
+                // PLAN-elementwise-list-functions D1-A (runbook W1a E2): the name-list binding's
+                // members ARE the written names — spliced as they stand, so the classifier sees
+                // the columns and a `--` member is resolved by the caller like a written one
+                List<net.cumba.corej.core.expr.ast.Expr> written = new ArrayList<>(items.size());
+                for (Object o : items)
+                {
+                    written.add((net.cumba.corej.core.expr.ast.Expr) o);
+                }
+                return written;
+            }
             texts = items;
         }
         else

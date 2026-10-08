@@ -27,6 +27,7 @@ import net.cumba.corej.core.expr.eval.FunctionRegistry;
 import net.cumba.corej.core.expr.eval.MetadataAttribute;
 import net.cumba.corej.core.expr.eval.MetadataLevel;
 import net.cumba.corej.core.expr.eval.MetadataNormalizer.Normalization;
+import net.cumba.corej.core.expr.eval.NameListBinding;
 import net.cumba.corej.core.expr.eval.Parameter;
 import net.cumba.corej.core.expr.typed.ExprType.ListOf;
 import net.cumba.corej.core.expr.typed.ExprType.Primitive;
@@ -189,6 +190,23 @@ public final class StageAChecker
     private final Set<Expr> judgedLiterals = java.util.Collections
             .newSetFromMap(new IdentityHashMap<>());
 
+    /**
+     * The rule's name-list bindings ({@link NameListBinding} — {@code $keys: [STUDYID, USUBJID]},
+     * D1-A, runbook W1a E2), from {@link #scanBindings}: typed {@code list<column-reference>} at
+     * level dataset, read only at a splice slot (coordinator decision 9).
+     */
+    private final Set<String> nameListBindings = new HashSet<>();
+
+    /**
+     * Every walked reference to a name-list binding → the root it stands in; a splice slot admits
+     * its reference ({@link #admittedNameListReads}), every other one is filed after the walk with
+     * the hint ({@link #fileUnclaimedNameListReads}).
+     */
+    private final IdentityHashMap<Expr, String> nameListReads = new IdentityHashMap<>();
+
+    private final Set<Expr> admittedNameListReads = java.util.Collections
+            .newSetFromMap(new IdentityHashMap<>());
+
     /** Every reference name seen while walking, for the match-dataset checks. */
     private final List<String> referencedNames = new ArrayList<>();
 
@@ -307,6 +325,8 @@ public final class StageAChecker
             checker.findings.clear();
             checker.bindingElementLiterals.clear();
             checker.judgedLiterals.clear();
+            checker.nameListReads.clear();
+            checker.admittedNameListReads.clear();
             typed = checker.walkPrecondition(precondition);
             checker.listFunctionReads(precondition, "the Precondition");
             checker.checkMatchDatasets(List.of(precondition));
@@ -788,8 +808,7 @@ public final class StageAChecker
         // The join-match flag (spec §3.3, D88): statically BOOLEAN — the one column whose type is
         // a stage-A fact, because the engine computes it — at level record.
         case MATCHED_FLAG -> new TypedExpr(r, Primitive.BOOLEAN, Level.RECORD, List.of());
-        case OPERATION_REF -> new TypedExpr(r, bindingTypes.getOrDefault(r.name(), Unknown.UNKNOWN),
-                bindingLevels.getOrDefault(r.name(), Level.DATASET), List.of());
+        case OPERATION_REF -> bindingRef(r);
         case BUILTIN -> builtinRef(r);
         };
     }
@@ -1919,6 +1938,24 @@ public final class StageAChecker
             {
                 continue;
             }
+            if (isNameListRef(arg) && isColumnReferenceList(declared))
+            {
+                // D1-A (W1a E2): the whole operand is a name-list binding — the names at a
+                // splice slot (f($keys) ≡ f([$keys]), C5); a name slot that does not splice
+                // refuses it exactly as it refuses a spliced string list. Either way the
+                // reference is claimed here, so the value-position hint is not filed for it.
+                admittedNameListReads.add(arg);
+                if (!splices(c, param))
+                {
+                    find(StageAErrorKind.PARAMETER_TYPE,
+                            "argument '" + param.name() + "' of '" + c.name()
+                                    + "' takes list<column-reference>, and the binding "
+                                    + ((Expr.Ref) arg).name()
+                                    + " holds column names — a spliced list of names is read"
+                                    + " only by " + SPLICING_READERS + at(c));
+                }
+                continue;
+            }
             if (isColumnReferenceList(declared) && arg instanceof Expr.Lit lit
                     && lit.kind() == Expr.LitKind.LIST)
             {
@@ -2061,6 +2098,7 @@ public final class StageAChecker
      */
     private void fileUnclaimedBindingElements()
     {
+        fileUnclaimedNameListReads();
         for (Map.Entry<Expr, String[]> entry : bindingElementLiterals.entrySet())
         {
             if (judgedLiterals.contains(entry.getKey()))
@@ -2082,6 +2120,58 @@ public final class StageAChecker
 
 
     /**
+     * A {@code $} reference: the binding's derived type and level. A reference to a name-list
+     * binding is recorded with the root it stands in; the splice slots admit theirs
+     * ({@link #checkParameterBinding}, {@link #checkColumnReferenceList}), every other one is a
+     * value read of a list of names, filed after the walk.
+     */
+    private TypedExpr bindingRef(Expr.Ref r)
+    {
+        if (nameListBindings.contains(r.name()))
+        {
+            nameListReads.put(r, where);
+        }
+        return new TypedExpr(r, bindingTypes.getOrDefault(r.name(), Unknown.UNKNOWN),
+                bindingLevels.getOrDefault(r.name(), Level.DATASET), List.of());
+    }
+
+
+    private boolean isNameListRef(@Nullable Expr e)
+    {
+        return e instanceof Expr.Ref ref
+                && ref.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF
+                && nameListBindings.contains(ref.name());
+    }
+
+
+    /**
+     * Coordinator decision 9 (2026-10-08, D1-A): a name-list binding read anywhere but a splice
+     * slot — a value position ({@code X in $keys}, a comparison, a value argument, a binding of the
+     * binding) — is the armed finding carrying {@link NameListBinding#hint}: a list of column names
+     * has no value meaning the rulings grant, and a guessed one (the names as text? the cells?) is
+     * what the refusal prevents. Filed once per reference, after the walk, for every reference no
+     * splice slot admitted; the loader's seam pass files the same for a Check-less rule's bindings
+     * ({@link NameListBinding#firstValueRead}).
+     */
+    private void fileUnclaimedNameListReads()
+    {
+        for (Map.Entry<Expr, String> read : nameListReads.entrySet())
+        {
+            if (admittedNameListReads.contains(read.getKey()))
+            {
+                continue;
+            }
+            Expr.Ref ref = (Expr.Ref) read.getKey();
+            findings.add(new StageAFinding(StageAErrorKind.PARAMETER_TYPE,
+                    read.getValue() + ": " + NameListBinding.hint(ref.name()) + at(ref)));
+        }
+    }
+
+    /** The slots that splice a list of names, for the two non-splicing refusals below. */
+    private static final String SPLICING_READERS = "record_count's group=, is_(not_)unique_set's"
+            + " members and values' columns";
+
+    /**
      * G3: a {@code list<column-reference>} parameter given a list literal is typed element by
      * element — a column reference (bare, wildcard, dotted, {@code asc(X)}) or an unknown element
      * passes, a {@code $} binding holding a list of names passes only where the reader
@@ -2096,6 +2186,22 @@ public final class StageAChecker
         {
             position++;
             ExprType type = element.type();
+            if (isNameListRef(element.node()))
+            {
+                // D1-A (W1a E2): a name-list binding as a member — spliced where the reader
+                // splices, the same refusal as a string-list member elsewhere
+                admittedNameListReads.add(element.node());
+                if (!splicing)
+                {
+                    find(StageAErrorKind.PARAMETER_TYPE,
+                            "argument '" + param.name() + "' of '" + c.name()
+                                    + "' takes list<column-reference>, and element " + position
+                                    + " (" + ((Expr.Ref) element.node()).name()
+                                    + ") is a binding of column names — a spliced list of names"
+                                    + " is read only by " + SPLICING_READERS + at(c));
+                }
+                continue;
+            }
             if (type == Primitive.COLUMN_REFERENCE || type == Unknown.UNKNOWN)
             {
                 continue;
@@ -2320,6 +2426,17 @@ public final class StageAChecker
         {
             where = "binding " + compiled.name();
             TypedExpr typed = walk(compiled.expression());
+            if (NameListBinding.isNameList(compiled.expression()))
+            {
+                // D1-A (runbook W1a E2): a list literal of bare column references bound to a name
+                // is a dataset-level list of column NAMES, not of cells — the walk above typed its
+                // members as references and joined their row level, which is the written list's
+                // reading in a value position, not the binding's
+                nameListBindings.add(compiled.name());
+                bindingLevels.put(compiled.name(), Level.DATASET);
+                bindingTypes.put(compiled.name(), new ListOf(Primitive.COLUMN_REFERENCE));
+                continue;
+            }
             bindingLevels.put(compiled.name(), typed.level());
             bindingTypes.put(compiled.name(), typed.type());
         }

@@ -2323,4 +2323,39 @@ class StageACheckerTest
         assertTrue(kinds(report).contains(StageAErrorKind.FILTER_INVALID),
                 report.findings().toString());
     }
+
+
+    /**
+     * {@code PLAN-elementwise-list-functions} D1-A (runbook W1a E2, coordinator decision 9): a
+     * name-list binding is typed {@code list<column-reference>} at level dataset, admitted as the
+     * names at a splice slot — whole or as a member — and refused with the hint in a value
+     * position; a name slot that does not splice refuses it as it refuses a string list.
+     */
+    @Test
+    void aNameListBindingIsReadOnlyAtASpliceSlot()
+    {
+        Rule rule = new Rule();
+        rule.setCompiledBindings(List.of(binding("$keys", "[USUBJID, AESEQ]")));
+        assertEquals("list<column-reference>",
+                StageAChecker.bindingTypes(rule).get("$keys").describe());
+        assertEquals(List.of(), kinds(check(rule, "is_unique_set($keys)")));
+        assertEquals(List.of(), kinds(check(rule, "is_unique_set([USUBJID, $keys])")));
+        assertEquals(List.of(), kinds(check(rule, "record_count(group=$keys) > 1")));
+        assertEquals(List.of(), kinds(check(rule, "\"x\" in values($keys)")));
+        StageAReport grouped = check(rule, "max(AESEQ, group=$keys) > 0");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(grouped));
+        assertTrue(grouped.findings().get(0).message().contains("splice"),
+                grouped.findings().toString());
+        StageAReport member = check(rule, "max(AESEQ, group=[USUBJID, $keys]) > 0");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(member));
+        StageAReport membership = check(rule, "AETERM in $keys");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(membership));
+        assertTrue(membership.findings().get(0).message().contains("holds column names"),
+                membership.findings().toString());
+        StageAReport argument = check(rule, "not empty(upper($keys))");
+        assertTrue(
+                argument.findings().stream()
+                        .anyMatch(f -> f.message().contains("holds column names")),
+                argument.findings().toString());
+    }
 }

@@ -332,11 +332,25 @@ public final class ExprCompiler
      */
     private static List<Object> listLiteralValues(Expr.Lit lit)
     {
+        if (NameListBinding.isNameList(lit))
+        {
+            // ⭐ PLAN-elementwise-list-functions D1-A (runbook W1a E2): a list of bare column
+            // references is the NAME-LIST binding — its value is the names as text, exactly what
+            // the string list ["STUDYID", "USUBJID"] holds, so the splicing readers (GroupSplice)
+            // read it unchanged; where it may be read is stage A's / the loader's judgement
+            // (NameListBinding), never the compiler's.
+            return List.copyOf(NameListBinding.names(lit));
+        }
         @SuppressWarnings("unchecked")
         List<Expr> items = (List<Expr>) lit.value();
         List<Object> values = new ArrayList<>(items.size());
         for (Expr item : items)
         {
+            if (NameListBinding.isColumnName(item))
+            {
+                throw unsupported("a list binding holds either plain literals or column names,"
+                        + " not both: " + ExpressionPrinter.print(lit));
+            }
             if (!(item instanceof Expr.Lit member) || member.kind() == Expr.LitKind.LIST
                     || member.kind() == Expr.LitKind.REGEX)
             {

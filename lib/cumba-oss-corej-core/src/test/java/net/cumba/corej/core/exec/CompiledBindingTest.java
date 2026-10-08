@@ -536,12 +536,31 @@ class CompiledBindingTest
     }
 
 
+    /**
+     * Re-expected for {@code PLAN-elementwise-list-functions} D1-A (runbook W1a E2): a list literal
+     * of bare column names is the name-list binding ({@code NameListBinding}), legal at a splice
+     * slot; a list mixing a name with a literal is neither form; a call, a regex, a nested list and
+     * a {@code $} member stay refused as before.
+     */
     @Test
-    void aListLiteralBindingHoldsPlainLiteralsOnly() throws Exception
+    void aListLiteralBindingHoldsPlainLiteralsOrColumnNames() throws Exception
     {
-        Rule rule = load("Y in $l", List.of(), "$l", "[AETERM, \"A\"]");
-        assertNotNull(rule.getLoadError(), "a column in a list binding has no dataset-level value");
-        assertTrue(rule.getLoadError().contains("plain literals only"), rule.getLoadError());
+        Rule names = load("not is_unique_set($l)", List.of(), "$l", "[AETERM, USUBJID]");
+        assertNull(names.getLoadError(), names.getLoadError());
+        Rule mixed = load("Y in $l", List.of(), "$l", "[AETERM, \"A\"]");
+        assertNotNull(mixed.getLoadError(), "a name beside a literal is neither form");
+        assertTrue(mixed.getLoadError().contains("not both"), mixed.getLoadError());
+        for (String member : new String[]
+        {
+                "upper(\"x\")", "/re/", "[1]"
+        })
+        {
+            Rule rule = load("Y in $l", List.of(), "$l", "[" + member + ", \"A\"]");
+            assertNotNull(rule.getLoadError(), member);
+            assertTrue(rule.getLoadError().contains("plain literals only"), rule.getLoadError());
+        }
+        Rule dollar = load("Y in $l", List.of(), "$c", "\"A\"", "$l", "[$c, \"A\"]");
+        assertNotNull(dollar.getLoadError(), "a $ member stays refused (C12)");
     }
 
 

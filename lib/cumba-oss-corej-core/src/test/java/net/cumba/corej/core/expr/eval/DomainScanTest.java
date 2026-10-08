@@ -197,6 +197,33 @@ class DomainScanTest
     }
 
 
+    /**
+     * {@code PLAN-elementwise-list-functions} D1-A (runbook W1a E2): a list literal of bare column
+     * references as a BINDING's expression is a dataset-level list of names
+     * ({@link DomainScan#inferBinding}); the same literal as a Check operand keeps its leaves' row
+     * demand, and a list with any other member is read as before.
+     */
+    @Test
+    void aNameListBindingIsDatasetLevelWhereTheWrittenListReadsRows() throws IOException
+    {
+        Expr names = CheckExpressionParser.parse("[USUBJID, AESEQ]");
+        assertEquals(Domain.DATASET, DomainScan.inferBinding(names, BindingDomains.NONE));
+        assertEquals(Domain.ROW, DomainScan.infer(names, BindingDomains.NONE),
+                "the written list in a value position reads the columns");
+        assertEquals(Domain.ROW, DomainScan.inferBinding(
+                CheckExpressionParser.parse("[USUBJID, upper(AESEQ)]"), BindingDomains.NONE));
+        assertEquals(Domain.DATASET, DomainScan.inferBinding(
+                CheckExpressionParser.parse("[\"USUBJID\", \"AESEQ\"]"), BindingDomains.NONE));
+        Rule rule = RulePackageLoader.loadFromString("""
+                {"rules":{"x":{"Core":{"Id":"T-DS2"},
+                 "Check":{"expression":"not is_unique_set($keys)"},
+                 "Bindings":[{"name":"$keys","expression":"[USUBJID, AESEQ]"}]}}}""").getRules()
+                .values().iterator().next();
+        assertNull(rule.getLoadError(), rule.getLoadError());
+        assertEquals(Domain.DATASET, BindingDomains.forRule(rule).domainOf("$keys"));
+    }
+
+
     @Test
     void distinctReadsRowWhenGroupedAndDatasetOtherwise()
     {

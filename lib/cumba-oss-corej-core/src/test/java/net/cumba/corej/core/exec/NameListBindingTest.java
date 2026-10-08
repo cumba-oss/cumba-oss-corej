@@ -1,0 +1,221 @@
+package net.cumba.corej.core.exec;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.ArrayList;
+import java.util.List;
+import net.cumba.corej.core.KeyedJoinFixtures;
+import net.cumba.corej.core.RulePackageLoader;
+import net.cumba.corej.core.expr.typed.ExprType;
+import net.cumba.corej.core.expr.typed.StageAChecker;
+import net.cumba.corej.core.model.Rule;
+import net.cumba.datatable.IDataTable;
+import org.junit.jupiter.api.Test;
+
+/**
+ * ⭐ {@code PLAN-elementwise-list-functions} owner ruling D1-A (runbook W1a E2): the name-list
+ * binding {@code $keys: [USUBJID, AESEQ]} is a legal binding of column <b>names</b>, read exactly
+ * where the written list of names is read — a splice slot ({@code is_(not_)unique_set}'s members,
+ * {@code record_count}'s {@code group=}, {@code values}' columns) — and refused with one hint
+ * everywhere else (coordinator decision 9, 2026-10-08). Real loader, real runner, no Mockito.
+ */
+class NameListBindingTest
+{
+
+    private static final String HINT = "holds column names: use it in a name slot (group=";
+
+    /** Rows 1 and 2 share (USUBJID, AESEQ); A / B carry the probed texts of the values test. */
+    private static IDataTable ae()
+    {
+        return RealTables.of("AE").str("USUBJID", "S1", "S1", "S2").lng("AESEQ", 1L, 1L, 2L)
+                .str("A", "a", null, "c").str("B", "b", "y", "c").str("AETERM", "t1", "t2", "t3")
+                .build();
+    }
+
+
+    private static String esc(String s)
+    {
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+
+    private static String json(String check, List<String> outputs, String... bindings)
+    {
+        StringBuilder b = new StringBuilder(
+                "{\"Core\":{\"Id\":\"T-NAMELIST\"},\"Sensitivity\":\"Record\"");
+        if (bindings.length > 0)
+        {
+            b.append(",\"Bindings\":[");
+            for (int i = 0; i < bindings.length; i += 2)
+            {
+                b.append(i == 0 ? "" : ",").append("{\"name\":\"").append(bindings[i])
+                        .append("\",\"expression\":\"").append(esc(bindings[i + 1])).append("\"}");
+            }
+            b.append(']');
+        }
+        if (check != null)
+        {
+            b.append(",\"Check\":{\"expression\":\"").append(esc(check)).append("\"}");
+        }
+        b.append(",\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[");
+        for (int i = 0; i < outputs.size(); i++)
+        {
+            b.append(i == 0 ? "" : ",").append('"').append(esc(outputs.get(i))).append('"');
+        }
+        return b.append("]}}").toString();
+    }
+
+
+    private static Rule load(String ruleJson)
+    {
+        try
+        {
+            Rule r = RulePackageLoader
+                    .loadFromString(
+                            KeyedJoinFixtures.declared("{\"rules\":{\"R\":" + ruleJson + "}}"))
+                    .getRules().get("R");
+            assertNotNull(r);
+            return r;
+        }
+        catch (java.io.IOException e)
+        {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+
+    /** The fired rows (1-based) of a row-guarded {@code check} on {@link #ae()}. */
+    private static List<Long> fired(String check, String... bindings)
+    {
+        Rule r = load(json("not empty(USUBJID) and (" + check + ")", List.of("USUBJID"), bindings));
+        assertNull(r.getLoadError(), r.getLoadError());
+        IDataTable t = ae();
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, t, RealTables.inventoryOf(t),
+                t.getMetaData().getName(), null);
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
+                () -> check + " → " + result.getStatusMessage());
+        List<Long> rows = new ArrayList<>();
+        result.getViolations().forEach(v -> rows.add(v.getRowNumber()));
+        return rows;
+    }
+
+
+    private static String loadError(String check, String... bindings)
+    {
+        return String.valueOf(load(json(check, List.of("USUBJID"), bindings)).getLoadError());
+    }
+
+
+    private static void assertHint(String what, String error)
+    {
+        assertTrue(error.contains(HINT), () -> what + " → " + error);
+    }
+
+    // ------------------------------------------------------------------ the legal reads
+
+
+    @Test
+    void theBoundNameListSplicesLikeTheWrittenList()
+    {
+        // the uniqueness members: f($keys) ≡ f([$keys]) ≡ f([USUBJID, AESEQ]) (C5 / D1-A)
+        List<Long> written = fired("not is_unique_set([USUBJID, AESEQ])");
+        assertEquals(List.of(1L, 2L), written);
+        assertEquals(written, fired("not is_unique_set($keys)", "$keys", "[USUBJID, AESEQ]"));
+        assertEquals(written, fired("not is_unique_set([$keys])", "$keys", "[USUBJID, AESEQ]"));
+        assertEquals(written, fired("not is_unique_set([USUBJID, $k])", "$k", "[AESEQ]"));
+        assertEquals(List.of(3L), fired("is_unique_set($keys)", "$keys", "[USUBJID, AESEQ]"));
+        // record_count's group=
+        assertEquals(fired("record_count(group=[USUBJID, AESEQ]) > 1"),
+                fired("record_count(group=$keys) > 1", "$keys", "[USUBJID, AESEQ]"));
+        // values' columns: the per-row cells of the named columns
+        assertEquals(List.of(2L), fired("\"y\" in values([A, B])"));
+        assertEquals(List.of(2L), fired("\"y\" in values($cols)", "$cols", "[A, B]"));
+        assertEquals(List.of(3L), fired("\"c\" in values($cols)", "$cols", "[A, B]"));
+        assertEquals(List.of(2L), fired("\"y\" in values([$cols])", "$cols", "[A, B]"));
+    }
+
+
+    @Test
+    void aPrefixedMemberResolvesAsTheWrittenMemberDoes()
+    {
+        // --SEQ is specialised to AESEQ inside the binding exactly as inside the written list
+        assertEquals(fired("not is_unique_set([USUBJID, --SEQ])"),
+                fired("not is_unique_set($keys)", "$keys", "[USUBJID, --SEQ]"));
+        assertEquals(List.of(1L, 2L),
+                fired("not is_unique_set($keys)", "$keys", "[USUBJID, --SEQ]"));
+    }
+
+
+    @Test
+    void theBindingIsTypedAsAListOfColumnReferences()
+    {
+        Rule r = load(
+                json("not is_unique_set($keys)", List.of("USUBJID"), "$keys", "[USUBJID, AESEQ]"));
+        assertNull(r.getLoadError(), r.getLoadError());
+        ExprType type = StageAChecker.bindingTypes(r).get("$keys");
+        assertNotNull(type);
+        assertEquals("list<column-reference>", type.describe());
+    }
+
+    // ------------------------------------------------------------------ the refusals
+
+
+    @Test
+    void aValuePositionIsALoadErrorWithTheHint()
+    {
+        String[] keys =
+        {
+                "$keys", "[USUBJID, AESEQ]"
+        };
+        assertHint("membership", loadError("AETERM in $keys", keys));
+        assertHint("comparison", loadError("$keys == AETERM", keys));
+        assertHint("value argument", loadError("not empty(upper($keys))", keys));
+        assertHint("computed-name read", loadError("not empty(colref($keys))", keys));
+        assertHint("a binding of the binding",
+                loadError("not empty($b)", "$keys", "[USUBJID, AESEQ]", "$b", "$keys"));
+        // a name slot that does not splice refuses it as it refuses a string list of names (stage
+        // A's wording is pinned in StageACheckerTest; the compile seam's may surface first)
+        String grouped = loadError("max(AESEQ, group=$keys) > 0", keys);
+        assertTrue(grouped.contains("$keys") && !"null".equals(grouped), grouped);
+    }
+
+
+    @Test
+    void aReportedNameListBindingIsALoadErrorWithTheHint()
+    {
+        Rule r = load(json("not is_unique_set($keys)", List.of("USUBJID", "$keys"), "$keys",
+                "[USUBJID, AESEQ]"));
+        assertHint("Output_Variables", String.valueOf(r.getLoadError()));
+    }
+
+
+    @Test
+    void aCheckLessRuleGetsTheLoaderSideJudgement()
+    {
+        // stage A never walks a Check-less rule's bindings: the loader's seam pass files the same
+        // hint — and admits the splice
+        Rule refused = load(json(null, List.of("USUBJID"), "$keys", "[USUBJID, AESEQ]", "$m",
+                "AETERM in $keys"));
+        assertHint("Check-less value read", String.valueOf(refused.getLoadError()));
+        Rule admitted = load(json(null, List.of("USUBJID"), "$keys", "[USUBJID, AESEQ]", "$u",
+                "not is_unique_set($keys)"));
+        assertNull(admitted.getLoadError(), admitted.getLoadError());
+    }
+
+
+    @Test
+    void theListHoldsNamesOrPlainLiteralsNeverBoth()
+    {
+        // C12: a $ inside a list literal stays refused; a mixed list is neither form
+        assertNotNull(load(json("not is_unique_set($keys)", List.of("USUBJID"), "$b", "\"AESEQ\"",
+                "$keys", "[USUBJID, $b]")).getLoadError(), "a $ member stays refused");
+        String mixed = loadError("not is_unique_set($keys)", "$keys", "[USUBJID, \"AESEQ\"]");
+        assertTrue(mixed.contains("not both"), mixed);
+        // a string-literal list binding keeps naming the columns here (its retirement is W4, D1-B)
+        assertEquals(List.of(1L, 2L),
+                fired("not is_unique_set($keys)", "$keys", "[\"USUBJID\", \"AESEQ\"]"));
+    }
+}

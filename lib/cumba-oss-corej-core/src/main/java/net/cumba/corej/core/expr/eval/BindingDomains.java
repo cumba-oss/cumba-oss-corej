@@ -57,7 +57,7 @@ public interface BindingDomains
         for (CompiledBinding compiled : order)
         {
             Domain domain = compiled.domain() != null ? compiled.domain()
-                    : DomainScan.infer(compiled.expression(), sofar);
+                    : DomainScan.inferBinding(compiled.expression(), sofar);
             domains.put(compiled.name(), domain);
         }
         return sofar;

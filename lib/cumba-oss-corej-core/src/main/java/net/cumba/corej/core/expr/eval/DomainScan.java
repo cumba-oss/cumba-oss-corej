@@ -88,6 +88,26 @@ public final class DomainScan
             "variable_value_length");
 
     /**
+     * The domain of a <b>binding's</b> expression: a name-list binding
+     * ({@link NameListBinding#isNameList} — {@code $keys: [STUDYID, USUBJID]}) is dataset-level, a
+     * list of column NAMES and not of cells ({@code PLAN-elementwise-list-functions} D1-A, runbook
+     * W1a E2); every other expression is {@link #infer}. Only a binding's own expression is read
+     * this way — the same list literal written as an operand in the Check keeps its leaves' row
+     * demand, because there the compiler reads the columns.
+     *
+     * @param expr
+     *            the binding's expression, canonicalised
+     * @param kinds
+     *            the earlier bindings' domains
+     * @return the binding's domain
+     */
+    public static Domain inferBinding(Expr expr, BindingDomains kinds)
+    {
+        return NameListBinding.isNameList(expr) ? Domain.DATASET : infer(expr, kinds);
+    }
+
+
+    /**
      * §3.2: the join of the leaves' cursor demands, with broadcast-verdict absorption.
      *
      * @param expr

@@ -829,10 +829,24 @@ public class RulePackageLoader
             // silently. The same derivation (ListOperandLevel) is the loader's here.
             if (!stageAJudged)
             {
+                // PLAN-elementwise-list-functions D1-A (W1a E2, decision 9): a name-list binding
+                // read anywhere but a splice slot is stage A's hint; here the loader's
+                java.util.Set<String> nameLists = new java.util.HashSet<>();
                 for (net.cumba.corej.core.model.CompiledBinding binding : compiled)
                 {
                     rejectPerRowPerCallOperands(binding.expression(), rule,
                             "the binding " + binding.name());
+                    String read = net.cumba.corej.core.expr.eval.NameListBinding.firstValueRead(
+                            binding.expression(), nameLists, "the binding " + binding.name());
+                    if (read != null)
+                    {
+                        throw new net.cumba.corej.core.expr.RuleDefinitionException(read);
+                    }
+                    if (net.cumba.corej.core.expr.eval.NameListBinding
+                            .isNameList(binding.expression()))
+                    {
+                        nameLists.add(binding.name());
+                    }
                 }
             }
         }
@@ -5814,6 +5828,21 @@ public class RulePackageLoader
         if (reported.isEmpty())
         {
             return;
+        }
+        for (String name : reported)
+        {
+            net.cumba.corej.core.model.CompiledBinding binding = byName.get(name);
+            if (binding != null && net.cumba.corej.core.expr.eval.NameListBinding
+                    .isNameList(binding.expression()))
+            {
+                // PLAN-elementwise-list-functions D1-A (W1a E2, coordinator decision 9): a list
+                // of column names is not a reported value
+                appendLoadError(rule,
+                        "[" + ruleId(rule) + "] Outcome.Output_Variables: " + name
+                                + " is reported, but "
+                                + net.cumba.corej.core.expr.eval.NameListBinding.hint(name));
+                return;
+            }
         }
         Map<String, net.cumba.corej.core.expr.typed.ExprType> types;
         try
