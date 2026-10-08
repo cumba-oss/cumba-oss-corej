@@ -207,6 +207,41 @@ class ReferencedRecordCountTest
 
 
     @Test
+    void aSingleStringKeyVariableIsTheOneCandidateList()
+    {
+        // R5 P6-M1: key_variable="--SEQ" as ONE string literal is the one-element candidate list,
+        // resolved against the TARGET as the list form is — it used to reach run time as the
+        // column name "--SEQ" itself, so every row counted 0
+        IDataTable ae = RealTableFixture.of("AE").str("DOMAIN", "AE", "AE").str("USUBJID", "A", "A")
+                .lng("AESEQ", 1L, 2L).build();
+        IDataTable adae = RealTableFixture.of("ADAE").str("USUBJID", "A", "A", "A")
+                .str("SRCDOM", "AE", "AE", "AE").str("SRCSEQ", "2", "3", "").build();
+        List<@Nullable Object> list = rows("referenced_record_count(SRCDOM, SRCSEQ,"
+                + " key_variable=[\"--SEQ\"], keys=[USUBJID])", ctx(adae, ae));
+        assertEquals(1L, list.get(0), "premise: the list form finds AESEQ 2");
+        assertEquals(list, rows("referenced_record_count(SRCDOM, SRCSEQ,"
+                + " key_variable=\"--SEQ\", keys=[USUBJID])", ctx(adae, ae)));
+        assertEquals(list,
+                rows("referenced_record_count(SRCDOM, SRCSEQ,"
+                        + " key_variable=\"AESEQ\", keys=[USUBJID])", ctx(adae, ae)),
+                "a plain name is its own one candidate");
+    }
+
+
+    @Test
+    void aQualifiedKeyIsALoadError()
+    {
+        // R5 P6-L1: keys= names a column of BOTH the row's dataset and the referenced one; the
+        // referenced side is a raw dataset with no join, so `J.USUBJID` never matched and the key
+        // silently dropped
+        Rule dotted = load("", "referenced_record_count(RDOMAIN, IDVARVAL, key_variable=IDVAR,"
+                + " keys=[DM.USUBJID]) != 1", "SUPPSEQ");
+        assertNotNull(dotted.getLoadError(), "a qualified key");
+        assertTrue(dotted.getLoadError().contains("qualified"), dotted.getLoadError());
+    }
+
+
+    @Test
     void aSplitFamilySumsItsMembers()
     {
         IDataTable lbch = RealTableFixture.of("lbch").str("DOMAIN", "LB").str("USUBJID", "A")

@@ -21,11 +21,13 @@ import org.jspecify.annotations.Nullable;
  * per distinct (dataset, column) through {@link GroupSemantics#uniqueSetViolations}' key folding
  * under the shipped {@link GroupKeyPolicy#FOLD_BLANK_KEYS}: {@code ""} and a missing are real,
  * distinct key components, an absent column is dropped from the tuple — a stated answer, as
- * {@code is_unique_set} gives (Q5). A split family is judged member by member: a duplicate inside
- * any member is a {@code false}. A missing or blank {@code dataset} or column name, and a dataset
- * no study member carries, answer missing. {@code key_variable} and {@code keys} are read exactly
- * as {@link ReferencedRecordCount} reads them (a per-row name or the candidate templates; the
- * spliced same-named keys).
+ * {@code is_unique_set} gives (Q5). A split family is judged as the ONE domain it is (SDTMIG: a
+ * split domain's {@code --SEQ} is unique across its split datasets; runbook W1b fold, R5 P6-M2):
+ * the keys are folded across every member, so a key carried by two members is a {@code false} — as
+ * {@link ReferencedRecordCount} sums the members. A missing or blank {@code dataset} or column
+ * name, and a dataset no study member carries, answer missing. {@code key_variable} and
+ * {@code keys} are read exactly as {@link ReferencedRecordCount} reads them (a per-row name or the
+ * candidate templates; the spliced same-named keys).
  */
 public final class ReferencedKeyUniqueness
 {
@@ -89,6 +91,7 @@ public final class ReferencedKeyUniqueness
         {
             return null;
         }
+        List<List<@Nullable String>> tuples = new ArrayList<>(tables.size());
         for (IDataTable table : tables)
         {
             String pointer = column;
@@ -99,13 +102,9 @@ public final class ReferencedKeyUniqueness
             List<@Nullable String> tuple = new ArrayList<>(keyNames.size() + 1);
             tuple.addAll(keyNames);
             tuple.add(pointer); // an absent or unresolved column is dropped (Q5)
-            int rows = Math.toIntExact(table.getRowCount());
-            if (!GroupSemantics.uniqueSetViolations(table, rows, tuple, null, true,
-                    GroupKeyPolicy.FOLD_BLANK_KEYS).isEmpty())
-            {
-                return false;
-            }
+            tuples.add(tuple);
         }
-        return true;
+        return !GroupSemantics.hasDuplicateKeyAcross(tables, tuples,
+                GroupKeyPolicy.FOLD_BLANK_KEYS);
     }
 }

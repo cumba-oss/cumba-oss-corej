@@ -554,6 +554,8 @@ class QualifiedNameUniformityTest
      */
     static final String EXPECTED_RED = """
             read_value/group | C3 | N6
+            referenced_key_is_unique/keys | REFUSED | P6-L1
+            referenced_record_count/keys | REFUSED | P6-L1
             """;
 
     /**
@@ -600,13 +602,12 @@ class QualifiedNameUniformityTest
             // The value-addressed readers (runbook W1b VA): the dataset operand's VALUE names a
             // dataset of the study, and no fixture column spells one — so every row answers
             // missing through the join and without it alike, whichever operand the probe
-            // qualifies (a key member J.K is looked up by that name on the target, where it is
-            // absent and dropped). Their sensitivity to the data is ReferencedRecordCountTest's
-            // and ReferencedKeyUniquenessTest's.
+            // qualifies. Their sensitivity to the data is ReferencedRecordCountTest's and
+            // ReferencedKeyUniquenessTest's. (Their keys= rows are REFUSED since the W1b fold,
+            // R5 P6-L1: a qualified key is a load error naming the bare spelling.)
             "referenced_record_count/dataset", "referenced_record_count/value",
-            "referenced_record_count/key_variable", "referenced_record_count/keys",
-            "referenced_key_is_unique/dataset", "referenced_key_is_unique/key_variable",
-            "referenced_key_is_unique/keys",
+            "referenced_record_count/key_variable", "referenced_key_is_unique/dataset",
+            "referenced_key_is_unique/key_variable",
             // A group operator over this fixture (a 1:1 join carrying P's data; unique K, ID and
             // S partner values; no enumerated S1) answers the same verdict through the join as
             // with J.X resolving nowhere — the operator's absent-column bail. Their sensitivity

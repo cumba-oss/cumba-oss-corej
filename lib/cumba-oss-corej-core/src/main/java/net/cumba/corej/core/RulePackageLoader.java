@@ -1255,7 +1255,12 @@ public class RulePackageLoader
                     Map.entry("empty_within_except_last_row",
                             net.cumba.corej.core.exec.SortKeys::checkSingleKeyCall),
                     Map.entry("has_next_corresponding_record",
-                            net.cumba.corej.core.exec.SortKeys::checkSingleKeyCall));
+                            net.cumba.corej.core.exec.SortKeys::checkSingleKeyCall),
+                    // runbook W1b fold, R5 P6-L1: a qualified key of the value-addressed readers
+                    Map.entry(net.cumba.corej.core.exec.ReferencedRecordCount.NAME,
+                            net.cumba.corej.core.exec.ReferencedRecordCount::checkKeys),
+                    Map.entry(net.cumba.corej.core.exec.ReferencedKeyUniqueness.NAME,
+                            net.cumba.corej.core.exec.ReferencedRecordCount::checkKeys));
 
     /**
      * A compiler-dispatched call whose ONE parameter is an optional {@code name}

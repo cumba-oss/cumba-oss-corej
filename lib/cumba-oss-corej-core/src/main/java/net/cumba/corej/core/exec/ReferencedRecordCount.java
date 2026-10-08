@@ -32,7 +32,7 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * <b>What answers what.</b> A missing or blank {@code dataset}, {@code value} or column name
  * answers <b>missing</b>; a dataset no study member carries answers missing (Q4: "not loaded" is
- * {@code COREJ-ADAM-0321}'s finding, not a broken pointer); a column the dataset lacks answers
+ * {@code CDISC-AD0746}'s finding, not a broken pointer); a column the dataset lacks answers
  * {@code 0} (nothing can match); otherwise every matching record counts — a split family
  * ({@code lbch} / {@code lbhe}) sums its members. {@code key_variable} is either a per-row
  * expression naming the column ({@code IDVAR}) or a list of candidate templates resolved against
@@ -77,6 +77,69 @@ public final class ReferencedRecordCount
 
     private ReferencedRecordCount()
     {
+    }
+
+
+    /**
+     * The refusal of a qualified {@code J.X} at {@code keys=} (runbook W1b fold, R5 P6-L1): a key
+     * names a column of BOTH the record's dataset and the referenced one, and the referenced side
+     * is a raw dataset with no join — a qualified name never matched there and the key silently
+     * dropped. One sentence for the loader ({@link #checkKeys}) and the compiler.
+     *
+     * @param fn
+     *            the function
+     * @param name
+     *            the qualified name as written
+     * @return the message
+     */
+    public static String qualifiedKeyRefusal(String fn, String name)
+    {
+        return "argument '" + KEYS_PARAMETER + "' of '" + fn
+                + "' takes the key columns unqualified, not the qualified " + name
+                + " — write it bare (" + name.substring(name.lastIndexOf('.') + 1)
+                + "): a key is a column of both the record's dataset and the referenced one,"
+                + " matched by name";
+    }
+
+
+    /**
+     * The loader's seam of {@code referenced_record_count} / {@code referenced_key_is_unique}
+     * ({@code RulePackageLoader}'s tailored readers): a qualified key is a load error on every
+     * surface — the compiler meets the call only at evaluation.
+     *
+     * @param call
+     *            the authored call
+     * @throws net.cumba.corej.core.expr.ExpressionException
+     *             for a qualified key
+     */
+    public static void checkKeys(net.cumba.corej.core.expr.ast.Expr.Call call)
+    {
+        net.cumba.corej.core.expr.eval.FunctionDescriptor descriptor = net.cumba.corej.core.expr.eval.FunctionRegistry
+                .descriptor(call.name());
+        if (descriptor == null)
+        {
+            return;
+        }
+        List<net.cumba.corej.core.expr.eval.Parameter> params = descriptor.parameters();
+        List<net.cumba.corej.core.expr.ast.@Nullable Expr> bound = net.cumba.corej.core.expr.eval.ArgumentBinder
+                .bind(descriptor, call);
+        for (int i = 0; i < params.size() && i < bound.size(); i++)
+        {
+            if (KEYS_PARAMETER.equals(params.get(i).name())
+                    && bound.get(i) instanceof net.cumba.corej.core.expr.ast.Expr.Lit lit
+                    && lit.value() instanceof List<?> items)
+            {
+                for (Object item : items)
+                {
+                    if (item instanceof net.cumba.corej.core.expr.ast.Expr.Ref ref
+                            && ref.kind() == net.cumba.corej.core.expr.OperandKind.DOTTED_REF)
+                    {
+                        throw new net.cumba.corej.core.expr.ExpressionException(
+                                qualifiedKeyRefusal(call.name(), ref.name()));
+                    }
+                }
+            }
+        }
     }
 
     /**

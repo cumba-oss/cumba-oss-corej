@@ -134,8 +134,11 @@ class ReferencedKeyUniquenessTest
 
 
     @Test
-    void aSplitFamilyIsJudgedMemberByMember()
+    void aSplitFamilyIsJudgedAsTheOneDomainItIs()
     {
+        // R5 P6-M2 (SDTMIG: a split domain is ONE domain — --SEQ / --SPID uniqueness spans its
+        // split datasets; referenced_record_count already sums across them): the family's keys
+        // are folded across every member
         IDataTable lbch = RealTableFixture.of("lbch").str("DOMAIN", "LB", "LB")
                 .str("USUBJID", "A", "A").str("LBSPID", "1", "2").build();
         IDataTable lbhe = RealTableFixture.of("lbhe").str("DOMAIN", "LB", "LB")
@@ -144,6 +147,17 @@ class ReferencedKeyUniquenessTest
                 .str("IDVAR", "LBSPID").build();
         assertEquals(List.of(false), rows(CALL, pointer, lbch, lbhe),
                 "a duplicate inside one member of the family");
+        IDataTable lbchSeq = RealTableFixture.of("lbch").str("DOMAIN", "LB").str("USUBJID", "A")
+                .lng("LBSEQ", 1L).build();
+        IDataTable lbheSeq = RealTableFixture.of("lbhe").str("DOMAIN", "LB").str("USUBJID", "A")
+                .lng("LBSEQ", 1L).build();
+        IDataTable seqPointer = RealTableFixture.of("RELREC").str("RDOMAIN", "LB")
+                .str("USUBJID", "").str("IDVAR", "LBSEQ").build();
+        assertEquals(List.of(false), rows(CALL, seqPointer, lbchSeq, lbheSeq),
+                "LBSEQ 1 of subject A in two members: not unique in the domain");
+        IDataTable lbheOther = RealTableFixture.of("lbhe").str("DOMAIN", "LB").str("USUBJID", "A")
+                .lng("LBSEQ", 2L).build();
+        assertEquals(List.of(true), rows(CALL, seqPointer, lbchSeq, lbheOther));
     }
 
 

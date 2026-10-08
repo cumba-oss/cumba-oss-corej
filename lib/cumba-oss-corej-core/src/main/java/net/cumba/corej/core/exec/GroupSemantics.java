@@ -1220,24 +1220,7 @@ public final class GroupSemantics
         {
             return new BitSet();
         }
-        DataTableMeta meta = table.getMetaData();
-        int[] keyColIds = new int[keyCols.size()];
-        int n = 0;
-        for (String col : keyCols)
-        {
-            // The ONLY semantic edit of the 2026-08-23 flattening: a null member takes the same
-            // drop as an absent column, where the old signature returned an empty BitSet for the
-            // whole check when its first operand was null.
-            int idx = col == null ? -1 : meta.getColumnIndex(col);
-            if (idx >= 0)
-            {
-                keyColIds[n++] = idx;
-            }
-        }
-        if (n < keyColIds.length)
-        {
-            keyColIds = Arrays.copyOf(keyColIds, n);
-        }
+        int[] keyColIds = keyColumnIds(table, keyCols);
 
         // Optional regex= normalization (mirrors Python is_unique_set): a key column whose first
         // non-missing value matches the (anchored) pattern is collapsed to its first regex match
@@ -1276,6 +1259,68 @@ public final class GroupSemantics
             }
         }
         return flagDuplicates ? duplicates : uniqueCandidates;
+    }
+
+
+    /**
+     * The column indices of a key tuple's present columns, in tuple order — an absent column, and a
+     * {@code null} member, dropped from the tuple.
+     */
+    private static int[] keyColumnIds(IDataTable table, List<? extends @Nullable String> keyCols)
+    {
+        DataTableMeta meta = table.getMetaData();
+        int[] keyColIds = new int[keyCols.size()];
+        int n = 0;
+        for (String col : keyCols)
+        {
+            // The ONLY semantic edit of the 2026-08-23 flattening: a null member takes the same
+            // drop as an absent column, where the old signature returned an empty BitSet for the
+            // whole check when its first operand was null.
+            int idx = col == null ? -1 : meta.getColumnIndex(col);
+            if (idx >= 0)
+            {
+                keyColIds[n++] = idx;
+            }
+        }
+        return n < keyColIds.length ? Arrays.copyOf(keyColIds, n) : keyColIds;
+    }
+
+
+    /**
+     * Whether two records of the {@code tables} — taken together as ONE dataset, a split domain's
+     * members — share a folded key ({@link #uniqueSetViolations}' folding, no {@code regex=}): the
+     * uniqueness question asked of the union, never member by member (runbook W1b fold, R5 P6-M2).
+     *
+     * @param tables
+     *            the members
+     * @param keyCols
+     *            per member, its key tuple's column names (an absent column or {@code null}
+     *            dropped)
+     * @param policy
+     *            the group-key policy
+     * @return {@code true} when some key occurs twice across the members
+     */
+    public static boolean hasDuplicateKeyAcross(List<IDataTable> tables,
+            List<? extends List<? extends @Nullable String>> keyCols, GroupKeyPolicy policy)
+    {
+        Set<List<KeyPart>> seen = new HashSet<>();
+        for (int t = 0; t < tables.size(); t++)
+        {
+            IDataTable table = tables.get(t);
+            int[] ids = keyColumnIds(table, keyCols.get(t));
+            @Nullable
+            Pattern[] verbatim = new Pattern[ids.length];
+            long rows = table.getRowCount();
+            for (long r = 0; r < rows; r++)
+            {
+                if (!rowKeyDiscarded(table, ids, r, policy)
+                        && !seen.add(foldedKey(table, ids, verbatim, r, policy)))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     // -------------------------------------------------------------------------

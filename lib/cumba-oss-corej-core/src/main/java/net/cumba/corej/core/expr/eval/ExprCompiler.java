@@ -5330,13 +5330,21 @@ public final class ExprCompiler
 
     /**
      * The {@code key_variable} operand: a string list is the candidate templates resolved against
-     * the target ({@code ["--SEQ", "ASEQ"]}); a bare-name list is refused with the string spelling
-     * (the templates are not columns of the dataset in hand); anything else is the per-row operand
-     * plan naming the column ({@code IDVAR}).
+     * the target ({@code ["--SEQ", "ASEQ"]}), and ONE string literal the one-element list
+     * ({@code "--SEQ"} ≡ {@code ["--SEQ"]}, runbook W1b fold R5 P6-M1 — it used to reach run time
+     * as the column name {@code --SEQ} itself, so every row counted 0); a bare-name list is refused
+     * with the string spelling (the templates are not columns of the dataset in hand); anything
+     * else is the per-row operand plan naming the column ({@code IDVAR}).
      */
     private static KeyVariablePlan keyVariablePlan(String fn, Expr e)
     {
         String parameter = net.cumba.corej.core.exec.ReferencedRecordCount.KEY_VARIABLE_PARAMETER;
+        if (e instanceof Expr.Lit single && single.kind() == Expr.LitKind.STRING)
+        {
+            net.cumba.corej.core.exec.ReferencedRecordCount.KeyVariable constant = net.cumba.corej.core.exec.ReferencedRecordCount.KeyVariable
+                    .candidates(List.of((String) single.value()));
+            return _ -> constant;
+        }
         if (e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
                 && lit.value() instanceof List<?> items)
         {
@@ -5419,11 +5427,16 @@ public final class ExprCompiler
                         + "' takes a column reference, not the literal " + lit.value()
                         + " — a quoted name is a string, never a column");
             }
-            if (item instanceof Expr.Ref ref
-                    && (ref.kind() == OperandKind.COLUMN || ref.kind() == OperandKind.DOTTED_REF))
+            if (item instanceof Expr.Ref ref && ref.kind() == OperandKind.DOTTED_REF)
             {
-                // a qualified J.X is a column of the one evaluation table like any other (W3c of
-                // PLAN-merged-evaluation-table), looked up by that name on both sides
+                // runbook W1b fold, R5 P6-L1: a key names a column of BOTH the row's dataset and
+                // the referenced one, and the referenced side is a raw dataset with no join — a
+                // qualified J.X never matched there and the key silently dropped
+                throw unsupported(net.cumba.corej.core.exec.ReferencedRecordCount
+                        .qualifiedKeyRefusal(fn, ref.name()));
+            }
+            if (item instanceof Expr.Ref ref && ref.kind() == OperandKind.COLUMN)
+            {
                 members.add(new net.cumba.corej.core.exec.GroupSplice.Name(ref.name()));
                 continue;
             }
