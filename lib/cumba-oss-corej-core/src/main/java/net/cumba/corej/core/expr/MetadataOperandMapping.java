@@ -234,7 +234,8 @@ public final class MetadataOperandMapping
             // as len(variable_label) whose argument is the operand to migrate. The tree is rebuilt
             // unconditionally (records are cheap; this runs once at load), keeping the recursion
             // free of reference-equality short-circuits.
-            yield new Expr.Call(c.name(), mapList(c.args()), mapMap(c.kwargs()));
+            yield fillAccessorDefaults(
+                    new Expr.Call(c.name(), mapList(c.args()), mapMap(c.kwargs())));
         }
         case Expr.Binary b ->
         {
@@ -280,6 +281,41 @@ public final class MetadataOperandMapping
             yield lit;
         }
         };
+    }
+
+
+    /**
+     * {@code PLAN-metadata-accessor-default-level} P1 (runbook W1a MA-r1): a metadata accessor call
+     * written without a level reads the {@code DATA} level — the {@code "DATA"} literal is appended
+     * here, once at load, so every downstream reader (stage A, the compiler, the domain scan,
+     * {@link #reverseToOperand}) sees the form it already handles: {@code ds_name()} →
+     * {@code ds_name("DATA")}, {@code var_label()} → {@code var_label("DATA")},
+     * {@code var_label("AETERM")} → {@code var_label("AETERM", "DATA")}. An attribute with no
+     * {@code DATA} level is left unfilled for stage A's finding naming its levels (P2); a
+     * one-argument {@code ds_*} call is left alone — its argument is the level or, when it is not
+     * one, stage A's refusal with a hint (P4, D3). A name is a <b>string</b> (owner ruling O15,
+     * 2026-10-08: ruling R1 wins over P3): a bare column in the name position is not lowered and
+     * not filled, so stage A's refusal names the string spelling the author meant. The name
+     * position is {@link net.cumba.corej.core.expr.eval.NameSlots#accessorNamePosition}'s, the
+     * judgement the name-slot inliner shares (V12).
+     */
+    private static Expr fillAccessorDefaults(Expr.Call c)
+    {
+        MetadataAttribute attr = MetadataAttribute.fromFunction(c.name());
+        if (attr == null || c.args().size() > 1 || !attr.supports(MetadataLevel.DATA))
+        {
+            return c;
+        }
+        int namePosition = net.cumba.corej.core.expr.eval.NameSlots.accessorNamePosition(attr, c);
+        boolean levelGiven = c.args().size() == 1 && namePosition < 0;
+        if (levelGiven || (namePosition == 0
+                && net.cumba.corej.core.expr.eval.NameSlots.isColumnShapedRef(c.args().get(0))))
+        {
+            return c;
+        }
+        List<Expr> args = new ArrayList<>(c.args());
+        args.add(new Expr.Lit(Expr.LitKind.STRING, MetadataLevel.DATA.name()));
+        return new Expr.Call(c.name(), args, c.kwargs());
     }
 
 

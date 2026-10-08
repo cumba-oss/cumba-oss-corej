@@ -217,9 +217,10 @@ public final class RuleLanguage
 
 
     /**
-     * One line per {@link MetadataAttribute}: {@code name scope=… levels=… result=…}, then the
-     * keywords the accessor takes ({@code dataset=} on the four cross-dataset readers,
-     * {@code stem=} on {@code label_template}). Sorted by accessor name.
+     * One line per {@link MetadataAttribute}: {@code name scope=… levels=… result=…}, the
+     * {@code default=DATA} marker where a level-less call reads DATA, then the keywords the
+     * accessor takes ({@code dataset=} on the four cross-dataset readers, {@code stem=} on
+     * {@code label_template}). Sorted by accessor name.
      */
     private static List<String> accessorLines()
     {
@@ -236,6 +237,12 @@ public final class RuleLanguage
             }
             sb.append(String.join(",", levels)).append(" result=")
                     .append(StageAChecker.accessorType(attr).describe());
+            if (attr.supports(MetadataLevel.DATA))
+            {
+                // PLAN-metadata-accessor-default-level D1 (runbook W1a MA-r1): a call with no
+                // level reads DATA
+                sb.append(" default=DATA");
+            }
             List<String> keywords = new ArrayList<>();
             if (ExprCompiler.takesDatasetKeyword(attr))
             {

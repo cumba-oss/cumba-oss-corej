@@ -91,8 +91,18 @@ class ExprPrefixResolverTest
     @Test
     void theLevelOfAMetadataAccessorIsNotANameSlot()
     {
-        // var_label(level): argument 0 of the ONE-argument form is the level (S6)
-        assertKept("var_label(\"--X\") == \"x\"");
+        // S6, re-expressed under V12 (PLAN-metadata-accessor-default-level, runbook W1a MA-r1):
+        // in the ONE-argument form a level literal is the level, never a name — and a ds_*
+        // accessor's one argument is never a name (D3) …
+        assertKept("var_label(\"DATA\") == \"x\"");
+        assertKept("var_label(\"library\") == \"x\"");
+        assertKept("ds_name(\"--X\") == \"x\"");
+        // … while a non-level string there is the NAME at the default DATA level: a name slot,
+        // rewritten like the two-argument form's name
+        assertEquals(printed("var_label(\"AEX\") == \"x\""),
+                resolved("var_label(\"--X\") == \"x\""));
+        assertEquals(printed("var_label(\"AEX\", \"DATA\") == \"x\""),
+                resolved("var_label(\"--X\", \"DATA\") == \"x\""));
     }
 
     // ------------------------------------------------------------------ name slots: rewritten

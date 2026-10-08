@@ -28,6 +28,7 @@ import net.cumba.corej.core.expr.eval.MetadataAttribute;
 import net.cumba.corej.core.expr.eval.MetadataLevel;
 import net.cumba.corej.core.expr.eval.MetadataNormalizer.Normalization;
 import net.cumba.corej.core.expr.eval.NameListBinding;
+import net.cumba.corej.core.expr.eval.NameSlots;
 import net.cumba.corej.core.expr.eval.Parameter;
 import net.cumba.corej.core.expr.typed.ExprType.ListOf;
 import net.cumba.corej.core.expr.typed.ExprType.Primitive;
@@ -1590,26 +1591,47 @@ public final class StageAChecker
     }
 
 
+    /**
+     * A metadata accessor call — {@code ()}, {@code (level)}, {@code (name)} or
+     * {@code (name, level)} ({@code PLAN-metadata-accessor-default-level} D1 / D3, runbook W1a
+     * MA-r1). The load-time fill ({@code MetadataOperandMapping}) normally hands stage A the
+     * two-argument / level form; a tree that skipped it is judged the same way: no level means
+     * {@code DATA} where the attribute has it, else the finding naming its levels (P2). The name
+     * position is {@link NameSlots#accessorNamePosition}'s, the one judgement every reader shares.
+     */
     private TypedExpr accessor(Expr.Call c, MetadataAttribute attr, List<TypedExpr> children)
     {
         List<Expr> args = c.args();
-        if (args.isEmpty() || args.size() > 2)
+        Expr nameArg = null;
+        if (args.size() > 2)
         {
-            find(StageAErrorKind.ARITY, attr.functionName() + " takes a level argument and "
-                    + "optionally a name argument, not " + args.size() + " argument(s)");
+            find(StageAErrorKind.ARITY, attr.functionName() + " takes (), (level), (name) or"
+                    + " (name, level), not " + args.size() + " argument(s)");
         }
         else
         {
-            metadataLevel(attr, args.get(args.size() - 1));
-            if (args.size() == 2)
+            int namePosition = NameSlots.accessorNamePosition(attr, c);
+            nameArg = namePosition < 0 ? null : args.get(namePosition);
+            boolean levelGiven = args.size() == 2 || (args.size() == 1 && namePosition < 0);
+            if (levelGiven)
             {
-                accessorName(attr, args.get(0));
+                metadataLevel(attr, args.get(args.size() - 1),
+                        args.size() == 1 && attr.scope() == MetadataAttribute.Scope.DATASET);
+            }
+            else if (!attr.supports(MetadataLevel.DATA))
+            {
+                find(StageAErrorKind.METADATA_LEVEL_ILLEGAL, attr.noDataLevelMessage(
+                        nameArg == null ? null : NameSlots.spelledName(nameArg)));
+            }
+            if (nameArg != null)
+            {
+                accessorName(attr, c, nameArg);
             }
         }
         stemKeyword(c, attr);
         Level level;
         if (attr.scope() == MetadataAttribute.Scope.DATASET
-                || (args.size() == 2 && !isCurrentVariableName(args.get(0))))
+                || (nameArg != null && !isCurrentVariableName(nameArg)))
         {
             level = Level.DATASET;
         }
@@ -1625,12 +1647,25 @@ public final class StageAChecker
      * §1.1: the {@code (attribute, metadata-level)} legality table — 81 cells, 51 legal (27
      * {@code MetadataAttribute} constants × 3 since {@code label_template}, LIBRARY only).
      */
-    private void metadataLevel(MetadataAttribute attr, Expr levelArg)
+    private void metadataLevel(MetadataAttribute attr, Expr levelArg, boolean oneArgumentDataset)
     {
+        // P4 (D3): a ds_* accessor's one argument that is not a level reads as a dataset name,
+        // and a dataset name always needs its level — the finding says how to write it
+        String datasetName = !oneArgumentDataset ? null
+                : levelArg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
+                        && MetadataLevel.tryParse((String) lit.value()) == null
+                                ? (String) lit.value()
+                                : levelArg instanceof Expr.Ref ref && ref
+                                        .kind() == net.cumba.corej.core.expr.OperandKind.COLUMN
+                                                ? ref.name()
+                                                : null;
+        String hint = datasetName == null ? ""
+                : " — a dataset name needs a level: " + attr.functionName() + "(\"" + datasetName
+                        + "\", \"DATA\")";
         if (!(levelArg instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.STRING)
         {
             find(StageAErrorKind.METADATA_LEVEL_ILLEGAL, attr.functionName()
-                    + " requires a literal metadata level (DATA, DEFINE, or LIBRARY)");
+                    + " requires a literal metadata level (DATA, DEFINE, or LIBRARY)" + hint);
             return;
         }
         MetadataLevel level = MetadataLevel.tryParse((String) lit.value());
@@ -1638,7 +1673,7 @@ public final class StageAChecker
         {
             find(StageAErrorKind.METADATA_LEVEL_ILLEGAL,
                     attr.functionName() + ": unknown metadata level '" + lit.value()
-                            + "' (expected DATA, DEFINE, or LIBRARY)");
+                            + "' (expected DATA, DEFINE, or LIBRARY)" + hint);
         }
         else if (!attr.supports(level))
         {
@@ -1687,16 +1722,20 @@ public final class StageAChecker
      * template form included) or the current-variable cursor. The typed mirror of
      * {@code ExprCompiler:4583}.
      */
-    private void accessorName(MetadataAttribute attr, Expr nameArg)
+    private void accessorName(MetadataAttribute attr, Expr.Call c, Expr nameArg)
     {
         boolean literal = nameArg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING;
+        // A name is a string (owner O15, 2026-10-08: ruling R1 wins over the bare-column form P3):
+        // a column-shaped reference stays refused in both arities; the finding names the string
+        // spelling the author meant (NameSlots.columnNameHint)
         if (!literal && !isCurrentVariableName(nameArg))
         {
             find(StageAErrorKind.NON_STATIC_NAME,
                     attr.functionName() + " name must be a string literal"
                             + (attr.scope() == MetadataAttribute.Scope.VARIABLE
                                     ? " or the variable_name operand"
-                                    : ""));
+                                    : "")
+                            + NameSlots.columnNameHint(attr, c));
         }
     }
 

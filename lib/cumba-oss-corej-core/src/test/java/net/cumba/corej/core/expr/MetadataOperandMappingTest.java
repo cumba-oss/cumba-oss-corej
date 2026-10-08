@@ -129,4 +129,34 @@ class MetadataOperandMappingTest
         assertEquals(CheckExpressionParser.parse("AETERM in [DOMAIN]"), MetadataOperandMapping
                 .canonicalizeMetadataOperands(CheckExpressionParser.parse("AETERM in [DOMAIN]")));
     }
+
+
+    /**
+     * {@code PLAN-metadata-accessor-default-level} P1 (runbook W1a MA-r1): a level-less accessor
+     * call is filled with {@code "DATA"} at canonicalisation, and the filled call reverses to the
+     * operand the explicit call reverses to.
+     */
+    @Test
+    void aLevelLessAccessorIsFilledWithDataAndReversesLikeTheExplicitForm()
+    {
+        Expr filledDs = MetadataOperandMapping
+                .canonicalizeMetadataOperands(CheckExpressionParser.parse("ds_name()"));
+        Expr filledVar = MetadataOperandMapping.canonicalizeMetadataOperands(
+                CheckExpressionParser.parse("var_label(variable_name)"));
+        Expr filledLevelOnly = MetadataOperandMapping
+                .canonicalizeMetadataOperands(CheckExpressionParser.parse("var_label()"));
+        assertEquals(CheckExpressionParser.parse("ds_name(\"DATA\")"), filledDs);
+        assertEquals(CheckExpressionParser.parse("var_label(variable_name, \"DATA\")"), filledVar);
+        assertEquals(CheckExpressionParser.parse("var_label(\"DATA\")"), filledLevelOnly);
+        assertEquals("dataset_name", MetadataOperandMapping.reverseToOperand(filledDs));
+        assertEquals(
+                MetadataOperandMapping
+                        .reverseToOperand(CheckExpressionParser.parse("ds_name(\"DATA\")")),
+                MetadataOperandMapping.reverseToOperand(filledDs));
+        assertEquals("variable_label", MetadataOperandMapping.reverseToOperand(filledVar));
+        assertEquals("variable_label", MetadataOperandMapping.reverseToOperand(filledLevelOnly));
+        // the unfilled 0-arg call reverses to nothing — the fill is what makes it an operand
+        assertNull(
+                MetadataOperandMapping.reverseToOperand(CheckExpressionParser.parse("ds_name()")));
+    }
 }

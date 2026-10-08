@@ -123,7 +123,128 @@ public final class NameSlots
             return p != null && isNameSlot(p);
         }
         MetadataAttribute attr = MetadataAttribute.fromFunction(call.name());
-        return attr != null && position == 0 && call.args().size() == 2;
+        return attr != null && position == accessorNamePosition(attr, call);
+    }
+
+
+    /**
+     * Whether {@code e} is a metadata-level string literal ({@code "DATA"}, {@code "DEFINE"},
+     * {@code "LIBRARY"}, any case) — the one spelling that is a LEVEL, never a name, in an
+     * accessor's one-argument form.
+     */
+    public static boolean isLevelLiteral(Expr e)
+    {
+        return e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
+                && MetadataLevel.tryParse((String) lit.value()) != null;
+    }
+
+
+    /**
+     * The positional index of a metadata accessor call's NAME argument, or {@code -1} when the call
+     * carries none: {@code 0} in the two-argument form {@code (name, level)}; in the one-argument
+     * form {@code 0} for a variable-scope accessor whose argument is not a level literal
+     * ({@code var_label("AETERM")} / {@code var_label(variable_name)} / {@code var_label($c)} — the
+     * name at the default {@code DATA} level, {@code PLAN-metadata-accessor-default-level} D3 as
+     * amended by O15, V12), else {@code -1} (the level form {@code var_label("DATA")}, the default
+     * form {@code ds_name()}, and every one-argument {@code ds_*} call — a dataset name always
+     * needs its level, D3). A bare column there ({@code var_label(AETERM)}) is a name slot holding
+     * a reference, refused exactly as in the two-argument form (ruling R1; {@link #columnNameHint}
+     * names the string spelling). <b>The one judgement</b> the name-slot inliner, the load-time
+     * fill ({@code MetadataOperandMapping.canonicalizeMetadataOperands}), stage A and the compiler
+     * share, so a {@code $}-bound name and a spelled name take the same path (runbook W1a MA-r1,
+     * V12).
+     */
+    public static int accessorNamePosition(MetadataAttribute attr, Expr.Call call)
+    {
+        int arity = call.args().size();
+        if (arity == 2)
+        {
+            return 0;
+        }
+        if (arity == 1 && attr.scope() == MetadataAttribute.Scope.VARIABLE
+                && !isLevelLiteral(call.args().get(0)))
+        {
+            return 0;
+        }
+        return -1;
+    }
+
+
+    /**
+     * Whether {@code e} is a reference spelled like a column — a bare column, a wildcard column
+     * ({@code --X}) or a qualified {@code DS.X}. In a metadata accessor's name position such a
+     * reference is refused (ruling R1, {@code PLAN-expansion-over-all-variables}: a reference there
+     * reads as "the variable whose VALUE names a variable"; owner O15 kept it so when the
+     * one-argument name form arrived).
+     *
+     * @param e
+     *            the argument
+     * @return whether it is a column-shaped reference
+     */
+    public static boolean isColumnShapedRef(Expr e)
+    {
+        return e instanceof Expr.Ref r && (r.kind() == net.cumba.corej.core.expr.OperandKind.COLUMN
+                || r.kind() == net.cumba.corej.core.expr.OperandKind.WILDCARD_COLUMN
+                || r.kind() == net.cumba.corej.core.expr.OperandKind.DOTTED_REF);
+    }
+
+
+    /**
+     * The hint appended to the refusal of a column-shaped reference in a metadata accessor's name
+     * position — <em>" — a variable name is a string: write var_label("AETERM")"</em>, with the
+     * level when the call spells one as a literal — or the empty string when the name argument is
+     * not such a reference (or the level is computed). Stage A and the compiler append the same
+     * text.
+     *
+     * @param attr
+     *            the accessor
+     * @param call
+     *            the accessor call
+     * @return the hint, or {@code ""}
+     */
+    public static String columnNameHint(MetadataAttribute attr, Expr.Call call)
+    {
+        int position = accessorNamePosition(attr, call);
+        if (position < 0 || !(call.args().get(position) instanceof Expr.Ref ref)
+                || !isColumnShapedRef(ref))
+        {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(64).append(" — a variable name is a string: write ")
+                .append(attr.functionName()).append("(\"").append(ref.name()).append('"');
+        if (call.args().size() == 2)
+        {
+            if (!(call.args().get(1) instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.STRING)
+            {
+                return "";
+            }
+            sb.append(", \"").append(lit.value()).append('"');
+        }
+        return sb.append(')').toString();
+    }
+
+
+    /**
+     * The spelling of an accessor's name argument for the P2 message
+     * ({@link MetadataAttribute#noDataLevelMessage}): a string as written, a column-shaped
+     * reference as the string it should be (a name is a string, O15), another reference as written
+     * ({@code variable_name}), anything else {@code <name>}. Stage A and the compiler share it.
+     *
+     * @param nameArg
+     *            the name argument
+     * @return its spelling in the message
+     */
+    public static String spelledName(Expr nameArg)
+    {
+        if (nameArg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING)
+        {
+            return "\"" + lit.value() + "\"";
+        }
+        if (nameArg instanceof Expr.Ref ref)
+        {
+            return isColumnShapedRef(ref) ? "\"" + ref.name() + "\"" : ref.name();
+        }
+        return "<name>";
     }
 
 

@@ -295,14 +295,30 @@ class NameSlotRosterTest
             boolean unmarkedName = s.verdict() == Verdict.NAME && !marked;
             boolean markedData = marked && s.verdict() != Verdict.NAME
                     && s.verdict() != Verdict.REFUSED;
-            boolean markedLevel = s.parameter().equals(LEVEL_FORM) && marked;
-            if (unmarkedName || markedData || markedLevel)
+            if (unmarkedName || markedData)
             {
                 wrong.add(s.key() + " " + s.verdict() + " marked=" + marked);
             }
         }
         assertEquals(List.of(), wrong);
         assertTrue(names >= 50, "metadata accessor name slots measured: " + names);
+        // PLAN-metadata-accessor-default-level D3 / V12 (runbook W1a MA-r1): in the one-argument
+        // form, argument 0 is the NAME unless it is a level literal — so the probe's non-level
+        // literal is marked on every var_* accessor and a level literal is marked nowhere; the
+        // ds_* one-argument form is never a name (a dataset name always needs its level, D3)
+        for (MetadataAttribute attr : MetadataAttribute.values())
+        {
+            String fn = attr.functionName();
+            assertFalse(
+                    NameSlots.isNameSlot((Expr.Call) call(fn, List.of(lit("DATA")), Map.of()), 0),
+                    fn + ": a level literal is not a name");
+            assertFalse(NameSlots
+                    .isNameSlot((Expr.Call) call(fn, List.of(lit("library")), Map.of()), 0),
+                    fn + ": a level literal in any case is not a name");
+            assertEquals(attr.scope() == MetadataAttribute.Scope.VARIABLE,
+                    NameSlots.isNameSlot((Expr.Call) call(fn, List.of(lit(NAME)), Map.of()), 0),
+                    fn + ": the one-argument non-level form");
+        }
     }
 
 
@@ -409,6 +425,12 @@ class NameSlotRosterTest
         return out;
     }
 
+    /**
+     * The one-argument form probed with a non-level string: since
+     * {@code PLAN-metadata-accessor-default-level} D3 (runbook W1a MA-r1) that argument is the NAME
+     * at the default {@code DATA} level for a {@code var_*} accessor, and a dataset name a
+     * {@code ds_*} accessor refuses without a level.
+     */
     private static final String LEVEL_FORM = "arg0(level)";
 
     private static boolean metadataMarked(MetadataAttribute attr, String parameter)

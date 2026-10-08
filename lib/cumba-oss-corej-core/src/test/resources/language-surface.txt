@@ -175,10 +175,10 @@ vlm_type_conforms(name:unknown@name?) kind=value
 vlm_value_length(name:unknown@name?) kind=value
 year(x:unknown) kind=value
 accessors:
-ds_class scope=dataset levels=DATA,DEFINE,LIBRARY result=string
-ds_domain scope=dataset levels=DATA result=string
-ds_label scope=dataset levels=DATA,DEFINE,LIBRARY result=string
-ds_name scope=dataset levels=DATA,DEFINE,LIBRARY result=string
+ds_class scope=dataset levels=DATA,DEFINE,LIBRARY result=string default=DATA
+ds_domain scope=dataset levels=DATA result=string default=DATA
+ds_label scope=dataset levels=DATA,DEFINE,LIBRARY result=string default=DATA
+ds_name scope=dataset levels=DATA,DEFINE,LIBRARY result=string default=DATA
 ds_structure scope=dataset levels=DEFINE,LIBRARY result=string
 label_template scope=variable levels=LIBRARY result=string kwargs=stem
 var_ccode scope=variable levels=DEFINE,LIBRARY result=string
@@ -190,18 +190,18 @@ var_codelist_extensible scope=variable levels=LIBRARY result=boolean
 var_core scope=variable levels=DEFINE,LIBRARY result=string
 var_external_dictionary scope=variable levels=DEFINE result=string
 var_external_dictionary_version scope=variable levels=DEFINE result=string
-var_format scope=variable levels=DATA,DEFINE result=string kwargs=dataset
+var_format scope=variable levels=DATA,DEFINE result=string default=DATA kwargs=dataset
 var_has_codelist scope=variable levels=DEFINE result=boolean
 var_has_comment scope=variable levels=DEFINE result=boolean
 var_has_method scope=variable levels=DEFINE result=boolean
-var_label scope=variable levels=DATA,DEFINE,LIBRARY result=string kwargs=dataset
-var_length scope=variable levels=DATA,DEFINE,LIBRARY result=number kwargs=dataset
+var_label scope=variable levels=DATA,DEFINE,LIBRARY result=string default=DATA kwargs=dataset
+var_length scope=variable levels=DATA,DEFINE,LIBRARY result=number default=DATA kwargs=dataset
 var_mandatory scope=variable levels=DEFINE result=string
-var_name scope=variable levels=DATA,DEFINE,LIBRARY result=string
-var_ordinal scope=variable levels=DATA,DEFINE,LIBRARY result=number
+var_name scope=variable levels=DATA,DEFINE,LIBRARY result=string default=DATA
+var_ordinal scope=variable levels=DATA,DEFINE,LIBRARY result=number default=DATA
 var_origin_type scope=variable levels=DEFINE result=string
 var_role scope=variable levels=DEFINE,LIBRARY result=string
-var_type scope=variable levels=DATA,DEFINE,LIBRARY result=string kwargs=dataset
+var_type scope=variable levels=DATA,DEFINE,LIBRARY result=string default=DATA kwargs=dataset
 operators: ! != !~ && * + - / < <= = == =~ > >= ||
 keywords: and,false,in,not,or,true
 literal-forms: "string" number /regex/ [list] `quoted ref` &NAME& ${binding} --wildcard $binding DATASET.X
