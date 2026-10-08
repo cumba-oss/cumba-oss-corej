@@ -7,6 +7,9 @@ import java.util.List;
 import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.expr.eval.BindingDomains;
+import net.cumba.corej.core.expr.eval.Domain;
+import net.cumba.corej.core.expr.eval.DomainScan;
 import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.NativeExprEvaluator;
 import net.cumba.corej.core.expr.eval.Vector;
@@ -99,6 +102,9 @@ public final class GroupSplice
     /** The parameter name of the partitioning slots ({@code within=}). */
     public static final String WITHIN_PARAMETER = "within";
 
+    /** {@code is_not_unique_member_set} (runbook W1b SS1). */
+    public static final String NOT_UNIQUE_MEMBER_SET = "is_not_unique_member_set";
+
     /**
      * The slots whose members are sort keys — {@code asc(X)} / {@code desc(X)} descriptors around
      * the member the seams judge ({@link SortKeys#column}), and a bare column meaning {@code asc}.
@@ -121,6 +127,10 @@ public final class GroupSplice
     private static final java.util.Map<String, List<String>> SPLICE_SLOTS = java.util.Map.ofEntries(
             java.util.Map.entry("is_unique_set", List.of(MEMBERS_PARAMETER)),
             java.util.Map.entry("is_not_unique_set", List.of(MEMBERS_PARAMETER)),
+            // W1b SS1 (PLAN-engine-gap-set-of-sets): the member and group lists of the
+            // group-against-group verdict
+            java.util.Map.entry(NOT_UNIQUE_MEMBER_SET,
+                    List.of(MEMBERS_PARAMETER, GroupedAggregate.GROUP_PARAMETER)),
             java.util.Map.entry(RecordCount.NAME, List.of(GroupedAggregate.GROUP_PARAMETER)),
             java.util.Map.entry(VALUES_CALL, List.of(VALUES_PARAMETER)),
             java.util.Map.entry(GroupedAggregate.MAX, List.of(GroupedAggregate.GROUP_PARAMETER)),
@@ -161,9 +171,39 @@ public final class GroupSplice
             + " (the group= of record_count, max, max_date, min_date, read_value, distinct,"
             + " sequence, is_last_in_group and has_mixed_emptiness_within_group — and its"
             + " qualifying_any_populated=; the keys= of is_(not_)unique_relationship and"
-            + " is_inconsistent_across_dataset; is_(not_)unique_set's members; values' columns),"
+            + " is_inconsistent_across_dataset; is_(not_)unique_set's members;"
+            + " is_not_unique_member_set's members and group; values' columns),"
             + " every within= / ordering= / by= slot and empty_within_except_last_row's group"
             + " — not tuple's columns";
+
+    /**
+     * The splice slots whose per-row member is a VALUE key component instead of a refused splice
+     * (runbook W1b UC1, {@code PLAN-engine-gap-unique-computed} Q2 / Q3, coordinator D2): the
+     * member list of {@code is_(not_)unique_set} only — every other slot keeps refusing a per-row
+     * member at load. The level decides, never the value's content: a dataset-level {@code $} or
+     * expression splices names (as everywhere), a row-cursor one is read per row as a key column
+     * ({@link Value}).
+     */
+    private static final java.util.Map<String, List<String>> VALUE_MEMBER_SLOTS = java.util.Map.of(
+            "is_unique_set", List.of(MEMBERS_PARAMETER), "is_not_unique_set",
+            List.of(MEMBERS_PARAMETER));
+
+    /**
+     * Whether a per-row member at {@code (function, parameter)} is a value key component (W1b UC1)
+     * rather than a refused splice.
+     *
+     * @param function
+     *            the call name
+     * @param parameter
+     *            the parameter name
+     * @return {@code true} for {@code is_(not_)unique_set}'s members
+     */
+    public static boolean admitsValueMember(String function, String parameter)
+    {
+        List<String> slots = VALUE_MEMBER_SLOTS.get(function);
+        return slots != null && slots.contains(parameter);
+    }
+
 
     /**
      * Whether the reader behind {@code (function, parameter)} splices a {@code $} binding or a
@@ -184,7 +224,7 @@ public final class GroupSplice
     /**
      * One member of a splice list, as the reader keeps it from load to evaluation.
      */
-    public sealed interface Member permits Name, Bound, Computed, Sided
+    public sealed interface Member permits Name, Bound, Computed, Sided, Value
     {
 
         /** The member as authored, for messages. */
@@ -288,6 +328,43 @@ public final class GroupSplice
         }
     }
 
+
+    /**
+     * A member of a {@linkplain #admitsValueMember value-admitting} slot —
+     * {@code is_(not_)unique_set}'s members (runbook W1b UC1, coordinator D1–D3) — that is not a
+     * plain name: what {@link #spliced} answers ({@link Bound} / {@link Computed}), read at
+     * evaluation by its LEVEL over the rule's installed binding domains ({@link #readsRowCursor}):
+     * a dataset-level one splices as names exactly as the other slots' members do, a row-cursor one
+     * is a per-row VALUE key component ({@link #valueVector}) — bound and inline alike (G1). A
+     * member written with the {@code duration(…)} marker keys by its hull ({@link #hullKeyed},
+     * dur-order Q5 (a)).
+     *
+     * @param expr
+     *            the member expression — the {@code $} reference, or the computed expression
+     * @param printed
+     *            the member as authored, for messages
+     * @param durationMarked
+     *            whether the member is the written {@code duration(…)} marker
+     */
+    public record Value(Expr expr, String printed, boolean durationMarked) implements Member
+    {
+
+        /**
+         * The value member for {@code item}, or {@code null} for a name or a literal (as
+         * {@link #spliced}).
+         *
+         * @param item
+         *            the authored member
+         * @return the member, or {@code null}
+         */
+        public static @Nullable Value of(Expr item)
+        {
+            Member spliced = spliced(item);
+            return spliced == null ? null
+                    : new Value(item, spliced.printed(), isDurationMarker(item));
+        }
+    }
+
     /**
      * The spliced form of a list member that is not a plain name: a {@code $} reference is
      * {@link Bound}, any other non-literal, non-reference expression (a call, an operator) is
@@ -324,12 +401,97 @@ public final class GroupSplice
     {
         for (Member member : members)
         {
-            if (member instanceof Bound || member instanceof Computed)
+            if (member instanceof Bound || member instanceof Computed || member instanceof Value)
             {
                 return true;
             }
         }
         return false;
+    }
+
+
+    /**
+     * Whether {@code member}'s value varies per row on {@code ctx} — the level judgement of W1b UC1
+     * (coordinator D2), derived over the rule's <b>installed</b> binding domains exactly as stage A
+     * and the loader derive it ({@code DomainScan.infer}; a {@code $} member contributes its
+     * installed domain, {@code BindingValue.handOver}'s own line), never from the value's content.
+     *
+     * @param member
+     *            the member
+     * @param ctx
+     *            the rule's context
+     * @return {@code true} when the member is a per-row value key component
+     */
+    public static boolean readsRowCursor(Value member, EvaluationContext ctx)
+    {
+        return DomainScan.infer(member.expr(), installedDomains(ctx)).rowCursor();
+    }
+
+
+    /** The installed domains of the context's compiled bindings; dataset for any other value. */
+    private static BindingDomains installedDomains(EvaluationContext ctx)
+    {
+        return ref ->
+        {
+            Object raw = ctx.getVariables().get(ref);
+            Domain domain = raw instanceof BindingValue bound ? bound.binding().domain() : null;
+            return domain == null ? Domain.DATASET : domain;
+        };
+    }
+
+
+    /**
+     * The per-row vector of a row-cursor {@link Value} member on {@code ctx}: the binding program's
+     * vector over the whole table — a {@code $} member reads its binding's vector through the
+     * context, a computed one is evaluated on it, so the two spellings answer alike (G1).
+     *
+     * @param member
+     *            the member ({@link #readsRowCursor} answered {@code true})
+     * @param ctx
+     *            the rule's context
+     * @return the vector, one value per row of the evaluated table
+     */
+    public static Vector valueVector(Value member, EvaluationContext ctx)
+    {
+        return NativeExprEvaluator.bindingProgram(member.expr()).evaluate(EvalRun.fullRange(ctx));
+    }
+
+
+    /**
+     * Whether {@code member} keys by the duration hull (dur-order Q5 (a), coordinator D1): the
+     * member is the written {@code duration(…)} marker, or a {@code $} reference whose binding
+     * holds it — bound and inline alike.
+     *
+     * @param member
+     *            the member
+     * @param ctx
+     *            the rule's context (its compiled bindings)
+     * @return {@code true} for a hull-keyed member
+     */
+    public static boolean hullKeyed(Value member, EvaluationContext ctx)
+    {
+        if (member.durationMarked())
+        {
+            return true;
+        }
+        if (member.expr() instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF)
+        {
+            Object raw = ctx.getVariables().get(ref.name());
+            return raw instanceof BindingValue bound
+                    && isDurationMarker(bound.binding().expression());
+        }
+        return false;
+    }
+
+
+    /**
+     * Whether {@code e} is the written one-argument {@code duration(…)} marker — the mirror of
+     * {@code ExprCompiler.isDurationMarker} / {@code RulePackageLoader.isDurationMarker}.
+     */
+    private static boolean isDurationMarker(Expr e)
+    {
+        return e instanceof Expr.Call c && "duration".equals(c.name()) && c.args().size() == 1
+                && c.kwargs().isEmpty();
     }
 
 
@@ -556,6 +718,13 @@ public final class GroupSplice
                     ctx.resolveVariable(bound.ref()), ctx, foreign, qualifiedAdvice, out);
             case Computed computed -> spliceValue(fn, where, computed.printed(),
                     evaluate(computed, ctx), ctx, foreign, qualifiedAdvice, out);
+            // a dataset-level value member splices as the $ / computed member it wraps (UC1);
+            // a row-cursor one is read by valueVector before the splice — here its vector is
+            // the refusal spliceValue files, never a silent first-value read
+            case Value value -> spliceValue(fn, where, value.printed(),
+                    value.expr() instanceof Expr.Ref ref ? ctx.resolveVariable(ref.name())
+                            : datasetLevelValue(value.expr(), ctx),
+                    ctx, foreign, qualifiedAdvice, out);
             }
         }
         return out;

@@ -4,6 +4,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import net.cumba.corej.core.expr.eval.DataValues;
+import net.cumba.corej.core.expr.eval.IsoDurationBounds;
+import net.cumba.corej.core.expr.eval.TypedValue;
+import net.cumba.corej.core.expr.eval.Vector;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.datatable.AbstractDataTableColumn;
 import net.cumba.datatable.DataTableColumnMeta;
@@ -77,7 +81,14 @@ public final class GroupReadTable extends AbstractDataTable
             "empty_within_except_last_row", "has_next_corresponding_record", "is_sorted_by",
             "is_last_in_group", "has_mixed_emptiness_within_group", "contains_all",
             "not_contains_all", "inconsistent_enumerated_columns", "max", "max_date", "min_date",
-            "record_count", "distinct", "sequence");
+            "record_count", "distinct", "sequence", GroupSplice.NOT_UNIQUE_MEMBER_SET);
+
+    /**
+     * The prefix of a value member's reserved column name (runbook W1b UC1, coordinator D3): no
+     * authored column name starts with {@code #}, so the per-row key columns {@link #withValues}
+     * appends never shadow or collide with a dataset's own.
+     */
+    private static final String VALUE_COLUMN_PREFIX = "#value";
 
     /**
      * The operators that count records ({@code PLAN-merged-evaluation-table} OD-6): every
@@ -172,6 +183,65 @@ public final class GroupReadTable extends AbstractDataTable
             metas.add(DataTableColumnMeta.builder().index(metas.size()).name(name).label(name)
                     .type(merged.get(i).type()).build());
             columns[i] = merged.get(i).column();
+        }
+        DataTableMeta grown = meta.toBuilder().columns(metas.toArray(DataTableColumnMeta[]::new))
+                .build();
+        return new GroupReadTable(table, grown, columns);
+    }
+
+
+    /**
+     * The reserved column name of the {@code index}-th value member of a key list (W1b UC1).
+     *
+     * @param index
+     *            the member's position in the authored list
+     * @return the name
+     */
+    public static String valueColumnName(int index)
+    {
+        return VALUE_COLUMN_PREFIX + index;
+    }
+
+
+    /**
+     * {@code table} grown by one column per {@code vectors} entry, named by {@code names} (W1b UC1,
+     * {@code PLAN-engine-gap-unique-computed} — coordinator D3): the per-row VALUE key members of
+     * {@code is_(not_)unique_set}, materialised as columns of the reader's table so
+     * {@code GroupSemantics.uniqueSetViolations} and its {@code KeyPart} identity run unchanged
+     * over them — the column path stays byte-for-byte by construction. {@code table} may itself be
+     * the merged-column table {@link #of} answered. A hull-keyed vector (a {@code duration(…)}
+     * member, dur-order Q5 (a)) keys a positionable cell by its canonical hull text, an
+     * unpositionable one by its text; a missing keeps its identity.
+     *
+     * @param table
+     *            the table to grow
+     * @param names
+     *            the reserved names ({@link #valueColumnName}), parallel to {@code vectors}
+     * @param vectors
+     *            the per-row vectors over {@code table}'s rows
+     * @param hullKeyed
+     *            per vector, whether it keys by the duration hull
+     * @return {@code table} when there is nothing to add, else it with the value columns appended
+     */
+    public static IDataTable withValues(IDataTable table, List<String> names, List<Vector> vectors,
+            List<Boolean> hullKeyed)
+    {
+        if (names.isEmpty())
+        {
+            return table;
+        }
+        DataTableMeta meta = table.getMetaData();
+        List<DataTableColumnMeta> metas = new ArrayList<>(Arrays.asList(meta.getColumns()));
+        IDataTableColumn[] columns = new IDataTableColumn[names.size()];
+        for (int i = 0; i < columns.length; i++)
+        {
+            Vector vector = vectors.get(i);
+            DataValueType type = vector.declaredType() == DataValueType.MISSING
+                    ? DataValueType.STRING
+                    : vector.declaredType();
+            metas.add(DataTableColumnMeta.builder().index(metas.size()).name(names.get(i))
+                    .label(names.get(i)).type(type).build());
+            columns[i] = new VectorColumn(table, vector, hullKeyed.get(i));
         }
         DataTableMeta grown = meta.toBuilder().columns(metas.toArray(DataTableColumnMeta[]::new))
                 .build();
@@ -318,6 +388,73 @@ public final class GroupReadTable extends AbstractDataTable
         public IDataValue getDataValue(long aRow)
         {
             return reader.apply(aRow);
+        }
+    }
+
+
+    /**
+     * A value member's column (W1b UC1): the member's per-row cell, handed through so a
+     * cell-sourced value keeps the exact cell and a missing its identity; hull-keyed, a
+     * positionable duration is replaced by its canonical hull text. A per-row LIST is not a key
+     * component — stage A refuses the statically typed one, an untyped one is the rule's ERROR here
+     * (D35: never a silent text key).
+     */
+    private static final class VectorColumn extends AbstractDataTableColumn
+    {
+
+        private final IDataTable primary;
+
+        private final Vector vector;
+
+        private final boolean hullKeyed;
+
+        private VectorColumn(IDataTable aPrimary, Vector aVector, boolean aHullKeyed)
+        {
+            super(-1);
+            primary = aPrimary;
+            vector = aVector;
+            hullKeyed = aHullKeyed;
+        }
+
+
+        @Override
+        public long getRowCount()
+        {
+            return primary.getRowCount();
+        }
+
+
+        @Override
+        public @Nullable Object getValue(long aRow)
+        {
+            return getDataValue(aRow).getValue();
+        }
+
+
+        @Override
+        public IDataValue getDataValue(long aRow)
+        {
+            TypedValue tv = vector.value((int) aRow);
+            IDataValue cell = tv.cell();
+            if (tv.isMissing())
+            {
+                return cell;
+            }
+            if (tv.resolved() instanceof Collection<?>)
+            {
+                throw new GroupSplice.GroupSpliceException("a value member of is_(not_)unique_set"
+                        + " answered a list at row " + (aRow + 1)
+                        + " — a list is not a key component; key on one value per row");
+            }
+            if (hullKeyed)
+            {
+                IsoDurationBounds.Hull hull = IsoDurationBounds.hull(cell.getValueAsString());
+                if (hull != null)
+                {
+                    return DataValues.of(IsoDurationBounds.renderHull(hull.lower(), hull.upper()));
+                }
+            }
+            return cell;
         }
     }
 

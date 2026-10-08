@@ -2293,6 +2293,15 @@ public final class StageAChecker
                 checkColumnReferenceArgument(c, descriptor, param, arg, walked.type());
                 continue;
             }
+            if (isColumnReferenceList(declared) && admitsValueMember(c, param)
+                    && net.cumba.corej.core.exec.GroupSplice.spliced(arg) != null
+                    && isPerRow(walked))
+            {
+                // W1b UC1: the bare per-row operand of is_(not_)unique_set is the one-member
+                // VALUE key (C5) — judged as the list member is
+                judgeValueMember(c, param, walked);
+                continue;
+            }
             if (isColumnReferenceList(declared) && splices(c, param)
                     && (isSpliceShape(arg, walked.type()) || (walked.type() == Unknown.UNKNOWN
                             && net.cumba.corej.core.exec.GroupSplice.spliced(arg) != null))
@@ -2461,6 +2470,33 @@ public final class StageAChecker
     }
 
 
+    /**
+     * The judgement of a per-row member at a value-admitting slot (W1b UC1,
+     * {@code GroupSplice.admitsValueMember}): a list is not a key component, {@code regex=} cannot
+     * normalise a value member (Q4) — both {@code PARAMETER_TYPE}, the same sentences the loader's
+     * seam pass files ({@code ListOperandLevel}); any other per-row value is admitted.
+     */
+    private void judgeValueMember(Expr.Call c, Parameter param, TypedExpr member)
+    {
+        if (member.type().dereference() instanceof ListOf)
+        {
+            find(StageAErrorKind.PARAMETER_TYPE, net.cumba.corej.core.expr.eval.ListOperandLevel
+                    .valueMemberListRefusal(c.name(), param.name(), null, member.node()) + at(c));
+        }
+        else if (c.kwargs().containsKey("regex"))
+        {
+            find(StageAErrorKind.PARAMETER_TYPE, net.cumba.corej.core.expr.eval.ListOperandLevel
+                    .valueMemberRegexRefusal(c.name(), null, member.node()) + at(c));
+        }
+    }
+
+
+    private static boolean admitsValueMember(Expr.Call c, Parameter param)
+    {
+        return net.cumba.corej.core.exec.GroupSplice.admitsValueMember(c.name(), param.name());
+    }
+
+
     private void findPerRowSplice(Expr.Call c, Parameter param, Expr node)
     {
         // one sentence for both spellings (ListOperandLevel.spliceRefusal), the loader's seam pass
@@ -2596,6 +2632,17 @@ public final class StageAChecker
                                     + ") is a binding of column names — a spliced list of names"
                                     + " is read only by " + SPLICING_READERS + at(c));
                 }
+                continue;
+            }
+            if (splicing && admitsValueMember(c, param)
+                    && net.cumba.corej.core.exec.GroupSplice.spliced(element.node()) != null
+                    && isPerRow(element))
+            {
+                // W1b UC1 (PLAN-engine-gap-unique-computed Q2, coordinator D2): at
+                // is_(not_)unique_set's members a per-row $ or computed member is a VALUE key
+                // component — whatever its scalar type — not a refused splice; a per-row LIST
+                // and a regex= beside it stay findings (Q4)
+                judgeValueMember(c, param, element);
                 continue;
             }
             if (type == Unknown.UNKNOWN && splicing

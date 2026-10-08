@@ -1279,6 +1279,123 @@ public final class GroupSemantics
     }
 
     // -------------------------------------------------------------------------
+    // is_not_unique_member_set (group against group: equal member sets)
+    // -------------------------------------------------------------------------
+
+
+    /**
+     * The {@code is_not_unique_member_set(members=[…], group=[…])} verdict (runbook W1b SS1,
+     * {@code PLAN-engine-gap-set-of-sets} §5, Q1–Q5): every row of each group — by the
+     * {@code groupCols} tuple — whose <b>member set</b>, the set of distinct {@code memberCols}
+     * tuples over its rows, equals the member set of at least one <em>other</em> group fires (Q4).
+     * Two {@code POOLID}s pooling the same subjects, two {@code NHOID}s carrying the same
+     * ({@code OIPARMCD}, {@code OIVAL}) taxonomy. The comparison is <b>set against set</b>: a tuple
+     * repeated inside one group counts once (a multiset would make {@code CDISC-SEND-0262}'s defect
+     * this one's), the row order is irrelevant, and the whole set must agree — one differing pair
+     * is a different set, a subject listed in two different pools is no finding.
+     *
+     * <p>
+     * Identity is {@link #uniqueSetViolations}' (Q3): each tuple is the per-column {@link KeyPart}
+     * list under {@code policy}, so {@code ""} and each missing marker are real, distinct
+     * components of the member tuple and of the group key; under a discarding policy
+     * ({@code keep_missings=false}) a row with a blank group or member component takes no part. An
+     * absent {@code members} column is dropped wherever it sits (D-4, as {@code is_unique_set} —
+     * the same partition as its removal); an absent {@code group} column partitions nothing: one
+     * group, nothing to compare, no finding. When <em>every</em> member drops, each group's set is
+     * the one empty tuple and every group shares it — the documented degenerate flood, exactly
+     * {@code is_unique_set}'s (an authored empty list is refused at load).
+     * </p>
+     *
+     * <p>
+     * One pass over the rows builds each group's set ({@code HashSet} of tuples — equal sets hash
+     * and compare equal whatever their insertion order, so the set itself is the canonical key; no
+     * sort, no per-row allocation beyond the two tuples); a second pass over the groups collects
+     * the groups per set. {@code O(n)} expected.
+     * </p>
+     *
+     * @param table
+     *            the dataset
+     * @param rowCount
+     *            the row count
+     * @param memberCols
+     *            the member tuple's columns, in authored order; a {@code null} or absent member is
+     *            dropped
+     * @param groupCols
+     *            the group key's columns; a {@code null} or absent one is dropped
+     * @param policy
+     *            what a blank component means
+     * @return the violating absolute rows
+     */
+    public static BitSet notUniqueMemberSetViolations(IDataTable table, int rowCount,
+            List<? extends @Nullable String> memberCols, List<? extends @Nullable String> groupCols,
+            GroupKeyPolicy policy)
+    {
+        BitSet out = new BitSet();
+        if (rowCount <= 0)
+        {
+            return out;
+        }
+        DataTableMeta meta = table.getMetaData();
+        int[] memberIds = presentColumnIds(meta, memberCols);
+        int[] groupIds = presentColumnIds(meta, groupCols);
+        if (groupIds.length == 0)
+        {
+            return out;
+        }
+        @Nullable
+        Pattern[] noMemberPattern = new Pattern[memberIds.length];
+        @Nullable
+        Pattern[] noGroupPattern = new Pattern[groupIds.length];
+        Map<List<KeyPart>, Set<List<KeyPart>>> setsByGroup = new LinkedHashMap<>();
+        Map<List<KeyPart>, BitSet> rowsByGroup = new HashMap<>();
+        for (int r = 0; r < rowCount; r++)
+        {
+            if (rowKeyDiscarded(table, groupIds, r, policy)
+                    || rowKeyDiscarded(table, memberIds, r, policy))
+            {
+                continue;
+            }
+            List<KeyPart> group = foldedKey(table, groupIds, noGroupPattern, r, policy);
+            List<KeyPart> member = foldedKey(table, memberIds, noMemberPattern, r, policy);
+            setsByGroup.computeIfAbsent(group, _ -> new HashSet<>()).add(member);
+            rowsByGroup.computeIfAbsent(group, _ -> new BitSet()).set(r);
+        }
+        Map<Set<List<KeyPart>>, List<List<KeyPart>>> groupsBySet = new HashMap<>();
+        for (Map.Entry<List<KeyPart>, Set<List<KeyPart>>> e : setsByGroup.entrySet())
+        {
+            groupsBySet.computeIfAbsent(e.getValue(), _ -> new ArrayList<>(2)).add(e.getKey());
+        }
+        for (List<List<KeyPart>> sharing : groupsBySet.values())
+        {
+            if (sharing.size() > 1)
+            {
+                for (List<KeyPart> group : sharing)
+                {
+                    out.or(rowsByGroup.get(group));
+                }
+            }
+        }
+        return out;
+    }
+
+
+    /** The indices of the present columns among {@code cols}, in order; absent ones dropped. */
+    private static int[] presentColumnIds(DataTableMeta meta, List<? extends @Nullable String> cols)
+    {
+        int[] ids = new int[cols.size()];
+        int n = 0;
+        for (String col : cols)
+        {
+            int idx = col == null ? -1 : meta.getColumnIndex(col);
+            if (idx >= 0)
+            {
+                ids[n++] = idx;
+            }
+        }
+        return n < ids.length ? Arrays.copyOf(ids, n) : ids;
+    }
+
+    // -------------------------------------------------------------------------
     // is_inconsistent_across_dataset (one value per group)
     // -------------------------------------------------------------------------
 

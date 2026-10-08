@@ -152,13 +152,20 @@ class UniqueSetListOperandCompileTest
                 () -> eval("not is_unique_set([EPOCH], keys=[USUBJID])", t));
         assertTrue(mixed.getMessage().contains("one list operand"), mixed.getMessage());
         assertThrows(ExpressionException.class, () -> eval("not is_unique_set()", t));
-        // W1a BS2 (C4): a computed member compiles as a splice — the compiler cannot type it (stage
-        // A refuses a per-row or non-name one at load); a value that is not a list of names or a
-        // name is the one splice's run-time refusal, exactly as a $ member holding one.
+        // W1a BS2 (C4): a dataset-level computed member compiles as a splice — the compiler
+        // cannot type it (stage A refuses a non-name one at load); a value that is not a list of
+        // names or a name is the one splice's run-time refusal, exactly as a $ member holding
+        // one. (W1b UC1: a PER-ROW computed member — upper(EPOCH) — is a value key component
+        // now, UniqueSetComputedMemberTest; the level decides, so the dataset-level pin stays.)
         IllegalStateException computed = assertThrows(IllegalStateException.class,
-                () -> eval("not is_unique_set([length(EPOCH), USUBJID])", t));
+                () -> eval("not is_unique_set([coalesce(5, 6), USUBJID])", t));
         assertTrue(computed.getMessage().contains("must hold a list of column names"),
                 computed.getMessage());
+        assertEquals(
+                primitive(t, List.of("EPOCH", "USUBJID"), null, true,
+                        GroupKeyPolicy.FOLD_BLANK_KEYS),
+                eval("not is_unique_set([upper(EPOCH), USUBJID])", t),
+                "a per-row value member keys as the upper-case column it reads");
     }
 
 

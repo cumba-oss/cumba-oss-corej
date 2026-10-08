@@ -1679,39 +1679,64 @@ class StageACheckerTest
         }
         // negatives
         for (String expression : List.of("is_unique_set([\"USUBJID\"])",
-                "is_unique_set([USUBJID, $num])", "empty(max(AESEQ, group=[USUBJID, $num]))",
+                "empty(max(AESEQ, group=[USUBJID, $num]))",
                 "empty(max(AESEQ, group=[USUBJID, $scalar]))",
                 "AETERM in distinct(AETERM, group=[USUBJID, upper(AETERM)])",
                 // review r1 L7: a PER-ROW binding can never be spliced (GroupSplice ERRORs on the
                 // hand-over Vector) — stage A's derived level is certain for these, so they are
                 // refused at load: colref(list) reads per row, upper(AETERM) is per row
-                "is_unique_set([USUBJID, $cl])", "is_unique_set([USUBJID, $scalar])",
                 "record_count(group=$cl) > 1", "record_count(group=[USUBJID, $scalar]) > 1",
                 "record_count(group=[USUBJID, $num]) > 1", "record_count(group=$num) > 1",
                 // BS2: the inline spelling meets the same judgement — a per-row expression or a
                 // number is refused where the $ binding holding it is; a quoted name stays a
                 // string (W8 D-W8-6), and a non-splicing reader refuses the expression as it
                 // refuses the $
-                "is_unique_set([USUBJID, upper(AETERM)])", "is_unique_set(upper(AETERM))",
                 "record_count(group=[USUBJID, upper(AETERM)]) > 1",
-                "record_count(group=upper(AETERM)) > 1", "is_unique_set([USUBJID, len(AETERM)])",
+                "record_count(group=upper(AETERM)) > 1",
                 "record_count(group=[USUBJID, colref([\"A\", \"B\"])]) > 1",
                 "is_unique_relationship(AETERM, keys=[USUBJID, $scalar])",
-                "is_last_in_group(ordering=AESEQ, group=[USUBJID, upper(AETERM)])"))
+                "is_last_in_group(ordering=AESEQ, group=[USUBJID, upper(AETERM)])",
+                // W1b UC1 (PLAN-engine-gap-unique-computed Q2): is_(not_)unique_set's members
+                // admit a per-row VALUE member — but never a per-row LIST (a list is not a key
+                // component), bound or inline
+                "is_unique_set([USUBJID, $cl])", "is_unique_set([USUBJID, colref([\"A\", \"B\"])])",
+                "is_unique_set($cl)"))
         {
             assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(check(rule, expression)),
                     expression);
+        }
+        // W1b UC1: a per-row scalar member of is_(not_)unique_set is a value key component — the
+        // one splice slot where the level admits the per-row spelling (bound ≡ inline, G1); a
+        // regex= beside it is the Q4 finding
+        for (String expression : List.of("is_unique_set([USUBJID, $scalar])",
+                "is_unique_set([USUBJID, upper(AETERM)])", "is_unique_set(upper(AETERM))",
+                "is_unique_set([USUBJID, len(AETERM)])", "is_unique_set([USUBJID, $num])",
+                "is_not_unique_set([USUBJID, $scalar])"))
+        {
+            assertEquals(List.of(), check(rule, expression).findings(), expression);
+        }
+        for (String expression : List.of("is_unique_set([USUBJID, $scalar], regex=\"^\\\\d{4}\")",
+                "is_unique_set([USUBJID, upper(AETERM)], regex=\"^\\\\d{4}\")"))
+        {
+            assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(check(rule, expression)),
+                    expression);
+            String regex = check(rule, expression).findings().get(0).message();
+            assertTrue(regex.contains("regex=") && regex.contains("value member"), regex);
         }
         String groupPerRow = check(rule, "empty(max(AESEQ, group=[USUBJID, $scalar]))").findings()
                 .get(0).message();
         assertTrue(groupPerRow.contains("per-row") && groupPerRow.contains("'group' of 'max'"),
                 groupPerRow);
-        String perRow = check(rule, "is_unique_set([USUBJID, $cl])").findings().get(0).message();
+        String perRow = check(rule, "record_count(group=$cl) > 1").findings().get(0).message();
         assertTrue(perRow.contains("per-row") && perRow.contains("$cl"), perRow);
-        String inlinePerRow = check(rule, "is_unique_set([USUBJID, upper(AETERM)])").findings()
-                .get(0).message();
+        String inlinePerRow = check(rule, "record_count(group=[USUBJID, upper(AETERM)]) > 1")
+                .findings().get(0).message();
         assertTrue(inlinePerRow.contains("per-row") && inlinePerRow.contains("upper(AETERM)"),
                 inlinePerRow);
+        String listMember = check(rule, "is_unique_set([USUBJID, $cl])").findings().get(0)
+                .message();
+        assertTrue(listMember.contains("not a key component") && listMember.contains("$cl"),
+                listMember);
     }
 
 

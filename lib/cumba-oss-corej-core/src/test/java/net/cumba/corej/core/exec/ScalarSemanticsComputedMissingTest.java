@@ -780,7 +780,13 @@ class ScalarSemanticsComputedMissingTest
     // carrier's own cell (TypedValue.cell(), never null: a missing cell with its identity, a
     // numeric cell typed, a derived cell for a resolved payload), a present character value
     // re-wrapped as its member-safe text (DataValues.of). Never null.
-    private static final int EXPECTED_VALUE_PRODUCERS = 38;
+    // 38 -> 39 (PLAN-engine-gap-unique-computed, runbook W1b UC1): GroupReadTable.VectorColumn
+    // .getDataValue came (+1) — read: a per-row VALUE key member of is_(not_)unique_set as a
+    // column of the reader's table — the carrier's own cell (TypedValue.cell(): a missing with its
+    // identity, a cell-sourced value verbatim, a derived cell for a resolved payload), a hull-keyed
+    // positionable duration re-wrapped as its canonical hull text (DataValues.of); a list payload
+    // raises the rule's ERROR (a list is not a key component). Never null.
+    private static final int EXPECTED_VALUE_PRODUCERS = 39;
 
     private static Method declared(Class<?> owner, String name)
     {

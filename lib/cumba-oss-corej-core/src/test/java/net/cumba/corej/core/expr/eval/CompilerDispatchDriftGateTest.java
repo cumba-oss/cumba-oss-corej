@@ -84,6 +84,9 @@ class CompilerDispatchDriftGateTest
         probes.put("is_unique_relationship", "is_unique_relationship(AEDECOD, keys=[USUBJID])");
         probes.put("is_not_unique_set", "is_not_unique_set([USUBJID, DOMAIN])");
         probes.put("is_unique_set", "is_unique_set([USUBJID, DOMAIN])");
+        // runbook W1b SS1 (PLAN-engine-gap-set-of-sets): group-against-group member sets
+        probes.put("is_not_unique_member_set",
+                "is_not_unique_member_set(members=[USUBJID], group=[POOLID])");
         probes.put("is_not_unique_value", "is_not_unique_value(USUBJID)");
         probes.put("is_unique_value", "is_unique_value(USUBJID)");
         probes.put("is_inconsistent_across_dataset",
@@ -115,10 +118,11 @@ class CompilerDispatchDriftGateTest
     @Test
     void declaredCountsArePinned()
     {
-        assertEquals(33, CompilerDispatchedCalls.booleanCallNames().size(),
+        assertEquals(34, CompilerDispatchedCalls.booleanCallNames().size(),
                 "compileBoolCall-dispatched boolean calls (30 + the three quantifiers any / all /"
                         + " none of PLAN-cg0218-transition-day-precision; +2 column-status"
-                        + " predicates of PLAN-present-empty-column-fold)");
+                        + " predicates of PLAN-present-empty-column-fold; +1"
+                        + " is_not_unique_member_set of runbook W1b SS1)");
         assertEquals(2, CompilerDispatchedCalls.negationDispatchedBooleanCallNames().size(),
                 "negation-dispatched boolean calls (compileNot's Q1 arms)");
         assertEquals(25, CompilerDispatchedCalls.valueCallNames().size(),
@@ -128,12 +132,13 @@ class CompilerDispatchDriftGateTest
                         + " codelist_decode of runbook W1b DV)");
         int parameters = new CompilerDispatchedCalls().functions().stream()
                 .mapToInt(d -> d.parameters().size()).sum();
-        assertEquals(145, parameters, "declared parameter surfaces across the 60 descriptors (+2"
+        assertEquals(148, parameters, "declared parameter surfaces across the 61 descriptors (+2"
                 + " column-status predicates, PLAN-present-empty-column-fold) —"
                 + " update deliberately when a signature legitimately changes (W2a: read_value's"
                 + " four; W5: read_value's group / keep_missings, max's five, the two date"
                 + " extremes' six each; W6: record_count's five; W7: distinct's five;"
-                + " PLAN-cg0218: one each for any / all / none / joined)");
+                + " PLAN-cg0218: one each for any / all / none / joined; W1b SS1:"
+                + " is_not_unique_member_set's three)");
     }
 
 

@@ -86,6 +86,7 @@ is_not_complete_date_part(x:string) kind=boolean elementwise
 is_not_integer(x:unknown) kind=boolean elementwise
 is_not_ordered_subset_of(name:unknown, value:unknown) kind=boolean
 is_not_prefix_of(a:list<unknown>, b:list<unknown>) kind=boolean
+is_not_unique_member_set(members:list<column-reference>, group:list<column-reference>, keep_missings:boolean?) kind=boolean
 is_not_unique_relationship(name:unknown, value:unknown?, keys:list<column-reference>?) kind=boolean
 is_not_unique_set(members:list<column-reference>, regex:string?, keep_missings:boolean?) kind=boolean
 is_not_unique_value(name:unknown) kind=boolean
@@ -306,6 +307,7 @@ has_multiple_values_for.keep_missings: literal boolean plan-build
 has_next_corresponding_record.keep_missings: literal boolean plan-build
 is_inconsistent_across_dataset.keep_missings: literal boolean plan-build
 is_last_in_group.keep_missings: literal boolean plan-build
+is_not_unique_member_set.keep_missings: literal boolean plan-build
 is_not_unique_set.keep_missings: literal boolean plan-build
 is_sorted_by.keep_missings: literal boolean plan-build
 is_unique_set.keep_missings: literal boolean plan-build

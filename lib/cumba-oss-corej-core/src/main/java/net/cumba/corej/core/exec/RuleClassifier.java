@@ -277,7 +277,10 @@ public final class RuleClassifier
      */
     private static final Set<String> VALUE_IS_COLUMN = Set.of("is_inconsistent_across_dataset",
             "is_not_unique_set", "is_unique_set", "is_not_unique_relationship",
-            "is_unique_relationship", "has_multiple_values_for");
+            "is_unique_relationship", "has_multiple_values_for",
+            // runbook W1b SS1: its operands arrive through the declared members= / group= lists
+            // (declaredColumnOperands), both columns
+            GroupSplice.NOT_UNIQUE_MEMBER_SET);
 
     /**
      * The uniqueness pair whose canonical authored form is a single list operand
@@ -1055,6 +1058,23 @@ public final class RuleClassifier
                     collectColumnRefs(member, usages, out);
                 }
             }
+        }
+        else if (e instanceof Expr.Call call && SortKeys.isDescriptor(call)
+                && !call.args().isEmpty())
+        {
+            // a sort-key descriptor names the column it wraps (W1b SK)
+            collectColumnRefs(call.args().get(0), usages, out);
+        }
+        else if (e instanceof Expr.Call && !usages.contains(CallUsage.UNRESOLVED))
+        {
+            // W1b SS1 (found by `is_not_unique_member_set(members=minus(…), group=minus(…))`):
+            // a computed splice member — the expression a `$` binding would hold, written in
+            // place (W1a BS2, G1) — is the same usage the `$` reference is: a dataset-level list
+            // of names resolved at evaluation, never a column name. Without this arm a call whose
+            // every column parameter is computed had NO operand, the Check read as signal-free
+            // and the runner collapsed its per-row findings to one, where the bound spelling
+            // classified Record (bound ≡ inline).
+            usages.add(CallUsage.UNRESOLVED);
         }
     }
 

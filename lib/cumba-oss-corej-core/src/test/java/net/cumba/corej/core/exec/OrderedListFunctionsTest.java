@@ -139,8 +139,9 @@ class OrderedListFunctionsTest
     void theRegistryFunctionsAreNotCompilerDispatched()
     {
         // D11: ordinary registry functions over vectors, not the $-names-only dispatch of
-        // is_ordered_subset_of — the dispatch roster keeps its 33 names
-        assertEquals(33, CompilerDispatchedCalls.booleanCallNames().size());
+        // is_ordered_subset_of — the dispatch roster keeps its 33 names (34 since W1b SS1's
+        // is_not_unique_member_set, a group verdict that IS compiler-dispatched)
+        assertEquals(34, CompilerDispatchedCalls.booleanCallNames().size());
         for (String name : List.of("is_prefix_of", "is_not_prefix_of", "is_increasing"))
         {
             assertTrue(!CompilerDispatchedCalls.booleanCallNames().contains(name), name);

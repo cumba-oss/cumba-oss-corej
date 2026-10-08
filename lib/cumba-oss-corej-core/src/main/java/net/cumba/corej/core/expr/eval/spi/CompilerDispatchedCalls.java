@@ -236,6 +236,12 @@ public final class CompilerDispatchedCalls implements FunctionProvider
         // undeclared here on purpose.
         bool(fns, "is_not_unique_set", members(), regex(false), keepMissings());
         bool(fns, "is_unique_set", members(), regex(false), keepMissings());
+        // Runbook W1b SS1 (PLAN-engine-gap-set-of-sets Q1–Q5): group against group — every row
+        // of a group whose SET of distinct member tuples equals another group's. Both lists are
+        // splice slots (GroupSplice.SPLICE_SLOTS); no positive twin.
+        bool(fns, net.cumba.corej.core.exec.GroupSplice.NOT_UNIQUE_MEMBER_SET, members(),
+                Parameter.required("group", new ListOf(Primitive.COLUMN_REFERENCE)),
+                keepMissings());
         bool(fns, "is_not_unique_value", req("name"));
         bool(fns, "is_unique_value", req("name"));
         bool(fns, "is_inconsistent_across_dataset", req("name"), opt("key"), columnKeys(),

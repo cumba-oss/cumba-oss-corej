@@ -273,8 +273,10 @@ class ValuesFunctionTest
     {
         // lane 5's reading of §3.2 / §3.7: values(…) is a row reader, so as a MEMBER of another
         // splice list it is the per-row member the G3 arm refuses — never a splice of names
+        // (since W1b UC1 is_(not_)unique_set admits a per-row VALUE member, so there the
+        // refusal is the list one: a list is not a key component)
         String error = loadError("not is_unique_set([USUBJID, values([A])])");
-        assertTrue(error.contains("cannot splice the per-row member"), error);
+        assertTrue(error.contains("a list is not a key component"), error);
         assertTrue(error.contains("values([A])"), error);
         String group = loadError("record_count(group=[USUBJID, values([A, B])]) > 1");
         assertTrue(group.contains("cannot splice the per-row member"), group);

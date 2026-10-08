@@ -1548,7 +1548,9 @@ public class RulePackageLoader
             "target_is_not_sorted_by", "is_sorted_by",
             // wave 1 (PLAN-function-surface-wave1 D-W1-4): the two grouped callables ported from
             // the Operation surface consume keep_missings= as registry functions now.
-            "is_last_in_group", "has_mixed_emptiness_within_group");
+            "is_last_in_group", "has_mixed_emptiness_within_group",
+            // runbook W1b SS1: the group-against-group verdict partitions by its group= tuple
+            net.cumba.corej.core.exec.GroupSplice.NOT_UNIQUE_MEMBER_SET);
 
     /**
      * Rejects an unusable inline {@code keep_missings=} on a Check-operator call, on the

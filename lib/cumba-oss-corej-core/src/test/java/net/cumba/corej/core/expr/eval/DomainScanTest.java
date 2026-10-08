@@ -221,6 +221,16 @@ class DomainScanTest
                 .values().iterator().next();
         assertNull(rule.getLoadError(), rule.getLoadError());
         assertEquals(Domain.DATASET, BindingDomains.forRule(rule).domainOf("$keys"));
+        // W1b SS1 / UC1: a group operator whose every operand is a dataset-level name list still
+        // answers per row — the Check must not fold to one broadcast verdict
+        assertEquals(Domain.ROW, infer("not is_unique_set($keys)", BindingDomains.forRule(rule)));
+        assertEquals(Domain.ROW,
+                infer("is_not_unique_member_set(members=$m, group=$g)", r -> Domain.DATASET));
+        assertEquals(Domain.ROW,
+                infer("is_last_in_group(ordering=$o, group=$g)", r -> Domain.DATASET));
+        // the whole-column verdicts and the ungrouped aggregates keep folding
+        assertEquals(Domain.DATASET, infer("contains_all($a, $b)", r -> Domain.DATASET));
+        assertEquals(Domain.DATASET, infer("contains(distinct(AESEQ), \"1\")"));
     }
 
 

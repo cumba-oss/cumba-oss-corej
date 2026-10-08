@@ -279,6 +279,14 @@ class BindingSubstitutabilityTest
                     load(slot.replace("‹arg›", "$x"), "$x", "upper(AETERM)").getLoadError());
             String inline = String
                     .valueOf(load(slot.replace("‹arg›", "upper(AETERM)")).getLoadError());
+            if (slot.contains("unique_set("))
+            {
+                // W1b UC1 (PLAN-engine-gap-unique-computed Q2): at is_(not_)unique_set's members
+                // the per-row member is a VALUE key component — both spellings load
+                assertEquals("null", bound, slot + " bound → " + bound);
+                assertEquals("null", inline, slot + " inline → " + inline);
+                continue;
+            }
             assertTrue(bound.contains("PARAMETER_TYPE"), slot + " bound → " + bound);
             assertTrue(bound.contains("cannot splice the per-row"), slot + " bound → " + bound);
             assertEquals(bound.replace("$x", "upper(AETERM)"), inline,
@@ -684,11 +692,10 @@ class BindingSubstitutabilityTest
     {
         // R5 review BS2b LOW-4: stage A skipped the level of a spliced member it could not type
         // (coalesce answers unknown), so the computed per-row member read row 0 silently
-        for (String check : List.of("not is_unique_set([USUBJID, coalesce(AETERM, AEDECOD)])",
-                "record_count(group=[USUBJID, coalesce(AETERM, AEDECOD)]) > 1"))
-        {
-            assertPerRowSplice(check);
-        }
+        assertPerRowSplice("record_count(group=[USUBJID, coalesce(AETERM, AEDECOD)]) > 1");
+        // W1b UC1 (PLAN-engine-gap-unique-computed Q2): is_(not_)unique_set's members read the
+        // per-row member as a VALUE key component instead — it loads (UniqueSetComputedMemberTest)
+        assertNull(load("not is_unique_set([USUBJID, coalesce(AETERM, AEDECOD)])").getLoadError());
         // control: a dataset-level member of unknown type splices
         assertNull(
                 load("not is_unique_set([USUBJID, coalesce(\"AETERM\", \"X\")])").getLoadError());
@@ -698,8 +705,11 @@ class BindingSubstitutabilityTest
     @Test
     void aPerRowBareSpliceOperandOfUnknownTypeIsTheLevelFindingToo() throws Exception
     {
-        // the same gap at the bare operand (f(<expression>) reads as f([<expression>]), C5)
-        assertPerRowSplice("not is_unique_set(coalesce(AETERM, AEDECOD))");
+        // the same gap at the bare operand (f(<expression>) reads as f([<expression>]), C5) —
+        // and since W1b UC1 the same admission: the bare per-row operand is the one-member value
+        // key
+        assertPerRowSplice("record_count(group=coalesce(AETERM, AEDECOD)) > 1");
+        assertNull(load("not is_unique_set(coalesce(AETERM, AEDECOD))").getLoadError());
         assertNull(load("not is_unique_set(coalesce(\"AETERM\", \"X\"))").getLoadError());
     }
 

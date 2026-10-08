@@ -251,12 +251,63 @@ public final class ListOperandLevel
 
 
     /**
+     * The refusal's text for {@code regex=} beside a per-row VALUE member of
+     * {@code is_(not_)unique_set} (runbook W1b UC1, {@code PLAN-engine-gap-unique-computed} Q4):
+     * the normalisation samples a <em>column</em>'s first value, a value member has no column — one
+     * sentence for both spellings, filed by stage A ({@code PARAMETER_TYPE}) and by the loader's
+     * seam pass.
+     *
+     * @param function
+     *            the uniqueness function
+     * @param where
+     *            where the call is written, or {@code null} when the caller says so itself
+     * @param member
+     *            the value member, printed as written
+     * @return the message
+     */
+    public static String valueMemberRegexRefusal(String function, @Nullable String where,
+            Expr member)
+    {
+        return "argument 'regex' of '" + function + "'" + (where == null ? "" : " in " + where)
+                + " applies to column members only and cannot normalise the value member `"
+                + ExpressionPrinter.print(member)
+                + "` — write the normalisation as the member (substring(…), prefix(…))";
+    }
+
+
+    /**
+     * The refusal's text for a per-row LIST member of {@code is_(not_)unique_set} (W1b UC1): a
+     * per-row value is a key component, a list is not.
+     *
+     * @param function
+     *            the uniqueness function
+     * @param parameter
+     *            the parameter
+     * @param where
+     *            where the call is written, or {@code null} when the caller says so itself
+     * @param member
+     *            the member, printed as written
+     * @return the message
+     */
+    public static String valueMemberListRefusal(String function, String parameter,
+            @Nullable String where, Expr member)
+    {
+        return "argument '" + parameter + "' of '" + function + "'"
+                + (where == null ? "" : " in " + where) + " reads the per-row member `"
+                + ExpressionPrinter.print(member)
+                + "` as a value key component, but a list is not a key component — key on one"
+                + " value per row";
+    }
+
+
+    /**
      * The refusal's text for a per-row member of a splice slot (every slot of {@code GroupSplice}'s
      * roster — {@code GroupSplice.SPLICING_READERS}: every {@code group=}, the
-     * {@code qualifying_any_populated=} and {@code keys=} lists, {@code is_(not_)unique_set}'s
-     * members, {@code values}' columns) — one sentence for both spellings; stage A files it as
-     * {@code PARAMETER_TYPE} (the splice is a shape of the {@code list<column-reference>}
-     * parameter), the loader's seam pass as the load error.
+     * {@code qualifying_any_populated=} and {@code keys=} lists, {@code values}' columns; since W1b
+     * UC1 <em>not</em> {@code is_(not_)unique_set}'s members, where a per-row member is a value key
+     * component) — one sentence for both spellings; stage A files it as {@code PARAMETER_TYPE} (the
+     * splice is a shape of the {@code list<column-reference>} parameter), the loader's seam pass as
+     * the load error.
      *
      * @param function
      *            the splicing function
@@ -308,7 +359,14 @@ public final class ListOperandLevel
                 if (net.cumba.corej.core.exec.GroupSplice.spliced(member) != null
                         && readsRowCursor(member, rule))
                 {
-                    refusal = spliceRefusal(c.name(), slot.parameter(), where, member);
+                    // W1b UC1: at is_(not_)unique_set's members the per-row member is a VALUE key
+                    // component, admitted — unless regex= is to normalise it (Q4)
+                    boolean value = net.cumba.corej.core.exec.GroupSplice
+                            .admitsValueMember(c.name(), slot.parameter());
+                    refusal = !value ? spliceRefusal(c.name(), slot.parameter(), where, member)
+                            : c.kwargs().containsKey("regex")
+                                    ? valueMemberRegexRefusal(c.name(), where, member)
+                                    : null;
                 }
                 else if (member instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF)
                 {

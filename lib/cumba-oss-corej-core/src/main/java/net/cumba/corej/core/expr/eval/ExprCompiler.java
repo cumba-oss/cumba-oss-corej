@@ -2747,6 +2747,10 @@ public final class ExprCompiler
         {
             return compileUniqueSet(c, false);
         }
+        if (net.cumba.corej.core.exec.GroupSplice.NOT_UNIQUE_MEMBER_SET.equals(name))
+        {
+            return compileNotUniqueMemberSet(c);
+        }
         // Task ED: is_not_unique_value(X) is the single-column tuple-uniqueness check — exactly
         // is_not_unique_set(X) with no keys (flags rows whose X value is duplicated). Its positive
         // twin is_unique_value(X) is the logical complement (change #1, like the Task EA
@@ -3762,6 +3766,8 @@ public final class ExprCompiler
         // missing-marker tuple are no longer duplicates of one another.
         GroupKeyPolicy policy = groupKeyPolicy(c, GroupKeyPolicy.FOLD_BLANK_KEYS);
         String fn = c.name();
+        String advice = "a member of " + fn + " is a column of the dataset under evaluation,"
+                + " written bare";
         return run ->
         {
             // $-ref members (e.g. $natural_key from natural_key_variables()) resolve only against
@@ -3769,13 +3775,83 @@ public final class ExprCompiler
             // W1a BS2) is evaluated on it — so splice them to their underlying column lists here,
             // through the ONE splice record_count's group= uses (GroupSplice, QNU N29): a String
             // is one name, a qualified, scalar or unresolved value ERRORs the rule (it used to
-            // pass RAW and be dropped silently as an absent member).
-            List<String> members = net.cumba.corej.core.exec.GroupSplice.splice(fn, "member",
-                    rawMembers, run.ctx(), false, "a member of " + fn
-                            + " is a column of the dataset under evaluation, written" + " bare");
-            List<String> resolved = resolveDomainPrefixes(members, run.ctx());
-            return GroupSemantics.uniqueSetViolations(GroupReadTable.of(run.ctx(), resolved),
-                    run.rowCount(), resolved, regex, flagDuplicates, policy);
+            // pass RAW and be dropped silently as an absent member). Runbook W1b UC1
+            // (PLAN-engine-gap-unique-computed Q2, coordinator D2 / D3): a member whose LEVEL
+            // reads the row cursor — derived over the rule's installed binding domains, never
+            // from its content — is a per-row VALUE key component instead: its vector becomes a
+            // reserved column of the reader's table (GroupReadTable.withValues), so the key
+            // identity and the column path below run unchanged. Members are spliced one by one
+            // so the authored order survives the partition.
+            EvaluationContext ctx = run.ctx();
+            List<String> members = new ArrayList<>(rawMembers.size());
+            List<String> valueNames = new ArrayList<>(0);
+            List<Vector> valueVectors = new ArrayList<>(0);
+            List<Boolean> hullKeyed = new ArrayList<>(0);
+            for (int i = 0; i < rawMembers.size(); i++)
+            {
+                net.cumba.corej.core.exec.GroupSplice.Member member = rawMembers.get(i);
+                if (member instanceof net.cumba.corej.core.exec.GroupSplice.Value value
+                        && net.cumba.corej.core.exec.GroupSplice.readsRowCursor(value, ctx))
+                {
+                    if (regex != null)
+                    {
+                        // the loader and stage A refuse this at load (Q4); the backstop for a
+                        // program evaluated outside a loaded rule is the rule's ERROR, never a
+                        // silently un-normalised key
+                        throw new net.cumba.corej.core.exec.GroupSplice.GroupSpliceException("["
+                                + ctx.getRuleId() + "] " + fn
+                                + ": regex= applies to column members only and cannot normalise"
+                                + " the value member " + value.printed());
+                    }
+                    String name = GroupReadTable.valueColumnName(i);
+                    members.add(name);
+                    valueNames.add(name);
+                    valueVectors.add(net.cumba.corej.core.exec.GroupSplice.valueVector(value, ctx));
+                    hullKeyed.add(net.cumba.corej.core.exec.GroupSplice.hullKeyed(value, ctx));
+                    continue;
+                }
+                members.addAll(net.cumba.corej.core.exec.GroupSplice.splice(fn, "member",
+                        List.of(member), ctx, false, advice));
+            }
+            List<String> resolved = resolveDomainPrefixes(members, ctx);
+            IDataTable table = GroupReadTable.withValues(GroupReadTable.of(ctx, resolved),
+                    valueNames, valueVectors, hullKeyed);
+            return GroupSemantics.uniqueSetViolations(table, run.rowCount(), resolved, regex,
+                    flagDuplicates, policy);
+        };
+    }
+
+
+    /**
+     * Runbook W1b SS1 ({@code PLAN-engine-gap-set-of-sets} §5, Q1–Q5) — {@code
+     * is_not_unique_member_set(members=[…], group=[…], keep_missings=)}: every row of a group (by
+     * {@code group}) whose set of distinct {@code members} tuples equals another group's
+     * ({@link GroupSemantics#notUniqueMemberSetViolations}). Both lists are read by the STRICT
+     * reader ({@link #strictColumnMembers}: a quoted name is a string, R1) and splice a {@code $}
+     * name list or the expression it holds at evaluation (BS2b); {@code keep_missings} governs the
+     * group key and the member tuple alike under the {@code is_unique_set} fold default.
+     */
+    private static ExprProgram.BoolPlan compileNotUniqueMemberSet(Expr.Call c)
+    {
+        List<@Nullable Expr> bound = bindStrict(c);
+        List<net.cumba.corej.core.exec.GroupSplice.Member> memberMembers = strictColumnMembers(
+                bound.get(0), c.name(), net.cumba.corej.core.exec.GroupSplice.MEMBERS_PARAMETER);
+        List<net.cumba.corej.core.exec.GroupSplice.Member> groupMembers = strictColumnMembers(
+                bound.get(1), c.name(), net.cumba.corej.core.exec.GroupedAggregate.GROUP_PARAMETER);
+        GroupKeyPolicy policy = groupKeyPolicyRequiringGroup(c.name(), bound.get(2), true,
+                GroupKeyPolicy.FOLD_BLANK_KEYS);
+        return run ->
+        {
+            EvaluationContext ctx = run.ctx();
+            List<String> members = resolveDomainPrefixes(spliceMembers(c.name(),
+                    net.cumba.corej.core.exec.GroupSplice.MEMBERS_PARAMETER, memberMembers, ctx),
+                    ctx);
+            List<String> group = resolveDomainPrefixes(spliceMembers(c.name(),
+                    net.cumba.corej.core.exec.GroupedAggregate.GROUP_PARAMETER, groupMembers, ctx),
+                    ctx);
+            return GroupSemantics.notUniqueMemberSetViolations(
+                    groupReadTable(ctx, List.of(members, group)), run.rowCount(), members, group,
+                    policy);
         };
     }
 
@@ -3836,8 +3912,10 @@ public final class ExprCompiler
         Expr operand = c.args().get(0);
         if (!(operand instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.LIST)
         {
+            // W1b UC1: a spliced member of this pair is a Value member — spliced as names when
+            // dataset-level, a per-row key component when it reads the row cursor
             net.cumba.corej.core.exec.GroupSplice.Member bare = operand instanceof Expr.Lit ? null
-                    : net.cumba.corej.core.exec.GroupSplice.spliced(operand);
+                    : net.cumba.corej.core.exec.GroupSplice.Value.of(operand);
             if (bare == null)
             {
                 throw unsupported(c.name() + "'s operand must be a list literal");
@@ -3853,8 +3931,8 @@ public final class ExprCompiler
         List<net.cumba.corej.core.exec.GroupSplice.Member> out = new ArrayList<>(items.size());
         for (Expr item : items)
         {
-            net.cumba.corej.core.exec.GroupSplice.Member spliced = net.cumba.corej.core.exec.GroupSplice
-                    .spliced(item);
+            net.cumba.corej.core.exec.GroupSplice.Member spliced = net.cumba.corej.core.exec.GroupSplice.Value
+                    .of(item);
             out.add(spliced != null ? spliced
                     : new net.cumba.corej.core.exec.GroupSplice.Name(groupOperandName(item)));
         }

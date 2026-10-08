@@ -261,6 +261,9 @@ class QualifiedNameUniformityTest
             is_not_unique_set | members | N | B:is_not_unique_set([@S, #K])
             is_not_unique_set | regex | - | static regex
             is_not_unique_set | keep_missings | - | static boolean
+            is_not_unique_member_set | members | N | B:is_not_unique_member_set(members=[@S], group=[#K])
+            is_not_unique_member_set | group | N | B:is_not_unique_member_set(members=[#S], group=[@K])
+            is_not_unique_member_set | keep_missings | - | static boolean
             is_not_unique_value | name | N | B:is_not_unique_value(@S)
             is_numeric | x | N | B:is_numeric(@N)
             is_ordered_subset_of | name | - | a $-binding holding a list, never a column
@@ -848,7 +851,7 @@ class QualifiedNameUniformityTest
     {
         // +1 descriptor / +2 parameters / +1 accessor since PLAN-library-template-label-resolution
         // (matches_label_template(label, template) and label_template(…, "LIBRARY")).
-        assertEquals(187, FunctionRegistry.all().size(),
+        assertEquals(188, FunctionRegistry.all().size(),
                 "registered descriptors (165 + any / all / none / joined, PLAN-cg0218; + 2"
                         + " column-status predicates, PLAN-present-empty-column-fold; + the nullary"
                         + " get_permitted_column_order, PLAN-permitted-addition-position; + union,"
@@ -858,8 +861,9 @@ class QualifiedNameUniformityTest
                         + " runbook W1b DP1a; + vlm_has_method / vlm_has_comment /"
                         + " vlm_origin_type / codelist_decode, runbook W1b DV; + sequence /"
                         + " is_prefix_of / is_not_prefix_of / is_increasing / collapse_runs,"
-                        + " runbook W1b RO; + duration / duration_between, runbook W1b DO)");
-        assertEquals(323,
+                        + " runbook W1b RO; + duration / duration_between, runbook W1b DO;"
+                        + " + is_not_unique_member_set, runbook W1b SS1)");
+        assertEquals(326,
                 FunctionRegistry.all().stream().mapToInt(d -> d.parameters().size()).sum(),
                 "declared parameters (283 + one each for any / all / none / joined + one each"
                         + " for var_is_single_value / var_is_all_missing + three for union + one for"
@@ -868,7 +872,8 @@ class QualifiedNameUniformityTest
                         + " + six for sequence, two each for is_(not_)prefix_of, one each for"
                         + " is_increasing / collapse_runs, one by= each for is_last_in_group /"
                         + " empty_within_except_last_row / has_next_corresponding_record, W1b"
-                        + " RO / SK; + one for duration and two for duration_between, W1b DO)");
+                        + " RO / SK; + one for duration and two for duration_between, W1b DO;"
+                        + " + three for is_not_unique_member_set, W1b SS1)");
         assertEquals(28, MetadataAttribute.values().length, "metadata accessors");
         assertEquals(Set.of("date", "date_part", "duration", "num", "time", "time_part"),
                 new TreeSet<>(ExprCompiler.comparisonMarkers()),
@@ -877,11 +882,13 @@ class QualifiedNameUniformityTest
         List<Row> rows = rows();
         long probed = rows.stream().filter(Row::probed).count();
         long nameClass = rows.stream().filter(Row::name).count();
-        assertEquals(276, nameClass,
+        assertEquals(278, nameClass,
                 "name-bearing parameters in the hand table (265 + ~ left, W1b SX; + sequence's"
-                        + " name / filter / group / by and the three by=, W1b RO / SK)");
-        assertEquals(223, probed, "probed parameters in the hand table (212 + ~ left, W1b SX;"
-                + " + sequence's four and the three by=, W1b RO / SK; + duration and duration_between's two, W1b DO)");
+                        + " name / filter / group / by and the three by=, W1b RO / SK;"
+                        + " + is_not_unique_member_set's members / group, W1b SS1)");
+        assertEquals(225, probed, "probed parameters in the hand table (212 + ~ left, W1b SX;"
+                + " + sequence's four and the three by=, W1b RO / SK; + duration and duration_between's two, W1b DO;"
+                + " + is_not_unique_member_set's members / group, W1b SS1)");
         // T2 r1 L2: every unprobed name-bearing row states one of the three admitted reasons.
         List<String> unprobed = new ArrayList<>();
         for (Row r : rows)
@@ -905,7 +912,8 @@ class QualifiedNameUniformityTest
         // var_has_value_list's level, +1 for the nullary define_available (W1b DP1a / DV).
         // +8 for sequence's domain / keep_missings and the six list parameters of
         // is_(not_)prefix_of / is_increasing / collapse_runs (runbook W1b RO).
-        assertEquals(162, rows.stream().filter(r -> !r.name()).count(),
+        // +1 for is_not_unique_member_set's keep_missings (runbook W1b SS1).
+        assertEquals(163, rows.stream().filter(r -> !r.name()).count(),
                 "non-name rows (153 + the ~ literal, W1b SX; + 8, W1b RO)");
     }
 
@@ -1946,6 +1954,6 @@ class QualifiedNameUniformityTest
             }
         }
         assertEquals(List.of(), invalid);
-        assertEquals(223, probed);
+        assertEquals(225, probed, "+2 is_not_unique_member_set's members / group (W1b SS1)");
     }
 }

@@ -300,6 +300,21 @@ public final class DomainScan
             return Domain.DATASET;
         }
         Domain operands = joinAll(c.args(), kinds).join(joinAll(c.kwargs().values(), kinds));
+        if (operands.isBroadcast()
+                && net.cumba.corej.core.exec.GroupReadTable.GROUP_OPERATORS.contains(name))
+        {
+            // Runbook W1b SS1 / UC1 (found by the all-`$` spelling of the new group verdict,
+            // `is_not_unique_member_set(members=$m, group=$g)`): a group operator partitions the
+            // evaluated table's rows and answers one verdict PER ROW whatever its operands'
+            // level — when every operand is a dataset-level name list ($-bound or computed,
+            // spliced at evaluation) the operands show no ROW demand, and without this arm the
+            // Check folded to one broadcast verdict (row 0's). The grouped aggregates,
+            // record_count,
+            // distinct, sequence and read_value answered above; the whole-column verdicts
+            // (has_same_values, contains_all, …) fold to DATASET by design, also above. A call
+            // with a written column operand already carries ROW, so nothing else moves.
+            return Domain.ROW;
+        }
         FunctionDescriptor descriptor = FunctionRegistry.descriptor(name);
         if (descriptor != null && descriptor.perRow())
         {
