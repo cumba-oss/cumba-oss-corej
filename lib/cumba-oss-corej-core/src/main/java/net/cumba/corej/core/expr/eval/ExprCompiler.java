@@ -3090,7 +3090,7 @@ public final class ExprCompiler
      */
     private static ExprProgram.BoolPlan compileUniqueSet(Expr.Call c, boolean flagDuplicates)
     {
-        List<String> rawMembers = uniqueSetMembers(c);
+        List<net.cumba.corej.core.exec.GroupSplice.Member> rawMembers = uniqueSetMembers(c);
         // Optional regex= kwarg: Python is_unique_set normalizes each matching key column to its
         // first regex match before grouping (e.g. a datetime key grouped at date granularity).
         String regex = optionalRegexLiteral(c);
@@ -3103,10 +3103,11 @@ public final class ExprCompiler
         return run ->
         {
             // $-ref members (e.g. $natural_key from natural_key_variables()) resolve only against
-            // the run context, so splice them to their underlying column lists here — through the
-            // ONE splice record_count's group= uses (GroupSplice, QNU N29): a String binding is one
-            // name, a qualified, scalar or unresolved one ERRORs the rule (it used to pass RAW and
-            // be dropped silently as an absent member).
+            // the run context, and a computed member (natural_key_variables() written in place,
+            // W1a BS2) is evaluated on it — so splice them to their underlying column lists here,
+            // through the ONE splice record_count's group= uses (GroupSplice, QNU N29): a String
+            // is one name, a qualified, scalar or unresolved value ERRORs the rule (it used to
+            // pass RAW and be dropped silently as an absent member).
             List<String> members = net.cumba.corej.core.exec.GroupSplice.splice(fn, "member",
                     rawMembers, run.ctx(), false, "a member of " + fn
                             + " is a column of the dataset under evaluation, written" + " bare");
@@ -3127,13 +3128,21 @@ public final class ExprCompiler
      *
      * <p>
      * {@code is_(not_)unique_set([A, B, …])} — the canonical form since 2026-08-23 (owner
-     * requirement #1): ONE positional LIST literal, each member a {@link #keyMemberName} (a column,
-     * a {@code --}-wildcard, a string literal, or a {@code $}-ref passed through raw for
-     * {@code GroupSplice.splice}). ⚠ This legalises a {@code $}-ref in position 0, which
-     * {@link #groupOperandName} refused on the old first operand — intended: since QNU N29 a
-     * {@code $} member splices through {@code GroupSplice} (a qualified or non-list value is the
-     * rule's ERROR, a String is one name); D-4's "drop an unresolved member" is unreachable for a
-     * loaded rule, because a dangling {@code $} is a load error.
+     * requirement #1): ONE positional LIST literal, each member a plain name
+     * ({@link #groupOperandName}: a column or a {@code --}-wildcard) or a spliced member
+     * ({@code GroupSplice.spliced}: a {@code $}-ref, or — W1a BS2,
+     * {@code PLAN-binding-substitutability} C4 / Q1 — the expression such a binding holds, written
+     * in place), spliced at evaluation by {@code GroupSplice.splice}. ⚠ This legalises a
+     * {@code $}-ref in position 0, which {@link #groupOperandName} refused on the old first operand
+     * — intended: since QNU N29 a {@code $} member splices through {@code GroupSplice} (a qualified
+     * or non-list value is the rule's ERROR, a String is one name); D-4's "drop an unresolved
+     * member" is unreachable for a loaded rule, because a dangling {@code $} is a load error.
+     * </p>
+     *
+     * <p>
+     * {@code is_(not_)unique_set($keys)} — the bare spliced operand reads as the one-member list
+     * {@code f([$keys])} (BS2, C5 / Q2), and so does the expression it holds written bare. The
+     * canonical form stays the documented spelling.
      * </p>
      *
      * <p>
@@ -3143,7 +3152,7 @@ public final class ExprCompiler
      * degraded rule — the {@code unsupported(...)} on this path only degrades.
      * </p>
      */
-    private static List<String> uniqueSetMembers(Expr.Call c)
+    private static List<net.cumba.corej.core.exec.GroupSplice.Member> uniqueSetMembers(Expr.Call c)
     {
         if (c.args().isEmpty())
         {
@@ -3155,15 +3164,23 @@ public final class ExprCompiler
             {
                 throw unsupported(c.name() + " takes exactly one column operand");
             }
-            return List.of(groupOperandName(c.args().get(0)));
+            return List.of(new net.cumba.corej.core.exec.GroupSplice.Name(
+                    groupOperandName(c.args().get(0))));
         }
         if (c.args().size() != 1 || c.kwargs().containsKey("keys"))
         {
             throw unsupported(c.name() + " takes one list operand: " + c.name() + "([A, B, …])");
         }
-        if (!(c.args().get(0) instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.LIST)
+        Expr operand = c.args().get(0);
+        if (!(operand instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.LIST)
         {
-            throw unsupported(c.name() + "'s operand must be a list literal");
+            net.cumba.corej.core.exec.GroupSplice.Member bare = operand instanceof Expr.Lit ? null
+                    : net.cumba.corej.core.exec.GroupSplice.spliced(operand);
+            if (bare == null)
+            {
+                throw unsupported(c.name() + "'s operand must be a list literal");
+            }
+            return List.of(bare);
         }
         @SuppressWarnings("unchecked")
         List<Expr> items = (List<Expr>) lit.value();
@@ -3171,10 +3188,13 @@ public final class ExprCompiler
         {
             throw unsupported(c.name() + "([]) has no members");
         }
-        List<String> out = new ArrayList<>(items.size());
+        List<net.cumba.corej.core.exec.GroupSplice.Member> out = new ArrayList<>(items.size());
         for (Expr item : items)
         {
-            out.add(keyMemberName(item));
+            net.cumba.corej.core.exec.GroupSplice.Member spliced = net.cumba.corej.core.exec.GroupSplice
+                    .spliced(item);
+            out.add(spliced != null ? spliced
+                    : new net.cumba.corej.core.exec.GroupSplice.Name(groupOperandName(item)));
         }
         return out;
     }

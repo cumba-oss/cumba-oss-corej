@@ -39,6 +39,13 @@ import org.jspecify.annotations.Nullable;
  * {@code Match_Datasets} Filter, the re-run after a {@code CHECKER_FAILURE} — so a per-row operand
  * never silently reads row 0 on either path.
  * </p>
+ *
+ * <p>
+ * A third reader kind lives on the loader path only: the <b>splice slots</b>
+ * ({@link #spliceRefusals}, W1a BS2 — C4 / C5 of {@code PLAN-binding-substitutability}), whose
+ * stage A judgement is the G3 arm ({@code StageAChecker.findPerRowSplice}, {@code PARAMETER_TYPE})
+ * with the same sentence ({@link #spliceRefusal}).
+ * </p>
  */
 public final class ListOperandLevel
 {
@@ -156,6 +163,96 @@ public final class ListOperandLevel
 
 
     /**
+     * Whether the operand's value is a per-row vector at evaluation — what the splice refuses
+     * ({@code GroupSplice}: a dataset-level binding is handed over as its first value, a row-cursor
+     * one as its vector). The variable cursor alone is not a reason: a per-variable binding at
+     * dataset granularity hands over its first value, which the splice reads as one name (stage A's
+     * {@code isPerRow} draws the same line by granularity).
+     *
+     * @param operand
+     *            the operand, bound ({@code $x}) or inline
+     * @param rule
+     *            the rule it is written in
+     * @return {@code true} for a row-cursor operand
+     */
+    public static boolean readsRowCursor(Expr operand, Rule rule)
+    {
+        if (operand instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF)
+        {
+            CompiledBinding read = rule.compiledBinding(ref.name());
+            if (read != null && read.domain() != null)
+            {
+                return read.domain().rowCursor();
+            }
+        }
+        return DomainScan.infer(operand, BindingDomains.forRule(rule)).rowCursor();
+    }
+
+
+    /**
+     * The refusal's text for a per-row member of a splice slot ({@code record_count}'s
+     * {@code group=}, {@code is_(not_)unique_set}'s members) — one sentence for both spellings;
+     * stage A files it as {@code PARAMETER_TYPE} (the splice is a shape of the
+     * {@code list<column-reference>} parameter), the loader's seam pass as the load error.
+     *
+     * @param function
+     *            the splicing function
+     * @param parameter
+     *            the parameter
+     * @param where
+     *            where the call is written, or {@code null} when the caller says so itself
+     * @param operand
+     *            the refused member, printed as written
+     * @return the message
+     */
+    public static String spliceRefusal(String function, String parameter, @Nullable String where,
+            Expr operand)
+    {
+        return "argument '" + parameter + "' of '" + function + "'"
+                + (where == null ? "" : " in " + where) + " cannot splice the per-row member `"
+                + ExpressionPrinter.print(operand)
+                + "` — only a dataset-level list of column names (a binding or the expression it"
+                + " holds) can be spliced: at evaluation a per-row value hands over its vector,"
+                + " which the splice refuses";
+    }
+
+
+    /**
+     * The splice-slot refusals of one call ({@code GroupSplice.spliceSlot}): each spliced member —
+     * a {@code $} reference or a computed expression — that reads the row cursor. The loader's twin
+     * of stage A's G3 arm ({@code StageAChecker.findPerRowSplice}); only {@link #firstRefusal}
+     * calls it, so stage A never files a per-row splice twice.
+     *
+     * @param c
+     *            the call
+     * @param rule
+     *            the rule it is written in
+     * @param where
+     *            where it is written, for the message
+     * @return the refusals, in member order
+     */
+    static List<String> spliceRefusals(Expr.Call c, Rule rule, String where)
+    {
+        net.cumba.corej.core.exec.GroupSplice.Slot slot = net.cumba.corej.core.exec.GroupSplice
+                .spliceSlot(c);
+        if (slot == null)
+        {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (Expr member : slot.operands())
+        {
+            if (net.cumba.corej.core.exec.GroupSplice.spliced(member) != null
+                    && readsRowCursor(member, rule))
+            {
+                out.add(spliceRefusal(c.name(), slot.parameter(), where, member));
+            }
+        }
+        return out;
+    }
+
+
+    /**
      * Every level refusal of one call: each operand of a set function, and each operand at a
      * {@link #PER_CALL_PARAMETERS per-call parameter} (positional operands mapped to their
      * parameter through the registry descriptor, keyword operands by name), that varies per row or
@@ -258,7 +355,8 @@ public final class ListOperandLevel
         }
         case Expr.Call c ->
         {
-            List<String> own = refusals(c, rule, where);
+            List<String> own = new ArrayList<>(refusals(c, rule, where));
+            own.addAll(spliceRefusals(c, rule, where));
             if (!own.isEmpty())
             {
                 return own.get(0);

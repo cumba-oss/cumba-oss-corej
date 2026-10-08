@@ -1951,8 +1951,9 @@ public final class StageAChecker
      * The type a bound argument contributes against its declared parameter type: a column reference
      * dereferences implicitly in value position (§1.2), so only a column-reference-typed parameter
      * sees the reference itself; the two parameter-only literal spellings of G1 / G4 and the bare
-     * {@code $}-list splice of G3 (at {@code record_count}'s {@code group=}, the one splicing
-     * reader that also takes a bare reference) are typed as what the reader reads.
+     * splice of G3 (a {@code $} list or a dataset-level expression of names as the whole
+     * {@code group=} / member operand — read as the one-member list by both splicing readers) are
+     * typed as what the reader reads.
      */
     private static ExprType actualType(Expr.Call c, Parameter param, ExprType declared, Expr arg,
             ExprType argType)
@@ -1968,9 +1969,10 @@ public final class StageAChecker
         {
             return Primitive.REGEX;
         }
-        if (isColumnReferenceList(declared) && splices(c, param) && isSpliceShape(arg, argType)
-                && net.cumba.corej.core.exec.RecordCount.NAME.equals(c.name()))
+        if (isColumnReferenceList(declared) && splices(c, param) && isSpliceShape(arg, argType))
         {
+            // the bare spliced operand — record_count(group=$names), and since W1a BS2 (C5)
+            // is_(not_)unique_set($keys) / f(<expression>) as the one-member list
             return declared;
         }
         return argType.dereference();
@@ -2028,7 +2030,9 @@ public final class StageAChecker
      * stage A's derived level is certain ({@code colref(list)}, {@code upper(AETERM)},
      * {@code distinct(X, group=[…])}). The variable cursor is NOT a reason: a {@code {VAR}} binding
      * at dataset granularity ({@code concat(substring(varname(), 1, 4), "ENDTC")}) hands over its
-     * first value, which the splice reads as one name. A dataset-level binding of names splices.
+     * first value, which the splice reads as one name. A dataset-level binding of names splices —
+     * and since W1a BS2 so does the expression it holds, written as the member, judged by the same
+     * granularity (a computed per-row member would otherwise read row 0 silently).
      */
     private static boolean isPerRow(TypedExpr e)
     {
@@ -2039,11 +2043,10 @@ public final class StageAChecker
 
     private void findPerRowSplice(Expr.Call c, Parameter param, Expr node)
     {
-        String name = node instanceof Expr.Ref ref ? ref.name() : "the binding";
-        find(StageAErrorKind.PARAMETER_TYPE, "argument '" + param.name() + "' of '" + c.name()
-                + "' cannot splice the per-row binding " + name
-                + " — only a dataset-level binding of column names can be spliced (at evaluation"
-                + " a per-row binding hands over its vector, which the splice refuses)" + at(c));
+        // one sentence for both spellings (ListOperandLevel.spliceRefusal), the loader's seam pass
+        // files the same for the paths stage A never walks
+        find(StageAErrorKind.PARAMETER_TYPE, net.cumba.corej.core.expr.eval.ListOperandLevel
+                .spliceRefusal(c.name(), param.name(), null, node) + at(c));
     }
 
 
@@ -2107,14 +2110,14 @@ public final class StageAChecker
             }
             String spelled = element.node() instanceof Expr.Ref ref ? " (" + ref.name() + ")"
                     : element.node() instanceof Expr.Lit lit ? " (" + lit.value() + ")" : "";
-            find(StageAErrorKind.PARAMETER_TYPE, "argument '" + param.name() + "' of '" + c.name()
-                    + "' takes list<column-reference>, not " + type.describe() + " at element "
-                    + position + spelled
-                    + (splice
-                            ? " — a spliced $ binding of names is read only by record_count's"
-                                    + " group= and is_(not_)unique_set's members"
-                            : "")
-                    + at(c));
+            find(StageAErrorKind.PARAMETER_TYPE,
+                    "argument '" + param.name() + "' of '" + c.name()
+                            + "' takes list<column-reference>, not " + type.describe()
+                            + " at element " + position + spelled
+                            + (splice ? " — a spliced list of names (a $ binding or a dataset-level"
+                                    + " expression) is read only by record_count's group= and"
+                                    + " is_(not_)unique_set's members" : "")
+                            + at(c));
         }
     }
 
@@ -2140,17 +2143,20 @@ public final class StageAChecker
 
 
     /**
-     * A {@code $} reference whose static type is what {@code GroupSplice} splices: a list of names
-     * ({@code list<string>}), a list of unknowns ({@code colref(list)}), or one name (a
-     * {@code string} binding is one member — N29).
+     * A spliced member — a {@code $} reference or, since W1a BS2
+     * ({@code PLAN-binding-substitutability} C4, ruled Q1), any computed expression
+     * ({@code GroupSplice.spliced}: never a literal, never a column reference) — whose static type
+     * is what {@code GroupSplice} splices: a list of names ({@code list<string>}), a list of
+     * unknowns ({@code colref(list)}), or one name (a {@code string} binding is one member — N29).
+     * A quoted name stays a string literal, refused (runbook W8 D-W8-6).
      */
     private static boolean isSpliceShape(Expr node, ExprType type)
     {
-        return node instanceof Expr.Ref ref
-                && ref.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF
-                && (type == Primitive.STRING
-                        || (type instanceof ListOf list && (list.element() == Primitive.STRING
-                                || list.element() == Unknown.UNKNOWN)));
+        boolean spliced = node instanceof Expr.Ref ref
+                ? ref.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF
+                : !(node instanceof Expr.Lit);
+        return spliced && (type == Primitive.STRING || (type instanceof ListOf list
+                && (list.element() == Primitive.STRING || list.element() == Unknown.UNKNOWN)));
     }
 
 

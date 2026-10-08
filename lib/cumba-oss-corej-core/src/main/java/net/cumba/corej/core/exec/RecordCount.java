@@ -123,10 +123,9 @@ public final class RecordCount
      *            the {@code domain=} dataset, or {@code null} for the evaluated dataset
      * @param filter
      *            the boolean filter over the target table's own columns, or {@code null}
-     * @param group
-     *            the group members — column names, and {@code $} names to splice
-     * @param spliced
-     *            whether {@code group} holds a {@code $} member
+     * @param members
+     *            the group members — plain column names, and the {@code $} references and computed
+     *            expressions spliced at evaluation ({@link GroupSplice.Member})
      * @param policy
      *            the missing-key policy
      * @param regex
@@ -134,13 +133,37 @@ public final class RecordCount
      * @param canonical
      *            the canonical call text (the memo key, plus the expanded names when spliced)
      */
-    public record Spec(@Nullable String dataset, @Nullable Expr filter, List<String> group,
-            boolean spliced, GroupKeyPolicy policy, @Nullable Pattern regex, String canonical)
+    public record Spec(@Nullable String dataset, @Nullable Expr filter,
+            List<GroupSplice.Member> members, GroupKeyPolicy policy, @Nullable Pattern regex,
+            String canonical)
     {
 
         public Spec
         {
-            group = List.copyOf(group);
+            members = List.copyOf(members);
+        }
+
+
+        /**
+         * Whether a member is spliced at evaluation — a {@code $} reference or a computed
+         * expression ({@link GroupSplice#splices}).
+         *
+         * @return {@code true} when evaluation has to splice
+         */
+        public boolean spliced()
+        {
+            return GroupSplice.splices(members);
+        }
+
+
+        /**
+         * The authored plain group names, in order — the whole key when nothing is spliced.
+         *
+         * @return the {@link GroupSplice.Name} members' names
+         */
+        public List<String> group()
+        {
+            return GroupSplice.names(members);
         }
 
 
@@ -201,9 +224,11 @@ public final class RecordCount
         Expr filter = GroupedAggregate.readFilter(NAME,
                 GroupedAggregate.slot(bound, params, GroupedAggregate.FILTER_PARAMETER), dataset);
         filter = filter == null ? null : GroupedAggregate.stripQualifier(filter, dataset);
-        List<String> group = GroupedAggregate.readGroup(NAME,
-                GroupedAggregate.slot(bound, params, GroupedAggregate.GROUP_PARAMETER), dataset,
-                false, true);
+        List<GroupSplice.Member> members = GroupedAggregate.readSpliceGroup(NAME,
+                GroupedAggregate.slot(bound, params, GroupedAggregate.GROUP_PARAMETER), dataset);
+        // The load-time checks below read the authored plain names; a spliced member meets the
+        // same qualified-name and regex gates at evaluation (GroupSplice, countPerGroup).
+        List<String> group = GroupSplice.names(members);
         GroupKeyPolicy policy = GroupedAggregate.readPolicy(NAME,
                 GroupedAggregate.slot(bound, params, GroupedAggregate.KEEP_MISSINGS_PARAMETER));
         Pattern regex = readRegex(GroupedAggregate.slot(bound, params, REGEX_PARAMETER));
@@ -219,8 +244,7 @@ public final class RecordCount
                     + "): the regex normalises the grouped dataset's key values, and the qualified"
                     + " member's record side is read from another dataset");
         }
-        boolean spliced = group.stream().anyMatch(g -> g.startsWith("$"));
-        return new Spec(dataset, filter, group, spliced, policy, regex, ExpressionPrinter.print(c));
+        return new Spec(dataset, filter, members, policy, regex, ExpressionPrinter.print(c));
     }
 
 
@@ -263,7 +287,7 @@ public final class RecordCount
     {
         EvaluationContext ctx = run.ctx();
         List<String> names = GroupedAggregate.resolvePrefixes(
-                spec.spliced() ? splice(spec.group(), ctx, spec.dataset() != null) : spec.group(),
+                spec.spliced() ? splice(spec.members(), ctx, spec.dataset() != null) : spec.group(),
                 ctx);
         // D-W6-8: a spliced call keys its memo on the expanded names too — the derived contexts of
         // one execution share the memo, and their variables maps may resolve the $-list
@@ -282,9 +306,9 @@ public final class RecordCount
 
 
     /**
-     * The splice: every {@code $} member replaced by the column names its binding holds —
-     * {@link GroupSplice}, the one implementation shared with {@code is_(not_)unique_set}'s members
-     * (QNU N15 / N29).
+     * The splice: every {@code $} member replaced by the column names its binding holds, every
+     * computed member by the names its value holds (W1a BS2) — {@link GroupSplice}, the one
+     * implementation shared with {@code is_(not_)unique_set}'s members (QNU N15 / N29).
      *
      * @param foreign
      *            whether the call names {@code domain=} — a spliced {@code --} name would then
@@ -296,7 +320,8 @@ public final class RecordCount
      *             {@code --} name under {@code domain=}, or that splices a qualified name — the
      *             rule ERRORs (D-W6-7) on {@code RuleRunner}'s sentinel channel
      */
-    private static List<String> splice(List<String> group, EvaluationContext ctx, boolean foreign)
+    private static List<String> splice(List<GroupSplice.Member> group, EvaluationContext ctx,
+            boolean foreign)
     {
         // Under domain= a qualified member (C2, PLAN-rprfdy-offset-tp-join) is judged at load —
         // D-DOMAIN, D-SRC, D-REGEX — and a spliced one never reaches those gates, so it would key

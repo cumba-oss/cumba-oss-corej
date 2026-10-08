@@ -1629,7 +1629,17 @@ class StageACheckerTest
                 // review r1 M1: a splice-shaped $ element contributes its ELEMENT type to the
                 // list's homogeneity — one name beside a list of names is not a mixed list
                 "is_unique_set([USUBJID, $one, $nk])",
-                "record_count(group=[USUBJID, $one, $nk]) > 1"))
+                "record_count(group=[USUBJID, $one, $nk]) > 1",
+                // W1a BS2 (PLAN-binding-substitutability C4 / C5, ruled Q1 / Q2): the expression a
+                // $ member holds, written as the member, splices exactly as the $ member does — a
+                // dataset-level list of names or a single computed name; and the bare operand
+                // f($keys) / f(<list expression>) reads as f([…])
+                "is_unique_set([USUBJID, --TESTCD, natural_key_variables()])",
+                "record_count(group=[USUBJID, natural_key_variables()]) > 1",
+                "is_unique_set([USUBJID, upper(\"aeterm\")])",
+                "record_count(group=[upper(\"aeterm\")]) > 1", "is_unique_set($nk)",
+                "is_unique_set(natural_key_variables())",
+                "record_count(group=natural_key_variables()) > 1"))
         {
             assertEquals(List.of(), check(rule, expression).findings(), expression);
         }
@@ -1645,7 +1655,18 @@ class StageACheckerTest
                 "is_unique_set([USUBJID, $cl])", "is_unique_set([USUBJID, $scalar])",
                 "record_count(group=$cl) > 1", "record_count(group=[USUBJID, $scalar]) > 1",
                 "record_count(group=[USUBJID, $num]) > 1", "record_count(group=$num) > 1",
-                "is_unique_relationship(AETERM, keys=[USUBJID, $nk])"))
+                "is_unique_relationship(AETERM, keys=[USUBJID, $nk])",
+                // BS2: the inline spelling meets the same judgement — a per-row expression or a
+                // number is refused where the $ binding holding it is; a quoted name stays a
+                // string (W8 D-W8-6), and a non-splicing reader refuses the expression as it
+                // refuses the $
+                "is_unique_set([USUBJID, upper(AETERM)])", "is_unique_set(upper(AETERM))",
+                "record_count(group=[USUBJID, upper(AETERM)]) > 1",
+                "record_count(group=upper(AETERM)) > 1", "is_unique_set([USUBJID, len(AETERM)])",
+                "record_count(group=[USUBJID, colref([\"A\", \"B\"])]) > 1",
+                "empty(max(AESEQ, group=[USUBJID, natural_key_variables()]))",
+                "AETERM in distinct(AETERM, group=[USUBJID, natural_key_variables()])",
+                "is_unique_relationship(AETERM, keys=[USUBJID, natural_key_variables()])"))
         {
             assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(check(rule, expression)),
                     expression);
@@ -1655,6 +1676,10 @@ class StageACheckerTest
         assertTrue(message.contains("'group' of 'max'") && message.contains("$nk"), message);
         String perRow = check(rule, "is_unique_set([USUBJID, $cl])").findings().get(0).message();
         assertTrue(perRow.contains("per-row") && perRow.contains("$cl"), perRow);
+        String inlinePerRow = check(rule, "is_unique_set([USUBJID, upper(AETERM)])").findings()
+                .get(0).message();
+        assertTrue(inlinePerRow.contains("per-row") && inlinePerRow.contains("upper(AETERM)"),
+                inlinePerRow);
     }
 
 
@@ -1956,7 +1981,7 @@ class StageACheckerTest
         assertEquals(List.of(), check(rule, "is_unique_set([USUBJID, $end])").findings());
         StageAReport grouped = check(rule, "is_unique_set([USUBJID, $d])");
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(grouped));
-        assertTrue(grouped.findings().get(0).message().contains("per-row binding $d"),
+        assertTrue(grouped.findings().get(0).message().contains("per-row member `$d`"),
                 grouped.findings().toString());
     }
 

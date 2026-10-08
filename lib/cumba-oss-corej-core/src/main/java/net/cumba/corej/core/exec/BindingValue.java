@@ -414,9 +414,10 @@ public final class BindingValue
      * typed numeric cell (arithmetic, a numeric column) the cell's number rather than its text, so
      * {@code record_count() + 0} hands over {@code 3.0} as {@code record_count()} hands over
      * {@code 3}. {@code null} for a missing value and over an empty table (a computed vector has no
-     * row 0 there).
+     * row 0 there). Package-private: {@link GroupSplice} reads a computed splice member the same
+     * way (W1a BS2).
      */
-    private static @Nullable Object firstValue(Vector v, int rowCount)
+    static @Nullable Object firstValue(Vector v, int rowCount)
     {
         if (v instanceof ConstVector constant)
         {

@@ -1413,11 +1413,23 @@ public class RulePackageLoader
             throw new net.cumba.corej.core.expr.RuleDefinitionException(
                     "`" + call.name() + "` takes exactly one list operand" + migration);
         }
-        if (!(call.args().get(0) instanceof net.cumba.corej.core.expr.ast.Expr.Lit lit)
+        net.cumba.corej.core.expr.ast.Expr operand = call.args().get(0);
+        if (!(operand instanceof net.cumba.corej.core.expr.ast.Expr.Lit lit)
                 || lit.kind() != net.cumba.corej.core.expr.ast.Expr.LitKind.LIST)
         {
-            throw new net.cumba.corej.core.expr.RuleDefinitionException(
-                    "`" + call.name() + "`'s operand must be a list literal" + migration);
+            // W1a BS2 (PLAN-binding-substitutability C5, ruled Q2): f($keys) reads as f([$keys]),
+            // and — D3 / D16 — so does the expression the binding holds, written bare
+            // (f(natural_key_variables())); the spliced member is judged by stage A / the loader's
+            // level seam as the list member is. A bare column or literal stays the retired
+            // spelling's load error (owner requirement #1: ONE positional list literal).
+            boolean spliced = !(operand instanceof net.cumba.corej.core.expr.ast.Expr.Lit)
+                    && net.cumba.corej.core.exec.GroupSplice.spliced(operand) != null;
+            if (!spliced)
+            {
+                throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                        "`" + call.name() + "`'s operand must be a list literal" + migration);
+            }
+            return;
         }
         if (((List<?>) lit.value()).isEmpty())
         {

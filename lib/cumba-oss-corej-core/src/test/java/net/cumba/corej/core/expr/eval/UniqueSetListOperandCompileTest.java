@@ -152,9 +152,34 @@ class UniqueSetListOperandCompileTest
                 () -> eval("not is_unique_set([EPOCH], keys=[USUBJID])", t));
         assertTrue(mixed.getMessage().contains("one list operand"), mixed.getMessage());
         assertThrows(ExpressionException.class, () -> eval("not is_unique_set()", t));
-        // A member that is not a column/wildcard/literal/$-ref declines exactly as a key did.
-        assertThrows(ExpressionException.class,
+        // W1a BS2 (C4): a computed member compiles as a splice — the compiler cannot type it (stage
+        // A refuses a per-row or non-name one at load); a value that is not a list of names or a
+        // name is the one splice's run-time refusal, exactly as a $ member holding one.
+        IllegalStateException computed = assertThrows(IllegalStateException.class,
                 () -> eval("not is_unique_set([length(EPOCH), USUBJID])", t));
+        assertTrue(computed.getMessage().contains("must hold a list of column names"),
+                computed.getMessage());
+    }
+
+
+    @Test
+    void aComputedMemberSplicesAsTheBindingHoldingItDoes()
+    {
+        // BS2 (C4 / C5): the expression a $ member holds, written as the member, splices to the
+        // same names — a list of names, a single name, and the bare operand f(<expr>) as f([…]).
+        IDataTable t = ds();
+        Map<String, Object> vars = Map.of("$key", List.of("USUBJID", "DSSCAT"), "$one", "DSSCAT");
+        BitSet expected = eval("not is_unique_set([USUBJID, DSSCAT, EPOCH])", t);
+        assertEquals(expected, eval("not is_unique_set([$key, EPOCH])", t, vars));
+        assertEquals(expected, eval(
+                "not is_unique_set([minus([\"USUBJID\", \"DSSCAT\", \"X\"], subtract=[\"X\"]), EPOCH])",
+                t));
+        assertEquals(expected, eval("not is_unique_set([USUBJID, $one, EPOCH])", t, vars));
+        assertEquals(expected, eval("not is_unique_set([USUBJID, upper(\"dsscat\"), EPOCH])", t));
+        BitSet tuple = eval("not is_unique_set([USUBJID, DSSCAT])", t);
+        assertEquals(tuple, eval("not is_unique_set($key)", t, vars));
+        assertEquals(tuple, eval(
+                "not is_unique_set(minus([\"USUBJID\", \"DSSCAT\", \"X\"], subtract=[\"X\"]))", t));
     }
 
 

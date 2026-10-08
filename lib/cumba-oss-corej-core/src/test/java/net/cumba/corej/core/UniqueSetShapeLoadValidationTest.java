@@ -131,6 +131,48 @@ class UniqueSetShapeLoadValidationTest
 
 
     @Test
+    void theBareSpliceOperandReadsAsTheOneMemberList()
+    {
+        // W1a BS2 (PLAN-binding-substitutability C5, ruled Q2): is_unique_set($keys) is
+        // is_unique_set([$keys]) — and, by D3 / D16, so is the expression the binding holds written
+        // as the operand. A bare column or literal operand stays the retired spelling's load error
+        // (owner requirement #1, 2026-08-23: the canonical form is ONE positional list literal).
+        for (String ok : new String[]
+        {
+                "not is_unique_set($keys)", "is_not_unique_set($keys)",
+                "not is_unique_set(natural_key_variables())",
+                "not is_unique_set(minus([\"USUBJID\", \"X\"], subtract=[\"X\"]))"
+        })
+        {
+            Rule rule = loadWithKeys(ok);
+            assertTrue(rule.getCheck() instanceof CheckConditionExpression, ok);
+            assertNull(rule.getLoadError(), ok + ": " + rule.getLoadError());
+            assertNotNull(rule.getCheckExpr(), ok + ": the native expr must be installed");
+        }
+        assertTrue(rejected("not is_unique_set(ETCD)").contains("operand must be a list literal"));
+        assertTrue(
+                rejected("not is_unique_set(\"ETCD\")").contains("operand must be a list literal"));
+        assertTrue(rejected("not is_unique_set(3)").contains("operand must be a list literal"));
+    }
+
+
+    private static Rule loadWithKeys(String expression)
+    {
+        String json = "{\"rules\":{\"X-1\":{\"Core\":{\"Id\":\"X-1\"},"
+                + "\"Bindings\":[{\"name\":\"$keys\",\"expression\":\"natural_key_variables()\"}],"
+                + "\"Check\":{\"expression\":\"" + expression.replace("\"", "\\\"") + "\"}}}}";
+        try
+        {
+            return RulePackageLoader.loadFromString(json).getRules().get("X-1");
+        }
+        catch (Exception e)
+        {
+            throw new IllegalArgumentException("bad test fixture: " + json, e);
+        }
+    }
+
+
+    @Test
     void aDollarMemberIsStillSeenByTheDanglingReferenceCheck()
     {
         // D-2's point: the leaf keeps name/value, so collectOperandRefs reads a $-member of the

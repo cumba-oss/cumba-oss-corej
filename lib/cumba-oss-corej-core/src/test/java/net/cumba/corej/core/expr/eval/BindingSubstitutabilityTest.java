@@ -215,6 +215,164 @@ class BindingSubstitutabilityTest
         }
     }
 
+    // ------------------------------------------------------------------ BS2: the splice slots
+
+    /**
+     * (the Check with {@code ‹arg›} at the splice slot) — the two splicing readers, the list member
+     * and the bare operand (C5: {@code f($keys)} reads as {@code f([$keys])}).
+     */
+    private static final List<String> SPLICE_SLOTS = List.of("is_unique_set([USUBJID, ‹arg›])",
+            "not is_not_unique_set([USUBJID, ‹arg›])", "record_count(group=[USUBJID, ‹arg›]) > 1",
+            "is_unique_set(‹arg›)", "record_count(group=‹arg›) > 1");
+
+    @Test
+    void aDatasetLevelListOfNamesSplicesBoundAndInlineAlike() throws Exception
+    {
+        // C4 (Q1, ruled): a $ member splices; the expression it holds, written as the member, is
+        // spliced exactly as the $ member is — a list of names and a single name alike.
+        for (String slot : SPLICE_SLOTS)
+        {
+            for (String expr : List.of("natural_key_variables()", "upper(\"aeterm\")"))
+            {
+                Rule bound = load(slot.replace("‹arg›", "$x"), "$x", expr);
+                assertNull(bound.getLoadError(), slot + " bound → " + bound.getLoadError());
+                Rule inline = load(slot.replace("‹arg›", expr));
+                assertNull(inline.getLoadError(), slot + " inline → " + inline.getLoadError());
+            }
+        }
+    }
+
+
+    @Test
+    void aPerRowSpliceMemberIsTheSameFindingBoundAndInline() throws Exception
+    {
+        for (String slot : SPLICE_SLOTS)
+        {
+            String bound = String.valueOf(
+                    load(slot.replace("‹arg›", "$x"), "$x", "upper(AETERM)").getLoadError());
+            String inline = String
+                    .valueOf(load(slot.replace("‹arg›", "upper(AETERM)")).getLoadError());
+            assertTrue(bound.contains("PARAMETER_TYPE"), slot + " bound → " + bound);
+            assertTrue(bound.contains("cannot splice the per-row"), slot + " bound → " + bound);
+            assertEquals(bound.replace("$x", "upper(AETERM)"), inline,
+                    slot + ": one level finding for both spellings");
+        }
+    }
+
+
+    @Test
+    void aPerRowSpliceMemberInACheckLessRuleIsTheLoadersFinding() throws Exception
+    {
+        for (String member : List.of("$k", "upper(AETERM)"))
+        {
+            Map<String, Object> rule = new LinkedHashMap<>();
+            rule.put("Core", Map.of("Id", "BS2-CHECKLESS"));
+            rule.put("Bindings",
+                    List.of(Map.of("name", "$k", "expression", "upper(AETERM)"), Map.of("name",
+                            "$v", "expression", "record_count(group=[USUBJID, " + member + "])")));
+            rule.put("Match_Datasets", List.of(Map.of("Name", "AE")));
+            rule.put("Outcome", Map.of("Message", "m", "Output_Variables", List.of("$v")));
+            String json = MAPPER.writeValueAsString(Map.of("rules", Map.of("x", rule)));
+            Rule loaded = RulePackageLoader.loadFromString(json).getRules().get("x");
+            assertNotNull(loaded);
+            String error = String.valueOf(loaded.getLoadError());
+            assertTrue(error.contains("cannot splice the per-row"), member + " → " + error);
+            assertTrue(error.contains("the binding $v"), member + " → " + error);
+        }
+    }
+
+
+    @Test
+    void aSplicedExpressionEvaluatesAsTheBindingDoes() throws Exception
+    {
+        // Two tables: on UNIQUE every (USUBJID, AETERM) tuple occurs once while USUBJID alone and
+        // AETERM alone repeat — so a splice that read the wrong names would fire there; on DUP rows
+        // 0 / 1 share the tuple. Every spelling must answer 0 on the first and alike on the second.
+        IDataTable unique = MockTable.of().name("AE").col("USUBJID", "S1", "S1", "S2")
+                .col("AETERM", "a", "b", "a").build();
+        IDataTable dup = MockTable.of().name("AE").col("USUBJID", "S1", "S1", "S2")
+                .col("AETERM", "a", "a", "b").build();
+        String names = "minus([\"USUBJID\", \"AETERM\", \"X\"], subtract=[\"X\"])";
+        String term = "minus([\"AETERM\", \"X\"], subtract=[\"X\"])";
+        List<Rule> uniqueness = List.of(load("not is_unique_set([USUBJID, AETERM])"),
+                load("not is_unique_set([USUBJID, $k])", "$k", "upper(\"aeterm\")"),
+                load("not is_unique_set([USUBJID, upper(\"aeterm\")])"),
+                load("not is_unique_set([USUBJID, $t])", "$t", term),
+                load("not is_unique_set([USUBJID, " + term + "])"));
+        // C5: the bare operand reads as the one-member list — compared with THAT spelling and with
+        // the binding holding the same expression. ⚠ A rule whose only column names arrive by a
+        // splice (bound or inline) has none the classifier can see, so it is a Dataset-level rule
+        // (ONE collapsed finding) — a pre-existing property of f([$k]) the bare form inherits,
+        // reported with the unit; a bare USUBJID beside the splice makes the rule Record-level.
+        List<Rule> bare = List.of(load("not is_unique_set([$k])", "$k", names),
+                load("not is_unique_set($k)", "$k", names),
+                load("not is_unique_set(" + names + ")"),
+                load("not is_unique_set([" + names + "])"));
+        List<Rule> counts = List.of(load("$c > 1", "$c", "record_count(group=[USUBJID, AETERM])"),
+                load("$c > 1", "$k", "upper(\"aeterm\")", "$c",
+                        "record_count(group=[USUBJID, $k])"),
+                load("$c > 1", "$c", "record_count(group=[USUBJID, upper(\"aeterm\")])"),
+                load("$c > 1", "$t", term, "$c", "record_count(group=[USUBJID, $t])"),
+                load("$c > 1", "$c", "record_count(group=[USUBJID, " + term + "])"));
+        List<Rule> bareCounts = List.of(load("$c > 1", "$k", names, "$c", "record_count(group=$k)"),
+                load("$c > 1", "$k", names, "$c", "record_count(group=[$k])"),
+                load("$c > 1", "$c", "record_count(group=" + names + ")"),
+                load("$c > 1", "$c", "record_count(group=[" + names + "])"));
+        for (List<Rule> family : List.of(uniqueness, bare, counts, bareCounts))
+        {
+            Map<String, Integer> fired = new LinkedHashMap<>();
+            for (Rule rule : family)
+            {
+                assertNull(rule.getLoadError(), rule.getLoadError());
+                assertEquals(0, violations(rule, unique), "every tuple is unique");
+                fired.put(spelling(rule), violations(rule, dup));
+            }
+            int literal = fired.values().iterator().next();
+            assertTrue(literal > 0, "rows 0 and 1 share the tuple: " + fired);
+            for (Map.Entry<String, Integer> e : fired.entrySet())
+            {
+                assertEquals(literal, e.getValue(), "the spellings answer alike: " + fired);
+            }
+        }
+    }
+
+
+    private static String spelling(Rule rule)
+    {
+        StringBuilder sb = new StringBuilder();
+        rule.bindingOrder()
+                .forEach(b -> sb.append(b.name()).append(": ").append(b.expression()).append("; "));
+        return sb.append(rule.getCheck()).toString();
+    }
+
+
+    private static int violations(Rule rule, IDataTable table)
+    {
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        return result.getViolations().size();
+    }
+
+
+    @Test
+    void aSplicedExpressionHoldingNoNamesIsTheRulesError() throws Exception
+    {
+        // The run-time refusal of the one splice (GroupSplice), bound and inline alike: a value
+        // that is neither a list of names nor a name ERRORs the rule — never a silent drop.
+        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1", "S1").col("AETERM", "a", "a")
+                .build();
+        Rule bound = load("not is_unique_set([USUBJID, $k])", "$k", "coalesce(5, 6)");
+        Rule inline = load("not is_unique_set([USUBJID, coalesce(5, 6)])");
+        for (Rule rule : List.of(bound, inline))
+        {
+            assertNull(rule.getLoadError(), rule.getLoadError());
+            RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae);
+            assertEquals(RuleExecutionStatus.ERROR, result.getStatus(), result.getStatusMessage());
+            assertTrue(String.valueOf(result.getStatusMessage()).contains("must hold a list"),
+                    result.getStatusMessage());
+        }
+    }
+
 
     /**
      * A registry call as a rule: a BOOLEAN function is the Check itself, a value function is bound

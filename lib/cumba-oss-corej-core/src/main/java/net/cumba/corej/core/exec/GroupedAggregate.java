@@ -618,27 +618,12 @@ public final class GroupedAggregate
     /**
      * {@code group=[…]} — the group column names of the target table; a single reference is a
      * one-column key. Required and non-empty when {@code required} (D-W5-1: the three extremes),
-     * optional for {@code read_value} (an empty result means "ungrouped"). No {@code $} member.
+     * optional for {@code read_value} (an empty result means "ungrouped"). No {@code $} member and
+     * no computed member: the readers behind this overload do not splice ({@code GroupedAggregate},
+     * {@code ReadValue}, {@code Distinct} — {@code PLAN-binding-substitutability} C6 is open).
      */
     static List<String> readGroup(String fn, @Nullable Expr group, @Nullable String dataset,
             boolean required)
-    {
-        return readGroup(fn, group, dataset, required, false);
-    }
-
-
-    /**
-     * {@link #readGroup(String, Expr, String, boolean)}, optionally admitting a {@code $} reference
-     * as a member (runbook W6, {@link RecordCount}): the member is kept as its raw {@code $name}
-     * and spliced at evaluation into the column names the binding holds
-     * ({@code group=[USUBJID, --TESTCD, $TIMING_VARIABLES]}, the retired the retired executor's
-     * {@code expandGroupRefs}).
-     *
-     * @param allowSplice
-     *            whether a {@code $} reference is a legal member
-     */
-    static List<String> readGroup(String fn, @Nullable Expr group, @Nullable String dataset,
-            boolean required, boolean allowSplice)
     {
         if (group == null)
         {
@@ -650,23 +635,9 @@ public final class GroupedAggregate
             return List.of();
         }
         List<String> out = new ArrayList<>();
-        if (group instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+        for (Expr item : groupItems(fn, group))
         {
-            @SuppressWarnings("unchecked")
-            List<Expr> items = (List<Expr>) lit.value();
-            for (Expr item : items)
-            {
-                out.add(groupMember(fn, item, dataset, allowSplice));
-            }
-        }
-        else if (group instanceof Expr.Ref)
-        {
-            out.add(groupMember(fn, group, dataset, allowSplice));
-        }
-        else
-        {
-            throw new ExpressionException("argument '" + GROUP_PARAMETER + "' of '" + fn
-                    + "' takes a list of column references");
+            out.add(groupMember(fn, item, dataset));
         }
         if (out.isEmpty())
         {
@@ -676,13 +647,74 @@ public final class GroupedAggregate
     }
 
 
-    private static String groupMember(String fn, Expr item, @Nullable String dataset,
-            boolean allowSplice)
+    /**
+     * {@code group=[…]} of a reader that <b>splices</b> (runbook W6, {@link RecordCount}): a member
+     * that is a {@code $} reference or a computed expression ({@link GroupSplice#spliced}) is kept
+     * as a {@link GroupSplice.Member} and spliced at evaluation into the column names it holds
+     * ({@code group=[USUBJID, --TESTCD, $TIMING_VARIABLES]}, the retired executor's
+     * {@code expandGroupRefs}; since W1a BS2 — {@code PLAN-binding-substitutability} C4 / C5 — the
+     * expression such a binding holds, written in place, and the bare {@code group=$names} /
+     * {@code group=<expression>} as the one-member list); every other member is a plain name, read
+     * strictly as {@link #readGroup} reads it.
+     *
+     * @param fn
+     *            the function name, for the message
+     * @param group
+     *            the {@code group=} argument, or {@code null} when absent
+     * @param dataset
+     *            the {@code domain=} dataset, or {@code null}
+     * @return the members (empty when absent)
+     */
+    static List<GroupSplice.Member> readSpliceGroup(String fn, @Nullable Expr group,
+            @Nullable String dataset)
     {
-        if (allowSplice && item instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF)
+        if (group == null)
         {
-            return ref.name();
+            return List.of();
         }
+        List<GroupSplice.Member> out = new ArrayList<>();
+        GroupSplice.Member bare = group instanceof Expr.Lit ? null : GroupSplice.spliced(group);
+        if (bare != null)
+        {
+            return List.of(bare);
+        }
+        for (Expr item : groupItems(fn, group))
+        {
+            GroupSplice.Member spliced = GroupSplice.spliced(item);
+            out.add(spliced != null ? spliced
+                    : new GroupSplice.Name(groupMember(fn, item, dataset)));
+        }
+        if (out.isEmpty())
+        {
+            throw new ExpressionException(fn + "'s group= must name at least one column");
+        }
+        return List.copyOf(out);
+    }
+
+
+    /**
+     * The authored members of a {@code group=} argument: a list literal's items, or the one
+     * reference.
+     */
+    private static List<Expr> groupItems(String fn, Expr group)
+    {
+        if (group instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+        {
+            @SuppressWarnings("unchecked")
+            List<Expr> items = (List<Expr>) lit.value();
+            return items;
+        }
+        if (group instanceof Expr.Ref)
+        {
+            return List.of(group);
+        }
+        throw new ExpressionException("argument '" + GROUP_PARAMETER + "' of '" + fn
+                + "' takes a list of column references");
+    }
+
+
+    private static String groupMember(String fn, Expr item, @Nullable String dataset)
+    {
         if (item instanceof Expr.Ref ref && ref.kind() == OperandKind.DOTTED_REF)
         {
             // ⭐ Under domain=, C2 of PLAN-rprfdy-offset-tp-join (owner 2026-09-29: "use
