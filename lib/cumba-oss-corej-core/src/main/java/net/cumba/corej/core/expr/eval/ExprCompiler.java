@@ -1191,12 +1191,8 @@ public final class ExprCompiler
         {
             return ref.kind() == OperandKind.OPERATION_REF;
         }
-        if (isColrefOverBinding(e))
-        {
-            return true;
-        }
-        return e instanceof Expr.Call call && !call.args().isEmpty() && isElementwise(call.name())
-                && isDynamicValue(call.args().get(0));
+        return isColrefOverBinding(e) || (e instanceof Expr.Call call && !call.args().isEmpty()
+                && isElementwise(call.name()) && isDynamicValue(call.args().get(0)));
     }
 
 

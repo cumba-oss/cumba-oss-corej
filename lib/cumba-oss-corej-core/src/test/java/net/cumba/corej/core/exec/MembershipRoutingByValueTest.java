@@ -113,7 +113,7 @@ class MembershipRoutingByValueTest
      * {@code inline} and its bound twin {@code bound} (which reads {@code $u: twin}) fire on the
      * same rows, and those rows are {@code expected}.
      */
-    private static void twins(List<Long> expected, String inline, String bound, String twin,
+    private static void assertTwins(List<Long> expected, String inline, String bound, String twin,
             String... bindings)
     {
         assertEquals(expected, fired(inline, bindings), inline);
@@ -130,13 +130,14 @@ class MembershipRoutingByValueTest
         {
                 "$n", "[\"a\", \"b\"]"
         };
-        twins(List.of(1L, 2L, 3L), "\"A\" in upper($n)", "\"A\" in $u", "upper($n)", n);
-        twins(List.of(), "\"C\" in upper($n)", "\"C\" in $u", "upper($n)", n);
-        twins(List.of(1L, 2L, 3L), "\"C\" not in upper($n)", "\"C\" not in $u", "upper($n)", n);
+        assertTwins(List.of(1L, 2L, 3L), "\"A\" in upper($n)", "\"A\" in $u", "upper($n)", n);
+        assertTwins(List.of(), "\"C\" in upper($n)", "\"C\" in $u", "upper($n)", n);
+        assertTwins(List.of(1L, 2L, 3L), "\"C\" not in upper($n)", "\"C\" not in $u", "upper($n)",
+                n);
         // a column probe against the folded constant set: A = a / missing / c
-        twins(List.of(), "upper(A) in upper($n) and A == \"c\"", "upper(A) in $u and A == \"c\"",
-                "upper($n)", n);
-        twins(List.of(1L), "upper(A) in upper($n)", "upper(A) in $u", "upper($n)", n);
+        assertTwins(List.of(), "upper(A) in upper($n) and A == \"c\"",
+                "upper(A) in $u and A == \"c\"", "upper($n)", n);
+        assertTwins(List.of(1L), "upper(A) in upper($n)", "upper(A) in $u", "upper($n)", n);
     }
 
 
@@ -148,11 +149,11 @@ class MembershipRoutingByValueTest
         {
                 "$s", "split_by(X, \",\")"
         };
-        twins(List.of(1L), "\"A\" in upper($s)", "\"A\" in $u", "upper($s)", s);
-        twins(List.of(2L), "\"Y\" in upper($s)", "\"Y\" in $u", "upper($s)", s);
-        twins(List.of(2L, 3L), "\"B\" not in upper($s)", "\"B\" not in $u", "upper($s)", s);
+        assertTwins(List.of(1L), "\"A\" in upper($s)", "\"A\" in $u", "upper($s)", s);
+        assertTwins(List.of(2L), "\"Y\" in upper($s)", "\"Y\" in $u", "upper($s)", s);
+        assertTwins(List.of(2L, 3L), "\"B\" not in upper($s)", "\"B\" not in $u", "upper($s)", s);
         // a column probe against the row's own set: B = b / y / c
-        twins(List.of(1L, 2L), "upper(B) in upper($s)", "upper(B) in $u", "upper($s)", s);
+        assertTwins(List.of(1L, 2L), "upper(B) in upper($s)", "upper(B) in $u", "upper($s)", s);
     }
 
 
@@ -165,8 +166,8 @@ class MembershipRoutingByValueTest
         {
                 "$a", "split_by(A, \",\")"
         };
-        twins(List.of(1L), "\"A\" in upper($a)", "\"A\" in $u", "upper($a)", a);
-        twins(List.of(2L, 3L), "\"A\" not in upper($a)", "\"A\" not in $u", "upper($a)", a);
+        assertTwins(List.of(1L), "\"A\" in upper($a)", "\"A\" in $u", "upper($a)", a);
+        assertTwins(List.of(2L, 3L), "\"A\" not in upper($a)", "\"A\" not in $u", "upper($a)", a);
     }
 
     // ------------------------------------------------------------------ C18: colref of any
@@ -181,9 +182,11 @@ class MembershipRoutingByValueTest
         {
                 "$v", "[\"a\", \"b\"]"
         };
-        twins(List.of(2L), "\"y\" in colref(upper($v))", "\"y\" in colref($u)", "upper($v)", v);
-        twins(List.of(3L), "\"c\" in colref(upper($v))", "\"c\" in colref($u)", "upper($v)", v);
-        twins(List.of(2L, 3L), "\"a\" not in colref(upper($v))", "\"a\" not in colref($u)",
+        assertTwins(List.of(2L), "\"y\" in colref(upper($v))", "\"y\" in colref($u)", "upper($v)",
+                v);
+        assertTwins(List.of(3L), "\"c\" in colref(upper($v))", "\"c\" in colref($u)", "upper($v)",
+                v);
+        assertTwins(List.of(2L, 3L), "\"a\" not in colref(upper($v))", "\"a\" not in colref($u)",
                 "upper($v)", v);
     }
 
@@ -199,10 +202,11 @@ class MembershipRoutingByValueTest
         {
                 "$s", "split_by(X, \",\")"
         };
-        twins(List.of(1L), "lower($s) in [\"b\"]", "$u in [\"b\"]", "lower($s)", s);
-        twins(List.of(2L, 3L), "lower($s) not in [\"b\"]", "$u not in [\"b\"]", "lower($s)", s);
+        assertTwins(List.of(1L), "lower($s) in [\"b\"]", "$u in [\"b\"]", "lower($s)", s);
+        assertTwins(List.of(2L, 3L), "lower($s) not in [\"b\"]", "$u not in [\"b\"]", "lower($s)",
+                s);
         // the case-insensitive surface: upper($s) folds probe and members alike
-        twins(List.of(1L), "upper($s) in [\"b\"]", "$u in [\"B\"]", "upper($s)", s);
+        assertTwins(List.of(1L), "upper($s) in [\"b\"]", "$u in [\"B\"]", "upper($s)", s);
     }
 
 
@@ -213,9 +217,9 @@ class MembershipRoutingByValueTest
         {
                 "$n", "[\"a\", \"b\"]"
         };
-        twins(List.of(1L, 2L, 3L), "lower($n) in [\"a\"]", "$u in [\"a\"]", "lower($n)", n);
-        twins(List.of(), "lower($n) in [\"c\"]", "$u in [\"c\"]", "lower($n)", n);
-        twins(List.of(1L, 2L, 3L), "upper($n) in [\"B\"]", "$u in [\"B\"]", "upper($n)", n);
+        assertTwins(List.of(1L, 2L, 3L), "lower($n) in [\"a\"]", "$u in [\"a\"]", "lower($n)", n);
+        assertTwins(List.of(), "lower($n) in [\"c\"]", "$u in [\"c\"]", "lower($n)", n);
+        assertTwins(List.of(1L, 2L, 3L), "upper($n) in [\"B\"]", "$u in [\"B\"]", "upper($n)", n);
     }
 
 
@@ -227,7 +231,7 @@ class MembershipRoutingByValueTest
         {
                 "$a", "trim(A)"
         };
-        twins(List.of(1L), "upper($a) in [\"a\"]", "upper($u) in [\"a\"]", "$a", a);
-        twins(List.of(3L), "lower($a) in [\"c\"]", "$u in [\"c\"]", "lower($a)", a);
+        assertTwins(List.of(1L), "upper($a) in [\"a\"]", "upper($u) in [\"a\"]", "$a", a);
+        assertTwins(List.of(3L), "lower($a) in [\"c\"]", "$u in [\"c\"]", "lower($a)", a);
     }
 }
