@@ -2107,8 +2107,9 @@ public final class ExprCompiler
      * evaluated ({@link AnswerPlan}, or the binding's {@link Vector}) and folded per row by
      * {@link BoolListVector#reduce}: a {@link BoolListVector} element-wise, a scalar answer as the
      * singleton P6 rules ({@code any(b) = all(b) = b}, {@code none(b) = not b}); a binding whose
-     * vector is neither is the P5 rule ERROR (D35). Any other argument is refused here as stage A
-     * refuses it (P5).
+     * vector is neither is the P5 rule ERROR (D35). An inline condition ({@link #isConditionExpr})
+     * is the singleton its binding is (W1a fold, R5 review B MED-1). Any other argument is refused
+     * here as stage A refuses it (P5).
      */
     private static ExprProgram.BoolPlan compileQuantifier(Expr.Call c)
     {
@@ -2124,6 +2125,15 @@ public final class ExprCompiler
         {
             AnswerPlan answer = predicateAnswerPlan(call);
             return run -> reduceAnswer(quantifier, answer.eval(run), run.rowCount());
+        }
+        if (arg != null && isConditionExpr(arg))
+        {
+            // R5 review B MED-1 (coordinator decision: add the arm): an inline condition — a
+            // parenthesised comparison, a scalar predicate, not / and / or — is the P6 singleton,
+            // exactly as the binding holding it is (reduceBoundAnswer); stage A admits both
+            // spellings by shape (isPredicateAnswerShape, D16)
+            ExprProgram.BoolPlan condition = compileBool(arg);
+            return run -> singleton(quantifier, condition.eval(run), run.rowCount());
         }
         if (arg instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF)
         {

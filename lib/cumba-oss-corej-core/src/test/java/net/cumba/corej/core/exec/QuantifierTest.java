@@ -322,4 +322,30 @@ class QuantifierTest
         assertTrue(e.getMessage().contains("nest"), e.getMessage());
         assertTrue(e.getMessage().contains("any"), e.getMessage());
     }
+
+
+    @Test
+    void anInlineConditionIsTheSingletonItsBoundSpellingIs()
+    {
+        // R5 review B MED-1 (coordinator decision: add the arm): stage A admits a condition at a
+        // quantifier by shape (isPredicateAnswerShape), bound or inline (D16), and the compiler
+        // answered only the bound spelling — the inline one had no native form. P6 both ways. A
+        // bare operator condition stays the parser's refusal, so `not` is parenthesised too.
+        String[] conditions =
+        {
+                "(A == \"x\")", "contains(A, \"13\")", "(not empty(A))"
+        };
+        for (String condition : conditions)
+        {
+            for (String quantifier : List.of("any", "all", "none"))
+            {
+                List<Long> bound = fired(quantifier + "($b)", "$b", condition);
+                assertEquals(bound, fired(quantifier + "(" + condition + ")"),
+                        quantifier + "(" + condition + ")");
+            }
+        }
+        assertEquals(List.of(3L), fired("any((A == \"x\"))"));
+        assertEquals(List.of(2L), fired("all(contains(A, \"13\"))"));
+        assertEquals(List.of(4L), fired("none((not empty(A)))"));
+    }
 }
