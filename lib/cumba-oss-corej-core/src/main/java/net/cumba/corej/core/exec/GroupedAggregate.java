@@ -548,7 +548,11 @@ public final class GroupedAggregate
     /**
      * {@code filter=(<boolean over the target table>)} (D9 / D12's sketch): the retired
      * {@code filter(K="v")} call form is refused with the spelling named, and every reference
-     * inside is a bare column of the target table.
+     * inside is a bare column of the target table — or, since W1a BS3
+     * ({@code PLAN-binding-substitutability} C16, ruled Q6), a {@code $}-binding of the rule, which
+     * is one dataset-level value of the rule's own dataset handed into the filter as a constant
+     * ({@link #broadcastBindings}); a per-row binding there is the level load error
+     * ({@code ListOperandLevel.filterRefusal}, filed by stage A and the loader's seam pass).
      */
     static @Nullable Expr readFilter(String fn, @Nullable Expr filter, @Nullable String dataset)
     {
@@ -579,11 +583,20 @@ public final class GroupedAggregate
      * {@code group=} columns are read on both its {@code domain=} and the target table, the
      * broadcast key; a nested call without {@code domain=} reads the target table itself). The
      * shape is what is checked; the column's home is resolved when the nested call is evaluated.
+     * Inside {@code filter=} a {@code $}-binding is admitted (C16): its LEVEL is not this reader's
+     * business — {@code ListOperandLevel} judges it where the rule is walked.
      */
     private static void checkRefs(String fn, String parameter, Expr e, @Nullable String dataset)
     {
         switch (e)
         {
+        case Expr.Ref ref when ref.kind() == OperandKind.OPERATION_REF
+                && FILTER_PARAMETER.equals(parameter) ->
+        {
+            // W1a BS3: the rule's own binding, one dataset-level value — resolved before the
+            // filter runs and handed in as a constant (broadcastBindings), never a column of the
+            // target table. The target (NAME_PARAMETER) keeps its refusal: not in C16.
+        }
         case Expr.Ref ref -> columnName(fn, parameter, ref, dataset);
         case Expr.Call call ->
         {
@@ -1452,7 +1465,8 @@ public final class GroupedAggregate
      * references read exactly as the Check's do (W3c, N16 and N5 per MQ8): a qualified {@code J.X}
      * through the rule's join, a bare SUPP qualifier through the merge — the evaluated table with
      * the joins, the merged view, the SUPP flag and memo of {@code ctx}, under the expression's own
-     * type expectations (D76).
+     * type expectations (D76). Either way the rule's {@code $}-bindings the roots read arrive
+     * PRE-RESOLVED ({@link #broadcastBindings}), never as {@code ctx}'s variables map.
      */
     static EvaluationContext targetContext(EvaluationContext ctx, IDataTable table, boolean foreign,
             List<Expr> roots)
@@ -1466,9 +1480,112 @@ public final class GroupedAggregate
         return EvaluationContext.builder().table(primary).ruleId(ctx.getRuleId())
                 .suppMerge(ctx.isSuppMerge()).sharedIndexCache(ctx.getSharedIndexCache())
                 .mergedView(ctx.getMergedView()).domainName(primary.getMetaData().getName())
-                .datasetResolver(ctx.getDatasetResolver())
+                .datasetResolver(ctx.getDatasetResolver()).variables(broadcastBindings(ctx, roots))
                 .numericExpectedColumns(expectations.numericDefaultColumns())
                 .numericExpectedDynamicSites(expectations.numericDynamicSites()).build();
+    }
+
+
+    /**
+     * The {@code $}-bindings {@code roots} read, each resolved NOW against {@code ctx} — the rule's
+     * own dataset — to its hand-over value ({@link EvaluationContext#resolveVariable}: the raw
+     * dataset-level value; a missing one is a present {@code null} entry, so the reader sees a
+     * missing value, not an unknown name). W1a BS3 ({@code PLAN-binding-substitutability} C16,
+     * coordinator decision 2): the filter runs in the TARGET table's context, and a compiled
+     * binding evaluates lazily against whatever table reads it ({@link BindingValue#handOver}), so
+     * passing {@code ctx.getVariables()} through would evaluate {@code $c: distinct(FLAG)} over the
+     * target — the wrong table. A per-row binding is refused at load ({@code ListOperandLevel});
+     * its Vector reaching this point is a rule ERROR, never a silent row-0 read.
+     *
+     * @param ctx
+     *            the rule's context (the primary)
+     * @param roots
+     *            the expressions evaluated on the derived context
+     * @return the variables map of the derived context — empty when the roots read no binding
+     */
+    static Map<String, Object> broadcastBindings(EvaluationContext ctx, List<Expr> roots)
+    {
+        Map<String, Object> out = null;
+        for (Expr root : roots)
+        {
+            out = collectBroadcastBindings(root, ctx, out);
+        }
+        return out == null ? Map.of() : out;
+    }
+
+
+    private static @Nullable Map<String, Object> collectBroadcastBindings(Expr e,
+            EvaluationContext ctx, @Nullable Map<String, Object> out)
+    {
+        Map<String, Object> acc = out;
+        switch (e)
+        {
+        case Expr.Ref ref ->
+        {
+            if (ref.kind() == OperandKind.OPERATION_REF
+                    && (acc == null || !acc.containsKey(ref.name())))
+            {
+                Object value = ctx.resolveVariable(ref.name());
+                if (value instanceof Vector)
+                {
+                    throw new net.cumba.corej.core.expr.RuleDefinitionException("the binding "
+                            + ref.name() + " is a per-row value and cannot be read inside filter="
+                            + " — a filter runs over the target dataset's rows, so a $-reference"
+                            + " inside it must hold one dataset-level value");
+                }
+                if (acc == null)
+                {
+                    acc = new java.util.HashMap<>(); // a HashMap: a missing value is a null entry
+                }
+                acc.put(ref.name(), value);
+            }
+        }
+        case Expr.Call call ->
+        {
+            for (Expr a : call.args())
+            {
+                acc = collectBroadcastBindings(a, ctx, acc);
+            }
+            for (Expr a : call.kwargs().values())
+            {
+                acc = collectBroadcastBindings(a, ctx, acc);
+            }
+        }
+        case Expr.Binary binary ->
+        {
+            acc = collectBroadcastBindings(binary.left(), ctx, acc);
+            acc = collectBroadcastBindings(binary.right(), ctx, acc);
+        }
+        case Expr.And and ->
+        {
+            for (Expr p : and.parts())
+            {
+                acc = collectBroadcastBindings(p, ctx, acc);
+            }
+        }
+        case Expr.Or or ->
+        {
+            for (Expr p : or.parts())
+            {
+                acc = collectBroadcastBindings(p, ctx, acc);
+            }
+        }
+        case Expr.Not not -> acc = collectBroadcastBindings(not.inner(), ctx, acc);
+        case Expr.Lit lit ->
+        {
+            if (lit.kind() == Expr.LitKind.LIST && lit.value() instanceof List<?> items)
+            {
+                for (Object item : items)
+                {
+                    if (item instanceof Expr inner)
+                    {
+                        acc = collectBroadcastBindings(inner, ctx, acc);
+                    }
+                }
+            }
+        }
+        }
+        return acc;
     }
 
 
@@ -1481,8 +1598,10 @@ public final class GroupedAggregate
 
     /**
      * A context scoped to {@code table} for the filter / the computed target: its own type
-     * expectations (D76), the run's resolver and rule id, no joins and no {@code $} variables —
-     * right-side only, by design (the {@code MatchFilter} / {@code ReadValue} shape).
+     * expectations (D76), the run's resolver and rule id, no joins — right-side only, by design
+     * (the {@code MatchFilter} / {@code ReadValue} shape) — and, for the {@code $}-bindings the
+     * roots read, their PRE-RESOLVED values ({@link #broadcastBindings}), never the rule's
+     * variables map.
      */
     static EvaluationContext tableContext(EvaluationContext ctx, IDataTable table, List<Expr> roots)
     {
@@ -1493,6 +1612,7 @@ public final class GroupedAggregate
         // review of runbook W2–W8, W2 M3).
         return EvaluationContext.builder().table(table).ruleId(ctx.getRuleId()).suppMerge(false)
                 .domainName(table.getMetaData().getName()).datasetResolver(ctx.getDatasetResolver())
+                .variables(broadcastBindings(ctx, roots))
                 .numericExpectedColumns(expectations.numericDefaultColumns())
                 .numericExpectedDynamicSites(expectations.numericDynamicSites()).build();
     }

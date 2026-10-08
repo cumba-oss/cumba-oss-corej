@@ -11,7 +11,6 @@ import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.NativeExprEvaluator;
 import net.cumba.corej.core.expr.eval.ReadValueAmbiguityException;
 import net.cumba.corej.core.expr.eval.Vector;
-import net.cumba.corej.core.expr.typed.TypeExpectations;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.DataValueType;
@@ -204,15 +203,11 @@ public final class ReadValue
                 // absent-column default — the MatchFilter shape, verbatim. suppMerge(false): the
                 // declared SUPP merge serves the PRIMARY table only (PLAN-operation-replacements
                 // §2.3 / §7) — a bare name in filter= is a column of D, never a qualifier of D's
-                // own SUPP-- (combined review of runbook W2–W8, W2 M3).
-                TypeExpectations expectations = TypeExpectations.of(List.of(filter));
-                EvaluationContext filterCtx = EvaluationContext.builder().table(table)
-                        .ruleId(ctx.getRuleId()).suppMerge(false)
-                        .domainName(table.getMetaData().getName())
-                        .datasetResolver(ctx.getDatasetResolver())
-                        .numericExpectedColumns(expectations.numericDefaultColumns())
-                        .numericExpectedDynamicSites(expectations.numericDynamicSites()).build();
-                keep = NativeExprEvaluator.evaluate(filter, filterCtx);
+                // own SUPP-- (combined review of runbook W2–W8, W2 M3). W1a BS3 (C16): the
+                // grouped readers' table context, so a $-binding inside the filter arrives
+                // pre-resolved against the rule's dataset (GroupedAggregate.broadcastBindings).
+                keep = NativeExprEvaluator.evaluate(filter,
+                        GroupedAggregate.tableContext(ctx, table, List.of(filter)));
             }
             int selected = select(table, colIdx, keep);
             IDataValue cell = selected < 0 ? DataValueSupport.defaultForType(type)
@@ -458,7 +453,9 @@ public final class ReadValue
 
     /**
      * Right-side columns only (spec §3.3, Q4): a reference outside {@code D} is a load error; a
-     * {@code D.X} names {@code D}'s own {@code X} (W3c) and is read bare.
+     * {@code D.X} names {@code D}'s own {@code X} (W3c) and is read bare. A {@code $}-binding of
+     * the rule is admitted (W1a BS3, C16) — one dataset-level value handed in pre-resolved
+     * ({@code GroupedAggregate.broadcastBindings}); its level is {@code ListOperandLevel}'s.
      */
     private static void checkFilterRefs(Expr e, String dataset)
     {
@@ -468,11 +465,11 @@ public final class ReadValue
                 .columnName(NAME, "filter", ref, dataset);
         case Expr.Ref ref ->
         {
-            if (ref.kind() != OperandKind.COLUMN)
+            if (ref.kind() != OperandKind.COLUMN && ref.kind() != OperandKind.OPERATION_REF)
             {
                 throw new ExpressionException(
                         NAME + "'s filter= reads the columns of domain only; " + ref.name()
-                                + " is not a bare column of it (no dotted, $ or -- reference)"
+                                + " is not a bare column of it (no dotted or -- reference)"
                                 + (ref.kind() == OperandKind.DOTTED_REF ? " — write it bare ("
                                         + ref.name().substring(ref.name().indexOf('.') + 1) + ")"
                                         : ""));

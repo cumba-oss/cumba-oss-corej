@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.RulePackageLoader;
+import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
 import net.cumba.corej.core.exec.RuleRunnerCalls;
@@ -371,6 +372,175 @@ class BindingSubstitutabilityTest
             assertTrue(String.valueOf(result.getStatusMessage()).contains("must hold a list"),
                     result.getStatusMessage());
         }
+    }
+
+    // ---- C16 (W1a BS3, ruled Q6): a dataset-level $-binding inside filter=(…) ----------------
+
+
+    /** The primary: two subjects, {@code FLAG} is {@code Y} on every row. */
+    private static IDataTable dm()
+    {
+        return MockTable.of().name("DM").col("USUBJID", "S1", "S2").col("FLAG", "Y", "Y").build();
+    }
+
+
+    /**
+     * The target under {@code domain=TS}: {@code FLAG} is {@code N} on every row and {@code PARENT}
+     * names {@code DM} once and {@code TS} twice — so a binding over the PRIMARY ({@code $c:
+     * distinct(FLAG)} = {@code ["Y"]}, {@code $ds: extract_metadata(name="dataset_name")} =
+     * {@code "DM"}) answers differently from the same expression evaluated against TS
+     * ({@code ["N"]}, {@code "TS"}), and a filter that read the wrong table is visible.
+     */
+    private static IDataTable ts()
+    {
+        return MockTable.of().name("TS").col("TSSEQ", "1", "2", "3").col("TSVAL", "Y", "N", "N")
+                .col("TSPARM", "A", "B", "C").col("FLAG", "N", "N", "N")
+                .col("PARENT", "DM", "TS", "TS").build();
+    }
+
+
+    private static DatasetResolver study(IDataTable... tables)
+    {
+        return name ->
+        {
+            for (IDataTable t : tables)
+            {
+                if (t.getMetaData().getName().equalsIgnoreCase(name))
+                {
+                    return t;
+                }
+            }
+            return null;
+        };
+    }
+
+
+    private static int violations(Rule rule, IDataTable primary, DatasetResolver resolver)
+    {
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, primary, resolver);
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        return result.getViolations().size();
+    }
+
+
+    @Test
+    void aDatasetLevelBindingInsideFilterLoadsOnEveryFilteringFunction() throws Exception
+    {
+        // C16: the `$` the shape check refused is admitted — bound to a dataset-level value — on
+        // every function with a filter= (the five grouped readers and read_value).
+        for (String call : List.of("record_count(domain=TS, filter=(TSVAL in $c))",
+                "record_count(filter=(FLAG in $c))",
+                "distinct(TSVAL, domain=TS, filter=(TSVAL in $c))",
+                "max(TSSEQ, domain=TS, group=[TSVAL], filter=(TSVAL in $c))",
+                "max_date(TSSEQ, domain=TS, group=[TSVAL], filter=(PARENT == $ds))",
+                "min_date(TSSEQ, domain=TS, group=[TSVAL], filter=(PARENT == $ds and TSVAL in $c))",
+                "read_value(TSPARM, domain=TS, filter=(PARENT == $ds), mode=\"FIRST\")"))
+        {
+            Rule rule = load("not empty($v)", "$c", "distinct(FLAG)", "$ds",
+                    "extract_metadata(name=\"dataset_name\")", "$v", call);
+            assertNull(rule.getLoadError(), call + " → " + rule.getLoadError());
+        }
+    }
+
+
+    @Test
+    void aDatasetLevelBindingInsideFilterIsTheRulesOwnValueNotTheTargetTables() throws Exception
+    {
+        // Coordinator decision 2: the filter runs in the target table's context, so the binding's
+        // value is resolved BEFORE (against the rule's dataset) and handed in as a constant. Were
+        // the rule's variables passed through, the lazily evaluated binding would read TS —
+        // `distinct(FLAG)` = ["N"] (2 rows match) and dataset_name = "TS" (2 rows) — and both
+        // Checks below would answer 0 findings.
+        IDataTable dm = dm();
+        DatasetResolver resolver = study(dm, ts());
+        Rule inList = load("not empty(USUBJID) and $n == 1", "$c", "distinct(FLAG)", "$n",
+                "record_count(domain=TS, filter=(TSVAL in $c))");
+        assertNull(inList.getLoadError(), inList.getLoadError());
+        assertEquals(2, violations(inList, dm, resolver), "TSVAL in [\"Y\"] matches one TS row");
+        Rule scalar = load("not empty(USUBJID) and $p == \"A\"", "$ds",
+                "extract_metadata(name=\"dataset_name\")", "$p",
+                "read_value(TSPARM, domain=TS, filter=(PARENT == $ds), mode=\"FIRST\")");
+        assertNull(scalar.getLoadError(), scalar.getLoadError());
+        assertEquals(2, violations(scalar, dm, resolver), "PARENT == \"DM\" is TS row 1 → A");
+        // the control for the fixture itself: the literal the binding holds answers the same
+        Rule literal = load("not empty(USUBJID) and $n == 1", "$n",
+                "record_count(domain=TS, filter=(TSVAL in [\"Y\"]))");
+        assertEquals(2, violations(literal, dm, resolver));
+        // and without domain= the target IS the primary: FLAG in ["Y"] on DM counts both rows
+        Rule own = load("not empty(USUBJID) and $n == 2", "$c", "distinct(FLAG)", "$n",
+                "record_count(filter=(FLAG in $c))");
+        assertEquals(2, violations(own, dm, resolver));
+    }
+
+
+    @Test
+    void aPerRowBindingInsideFilterIsTheLevelFinding() throws Exception
+    {
+        // A per-row `$` has no one value a filter over ANOTHER table's rows could take: the level
+        // finding (G3's derivation, ListOperandLevel), one sentence, stage A's kind.
+        for (String call : List.of("record_count(domain=TS, filter=(TSVAL == $p))",
+                "distinct(TSVAL, domain=TS, filter=(TSVAL == $p))",
+                "max(TSSEQ, domain=TS, group=[TSVAL], filter=(TSVAL == $p))",
+                "read_value(TSPARM, domain=TS, filter=(TSVAL == $p), mode=\"FIRST\")"))
+        {
+            String error = String
+                    .valueOf(load("not empty($v)", "$p", "FLAG", "$v", call).getLoadError());
+            String fn = call.substring(0, call.indexOf('('));
+            assertTrue(error.contains("OPERATION_READS_CURSOR_BINDING"), call + " → " + error);
+            assertTrue(error.contains("argument 'filter' of '" + fn + "'"), call + " → " + error);
+            assertTrue(error.contains("per-row or per-variable value `$p`"), call + " → " + error);
+            assertTrue(error.contains("the binding $v"), call + " → " + error);
+        }
+    }
+
+
+    @Test
+    void aPerRowBindingInANestedFilterIsTheInnerCallsOneFinding() throws Exception
+    {
+        // The outer filter's walk does not descend into the nested call's own filter=: one
+        // finding, attributed to the function that reads the `$`, never a second one for the outer.
+        String error = String.valueOf(load("not empty($v)", "$p", "FLAG", "$v",
+                "max(TSSEQ, domain=TS, group=[TSVAL],"
+                        + " filter=(record_count(domain=TS, filter=(TSVAL == $p)) > 0))")
+                                .getLoadError());
+        assertTrue(error.contains("argument 'filter' of 'record_count'"), error);
+        assertTrue(!error.contains("argument 'filter' of 'max'"), error);
+    }
+
+
+    @Test
+    void aPerRowBindingInsideFilterInACheckLessRuleIsTheLoadersFinding() throws Exception
+    {
+        // The path stage A never walks: the loader's seam pass files the same sentence.
+        Map<String, Object> rule = new LinkedHashMap<>();
+        rule.put("Core", Map.of("Id", "BS3-CHECKLESS"));
+        rule.put("Bindings", List.of(Map.of("name", "$p", "expression", "FLAG"), Map.of("name",
+                "$v", "expression", "record_count(domain=TS, filter=(TSVAL == $p))")));
+        rule.put("Match_Datasets", List.of(Map.of("Name", "DM")));
+        rule.put("Outcome", Map.of("Message", "m", "Output_Variables", List.of("$v")));
+        String json = MAPPER.writeValueAsString(Map.of("rules", Map.of("x", rule)));
+        Rule loaded = RulePackageLoader.loadFromString(json).getRules().get("x");
+        assertNotNull(loaded);
+        String error = String.valueOf(loaded.getLoadError());
+        assertTrue(error.contains("argument 'filter' of 'record_count'"), error);
+        assertTrue(error.contains("per-row or per-variable value `$p`"), error);
+        assertTrue(error.contains("the binding $v"), error);
+    }
+
+
+    @Test
+    void theExpressionInlineInsideFilterIsScopedToTheTargetTable() throws Exception
+    {
+        // NOT substitutable by construction (like C15): every reference written inside filter=(…)
+        // is a column of the TARGET table (functions.md, the filter rows), so `distinct(FLAG)`
+        // inline reads TS's FLAG (["N"], two rows) where the binding read DM's (["Y"], one row).
+        // Pinned so that the asymmetry is a documented scope rule, never a silent surprise.
+        IDataTable dm = dm();
+        DatasetResolver resolver = study(dm, ts());
+        Rule inline = load("not empty(USUBJID) and $n == 2", "$n",
+                "record_count(domain=TS, filter=(TSVAL in distinct(FLAG)))");
+        assertNull(inline.getLoadError(), inline.getLoadError());
+        assertEquals(2, violations(inline, dm, resolver));
     }
 
 

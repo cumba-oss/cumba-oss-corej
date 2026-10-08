@@ -469,8 +469,10 @@ class RecordCountFunctionTest
         expectError("record_count(filter=filter(TSPARMCD=" + q("INDIC") + "))",
                 "filter=(COLUMN == \"value\")");
         expectError("record_count(filter=TSPARMCD)", "boolean expression");
-        expectError("record_count(domain=TS, filter=($x == 1))",
-                "must be a plain column reference");
+        // W1a BS3 (C16): a `$` inside filter= is no longer a shape refusal — a declared
+        // dataset-level binding is admitted (BindingSubstitutabilityTest), an undeclared one is
+        // the binding guard's load error, never a silent empty filter
+        expectError("record_count(domain=TS, filter=($x == 1))", "which no binding defines");
         expectError("record_count(domain=TS, group=[--TESTCD])", "does not resolve `--`");
         expectError("record_count(domain=TS, filter=(DM.USUBJID == " + q("S1") + "))",
                 "write it bare (USUBJID) or qualified by TS");

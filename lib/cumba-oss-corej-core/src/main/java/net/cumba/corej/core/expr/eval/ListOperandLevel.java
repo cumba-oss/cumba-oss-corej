@@ -24,12 +24,16 @@ import org.jspecify.annotations.Nullable;
  * the same answer.
  *
  * <p>
- * Two kinds of reader are judged here: the set functions ({@link #LIST_SET_FUNCTIONS}: every
- * operand of {@code minus} / {@code union} is a dataset-level list, W1a U3) and the registry
+ * Three kinds of reader are judged here: the set functions ({@link #LIST_SET_FUNCTIONS}: every
+ * operand of {@code minus} / {@code union} is a dataset-level list, W1a U3), the registry
  * parameters read <b>once per call</b> ({@link #PER_CALL_PARAMETERS}, W1a BS1 — C9–C11 of
  * {@code PLAN-binding-substitutability}, ruled Q4: the open-vocabulary strings, the dictionary
  * functions' {@code case_sensitive} and the static lists, which the compiler held to a literal
- * until BS1 because a per-row value there would have been read at row 0).
+ * until BS1 because a per-row value there would have been read at row 0), and the {@code $}
+ * references inside a {@code filter=(…)} ({@link #FILTER_FUNCTIONS}, W1a BS3 — C16, ruled Q6: a
+ * filter runs over the TARGET table's rows, so a binding read inside it is handed in as one
+ * pre-resolved dataset-level constant — {@code GroupedAggregate.broadcastBindings} — and a per-row
+ * one has no value to hand).
  * </p>
  *
  * <p>
@@ -89,6 +93,19 @@ public final class ListOperandLevel
                     Set.of(net.cumba.corej.core.exec.DictionaryFunctions.CASE_SENSITIVE_PARAMETER)),
             Map.entry(net.cumba.corej.core.exec.DictionaryFunctions.HIERARCHY, Set
                     .of(net.cumba.corej.core.exec.DictionaryFunctions.CASE_SENSITIVE_PARAMETER)));
+
+    /**
+     * The functions with a {@code filter=(…)} over a target table (the five grouped readers and
+     * {@code read_value}): a {@code $}-reference inside the filter is judged per reference — the
+     * filter itself reads the target's columns per row, so the expression as a whole is never the
+     * operand (W1a BS3, C16).
+     */
+    public static final Set<String> FILTER_FUNCTIONS = Set.of(
+            net.cumba.corej.core.exec.GroupedAggregate.MAX,
+            net.cumba.corej.core.exec.GroupedAggregate.MAX_DATE,
+            net.cumba.corej.core.exec.GroupedAggregate.MIN_DATE,
+            net.cumba.corej.core.exec.RecordCount.NAME, net.cumba.corej.core.exec.Distinct.NAME,
+            net.cumba.corej.core.exec.ReadValue.NAME);
 
     private ListOperandLevel()
     {
@@ -159,6 +176,26 @@ public final class ListOperandLevel
                 + " is read once per call and cannot take the per-row or per-variable value `"
                 + ExpressionPrinter.print(operand)
                 + "` — bound or inline, it takes a dataset-level value";
+    }
+
+
+    /**
+     * The refusal's text for a {@code $}-reference inside {@code filter=(…)} (W1a BS3, C16).
+     *
+     * @param function
+     *            the filtering function
+     * @param where
+     *            where the call is written
+     * @param operand
+     *            the refused {@code $}-reference, printed as written
+     * @return the message
+     */
+    public static String filterRefusal(String function, String where, Expr operand)
+    {
+        return "argument 'filter' of '" + function + "' in " + where
+                + " reads the per-row or per-variable value `" + ExpressionPrinter.print(operand)
+                + "` — a filter runs over the target dataset's rows, so a $-reference inside it"
+                + " must hold one dataset-level value";
     }
 
 
@@ -253,11 +290,13 @@ public final class ListOperandLevel
 
 
     /**
-     * Every level refusal of one call: each operand of a set function, and each operand at a
+     * Every level refusal of one call: each operand of a set function, each operand at a
      * {@link #PER_CALL_PARAMETERS per-call parameter} (positional operands mapped to their
-     * parameter through the registry descriptor, keyword operands by name), that varies per row or
-     * per variable. Empty for any other call, and for a call whose every such operand is
-     * dataset-level. Stage A files each as a finding; the loader throws the first.
+     * parameter through the registry descriptor, keyword operands by name), and each
+     * {@code $}-reference inside the {@code filter=} of a {@link #FILTER_FUNCTIONS filtering
+     * function}, that varies per row or per variable. Empty for any other call, and for a call
+     * whose every such operand is dataset-level. Stage A files each as a finding; the loader throws
+     * the first.
      *
      * @param c
      *            the call
@@ -280,6 +319,16 @@ public final class ListOperandLevel
                 {
                     out.add(refusal(c.name(), where, operand));
                 }
+            }
+            return out;
+        }
+        if (FILTER_FUNCTIONS.contains(c.name()))
+        {
+            Expr filter = c.kwargs()
+                    .get(net.cumba.corej.core.exec.GroupedAggregate.FILTER_PARAMETER);
+            if (filter != null)
+            {
+                filterReferences(filter, c.name(), rule, where, out);
             }
             return out;
         }
@@ -308,6 +357,66 @@ public final class ListOperandLevel
         if (perCall.contains(parameter) && needsCursor(operand, rule))
         {
             out.add(parameterRefusal(function, parameter, where, operand));
+        }
+    }
+
+
+    /**
+     * The {@code $}-references inside a {@code filter=} expression, each judged on its own
+     * ({@link #needsCursor}): the filter's columns are the target table's and vary per row by
+     * nature, so the walk never asks the whole expression. A nested call is walked through, except
+     * for a nested filtering call's own {@code filter=}, which is judged when {@link #refusals}
+     * reaches that call.
+     */
+    private static void filterReferences(Expr e, String function, Rule rule, String where,
+            List<String> out)
+    {
+        switch (e)
+        {
+        case Expr.Ref ref ->
+        {
+            if (ref.kind() == OperandKind.OPERATION_REF && needsCursor(ref, rule))
+            {
+                out.add(filterRefusal(function, where, ref));
+            }
+        }
+        case Expr.Call call ->
+        {
+            call.args().forEach(a -> filterReferences(a, function, rule, where, out));
+            boolean nestedFilter = FILTER_FUNCTIONS.contains(call.name());
+            call.kwargs().forEach((name, a) ->
+            {
+                // a nested filtering call's own filter= is that call's judgement (one finding,
+                // attributed to the function that reads it), never the outer's as well
+                if (!nestedFilter || !net.cumba.corej.core.exec.GroupedAggregate.FILTER_PARAMETER
+                        .equals(name))
+                {
+                    filterReferences(a, function, rule, where, out);
+                }
+            });
+        }
+        case Expr.Binary binary ->
+        {
+            filterReferences(binary.left(), function, rule, where, out);
+            filterReferences(binary.right(), function, rule, where, out);
+        }
+        case Expr.And and -> and.parts()
+                .forEach(p -> filterReferences(p, function, rule, where, out));
+        case Expr.Or or -> or.parts().forEach(p -> filterReferences(p, function, rule, where, out));
+        case Expr.Not not -> filterReferences(not.inner(), function, rule, where, out);
+        case Expr.Lit lit ->
+        {
+            if (lit.kind() == Expr.LitKind.LIST && lit.value() instanceof List<?> items)
+            {
+                for (Object item : items)
+                {
+                    if (item instanceof Expr inner)
+                    {
+                        filterReferences(inner, function, rule, where, out);
+                    }
+                }
+            }
+        }
         }
     }
 
