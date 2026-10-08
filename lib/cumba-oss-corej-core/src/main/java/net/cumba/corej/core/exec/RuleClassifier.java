@@ -434,16 +434,43 @@ public final class RuleClassifier
     {
         List<String> group = new ArrayList<>();
         Expr groupExpr = call.kwargs().get("group");
+        if (groupExpr != null)
+        {
+            groupMembers(groupExpr, group);
+        }
+        Expr domainExpr = call.kwargs().get("domain");
+        String domain = domainExpr instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
+                ? String.valueOf(lit.value())
+                : domainExpr instanceof Expr.Ref ref ? ref.name() : null;
+        return new CallUsage(call.name(), List.copyOf(group), call.kwargs().containsKey("filter"),
+                domain, targetsOf(call));
+    }
+
+    /**
+     * The group key a computed splice member stands for in a grouped call's usage (runbook W2 SC,
+     * coordinator W2-D7): the expression a {@code $} binding holds, written in place or read
+     * through the inlined binding — a dataset-level list of names spliced at evaluation, so its
+     * columns are unknown here. Like a raw {@code $} member it is a key that is not
+     * dataset-constant, so the call resolves per record ({@link #operationScope}) and is never an
+     * ungrouped study-level usage ({@link #isStudyLevelUsage}) — without it a grouped call whose
+     * only members are spliced read as one ungrouped, dataset-level usage and the runner collapsed
+     * its per-row findings to one.
+     */
+    private static final String SPLICED_GROUP_MEMBER = "$(spliced)";
+
+    /**
+     * The group keys of a {@code group=} argument: a column or {@code $} reference by its name, a
+     * string member by its text, a sided member by its left column, a nested list member by its own
+     * members, and a computed splice member as {@link #SPLICED_GROUP_MEMBER}.
+     */
+    private static void groupMembers(Expr groupExpr, List<String> group)
+    {
         if (groupExpr instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
                 && lit.value() instanceof List<?> items)
         {
             for (Object item : items)
             {
-                if (item instanceof Expr.Ref ref)
-                {
-                    group.add(ref.name());
-                }
-                else if (item instanceof Expr.Lit member && member.kind() == Expr.LitKind.STRING)
+                if (item instanceof Expr.Lit member && member.kind() == Expr.LitKind.STRING)
                 {
                     group.add(String.valueOf(member.value()));
                 }
@@ -453,18 +480,22 @@ public final class RuleClassifier
                     // W1b RO (R3): a sided member reads this row's left column
                     group.add(left.name());
                 }
+                else if (item instanceof Expr member && (member instanceof Expr.Ref
+                        || (member instanceof Expr.Lit nested && nested.kind() == Expr.LitKind.LIST)
+                        || GroupSplice.spliced(member) != null))
+                {
+                    groupMembers(member, group);
+                }
             }
         }
         else if (groupExpr instanceof Expr.Ref ref)
         {
             group.add(ref.name());
         }
-        Expr domainExpr = call.kwargs().get("domain");
-        String domain = domainExpr instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
-                ? String.valueOf(lit.value())
-                : domainExpr instanceof Expr.Ref ref ? ref.name() : null;
-        return new CallUsage(call.name(), List.copyOf(group), call.kwargs().containsKey("filter"),
-                domain, targetsOf(call));
+        else if (GroupSplice.spliced(groupExpr) != null)
+        {
+            group.add(SPLICED_GROUP_MEMBER);
+        }
     }
 
 

@@ -339,10 +339,12 @@ class BindingSubstitutabilityTest
                 load("not is_unique_set([USUBJID, $t])", "$t", term),
                 load("not is_unique_set([USUBJID, " + term + "])"));
         // C5: the bare operand reads as the one-member list — compared with THAT spelling and with
-        // the binding holding the same expression. ⚠ A rule whose only column names arrive by a
-        // splice (bound or inline) has none the classifier can see, so it is a Dataset-level rule
-        // (ONE collapsed finding) — a pre-existing property of f([$k]) the bare form inherits,
-        // reported with the unit; a bare USUBJID beside the splice makes the rule Record-level.
+        // the binding holding the same expression. A rule whose only column names arrive by a
+        // splice (bound or inline) is a Record-level rule like its written twin, one finding per
+        // row: W1b P5b (is_unique_set's members — RuleClassifier reads a computed splice member as
+        // the unresolved usage a $ member is) and W2 SC (record_count's group= — the grouped-call
+        // usage keeps a spliced key); this used to read "a Dataset-level rule (ONE collapsed
+        // finding)", which the family-internal comparison below could not see.
         List<Rule> bare = List.of(load("not is_unique_set([$k])", "$k", names),
                 load("not is_unique_set($k)", "$k", names),
                 load("not is_unique_set(" + names + ")"),
@@ -357,21 +359,21 @@ class BindingSubstitutabilityTest
                 load("$c > 1", "$k", names, "$c", "record_count(group=[$k])"),
                 load("$c > 1", "$c", "record_count(group=" + names + ")"),
                 load("$c > 1", "$c", "record_count(group=[" + names + "])"));
+        Map<String, Integer> fired = new LinkedHashMap<>();
         for (List<Rule> family : List.of(uniqueness, bare, counts, bareCounts))
         {
-            Map<String, Integer> fired = new LinkedHashMap<>();
             for (Rule rule : family)
             {
                 assertNull(rule.getLoadError(), rule.getLoadError());
                 assertEquals(0, violations(rule, unique), "every tuple is unique");
                 fired.put(spelling(rule), violations(rule, dup));
             }
-            int literal = fired.values().iterator().next();
-            assertTrue(literal > 0, "rows 0 and 1 share the tuple: " + fired);
-            for (Map.Entry<String, Integer> e : fired.entrySet())
-            {
-                assertEquals(literal, e.getValue(), "the spellings answer alike: " + fired);
-            }
+        }
+        // every family against the written names, so a splice-only family that collapsed to one
+        // finding is visible (W2 SC): rows 0 and 1 share the tuple — two findings
+        for (Map.Entry<String, Integer> e : fired.entrySet())
+        {
+            assertEquals(2, e.getValue(), "the spellings answer per row alike: " + fired);
         }
     }
 
@@ -382,10 +384,12 @@ class BindingSubstitutabilityTest
      * operand. On UNIQUE every (USUBJID, AETERM) tuple occurs once, so a per-group read keyed by
      * both answers each row its own cell and nothing fires, while a group keyed by USUBJID alone
      * (the planted wrong names) fires; on DUP rows 0 / 1 share the tuple and fire alike. Two
-     * families per reader, compared within themselves: a bare {@code USUBJID} beside the splice,
-     * and the splice-only spellings — a Check whose only column names arrive through a splice is a
-     * Dataset-level rule (ONE collapsed finding), the pre-existing property of
-     * {@code record_count}'s splice (lane 4, W2 candidate) that f($keys) and f([$keys]) share.
+     * families per reader — a bare {@code USUBJID} beside the splice, and the splice-only spellings
+     * — compared with each other: a Check whose only column names arrive through a splice finds per
+     * row like its written twin (W1b P5b for the compiler-dispatched readers, W2 SC for the grouped
+     * calls' {@code group=}; this used to read "a Dataset-level rule (ONE collapsed finding)",
+     * which a family-internal comparison could not see). Every slot is pinned with the derived
+     * Sensitivity in {@link SpliceSlotRowSensitivityTest}.
      */
     @Test
     void aSplicedGroupReadsTheWrittenNamesColumns() throws Exception
@@ -417,9 +421,9 @@ class BindingSubstitutabilityTest
             Rule wrong = load(check.replace("‹g›", "[USUBJID]"));
             assertNull(wrong.getLoadError(), wrong.getLoadError());
             assertTrue(violations(wrong, unique, study(unique)) > 0, check + ": sensitive");
+            Map<String, Integer> fired = new LinkedHashMap<>();
             for (List<Rule> family : List.of(mixed, spliceOnly))
             {
-                Map<String, Integer> fired = new LinkedHashMap<>();
                 for (Rule rule : family)
                 {
                     assertNull(rule.getLoadError(), check + " → " + rule.getLoadError());
@@ -427,13 +431,12 @@ class BindingSubstitutabilityTest
                             check + ": every tuple is unique for " + spelling(rule));
                     fired.put(spelling(rule), violations(rule, dup, study(dup)));
                 }
-                int first = fired.values().iterator().next();
-                assertTrue(first > 0, "rows 0 and 1 share the tuple: " + fired);
-                for (Map.Entry<String, Integer> e : fired.entrySet())
-                {
-                    assertEquals(first, e.getValue(),
-                            check + ": the spellings answer alike: " + fired);
-                }
+            }
+            int first = fired.values().iterator().next();
+            assertTrue(first > 0, "rows 0 and 1 share the tuple: " + fired);
+            for (Map.Entry<String, Integer> e : fired.entrySet())
+            {
+                assertEquals(first, e.getValue(), check + ": the spellings answer alike: " + fired);
             }
         }
     }
