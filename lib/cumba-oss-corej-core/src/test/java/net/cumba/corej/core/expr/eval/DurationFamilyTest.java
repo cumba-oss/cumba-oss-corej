@@ -47,12 +47,16 @@ class DurationFamilyTest
     /** {@code --DTC} / {@code --ENDTC} / {@code --DUR} rows for the between-instants hull. */
     private static IDataTable spans()
     {
-        return RealTables.of("XX").str("DOMAIN", "XX", "XX", "XX", "XX", "XX", "XX", "XX")
+        return RealTables.of("XX")
+                .str("DOMAIN", "XX", "XX", "XX", "XX", "XX", "XX", "XX", "XX", "XX")
                 .str("XXDTC", "2020-01-01T00:00", "2020-01-01T00:00", "2020-01", "2020-01",
-                        "2020-01-01", "2020-01-05", "2020-01-01")
+                        "2020-01-01", "2020-01-05", "2020-01-01", "2020-01-01T00:00:00",
+                        "2020-01-01")
                 .str("XXENDTC", "2020-01-02T12:00", "2020-01-02T12:00", "2020-02-15", "2020-02-15",
-                        "2020-01-03", "2020-01-03", "")
-                .str("XXDUR", "P1DT12H", "P2D", "P1M", "P60D", "P2D", "-P2D", "P1D").build();
+                        "2020-01-03", "2020-01-03", "", "2020-01-02T12:00:00", "2020-01-02T10:00")
+                .str("XXDUR", "P1DT12H", "P2D", "P1M", "P60D", "P2D", "-P2D", "P1D", "P1DT12H",
+                        "PT34H")
+                .build();
     }
 
 
@@ -134,16 +138,22 @@ class DurationFamilyTest
     {
         String populated = "not empty(XXDTC) and not empty(XXENDTC) and not empty(XXDUR) and ";
         // row E of the plan: --DUR must equal --ENDTC - --DTC — fires only where DEFINITELY
-        // different: 1 agrees (P1DT12H); 2 disagrees (P2D); 3's hull [14 d, 46 d] meets P1M; 4's
-        // P60D is disjoint from it; 5: two complete dates are a point, P2D agrees; 6: -P2D agrees
+        // different. Each instant is its own hull (dur-order §5 Q4; R5 B-M2: two COMPLETE
+        // instants too, never a point at the coarser precision): 1's minute-precision instants
+        // span [P1DT11H59M1S, P1DT12H59S], which holds P1DT12H; 2's P2D lies outside it; 3's hull
+        // [14 d, 46 d] meets P1M; 4's P60D is disjoint from it; 5's two dates span
+        // [P1DT1S, P2DT23H59M59S], which holds P2D; 6 likewise -P2D; 8's two second-precision
+        // instants are a point, P1DT12H; 9: 2020-01-01 to 2020-01-02T10:00 spans
+        // [PT10H1S, P1DT10H59S], which holds PT34H
         assertEquals(List.of(2L, 4L),
                 fired(spans(), populated + "duration(XXDUR) != duration_between(XXDTC, XXENDTC)"));
-        assertEquals(List.of(1L, 5L, 6L),
+        // == needs two equal points: only the second-precision pair is one
+        assertEquals(List.of(8L),
                 fired(spans(), populated + "duration(XXDUR) == duration_between(XXDTC, XXENDTC)"));
         // the hull routes the family from either side (D6), with a marker, a literal, a column
-        assertEquals(List.of(1L, 2L, 3L, 4L, 5L),
+        assertEquals(List.of(1L, 2L, 3L, 4L, 5L, 8L),
                 fired(spans(), populated + "duration_between(XXDTC, XXENDTC) > duration(\"P1D\")"));
-        assertEquals(List.of(1L, 2L, 3L, 4L, 5L),
+        assertEquals(List.of(1L, 2L, 3L, 4L, 5L, 8L),
                 fired(spans(), populated + "duration_between(XXDTC, XXENDTC) > \"P1D\""));
         assertEquals(List.of(6L),
                 fired(spans(), populated + "duration_between(XXDTC, XXENDTC) < \"P0D\""));
@@ -151,17 +161,100 @@ class DurationFamilyTest
                 fired(spans(), populated + "XXDUR != duration_between(XXDTC, XXENDTC)"),
                 "the hull operand alone selects the family");
         // the carrier: a point renders as a point duration, a range as lower/upper
-        assertEquals(List.of(1L, 2L),
+        assertEquals(List.of(8L),
                 fired(spans(), "duration_between(XXDTC, XXENDTC) == \"P1DT12H\""));
-        assertEquals(List.of(5L), fired(spans(), "duration_between(XXDTC, XXENDTC) == \"P2D\""));
         // (a range is no point, so the family's == never holds on it: pin the text through str)
+        assertEquals(List.of(1L, 2L), fired(spans(),
+                "str(duration_between(XXDTC, XXENDTC)) == \"P1DT11H59M1S/P1DT12H59S\""));
         assertEquals(List.of(3L, 4L), fired(spans(),
                 "str(duration_between(XXDTC, XXENDTC)) == \"P14DT1S/P45DT23H59M59S\""));
+        assertEquals(List.of(5L), fired(spans(),
+                "str(duration_between(XXDTC, XXENDTC)) == \"P1DT1S/P2DT23H59M59S\""));
         // a blank instant: the computed missing
         assertEquals(List.of(7L), fired(spans(), "empty(duration_between(XXDTC, XXENDTC))"));
         // Stage A: a duration
         String mixed = loadError("duration_between(XXDTC, XXENDTC) > date(XXDTC)");
         assertTrue(mixed.contains("comparison operands disagree: duration GT date"), mixed);
+    }
+
+
+    @Test
+    void durationBetweensOwnResultPositionsThroughAMarkerAndABinding()
+    {
+        // R5 B-L1: the lower/upper carrier is read where the operand is duration_between's own
+        // result — written in place, inside a duration(…) marker, or through a binding holding it
+        // (bound ≡ inline, read per run) — and nowhere else
+        String populated = "not empty(XXDTC) and not empty(XXENDTC) and not empty(XXDUR) and ";
+        assertEquals(List.of(2L, 4L), fired(spans(),
+                populated + "duration(XXDUR) != duration(duration_between(XXDTC, XXENDTC))"));
+        assertEquals(List.of(3L, 4L), fired(spans(),
+                "latest_possible(duration(duration_between(XXDTC, XXENDTC))) == \"P45DT23H59M59S\""));
+        assertEquals(List.of(2L, 4L), firedWith(spans(), populated + "duration(XXDUR) != $d", "$d",
+                "duration_between(XXDTC, XXENDTC)"));
+    }
+
+
+    /** A numeric-looking cell ({@code "5"}) beside a duration, on either side. */
+    private static IDataTable numericLooking()
+    {
+        return RealTables.of("XX").str("DOMAIN", "XX", "XX").str("STINT", "5", "P1D")
+                .str("ENINT", "P1D", "5").build();
+    }
+
+
+    /** The engine's own {@code lower/upper} carrier spelled in a DATA cell, on either side. */
+    private static IDataTable dataCarrier()
+    {
+        return RealTables.of("XX").str("DOMAIN", "XX", "XX").str("STINT", "PT1H/PT2H", "P1D")
+                .str("ENINT", "PT90M", "PT1H/PT2H").build();
+    }
+
+
+    /** Every predicate silent and {@code !=} firing on both rows, from either operand order. */
+    private static void assertUnpositionable(IDataTable table)
+    {
+        Map<String, String> mirror = Map.of(">", "<", ">=", "<=", "<", ">", "<=", ">=", "==", "==");
+        for (Map.Entry<String, String> op : mirror.entrySet())
+        {
+            assertEquals(List.of(),
+                    fired(table, "duration(STINT) " + op.getKey() + " duration(ENINT)"),
+                    op.getKey());
+            assertEquals(List.of(),
+                    fired(table, "duration(ENINT) " + op.getValue() + " duration(STINT)"),
+                    op.getValue());
+        }
+        assertEquals(List.of(1L, 2L), fired(table, "duration(STINT) != duration(ENINT)"));
+        assertEquals(List.of(1L, 2L), fired(table, "duration(ENINT) != duration(STINT)"));
+    }
+
+
+    @Test
+    void aNumericLookingCellIsUnpositionableFromEitherSide()
+    {
+        // R5 B-M1: the operator has no numeric arm — "5" is no duration, so all five predicates
+        // are false and != fires, whichever side it is on (a numeric arm made "5" vs "P1D" fire
+        // every operator, A > B disagree with B < A and == / != both hold)
+        assertUnpositionable(numericLooking());
+        // a literal side likewise (its hull is read once, B-L6)
+        assertEquals(List.of(), fired(numericLooking(), "duration(ENINT) == \"5\""));
+        assertEquals(List.of(1L, 2L), fired(numericLooking(), "duration(ENINT) != \"5\""));
+        assertEquals(List.of(), fired(numericLooking(), "\"5\" < duration(STINT)"));
+        // the relation= arm agrees (it never had a numeric arm): 5 then P1D is no "<=" pair
+        IDataTable td = RealTables.of("TD").str("DOMAIN", "TD", "TD").str("TDANCVAR", "A", "A")
+                .dbl("TDORDER", 1d, 2d).str("TDSTOFF", "5", "P1D").build();
+        assertEquals(List.of(1L), fired(td, "not has_next_corresponding_record(duration(TDSTOFF),"
+                + " duration(TDSTOFF), ordering=TDORDER, within=TDANCVAR, relation=\"<=\")"));
+    }
+
+
+    @Test
+    void aDataCellSpelledAsTheCarrierIsUnpositionable()
+    {
+        // R5 B-L1 (dur-order §5: "an invalid duration is unpositionable"): lower/upper is
+        // duration_between's own carrier, never read from a data cell
+        assertUnpositionable(dataCarrier());
+        assertEquals(List.of(1L), fired(dataCarrier(), "empty(earliest_possible(duration(STINT)))"),
+                "no bound");
     }
 
 
@@ -217,7 +310,13 @@ class DurationFamilyTest
 
     private static List<Long> fired(IDataTable table, String check)
     {
-        Rule rule = load(check);
+        return firedWith(table, check);
+    }
+
+
+    private static List<Long> firedWith(IDataTable table, String check, String... bindings)
+    {
+        Rule rule = load(check, bindings);
         assertNull(rule.getLoadError(), () -> check + " -> " + rule.getLoadError());
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
@@ -234,12 +333,21 @@ class DurationFamilyTest
     }
 
 
-    private static Rule load(String check)
+    private static Rule load(String check, String... bindings)
     {
         try
         {
             Map<String, Object> rule = new LinkedHashMap<>();
             rule.put("Core", Map.of("Id", "DO-TEST"));
+            if (bindings.length > 0)
+            {
+                List<Map<String, String>> declared = new ArrayList<>();
+                for (int i = 0; i < bindings.length; i += 2)
+                {
+                    declared.add(Map.of("name", bindings[i], "expression", bindings[i + 1]));
+                }
+                rule.put("Bindings", declared);
+            }
             rule.put("Check", Map.of("expression", check));
             rule.put("Outcome", Map.of("Message", "m"));
             String json = MAPPER.writeValueAsString(Map.of("rules", Map.of("x", rule)));

@@ -37,7 +37,8 @@ import net.cumba.corej.core.model.Rule;
  * start and length of {@code substring}, and the length of {@code has_equal_length} /
  * {@code has_not_equal_length} ({@code BuiltinFunctions} / {@code Primitives} hoisted gates).</li>
  * <li><b>CHARACTER</b> — a regex-match subject ({@code ExprCompiler.compileRegex}), a
- * string-literal membership probe, and an equality side whose other side is a string literal.</li>
+ * string-literal membership probe, and an equality side whose other side is a string literal or a
+ * substitution ({@code X ~ /re/repl/}, a STRING).</li>
  * <li><b>ISO_TEXT</b> — the argument of a {@code date(...)} / {@code time(...)} conversion: an
  * ISO-8601 <em>text</em> read (D55's shape when the column turns out numeric; the stage-B
  * classification of {@code ColumnTypeGate.observeIsoConversionRead}).</li>
@@ -990,10 +991,15 @@ public final class TypeExpectations
 
     /**
      * {@code ExprCompiler.staticKind}'s mirror: num-literal / num() ⇒ NUMERIC, string literal ⇒
-     * CHARACTER.
+     * CHARACTER, a substitution {@code X ~ /re/repl/} ⇒ CHARACTER (its result is a STRING, which
+     * the compiler's column-type gate states for the other side; runbook W1b fold, R5 B-L3).
      */
     private static @org.jspecify.annotations.Nullable Expectation staticKind(Expr e)
     {
+        if (e instanceof Expr.Binary b && b.op() == Expr.BinOp.SUBST)
+        {
+            return Expectation.CHARACTER;
+        }
         if (e instanceof Expr.Call c && "num".equals(c.name()))
         {
             return Expectation.NUMERIC;

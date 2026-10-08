@@ -150,6 +150,12 @@ public final class ExprCompiler
     private static final String DURATION = "duration";
 
     /**
+     * The guard on a walk through markers and {@code $} bindings ({@link #isDurationCarrier}): a
+     * forward or cyclic binding is a stage-A load error, so a loadable rule never comes near it.
+     */
+    private static final int BINDING_CHAIN_LIMIT = 64;
+
+    /**
      * The complete compiler-structural comparison-marker vocabulary: {@link #TAGS} (erased mode
      * tags) ∪ {@link #CONVERSIONS} (value conversions) — the names the binary-comparison handling
      * reads to select an operator FAMILY ({@link #family}, the {@code numTag} flag). The two tags
@@ -924,19 +930,18 @@ public final class ExprCompiler
      * a missing subject is that missing (identity kept, D85c); a resolved numeric subject is the
      * {@code =~} column-type error. Over a list subject the kernel is lifted element-wise
      * ({@link ElementwiseLift#lift}); a statically scalar subject calls the kernel directly, as a
-     * lifted value call does. Stage A has compiled the pattern and checked the replacement's group
-     * references at load; the literal shape is re-checked here for a direct API caller.
+     * lifted value call does. Stage A compiles the pattern and checks the replacement's group
+     * references at load where it walks; both are re-checked here — the literal shape, the pattern
+     * and the replacement ({@link net.cumba.corej.core.expr.SubstitutionReplacement}) — so every
+     * path stage A does not walk (a Check-less rule's bindings, the loader's re-run after a
+     * {@code CHECKER_FAILURE}, a direct API caller) meets the defect when the plan compiles, as a
+     * {@link RuleDefinitionException}, never as {@code Matcher}'s per-row exception (runbook W1b
+     * fold, R5 B-L2).
      */
     private static ValuePlan substitutionPlan(Expr.Binary b)
     {
-        if (!(b.right() instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.SUBSTITUTION)
-        {
-            throw new RuleDefinitionException(
-                    "the right-hand side of ~ must be a /pattern/replacement/ literal");
-        }
-        Expr.Substitution literal = (Expr.Substitution) lit.value();
-        Pattern pattern = Pattern.compile(literal.pattern());
-        String replacement = literal.replacement();
+        Pattern pattern = substitutionPattern(b);
+        String replacement = ((Expr.Substitution) ((Expr.Lit) b.right()).value()).replacement();
         EvalFunction kernel = (run, args) -> substitute(run.rowCount(), args.get(0), pattern,
                 replacement);
         EvalFunction fn = isStaticallyScalar(b.left()) ? kernel : ElementwiseLift.lift("~", kernel);
@@ -950,6 +955,48 @@ public final class ExprCompiler
             }
             return (Vector) fn.apply(run, List.of(subject));
         };
+    }
+
+
+    /**
+     * The compiled pattern of a substitution {@code X ~ /pattern/replacement/}, its literal shape,
+     * pattern and replacement checked — the one check of the compiler and of the loader's seam pass
+     * over every tree stage A does not walk (a Check-less rule's bindings, a {@code Match_Datasets}
+     * Filter, the re-run after a {@code CHECKER_FAILURE}; runbook W1b fold, R5 B-L2).
+     *
+     * @param b
+     *            the substitution
+     * @return the compiled pattern
+     * @throws RuleDefinitionException
+     *             naming the defect
+     */
+    public static Pattern substitutionPattern(Expr.Binary b)
+    {
+        if (!(b.right() instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.SUBSTITUTION)
+        {
+            throw new RuleDefinitionException(
+                    "the right-hand side of ~ must be a /pattern/replacement/ literal");
+        }
+        Expr.Substitution literal = (Expr.Substitution) lit.value();
+        Pattern pattern;
+        try
+        {
+            pattern = Pattern.compile(literal.pattern());
+        }
+        catch (java.util.regex.PatternSyntaxException bad)
+        {
+            throw new RuleDefinitionException(
+                    "the pattern of ~ is not a valid regular expression: " + bad.getDescription(),
+                    bad);
+        }
+        String problem = net.cumba.corej.core.expr.SubstitutionReplacement.problem(pattern,
+                literal.replacement());
+        if (problem != null)
+        {
+            throw new RuleDefinitionException(
+                    "in ~ /" + literal.pattern() + "/" + literal.replacement() + "/: " + problem);
+        }
+        return pattern;
     }
 
 
@@ -1973,7 +2020,7 @@ public final class ExprCompiler
         {
         case "date" -> compileDate(op, leftP, rightP);
         case "time" -> compileTime(op, leftP, rightP);
-        case "duration" -> compileDuration(op, leftP, rightP);
+        case "duration" -> compileDuration(op, lp, rp, leftP, rightP);
         case "date_part" -> compileDatePart(op, leftP, rightP, false);
         case "time_part" -> compileDatePart(op, leftP, rightP, true);
         default -> compilePlain(op, leftP, rightP, numTag, lStatic, rStatic);
@@ -2146,8 +2193,8 @@ public final class ExprCompiler
      * {@code duration_between} hull operand — the family is selected HERE, at compile time, by the
      * written marker, never by a cell's content (§6.1 Q3).
      */
-    private static ExprProgram.BoolPlan compileDuration(Expr.BinOp op, ValuePlan leftP,
-            ValuePlan rightP)
+    private static ExprProgram.BoolPlan compileDuration(Expr.BinOp op, Expr left, Expr right,
+            ValuePlan leftP, ValuePlan rightP)
     {
         int direction = dateDirection(op);
         boolean orEqual = dateOrEqual(op);
@@ -2160,9 +2207,44 @@ public final class ExprCompiler
             {
                 return new BitSet();
             }
-            return Primitives.durationComparison(lv, rv, run.rowCount(), direction, orEqual,
-                    negate);
+            return Primitives.durationComparison(lv, rv, run.rowCount(), direction, orEqual, negate,
+                    isDurationCarrier(left, run.ctx()), isDurationCarrier(right, run.ctx()));
         };
+    }
+
+
+    /**
+     * Whether {@code e} is {@code duration_between}'s own result — the call written in place,
+     * inside a {@code duration(…)} marker, or a {@code $} binding holding either — so the family's
+     * {@code lower/upper} carrier positions on that side (runbook W1b fold, R5 B-L1: the carrier is
+     * never read from a data cell, where it is no duration). Read per run, because only the run's
+     * context knows what a {@code $} name is bound to (G1: bound ≡ inline).
+     */
+    static boolean isDurationCarrier(Expr e, EvaluationContext ctx)
+    {
+        Expr current = e;
+        for (int depth = 0; depth < BINDING_CHAIN_LIMIT; depth++)
+        {
+            if (current instanceof Expr.Call call && DURATION_BETWEEN.equals(call.name())
+                    && call.args().size() == 2 && call.kwargs().isEmpty())
+            {
+                return true;
+            }
+            if (isDurationMarker(current))
+            {
+                current = ((Expr.Call) current).args().get(0);
+            }
+            else if (current instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF
+                    && ctx.getVariables().get(ref.name()) instanceof BindingValue bound)
+            {
+                current = bound.binding().expression();
+            }
+            else
+            {
+                return false;
+            }
+        }
+        return false;
     }
 
 
@@ -6354,13 +6436,14 @@ public final class ExprCompiler
                 // duration (D6), so the outer marker reads it as the date precedent reads a date
                 // bound.
                 boolean high = "latest_possible".equals(c.name());
-                ValuePlan inner = operandPlan(c.args().get(0), namePosition);
+                Expr marked = c.args().get(0);
+                ValuePlan inner = operandPlan(marked, namePosition);
                 yield run ->
                 {
                     Vector v = inner.eval(run);
                     return v == null ? null
-                            : net.cumba.corej.core.expr.eval.spi.BuiltinFunctions
-                                    .durationHullBound(run.rowCount(), v, high);
+                            : net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.durationHullBound(
+                                    run.rowCount(), v, high, isDurationCarrier(marked, run.ctx()));
                 };
             }
             if (net.cumba.corej.core.exec.JoinedRowFold.JOINED.equals(c.name()))

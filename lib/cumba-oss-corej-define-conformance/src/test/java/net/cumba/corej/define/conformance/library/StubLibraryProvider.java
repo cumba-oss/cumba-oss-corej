@@ -71,7 +71,8 @@ public final class StubLibraryProvider implements LibraryProvider
             "The severity or intensity of the event.", SDTMIG_34 + "|AE|AEACN",
             "Describes changes to the study treatment as a result of the event.",
             SDTMIG_34 + "|AE|AEDECOD", "Dictionary-derived text description of AETERM.",
-            SDTMIG_34 + "|AE|AESER", "Was the event serious?");
+            SDTMIG_34 + "|AE|AESER", "Was the event serious?", SDTMIG_34 + "|AE|AEOUT", "\u00a0",
+            SDTMIG_34 + "|AE|AEREL", "Causality of the event.");
 
     private static final Map<String, List<String>> VERSIONS = Map.of("SDTMIG",
             List.of("3.2", "3.3", "3.4"), "SENDIG", List.of("3.0", "3.1"));

@@ -169,6 +169,25 @@ class SubstitutionOperatorTest
 
 
     @Test
+    void aDefectiveReplacementIsRefusedWhenThePlanCompilesNeverPerRow()
+    {
+        // R5 B-L2: stage A checks the replacement at load where it walks; a direct API caller (and
+        // every path stage A does not walk) meets the same check when the plan compiles — a
+        // RuleDefinitionException naming the defect, never Matcher's per-row
+        // IndexOutOfBoundsException at evaluation
+        IDataTable t = MockTable.of().col("X", "AESTDTC", "AETERM").build();
+        net.cumba.corej.core.expr.RuleDefinitionException badGroup = assertThrows(
+                net.cumba.corej.core.expr.RuleDefinitionException.class,
+                () -> eval("X ~ /^(.*)DTC$/$2/ == \"AEST\"", t));
+        assertTrue(badGroup.getMessage().contains("$2"), badGroup.getMessage());
+        net.cumba.corej.core.expr.RuleDefinitionException badName = assertThrows(
+                net.cumba.corej.core.expr.RuleDefinitionException.class,
+                () -> eval("X ~ /^(?<stem>.*)DTC$/${root}/ == \"AEST\"", t));
+        assertTrue(badName.getMessage().contains("${root}"), badName.getMessage());
+    }
+
+
+    @Test
     void aMissingSubjectStaysMissing()
     {
         IDataTable t = MockTable.of().col("X", "abc", (String) null, "").build();

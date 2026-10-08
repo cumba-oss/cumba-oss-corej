@@ -159,19 +159,27 @@ class IsoDurationBoundsTest
 
 
     @Test
-    void aRenderedHullReadsBackAsThatHull()
+    void aRenderedHullReadsBackAsThatHullOnlyAsTheCarrier()
     {
-        // the carrier of duration_between over partial instants: lower/upper, both point forms
+        // the carrier of duration_between's range: lower/upper, both point forms
         assertEquals("P1D/P2D", IsoDurationBounds.renderHull(DAY, 2 * DAY));
         assertEquals("P1D", IsoDurationBounds.renderHull(DAY, DAY), "a point renders as a point");
-        assertEquals(new IsoDurationBounds.Hull(DAY, 2 * DAY), hull("P1D/P2D"));
-        assertEquals(new IsoDurationBounds.Hull(-DAY, DAY), hull("-P1D/P1D"));
-        assertFalse(hull("P1D/P2D").isPoint());
-        assertNull(IsoDurationBounds.hull("P2D/P1D"), "a hull is written lower first");
-        assertNull(IsoDurationBounds.hull("P1D/junk"));
-        assertNull(IsoDurationBounds.hull("P1D/P2D/P3D"));
-        // the carrier is not an ISO duration for the validity predicates — it is the engine's own
+        assertEquals(new IsoDurationBounds.Hull(DAY, 2 * DAY),
+                IsoDurationBounds.hull("P1D/P2D", true));
+        assertEquals(new IsoDurationBounds.Hull(-DAY, DAY),
+                IsoDurationBounds.hull("-P1D/P1D", true));
+        assertEquals(hull("P1D"), IsoDurationBounds.hull("P1D", true), "a point carrier");
+        assertFalse(IsoDurationBounds.hull("P1D/P2D", true).isPoint());
+        assertNull(IsoDurationBounds.hull("P2D/P1D", true), "a hull is written lower first");
+        assertNull(IsoDurationBounds.hull("P1D/junk", true));
+        assertNull(IsoDurationBounds.hull("P1D/P2D/P3D", true));
+        // R5 B-L1 (dur-order §5: "an invalid duration is unpositionable"): the carrier is the
+        // engine's own spelling of duration_between's result, never read from a DATA cell — there
+        // it is no ISO duration, as the validity predicates say, so it does not position
         assertTrue(ScalarSemantics.isInvalidDuration("P1D/P2D", true));
+        assertNull(IsoDurationBounds.hull("P1D/P2D"), "a data cell spelled lower/upper");
+        assertNull(IsoDurationBounds.lower("PT1H/PT2H"));
+        assertNull(IsoDurationBounds.upper("PT1H/PT2H"));
     }
 
 }

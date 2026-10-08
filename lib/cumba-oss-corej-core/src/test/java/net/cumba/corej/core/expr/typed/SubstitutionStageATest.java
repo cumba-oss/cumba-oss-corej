@@ -168,4 +168,22 @@ class SubstitutionStageATest
             assertEquals(List.of(), report.findings(), ok + " -> " + messages(report));
         }
     }
+
+
+    @Test
+    void anEqualitySideBesideASubstitutionExpectsCharacterAsTheCompilerGatesIt()
+    {
+        // R5 B-L3: ExprCompiler.staticKind reads a substitution side as CHARACTER (its result is
+        // a STRING), so the column-type gate expects text of the other side; the stage-A mirror
+        // (TypeExpectations.staticKind) answers the same, so an absent AETERM reads as the
+        // character default the gate would have demanded
+        TypeExpectations expectations = TypeExpectations
+                .of(List.of(CheckExpressionParser.parse("AETERM == X ~ /^(.*)DTC$/$1/")));
+        assertEquals(java.util.Set.of(TypeExpectations.Expectation.CHARACTER),
+                expectations.expectationsOf("AETERM"));
+        TypeExpectations left = TypeExpectations
+                .of(List.of(CheckExpressionParser.parse("X ~ /^(.*)DTC$/$1/ != AETERM")));
+        assertEquals(java.util.Set.of(TypeExpectations.Expectation.CHARACTER),
+                left.expectationsOf("AETERM"));
+    }
 }

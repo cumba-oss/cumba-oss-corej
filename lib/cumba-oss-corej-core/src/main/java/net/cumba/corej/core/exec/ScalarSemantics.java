@@ -1525,7 +1525,9 @@ public final class ScalarSemantics
      */
     public static boolean isInvalidDuration(String s, boolean allowNegative)
     {
-        return parseDuration(s, allowNegative) == null;
+        // R5 B-L6: the verdict is the match alone — the same matcher parseDuration reads, without
+        // building its seven components only to null-test them
+        return durationMatch(s, allowNegative) == null;
     }
 
     /**
@@ -1571,6 +1573,25 @@ public final class ScalarSemantics
      */
     public static @Nullable IsoDuration parseDuration(@Nullable String s, boolean allowNegative)
     {
+        Matcher m = durationMatch(s, allowNegative);
+        if (m == null)
+        {
+            return null;
+        }
+        return new IsoDuration(m.group().charAt(0) == '-', durationComponent(m.group(1)),
+                durationComponent(m.group(2)), durationComponent(m.group(8)),
+                durationComponent(m.group(3)), durationComponent(m.group(5)),
+                durationComponent(m.group(6)), durationComponent(m.group(7)));
+    }
+
+
+    /**
+     * The matcher of a valid ISO-8601 duration — the regex plus the post-match rules — or
+     * {@code null}: the one validity test {@link #isInvalidDuration} and {@link #parseDuration}
+     * share.
+     */
+    private static @Nullable Matcher durationMatch(@Nullable String s, boolean allowNegative)
+    {
         if (s == null || s.isEmpty() || "P".equals(s) || "PT".equals(s))
         {
             return null;
@@ -1578,14 +1599,7 @@ public final class ScalarSemantics
         Pattern pattern = allowNegative ? ISO_8601_DURATION_WITH_NEGATIVE
                 : ISO_8601_DURATION_POSITIVE;
         Matcher m = pattern.matcher(s);
-        if (!m.matches() || !isValidDurationPostMatch(m))
-        {
-            return null;
-        }
-        return new IsoDuration(s.charAt(0) == '-', durationComponent(m.group(1)),
-                durationComponent(m.group(2)), durationComponent(m.group(8)),
-                durationComponent(m.group(3)), durationComponent(m.group(5)),
-                durationComponent(m.group(6)), durationComponent(m.group(7)));
+        return m.matches() && isValidDurationPostMatch(m) ? m : null;
     }
 
 

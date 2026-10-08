@@ -688,6 +688,24 @@ class RuleClassifierTest
 
 
     /**
+     * R5 B-L4: {@code codelist_decode} reads the Define-XML value-level metadata per record, as the
+     * {@code vlm_*} accessors do — its operand is {@code define_vlm_codelist_decode}, a per-record
+     * read, so a Check that reads only it classifies RECORD, never signal-free.
+     */
+    @Test
+    void codelistDecodeIsAValueLevelMetadataRead()
+    {
+        RuleClassifier.Derived<Sensitivity> bare = RuleClassifier.deriveSensitivity(
+                rule("{\"Check\":{\"expression\":\"empty(codelist_decode())\"}}"));
+        assertEquals(Sensitivity.RECORD, bare.value(), bare.rationale());
+        assertTrue(bare.rationale().contains("define_vlm_codelist_decode"), bare.rationale());
+        RuleClassifier.Derived<Sensitivity> named = RuleClassifier.deriveSensitivity(
+                rule("{\"Check\":{\"expression\":\"codelist_decode(DTYPE) == \\\"x\\\"\"}}"));
+        assertEquals(Sensitivity.RECORD, named.value(), named.rationale());
+    }
+
+
+    /**
      * R5 A-L3: the computed-member arm of the declared-column walk is the SPLICE member's (a
      * dataset-level list of names resolved at evaluation, W1b SS1) — a computed value at a column
      * parameter that does not splice is no such usage, so it adds no unresolved usage.

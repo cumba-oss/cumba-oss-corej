@@ -693,19 +693,30 @@ public final class Primitives
 
     /**
      * The {@code duration}-type operator ({@code PLAN-engine-gap-dur-order} §5, runbook W1b DO):
-     * dispatches exactly like {@link #timeComparison} — numeric↔numeric compares numerically,
-     * string↔string goes to {@link IsoDurationComparison}'s hull semantics, a mixed numeric/ISO
-     * pair fires for every direction, missing on either side ⇒ {@code negate} save for the order
+     * each side's cell read as a duration hull ({@link IsoDurationBounds}) and compared by
+     * {@link IsoDurationComparison}'s rule — a value no duration positions (blank, junk, a date, a
+     * numeric-looking {@code "5"}) is unpositionable, so all six predicates are false and
+     * {@code !=} fires, from either side (runbook W1b fold, R5 B-M1: the operator has no numeric
+     * arm — one made {@code "5"} against {@code P1D} fire every operator, and {@code A > B}
+     * disagree with {@code B < A}); a missing on either side ⇒ {@code negate} save for the order
      * carve-out ({@link #orderWithMissing}). Reached only through the {@code duration(…)} marker or
      * the {@code duration_between} hull operand (the family is selected at compile time, never by a
      * cell's content — §6.1 Q3).
      *
      * @param direction
      *            0 = equality, 1 = greater, -1 = less
+     * @param lhsCarrier
+     *            whether the left side is {@code duration_between}'s own result, so its
+     *            {@code lower/upper} carrier positions (R5 B-L1; a data cell never does)
+     * @param rhsCarrier
+     *            the same for the right side
      */
     public static BitSet durationComparison(Vector lhs, Vector rhs, int rowCount, int direction,
-            boolean orEqual, boolean negate)
+            boolean orEqual, boolean negate, boolean lhsCarrier, boolean rhsCarrier)
     {
+        // R5 B-L6: a literal side is read once per run, not once per row
+        HullSide left = HullSide.of(lhs, lhsCarrier);
+        HullSide right = HullSide.of(rhs, rhsCarrier);
         return scan(lhs, rowCount, (dv, r) ->
         {
             MissingValue lhsMissing = TypedValue.missingIdentityOf(dv);
@@ -719,34 +730,56 @@ public final class Primitives
             {
                 return missingVerdict(lhsMissing, rhsMissing, direction, orEqual, negate);
             }
-            return compareDurationCells(dv, target.resolved(), direction, orEqual, negate);
+            Object resolved = target.resolved();
+            if (resolved == null)
+            {
+                return negate;
+            }
+            return IsoDurationComparison.fires(left.hull(dv.getValueAsString()),
+                    right.hull(resolved.toString()), direction, orEqual, negate);
         });
     }
 
-
     /**
-     * The per-pair verdict of a {@code duration}-operator comparison — {@link #compareCells}'
-     * contract mirrored onto the duration type (same missing short-circuits; a mixed numeric/ISO
-     * pair is a violation regardless of direction, the operator's own rule).
+     * One side of a duration comparison: a literal's hull read once ({@link ConstVector}), any
+     * other side's per row — with the carrier reading of {@code duration_between}'s own result.
      */
-    private static boolean compareDurationCells(IDataValue aLhs, @Nullable Object aRhs,
-            int aDirection, boolean aOrEqual, boolean aNegate)
+    private static final class HullSide
     {
-        if (ScalarSemantics.isMissing(aLhs) || aRhs == null)
-        {
-            return aNegate;
-        }
-        Double lhsD = ScalarSemantics.tryNumericLhs(aLhs);
-        Double rhsD = ScalarSemantics.tryNumericRhs(aRhs);
-        if (lhsD != null && rhsD != null)
-        {
-            return aNegate != ScalarSemantics.matchNumeric(lhsD, rhsD, aDirection, aOrEqual);
-        }
-        // a mixed numeric/ISO pair is a violation regardless of direction (the operator's rule)
-        return lhsD != null || rhsD != null || IsoDurationComparison.fires(aLhs.getValueAsString(),
-                aRhs.toString(), aDirection, aOrEqual, aNegate);
-    }
 
+        private final boolean carrier;
+
+        private final boolean constant;
+
+        private final IsoDurationBounds.@Nullable Hull constantHull;
+
+        private HullSide(boolean aCarrier, boolean aConstant,
+                IsoDurationBounds.@Nullable Hull aConstantHull)
+        {
+            carrier = aCarrier;
+            constant = aConstant;
+            constantHull = aConstantHull;
+        }
+
+
+        static HullSide of(Vector v, boolean carrier)
+        {
+            if (v instanceof ConstVector c)
+            {
+                TypedValue only = c.value(0);
+                Object resolved = only.resolved();
+                return new HullSide(carrier, true, only.missing() != null || resolved == null ? null
+                        : IsoDurationBounds.hull(resolved.toString(), carrier));
+            }
+            return new HullSide(carrier, false, null);
+        }
+
+
+        IsoDurationBounds.@Nullable Hull hull(String text)
+        {
+            return constant ? constantHull : IsoDurationBounds.hull(text, carrier);
+        }
+    }
 
     /**
      * The time twin of {@link #isIsoText}: an hour-only comparand ({@code "10"}) parses as a

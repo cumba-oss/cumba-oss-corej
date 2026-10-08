@@ -30,11 +30,15 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * <b>The engine's own carrier form.</b> {@code duration_between(start, end)} over two partial
- * instants answers a range of durations, which ISO 8601 cannot spell. It is rendered as
+ * <b>The engine's own carrier form.</b> {@code duration_between(start, end)} answers a range of
+ * durations (each instant is its own hull), which ISO 8601 cannot spell. It is rendered as
  * {@code lower/upper}, two point durations ({@link #renderHull}: {@code P14DT1S/P45DT23H59M59S}),
- * which {@link #hull} reads back as that range. It is <em>not</em> a valid ISO duration for the
- * validity predicates — it is the family's internal spelling, legible in a report.
+ * which {@link #hull(String, boolean)} reads back as that range <b>only</b> where the compiler
+ * knows the operand is {@code duration_between}'s own result (written, inside a {@code duration(…)}
+ * marker, or through a binding holding it). It is <em>not</em> a valid ISO duration for the
+ * validity predicates, so a DATA cell spelled {@code PT1H/PT2H} is unpositionable like any other
+ * invalid duration (plan §5; runbook W1b fold, R5 B-L1) — the carrier is the family's internal
+ * spelling, legible in a report.
  * </p>
  */
 public final class IsoDurationBounds
@@ -88,15 +92,33 @@ public final class IsoDurationBounds
 
 
     /**
-     * The hull of {@code s}, or {@code null} when it is not a duration — an ISO-8601 duration
-     * (signed), or the engine's own {@code lower/upper} carrier of two point durations written
-     * lower first.
+     * The hull of a value, or {@code null} when it is not a duration — an ISO-8601 duration
+     * (signed). A {@code lower/upper} text is unpositionable here: the carrier is read only by
+     * {@link #hull(String, boolean)} for {@code duration_between}'s own result.
      *
      * @param s
      *            the text
      * @return the hull, or {@code null} when unpositionable
      */
     public static @Nullable Hull hull(@Nullable String s)
+    {
+        return hull(s, false);
+    }
+
+
+    /**
+     * The hull of {@code s}, or {@code null} when unpositionable — an ISO-8601 duration (signed),
+     * and, where {@code carrier} is set ({@code duration_between}'s own result), also the
+     * {@code lower/upper} carrier of two point durations written lower first.
+     *
+     * @param s
+     *            the text
+     * @param carrier
+     *            whether the text is {@code duration_between}'s own result, so its
+     *            {@code lower/upper} carrier positions
+     * @return the hull, or {@code null} when unpositionable
+     */
+    public static @Nullable Hull hull(@Nullable String s, boolean carrier)
     {
         if (s == null)
         {
@@ -107,6 +129,10 @@ public final class IsoDurationBounds
         if (slash < 0)
         {
             return single(t);
+        }
+        if (!carrier)
+        {
+            return null;
         }
         Hull lower = single(t.substring(0, slash));
         Hull upper = single(t.substring(slash + 1));

@@ -456,6 +456,40 @@ class LibraryKindsTest
 
 
     @Test
+    void descriptionCopiedTreatsANoBreakSpaceAsWhitespaceAndABlankCommentAsNoCopy()
+    {
+        // R5 B-L5: AEREL copies the Notes with a no-break space (&#160;) between two words — the
+        // same text under whitespace normalisation, so it fires; AEOUT's comment is a lone
+        // no-break space and so are its (stub) Notes: a blank comment copies nothing, whatever
+        // the Notes hold
+        RuleResult result = evaluate(rule("ItemGroupDef/ItemRef", """
+                kind: "library_variable_description_copied"
+                """), context("""
+                <def:Standards>
+                  <def:Standard OID="STD.IG" Name="SDTMIG" Type="IG" Version="3.4"/>
+                </def:Standards>
+                <ItemGroupDef OID="IG.AE" Name="AE" Domain="AE" def:StandardOID="STD.IG">
+                  <ItemRef ItemOID="IT.AE.AEREL" Mandatory="No"/>
+                  <ItemRef ItemOID="IT.AE.AEOUT" Mandatory="No"/>
+                </ItemGroupDef>
+                <ItemDef OID="IT.AE.AEREL" Name="AEREL" def:CommentOID="COM.AEREL"/>
+                <ItemDef OID="IT.AE.AEOUT" Name="AEOUT" def:CommentOID="COM.AEOUT"/>
+                <def:CommentDef OID="COM.AEREL">
+                  <Description>
+                    <TranslatedText xml:lang="en">Causality&#160;of the event.</TranslatedText>
+                  </Description>
+                </def:CommentDef>
+                <def:CommentDef OID="COM.AEOUT">
+                  <Description>
+                    <TranslatedText xml:lang="en">&#160;</TranslatedText>
+                  </Description>
+                </def:CommentDef>
+                """));
+        assertEquals(List.of("AEREL"), values(result));
+    }
+
+
+    @Test
     void descriptionCopiedReadsTheEnglishCommentTextOnly()
     {
         // a Japanese-only comment carries no English text to compare; an English text beside it

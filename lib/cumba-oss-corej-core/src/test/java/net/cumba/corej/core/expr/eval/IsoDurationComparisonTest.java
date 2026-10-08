@@ -122,7 +122,7 @@ class IsoDurationComparisonTest
         // the differential (plan §5.1): a value is positionable iff is_valid_duration — and a
         // positionable point is equal to itself under the operator
         for (String s : List.of("P1D", "P1W", "PT1H", "PT90M", "PT1.5S", "P0D", "-P1D",
-                "P1DT2H3M4S", "", "P", "PT", "junk", "1D", "P1S"))
+                "P1DT2H3M4S", "", "P", "PT", "junk", "1D", "P1S", "P1D/P2D", "5"))
         {
             boolean valid = !ScalarSemantics.isInvalidDuration(s, true);
             IsoDurationBounds.Hull hull = IsoDurationBounds.hull(s);

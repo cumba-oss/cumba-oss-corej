@@ -1,6 +1,7 @@
 package net.cumba.corej.core.expr.eval;
 
 import net.cumba.corej.core.exec.ScalarSemantics;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code duration}-type comparison operator ({@code PLAN-engine-gap-dur-order} §5, runbook W1b
@@ -52,8 +53,31 @@ public final class IsoDurationComparison
      */
     public static boolean fires(String a, String b, int direction, boolean orEqual, boolean negate)
     {
-        IsoDurationBounds.Hull ha = IsoDurationBounds.hull(a);
-        IsoDurationBounds.Hull hb = IsoDurationBounds.hull(b);
+        return fires(IsoDurationBounds.hull(a), IsoDurationBounds.hull(b), direction, orEqual,
+                negate);
+    }
+
+
+    /**
+     * The verdict over two hulls already read ({@code null} = unpositionable) — the one kernel of
+     * the binary operator ({@code Primitives.durationComparison}, which reads each side once and a
+     * literal side once per run) and of {@link #fires(String, String, int, boolean, boolean)}.
+     *
+     * @param ha
+     *            the left operand's hull, or {@code null}
+     * @param hb
+     *            the right operand's hull, or {@code null}
+     * @param direction
+     *            {@code 0} = equality, {@code 1} = greater, {@code -1} = less.
+     * @param orEqual
+     *            whether the operator admits equality
+     * @param negate
+     *            whether the operator is the negated form ({@code !=}).
+     * @return {@code true} iff the leaf fires for this row.
+     */
+    public static boolean fires(IsoDurationBounds.@Nullable Hull ha,
+            IsoDurationBounds.@Nullable Hull hb, int direction, boolean orEqual, boolean negate)
+    {
         if (ha == null || hb == null)
         {
             // Branch (3): unbounded on at least one side — every PREDICATE is false, negate flips

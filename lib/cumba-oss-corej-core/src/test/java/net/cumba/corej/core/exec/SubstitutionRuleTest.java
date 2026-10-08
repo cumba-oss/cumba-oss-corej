@@ -176,6 +176,19 @@ class SubstitutionRuleTest
 
 
     @Test
+    void aDefectiveReplacementIsALoadErrorWhereStageADoesNotWalk()
+    {
+        // R5 B-L2: a Check-less rule's bindings are never walked by stage A — the compiled plan's
+        // own check makes the defect the rule's load error, not a per-row ERROR at evaluation
+        Rule rule = load("{\"Core\":{\"Id\":\"T-SUBST\"},\"Bindings\":[{\"name\":\"$v\","
+                + "\"expression\":\"" + esc("X ~ /^(.*)DTC$/$2/") + "\"}],"
+                + "\"Outcome\":{\"Message\":\"m\"}}");
+        assertNotNull(rule.getLoadError(), "a Check-less rule's defective replacement");
+        assertTrue(rule.getLoadError().contains("$2"), rule.getLoadError());
+    }
+
+
+    @Test
     void theLoadErrors()
     {
         String badGroup = loadError("X ~ /^(.*)DTC$/$2/ == \"AEST\"");

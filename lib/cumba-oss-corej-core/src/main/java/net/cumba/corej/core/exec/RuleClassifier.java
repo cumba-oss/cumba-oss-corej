@@ -1128,10 +1128,17 @@ public final class RuleClassifier
         }
         // define_vlm_* operands map to their own vlm_* accessors rather than the scope+level
         // scheme, so they are named directly (MetadataOperandMapping keeps the same explicit
-        // table on the way out).
+        // table on the way out). codelist_decode reads the same Define-XML value-level metadata
+        // per record (runbook W1b DV), so it is one of them (runbook W1b fold, R5 B-L4; the
+        // OutputVariableDeriver's vlm_ content signal stays the vlm_* accessors').
         if (call.name().startsWith("vlm_"))
         {
             return "define_vlm_" + call.name().substring(4);
+        }
+        if (net.cumba.corej.core.expr.eval.spi.CompilerDispatchedCalls.CODELIST_DECODE
+                .equals(call.name()))
+        {
+            return "define_vlm_" + call.name();
         }
         MetadataAttribute attr = MetadataAttribute.fromFunction(call.name());
         boolean variableScope = attr != null && attr.scope() == MetadataAttribute.Scope.VARIABLE;

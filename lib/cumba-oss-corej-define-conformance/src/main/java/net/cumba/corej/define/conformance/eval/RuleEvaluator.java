@@ -57,6 +57,9 @@ public final class RuleEvaluator
      */
     private static final Pattern BRACKETED_TOKEN = Pattern.compile("\\[[^\\]]*\\]");
 
+    /** A run of whitespace, the no-break spaces included (DT1 Q2; R5 B-L5). */
+    private static final Pattern WHITESPACE_RUN = Pattern.compile("[\\s\\u00A0\\u2007\\u202F]+");
+
     // ConcurrentHashMap: a single RuleEvaluator may be reused across concurrent
     // validate() calls; custom-check instances are stateless.
     private final Map<String, CustomCheck> customChecks = new ConcurrentHashMap<>();
@@ -969,14 +972,16 @@ public final class RuleEvaluator
             Optional<String> comment = binding.itemDef().attribute("CommentOID")
                     .flatMap(oid -> aContext.oidResolver().resolve("CommentDef", "OID", oid))
                     .flatMap(def -> englishText(def, "Description"));
-            if (comment.isEmpty())
+            // a blank or whitespace-only comment copies nothing, whatever the Notes hold
+            // (runbook W1b fold, R5 B-L5)
+            String text = comment.map(RuleEvaluator::collapseWhitespace).orElse("");
+            if (text.isEmpty())
             {
                 continue;
             }
             Optional<String> notes = library.variableDescription(binding.standard().name(),
                     binding.standard().version(), binding.dataset(), binding.variable());
-            if (notes.isPresent()
-                    && collapseWhitespace(comment.get()).equals(collapseWhitespace(notes.get())))
+            if (notes.isPresent() && text.equals(collapseWhitespace(notes.get())))
             {
                 findings.add(finding(aRule, node, binding.variable()));
             }
@@ -985,10 +990,14 @@ public final class RuleEvaluator
     }
 
 
-    /** Trims and collapses each run of whitespace to one space (DT1 Q2). */
+    /**
+     * Collapses each run of whitespace — the no-break spaces (U+00A0, U+2007, U+202F) included,
+     * which {@code \s} does not match (runbook W1b fold, R5 B-L5) — to one space and trims (DT1
+     * Q2).
+     */
     private static String collapseWhitespace(String aText)
     {
-        return aText.trim().replaceAll("\\s+", " ");
+        return WHITESPACE_RUN.matcher(aText).replaceAll(" ").trim();
     }
 
 

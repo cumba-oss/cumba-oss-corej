@@ -1414,6 +1414,13 @@ public class RulePackageLoader
                 stageAJudged, bound);
         case net.cumba.corej.core.expr.ast.Expr.Binary b ->
         {
+            if (!stageAJudged && b.op() == net.cumba.corej.core.expr.ast.Expr.BinOp.SUBST)
+            {
+                // runbook W1b fold, R5 B-L2: stage A checks a substitution's pattern and
+                // replacement where it walks; everywhere else the same check is the loader's —
+                // a load error, never Matcher's per-row exception
+                net.cumba.corej.core.expr.eval.ExprCompiler.substitutionPattern(b);
+            }
             validateRegistryCallSeams(b.left(), stageAJudged, bound);
             validateRegistryCallSeams(b.right(), stageAJudged, bound);
         }
