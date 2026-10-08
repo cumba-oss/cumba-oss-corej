@@ -7,6 +7,7 @@ import lombok.CustomLog;
 import net.cumba.corej.core.exec.DatasetIdentity;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
+import net.cumba.corej.core.exec.SplitDomainResolution;
 import net.cumba.datatable.IDataTable;
 import org.jspecify.annotations.Nullable;
 
@@ -107,7 +108,11 @@ public final class ScopeClassLadder
                 && aCdiscDomain.toUpperCase(Locale.ROOT).startsWith("AP"))
         {
             String parentDomain = aCdiscDomain.substring(2);
-            IDataTable parent = aResolver.resolve(parentDomain);
+            // runbook W2 AP (W2-D4): the parent resolves as every dataset name does — ignoring
+            // case, and a split parent (LB1 + LB2) as its union — and an un-unionable split
+            // answers null (class undetermined), never a throw that would abort the dataset
+            IDataTable parent = SplitDomainResolution.resolveTableOrNull(aResolver, parentDomain,
+                    null);
             if (parent != null)
             {
                 String parentCdisc = CdiscDomainResolver.cdiscDomainOf(parent);
@@ -115,7 +120,8 @@ public final class ScopeClassLadder
                 return classOf(aProvider, parentMember, parentCdisc, parent, aResolver, true);
             }
             LOGGER.log(Level.DEBUG,
-                    "AP dataset {0}: parent domain {1} not in study; class left undetermined",
+                    "AP dataset {0}: parent domain {1} not in study (or a split that cannot be"
+                            + " unioned); class left undetermined",
                     aMemberName, parentDomain);
         }
         return className;

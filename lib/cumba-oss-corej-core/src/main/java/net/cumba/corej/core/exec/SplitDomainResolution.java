@@ -329,6 +329,38 @@ public final class SplitDomainResolution
 
 
     /**
+     * The non-throwing sibling of {@link #resolveTableOrThrow}, for a reader that must never abort
+     * on an un-unionable split (runbook W2 AP, W2-D4: the class an Associated Persons dataset
+     * inherits from its parent): {@link DomainResolution.Table} → the table,
+     * {@link DomainResolution.Absent} → {@code null}, and {@link DomainResolution.Invalid} →
+     * {@code null} with a DEBUG line naming why (the union's own WARNING was already logged).
+     *
+     * @param resolver
+     *            the run's dataset resolver
+     * @param name
+     *            the dataset / domain name as written
+     * @param ruleId
+     *            CORE id for the log prefix, or {@code null}
+     * @return the table — exact, ignoring case, or a split domain's union — or {@code null}
+     */
+    public static @Nullable IDataTable resolveTableOrNull(DatasetResolver resolver,
+            @Nullable String name, @Nullable String ruleId)
+    {
+        return switch (resolve(resolver, name, ruleId))
+        {
+        case DomainResolution.Table t -> t.table();
+        case DomainResolution.Absent _ -> null;
+        case DomainResolution.Invalid inv ->
+        {
+            LOGGER.log(Level.DEBUG, "[{0}] {1} cannot be unioned, answered as undetermined: {2}",
+                    ruleIdOr(ruleId), inv.domain(), inv.message());
+            yield null;
+        }
+        };
+    }
+
+
+    /**
      * Presence fact for {@code ds_exists} / {@code AbsentDatasetSkip} /
      * {@code Requirements.Datasets}: the domain or supplemental family is part of the submission —
      * exactly, as a split domain, or as a split SUPP / SQAP family. A split whose members cannot be
