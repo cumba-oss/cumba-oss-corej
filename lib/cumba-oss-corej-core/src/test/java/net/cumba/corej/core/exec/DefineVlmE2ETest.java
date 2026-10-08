@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 import net.cumba.cdisc.define.DefineXmlParser;
 import net.cumba.cdisc.define.ODM;
 import net.cumba.corej.core.RulePackageLoader;
@@ -16,6 +18,7 @@ import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -99,6 +102,45 @@ class DefineVlmE2ETest
         RuleExecutionResult r = run(ruleSd1231(), lb, null, null);
         assertTrue(r.isSkipped(), "no Define-XML -> VLM rule SKIPPED");
         assertFalse(r.hasViolations());
+    }
+
+
+    /**
+     * Runbook W2 VL ({@code FINDINGS-unowned-residuals} I7, D85c): {@code vlm_value_length} reads
+     * the target cell, so a MISSING target hands that cell through, identity and all ({@code .A}
+     * stays {@code .A}), while a row no value-level entry matches answers the computed {@code MIS}
+     * — both used to be the same plain {@code null}. {@code LBSTRESC} is a numeric column here so
+     * it can carry a SAS special missing; {@code M} states the identity each row expects.
+     */
+    @Test
+    void valueLength_aMissingTargetKeepsItsOwnCell_noMatchIsTheComputedMissing() throws IOException
+    {
+        // r0 GLUC (matched) .A vs .A -> equal; r1 GLUC (matched) .A vs .B -> not equal; r2 HGB
+        // (no value-level match) .A vs .A -> the computed MIS, which is not .A
+        IDataTable lb = RealTables.of("LB").str("LBTESTCD", "GLUC", "GLUC", "HGB")
+                .str("LBSPEC", "", "", "")
+                .dbl("LBSTRESC", MissingValue.MIS_A.asDouble(), MissingValue.MIS_A.asDouble(),
+                        MissingValue.MIS_A.asDouble())
+                .dbl("M", MissingValue.MIS_A.asDouble(), MissingValue.MIS_B.asDouble(),
+                        MissingValue.MIS_A.asDouble())
+                .build();
+        assertEquals(List.of(1L), firedRows(lb, "vlm_value_length(\"LBSTRESC\") == M"),
+                "a matched entry over a missing target answers that cell: .A == .A, .A != .B, and"
+                        + " the unmatched row's computed MIS is not .A");
+        assertEquals(List.of(1L, 2L, 3L),
+                firedRows(lb, "is_missing(vlm_value_length(\"LBSTRESC\"))"),
+                "every row is missing: the two carried .A cells and the computed MIS");
+    }
+
+
+    private static List<Long> firedRows(IDataTable lb, String check) throws IOException
+    {
+        Rule r = rule("VL-" + Integer.toHexString(check.hashCode()),
+                "{\"expression\": \"" + check.replace("\"", "\\\"") + "\"}", "\"LBTESTCD\"");
+        // the accessor rule answers once per variable of the record, so a row is listed once
+        List<Long> rows = new ArrayList<>();
+        run(r, lb, define, vlm).getViolations().forEach(v -> rows.add(v.getRowNumber()));
+        return rows.stream().distinct().sorted().toList();
     }
 
 

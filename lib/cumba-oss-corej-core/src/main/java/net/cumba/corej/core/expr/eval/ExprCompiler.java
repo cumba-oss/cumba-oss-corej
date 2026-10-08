@@ -5920,10 +5920,12 @@ public final class ExprCompiler
      * selected by evaluating the linked WhereClause predicate against the row
      * ({@link VlmResolver#resolve}); the requested attribute of the matched {@code ItemDef} is
      * returned, or {@code null} when no condition matches (⇒ the enclosing predicate does not fire,
-     * the native analog of Python's inner-join-drops-unmatched). A {@code null} {@code vlmResolver}
-     * (no Define-XML) yields {@code null} for every row and the rule SKIPs via the
-     * {@link MetadataLevel#DEFINE} provider gate in {@code RuleRunner}. A qualified name is a load
-     * error naming the bare spelling (QNU N4): a joined dataset's VLM is not served.
+     * the native analog of Python's inner-join-drops-unmatched) — {@code vlm_value_length}, the one
+     * accessor reading the target cell, answers the computed {@code MIS} there and hands a missing
+     * target's own cell through on a match (runbook W2 VL, D85c). A {@code null}
+     * {@code vlmResolver} (no Define-XML) yields {@code null} for every row and the rule SKIPs via
+     * the {@link MetadataLevel#DEFINE} provider gate in {@code RuleRunner}. A qualified name is a
+     * load error naming the bare spelling (QNU N4): a joined dataset's VLM is not served.
      */
     private static ValuePlan compileVlmAccessor(Expr.Call c)
     {
@@ -5997,7 +5999,11 @@ public final class ExprCompiler
                         name -> cellString(table, meta, name, row));
                 if (m == null)
                 {
-                    return null;
+                    // runbook W2 VL (F I7): no value-level entry matches — the computed MIS for
+                    // the one accessor that reads the target cell (its missing target keeps its
+                    // own cell below, so the two are told apart); the metadata accessors keep
+                    // today's null (folded to the same MIS by the vector)
+                    return "vlm_value_length".equals(fn) ? ScalarSemantics.computedMissing() : null;
                 }
                 return switch (fn)
                 {
@@ -6010,8 +6016,8 @@ public final class ExprCompiler
                         cellString(table, meta, targetVar, row));
                 case "vlm_codelist_extensible" -> vlmExtensible(ctx.getLibraryProvider(),
                         m.codelistCCode());
-                case "vlm_value_length" -> vlmValueLength(m.dataType(),
-                        cellString(table, meta, targetVar, row));
+                case "vlm_value_length" -> vlmValueLengthCell(m.dataType(), table, meta, targetVar,
+                        row);
                 case "vlm_has_codelist" -> !m.codedValues().isEmpty();
                 case "vlm_decode_matches" -> vlmDecodeMatches(m, targetVar, vlmDecodeVar, table,
                         meta, row);
@@ -6086,15 +6092,42 @@ public final class ExprCompiler
 
 
     /**
+     * Runbook W2 VL ({@code FINDINGS-unowned-residuals} I7, D85c) — {@code vlm_value_length}'s row
+     * value for a MATCHED value-level entry: a missing target cell is handed through as that cell,
+     * identity and all ({@code .A} stays {@code .A}), never re-minted as the plain missing; an
+     * absent target column, or a type the length is not measured for, is the computed {@code MIS};
+     * otherwise the measured length ({@link #vlmValueLength}).
+     */
+    private static Object vlmValueLengthCell(@Nullable String dataType, IDataTable table,
+            DataTableMeta meta, String name, int row)
+    {
+        int idx = meta.getColumnIndex(name);
+        if (idx < 0)
+        {
+            return ScalarSemantics.computedMissing();
+        }
+        String value = ScalarSemantics.resolvedString(table.getColumn(idx),
+                meta.getColumn(idx).getType(), row);
+        if (value == null)
+        {
+            return table.getColumn(idx).getDataValue(row);
+        }
+        Long length = vlmValueLength(dataType, value);
+        return length == null ? ScalarSemantics.computedMissing() : length;
+    }
+
+
+    /**
      * SD1231 — the value's stored length for the value-level {@code dataType}, kept byte-for-byte
      * in step with the Python {@code ValuesDatasetBuilder.calculate_variable_value_length}: an
      * {@code integer} strips leading zeros, a {@code float} strips leading zeros and drops the
      * decimal point, {@code text} is the raw length, and every other type is {@code null}
-     * (unmeasured ⇒ the length compare never fires). A missing value is {@code null}.
+     * (unmeasured ⇒ the length compare never fires). A missing value never reaches here
+     * ({@link #vlmValueLengthCell} hands its cell through).
      */
-    private static @Nullable Long vlmValueLength(@Nullable String dataType, @Nullable String value)
+    private static @Nullable Long vlmValueLength(@Nullable String dataType, String value)
     {
-        if (value == null || dataType == null)
+        if (dataType == null)
         {
             return null;
         }
