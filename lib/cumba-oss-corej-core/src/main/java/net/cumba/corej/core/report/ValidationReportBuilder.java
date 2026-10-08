@@ -58,6 +58,15 @@ public final class ValidationReportBuilder
      */
     public static final String DATASET_LOAD_ERROR_RULE_ID = "CUMBA-DATASET-LOAD";
 
+    /**
+     * Synthetic rule id for the finding emitted when the Define-XML supplied to the run cannot be
+     * parsed (runbook W2 DP1b, {@code PLAN-engine-gap-define-presence} Q2: "a define that fails to
+     * parse should result in a reported error ... at study level"). One per run, under the
+     * {@code STUDY} pseudo-domain, beside the report's {@code Define_Metadata_Basis} line — an
+     * engine error, never a rule.
+     */
+    public static final String DEFINE_PARSE_ERROR_RULE_ID = "CUMBA-DEFINE-PARSE";
+
     private static final String VARIABLE_NAME = "variable_name";
 
     private static final String USUBJID = "USUBJID";
@@ -171,10 +180,37 @@ public final class ValidationReportBuilder
     public ValidationReportBuilder datasetLoadError(String aDomain, @Nullable String aFileName,
             String aMessage)
     {
+        return engineError(aDomain, aFileName, DATASET_LOAD_ERROR_RULE_ID, aMessage);
+    }
+
+
+    /**
+     * Records the run's one study-level ERROR finding for a supplied Define-XML that could not be
+     * parsed ({@link #DEFINE_PARSE_ERROR_RULE_ID}): the {@link #datasetLoadError} shape — an
+     * {@link FindingKind#ENGINE_ERROR}, {@link Severity#ERROR}, no rows — under the given
+     * pseudo-domain ({@code STUDY}) with no file name. {@link FindingScope} has no study value, so
+     * the scope is {@link FindingScope#DATASET} with {@code dataset = STUDY}, as a collapsed
+     * study-level rule finding reads.
+     *
+     * @param aDomain
+     *            the pseudo-domain to record it under ({@code STUDY})
+     * @param aMessage
+     *            what failed — the run's define metadata basis text
+     * @return this builder
+     */
+    public ValidationReportBuilder defineParseError(String aDomain, String aMessage)
+    {
+        return engineError(aDomain, null, DEFINE_PARSE_ERROR_RULE_ID, aMessage);
+    }
+
+
+    private ValidationReportBuilder engineError(String aDomain, @Nullable String aFileName,
+            String aRuleId, String aMessage)
+    {
         Objects.requireNonNull(aDomain, "domain");
         Objects.requireNonNull(aMessage, "message");
-        accumulatorFor(aDomain, aFileName).add(ValidationFinding.builder().source(SOURCE)
-                .ruleId(DATASET_LOAD_ERROR_RULE_ID).kind(FindingKind.ENGINE_ERROR)
+        accumulatorFor(aDomain, aFileName).add(ValidationFinding
+                .builder().source(SOURCE).ruleId(aRuleId).kind(FindingKind.ENGINE_ERROR)
                 .severity(Severity.ERROR).scope(FindingScope.DATASET).message(aMessage)
                 .variableNames(List.of()).location(ValidationFindingLocation.builder()
                         .dataset(aDomain).variableNames(List.of()).build())

@@ -117,6 +117,9 @@ class StudyValidationServiceTest
      */
     private static final List<String> CUSTOM_PRODUCT = List.of("standards/custom/1-0");
 
+    /** {@code ValidationReportBuilder.DEFINE_PARSE_ERROR_RULE_ID}, spelled out: the stable id. */
+    private static final String DEFINE_PARSE = "CUMBA-DEFINE-PARSE";
+
     private static IDataTable dmTable()
     {
         return MockTable.of().name("DM").label("Demographics")
@@ -803,6 +806,42 @@ class StudyValidationServiceTest
                 "a run whose Define-XML did not parse must be distinguishable from one whose"
                         + " Define-XML parsed cleanly");
         assertTrue(basis.toString().contains("could not be parsed"), basis.toString());
+
+        // Runbook W2 DP1b (PLAN-engine-gap-define-presence Q2, W2-D1): the failure is also ONE
+        // study-level ERROR finding -- countable and severity-graded, which the basis line is not
+        // -- an engine error beside the basis line, never a rule.
+        List<ValidationFinding> parseErrors = new ArrayList<>();
+        for (ValidationReportMember m : result.report().getMembers())
+        {
+            for (ValidationFinding f : m.getFindings())
+            {
+                if (DEFINE_PARSE.equals(f.getRuleId()))
+                {
+                    assertEquals("STUDY", m.getDomain(), "recorded under the STUDY pseudo-domain");
+                    parseErrors.add(f);
+                }
+            }
+        }
+        assertEquals(1, parseErrors.size(), "exactly one define-parse error per run");
+        ValidationFinding error = parseErrors.get(0);
+        assertEquals(Severity.ERROR, error.getSeverity());
+        assertEquals(net.cumba.datatable.report.FindingKind.ENGINE_ERROR, error.getKind());
+        assertEquals(net.cumba.datatable.report.FindingScope.DATASET, error.getScope());
+        assertEquals("STUDY", error.getLocation().getDataset());
+        assertEquals(basis.toString(), error.getMessage(), "the message is the basis text");
+        int others = 0;
+        for (ValidationReportMember m : result.report().getMembers())
+        {
+            for (ValidationFinding f : m.getFindings())
+            {
+                others += f == error ? 0 : Math.max(1, f.getRowCount());
+            }
+        }
+        assertEquals(others + 1, result.findingCount(), "the run's finding count carries it");
+        // ...and the execution log accounts for it on the STUDY row, like a dataset-load error
+        assertTrue(result.executionSummaries().stream().filter(sm -> "STUDY".equals(sm.domain()))
+                .flatMap(sm -> sm.errors().stream()).anyMatch(e -> DEFINE_PARSE.equals(e.ruleId())),
+                () -> "no STUDY execution error: " + result.executionSummaries());
     }
 
 

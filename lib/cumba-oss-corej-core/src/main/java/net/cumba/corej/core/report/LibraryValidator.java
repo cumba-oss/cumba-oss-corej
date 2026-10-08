@@ -239,6 +239,12 @@ public final class LibraryValidator
     private final net.cumba.corej.core.exec.DefinePresence definePresence;
 
     /**
+     * Runbook W2 DP1b: the message of the run's one study-level {@code CUMBA-DEFINE-PARSE} ERROR,
+     * or {@code null} when the run has no unparseable Define-XML.
+     */
+    private final @Nullable String defineParseError;
+
+    /**
      * T1 — runtime external-dictionary provider, or {@code null} when no dictionaries are supplied
      * (dictionary rules then SKIP).
      */
@@ -350,6 +356,7 @@ public final class LibraryValidator
         defineProvider = aBuilder.defineProvider;
         vlmResolver = aBuilder.vlmResolver;
         definePresence = aBuilder.definePresence;
+        defineParseError = aBuilder.defineParseError;
         dictionaryProvider = aBuilder.dictionaryProvider;
         rules = List.copyOf(aBuilder.rules);
         targetDatasets = Map.copyOf(aBuilder.targetDatasets);
@@ -513,6 +520,13 @@ public final class LibraryValidator
             // is also what the Python reference engine emits (dataset='STUDY'). Passing
             // sr.fileName() here surfaced an arbitrary "ae.json" against a STUDY domain.
             reportBuilder.add(STUDY_DATASET, null, sr.rule(), sr.result());
+        }
+        // Runbook W2 DP1b (PLAN-engine-gap-define-presence Q2): a supplied Define-XML that could
+        // not be parsed is ONE study-level ERROR — countable and severity-graded, beside the
+        // Define_Metadata_Basis line that says why the define rules SKIPPED
+        if (defineParseError != null)
+        {
+            reportBuilder.defineParseError(STUDY_DATASET, defineParseError);
         }
 
         ValidationReport report = reportBuilder.build();
@@ -915,13 +929,19 @@ public final class LibraryValidator
     private void appendStudySummary(List<DatasetExecutionSummary> out,
             List<StudyRuleResult> studyResults, int total, ValidationReport report)
     {
-        if (studyResults.isEmpty())
+        if (studyResults.isEmpty() && defineParseError == null)
         {
             return;
         }
         int executed = 0;
         long runtimeMillis = 0L;
         List<DatasetExecutionSummary.RuleError> errors = new ArrayList<>();
+        if (defineParseError != null)
+        {
+            // W2 DP1b: accounted for on the STUDY row, as a load error is on its dataset's row
+            errors.add(new DatasetExecutionSummary.RuleError(
+                    ValidationReportBuilder.DEFINE_PARSE_ERROR_RULE_ID, defineParseError));
+        }
         List<DatasetExecutionSummary.RuleExecution> ruleExecutions = new ArrayList<>();
         for (StudyRuleResult sr : studyResults)
         {
@@ -1461,6 +1481,8 @@ public final class LibraryValidator
 
         private net.cumba.corej.core.exec.DefinePresence definePresence = net.cumba.corej.core.exec.DefinePresence.ABSENT;
 
+        private @Nullable String defineParseError;
+
         private @Nullable RuntimeDictionaryProvider dictionaryProvider;
 
         private final List<Rule> rules = new ArrayList<>();
@@ -1535,6 +1557,19 @@ public final class LibraryValidator
         public Builder definePresence(net.cumba.corej.core.exec.DefinePresence aDefinePresence)
         {
             definePresence = aDefinePresence;
+            return this;
+        }
+
+
+        /**
+         * Runbook W2 DP1b ({@code PLAN-engine-gap-define-presence} Q2): the message of the run's
+         * one study-level {@code CUMBA-DEFINE-PARSE} ERROR — given by the caller exactly on the
+         * {@code UNPARSEABLE} arm of {@link #definePresence}, with the define metadata basis text —
+         * or {@code null} (the default) for none.
+         */
+        public Builder defineParseError(@Nullable String aMessage)
+        {
+            defineParseError = aMessage;
             return this;
         }
 

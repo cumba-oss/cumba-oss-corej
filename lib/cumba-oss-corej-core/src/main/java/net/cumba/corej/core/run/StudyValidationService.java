@@ -263,7 +263,8 @@ public final class StudyValidationService
         // F-corej-L2-07 — the third member of the metadata-basis family (Fix #369 / D13): when
         // the Define-XML fails to parse, the run degrades and the REPORT must say so, not only
         // the log. Null (and so absent from Conformance_Details) whenever the define parsed
-        // cleanly or the run has none.
+        // cleanly or the run has none. Runbook W2 DP1b: the same text is the message of the
+        // run's study-level CUMBA-DEFINE-PARSE ERROR finding (the validator builder below).
         String defineMetadataBasis = null;
         // The direct (ODM-backed) Define-XML provider, captured so the per-record value-level
         // metadata resolver (VlmResolver) can be built from the same parsed model.
@@ -453,9 +454,15 @@ public final class StudyValidationService
 
         LibraryValidator.Builder vb = LibraryValidator.builder().provider(provider)
                 .defineProvider(defineProvider).vlmResolver(vlmResolver)
-                .definePresence(definePresence).dictionaryProvider(dictionaryProvider).rules(rules)
-                .sequential(true).ruleThreads(params.ruleThreads())
-                .maxErrorsPerRule(params.maxErrorsPerRule())
+                .definePresence(definePresence)
+                // runbook W2 DP1b (W2-D1): the UNPARSEABLE arm of the one presence fact is the
+                // run's study-level CUMBA-DEFINE-PARSE ERROR, its message the basis text
+                .defineParseError(
+                        definePresence == net.cumba.corej.core.exec.DefinePresence.UNPARSEABLE
+                                ? defineMetadataBasis
+                                : null)
+                .dictionaryProvider(dictionaryProvider).rules(rules).sequential(true)
+                .ruleThreads(params.ruleThreads()).maxErrorsPerRule(params.maxErrorsPerRule())
                 .severityThreshold(params.severityThreshold()).runtimeListener(listener)
                 .crossStandardDatasets(crossStandard).useCase(params.useCase())
                 .mergeStandard(mergeStandardOf(runStandard)).taskDecorator(params.taskDecorator());
