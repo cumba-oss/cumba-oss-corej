@@ -685,4 +685,24 @@ class RuleClassifierTest
                 + "\"expression\":\"max(AVAL, group=[USUBJID, PARAMCD], filter=(ABLFL == \\\"Y\\\"))\"}],"
                 + "\"Check\":{\"expression\":\"AVAL != $v\"}}"));
     }
+
+
+    /**
+     * R5 A-L3: the computed-member arm of the declared-column walk is the SPLICE member's (a
+     * dataset-level list of names resolved at evaluation, W1b SS1) — a computed value at a column
+     * parameter that does not splice is no such usage, so it adds no unresolved usage.
+     */
+    @Test
+    void aComputedValueAtANonSplicingColumnParameterIsNoUnresolvedUsage()
+    {
+        RuleClassifier.Derived<Sensitivity> value = RuleClassifier.deriveSensitivity(
+                rule("{\"Check\":{\"expression\":\"dy(1, upper(RFSTDTC)) > 3\"}}"));
+        assertFalse(value.rationale().contains("(unresolved)"), value.rationale());
+        // the splicing slot keeps it (bound ≡ inline, SS1)
+        RuleClassifier.Derived<Sensitivity> spliced = RuleClassifier.deriveSensitivity(rule(
+                "{\"Check\":{\"expression\":\"is_not_unique_member_set(members=minus([\\\"USUBJID\\\","
+                        + " \\\"X\\\"], subtract=[\\\"X\\\"]), group=minus([\\\"POOLID\\\","
+                        + " \\\"X\\\"], subtract=[\\\"X\\\"]))\"}}"));
+        assertEquals(Sensitivity.RECORD, spliced.value(), spliced.rationale());
+    }
 }

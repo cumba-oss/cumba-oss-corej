@@ -97,6 +97,30 @@ class SequenceFunctionTest
     }
 
 
+    /** A rule with bindings and no Check — stage A never walks it (the loader's seams judge). */
+    static Rule loadCheckless(String... bindings)
+    {
+        StringBuilder b = new StringBuilder(
+                "{\"rules\":{\"R\":{\"Core\":{\"Id\":\"R\"},\"Bindings\":[");
+        for (int i = 0; i < bindings.length; i += 2)
+        {
+            b.append(i == 0 ? "" : ",").append("{\"name\":\"").append(bindings[i])
+                    .append("\",\"expression\":\"").append(esc(bindings[i + 1])).append("\"}");
+        }
+        b.append("],\"Outcome\":{\"Message\":\"m\"}}}}");
+        try
+        {
+            Rule r = RulePackageLoader.loadFromString(b.toString()).getRules().get("R");
+            assertNotNull(r);
+            return r;
+        }
+        catch (java.io.IOException e)
+        {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+
     static String loadError(String check, String... bindings)
     {
         return String.valueOf(load(check, bindings).getLoadError());
@@ -151,6 +175,51 @@ class SequenceFunctionTest
         assertEquals(List.of("SCRN", "FU", "TRT"),
                 rows("sequence(ETCD, group=[USUBJID], by=[asc(SESEQ)])", se()).get(3),
                 "a numeric key orders numerically");
+    }
+
+
+    /**
+     * SM-shaped rows for the documented {@code is_increasing} example: S1's HYPO2 has a year-only
+     * start, after HYPO1's 2020-06-15; S2's HYPO1 starts 2021-03, after HYPO2's year 2020 — S2
+     * numbers its intervals against the chronology.
+     */
+    static IDataTable sm()
+    {
+        return RealTableFixture.of("SM").str("DOMAIN", "SM", "SM", "SM", "SM")
+                .str("USUBJID", "S1", "S1", "S2", "S2").str("MIDSTYPE", "H", "H", "H", "H")
+                .str("MIDS", "HYPO1", "HYPO2", "HYPO1", "HYPO2")
+                .str("SMSTDTC", "2020-06-15", "2021", "2021-03", "2020")
+                .str("SMSEQ", "9", "10", "2", "1").build();
+    }
+
+
+    @Test
+    void aSortKeyIsClassifiedOverItsCellsAYearAmongDatesIsAYear()
+    {
+        // R5 A-M1, owner O22 (a): CellOrder classifies PER SORT KEY — numeric iff every present
+        // cell of the key is a number (D11's rule), else ISO-then-text with a 4-digit cell read
+        // as a year. A cell-by-cell class put "2021" (a number) before every date
+        assertEquals(List.of("HYPO1", "HYPO2"),
+                rows("sequence(MIDS, group=[USUBJID], by=[asc(SMSTDTC)])", sm()).get(0),
+                "2020-06-15 before the year 2021 in an ISO key");
+        assertEquals(List.of("HYPO2", "HYPO1"),
+                rows("sequence(MIDS, group=[USUBJID], by=[asc(SMSTDTC)])", sm()).get(2),
+                "the year 2020 before 2021-03");
+        assertEquals(List.of("HYPO2", "HYPO1"),
+                rows("sequence(MIDS, group=[USUBJID], by=[desc(SMSTDTC)])", sm()).get(0));
+        // an all-number key orders numerically ("9" before "10"), never as text
+        assertEquals(List.of("HYPO1", "HYPO2"),
+                rows("sequence(MIDS, group=[USUBJID], by=[asc(SMSEQ)])", sm()).get(0));
+        // the documented example (functions.md, is_increasing): only S2 numbers against time.
+        // The digits are extracted inside sequence's VALUE target and stay text — is_increasing
+        // reads them numerically, every element being a number. (The example's former
+        // num($mids ~ …) did not load — num() over a list is no element-wise conversion before
+        // W2 E5 — and a ~ over the bound list in the Check's operand leaves the classifier no
+        // column, so the findings collapse to one.)
+        assertEquals(List.of(3L, 4L),
+                fired(sm(), "not is_increasing($nums)", "$nums",
+                        "sequence(MIDS ~ /^.*?([0-9]+)$/$1/, group=[USUBJID, MIDSTYPE],"
+                                + " by=[asc(SMSTDTC)], filter=(MIDS =~ /[0-9]$/))"));
     }
 
 

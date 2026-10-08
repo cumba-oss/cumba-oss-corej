@@ -76,7 +76,9 @@ public final class OrderedLists
 
 
     /**
-     * {@code is_increasing(list)} per row: strict, numeric iff every element is numeric.
+     * {@code is_increasing(list)} per row: strict, numeric iff every element is numeric; a missing
+     * LIST answers {@code true} (owner O22, runbook W1b fold R5 A-L2: no finding, as D22's missing
+     * element).
      *
      * @param list
      *            the list
@@ -90,7 +92,7 @@ public final class OrderedLists
         for (int row = 0; row < rowCount; row++)
         {
             List<Object> items = listAt("is_increasing", list, row);
-            if (items != null && isIncreasing(items))
+            if (items == null || isIncreasing(items))
             {
                 out.set(row);
             }

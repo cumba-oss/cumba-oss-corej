@@ -2,7 +2,6 @@ package net.cumba.corej.core.exec;
 
 import java.util.ArrayList;
 import java.util.BitSet;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,8 +37,9 @@ import org.jspecify.annotations.Nullable;
  * behave as there. Without {@code group=} it is one dataset-level list in that order.
  *
  * <p>
- * The order is {@link SortKeys#rowComparator}'s — {@link CellOrder} per key (a total order: numbers
- * numerically, ISO cells by (lower bound, upper bound, text), text, the blank, a missing last),
+ * The order is {@link SortKeys#sortRows}' — {@link CellOrder} per key, each key classified over its
+ * cells (owner O22: a numeric key numerically, any other ISO cells by (lower bound, upper bound,
+ * text) with a four-digit cell a year, then text; the blank, a missing last; a total order),
  * {@code desc} reversing it, a tie keeping file order (stable), no {@code by=} file order. An
  * element is a present cell's text (a numeric cell its canonical text, as {@code distinct} lists
  * it), a missing cell its {@link net.cumba.corej.core.expr.eval.Primitives.MissingMember} (D81, as
@@ -336,20 +336,24 @@ public final class Sequence
     private static List<Object> ordered(IntFunction<IDataValue> cellAt, IDataTable table,
             List<SortKeys.ResolvedKey> keys, int[] rows, @Nullable BitSet keep)
     {
-        List<Integer> kept = new ArrayList<>(rows.length);
+        int[] kept = new int[rows.length];
+        int size = 0;
         for (int r : rows)
         {
             if (keep == null || keep.get(r))
             {
-                kept.add(r);
+                kept[size++] = r;
             }
+        }
+        if (size < kept.length)
+        {
+            kept = java.util.Arrays.copyOf(kept, size);
         }
         if (!keys.isEmpty())
         {
-            Comparator<Integer> order = SortKeys.rowComparator(table, keys);
-            kept.sort(order);
+            kept = SortKeys.sortRows(table, keys, kept);
         }
-        List<Object> out = new ArrayList<>(kept.size());
+        List<Object> out = new ArrayList<>(kept.length);
         for (int r : kept)
         {
             IDataValue dv = cellAt.apply(r);

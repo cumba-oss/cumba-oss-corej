@@ -109,6 +109,51 @@ class SortKeysTest
 
 
     @Test
+    void aWildcardKeyIsTheDotlessDomainPrefixOnly()
+    {
+        // R5 A-L1: the pre-SK readers took only the `--X` domain wildcard without a dot; a dotted
+        // wildcard (`DM.--SEQ`, `SUPP--.QVAL`) loaded under SK and silently ordered nothing
+        for (String key : List.of("DM.--SEQ", "SUPP--.QVAL"))
+        {
+            String bare = loadError("count(sequence(ETCD, group=[USUBJID], by=" + key + ")) > 0");
+            assertTrue(bare.contains("must be a column"), key + ": " + bare);
+            String asc = loadError(
+                    "count(sequence(ETCD, group=[USUBJID], by=[asc(" + key + ")])) > 0");
+            assertTrue(asc.contains("must be a column"), key + ": " + asc);
+            String single = loadError("is_last_in_group(by=" + key + ", group=[USUBJID])");
+            assertTrue(single.contains("must be a column"), key + ": " + single);
+        }
+        assertEquals("null",
+                loadError("count(sequence(ETCD, group=[USUBJID], by=[asc(--SEQ)])) > 0"),
+                "the dotless domain wildcard keeps loading");
+    }
+
+
+    @Test
+    void aSortKeyDescriptorOutsideASortKeySlotIsRefusedAtLoad()
+    {
+        // R5 A-L4: asc()/desc() order a by= (or ordering=) list only; in any other splice slot the
+        // seams unwrapped it (stage A) or kept it as a computed member (the loader), so it loaded
+        // and ERRORed at run time
+        String within = loadError("not is_sorted_by(SESEQ, by=[SESTDTC], within=asc($c))", KEYS);
+        assertTrue(within.contains("sort-key descriptor"), within);
+        String group = loadError("count(distinct(ETCD, group=[asc(USUBJID)])) > 0");
+        assertTrue(group.contains("sort-key descriptor"), group);
+    }
+
+
+    @Test
+    void aSortKeyDescriptorOutsideASortKeySlotIsTheLoadersRefusalWhereStageADoesNotWalk()
+    {
+        // R5 A-L4, the loader's twin: a Check-less rule's binding is never walked by stage A
+        Rule checkless = SequenceFunctionTest.loadCheckless("$c", "\"SESTDTC\"", "$v",
+                "distinct(ETCD, group=[asc($c)])");
+        assertTrue(String.valueOf(checkless.getLoadError()).contains("sort-key descriptor"),
+                String.valueOf(checkless.getLoadError()));
+    }
+
+
+    @Test
     void isSortedByReadsTheKeyNamesOnlyUntilW2()
     {
         // D20: direction and nulls= stay ignored; a bare column, a bound name and a spliced name

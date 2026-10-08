@@ -118,6 +118,20 @@ class OrderedListFunctionsTest
 
 
     @Test
+    void aMissingListAnswersTrueSoTheNegatedFormGivesNoFinding()
+    {
+        // R5 A-L2, owner O22 (2026-10-08: "is_increasing when the whole list is missing: agree to
+        // true"): a missing LIST is D22's missing element writ large — no finding. S3's SESTDTC
+        // is blank, so its split is the missing list
+        assertEquals(List.of(), fired(se(), "not is_increasing(split_by(SESTDTC, \";\"))"));
+        assertEquals(List.of(),
+                fired(se(), "not is_increasing($l)", "$l", "split_by(SESTDTC, \";\")"));
+        assertEquals(List.of(1L, 2L, 3L, 4L, 5L, 6L, 7L),
+                fired(se(), "is_increasing(split_by(SESTDTC, \";\"))"));
+    }
+
+
+    @Test
     void collapseRunsCollapsesAdjacentDuplicatesOnly()
     {
         assertEquals(7,

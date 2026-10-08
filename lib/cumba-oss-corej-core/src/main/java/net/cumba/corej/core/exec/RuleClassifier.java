@@ -1025,7 +1025,8 @@ public final class RuleClassifier
                             && list.element() == ExprType.Primitive.COLUMN_REFERENCE);
             if (column)
             {
-                collectColumnRefs(bound.get(i), usages, out);
+                collectColumnRefs(bound.get(i), usages, out,
+                        GroupSplice.splices(call.name(), params.get(i).name()));
             }
         }
         return out;
@@ -1033,7 +1034,7 @@ public final class RuleClassifier
 
 
     private static void collectColumnRefs(@Nullable Expr e, List<CallUsage> usages,
-            List<String> out)
+            List<String> out, boolean splices)
     {
         if (e instanceof Expr.Ref ref)
         {
@@ -1055,7 +1056,7 @@ public final class RuleClassifier
             {
                 if (item instanceof Expr member)
                 {
-                    collectColumnRefs(member, usages, out);
+                    collectColumnRefs(member, usages, out, splices);
                 }
             }
         }
@@ -1063,9 +1064,9 @@ public final class RuleClassifier
                 && !call.args().isEmpty())
         {
             // a sort-key descriptor names the column it wraps (W1b SK)
-            collectColumnRefs(call.args().get(0), usages, out);
+            collectColumnRefs(call.args().get(0), usages, out, splices);
         }
-        else if (e instanceof Expr.Call && !usages.contains(CallUsage.UNRESOLVED))
+        else if (splices && e instanceof Expr.Call && !usages.contains(CallUsage.UNRESOLVED))
         {
             // W1b SS1 (found by `is_not_unique_member_set(members=minus(…), group=minus(…))`):
             // a computed splice member — the expression a `$` binding would hold, written in
@@ -1073,7 +1074,8 @@ public final class RuleClassifier
             // of names resolved at evaluation, never a column name. Without this arm a call whose
             // every column parameter is computed had NO operand, the Check read as signal-free
             // and the runner collapsed its per-row findings to one, where the bound spelling
-            // classified Record (bound ≡ inline).
+            // classified Record (bound ≡ inline). Only at a parameter that SPLICES (runbook W1b
+            // fold, R5 A-L3): elsewhere a computed value is no name list.
             usages.add(CallUsage.UNRESOLVED);
         }
     }

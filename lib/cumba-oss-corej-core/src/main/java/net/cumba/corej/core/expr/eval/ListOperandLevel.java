@@ -359,7 +359,14 @@ public final class ListOperandLevel
             for (Expr member : slot.operands())
             {
                 String refusal = null;
-                if (net.cumba.corej.core.exec.GroupSplice.spliced(member) != null
+                if (net.cumba.corej.core.exec.SortKeys.isDescriptor(member)
+                        && !net.cumba.corej.core.exec.SortKeys.isSortKeyParameter(slot.parameter()))
+                {
+                    // R5 A-L4: stage A's twin — a descriptor orders a by= list only
+                    refusal = net.cumba.corej.core.exec.SortKeys.descriptorOutsideSortKey(c.name(),
+                            slot.parameter(), where, member);
+                }
+                else if (net.cumba.corej.core.exec.GroupSplice.spliced(member) != null
                         && readsRowCursor(member, rule))
                 {
                     // W1b UC1: at is_(not_)unique_set's members the per-row member is a VALUE key

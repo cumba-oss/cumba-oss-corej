@@ -546,7 +546,7 @@ public final class GroupedAggregate
     }
 
 
-    private static boolean isDomainPrefixWildcard(String name)
+    static boolean isDomainPrefixWildcard(String name)
     {
         return name.startsWith("--") && name.indexOf('.') < 0;
     }

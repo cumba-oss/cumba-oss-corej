@@ -1,5 +1,6 @@
 package net.cumba.corej.core.exec;
 
+import java.util.List;
 import net.cumba.corej.core.expr.eval.IsoDateBounds;
 import net.cumba.corej.core.expr.eval.Primitives;
 import net.cumba.corej.core.expr.eval.TypedValue;
@@ -8,9 +9,29 @@ import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Runbook W1b RO ({@code PLAN-engine-gap-row-ordinal} §5 R1, ruled Q3; coordinator D11 / D19) — the
- * ONE reusable ordering comparator over cell values: {@code sequence}'s sort keys and
+ * Runbook W1b RO ({@code PLAN-engine-gap-row-ordinal} §5 R1, ruled Q3; coordinator D11 / D19; owner
+ * O22) — the ONE reusable ordering over cell values: {@code sequence}'s sort keys and
  * {@code is_increasing} read it now, {@code is_sorted_by} adopts it in W2 (SB2).
+ *
+ * <p>
+ * ⭐ <b>A sort key is classified over its cells</b> (owner O22 (a), 2026-10-08; runbook W1b fold, R5
+ * A-M1) with D11's rule, once per key ({@link #key}):
+ * </p>
+ * <ul>
+ * <li>a <b>numeric key</b> — every present cell a number (a numeric cell, or a text that parses as
+ * a finite number: {@code "10"}, {@code "-0.5"}): by value, then by text ({@code "1"} before
+ * {@code "1.0"});</li>
+ * <li>any other key — <b>ISO, then text</b>: a cell {@link IsoDateBounds} can position — a
+ * four-digit cell read as a year ({@code "2021"} after {@code "2020-06-15"}) — by (lower bound,
+ * upper bound, text), so a partial precedes the complete values it contains, a date precedes its
+ * datetimes, an interval follows its start and an offset is applied instant-preserving; then every
+ * other text ({@code UNK}, an invalid date, a number in a mixed key) by text;</li>
+ * <li>then the blank {@code ""}, then a <b>missing</b> — the marker's own order
+ * ({@link MissingValue}), so two missings of one kind are equal and two kinds are ordered.</li>
+ * </ul>
+ * <p>
+ * Judged cell by cell, {@code "2021"} was a number and sorted before every date of its key.
+ * </p>
  *
  * <p>
  * ⚠ It is a <b>total order</b>, by construction — which the engine's ISO relations are not:
@@ -18,30 +39,36 @@ import org.jspecify.annotations.Nullable;
  * both {@code 2020-01-15T08:00} and {@code T10:00}, not transitive), and the hull comparison of
  * {@code IsoDateComparison} leaves a partial against a complete value unordered. Under such a
  * comparator {@code TimSort} throws <i>"Comparison method violates its general contract"</i> on a
- * group of 32 rows or more. Here every cell falls in exactly one class, the classes are ordered,
- * and inside a class the order is lexicographic over a tuple that ends in the cell's own text — so
- * two cells compare equal only when they are the same text:
+ * group of 32 rows or more. Here every cell of a key falls in exactly one class, the classes are
+ * ordered, and inside a class the order is lexicographic over a tuple that ends in the cell's own
+ * text — so two cells compare equal only when they are the same text.
  * </p>
- * <ol>
- * <li><b>numbers</b> — a numeric cell, or a text that parses as a finite number ({@code "10"},
- * {@code "-0.5"}): by value, then by text ({@code "1"} before {@code "1.0"});</li>
- * <li><b>ISO dates and datetimes</b> — a text {@link IsoDateBounds} can position: by (lower bound,
- * upper bound, text), so a partial precedes the complete values it contains, a date precedes its
- * datetimes, an interval follows its start, and an offset is applied instant-preserving;</li>
- * <li><b>other text</b> — {@code UNK}, {@code NOT DONE}, an invalid date, a code: by text;</li>
- * <li><b>the blank {@code ""}</b>;</li>
- * <li><b>a missing</b> — the marker's own order ({@link MissingValue}), so two missings of one kind
- * are equal and two kinds are ordered.</li>
- * </ol>
+ *
  * <p>
- * The classes are judged per cell, never per column: a column mixing numbers and text orders its
- * numbers first — the {@code is_sorted_by} comparator's "numeric first, text fallback" made total.
- * {@code is_increasing}'s list-level rule (numeric iff every element is numeric, else text) is
- * {@link #compareNumeric} / {@link #compareText} over the whole list ({@link OrderedLists}).
+ * ⭐ <b>Decorated once</b> (R5 A-M2; owner priority: performance first): {@link #key} reads each
+ * cell's class, number or bounds ONCE into arrays, so a comparison during the sort is array reads —
+ * never the half-dozen bound parses a per-comparison reading cost. {@code is_increasing}'s
+ * list-level rule (numeric iff every element is numeric, else text) is {@link #compareNumeric} /
+ * {@link #compareText} over the whole list ({@link OrderedLists}).
  * </p>
  */
 public final class CellOrder
 {
+
+    /** The class of a number in a numeric key. */
+    private static final byte NUMBER = 0;
+
+    /** The class of an ISO-positionable cell in a non-numeric key. */
+    private static final byte ISO = 1;
+
+    /** The class of any other present text. */
+    private static final byte TEXT = 2;
+
+    /** The class of the blank {@code ""}. */
+    private static final byte BLANK = 3;
+
+    /** The class of a missing. */
+    private static final byte MISSING = 4;
 
     private CellOrder()
     {
@@ -83,32 +110,167 @@ public final class CellOrder
 
 
     /**
-     * The total order over two list elements / cell values ({@link #valueOf}): a {@link Number}, a
-     * {@link String}, a {@link Primitives.MissingMember}; {@code null} is a missing.
+     * One sort key's cells classified over the key and decorated once ({@link CellOrder}'s rule):
+     * positions {@code 0..n-1} are the values in the order given.
      *
-     * @param a
-     *            one value
-     * @param b
-     *            the other
-     * @return negative, zero or positive as {@code a} precedes, equals or follows {@code b}
+     * @param values
+     *            the key's values ({@link #valueOf}: a {@link Number}, a {@link String}, a
+     *            {@link Primitives.MissingMember}; {@code null} is a missing)
+     * @return the decorated key
      */
-    public static int compare(@Nullable Object a, @Nullable Object b)
+    public static Key key(List<?> values)
     {
-        int ra = rank(a);
-        int rb = rank(b);
-        if (ra != rb)
+        int n = values.size();
+        boolean numeric = true;
+        for (int i = 0; i < n && numeric; i++)
         {
-            return Integer.compare(ra, rb);
+            Object value = values.get(i);
+            if (!isMissing(value) && !text(value).isEmpty())
+            {
+                numeric = value instanceof Number num ? Double.isFinite(num.doubleValue())
+                        : !Double.isNaN(parse(text(value)));
+            }
         }
-        return switch (ra)
+        byte[] rank = new byte[n];
+        double[] number = new double[n];
+        @Nullable
+        String[] lower = new String[n];
+        @Nullable
+        String[] upper = new String[n];
+        String[] text = new String[n];
+        @Nullable
+        MissingValue[] marker = new MissingValue[n];
+        for (int i = 0; i < n; i++)
         {
-        case 0 -> compareNumeric(a, b);
-        case 1 -> compareIso(text(a), text(b));
-        case 4 -> compareMissing(a, b);
-        default -> text(a).compareTo(text(b));
-        };
+            Object value = values.get(i);
+            if (isMissing(value))
+            {
+                rank[i] = MISSING;
+                marker[i] = markerOf(value);
+                text[i] = "";
+                continue;
+            }
+            String t = text(value);
+            text[i] = t;
+            if (t.isEmpty())
+            {
+                rank[i] = BLANK;
+            }
+            else if (numeric)
+            {
+                rank[i] = NUMBER;
+                number[i] = value instanceof Number num ? num.doubleValue() : parse(t);
+            }
+            else
+            {
+                String low = IsoDateBounds.lower(t);
+                if (low != null)
+                {
+                    rank[i] = ISO;
+                    lower[i] = low;
+                    upper[i] = IsoDateBounds.upper(t);
+                }
+                else
+                {
+                    rank[i] = TEXT;
+                }
+            }
+        }
+        return new Key(numeric, rank, number, lower, upper, text, marker);
     }
 
+    /**
+     * A sort key decorated once ({@link #key}): its classification and, per position, the class,
+     * the number or the ISO bounds, the text and the missing marker — compared by array reads.
+     */
+    public static final class Key
+    {
+
+        private final boolean numeric;
+
+        private final byte[] rank;
+
+        private final double[] number;
+
+        private final @Nullable String[] lower;
+
+        private final @Nullable String[] upper;
+
+        private final String[] text;
+
+        private final @Nullable MissingValue[] marker;
+
+        private Key(boolean aNumeric, byte[] aRank, double[] aNumber, @Nullable String[] aLower,
+                @Nullable String[] aUpper, String[] aText, @Nullable MissingValue[] aMarker)
+        {
+            numeric = aNumeric;
+            rank = aRank;
+            number = aNumber;
+            lower = aLower;
+            upper = aUpper;
+            text = aText;
+            marker = aMarker;
+        }
+
+
+        /**
+         * Whether the key is numeric (every present cell a number).
+         *
+         * @return {@code true} for a numeric key
+         */
+        public boolean numeric()
+        {
+            return numeric;
+        }
+
+
+        /**
+         * The number of positions.
+         *
+         * @return the size
+         */
+        public int size()
+        {
+            return rank.length;
+        }
+
+
+        /**
+         * The total order over two positions of this key.
+         *
+         * @param i
+         *            one position
+         * @param j
+         *            the other
+         * @return negative, zero or positive as position {@code i} precedes, equals or follows
+         *         {@code j}
+         */
+        public int compare(int i, int j)
+        {
+            int c = Byte.compare(rank[i], rank[j]);
+            if (c != 0)
+            {
+                return c;
+            }
+            if (rank[i] == MISSING)
+            {
+                return compareMarkers(marker[i], marker[j]);
+            }
+            if (rank[i] == NUMBER)
+            {
+                c = Double.compare(number[i], number[j]);
+            }
+            else if (rank[i] == ISO)
+            {
+                c = String.valueOf(lower[i]).compareTo(String.valueOf(lower[j]));
+                if (c == 0)
+                {
+                    c = String.valueOf(upper[i]).compareTo(String.valueOf(upper[j]));
+                }
+            }
+            return c != 0 ? c : text[i].compareTo(text[j]);
+        }
+    }
 
     /**
      * Two values as numbers (both {@link #isNumeric}): by value, then by text — total.
@@ -157,7 +319,15 @@ public final class CellOrder
      */
     public static boolean isNumeric(@Nullable Object value)
     {
-        return rank(value) == 0;
+        if (isMissing(value))
+        {
+            return false;
+        }
+        if (value instanceof Number n)
+        {
+            return Double.isFinite(n.doubleValue());
+        }
+        return !Double.isNaN(parse(text(value)));
     }
 
 
@@ -166,29 +336,6 @@ public final class CellOrder
     {
         return value == null || value instanceof Primitives.MissingMember
                 || Primitives.MemberSet.missingIdentityOfMember(value) != null;
-    }
-
-
-    private static int rank(@Nullable Object value)
-    {
-        if (isMissing(value))
-        {
-            return 4;
-        }
-        if (value instanceof Number n)
-        {
-            return Double.isFinite(n.doubleValue()) ? 0 : 2;
-        }
-        String s = text(value);
-        if (s.isEmpty())
-        {
-            return 3;
-        }
-        if (!Double.isNaN(parse(s)))
-        {
-            return 0;
-        }
-        return IsoDateBounds.lower(s) != null ? 1 : 2;
     }
 
 
@@ -226,25 +373,15 @@ public final class CellOrder
     }
 
 
-    private static int compareIso(String a, String b)
-    {
-        int c = String.valueOf(IsoDateBounds.lower(a))
-                .compareTo(String.valueOf(IsoDateBounds.lower(b)));
-        if (c != 0)
-        {
-            return c;
-        }
-        c = String.valueOf(IsoDateBounds.upper(a))
-                .compareTo(String.valueOf(IsoDateBounds.upper(b)));
-        return c != 0 ? c : a.compareTo(b);
-    }
-
-
     /** Two missings: by their marker's declared order (a {@code null} before every marker). */
     private static int compareMissing(@Nullable Object a, @Nullable Object b)
     {
-        MissingValue ma = markerOf(a);
-        MissingValue mb = markerOf(b);
+        return compareMarkers(markerOf(a), markerOf(b));
+    }
+
+
+    private static int compareMarkers(@Nullable MissingValue ma, @Nullable MissingValue mb)
+    {
         if (ma == null || mb == null)
         {
             return ma == mb ? 0 : ma == null ? -1 : 1;

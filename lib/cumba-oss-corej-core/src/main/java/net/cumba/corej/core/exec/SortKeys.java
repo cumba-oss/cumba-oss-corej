@@ -1,8 +1,8 @@
 package net.cumba.corej.core.exec;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
+import java.util.function.IntBinaryOperator;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.OperandKind;
@@ -34,7 +34,7 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * {@code is_sorted_by} reads the resolved NAMES only and ignores the direction (coordinator D20; W2
  * SB1 honours it); {@code sequence} orders by {@link CellOrder} with {@code desc} reversing the
- * cell order ({@link #rowComparator}).
+ * cell order ({@link #sortRows}).
  * </p>
  */
 public final class SortKeys
@@ -48,6 +48,9 @@ public final class SortKeys
 
     /** The two sort-key descriptors. */
     private static final List<String> DESCRIPTORS = List.of("asc", "desc");
+
+    /** The run length below which {@link #stableSort} sorts by insertion. */
+    private static final int INSERTION_THRESHOLD = 16;
 
     private SortKeys()
     {
@@ -110,6 +113,45 @@ public final class SortKeys
 
 
     /**
+     * Whether {@code parameter} is a sort-key slot — {@code by=}, or its older spelling
+     * {@code ordering=} — the only slots a descriptor may stand in.
+     *
+     * @param parameter
+     *            the parameter name
+     * @return {@code true} for a sort-key slot
+     */
+    public static boolean isSortKeyParameter(String parameter)
+    {
+        return PARAMETER.equals(parameter) || LEGACY_PARAMETER.equals(parameter);
+    }
+
+
+    /**
+     * The load refusal of a sort-key descriptor written outside a sort-key slot (runbook W1b fold,
+     * R5 A-L4) — one sentence for stage A and the loader's seam pass: {@code within=asc($w)} used
+     * to load (the seams judged the member it wraps) and then ERROR at run time.
+     *
+     * @param fn
+     *            the function
+     * @param parameter
+     *            the slot it is written in
+     * @param where
+     *            where it is written (the loader's binding name), or {@code null}
+     * @param descriptor
+     *            the descriptor as authored
+     * @return the message
+     */
+    public static String descriptorOutsideSortKey(String fn, String parameter,
+            @Nullable String where, Expr descriptor)
+    {
+        return "argument '" + parameter + "' of '" + fn + "'"
+                + (where == null ? "" : " in " + where) + " takes column names, not the sort-key"
+                + " descriptor " + ExpressionPrinter.print(descriptor)
+                + " — asc() / desc() order a " + PARAMETER + "= list only; write the column bare";
+    }
+
+
+    /**
      * The authored members of a {@code by=} argument: the list literal's items, or the one bare
      * operand (a descriptor, a column, a {@code $} or computed expression — C5).
      *
@@ -168,8 +210,11 @@ public final class SortKeys
                         + " takes a column reference, not a string literal — write " + bare
                         + "; a quoted name is a string, never a column");
             }
+            // R5 A-L1: a wildcard key is the dotless `--X` domain prefix the pre-SK readers took
+            // (GroupedAggregate.isDomainPrefixWildcard); `DM.--SEQ` / `SUPP--.QVAL` order nothing
             if (!(column instanceof Expr.Ref ref) || !(ref.kind() == OperandKind.COLUMN
-                    || ref.kind() == OperandKind.WILDCARD_COLUMN
+                    || (ref.kind() == OperandKind.WILDCARD_COLUMN
+                            && GroupedAggregate.isDomainPrefixWildcard(ref.name()))
                     || ref.kind() == OperandKind.DOTTED_REF))
             {
                 throw new ExpressionException(fn + " sort key " + ExpressionPrinter.print(member)
@@ -322,45 +367,131 @@ public final class SortKeys
 
 
     /**
-     * The row order of {@code table} under {@code keys} — {@link CellOrder} per key, {@code desc}
-     * reversing it, an absent key column ordering nothing (EC-44), ties left to the stable sort
-     * that applies it (file order).
+     * The rows of {@code table} in the order of {@code keys} — {@link CellOrder} per key, each key
+     * classified over its cells in these rows (owner O22), {@code desc} reversing it, an absent key
+     * column ordering nothing (EC-44), ties kept in the order given (a stable sort: file order). ⭐
+     * Each key is decorated ONCE ({@link CellOrder#key}) and an {@code int[]} of positions is
+     * merge-sorted over the decorated arrays, so no comparison re-reads a cell (R5 A-M2).
      *
      * @param table
      *            the table whose rows are ordered
      * @param keys
      *            the resolved keys
-     * @return the comparator over row indices
+     * @param rows
+     *            the row indices to order (not modified)
+     * @return the row indices in key order
      */
-    public static Comparator<Integer> rowComparator(IDataTable table, List<ResolvedKey> keys)
+    public static int[] sortRows(IDataTable table, List<ResolvedKey> keys, int[] rows)
     {
         DataTableMeta meta = table.getMetaData();
-        List<IDataTableColumn> columns = new ArrayList<>(keys.size());
+        List<CellOrder.Key> decorated = new ArrayList<>(keys.size());
         List<Boolean> descending = new ArrayList<>(keys.size());
         for (ResolvedKey key : keys)
         {
             int idx = meta.getColumnIndex(key.column());
             if (idx >= 0)
             {
-                columns.add(table.getColumn(idx));
+                IDataTableColumn column = table.getColumn(idx);
+                List<Object> values = new ArrayList<>(rows.length);
+                for (int row : rows)
+                {
+                    values.add(CellOrder.valueOf(column.getDataValue(row)));
+                }
+                decorated.add(CellOrder.key(values));
                 descending.add(key.descending());
             }
         }
-        return (a, b) ->
+        int n = rows.length;
+        int[] positions = new int[n];
+        for (int i = 0; i < n; i++)
         {
-            for (int i = 0; i < columns.size(); i++)
+            positions[i] = i;
+        }
+        if (!decorated.isEmpty())
+        {
+            int width = decorated.size();
+            CellOrder.Key[] byKey = decorated.toArray(CellOrder.Key[]::new);
+            boolean[] reversed = new boolean[width];
+            for (int k = 0; k < width; k++)
             {
-                IDataTableColumn column = columns.get(i);
-                Object va = CellOrder.valueOf(column.getDataValue(a));
-                Object vb = CellOrder.valueOf(column.getDataValue(b));
-                // desc reverses the cell order by swapping the operands (never by negation)
-                int c = descending.get(i) ? CellOrder.compare(vb, va) : CellOrder.compare(va, vb);
-                if (c != 0)
+                reversed[k] = descending.get(k);
+            }
+            stableSort(positions, (a, b) ->
+            {
+                for (int k = 0; k < width; k++)
                 {
-                    return c;
+                    // desc reverses the cell order by swapping the operands (never by negation)
+                    int c = reversed[k] ? byKey[k].compare(b, a) : byKey[k].compare(a, b);
+                    if (c != 0)
+                    {
+                        return c;
+                    }
+                }
+                return 0;
+            });
+        }
+        int[] out = new int[n];
+        for (int i = 0; i < n; i++)
+        {
+            out[i] = rows[positions[i]];
+        }
+        return out;
+    }
+
+
+    /** A stable merge sort of {@code a} under {@code order} (insertion sort below 16 elements). */
+    static void stableSort(int[] a, IntBinaryOperator order)
+    {
+        if (a.length > 1)
+        {
+            mergeSort(a, new int[a.length], 0, a.length, order);
+        }
+    }
+
+
+    private static void mergeSort(int[] a, int[] scratch, int from, int to, IntBinaryOperator order)
+    {
+        if (to - from <= INSERTION_THRESHOLD)
+        {
+            for (int i = from + 1; i < to; i++)
+            {
+                int value = a[i];
+                int j = i;
+                // > 0, never >= 0: an equal element stays before the one inserted (stable)
+                while (j > from && order.applyAsInt(a[j - 1], value) > 0)
+                {
+                    j--;
+                }
+                if (j < i)
+                {
+                    System.arraycopy(a, j, a, j + 1, i - j);
+                    a[j] = value;
                 }
             }
-            return 0;
-        };
+            return;
+        }
+        int middle = (from + to) >>> 1;
+        mergeSort(a, scratch, from, middle, order);
+        mergeSort(a, scratch, middle, to, order);
+        if (order.applyAsInt(a[middle - 1], a[middle]) <= 0)
+        {
+            return; // already in order
+        }
+        System.arraycopy(a, from, scratch, from, to - from);
+        int left = from;
+        int right = middle;
+        for (int k = from; k < to; k++)
+        {
+            // <= keeps the left (earlier) element first on a tie: stable
+            if (right >= to
+                    || (left < middle && order.applyAsInt(scratch[left], scratch[right]) <= 0))
+            {
+                a[k] = scratch[left++];
+            }
+            else
+            {
+                a[k] = scratch[right++];
+            }
+        }
     }
 }

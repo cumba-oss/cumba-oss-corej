@@ -2520,9 +2520,9 @@ public final class StageAChecker
      * The level judgement of an {@code unknown}-typed splice slot (W1b BS2c, D4) and of a sort-key
      * member (W1b SK, O16 #2): a list literal member by member — a nested EC-24 component inside as
      * at top level, the literal claimed so its {@code $} elements are not filed as list elements —
-     * a descriptor {@code asc(X)} / {@code desc(X)} by the member it wraps, a name-list binding
-     * admitted (its {@code --} members judged under {@code domain=}), a {@code $} or computed
-     * member refused when it reads the row cursor.
+     * a descriptor {@code asc(X)} / {@code desc(X)} by the member it wraps at a sort-key slot and
+     * refused at any other (R5 A-L4), a name-list binding admitted (its {@code --} members judged
+     * under {@code domain=}), a {@code $} or computed member refused when it reads the row cursor.
      */
     private void judgeSpliceSlot(Expr.Call c, Parameter param, TypedExpr arg)
     {
@@ -2538,6 +2538,14 @@ public final class StageAChecker
         }
         if (net.cumba.corej.core.exec.SortKeys.isDescriptor(node) && !arg.children().isEmpty())
         {
+            if (!net.cumba.corej.core.exec.SortKeys.isSortKeyParameter(param.name()))
+            {
+                // R5 A-L4: a descriptor orders a by= list only; elsewhere it loaded and then
+                // ERRORed at run time (the loader's seam pass files the same sentence)
+                find(StageAErrorKind.PARAMETER_TYPE, net.cumba.corej.core.exec.SortKeys
+                        .descriptorOutsideSortKey(c.name(), param.name(), null, node) + at(c));
+                return;
+            }
             judgeSpliceSlot(c, param, arg.children().get(0));
             return;
         }
