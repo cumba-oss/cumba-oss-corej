@@ -238,7 +238,18 @@ class BindingSubstitutabilityTest
             "AETERM in distinct(AETERM, group=[USUBJID, ‹arg›])",
             "AETERM in distinct(AETERM, group=‹arg›)",
             "empty(read_value(TSVAL, domain=TS, mode=\"FIRST\", group=[TSPARM, ‹arg›]))",
-            "empty(read_value(TSVAL, domain=TS, mode=\"FIRST\", group=‹arg›))");
+            "empty(read_value(TSVAL, domain=TS, mode=\"FIRST\", group=‹arg›))",
+            // BS2b (keys=): the compiler-dispatched readers' name lists — is_last_in_group's
+            // group=, has_mixed_emptiness_within_group's group= / qualifying_any_populated=, the
+            // keys= of is_(not_)unique_relationship and is_inconsistent_across_dataset
+            "is_last_in_group(ordering=AESEQ, group=[USUBJID, ‹arg›])",
+            "is_last_in_group(ordering=AESEQ, group=‹arg›)",
+            "has_mixed_emptiness_within_group(AETERM, group=[USUBJID, ‹arg›])",
+            "has_mixed_emptiness_within_group(AETERM, group=[USUBJID], qualifying_any_populated=‹arg›)",
+            "is_unique_relationship(AETERM, keys=[USUBJID, ‹arg›])",
+            "not is_not_unique_relationship(AETERM, keys=‹arg›)",
+            "is_inconsistent_across_dataset(AETERM, keys=[USUBJID, ‹arg›])",
+            "is_inconsistent_across_dataset(AETERM, keys=‹arg›)");
 
     @Test
     void aDatasetLevelListOfNamesSplicesBoundAndInlineAlike() throws Exception
@@ -376,7 +387,11 @@ class BindingSubstitutabilityTest
         String term = "minus([\"AETERM\", \"X\"], subtract=[\"X\"])";
         for (String check : List.of("max(AESEQ, group=‹g›) != AESEQ",
                 "count(distinct(AESEQ, group=‹g›)) > 1",
-                "read_value(AESEQ, domain=AE, mode=\"MAX\", group=‹g›) != AESEQ"))
+                "read_value(AESEQ, domain=AE, mode=\"MAX\", group=‹g›) != AESEQ",
+                // BS2b (keys=): AESEQ is 1:1 with the (USUBJID, AETERM) tuple on UNIQUE and every
+                // row is the last of its own group; on DUP the shared tuple breaks both
+                "not is_unique_relationship(AESEQ, keys=‹g›)",
+                "not is_last_in_group(ordering=AESEQ, group=‹g›)"))
         {
             List<Rule> mixed = List.of(load(check.replace("‹g›", "[USUBJID, AETERM]")),
                     load(check.replace("‹g›", "[USUBJID, $k]"), "$k", "upper(\"aeterm\")"),

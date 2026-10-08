@@ -21,10 +21,15 @@ import org.jspecify.annotations.Nullable;
  * ({@code ExprCompiler.valuesPlan}, {@code PLAN-elementwise-list-functions} §3.2) and, since W1a
  * BS2b ({@code PLAN-binding-substitutability} C6, ruled Q2: <i>"every list&lt;column-reference&gt;
  * slot splices"</i>), the {@code group=} of the grouped readers {@code max} / {@code max_date} /
- * {@code min_date} ({@code GroupedAggregate}), {@code read_value} and {@code distinct}. The roster
- * is {@link #SPLICE_SLOTS}, read by every seam that has to agree with the readers: stage A's G3 arm
- * ({@code StageAChecker.splices}), the loader's level seam ({@code ListOperandLevel.spliceRefusals}
- * through {@link #spliceSlots}) and the bind-time name inlining ({@link #spliceLists}).
+ * {@code min_date} ({@code GroupedAggregate}), {@code read_value} and {@code distinct}, and the
+ * name lists of the compiler-dispatched readers — {@code is_last_in_group}'s and
+ * {@code has_mixed_emptiness_within_group}'s {@code group=} / {@code qualifying_any_populated=},
+ * the {@code keys=} of {@code is_(not_)unique_relationship} and
+ * {@code is_inconsistent_across_dataset} ({@code ExprCompiler.strictColumnMembers} /
+ * {@code keyMembers}). The roster is {@link #SPLICE_SLOTS}, read by every seam that has to agree
+ * with the readers: stage A's G3 arm ({@code StageAChecker.splices}), the loader's level seam
+ * ({@code ListOperandLevel.spliceRefusals} through {@link #spliceSlots}) and the bind-time name
+ * inlining ({@link #spliceLists}).
  *
  * <p>
  * A member is a {@link Member}: a plain {@link Name} passes through; a {@link Bound} {@code $}
@@ -73,6 +78,13 @@ public final class GroupSplice
     public static final String MEMBERS_PARAMETER = "members";
 
     /**
+     * The parameter name of the relationship / consistency operators' key list
+     * ({@code is_(not_)unique_relationship}, {@code is_inconsistent_across_dataset}), as the
+     * registry declares it.
+     */
+    public static final String KEYS_PARAMETER = "keys";
+
+    /**
      * The third caller of the one splice ({@code PLAN-elementwise-list-functions} §3.2, runbook W1a
      * E1): {@code values(list<column-reference>)} reads the named columns' cells per row, and its
      * {@link #VALUES_PARAMETER columns} list splices a {@code $} binding or a computed expression
@@ -103,7 +115,15 @@ public final class GroupSplice
             java.util.Map.entry(GroupedAggregate.MIN_DATE,
                     List.of(GroupedAggregate.GROUP_PARAMETER)),
             java.util.Map.entry(ReadValue.NAME, List.of(GroupedAggregate.GROUP_PARAMETER)),
-            java.util.Map.entry(Distinct.NAME, List.of(GroupedAggregate.GROUP_PARAMETER)));
+            java.util.Map.entry(Distinct.NAME, List.of(GroupedAggregate.GROUP_PARAMETER)),
+            // BS2b (keys=): the compiler-dispatched readers' name lists
+            // (ExprCompiler.strictColumnMembers / keyMembers)
+            java.util.Map.entry("is_last_in_group", List.of(GroupedAggregate.GROUP_PARAMETER)),
+            java.util.Map.entry("has_mixed_emptiness_within_group",
+                    List.of(GroupedAggregate.GROUP_PARAMETER, "qualifying_any_populated")),
+            java.util.Map.entry("is_unique_relationship", List.of(KEYS_PARAMETER)),
+            java.util.Map.entry("is_not_unique_relationship", List.of(KEYS_PARAMETER)),
+            java.util.Map.entry("is_inconsistent_across_dataset", List.of(KEYS_PARAMETER)));
 
     /**
      * The slots whose list is the call's FIRST positional operand ({@code is_unique_set([…])},
@@ -117,9 +137,11 @@ public final class GroupSplice
      * parameter except the two that take written names only.
      */
     public static final String SPLICING_READERS = "every list<column-reference> parameter"
-            + " (record_count's, max's, max_date's, min_date's, read_value's and distinct's"
-            + " group=, is_(not_)unique_set's members, values' columns) — not is_sorted_by's by="
-            + " (sort-key descriptors) and not tuple's columns";
+            + " (the group= of record_count, max, max_date, min_date, read_value, distinct,"
+            + " is_last_in_group and has_mixed_emptiness_within_group — and its"
+            + " qualifying_any_populated=; the keys= of is_(not_)unique_relationship and"
+            + " is_inconsistent_across_dataset; is_(not_)unique_set's members; values' columns)"
+            + " — not is_sorted_by's by= (sort-key descriptors) and not tuple's columns";
 
     /**
      * Whether the reader behind {@code (function, parameter)} splices a {@code $} binding or a

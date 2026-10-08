@@ -2915,13 +2915,15 @@ public final class ExprCompiler
     {
         List<@Nullable Expr> bound = bindStrict(c);
         String rawOrder = strictColumnName(bound.get(0), c.name(), "ordering");
-        List<String> rawGroup = strictColumnNames(bound.get(1), c.name(), "group");
-        GroupKeyPolicy policy = groupKeyPolicyRequiringGroup(c.name(), bound.get(2), rawGroup,
-                GroupKeyPolicy.DROP_MISSING_KEYS);
+        List<net.cumba.corej.core.exec.GroupSplice.Member> groupMembers = strictColumnMembers(
+                bound.get(1), c.name(), "group");
+        GroupKeyPolicy policy = groupKeyPolicyRequiringGroup(c.name(), bound.get(2),
+                !groupMembers.isEmpty(), GroupKeyPolicy.DROP_MISSING_KEYS);
         return run ->
         {
             EvaluationContext ctx = run.ctx();
-            List<String> group = resolveDomainPrefixes(rawGroup, ctx);
+            List<String> group = resolveDomainPrefixes(
+                    spliceMembers(c.name(), "group", groupMembers, ctx), ctx);
             String order = resolveDomainPrefix(rawOrder, ctx);
             return net.cumba.corej.core.exec.GroupedPredicates.isLastInGroup(
                     groupReadTable(ctx, List.of(group), order), group, order, policy);
@@ -2941,18 +2943,23 @@ public final class ExprCompiler
     {
         List<@Nullable Expr> bound = bindStrict(c);
         String rawName = strictColumnName(bound.get(0), c.name(), "name");
-        List<String> rawGroup = bound.get(1) == null ? List.of()
-                : strictColumnNames(bound.get(1), c.name(), "group");
-        List<String> rawQualifiers = bound.get(2) == null ? List.of()
-                : strictColumnNames(bound.get(2), c.name(), "qualifying_any_populated");
-        GroupKeyPolicy policy = groupKeyPolicyRequiringGroup(c.name(), bound.get(3), rawGroup,
-                GroupKeyPolicy.KEEP_MISSING_KEYS);
+        List<net.cumba.corej.core.exec.GroupSplice.Member> groupMembers = bound.get(1) == null
+                ? List.of()
+                : strictColumnMembers(bound.get(1), c.name(), "group");
+        List<net.cumba.corej.core.exec.GroupSplice.Member> qualifierMembers = bound.get(2) == null
+                ? List.of()
+                : strictColumnMembers(bound.get(2), c.name(), "qualifying_any_populated");
+        GroupKeyPolicy policy = groupKeyPolicyRequiringGroup(c.name(), bound.get(3),
+                !groupMembers.isEmpty(), GroupKeyPolicy.KEEP_MISSING_KEYS);
         return run ->
         {
             EvaluationContext ctx = run.ctx();
             String name = resolveDomainPrefix(rawName, ctx);
-            List<String> group = resolveDomainPrefixes(rawGroup, ctx);
-            List<String> qualifiers = resolveDomainPrefixes(rawQualifiers, ctx);
+            List<String> group = resolveDomainPrefixes(
+                    spliceMembers(c.name(), "group", groupMembers, ctx), ctx);
+            List<String> qualifiers = resolveDomainPrefixes(
+                    spliceMembers(c.name(), "qualifying_any_populated", qualifierMembers, ctx),
+                    ctx);
             return net.cumba.corej.core.exec.GroupedPredicates.hasMixedEmptiness(
                     groupReadTable(ctx, List.of(group, qualifiers), name), name, group, qualifiers,
                     policy, c.name());
@@ -3010,27 +3017,69 @@ public final class ExprCompiler
     }
 
 
-    /** The strict reader over a list literal of column references. */
-    private static List<String> strictColumnNames(@Nullable Expr e, String function,
-            String parameter)
+    /**
+     * The strict reader over a list of column references, as {@code GroupSplice.Member}s (W1a BS2b,
+     * {@code PLAN-binding-substitutability} C6 / Q2): a plain member is read strictly
+     * ({@link #strictColumnName}), a {@code $} reference or a computed expression
+     * ({@code GroupSplice.spliced}) is kept and spliced at evaluation ({@link #spliceMembers}), and
+     * the bare {@code group=$names} / {@code group=<expression>} is the one-member list (C5). The
+     * level of a spliced member is judged at load for both spellings (stage A's G3 arm, the
+     * loader's {@code ListOperandLevel.spliceRefusals}).
+     */
+    private static List<net.cumba.corej.core.exec.GroupSplice.Member> strictColumnMembers(
+            @Nullable Expr e, String function, String parameter)
     {
         if (e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
         {
             @SuppressWarnings("unchecked")
             List<Expr> items = (List<Expr>) lit.value();
-            List<String> out = new ArrayList<>(items.size());
+            List<net.cumba.corej.core.exec.GroupSplice.Member> out = new ArrayList<>(items.size());
             for (Expr item : items)
             {
-                out.add(strictColumnName(item, function, parameter));
+                net.cumba.corej.core.exec.GroupSplice.Member spliced = net.cumba.corej.core.exec.GroupSplice
+                        .spliced(item);
+                out.add(spliced != null ? spliced
+                        : new net.cumba.corej.core.exec.GroupSplice.Name(
+                                strictColumnName(item, function, parameter)));
             }
             return out;
         }
+        if (e != null && !(e instanceof Expr.Lit))
+        {
+            net.cumba.corej.core.exec.GroupSplice.Member spliced = net.cumba.corej.core.exec.GroupSplice
+                    .spliced(e);
+            if (spliced != null)
+            {
+                return List.of(spliced);
+            }
+        }
         if (e instanceof Expr.Ref)
         {
-            return List.of(strictColumnName(e, function, parameter));
+            return List.of(new net.cumba.corej.core.exec.GroupSplice.Name(
+                    strictColumnName(e, function, parameter)));
         }
         throw unsupported("argument '" + parameter + "' of '" + function
                 + "' takes a list of column references");
+    }
+
+
+    /**
+     * The names a member list reads for this run: every {@code $} or computed member spliced on the
+     * run's context through the one {@code GroupSplice} (a qualified, scalar or unresolved value is
+     * the rule's ERROR), a plain name as authored. These readers never name {@code domain=}, so a
+     * spliced {@code --} name resolves against the evaluated dataset like a written one
+     * ({@link #resolveDomainPrefixes} runs after).
+     */
+    private static List<String> spliceMembers(String function, String parameter,
+            List<net.cumba.corej.core.exec.GroupSplice.Member> members, EvaluationContext ctx)
+    {
+        if (!net.cumba.corej.core.exec.GroupSplice.splices(members))
+        {
+            return net.cumba.corej.core.exec.GroupSplice.names(members);
+        }
+        return net.cumba.corej.core.exec.GroupSplice.splice(function, parameter + "= member",
+                members, ctx, false, "a member of " + function
+                        + " is a column of the dataset under evaluation," + " written bare");
     }
 
 
@@ -3045,13 +3094,13 @@ public final class ExprCompiler
      * too.
      */
     private static GroupKeyPolicy groupKeyPolicyRequiringGroup(String function,
-            @Nullable Expr keepMissings, List<String> group, GroupKeyPolicy base)
+            @Nullable Expr keepMissings, boolean grouped, GroupKeyPolicy base)
     {
         if (keepMissings == null)
         {
             return base;
         }
-        if (group.isEmpty())
+        if (!grouped)
         {
             throw unsupported("`keep_missings` on " + function
                     + " requires a non-empty `group`; with no grouping key it would have no effect");
@@ -3326,8 +3375,8 @@ public final class ExprCompiler
         // one entry (backward-compatible with the original two-positional plan); the multi-column
         // form is_(not_)unique_relationship(NAME, keys=[A, B, …]) yields the whole key list, which
         // GroupSemantics treats as a value tuple (mirroring Python's list-comparator form).
-        List<String> rawValues = keyColumns(c);
-        if (rawValues.isEmpty())
+        List<net.cumba.corej.core.exec.GroupSplice.Member> keyMembers = keyMembers(c);
+        if (keyMembers.isEmpty())
         {
             throw unsupported(
                     "is_not_unique_relationship requires a value operand (positional or keys=[…])");
@@ -3335,7 +3384,9 @@ public final class ExprCompiler
         return run ->
         {
             String name = resolveDomainPrefix(rawName, run.ctx());
-            List<String> values = resolveDomainPrefixes(rawValues, run.ctx());
+            List<String> values = resolveDomainPrefixes(spliceMembers(c.name(),
+                    net.cumba.corej.core.exec.GroupSplice.KEYS_PARAMETER, keyMembers, run.ctx()),
+                    run.ctx());
             return GroupSemantics.relationshipNotUniqueViolations(
                     groupReadTable(run.ctx(), List.of(values), name), run.rowCount(), name, values);
         };
@@ -3487,13 +3538,15 @@ public final class ExprCompiler
             throw unsupported("is_inconsistent_across_dataset requires a name operand");
         }
         String rawName = groupOperandName(c.args().get(0));
-        List<String> rawKeys = keyColumns(c);
+        List<net.cumba.corej.core.exec.GroupSplice.Member> keyMembers = keyMembers(c);
         boolean includeEmpty = includeEmptyKwarg(c);
         GroupKeyPolicy policy = groupKeyPolicy(c, GroupKeyPolicy.DROP_MISSING_KEYS);
         return run ->
         {
             String name = resolveDomainPrefix(rawName, run.ctx());
-            List<String> keys = resolveDomainPrefixes(rawKeys, run.ctx());
+            List<String> keys = resolveDomainPrefixes(spliceMembers(c.name(),
+                    net.cumba.corej.core.exec.GroupSplice.KEYS_PARAMETER, keyMembers, run.ctx()),
+                    run.ctx());
             return GroupSemantics.inconsistentAcrossDatasetViolations(
                     groupReadTable(run.ctx(), List.of(keys), name), name, keys, run.rowCount(),
                     includeEmpty, policy);
@@ -3899,35 +3952,49 @@ public final class ExprCompiler
 
 
     /**
-     * The key columns of a set/aggregate function-operator call: any positional operands beyond the
-     * first, followed by the {@code keys=} list. Each must be a plain column or {@code --}-prefix
-     * reference — or a {@code $}-operation reference, which is passed through RAW: the legacy Array
-     * members stay literal (no {@code $}-expansion), so the downstream column lookup misses and
-     * {@code GroupSemantics} drops it exactly like an absent column (CDISC-CG0562's
-     * {@code $TIMING_VARIABLES} key). Mirroring that drop keeps the verdict bit-identical.
+     * The key members of a relationship / consistency call: any positional operands beyond the
+     * first (each a plain column or {@code --}-prefix reference — or a {@code $}-operation
+     * reference passed through RAW, which the downstream column lookup misses and
+     * {@code GroupSemantics} drops exactly like an absent column: the pre-existing reading of a
+     * positional {@code $}, outside the {@code list<column-reference>} roster and left as it is),
+     * followed by the {@code keys=} list, whose members splice since W1a BS2b
+     * ({@code PLAN-binding-substitutability} C6, ruled Q2): a {@code $} reference or a computed
+     * expression ({@code GroupSplice.spliced}) is spliced at evaluation ({@link #spliceMembers})
+     * into the column names it holds, and the bare {@code keys=$names} / {@code keys=<expression>}
+     * is the one-member list (C5); a bare column keeps the load error.
      */
-    private static List<String> keyColumns(Expr.Call c)
+    private static List<net.cumba.corej.core.exec.GroupSplice.Member> keyMembers(Expr.Call c)
     {
-        List<String> cols = new ArrayList<>();
+        List<net.cumba.corej.core.exec.GroupSplice.Member> members = new ArrayList<>();
         for (int i = 1; i < c.args().size(); i++)
         {
-            cols.add(keyMemberName(c.args().get(i)));
+            members.add(
+                    new net.cumba.corej.core.exec.GroupSplice.Name(keyMemberName(c.args().get(i))));
         }
-        Expr keys = c.kwargs().get("keys");
+        Expr keys = c.kwargs().get(net.cumba.corej.core.exec.GroupSplice.KEYS_PARAMETER);
         if (keys instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
         {
             @SuppressWarnings("unchecked")
             List<Expr> items = (List<Expr>) lit.value();
             for (Expr item : items)
             {
-                cols.add(keyMemberName(item));
+                net.cumba.corej.core.exec.GroupSplice.Member spliced = net.cumba.corej.core.exec.GroupSplice
+                        .spliced(item);
+                members.add(spliced != null ? spliced
+                        : new net.cumba.corej.core.exec.GroupSplice.Name(groupOperandName(item)));
             }
         }
         else if (keys != null)
         {
-            throw unsupported("keys= must be a list of column references");
+            net.cumba.corej.core.exec.GroupSplice.Member spliced = keys instanceof Expr.Lit ? null
+                    : net.cumba.corej.core.exec.GroupSplice.spliced(keys);
+            if (spliced == null)
+            {
+                throw unsupported("keys= must be a list of column references");
+            }
+            members.add(spliced);
         }
-        return cols;
+        return members;
     }
 
 

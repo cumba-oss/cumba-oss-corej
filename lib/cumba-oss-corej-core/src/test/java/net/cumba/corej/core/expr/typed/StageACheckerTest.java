@@ -1660,7 +1660,13 @@ class StageACheckerTest
                 "AETERM in distinct(AETERM, group=[USUBJID, $nk])",
                 "empty(max(AESEQ, group=[USUBJID, $one]))",
                 "empty(max(AESEQ, group=[USUBJID, natural_key_variables()]))",
-                "AETERM in distinct(AETERM, group=[USUBJID, natural_key_variables()])"))
+                "AETERM in distinct(AETERM, group=[USUBJID, natural_key_variables()])",
+                // BS2b (keys=): the compiler-dispatched readers' name lists splice too
+                "is_unique_relationship(AETERM, keys=[USUBJID, $nk])",
+                "is_unique_relationship(AETERM, keys=[USUBJID, natural_key_variables()])",
+                "is_inconsistent_across_dataset(AETERM, keys=$nk)",
+                "is_last_in_group(ordering=AESEQ, group=[USUBJID, $nk])",
+                "has_mixed_emptiness_within_group(AETERM, group=$nk, qualifying_any_populated=[$one])"))
         {
             assertEquals(List.of(), check(rule, expression).findings(), expression);
         }
@@ -1679,7 +1685,6 @@ class StageACheckerTest
                 "is_unique_set([USUBJID, $cl])", "is_unique_set([USUBJID, $scalar])",
                 "record_count(group=$cl) > 1", "record_count(group=[USUBJID, $scalar]) > 1",
                 "record_count(group=[USUBJID, $num]) > 1", "record_count(group=$num) > 1",
-                "is_unique_relationship(AETERM, keys=[USUBJID, $nk])",
                 // BS2: the inline spelling meets the same judgement — a per-row expression or a
                 // number is refused where the $ binding holding it is; a quoted name stays a
                 // string (W8 D-W8-6), and a non-splicing reader refuses the expression as it
@@ -1688,7 +1693,8 @@ class StageACheckerTest
                 "record_count(group=[USUBJID, upper(AETERM)]) > 1",
                 "record_count(group=upper(AETERM)) > 1", "is_unique_set([USUBJID, len(AETERM)])",
                 "record_count(group=[USUBJID, colref([\"A\", \"B\"])]) > 1",
-                "is_unique_relationship(AETERM, keys=[USUBJID, natural_key_variables()])"))
+                "is_unique_relationship(AETERM, keys=[USUBJID, $scalar])",
+                "is_last_in_group(ordering=AESEQ, group=[USUBJID, upper(AETERM)])"))
         {
             assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(check(rule, expression)),
                     expression);
