@@ -41,7 +41,7 @@ class DatasetNameResolutionRosterTest
      * fully-qualified {@code net.cumba.corej.core.exec.SplitDomainResolution} wraps there).
      */
     private static final Pattern CALL = Pattern.compile(
-            "\\b(?:(SplitDomainResolution|DatasetIdentity|CheckConditionTransformer)\\s*\\.\\s*(resolve|resolveTableOrThrow|isPresentAsDomain|byName|membersOf|suppFamilyMembers|suppMergeSources|isSuppFamilyName|resolveWildcard|resolveDatasetWildcard|resolveDatasetHalf|resolveTextWildcard)|(\\w+|getDatasetResolver\\(\\))\\s*\\.\\s*(resolve))\\(");
+            "\\b(?:(SplitDomainResolution|DatasetIdentity|CheckConditionTransformer)\\s*\\.\\s*(resolve|resolveTableOrThrow|resolveTableOrNull|isPresentAsDomain|byName|membersOf|suppFamilyMembers|suppMergeSources|isSuppFamilyName|resolveWildcard|resolveDatasetWildcard|resolveDatasetHalf|resolveTextWildcard)|(\\w+|getDatasetResolver\\(\\))\\s*\\.\\s*(resolve))\\(");
 
     /**
      * A receiver counts as a dataset resolver when the file declares it with that type — a
@@ -196,8 +196,8 @@ class DatasetNameResolutionRosterTest
                     "§9 an inventory walk by member name (R4 moves the family key of a lower-case member)"),
             Map.entry("exec/ChildEntries#pointerKind:parents.resolve",
                     "§9 a Child parent is a domain, resolved through the datatable callback (D11)"),
-            Map.entry("metadata/ScopeClassLadder#classOf:aResolver.resolve",
-                    "§9 the AP parent looked up by its code for the class ladder (exact, as before the plan) — filed: a split or lower-case parent domain leaves the AP class undetermined")));
+            Map.entry("metadata/ScopeClassLadder#classOf:SplitDomainResolution.resolveTableOrNull",
+                    "§9 the AP parent looked up by its code for the class ladder — since runbook W2 AP through the seam's non-throwing reader: ignoring case, a split parent as its union, an un-unionable one undetermined (ScopeClassLadderTest); the AP suffix is a domain code, never a supplemental family")));
 
     @Test
     void everyResolutionSiteIsClassified_andEveryClassifiedSiteExists() throws IOException
