@@ -1461,13 +1461,16 @@ public final class ExprCompiler
         // selected on the IN/NOT_IN op BEFORE any temporal typing — unless the routing decision is
         // taken here it cannot be taken at all.
         //
-        // ⛔⛔ It takes a LIST LITERAL only (narrowed at the terminal review). Taken for every
-        // right-hand side it was a latent regression in two shapes `buildSet` cannot serve: a
-        // `${*}` wildcard (it would have thrown `unsupported` where `wildcardMembershipPlan`
-        // answers) and a `$`-ref resolving to a per-row binding (it would have substituted an
-        // EMPTY set for a per-row one). A temporal probe against a dynamic set keeps its textual
-        // behaviour — a STATED gap, pinned by a test, whose fix is a temporal counterpart to
-        // `groupedMembership` rather than a wider condition here.
+        // ⛔⛔ The LIST-LITERAL arm reads the literal's members (narrowed at the terminal review:
+        // taken for every right-hand side it was a latent regression in two shapes `buildSet`
+        // cannot serve — a `${*}` wildcard and a `$`-ref resolving to a per-row binding).
+        // ⭐ PLAN-engine-gap-temporal-membership §5 (owner Q1 2026-10-07 "yes fix"; runbook W2
+        // TM1): the stated gap is closed by the temporal counterpart of boundMembership, NOT by a
+        // wider literal condition — a `$` binding, and every right-hand call / `~` BS4 reads on
+        // its value, is read as a Vector (a ConstVector set once, a per-row set per row, the
+        // one-slot cache) and each member compared by the hull rule (temporalBoundMembership), so
+        // `date(X) in $s` answers `date(X) == m1 or …` (D81 for every set shape). `${*}` stays
+        // textual (Q3).
         //
         // ⭐ `date` and `time` take DIFFERENT comparators (review round 1, finding 1): routing both
         // through the date one made `time(X) in [time("09:15")]` answer false for an exact match
@@ -1501,6 +1504,8 @@ public final class ExprCompiler
         String probeMarker = markerOf(b.left());
         boolean temporalLiteralSet = b.right() instanceof Expr.Lit setLit
                 && setLit.kind() == Expr.LitKind.LIST;
+        // the members are known only as a value; a list probe (D81d any-of) stays on its own arm
+        boolean temporalValueSet = !listLhs && isValueReadMemberSource(b.right());
         String temporalMarker = probeMarker != null ? probeMarker
                 : sharedTemporalMemberMarker(b.right());
         if (temporalLiteralSet && "date".equals(temporalMarker))
@@ -1530,6 +1535,11 @@ public final class ExprCompiler
                 return Primitives.timeMembership(v, literalMembers((Expr.Lit) timeSet, false),
                         run.rowCount(), negate);
             };
+        }
+        if (temporalValueSet && ("date".equals(temporalMarker) || "time".equals(temporalMarker)))
+        {
+            return temporalValueSetMembership(nameP, b.right(), negate,
+                    "time".equals(temporalMarker));
         }
         // `${*}` wildcard list operand (Fix #37 / Epic B1): the membership set is row-dependent —
         // it enumerates foreign/local columns whose names match the anchored pattern and reads the
@@ -1875,6 +1885,114 @@ public final class ExprCompiler
             boolean member = listLhs
                     ? Primitives.anyInSet(v.value(r).resolved(), set, caseInsensitive)
                     : Primitives.isMember(v.value(r).cell(), set, caseInsensitive);
+            if (negate != member)
+            {
+                out.set(r);
+            }
+        }
+        return out;
+    }
+
+
+    /**
+     * Whether {@code right} is a member source known only as a value: a {@code $}-binding, or a
+     * right-hand call / {@code ~} substitution — the sources BS4 reads on their vector (a
+     * {@code ${*}} wildcard is a {@code WILDCARD_COLUMN} ref and is not one).
+     */
+    private static boolean isValueReadMemberSource(Expr right)
+    {
+        return (right instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF)
+                || right instanceof Expr.Call || isSubstitution(right);
+    }
+
+
+    /**
+     * The temporal arm of membership against a value-read member source
+     * ({@link #isValueReadMemberSource}; {@code PLAN-engine-gap-temporal-membership} §5, runbook W2
+     * TM1): a call / {@code ~} through its value plan, a {@code $} through its compiled binding's
+     * Vector or — a context variable that is no compiled binding — its resolved value, exactly the
+     * sources the textual tail reads. A call that answers no vector decides nothing (the tail's
+     * contract).
+     */
+    private static ExprProgram.BoolPlan temporalValueSetMembership(ValuePlan nameP, Expr right,
+            boolean negate, boolean time)
+    {
+        ValuePlan membersP = right instanceof Expr.Ref ? null : valuePlan(right);
+        return run ->
+        {
+            Vector v = nameP.eval(run);
+            if (v == null)
+            {
+                return new BitSet();
+            }
+            Vector members;
+            if (membersP != null)
+            {
+                members = membersP.eval(run);
+                if (members == null)
+                {
+                    return new BitSet();
+                }
+            }
+            else
+            {
+                String name = ((Expr.Ref) right).name();
+                members = boundVector(run, name);
+                if (members == null)
+                {
+                    Set<String> set = toSet(run.ctx().resolveVariable(name), false).present();
+                    return time ? Primitives.timeMembership(v, set, run.rowCount(), negate)
+                            : Primitives.temporalMembership(v, set, run.rowCount(), negate);
+                }
+            }
+            return temporalBoundMembership(v, members, run.rowCount(), negate, time);
+        };
+    }
+
+
+    /**
+     * The temporal counterpart of {@link #boundMembership} ({@code PLAN-engine-gap-temporal-
+     * membership} §5): the member Vector folds with the same {@code toSet} contract — a
+     * {@link ConstVector} once, any other Vector per row with the one-slot "same list instance"
+     * cache — and the probe is compared with every present member by the hull rule
+     * ({@link Primitives#isTemporalMember} / {@link Primitives#isTimeMember}, the per-pair
+     * comparators the list-literal arm runs), so membership is {@code ==}'s disjunction (D81).
+     * Members are compared pairwise — hull equality has no hash — {@code O(k)} per row. A missing
+     * member matches nothing, as a missing operand of the temporal {@code ==} does; a non-ISO
+     * member is "not a member" ({@code mixedVerdict = false}). Package-private for the unit tests.
+     */
+    static BitSet temporalBoundMembership(Vector v, Vector bound, int rowCount, boolean negate,
+            boolean time)
+    {
+        if (bound instanceof ConstVector constant)
+        {
+            Set<String> set = toSet(constant.memberValue(), false).present();
+            return time ? Primitives.timeMembership(v, set, rowCount, negate)
+                    : Primitives.temporalMembership(v, set, rowCount, negate);
+        }
+        Object lastList = null;
+        Set<String> lastSet = null;
+        BitSet out = new BitSet(rowCount);
+        for (int r = 0; r < rowCount; r++)
+        {
+            Object cell = bound.value(r).resolved();
+            Set<String> set;
+            if (cell instanceof Collection<?> && cell == lastList && lastSet != null)
+            {
+                set = lastSet;
+            }
+            else
+            {
+                set = toSet(cell, false).present();
+                if (cell instanceof Collection<?>)
+                {
+                    lastList = cell;
+                    lastSet = set;
+                }
+            }
+            IDataValue probe = v.value(r).cell();
+            boolean member = time ? Primitives.isTimeMember(probe, set)
+                    : Primitives.isTemporalMember(probe, set);
             if (negate != member)
             {
                 out.set(r);

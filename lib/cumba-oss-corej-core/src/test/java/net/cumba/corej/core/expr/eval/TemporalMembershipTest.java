@@ -47,7 +47,10 @@ class TemporalMembershipTest
     /** A date-declared column carrying the shapes the hull rule branches on. */
     private static final IDataTable T = MockTable.of()
             .col("D", "2020-01-01", "2020-01", "", "2020-01-01T09:15", "2020-02-29")
-            .col("TM", "09:15", "09", "", "09:15:30", "23:59").build();
+            .col("TM", "09:15", "09", "", "09:15:30", "23:59")
+            .col("S", "2020-01-01T09:15,1999-01-01", "2020-01-15", "2020-01-01", "",
+                    "2020-02-29T23:00")
+            .build();
 
     private static final int ROWS = 5;
 
@@ -230,30 +233,127 @@ class TemporalMembershipTest
 
 
     /**
-     * ⛔⛔ <b>The narrowing, pinned.</b> The temporal arm takes a <b>list literal</b> only. Its first
-     * spelling took every right-hand side, which was a latent regression in two shapes
-     * {@code buildSet} cannot serve: a {@code ${*}} wildcard set (it would have thrown
-     * {@code unsupported} where {@code wildcardMembershipPlan} answered) and a {@code $}-ref
-     * resolving to a per-row {@code GroupedResult} (it would have substituted an EMPTY set for a
-     * per-row one; that runtime shape went in runbook W8).
-     *
-     * <p>
-     * This pins the {@code $}-ref half: a temporal probe against a {@code $}-bound list keeps its
-     * <b>textual</b> behaviour, so the datetime does <em>not</em> match the date. ⚠ That is a
-     * stated GAP, not an accident — closing it needs a temporal counterpart to the per-row set
-     * builder ({@code groupedMembership} until runbook W8, {@code boundMembership}'s per-row arm
-     * since), not a wider condition on this branch. The test exists so the gap is visible and so
-     * widening the branch without that counterpart reds here.
-     * </p>
+     * ⭐ <b>The pin, flipped</b> ({@code PLAN-engine-gap-temporal-membership} §5, owner Q1
+     * 2026-10-07 "yes fix"; runbook W2 TM1). It pinned a stated gap: a temporal probe against a
+     * {@code $}-bound set compared TEXT, so the datetime did not match the date of the same day
+     * while the list literal three lines up said it did - a silent D81 divergence. Membership now
+     * follows {@code ==} for every set shape: the {@code $} set is read on its value (BS4's
+     * routing) and each member compared by the hull rule.
      */
     @Test
-    void aTemporalProbeAgainstADynamicSetStaysTextual()
+    void aTemporalProbeAgainstADynamicSetFollowsEquality()
     {
         BitSet fires = evaluate("date(D) in $dates", Map.of("$dates", List.of("2020-01-01T09:15")));
-        assertFalse(fires.get(0),
-                "row 0 (2020-01-01) must NOT match through a $-bound set — the temporal arm is"
-                        + " deliberately restricted to a list literal");
-        assertTrue(fires.get(3), "row 3 IS the literal text, so the textual arm matches it");
+        assertTrue(fires.get(0),
+                "row 0 (2020-01-01) matches the datetime member at day precision through a"
+                        + " $-bound set, as it does against the list literal");
+        assertTrue(fires.get(3), "row 3 is the member itself");
+        assertFalse(fires.get(1), "row 1 (2020-01, a month-long hull) is not that point");
+        assertFalse(fires.get(2), "row 2 is blank - a member of nothing");
+        assertEquals(evaluate("date(D) in [date(\"2020-01-01T09:15\")]"), fires,
+                "the $ set answers what the literal answers");
+    }
+
+
+    /**
+     * {@code not in} against a {@code $} set inverts through the same route, the blank included.
+     */
+    @Test
+    void notInAgainstADynamicSetFollowsTheLiteral()
+    {
+        Map<String, Object> vars = Map.of("$dates", List.of("2020-01-01T09:15"));
+        BitSet fires = evaluate("date(D) not in $dates", vars);
+        assertFalse(fires.get(0), "2020-01-01 IS a day-precision member - `not in` must not fire");
+        assertTrue(fires.get(1), "2020-01 is not that point");
+        assertTrue(fires.get(2), "a blank probe is a member of nothing, so `not in` fires");
+        assertEquals(evaluate("date(D) not in [date(\"2020-01-01T09:15\")]"), fires);
+    }
+
+
+    /**
+     * A {@code time()} probe against a {@code $} set takes the TIME comparator, as the literal
+     * does.
+     */
+    @Test
+    void aTimeProbeAgainstADynamicSetUsesTheTimeComparator()
+    {
+        Map<String, Object> vars = Map.of("$times", List.of("09:15", "23:59:00"));
+        BitSet fires = evaluate("time(TM) in $times", vars);
+        assertEquals(evaluate("time(TM) in [time(\"09:15\"), time(\"23:59:00\")]"), fires);
+        assertTrue(fires.get(0), "09:15 is exactly 09:15");
+        assertFalse(fires.get(2), "a blank probe is a member of nothing");
+    }
+
+
+    /**
+     * A non-ISO member is "not a member" (the deliberate divergence from the operator,
+     * {@link #theMixedShapeVerdictDivergesFromTheOperatorOnPurpose()}) - so {@code not in} fires.
+     */
+    @Test
+    void aNonIsoMemberOfADynamicSetIsNotAMember()
+    {
+        Map<String, Object> vars = Map.of("$s", List.of("17"));
+        assertFalse(evaluate("date(D) in $s", vars).get(0));
+        assertTrue(evaluate("date(D) not in $s", vars).get(0));
+    }
+
+
+    /**
+     * BS4's routing carries the temporal arm to every value-read right-hand side: a lifted call
+     * over the {@code $} set (one constant set) and a per-row list call (the row's own set) answer
+     * as the bound set does.
+     */
+    @Test
+    void aCallOnTheRightIsTemporalToo()
+    {
+        Map<String, Object> vars = Map.of("$dates", List.of("2020-01-01T09:15"));
+        assertEquals(evaluate("date(D) in $dates", vars),
+                evaluate("date(D) in upper($dates)", vars),
+                "date(X) in upper($s) answers as date(X) in $s");
+        // S per row: {2020-01-01T09:15, 1999-01-01} / {2020-01-15} / {2020-01-01} / blank /
+        // {2020-02-29T23:00}
+        BitSet perRow = evaluate("date(D) in split_by(S, \",\")");
+        assertTrue(perRow.get(0), "2020-01-01 matches its row's datetime member");
+        assertFalse(perRow.get(1), "2020-01 is a hull, not the day 2020-01-15");
+        assertFalse(perRow.get(2), "a blank probe is a member of nothing");
+        assertFalse(perRow.get(3), "a blank set holds nothing");
+        assertTrue(perRow.get(4), "2020-02-29 matches 2020-02-29T23:00 at day precision");
+    }
+
+
+    /**
+     * ⭐ The differential (§5.1): over a generated matrix of ISO-shaped member sets,
+     * {@code date(D) in $s} answers exactly {@code date(D) == m1 or date(D) == m2 ...} on every
+     * row, and {@code not in} its negation - D81 by construction for the dynamic set.
+     */
+    @Test
+    void membershipInADynamicSetIsTheDisjunctionOfEquality()
+    {
+        List<String> pool = List.of("2020-01-01", "2020-01-01T09:15", "2020-01", "2020-01-15",
+                "2020-02-29", "2020-02-29T00:00:00", "2019");
+        int checked = 0;
+        for (int i = 0; i < pool.size(); i++)
+        {
+            for (int j = i; j < pool.size(); j++)
+            {
+                List<String> members = i == j ? List.of(pool.get(i))
+                        : List.of(pool.get(i), pool.get(j));
+                StringBuilder any = new StringBuilder();
+                for (String m : members)
+                {
+                    any.append(any.isEmpty() ? "" : " or ").append("date(D) == date(\"").append(m)
+                            .append("\")");
+                }
+                Map<String, Object> vars = Map.of("$s", members);
+                BitSet expected = evaluate(any.toString());
+                assertEquals(expected, evaluate("date(D) in $s", vars), "in " + members);
+                BitSet negated = (BitSet) expected.clone();
+                negated.flip(0, ROWS);
+                assertEquals(negated, evaluate("date(D) not in $s", vars), "not in " + members);
+                checked++;
+            }
+        }
+        assertEquals(28, checked);
     }
 
 
