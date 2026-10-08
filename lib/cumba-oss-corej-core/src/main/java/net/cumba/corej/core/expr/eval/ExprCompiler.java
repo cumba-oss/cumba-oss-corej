@@ -2273,13 +2273,16 @@ public final class ExprCompiler
                 : compiledArg0;
         List<@Nullable ValuePlan> rest = new ArrayList<>(Math.max(0, bound.size() - 1));
         boolean literalArg1 = LITERAL_ARG1.contains(name);
+        FunctionDescriptor descriptor = FunctionRegistry.descriptor(name);
         for (int i = 1; i < bound.size(); i++)
         {
             Expr arg = bound.get(i);
             // A null slot is an optional parameter left absent: the implementation receives null
             // at its position and applies its documented default (the retired arity overload).
             rest.add(arg == null ? null
-                    : literalArg1 && i == 1 ? regexLiteralPlan(name, arg) : valuePlan(arg));
+                    : literalArg1 && i == 1 ? regexLiteralPlan(name, arg)
+                            : isListLiteralAtListParameter(descriptor, i, arg) ? argumentPlan(arg)
+                                    : valuePlan(arg));
         }
         return run ->
         {
@@ -5391,6 +5394,25 @@ public final class ExprCompiler
     private static ValuePlan valuePlan(Expr e)
     {
         return operandPlan(e, false);
+    }
+
+
+    /**
+     * Whether {@code arg}, bound at parameter {@code slot} of a registered BOOLEAN predicate, is a
+     * list literal at a parameter DECLARED a list ({@code contains_any(x, list)}, runbook W1b
+     * LE1′): it is then the one constant list its members spell ({@link #argumentPlan}), as the
+     * same list bound as a {@code $}-binding is. Gated on the declared type so that a list literal
+     * at an untyped parameter ({@code contains(X, ["A"])}) keeps today's refusal instead of
+     * reaching the scalar kernel as a rendered text.
+     */
+    private static boolean isListLiteralAtListParameter(@Nullable FunctionDescriptor descriptor,
+            int slot, Expr arg)
+    {
+        return arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST && descriptor != null
+                && slot < descriptor.parameters().size()
+                && !descriptor.parameters().get(slot).collector()
+                && descriptor.parameters().get(slot)
+                        .type() instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf;
     }
 
 

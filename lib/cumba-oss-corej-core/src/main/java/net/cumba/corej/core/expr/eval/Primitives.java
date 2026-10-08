@@ -1352,10 +1352,116 @@ public final class Primitives
         return false;
     }
 
+
+    /**
+     * {@code contains_any(x, list)} ({@code PLAN-engine-gap-list-elementwise} §6.1 Q1 (b), runbook
+     * W1b LE1′): per row, whether {@code x} contains <b>any</b> element of {@code list} as a
+     * substring — the {@link #substring} kernel's {@code CONTAINS} arm once per element. The edges
+     * (runbook R2, coordinator D5) are each {@code contains}' own: a genuinely missing {@code x} or
+     * a missing {@code list} answers {@code false} (R2-20 / D13); a missing element never matches
+     * and does not make the call false ({@link #substring}'s (b), NNL §1); {@code []} answers
+     * {@code false}; an element {@code ""} matches every present {@code x} (D34 #1); a numeric
+     * element renders as {@link #canonicalNeedle} renders a numeric needle; no case folding
+     * ({@code upper()} on both sides). A blank {@code x} is a present {@code ""} (D96c).
+     *
+     * <p>
+     * ⛔ {@code x} is a string: a list there is <b>not</b> {@code contains}' membership arm
+     * ({@link #membershipOperand}) but the rule's ERROR, as a scalar {@code list} is — stage A
+     * refuses both at load wherever it types the operand; this is the run-time twin for an operand
+     * it cannot type (D35 "written wrong").
+     * </p>
+     *
+     * <p>
+     * The rendered needles of a list are computed once per list <b>object</b> and reused while the
+     * next row hands the same object — a dataset-level list ({@link ConstVector}) is rendered once
+     * per evaluation, a per-row list once per row.
+     * </p>
+     *
+     * @param x
+     *            the per-row subject
+     * @param list
+     *            the list operand, dataset-level or per row
+     * @param rowCount
+     *            the run's row count
+     * @return the rows on which {@code x} contains an element
+     * @throws net.cumba.corej.core.expr.RuleDefinitionException
+     *             for a list at {@code x} or a present non-list at {@code list}
+     */
+    public static BitSet containsAny(Vector x, Vector list, int rowCount)
+    {
+        NeedleCache needles = new NeedleCache();
+        return scan(x, rowCount, (dv, r) ->
+        {
+            if (x.value(r).resolved() instanceof Collection<?>)
+            {
+                throw new net.cumba.corej.core.expr.RuleDefinitionException(CONTAINS_ANY
+                        + "(x, list) takes a string at x, not a list — a list at x is no"
+                        + " membership test here");
+            }
+            TypedValue listValue = list.value(r);
+            if (TypedValue.missingIdentityOf(dv) != null || listValue.missing() != null)
+            {
+                // R2-20 / D13: a genuine missing in either operand answers false (D96c boundary)
+                return false;
+            }
+            String[] probes = needles.of(listValue.resolved());
+            String s = ScalarSemantics.isMissing(dv) ? "" : dv.getValueAsString();
+            for (String needle : probes)
+            {
+                if (s.contains(needle))
+                {
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
+
+    /** The registered name of {@link #containsAny}, for its messages. */
+    private static final String CONTAINS_ANY = "contains_any";
+
+    /**
+     * The rendered present elements of the last list {@code contains_any} read, keyed by the list
+     * object's identity (one evaluation's scan only — never shared across runs).
+     */
+    private static final class NeedleCache
+    {
+
+        private @Nullable Object list;
+
+        private String[] needles = new String[0];
+
+        String[] of(@Nullable Object resolved)
+        {
+            if (resolved == list)
+            {
+                return needles;
+            }
+            if (!(resolved instanceof Collection<?> col))
+            {
+                throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                        CONTAINS_ANY + "(x, list) takes a list at list, not the scalar " + resolved
+                                + " — write a one-element list [\"…\"], or contains(x, value)");
+            }
+            List<String> out = new java.util.ArrayList<>(col.size());
+            for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(col))
+            {
+                TypedValue element = ElementwiseLift.element(item,
+                        net.cumba.datatable.values.DataValueType.STRING);
+                if (element.missing() == null)
+                {
+                    out.add(canonicalNeedle(java.util.Objects.requireNonNull(element.resolved())));
+                }
+            }
+            list = resolved;
+            needles = out.toArray(new String[0]);
+            return needles;
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Length comparison (longer_than / shorter_than)
     // -------------------------------------------------------------------------
-
 
     /**
      * Mirrors {@code evalHasEqualLength}/{@code evalHasNotEqualLength}: fires where the cell's

@@ -40,8 +40,10 @@ class BuiltinFunctionsRegistrationTest
     private static final List<String> EXPECTED = List.of("abs/1/VALUE", "available/1/BOOLEAN",
             "between/3/BOOLEAN", "ceil/1/VALUE", "char/1/VALUE", "coalesce/2-3/VALUE",
             "colref/1/VALUE", "concat/2-3/VALUE", "contains/2/BOOLEAN", "count/1/VALUE",
-            "date_contains/2/BOOLEAN", "date_overlaps/2/BOOLEAN", "day/1/VALUE",
-            "dictionary_available/1/BOOLEAN", "does_not_contain/2/BOOLEAN", "dy/2/VALUE",
+            // PLAN-engine-gap-list-elementwise §6.1 Q1 (b) (runbook W1b LE1′)
+            "contains_any/2/BOOLEAN", "date_contains/2/BOOLEAN", "date_overlaps/2/BOOLEAN",
+            "day/1/VALUE", "dictionary_available/1/BOOLEAN", "does_not_contain/2/BOOLEAN",
+            "dy/2/VALUE",
             // runbook W2b (PLAN-operation-replacements §8): the day count ported from its operation
             "date_diff_days/2/VALUE",
             // wave 3 (PLAN-per-row-functions): the per-row functions ported from their operations

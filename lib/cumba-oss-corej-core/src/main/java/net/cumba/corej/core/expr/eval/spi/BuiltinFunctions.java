@@ -724,6 +724,14 @@ public final class BuiltinFunctions implements FunctionProvider
                 (run, args) -> Primitives.startsWith(args.get(0), args.get(1), run.rowCount()));
         bool(fns, "ends_with", List.of(p("x"), p("value")),
                 (run, args) -> Primitives.endsWith(args.get(0), args.get(1), run.rowCount()));
+        // contains_any(x, list) — PLAN-engine-gap-list-elementwise §6.1 Q1 (b), runbook W1b LE1′:
+        // x contains any element of list as a substring; contains' kernel per element, its edges
+        // (Primitives.containsAny). A plain boolean, NOT element-wise: x is a string (a list there
+        // is stage A's PARAMETER_TYPE, never contains' membership arm) and list a list of strings
+        // (dataset-level or per row; a scalar is PARAMETER_TYPE). Negation: not contains_any(…).
+        bool(fns, "contains_any",
+                List.of(p("x", Primitive.STRING), p("list", new ListOf(Primitive.STRING))),
+                (run, args) -> Primitives.containsAny(args.get(0), args.get(1), run.rowCount()));
 
         // -- BOOLEAN case-insensitive equality -------------------------------
         bool(fns, "equalsIgnoreCase", List.of(p("a"), p("b")), (run, args) -> Primitives
@@ -1426,8 +1434,9 @@ public final class BuiltinFunctions implements FunctionProvider
      * one-subject well-formedness predicates the owner ruled into the initial roster. {@code fn} is
      * the scalar kernel (a {@code BitSet} over its run); over a list at parameter 0 the registered
      * function answers a {@code BoolListVector} the quantifiers {@code any} / {@code all} /
-     * {@code none} fold. The two-operand predicates stay scalar
-     * ({@code PLAN-engine-gap-list-elementwise} decides which of their parameters lifts).
+     * {@code none} fold. The two-operand predicates stay scalar: the list-elementwise gap plan
+     * lifts none of their parameters (its Q1 (b)) — "x contains any element of a list" is the
+     * dedicated {@code contains_any(x, list)}, registered with the substring block.
      */
     private static void predicate(List<FunctionDescriptor> fns, String name, List<Parameter> params,
             EvalFunction fn)

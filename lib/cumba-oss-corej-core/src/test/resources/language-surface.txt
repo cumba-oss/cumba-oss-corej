@@ -14,6 +14,7 @@ column_series_metadata(name:string@name?, name_pattern:string, min_length:number
 concat(a:unknown, b:unknown, c:unknown?) kind=value
 contains(x:unknown, value:unknown) kind=boolean
 contains_all(source:unknown, required:unknown?, keys:list<unknown>?) kind=boolean
+contains_any(x:string, list:list<string>) kind=boolean
 count(x:unknown) kind=value
 cross_dataset_variable_metadata(name:string, domain:string@name) kind=value aggregate perVariable
 dataset_class_from_library() kind=value aggregate provider=library
