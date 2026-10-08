@@ -314,7 +314,7 @@ public final class ExprCompiler
      */
     public static BindingProgram compileBinding(Expr e)
     {
-        if (e instanceof Expr.Call c && isElementwisePredicate(c))
+        if (e instanceof Expr.Call c && isElementwisePredicate(c) && !isScalarPredicateCall(c))
         {
             // PLAN-elementwise-boolean-predicates P7 (runbook W1a EB2): `$b: is_valid_date($l)`
             // cannot be a condition OR a list at compile time without carrying one rule's answer
@@ -6850,6 +6850,32 @@ public final class ExprCompiler
     // unread local; delete the local, and it names this method. Each step was found by the gate,
     // not
     // by reading, which is the argument for arming Error Prone rather than surveying by eye.
+
+
+    /**
+     * W1a fold (R5 review B-LOW-2): an element-wise predicate whose value operand is
+     * {@link #isStaticallyScalar statically scalar} ({@code is_valid_date(AESTDTC)}) can only
+     * answer a condition — so its binding compiles as the condition it was before the lift
+     * ({@link #compileBool}), keeping {@link #cachedBool}'s per-dataset cache for a pure one,
+     * rather than through the per-evaluation predicate arm.
+     */
+    private static boolean isScalarPredicateCall(Expr.Call c)
+    {
+        FunctionDescriptor d = FunctionRegistry.descriptor(c.name());
+        if (d == null)
+        {
+            return false;
+        }
+        try
+        {
+            Expr value = ArgumentBinder.bind(d, c).get(0);
+            return value != null && isStaticallyScalar(value);
+        }
+        catch (ExpressionException refused)
+        {
+            return false;
+        }
+    }
 
 
     /**

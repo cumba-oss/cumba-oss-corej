@@ -348,4 +348,24 @@ class QuantifierTest
         assertEquals(List.of(2L), fired("all(contains(A, \"13\"))"));
         assertEquals(List.of(4L), fired("none((not empty(A)))"));
     }
+
+
+    @Test
+    void aScalarPredicateBindingCompilesAsTheConditionItWasBeforeTheLift()
+    {
+        // R5 review B-LOW-2: a flagged predicate over a statically scalar operand can only answer
+        // a condition, so its binding is the condition program (cachedBool's per-dataset cache
+        // for a pure one), not the per-evaluation predicate arm; a list or a $ operand keeps the
+        // arm
+        assertTrue(ExprCompiler.compileBinding(CheckExpressionParser.parse("is_valid_date(A)"))
+                .isCondition());
+        assertTrue(ExprCompiler
+                .compileBinding(CheckExpressionParser.parse("is_valid_date(values([A, B]))"))
+                .isPredicate());
+        assertTrue(ExprCompiler.compileBinding(CheckExpressionParser.parse("is_valid_date($l)"))
+                .isPredicate());
+        // and it answers as before: the condition binding's rows, quantified or compared
+        assertEquals(List.of(1L), fired("any($b)", "$b", "is_valid_date(A)"));
+        assertEquals(List.of(2L, 3L, 4L), fired("$b == false", "$b", "is_valid_date(A)"));
+    }
 }

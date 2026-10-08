@@ -34,7 +34,10 @@ public final class ListVector implements Vector
 
     private final List<Vector> elements;
 
-    private final @Nullable TypedValue[] rowCache;
+    private final int rowCount;
+
+    /** The rendered rows, allocated on the first {@link #value} read (most readers never ask). */
+    private @Nullable TypedValue @Nullable [] rowCache;
 
     /**
      * @param rowCount
@@ -45,7 +48,7 @@ public final class ListVector implements Vector
     public ListVector(int rowCount, List<Vector> elements)
     {
         this.elements = List.copyOf(elements);
-        this.rowCache = new TypedValue[rowCount];
+        this.rowCount = rowCount;
     }
 
 
@@ -75,7 +78,16 @@ public final class ListVector implements Vector
     @Override
     public TypedValue value(int row)
     {
-        TypedValue tv = rowCache[row];
+        @Nullable
+        TypedValue[] cache = rowCache;
+        if (cache == null)
+        {
+            // W1a fold (R5 review B-LOW-2): the K element vectors are what count / values' readers
+            // read; a row's rendered list is built only when a row is asked for
+            cache = new TypedValue[rowCount];
+            rowCache = cache;
+        }
+        TypedValue tv = cache[row];
         if (tv == null)
         {
             List<IDataValue> cells = new ArrayList<>(elements.size());
@@ -84,7 +96,7 @@ public final class ListVector implements Vector
                 cells.add(memberCell(element.value(row)));
             }
             tv = TypedValue.resolved(DataValueType.STRING, List.copyOf(cells));
-            rowCache[row] = tv;
+            cache[row] = tv;
         }
         return tv;
     }

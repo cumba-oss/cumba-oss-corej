@@ -168,8 +168,11 @@ public final class BoolListVector implements Vector
     {
         if (!isBroadcast() && rows != rowCount)
         {
-            throw new IllegalStateException("a per-row list<boolean> over " + rowCount
-                    + " rows cannot answer a run of " + rows + " rows");
+            // W1a fold (R5 review B-LOW-1): the rule's ERROR (D35), never an engine crash
+            throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                    "a per-row list<boolean> over " + rowCount + " rows cannot answer a run of "
+                            + rows
+                            + " rows — quantify it where it is computed, or bind a dataset-level list");
         }
         BitSet out = new BitSet(rows);
         if (columns != null)

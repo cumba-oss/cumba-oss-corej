@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.BitSet;
 import java.util.List;
 import net.cumba.corej.core.exec.JoinedRowFold.Quantifier;
+import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.Test;
 
@@ -131,7 +132,10 @@ class BoolListVectorTest
     void aPerRowFormSpansExactlyItsRows()
     {
         BoolListVector v = BoolListVector.ofColumns(3, List.of(bits(0)));
-        assertThrows(IllegalStateException.class, () -> v.reduce(Quantifier.ANY, 2));
+        // W1a fold (R5 review B-LOW-1): a mismatch is the rule's ERROR, never an engine crash
+        RuleDefinitionException e = assertThrows(RuleDefinitionException.class,
+                () -> v.reduce(Quantifier.ANY, 2));
+        assertTrue(e.getMessage().contains("cannot answer a run of 2 rows"), e.getMessage());
         assertEquals(3, v.rowCount());
     }
 }
