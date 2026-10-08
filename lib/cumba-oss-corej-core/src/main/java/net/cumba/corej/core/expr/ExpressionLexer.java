@@ -47,12 +47,14 @@ public final class ExpressionLexer
      * roster: a quoted string, a number, a {@code /regex/} literal, a {@code [list]}, a back-quoted
      * reference, a bare expansion token {@code &NAME&}, a {@code ${binding}} substitution, a
      * {@code --} wildcard, a {@code $binding} reference, a qualified {@code DATASET.X} reference
-     * and the {@code /pattern/replacement/} literal of the {@code ~} operator
-     * ({@code PLAN-engine-gap-string-extract}, runbook W1b SX).
+     * the {@code /pattern/replacement/} literal of the {@code ~} operator
+     * ({@code PLAN-engine-gap-string-extract}, runbook W1b SX) and the sided group member
+     * {@code {left: X, right: Y}} of a {@code domain=} grouped call
+     * ({@code PLAN-engine-gap-row-ordinal} R3, runbook W1b RO).
      */
     private static final List<String> LITERAL_FORMS = List.of("\"string\"", "number", "/regex/",
             "[list]", "`quoted ref`", "&NAME&", "${binding}", "--wildcard", "$binding", "DATASET.X",
-            "/pattern/replacement/");
+            "/pattern/replacement/", "{left: X, right: Y}");
 
     private final String src;
 
@@ -171,6 +173,10 @@ public final class ExpressionLexer
         case '[' -> single(TokenType.LBRACKET, "[", start);
         case ']' -> single(TokenType.RBRACKET, "]", start);
         case ',' -> single(TokenType.COMMA, ",", start);
+        // the sided key literal {left: X, right: Y} (runbook W1b RO): three tokens of its own
+        case '{' -> single(TokenType.LBRACE, "{", start);
+        case '}' -> single(TokenType.RBRACE, "}", start);
+        case ':' -> single(TokenType.COLON, ":", start);
         case '"' -> scanString();
         // directly after `~` a `/` opens the /pattern/replacement/ literal, nowhere else
         case '/' -> prev == TokenType.SUBST ? scanSubstitution() : scanRegex();

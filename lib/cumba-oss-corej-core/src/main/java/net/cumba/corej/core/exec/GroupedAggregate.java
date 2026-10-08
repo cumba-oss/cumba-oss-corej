@@ -690,6 +690,11 @@ public final class GroupedAggregate
         }
         for (Expr item : groupItems(fn, group))
         {
+            if (item instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.SIDED)
+            {
+                out.add(sidedMember(fn, (Expr.SidedKey) lit.value(), dataset));
+                continue;
+            }
             GroupSplice.Member spliced = GroupSplice.spliced(item);
             out.add(spliced != null ? spliced
                     : new GroupSplice.Name(groupMember(fn, item, dataset)));
@@ -801,6 +806,41 @@ public final class GroupedAggregate
     }
 
 
+    /**
+     * The sided member {@code {left: X, right: Y}} (runbook W1b RO, R3; coordinator D9): legal
+     * under {@code domain=} only — without it the two sides would name the same table — and each
+     * side a plain column (no {@code --}, no qualifier, no {@code $}: a side is never spliced, and
+     * resolves on its own table).
+     */
+    private static GroupSplice.Member sidedMember(String fn, Expr.SidedKey key,
+            @Nullable String dataset)
+    {
+        String printed = ExpressionPrinter.print(new Expr.Lit(Expr.LitKind.SIDED, key));
+        if (dataset == null)
+        {
+            throw new ExpressionException("argument '" + GROUP_PARAMETER + "' of '" + fn
+                    + "' holds the sided member " + printed + " without domain= — a sided key"
+                    + " names this row's column on the left and the domain= table's on the"
+                    + " right; without domain= write the one column");
+        }
+        return new GroupSplice.Sided(sidedColumn(fn, printed, key.left(), "left"),
+                sidedColumn(fn, printed, key.right(), "right"));
+    }
+
+
+    private static String sidedColumn(String fn, String printed, Expr side, String which)
+    {
+        if (side instanceof Expr.Ref ref && ref.kind() == OperandKind.COLUMN)
+        {
+            return ref.name();
+        }
+        throw new ExpressionException("argument '" + GROUP_PARAMETER + "' of '" + fn + "': the "
+                + which + " side of " + printed + " must be a plain column, not "
+                + ExpressionPrinter.print(side) + " — a side is read on its own table, never"
+                + " spliced, prefixed or qualified");
+    }
+
+
     private static String groupMember(String fn, Expr item, @Nullable String dataset)
     {
         if (item instanceof Expr.Ref ref && ref.kind() == OperandKind.DOTTED_REF)
@@ -835,7 +875,7 @@ public final class GroupedAggregate
     {
         for (String name : groupNames)
         {
-            if (MatchDataset.qualifierOf(name) != null)
+            if (MatchDataset.qualifierOf(name) != null || GroupSplice.Sided.isEncoded(name))
             {
                 return true;
             }
@@ -868,12 +908,14 @@ public final class GroupedAggregate
         for (String name : groupNames)
         {
             String qualifier = MatchDataset.qualifierOf(name);
-            if (qualifier == null)
+            if (qualifier == null && !GroupSplice.Sided.isEncoded(name))
             {
                 out.add(name);
                 continue;
             }
-            String unqualified = name.substring(qualifier.length() + 1);
+            // a sided member groups the other table by its right side (W1b RO, R3)
+            String unqualified = qualifier == null ? GroupSplice.Sided.rightOf(name)
+                    : name.substring(qualifier.length() + 1);
             if (table.getMetaData().getColumnIndex(unqualified) < 0)
             {
                 throw new UnresolvedQualifiedKeyException(fn + " group=", name,
@@ -920,6 +962,21 @@ public final class GroupedAggregate
         {
             String name = groupNames.get(i);
             String qualifier = MatchDataset.qualifierOf(name);
+            if (qualifier == null && GroupSplice.Sided.isEncoded(name))
+            {
+                // a sided member's record side is this row's left column (W1b RO, R3) — never
+                // dropped: an absent left column is the rule's ERROR, as a qualified member's
+                String left = GroupSplice.Sided.leftOf(name);
+                columns[i] = primary.getMetaData().getColumnIndex(left);
+                if (columns[i] < 0)
+                {
+                    throw new UnresolvedQualifiedKeyException(fn + " group=", name,
+                            primary.getMetaData().getName() + " has no column " + left
+                                    + " (the left side of a sided member is read on the"
+                                    + " evaluated dataset)");
+                }
+                continue;
+            }
             if (qualifier == null)
             {
                 columns[i] = primary.getMetaData().getColumnIndex(name);
@@ -1003,6 +1060,14 @@ public final class GroupedAggregate
         for (String name : groupNames)
         {
             String qualifier = MatchDataset.qualifierOf(name);
+            if (qualifier == null && GroupSplice.Sided.isEncoded(name))
+            {
+                // GKI Q2 per side (W1b RO, R3): the grouped right column against the primary's left
+                GroupKeyIdentity.requireCompatibleKeyColumns(table,
+                        List.of(GroupSplice.Sided.rightOf(name)), primary,
+                        List.of(GroupSplice.Sided.leftOf(name)));
+                continue;
+            }
             if (qualifier == null)
             {
                 GroupKeyIdentity.requireCompatibleKeyColumns(table, List.of(name), primary,

@@ -113,6 +113,22 @@ class SyntheticExprCorpusRoundTripTest
     }
 
 
+    /** {@code domain=, group=} in that written order (a {@code Map.of} would not keep it). */
+    private static Map<String, Expr> domainGroup(Expr aDomain, Expr aGroup)
+    {
+        Map<String, Expr> kwargs = new java.util.LinkedHashMap<>();
+        kwargs.put("domain", aDomain);
+        kwargs.put("group", aGroup);
+        return kwargs;
+    }
+
+
+    private static Expr.Lit sided(String aLeft, String aRight)
+    {
+        return new Expr.Lit(Expr.LitKind.SIDED, new Expr.SidedKey(col(aLeft), col(aRight)));
+    }
+
+
     private static Expr.Call call(String aName, Expr... aArgs)
     {
         return new Expr.Call(aName, List.of(aArgs), Map.of());
@@ -188,6 +204,11 @@ class SyntheticExprCorpusRoundTripTest
                     bin(Expr.BinOp.EQ, col("AETERM"), str("say \"hi\" \\ back")),
                     "AETERM == \"say \\\"hi\\\" \\\\ back\""),
             new Case("empty LIST literal", bin(Expr.BinOp.IN, col("AESEV"), list()), "AESEV in []"),
+            // runbook W1b RO (coordinator D9): the sided group= member of a domain= grouped call
+            new Case("SIDED group member inside a kwarg list",
+                    new Expr.Call("max", List.of(col("TAETORD")),
+                            domainGroup(str("TA"), list(sided("ACTARMCD", "ARMCD"), col("EPOCH")))),
+                    "max(TAETORD, domain=\"TA\", group=[{left: ACTARMCD, right: ARMCD}, EPOCH])"),
             new Case("LIST of numbers incl. negative",
                     bin(Expr.BinOp.NOT_IN, col("AVISITN"), list(num(-1), num(2.5))),
                     "AVISITN not in [-1, 2.5]"),
@@ -394,6 +415,12 @@ class SyntheticExprCorpusRoundTripTest
         case Expr.Lit lit ->
         {
             aLits.add(lit.kind());
+            if (lit.kind() == Expr.LitKind.SIDED)
+            {
+                Expr.SidedKey key = (Expr.SidedKey) lit.value();
+                walk(key.left(), aNodeKinds, aOps, aLits, aOperands, aCallShapes);
+                walk(key.right(), aNodeKinds, aOps, aLits, aOperands, aCallShapes);
+            }
             if (lit.kind() == Expr.LitKind.LIST)
             {
                 @SuppressWarnings("unchecked")

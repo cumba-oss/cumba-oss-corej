@@ -1071,6 +1071,7 @@ public class RulePackageLoader
     {
         validateRetiredFunctionNames(expr);
         validateInlineCallShapes(expr);
+        validateSidedKeys(expr);
         // Wave 4 (PLAN-list-functions D-W4-3), inverted by the combined review of runbook W2–W8
         // (W4 M4): every REGISTRY call in the expression — inline in a Check level or the
         // Precondition, nested at any depth — meets the compiler's argument seams at load. After
@@ -1126,7 +1127,8 @@ public class RulePackageLoader
                     && !net.cumba.corej.core.exec.GroupedAggregate.isFunction(call.name())
                     && !net.cumba.corej.core.exec.ReadValue.NAME.equals(call.name())
                     && !net.cumba.corej.core.exec.RecordCount.NAME.equals(call.name())
-                    && !net.cumba.corej.core.exec.Distinct.NAME.equals(call.name()))
+                    && !net.cumba.corej.core.exec.Distinct.NAME.equals(call.name())
+                    && !net.cumba.corej.core.exec.Sequence.NAME.equals(call.name()))
             {
                 // (W5: max / max_date / min_date and read_value read keep_missings= from their
                 // bound slot in their own strict reader — GroupedAggregate.readPolicy — so the
@@ -1151,6 +1153,72 @@ public class RulePackageLoader
         childrenOf(expr).forEach(RulePackageLoader::validateInlineCallShapes);
     }
 
+
+    /**
+     * Runbook W1b RO (coordinator D9): the sided key literal {@code {left: X, right: Y}} is legal
+     * only as a direct {@code group=} member of a {@code domain=} grouped call (a splice slot
+     * {@code group=} — {@code max} / {@code max_date} / {@code min_date}, {@code read_value},
+     * {@code record_count}, {@code distinct}, {@code sequence}); anywhere else — a list element, an
+     * operand, a {@code group=} without {@code domain=} — it is a load error. The reader judges its
+     * sides ({@code GroupedAggregate.readGroup}).
+     */
+    private static void validateSidedKeys(net.cumba.corej.core.expr.ast.Expr expr)
+    {
+        switch (expr)
+        {
+        case net.cumba.corej.core.expr.ast.Expr.Lit lit when lit
+                .kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.SIDED -> throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                        "the sided key " + net.cumba.corej.core.expr.ExpressionPrinter.print(lit)
+                                + " is legal only as a group= member of a domain= grouped call"
+                                + " (max, max_date, min_date, read_value, record_count,"
+                                + " distinct, sequence): this row's left column keys the domain="
+                                + " table's right column");
+        case net.cumba.corej.core.expr.ast.Expr.Lit lit when lit
+                .kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST ->
+        {
+            for (Object item : (List<?>) lit.value())
+            {
+                if (item instanceof net.cumba.corej.core.expr.ast.Expr e)
+                {
+                    validateSidedKeys(e);
+                }
+            }
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Call call ->
+        {
+            boolean sidedGroup = call.kwargs()
+                    .containsKey(net.cumba.corej.core.exec.GroupedAggregate.DOMAIN_PARAMETER)
+                    && net.cumba.corej.core.exec.GroupSplice.splices(call.name(),
+                            net.cumba.corej.core.exec.GroupedAggregate.GROUP_PARAMETER);
+            call.args().forEach(RulePackageLoader::validateSidedKeys);
+            for (Map.Entry<String, net.cumba.corej.core.expr.ast.Expr> kwarg : call.kwargs()
+                    .entrySet())
+            {
+                net.cumba.corej.core.expr.ast.Expr value = kwarg.getValue();
+                if (sidedGroup
+                        && net.cumba.corej.core.exec.GroupedAggregate.GROUP_PARAMETER
+                                .equals(kwarg.getKey())
+                        && value instanceof net.cumba.corej.core.expr.ast.Expr.Lit group
+                        && group.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST)
+                {
+                    for (Object item : (List<?>) group.value())
+                    {
+                        if (item instanceof net.cumba.corej.core.expr.ast.Expr e
+                                && !(e instanceof net.cumba.corej.core.expr.ast.Expr.Lit l && l
+                                        .kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.SIDED))
+                        {
+                            validateSidedKeys(e);
+                        }
+                    }
+                    continue;
+                }
+                validateSidedKeys(value);
+            }
+        }
+        default -> childrenOf(expr).forEach(RulePackageLoader::validateSidedKeys);
+        }
+    }
+
     /**
      * The compiler-dispatched calls whose load-time seam is a <b>tailored strict reader</b> —
      * {@code max} / {@code max_date} / {@code min_date}, {@code read_value}, {@code record_count},
@@ -1159,18 +1227,29 @@ public class RulePackageLoader
      * target shapes), so the inline surface is loud at load, not at the first evaluation.
      */
     private static final Map<String, java.util.function.Consumer<net.cumba.corej.core.expr.ast.Expr.Call>> TAILORED_CALL_READERS = Map
-            .of(net.cumba.corej.core.exec.GroupedAggregate.MAX,
-                    net.cumba.corej.core.exec.GroupedAggregate::spec,
-                    net.cumba.corej.core.exec.GroupedAggregate.MAX_DATE,
-                    net.cumba.corej.core.exec.GroupedAggregate::spec,
-                    net.cumba.corej.core.exec.GroupedAggregate.MIN_DATE,
-                    net.cumba.corej.core.exec.GroupedAggregate::spec,
-                    net.cumba.corej.core.exec.ReadValue.NAME,
-                    net.cumba.corej.core.exec.ReadValue::spec,
-                    net.cumba.corej.core.exec.RecordCount.NAME,
-                    net.cumba.corej.core.exec.RecordCount::spec,
-                    net.cumba.corej.core.exec.Distinct.NAME,
-                    net.cumba.corej.core.exec.Distinct::spec);
+            .ofEntries(
+                    Map.entry(net.cumba.corej.core.exec.GroupedAggregate.MAX,
+                            net.cumba.corej.core.exec.GroupedAggregate::spec),
+                    Map.entry(net.cumba.corej.core.exec.GroupedAggregate.MAX_DATE,
+                            net.cumba.corej.core.exec.GroupedAggregate::spec),
+                    Map.entry(net.cumba.corej.core.exec.GroupedAggregate.MIN_DATE,
+                            net.cumba.corej.core.exec.GroupedAggregate::spec),
+                    Map.entry(net.cumba.corej.core.exec.ReadValue.NAME,
+                            net.cumba.corej.core.exec.ReadValue::spec),
+                    Map.entry(net.cumba.corej.core.exec.RecordCount.NAME,
+                            net.cumba.corej.core.exec.RecordCount::spec),
+                    Map.entry(net.cumba.corej.core.exec.Distinct.NAME,
+                            net.cumba.corej.core.exec.Distinct::spec),
+                    // runbook W1b RO / SK: sequence's reader, and the one sort-key reader's
+                    // single-key seam of the three renamed readers (O17)
+                    Map.entry(net.cumba.corej.core.exec.Sequence.NAME,
+                            net.cumba.corej.core.exec.Sequence::spec),
+                    Map.entry("is_last_in_group",
+                            net.cumba.corej.core.exec.SortKeys::checkSingleKeyCall),
+                    Map.entry("empty_within_except_last_row",
+                            net.cumba.corej.core.exec.SortKeys::checkSingleKeyCall),
+                    Map.entry("has_next_corresponding_record",
+                            net.cumba.corej.core.exec.SortKeys::checkSingleKeyCall));
 
     /**
      * A compiler-dispatched call whose ONE parameter is an optional {@code name}

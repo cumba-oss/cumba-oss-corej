@@ -206,17 +206,20 @@ public final class CompilerDispatchedCalls implements FunctionProvider
         bool(fns, "has_multiple_values_for", req("name"), req("key"), within(), keepMissings(),
                 includeEmpty());
         bool(fns, "present_on_multiple_rows_within", req("name"), reqWithin(), keepMissings());
-        bool(fns, "empty_within_except_last_row", req("name"), req("group"),
-                Parameter.required("ordering", Unknown.UNKNOWN), keepMissings());
+        // runbook W1b SK (owner O17): by= is the sort-key parameter everywhere — ordering= stays
+        // accepted beside it until W4 (OR2); exactly one of the two, one ascending key
+        // (ExprCompiler reads both through SortKeys.single)
+        bool(fns, "empty_within_except_last_row", req("name"), req("group"), ordering(),
+                keepMissings(), by());
         // Wave 1 (PLAN-function-surface-wave1 D-W1-4): the two grouped callables ported from the
         // Operation surface. Column parameters are declared COLUMN references (a quoted name is a
         // literal and fails to load — R1) and read by a STRICT reader in ExprCompiler; the
         // groupers are the retired evaluators' own, so plan 16's key identity and both missing-key
         // defaults survive. is_last_in_group has NO target (R6, RETIRE-both): it reads only
         // ordering and group. has_mixed_emptiness_within_group keeps its subject column as `name`.
-        bool(fns, "is_last_in_group", Parameter.required("ordering", Primitive.COLUMN_REFERENCE),
-                Parameter.required("group", new ListOf(Primitive.COLUMN_REFERENCE)),
-                keepMissings());
+        bool(fns, "is_last_in_group", Parameter.optional("ordering", Primitive.COLUMN_REFERENCE),
+                Parameter.required("group", new ListOf(Primitive.COLUMN_REFERENCE)), keepMissings(),
+                by());
         bool(fns, "has_mixed_emptiness_within_group",
                 Parameter.required("name", Primitive.COLUMN_REFERENCE),
                 Parameter.optional("group", new ListOf(Primitive.COLUMN_REFERENCE)),
@@ -262,8 +265,7 @@ public final class CompilerDispatchedCalls implements FunctionProvider
     {
         List<FunctionDescriptor> fns = new ArrayList<>();
         bool(fns, "has_next_corresponding_record", req("name"), req("value"), reqWithin(),
-                Parameter.required("ordering", Unknown.UNKNOWN),
-                Parameter.optional("relation", Primitive.STRING), keepMissings());
+                ordering(), Parameter.optional("relation", Primitive.STRING), keepMissings(), by());
         bool(fns, "is_sorted_by", req("target"),
                 Parameter.required("by", new ListOf(Primitive.COLUMN_REFERENCE)), within(),
                 keepMissings());
@@ -375,6 +377,17 @@ public final class CompilerDispatchedCalls implements FunctionProvider
                         net.cumba.corej.core.expr.typed.ExprType.Primitive.DATASET_REFERENCE),
                 opt("filter"), Parameter.optional("group", new ListOf(Primitive.COLUMN_REFERENCE)),
                 keepMissings());
+        // Runbook W1b RO (PLAN-engine-gap-row-ordinal R1; owner O17 `by=`): sequence on the same
+        // plan (Sequence.spec reads the call) — one column target, its group's values in sort-key
+        // order per row, or one dataset-level list; by= a list of column references (bare, or
+        // asc() / desc() descriptors — a splice slot, GroupSplice.SPLICE_SLOTS).
+        value(fns, net.cumba.corej.core.exec.Sequence.NAME, req("name"),
+                Parameter.optional("domain",
+                        net.cumba.corej.core.expr.typed.ExprType.Primitive.DATASET_REFERENCE),
+                opt("filter"), Parameter.optional("group", new ListOf(Primitive.COLUMN_REFERENCE)),
+                Parameter.optional(net.cumba.corej.core.exec.SortKeys.PARAMETER,
+                        new ListOf(Primitive.COLUMN_REFERENCE)),
+                keepMissings());
         return List.copyOf(fns);
     }
 
@@ -423,6 +436,24 @@ public final class CompilerDispatchedCalls implements FunctionProvider
     private static Parameter opt(String name)
     {
         return Parameter.optional(name, Unknown.UNKNOWN);
+    }
+
+
+    /**
+     * {@code by=} on the three single-key readers (O17): one column, or {@code [asc(COL)]} —
+     * declared LAST so every positional spelling binds as before the rename.
+     */
+    private static Parameter by()
+    {
+        return Parameter.optional(net.cumba.corej.core.exec.SortKeys.PARAMETER, Unknown.UNKNOWN);
+    }
+
+
+    /** {@code ordering=} — the pre-O17 spelling of {@code by=}, accepted until W4. */
+    private static Parameter ordering()
+    {
+        return Parameter.optional(net.cumba.corej.core.exec.SortKeys.LEGACY_PARAMETER,
+                Unknown.UNKNOWN);
     }
 
 

@@ -861,6 +861,10 @@ public final class StageAChecker
         // operator (substitution), never an operand of anything else
         case REGEX, SUBSTITUTION -> new TypedExpr(lit, Primitive.REGEX, Level.STUDY, List.of());
         case LIST -> listLiteral(lit);
+        // the sided group member {left: X, right: Y} (runbook W1b RO): a key of two column
+        // names, judged by the loader for where it stands and by the reader for its sides;
+        // typed unknown so a group= list holding it stays a column-reference list
+        case SIDED -> new TypedExpr(lit, Unknown.UNKNOWN, Level.STUDY, List.of());
         };
     }
 
@@ -1359,6 +1363,16 @@ public final class StageAChecker
                 // cursor cell, D67, is found exactly as before), DATASET otherwise.
                 return new TypedExpr(c, typed.type(),
                         net.cumba.corej.core.exec.Distinct.isGrouped(c)
+                                ? groupedLevel(groupKeys(c.kwargs().get("group")))
+                                : Level.DATASET,
+                        children);
+            }
+            if (net.cumba.corej.core.exec.Sequence.NAME.equals(name))
+            {
+                // Runbook W1b RO: sequence on distinct's plan — group(K) when grouped, DATASET
+                // otherwise (a sided member keys by its left column)
+                return new TypedExpr(c, typed.type(),
+                        net.cumba.corej.core.exec.Sequence.isGrouped(c)
                                 ? groupedLevel(groupKeys(c.kwargs().get("group")))
                                 : Level.DATASET,
                         children);
@@ -2188,6 +2202,17 @@ public final class StageAChecker
             }
             if (declared == Unknown.UNKNOWN)
             {
+                if (splices(c, param))
+                {
+                    // W1b BS2c (coordinator D4) / SK (O17): the unknown-typed within= /
+                    // ordering= / by= / single group slots splice — judged by the roster, never
+                    // by the declared type, which stays unknown
+                    TypedExpr walkedUnknown = walkedByIdentity.get(arg);
+                    if (walkedUnknown != null)
+                    {
+                        judgeSpliceSlot(c, param, walkedUnknown);
+                    }
+                }
                 continue;
             }
             TypedExpr walked = walkedByIdentity.get(arg);
@@ -2245,6 +2270,14 @@ public final class StageAChecker
                     && lit.kind() == Expr.LitKind.LIST)
             {
                 checkColumnReferenceList(c, param, walked);
+                continue;
+            }
+            if (declared == Primitive.COLUMN_REFERENCE && splices(c, param)
+                    && !(arg instanceof Expr.Lit))
+            {
+                // W1b BS2c (D4): a single-reference slot that splices (is_last_in_group's
+                // ordering=) takes a dataset-level $ / computed name beside a written one
+                judgeSpliceSlot(c, param, walked);
                 continue;
             }
             if (declared == Primitive.COLUMN_REFERENCE)
@@ -2382,6 +2415,44 @@ public final class StageAChecker
     }
 
 
+    /**
+     * The level judgement of an {@code unknown}-typed splice slot (W1b BS2c, D4) and of a sort-key
+     * member (W1b SK, O16 #2): a list literal member by member — a nested EC-24 component inside as
+     * at top level, the literal claimed so its {@code $} elements are not filed as list elements —
+     * a descriptor {@code asc(X)} / {@code desc(X)} by the member it wraps, a name-list binding
+     * admitted (its {@code --} members judged under {@code domain=}), a {@code $} or computed
+     * member refused when it reads the row cursor.
+     */
+    private void judgeSpliceSlot(Expr.Call c, Parameter param, TypedExpr arg)
+    {
+        Expr node = arg.node();
+        if (node instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+        {
+            judgedLiterals.add(node);
+            for (TypedExpr element : arg.children())
+            {
+                judgeSpliceSlot(c, param, element);
+            }
+            return;
+        }
+        if (net.cumba.corej.core.exec.SortKeys.isDescriptor(node) && !arg.children().isEmpty())
+        {
+            judgeSpliceSlot(c, param, arg.children().get(0));
+            return;
+        }
+        if (isNameListRef(node))
+        {
+            admittedNameListReads.add(node);
+            findDomainPrefixMember(c, node);
+            return;
+        }
+        if (net.cumba.corej.core.exec.GroupSplice.spliced(node) != null && isPerRow(arg))
+        {
+            findPerRowSplice(c, param, node);
+        }
+    }
+
+
     private void findPerRowSplice(Expr.Call c, Parameter param, Expr node)
     {
         // one sentence for both spellings (ListOperandLevel.spliceRefusal), the loader's seam pass
@@ -2493,6 +2564,12 @@ public final class StageAChecker
         {
             position++;
             ExprType type = element.type();
+            if (splicing && net.cumba.corej.core.exec.SortKeys.isDescriptor(element.node()))
+            {
+                // W1b SK (O16 #2): a sort-key descriptor is judged by the member it wraps
+                judgeSpliceSlot(c, param, element);
+                continue;
+            }
             if (isNameListRef(element.node()))
             {
                 // D1-A (W1a E2): a name-list binding as a member — spliced where the reader
@@ -2708,6 +2785,12 @@ public final class StageAChecker
                 else if (item instanceof Expr.Lit l && l.kind() == Expr.LitKind.STRING)
                 {
                     keys.add((String) l.value());
+                }
+                else if (item instanceof Expr.Lit l && l.kind() == Expr.LitKind.SIDED
+                        && ((Expr.SidedKey) l.value()).left() instanceof Expr.Ref left)
+                {
+                    // W1b RO (R3): a sided member keys the evaluated row by its left column
+                    keys.add(left.name());
                 }
             }
         }

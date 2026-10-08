@@ -145,6 +145,11 @@ public final class ElementTable
             // content, a list by carrier, whose element type is the target's (Unknown);
             // referenced_dataset_variables a per-row list of variable names.
             Map.entry("distinct", new ListOf(Unknown.UNKNOWN)),
+            // runbook W1b RO (PLAN-engine-gap-row-ordinal): sequence answers ONE list of the
+            // column's values in sort-key order (duplicates kept), collapse_runs the list with
+            // adjacent duplicates collapsed — element type the target's / the input's (Unknown)
+            Map.entry("sequence", new ListOf(Unknown.UNKNOWN)),
+            Map.entry("collapse_runs", new ListOf(Unknown.UNKNOWN)),
             // PLAN-cg0218-transition-day-precision P1: joined(<condition>) is the list<boolean>
             // the quantifiers any / all / none fold (StageAChecker pins the same type at the call)
             Map.entry("joined", new ListOf(Primitive.BOOLEAN)),

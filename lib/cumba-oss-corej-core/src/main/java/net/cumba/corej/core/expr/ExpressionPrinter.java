@@ -165,6 +165,11 @@ public final class ExpressionPrinter
             Expr.Substitution s = (Expr.Substitution) l.value();
             yield "/" + slashDelimited(s.pattern()) + "/" + slashDelimited(s.replacement()) + "/";
         }
+        case SIDED ->
+        {
+            Expr.SidedKey key = (Expr.SidedKey) l.value();
+            yield "{left: " + value(key.left()) + ", right: " + value(key.right()) + "}";
+        }
         };
     }
 

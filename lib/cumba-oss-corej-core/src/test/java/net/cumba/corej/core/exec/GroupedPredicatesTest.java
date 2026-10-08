@@ -75,7 +75,9 @@ class GroupedPredicatesTest
     @Test
     void isLast_arityIsALoadError() throws Exception
     {
-        assertLoadError("is_last_in_group(ORD, [G], true, G)", "at most 3");
+        // W1b SK (O17): by= is a fourth declared parameter (last, so the positional spellings
+        // bind as before) — a fourth positional is the one sort key written twice
+        assertLoadError("is_last_in_group(ORD, [G], true, G)", "not both");
         assertLoadError("is_last_in_group(ordering=ORD)", "group");
         assertLoadError("is_last_in_group(group=[G])", "ordering");
     }

@@ -354,10 +354,11 @@ public final class BroadcastFold
                 || MetadataExprScan.readsDefinePerRecord(name)
                 || DomainScan.VARNAME_ANCHORED_CALLS.contains(name)
                 || net.cumba.corej.core.exec.RecordCount.NAME.equals(name)
-                || net.cumba.corej.core.exec.Distinct.NAME.equals(name))
+                || net.cumba.corej.core.exec.Distinct.NAME.equals(name)
+                || net.cumba.corej.core.exec.Sequence.NAME.equals(name))
         {
-            // (record_count and distinct keep the level their inline operations had — runbook
-            // W6 D-W6-9 / W7 D-W7-12: their arguments are parameters, not reads.)
+            // (record_count, distinct and sequence keep the level their inline operations had —
+            // runbook W6 D-W6-9 / W7 D-W7-12 / W1b RO: their arguments are parameters, not reads.)
             return AbsentLeafLevel.ROW;
         }
         AbsentLeafLevel level = AbsentLeafLevel.DATASET;
@@ -750,6 +751,10 @@ public final class BroadcastFold
         if (net.cumba.corej.core.exec.Distinct.NAME.equals(name))
         {
             return !net.cumba.corej.core.exec.Distinct.isGrouped(c);
+        }
+        if (net.cumba.corej.core.exec.Sequence.NAME.equals(name))
+        {
+            return !net.cumba.corej.core.exec.Sequence.isGrouped(c);
         }
         // Combined review of runbook W2–W8, XCUT L1: every other dataset-level VALUE function is
         // read from its DESCRIPTOR, not a name list — an aggregate (the W4 lists, the W4b scalars:

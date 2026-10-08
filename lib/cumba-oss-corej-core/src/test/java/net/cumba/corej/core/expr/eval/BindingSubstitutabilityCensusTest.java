@@ -125,7 +125,13 @@ class BindingSubstitutabilityCensusTest
             "distinct[0] name: bound=argument 'name' of 'distinct' must be a plain column reference; ‹arg› is not one | inline=clean",
             "imatches[1] pattern: bound=imatches requires a /regex/ literal pattern argument | inline=clean",
             "prefix_matches[1] pattern: bound=prefix_matches requires a /regex/ literal pattern argument | inline=clean",
-            "suffix_matches[1] pattern: bound=suffix_matches requires a /regex/ literal pattern argument | inline=clean"));
+            "suffix_matches[1] pattern: bound=suffix_matches requires a /regex/ literal pattern argument | inline=clean",
+            // runbook W1b RO / BS2c: sequence's target is distinct's (a binding is not a plain
+            // column there); is_last_in_group's ordering= splices now, so the bound per-row
+            // column $x is the splice refusal while the inline column passes to the group=
+            // filler's own finding
+            "sequence[0] name: bound=argument 'name' of 'sequence' must be a plain column reference; ‹arg› is not one | inline=clean",
+            "is_last_in_group[0] ordering: bound=stage A: PARAMETER_TYPE: Check (ERROR): argument 'ordering' of 'is_last_in_group' cannot splice the per-row member `‹arg | inline=stage A: PARAMETER_TYPE: Check (ERROR): argument 'group' of 'is_last_in_group' takes list<column-reference>, not string "));
 
     /** Floor of (descriptor, parameter) pairs the census must visit — the registry was walked. */
     private static final int VISITED_FLOOR = 150;

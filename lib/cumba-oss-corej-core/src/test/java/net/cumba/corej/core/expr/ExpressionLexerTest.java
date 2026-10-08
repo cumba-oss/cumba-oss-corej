@@ -395,6 +395,27 @@ class ExpressionLexerTest
             assertTrue(token.type() != TokenType.IDENT, keyword + " -> " + token.type());
         }
         assertEquals(6, ExpressionLexer.keywords().size());
-        assertEquals(11, ExpressionLexer.literalForms().size());
+        assertEquals(12, ExpressionLexer.literalForms().size());
     }
+
+
+    @Test
+    void bracesAndColonAreTheSidedKeyLiteralsTokens()
+    {
+        // runbook W1b RO (coordinator D9): the sided group= member {left: X, right: Y}
+        List<Token> t = lex("{left: ACTARMCD, right: ARMCD}");
+        assertEquals(TokenType.LBRACE, t.get(0).type());
+        assertEquals(TokenType.IDENT, t.get(1).type());
+        assertEquals("left", t.get(1).text());
+        assertEquals(TokenType.COLON, t.get(2).type());
+        assertEquals(TokenType.IDENT, t.get(3).type());
+        assertEquals(TokenType.COMMA, t.get(4).type());
+        assertEquals(TokenType.IDENT, t.get(5).type());
+        assertEquals(TokenType.COLON, t.get(6).type());
+        assertEquals(TokenType.IDENT, t.get(7).type());
+        assertEquals(TokenType.RBRACE, t.get(8).type());
+        assertEquals(TokenType.EOF, t.get(9).type());
+        assertTrue(ExpressionLexer.literalForms().contains("{left: X, right: Y}"));
+    }
+
 }

@@ -10,6 +10,7 @@ char(x:unknown) kind=value
 coalesce(a:unknown, b:unknown, c:unknown?) kind=value
 codelist_decode(name:unknown@name?) kind=value
 codelist_terms(codelists:list<string>, level:string, returntype:string?) kind=value aggregate provider=library
+collapse_runs(list:list<unknown>) kind=value
 colref(x:unknown@name) kind=value perRow
 column_series_metadata(name:string@name?, name_pattern:string, min_length:number?) kind=value aggregate
 concat(a:unknown, b:unknown, c:unknown?) kind=value
@@ -43,7 +44,7 @@ dy(name:column-reference, reference:column-reference) kind=value
 earliest_date(a:date, b:date) kind=value
 earliest_possible(x:unknown) kind=value
 empty(x:unknown) kind=boolean
-empty_within_except_last_row(name:unknown, group:unknown, ordering:unknown, keep_missings:boolean?) kind=boolean
+empty_within_except_last_row(name:unknown, group:unknown, ordering:unknown?, keep_missings:boolean?, by:unknown?) kind=boolean
 ends_with(x:unknown, value:unknown) kind=boolean
 equalsIgnoreCase(a:unknown, b:unknown) kind=boolean
 expected_variables() kind=value aggregate provider=library
@@ -63,7 +64,7 @@ has_digit(x:unknown) kind=boolean elementwise
 has_equal_length(name:unknown, length:unknown) kind=boolean
 has_mixed_emptiness_within_group(name:column-reference, group:list<column-reference>?, qualifying_any_populated:list<column-reference>?, keep_missings:boolean?) kind=boolean
 has_multiple_values_for(name:unknown, key:unknown, within:unknown?, keep_missings:boolean?, include_empty:boolean?) kind=boolean
-has_next_corresponding_record(name:unknown, value:unknown, within:unknown, ordering:unknown, relation:string?, keep_missings:boolean?) kind=boolean
+has_next_corresponding_record(name:unknown, value:unknown, within:unknown, ordering:unknown?, relation:string?, keep_missings:boolean?, by:unknown?) kind=boolean
 has_not_equal_length(name:unknown, length:unknown) kind=boolean
 has_same_values(name:unknown) kind=boolean
 imatches(x:unknown, pattern:regex) kind=boolean
@@ -75,18 +76,21 @@ is_complete_date(x:string) kind=boolean elementwise
 is_complete_date_part(x:string) kind=boolean elementwise
 is_incomplete_date(x:string) kind=boolean elementwise
 is_inconsistent_across_dataset(name:unknown, key:unknown?, keys:list<column-reference>?, include_empty:boolean?, keep_missings:boolean?) kind=boolean
+is_increasing(list:list<unknown>) kind=boolean
 is_integer(x:unknown) kind=boolean elementwise
-is_last_in_group(ordering:column-reference, group:list<column-reference>, keep_missings:boolean?) kind=boolean
+is_last_in_group(ordering:column-reference?, group:list<column-reference>, keep_missings:boolean?, by:unknown?) kind=boolean
 is_missing(x:unknown) kind=boolean
 is_not_complete_date_part(x:string) kind=boolean elementwise
 is_not_integer(x:unknown) kind=boolean elementwise
 is_not_ordered_subset_of(name:unknown, value:unknown) kind=boolean
+is_not_prefix_of(a:list<unknown>, b:list<unknown>) kind=boolean
 is_not_unique_relationship(name:unknown, value:unknown?, keys:list<column-reference>?) kind=boolean
 is_not_unique_set(members:list<column-reference>, regex:string?, keep_missings:boolean?) kind=boolean
 is_not_unique_value(name:unknown) kind=boolean
 is_numeric(x:unknown) kind=boolean elementwise
 is_ordered_subset_of(name:unknown, value:unknown) kind=boolean
 is_partial_date(x:string) kind=boolean elementwise
+is_prefix_of(a:list<unknown>, b:list<unknown>) kind=boolean
 is_present(x:unknown) kind=boolean
 is_sorted_by(target:unknown, by:list<column-reference>, within:unknown?, keep_missings:boolean?) kind=boolean
 is_unique_relationship(name:unknown, value:unknown?, keys:list<column-reference>?) kind=boolean
@@ -131,6 +135,7 @@ referenced_domain_class(name:column-reference) kind=value provider=library
 required_variables() kind=value aggregate provider=library
 round(x:unknown) kind=value
 row_max(name_pattern:string) kind=value perRow
+sequence(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>?, by:list<column-reference>?, keep_missings:boolean?) kind=value
 shares_elements_with(name:unknown, value:unknown?, keys:list<unknown>?) kind=boolean
 shares_no_elements_with(name:unknown, value:unknown?, keys:list<unknown>?) kind=boolean
 size(x:unknown) kind=value
@@ -211,7 +216,7 @@ var_role scope=variable levels=DEFINE,LIBRARY result=string
 var_type scope=variable levels=DATA,DEFINE,LIBRARY result=string default=DATA kwargs=dataset
 operators: ! != !~ && * + - / < <= = == =~ > >= || ~
 keywords: and,false,in,not,or,true
-literal-forms: "string" number /regex/ [list] `quoted ref` &NAME& ${binding} --wildcard $binding DATASET.X /pattern/replacement/
+literal-forms: "string" number /regex/ [list] `quoted ref` &NAME& ${binding} --wildcard $binding DATASET.X /pattern/replacement/ {left: X, right: Y}
 operands:
 dataset_class
 dataset_domain
@@ -314,6 +319,7 @@ present_on_multiple_rows_within.keep_missings: literal boolean plan-build
 read_value.keep_missings: literal boolean plan-build
 record_count.keep_missings: literal boolean plan-build
 row_max.name_pattern: literal
+sequence.keep_missings: literal boolean plan-build
 valid_external_dictionary_code.dictionary_term_type: literal
 valid_external_dictionary_value.dictionary_term_type: literal
 variable_count.name_pattern: literal

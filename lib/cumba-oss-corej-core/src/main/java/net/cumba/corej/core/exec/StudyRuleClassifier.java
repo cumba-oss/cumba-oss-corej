@@ -81,8 +81,8 @@ public final class StudyRuleClassifier
      * {@code max_date} is.
      */
     private static final Set<String> DOMAIN_PINNED_CALLS = Set.of(RecordCount.NAME, Distinct.NAME,
-            GroupedAggregate.MAX, GroupedAggregate.MAX_DATE, GroupedAggregate.MIN_DATE,
-            ReadValue.NAME);
+            Sequence.NAME, GroupedAggregate.MAX, GroupedAggregate.MAX_DATE,
+            GroupedAggregate.MIN_DATE, ReadValue.NAME);
 
     /**
      * Registry functions whose result is a study-level fact — they interrogate the study inventory,

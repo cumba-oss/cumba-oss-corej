@@ -96,13 +96,27 @@ public final class GroupSplice
     /** The parameter name of {@code values}' splice list, as the registry declares it. */
     public static final String VALUES_PARAMETER = "columns";
 
+    /** The parameter name of the partitioning slots ({@code within=}). */
+    public static final String WITHIN_PARAMETER = "within";
+
+    /**
+     * The slots whose members are sort keys — {@code asc(X)} / {@code desc(X)} descriptors around
+     * the member the seams judge ({@link SortKeys#column}), and a bare column meaning {@code asc}.
+     */
+    private static final java.util.Set<String> SORT_KEY_PARAMETERS = java.util.Set
+            .of(SortKeys.PARAMETER, SortKeys.LEGACY_PARAMETER);
+
     /**
      * The splice slots — function name to the names of its parameters whose list of column names
      * splices a {@code $} binding or a computed member (W1a BS2b, C6 / Q2: every
-     * {@code list<column-reference>} parameter whose members are plain names). Not in the roster,
-     * on purpose: {@code is_sorted_by}'s {@code by=}, whose members are {@code asc(X)} /
-     * {@code desc(X)} sort-key descriptors rather than names, and {@code tuple}'s trailing
-     * collector, whose elements are per-row column operands rather than a list.
+     * {@code list<column-reference>} parameter whose members are plain names; since W1b BS2c —
+     * coordinator D4 — the {@code unknown}-typed single-reference and {@code within=} slots too: a
+     * single-reference slot takes a string or a one-element list, a nested EC-24 {@code within=}
+     * component splices inside as at top level; and since W1b SK — owner O16 — the sort-key slots
+     * {@code by=} of {@code is_sorted_by} and {@code sequence}, whose {@code asc(X)} /
+     * {@code desc(X)} descriptors wrap the member {@link SortKeys#column} judges). Not in the
+     * roster, on purpose: {@code tuple}'s trailing collector, whose elements are per-row column
+     * operands rather than a list.
      */
     private static final java.util.Map<String, List<String>> SPLICE_SLOTS = java.util.Map.ofEntries(
             java.util.Map.entry("is_unique_set", List.of(MEMBERS_PARAMETER)),
@@ -118,12 +132,26 @@ public final class GroupSplice
             java.util.Map.entry(Distinct.NAME, List.of(GroupedAggregate.GROUP_PARAMETER)),
             // BS2b (keys=): the compiler-dispatched readers' name lists
             // (ExprCompiler.strictColumnMembers / keyMembers)
-            java.util.Map.entry("is_last_in_group", List.of(GroupedAggregate.GROUP_PARAMETER)),
+            java.util.Map.entry("is_last_in_group",
+                    List.of(GroupedAggregate.GROUP_PARAMETER, SortKeys.LEGACY_PARAMETER,
+                            SortKeys.PARAMETER)),
             java.util.Map.entry("has_mixed_emptiness_within_group",
                     List.of(GroupedAggregate.GROUP_PARAMETER, "qualifying_any_populated")),
             java.util.Map.entry("is_unique_relationship", List.of(KEYS_PARAMETER)),
             java.util.Map.entry("is_not_unique_relationship", List.of(KEYS_PARAMETER)),
-            java.util.Map.entry("is_inconsistent_across_dataset", List.of(KEYS_PARAMETER)));
+            java.util.Map.entry("is_inconsistent_across_dataset", List.of(KEYS_PARAMETER)),
+            // W1b BS2c (D4): the within= / ordering= / single group slots, unknown-typed
+            java.util.Map.entry("has_multiple_values_for", List.of(WITHIN_PARAMETER)),
+            java.util.Map.entry("present_on_multiple_rows_within", List.of(WITHIN_PARAMETER)),
+            java.util.Map.entry("has_next_corresponding_record",
+                    List.of(WITHIN_PARAMETER, SortKeys.LEGACY_PARAMETER, SortKeys.PARAMETER)),
+            java.util.Map.entry("empty_within_except_last_row",
+                    List.of(GroupedAggregate.GROUP_PARAMETER, SortKeys.LEGACY_PARAMETER,
+                            SortKeys.PARAMETER)),
+            // W1b SK (O16 / O17): the sort-key slots, and is_last_in_group's by=
+            java.util.Map.entry("is_sorted_by", List.of(SortKeys.PARAMETER, WITHIN_PARAMETER)),
+            java.util.Map.entry(Sequence.NAME,
+                    List.of(GroupedAggregate.GROUP_PARAMETER, SortKeys.PARAMETER)));
 
     /**
      * The readers that splice, as a message names them: every {@code list<column-reference>}
@@ -131,10 +159,11 @@ public final class GroupSplice
      */
     public static final String SPLICING_READERS = "every list<column-reference> parameter"
             + " (the group= of record_count, max, max_date, min_date, read_value, distinct,"
-            + " is_last_in_group and has_mixed_emptiness_within_group — and its"
+            + " sequence, is_last_in_group and has_mixed_emptiness_within_group — and its"
             + " qualifying_any_populated=; the keys= of is_(not_)unique_relationship and"
-            + " is_inconsistent_across_dataset; is_(not_)unique_set's members; values' columns)"
-            + " — not is_sorted_by's by= (sort-key descriptors) and not tuple's columns";
+            + " is_inconsistent_across_dataset; is_(not_)unique_set's members; values' columns),"
+            + " every within= / ordering= / by= slot and empty_within_except_last_row's group"
+            + " — not tuple's columns";
 
     /**
      * Whether the reader behind {@code (function, parameter)} splices a {@code $} binding or a
@@ -155,11 +184,61 @@ public final class GroupSplice
     /**
      * One member of a splice list, as the reader keeps it from load to evaluation.
      */
-    public sealed interface Member permits Name, Bound, Computed
+    public sealed interface Member permits Name, Bound, Computed, Sided
     {
 
         /** The member as authored, for messages. */
         String printed();
+    }
+
+
+    /**
+     * The sided {@code group=} member {@code {left: X, right: Y}} of a {@code domain=} grouped call
+     * (runbook W1b RO, R3; coordinator D9): this row's {@code left} column keys the other table's
+     * {@code right} groups. Never spliced; carried through the group-name lists as its
+     * {@link #encoded() encoded name}, which {@code GroupedAggregate}'s record-side helpers read
+     * back ({@link #isEncoded}, {@link #leftOf}, {@link #rightOf}) exactly as they read a qualified
+     * {@code DS.VAR} member.
+     */
+    public record Sided(String left, String right) implements Member
+    {
+
+        /** The separator of the encoded name — no column name can carry it. */
+        private static final String SEPARATOR = "->";
+
+        @Override
+        public String printed()
+        {
+            return "{left: " + left + ", right: " + right + "}";
+        }
+
+
+        /** The member as one group name: {@code left->right}. */
+        public String encoded()
+        {
+            return left + SEPARATOR + right;
+        }
+
+
+        /** Whether a group name is an encoded sided member. */
+        public static boolean isEncoded(String name)
+        {
+            return name.contains(SEPARATOR);
+        }
+
+
+        /** The record-side column of an encoded sided member. */
+        public static String leftOf(String encoded)
+        {
+            return encoded.substring(0, encoded.indexOf(SEPARATOR));
+        }
+
+
+        /** The grouped-side column of an encoded sided member. */
+        public static String rightOf(String encoded)
+        {
+            return encoded.substring(encoded.indexOf(SEPARATOR) + SEPARATOR.length());
+        }
     }
 
 
@@ -245,7 +324,7 @@ public final class GroupSplice
     {
         for (Member member : members)
         {
-            if (!(member instanceof Name))
+            if (member instanceof Bound || member instanceof Computed)
             {
                 return true;
             }
@@ -270,6 +349,10 @@ public final class GroupSplice
             if (member instanceof Name name)
             {
                 out.add(name.name());
+            }
+            else if (member instanceof Sided sided)
+            {
+                out.add(sided.encoded());
             }
         }
         return List.copyOf(out);
@@ -339,16 +422,37 @@ public final class GroupSplice
             {
                 continue;
             }
+            List<Expr> items = new ArrayList<>();
             if (operand instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
             {
                 @SuppressWarnings("unchecked")
-                List<Expr> items = (List<Expr>) lit.value();
-                out.add(new Slot(parameter, items, operand));
+                List<Expr> authored = (List<Expr>) lit.value();
+                for (Expr item : authored)
+                {
+                    if (WITHIN_PARAMETER.equals(parameter) && item instanceof Expr.Lit inner
+                            && inner.kind() == Expr.LitKind.LIST)
+                    {
+                        // BS2c (D4): an EC-24 coalesce component splices inside as at top level
+                        @SuppressWarnings("unchecked")
+                        List<Expr> component = (List<Expr>) inner.value();
+                        items.addAll(component);
+                    }
+                    else
+                    {
+                        items.add(item);
+                    }
+                }
             }
             else
             {
-                out.add(new Slot(parameter, List.of(operand), operand));
+                items.add(operand);
             }
+            if (SORT_KEY_PARAMETERS.contains(parameter))
+            {
+                // SK (O16 #2): the seams judge the member a descriptor wraps
+                items.replaceAll(SortKeys::column);
+            }
+            out.add(new Slot(parameter, items, operand));
         }
         return out;
     }
@@ -447,6 +551,7 @@ public final class GroupSplice
             switch (member)
             {
             case Name name -> out.add(name.name());
+            case Sided sided -> out.add(sided.encoded());
             case Bound bound -> spliceValue(fn, where, bound.printed(),
                     ctx.resolveVariable(bound.ref()), ctx, foreign, qualifiedAdvice, out);
             case Computed computed -> spliceValue(fn, where, computed.printed(),
@@ -518,13 +623,17 @@ public final class GroupSplice
      * (D35: the rule is written in a way that cannot be executed). An {@link IllegalStateException}
      * so the callers that already expected one keep their contract.
      */
-    static final class GroupSpliceException extends IllegalStateException
+    public static final class GroupSpliceException extends IllegalStateException
     {
 
         @Serial
         private static final long serialVersionUID = 1L;
 
-        GroupSpliceException(String message)
+        /**
+         * @param message
+         *            the rule's ERROR message
+         */
+        public GroupSpliceException(String message)
         {
             super(message);
         }

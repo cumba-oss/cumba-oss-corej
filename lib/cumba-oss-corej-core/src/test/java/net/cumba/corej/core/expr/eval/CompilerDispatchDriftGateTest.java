@@ -121,14 +121,14 @@ class CompilerDispatchDriftGateTest
                         + " predicates of PLAN-present-empty-column-fold)");
         assertEquals(2, CompilerDispatchedCalls.negationDispatchedBooleanCallNames().size(),
                 "negation-dispatched boolean calls (compileNot's Q1 arms)");
-        assertEquals(24, CompilerDispatchedCalls.valueCallNames().size(),
+        assertEquals(25, CompilerDispatchedCalls.valueCallNames().size(),
                 "compiler-dispatched value calls (vlm_* family, max_value_length, the decode"
                         + " accessors, read_value, W5's max / max_date / min_date, W6's"
                         + " record_count, W7's distinct, PLAN-cg0218's joined; +3 vlm_ and"
                         + " codelist_decode of runbook W1b DV)");
         int parameters = new CompilerDispatchedCalls().functions().stream()
                 .mapToInt(d -> d.parameters().size()).sum();
-        assertEquals(136, parameters, "declared parameter surfaces across the 59 descriptors (+2"
+        assertEquals(145, parameters, "declared parameter surfaces across the 60 descriptors (+2"
                 + " column-status predicates, PLAN-present-empty-column-fold) —"
                 + " update deliberately when a signature legitimately changes (W2a: read_value's"
                 + " four; W5: read_value's group / keep_missings, max's five, the two date"

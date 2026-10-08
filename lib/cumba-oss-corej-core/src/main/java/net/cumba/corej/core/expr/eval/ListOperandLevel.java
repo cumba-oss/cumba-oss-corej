@@ -106,7 +106,7 @@ public final class ListOperandLevel
             net.cumba.corej.core.exec.GroupedAggregate.MAX_DATE,
             net.cumba.corej.core.exec.GroupedAggregate.MIN_DATE,
             net.cumba.corej.core.exec.RecordCount.NAME, net.cumba.corej.core.exec.Distinct.NAME,
-            net.cumba.corej.core.exec.ReadValue.NAME);
+            net.cumba.corej.core.exec.Sequence.NAME, net.cumba.corej.core.exec.ReadValue.NAME);
 
     private ListOperandLevel()
     {

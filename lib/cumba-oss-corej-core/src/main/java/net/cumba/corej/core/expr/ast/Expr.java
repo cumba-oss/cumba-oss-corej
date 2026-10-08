@@ -42,19 +42,36 @@ public sealed interface Expr
     }
 
 
-    /** Lexical category of a literal. */
+    /**
+     * Lexical category of a literal. {@link #SIDED} is the sided group member {@code {left: X,
+     * right: Y}} of a {@code domain=} grouped call ({@code PLAN-engine-gap-row-ordinal} R3, runbook
+     * W1b RO) — a literal form, legal only there.
+     */
     enum LitKind
     {
-        STRING, NUMBER, BOOL, REGEX, LIST, SUBSTITUTION
+        STRING, NUMBER, BOOL, REGEX, LIST, SUBSTITUTION, SIDED
     }
 
 
     /**
      * A literal value. {@code value} is a {@link String} (STRING/REGEX), {@link Double} (NUMBER),
-     * {@link Boolean} (BOOL), {@code List<Expr>} of {@link Lit} (LIST), or a {@link Substitution}
-     * (SUBSTITUTION — only ever the right operand of {@link BinOp#SUBST}).
+     * {@link Boolean} (BOOL), {@code List<Expr>} of {@link Lit} (LIST), a {@link Substitution}
+     * (SUBSTITUTION — only ever the right operand of {@link BinOp#SUBST}), or a {@link SidedKey}
+     * (SIDED — only ever a {@code group=} member under {@code domain=}).
      */
     record Lit(LitKind kind, Object value) implements Expr
+    {
+
+    }
+
+
+    /**
+     * The sided group member {@code {left: X, right: Y}}: this row's {@code left} column keys the
+     * {@code domain=} table's {@code right} groups (runbook W1b RO, R3 — the {@code {left, right}}
+     * shape of {@code Match_Datasets.Keys}, carried onto {@code group=}). Both sides are column
+     * references; the reader ({@code GroupedAggregate.readGroup}) holds them to plain columns.
+     */
+    record SidedKey(Expr left, Expr right)
     {
 
     }

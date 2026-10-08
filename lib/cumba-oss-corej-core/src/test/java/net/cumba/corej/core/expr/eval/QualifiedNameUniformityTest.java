@@ -150,6 +150,18 @@ class QualifiedNameUniformityTest
             distinct | filter | N | V:distinct(#S, filter=(@S == "a"))
             distinct | group | N | V:distinct(#S, group=[@G])
             distinct | keep_missings | - | static boolean
+            sequence | name | N | V:sequence(@S)
+            sequence | domain | - | a dataset (plan Q1)
+            sequence | filter | N | V:sequence(#S, filter=(@S == "a"))
+            sequence | group | N | V:sequence(#S, group=[@G])
+            sequence | by | N | V:sequence(#S, group=[#G], by=[asc(@L)])
+            sequence | keep_missings | - | static boolean
+            is_prefix_of | a | - | a list (a binding, sequence, values), never a column (W1b RO)
+            is_prefix_of | b | - | a list (a binding, sequence, values), never a column (W1b RO)
+            is_not_prefix_of | a | - | a list (a binding, sequence, values), never a column (W1b RO)
+            is_not_prefix_of | b | - | a list (a binding, sequence, values), never a column (W1b RO)
+            is_increasing | list | - | a list (a binding, sequence, values), never a column (W1b RO)
+            collapse_runs | list | - | a list (a binding, sequence, values), never a column (W1b RO)
             does_not_contain | x | N | B:does_not_contain(@S, "a")
             does_not_contain | value | N | B:does_not_contain("zz", @S)
             does_not_equal_string_part | name | N | B:does_not_equal_string_part(@S, "ab", regex="^(a).*$")
@@ -169,6 +181,7 @@ class QualifiedNameUniformityTest
             empty_within_except_last_row | group | N | B:empty_within_except_last_row(#S, @G, ordering=#L)
             empty_within_except_last_row | ordering | N | B:empty_within_except_last_row(#S, #G, ordering=@L)
             empty_within_except_last_row | keep_missings | - | static boolean
+            empty_within_except_last_row | by | N | B:empty_within_except_last_row(#S, #G, by=@L)
             ends_with | x | N | B:ends_with(@S, "a")
             ends_with | value | N | B:ends_with("zz", @S)
             equalsIgnoreCase | a | N | B:equalsIgnoreCase(@S, #S)
@@ -209,6 +222,7 @@ class QualifiedNameUniformityTest
             has_next_corresponding_record | ordering | N | B:not has_next_corresponding_record(#S, #S, within=#G, ordering=@L)
             has_next_corresponding_record | relation | - | static string
             has_next_corresponding_record | keep_missings | - | static boolean
+            has_next_corresponding_record | by | N | B:not has_next_corresponding_record(#S, #S, within=#G, by=@L)
             has_not_equal_length | name | N | B:has_not_equal_length(@S, 1)
             has_not_equal_length | length | N | B:has_not_equal_length(#S, @L)
             has_same_values | name | N | B:has_same_values(@S)
@@ -232,6 +246,7 @@ class QualifiedNameUniformityTest
             is_last_in_group | ordering | N | B:is_last_in_group(ordering=@L, group=[#G])
             is_last_in_group | group | N | B:is_last_in_group(ordering=#L, group=[@G])
             is_last_in_group | keep_missings | - | static boolean
+            is_last_in_group | by | N | B:is_last_in_group(by=@L, group=[#G])
             is_missing | x | N | B:is_missing(@S)
             is_not_complete_date_part | x | N | B:is_not_complete_date_part(@D)
             is_not_integer | x | N | B:is_not_integer(@N)
@@ -830,7 +845,7 @@ class QualifiedNameUniformityTest
     {
         // +1 descriptor / +2 parameters / +1 accessor since PLAN-library-template-label-resolution
         // (matches_label_template(label, template) and label_template(…, "LIBRARY")).
-        assertEquals(180, FunctionRegistry.all().size(),
+        assertEquals(185, FunctionRegistry.all().size(),
                 "registered descriptors (165 + any / all / none / joined, PLAN-cg0218; + 2"
                         + " column-status predicates, PLAN-present-empty-column-fold; + the nullary"
                         + " get_permitted_column_order, PLAN-permitted-addition-position; + union,"
@@ -838,13 +853,19 @@ class QualifiedNameUniformityTest
                         + " PLAN-elementwise-list-functions / runbook W1a E1; + contains_any,"
                         + " PLAN-engine-gap-list-elementwise / runbook W1b LE1'; + define_available,"
                         + " runbook W1b DP1a; + vlm_has_method / vlm_has_comment /"
-                        + " vlm_origin_type / codelist_decode, runbook W1b DV)");
-        assertEquals(305,
+                        + " vlm_origin_type / codelist_decode, runbook W1b DV; + sequence /"
+                        + " is_prefix_of / is_not_prefix_of / is_increasing / collapse_runs,"
+                        + " runbook W1b RO)");
+        assertEquals(320,
                 FunctionRegistry.all().stream().mapToInt(d -> d.parameters().size()).sum(),
                 "declared parameters (283 + one each for any / all / none / joined + one each"
                         + " for var_is_single_value / var_is_all_missing + three for union + one for"
                         + " values + two for contains_any + two each for len / length /"
-                        + " max_value_length (W1b BL1) + one each for the four W1b DV calls)");
+                        + " max_value_length (W1b BL1) + one each for the four W1b DV calls"
+                        + " + six for sequence, two each for is_(not_)prefix_of, one each for"
+                        + " is_increasing / collapse_runs, one by= each for is_last_in_group /"
+                        + " empty_within_except_last_row / has_next_corresponding_record, W1b"
+                        + " RO / SK)");
         assertEquals(28, MetadataAttribute.values().length, "metadata accessors");
         assertEquals(Set.of("date", "date_part", "num", "time", "time_part"),
                 new TreeSet<>(ExprCompiler.comparisonMarkers()), "comparison markers");
@@ -852,9 +873,11 @@ class QualifiedNameUniformityTest
         List<Row> rows = rows();
         long probed = rows.stream().filter(Row::probed).count();
         long nameClass = rows.stream().filter(Row::name).count();
-        assertEquals(266, nameClass,
-                "name-bearing parameters in the hand table (265 + ~ left, W1b SX)");
-        assertEquals(213, probed, "probed parameters in the hand table (212 + ~ left, W1b SX)");
+        assertEquals(273, nameClass,
+                "name-bearing parameters in the hand table (265 + ~ left, W1b SX; + sequence's"
+                        + " name / filter / group / by and the three by=, W1b RO / SK)");
+        assertEquals(220, probed, "probed parameters in the hand table (212 + ~ left, W1b SX;"
+                + " + sequence's four and the three by=, W1b RO / SK)");
         // T2 r1 L2: every unprobed name-bearing row states one of the three admitted reasons.
         List<String> unprobed = new ArrayList<>();
         for (Row r : rows)
@@ -876,8 +899,10 @@ class QualifiedNameUniformityTest
         // +3 for union's three list operands (PLAN-union-function, runbook W1a U1).
         // +6 for unit= / encoding= of len / length / max_value_length (runbook W1b BL1), +1 for
         // var_has_value_list's level, +1 for the nullary define_available (W1b DP1a / DV).
-        assertEquals(154, rows.stream().filter(r -> !r.name()).count(),
-                "non-name rows (153 + the ~ literal, W1b SX)");
+        // +8 for sequence's domain / keep_missings and the six list parameters of
+        // is_(not_)prefix_of / is_increasing / collapse_runs (runbook W1b RO).
+        assertEquals(162, rows.stream().filter(r -> !r.name()).count(),
+                "non-name rows (153 + the ~ literal, W1b SX; + 8, W1b RO)");
     }
 
     // ------------------------------------------------------------------
@@ -1917,6 +1942,6 @@ class QualifiedNameUniformityTest
             }
         }
         assertEquals(List.of(), invalid);
-        assertEquals(213, probed);
+        assertEquals(220, probed);
     }
 }

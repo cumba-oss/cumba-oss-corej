@@ -2981,7 +2981,8 @@ public final class ExprCompiler
         }
         String rawName = groupOperandName(c.args().get(0));
         String rawKey = groupOperandName(c.args().get(1));
-        List<List<String>> rawWithin = withinComponents(c.kwargs().get("within"));
+        List<List<net.cumba.corej.core.exec.GroupSplice.Member>> withinMembers = withinComponents(
+                c.kwargs().get("within"));
         boolean includeEmpty = includeEmptyKwarg(c);
         GroupKeyPolicy policy = groupKeyPolicy(c, GroupKeyPolicy.DROP_MISSING_KEYS);
         return run ->
@@ -2989,7 +2990,8 @@ public final class ExprCompiler
             EvaluationContext ctx = run.ctx();
             String name = resolveDomainPrefix(rawName, ctx);
             String key = resolveDomainPrefix(rawKey, ctx);
-            List<List<String>> withinComps = resolveDomainPrefixComponents(rawWithin, ctx);
+            List<List<String>> withinComps = resolveDomainPrefixComponents(
+                    spliceComponents(c.name(), withinMembers, ctx), ctx);
             IDataTable table = groupReadTable(ctx, withinComps, name, key);
             DataTableMeta meta = table.getMetaData();
             int nameIdx = meta.getColumnIndex(name);
@@ -3038,17 +3040,14 @@ public final class ExprCompiler
             throw unsupported("present_on_multiple_rows_within requires a name operand");
         }
         String rawName = groupOperandName(c.args().get(0));
-        List<String> within = withinColumns(c.kwargs().get("within"));
-        if (within.size() != 1)
-        {
-            throw unsupported("present_on_multiple_rows_within requires a single within column");
-        }
-        String rawWithinCol = within.get(0);
+        List<net.cumba.corej.core.exec.GroupSplice.Member> within = singleColumnMembers(c.name(),
+                "within", c.kwargs().get("within"), "requires a single within column");
         GroupKeyPolicy policy = groupKeyPolicy(c, GroupKeyPolicy.DROP_MISSING_KEYS);
         return run ->
         {
             String name = resolveDomainPrefix(rawName, run.ctx());
-            String withinCol = resolveDomainPrefix(rawWithinCol, run.ctx());
+            String withinCol = resolveDomainPrefix(
+                    spliceSingle(c.name(), "within", within, run.ctx()), run.ctx());
             IDataTable table = GroupReadTable.of(run.ctx(), name, withinCol);
             DataTableMeta meta = table.getMetaData();
             // EC-44 (Fix #134): an absent `within` is dropped by partition() and the composite
@@ -3085,7 +3084,10 @@ public final class ExprCompiler
     private static ExprProgram.BoolPlan compileIsLastInGroup(Expr.Call c)
     {
         List<@Nullable Expr> bound = bindStrict(c);
-        String rawOrder = strictColumnName(bound.get(0), c.name(), "ordering");
+        // W1b SK (O17): by= beside ordering=, one ascending key — the one sort-key reader; a
+        // written key is read strictly (R1), a $ / computed one spliced at evaluation (BS2c)
+        net.cumba.corej.core.exec.GroupSplice.Member orderMember = sortKeyMember(c.name(),
+                bound.get(3), bound.get(0));
         List<net.cumba.corej.core.exec.GroupSplice.Member> groupMembers = strictColumnMembers(
                 bound.get(1), c.name(), "group");
         GroupKeyPolicy policy = groupKeyPolicyRequiringGroup(c.name(), bound.get(2),
@@ -3095,7 +3097,8 @@ public final class ExprCompiler
             EvaluationContext ctx = run.ctx();
             List<String> group = resolveDomainPrefixes(
                     spliceMembers(c.name(), "group", groupMembers, ctx), ctx);
-            String order = resolveDomainPrefix(rawOrder, ctx);
+            String order = resolveDomainPrefix(
+                    spliceSingle(c.name(), "by", List.of(orderMember), ctx), ctx);
             return net.cumba.corej.core.exec.GroupedPredicates.isLastInGroup(
                     groupReadTable(ctx, List.of(group), order), group, order, policy);
         };
@@ -3259,6 +3262,100 @@ public final class ExprCompiler
 
 
     /**
+     * W1b BS2c (coordinator D4): the one name a single-reference slot reads for this run — a
+     * written name as authored, a spliced member resolved to exactly one name; a spliced list of
+     * two or more names is the rule's ERROR (the slot partitions / orders by ONE column).
+     */
+    private static String spliceSingle(String function, String parameter,
+            List<net.cumba.corej.core.exec.GroupSplice.Member> members, EvaluationContext ctx)
+    {
+        List<String> names = spliceMembers(function, parameter, members, ctx);
+        if (names.size() != 1)
+        {
+            throw new net.cumba.corej.core.exec.GroupSplice.GroupSpliceException("["
+                    + ctx.getRuleId() + "] " + function + ": " + parameter + "= takes one column,"
+                    + " but the spliced member resolves to " + names + " — a single-reference"
+                    + " slot splices a string or a one-element list");
+        }
+        return names.get(0);
+    }
+
+
+    /**
+     * The members of a single-reference slot ({@code within=} of
+     * {@code present_on_multiple_rows_within} / {@code has_next_corresponding_record},
+     * {@code empty_within_except_last_row}'s {@code group}): a column reference, a one-element list
+     * of one, or a {@code $} / computed member spliced at evaluation ({@link #spliceSingle}). A
+     * written list of two or more columns declines at load with {@code message}.
+     */
+    private static List<net.cumba.corej.core.exec.GroupSplice.Member> singleColumnMembers(
+            String function, String parameter, @Nullable Expr e, String message)
+    {
+        if (e == null)
+        {
+            throw unsupported(function + " requires " + parameter + "=, one column");
+        }
+        List<net.cumba.corej.core.exec.GroupSplice.Member> members = withinColumns(e);
+        if (members.size() != 1)
+        {
+            throw unsupported(function + " " + message);
+        }
+        return members;
+    }
+
+
+    /**
+     * O17 (W1b SK): the one ascending sort key of {@code is_last_in_group},
+     * {@code has_next_corresponding_record} and {@code empty_within_except_last_row} — {@code by=}
+     * or {@code ordering=}, read by the one sort-key reader ({@code SortKeys.single}).
+     */
+    private static net.cumba.corej.core.exec.GroupSplice.Member sortKeyMember(String function,
+            @Nullable Expr by, @Nullable Expr ordering)
+    {
+        try
+        {
+            return net.cumba.corej.core.exec.SortKeys.single(function, by, ordering);
+        }
+        catch (ExpressionException ex)
+        {
+            throw unsupported(messageOf(ex));
+        }
+    }
+
+
+    /**
+     * The {@code within=} components of a run ({@link #withinComponents}): a spliced top-level
+     * member contributes one singleton component per name it holds (as the written
+     * {@code within=[A, B]} does), a spliced member inside an EC-24 coalesce group its names into
+     * that group.
+     */
+    private static List<List<String>> spliceComponents(String function,
+            List<List<net.cumba.corej.core.exec.GroupSplice.Member>> components,
+            EvaluationContext ctx)
+    {
+        List<List<String>> out = new ArrayList<>(components.size());
+        for (List<net.cumba.corej.core.exec.GroupSplice.Member> component : components)
+        {
+            List<String> names = spliceMembers(function, "within", component, ctx);
+            if (component.size() == 1
+                    && !(component.get(0) instanceof net.cumba.corej.core.exec.GroupSplice.Name)
+                    && names.size() > 1)
+            {
+                for (String name : names)
+                {
+                    out.add(List.of(name));
+                }
+            }
+            else
+            {
+                out.add(names);
+            }
+        }
+        return out;
+    }
+
+
+    /**
      * The {@code keep_missings} disposition of a wave-1 grouped plan, read from the <b>bound</b>
      * slot so that the positional and the keyword spelling are one binding (D9; review round 1 of
      * {@code PLAN-function-surface-wave1}: the kwargs-only reader {@link #groupKeyPolicy} bound a
@@ -3300,14 +3397,17 @@ public final class ExprCompiler
             throw unsupported("empty_within_except_last_row requires a name and a group operand");
         }
         String rawName = groupOperandName(c.args().get(0));
-        String rawGroup = groupOperandName(c.args().get(1));
-        String rawOrder = orderingColumn(c);
+        List<net.cumba.corej.core.exec.GroupSplice.Member> groupMembers = singleColumnMembers(
+                c.name(), "group", c.args().get(1), "takes one group column");
+        net.cumba.corej.core.exec.GroupSplice.Member orderMember = orderingMember(c);
         GroupKeyPolicy policy = groupKeyPolicy(c, GroupKeyPolicy.DROP_MISSING_KEYS);
         return run ->
         {
             String name = resolveDomainPrefix(rawName, run.ctx());
-            String group = resolveDomainPrefix(rawGroup, run.ctx());
-            String order = resolveDomainPrefix(rawOrder, run.ctx());
+            String group = resolveDomainPrefix(
+                    spliceSingle(c.name(), "group", groupMembers, run.ctx()), run.ctx());
+            String order = resolveDomainPrefix(
+                    spliceSingle(c.name(), "by", List.of(orderMember), run.ctx()), run.ctx());
             IDataTable table = GroupReadTable.of(run.ctx(), name, group, order);
             DataTableMeta meta = table.getMetaData();
             int nameIdx = meta.getColumnIndex(name);
@@ -3352,21 +3452,19 @@ public final class ExprCompiler
         }
         String rawName = groupOperandName(c.args().get(0));
         String rawValue = groupOperandName(c.args().get(1));
-        List<String> within = withinColumns(c.kwargs().get("within"));
-        if (within.size() != 1)
-        {
-            throw unsupported("has_next_corresponding_record requires a single within column");
-        }
-        String rawWithinCol = within.get(0);
-        String rawOrder = orderingColumn(c);
+        List<net.cumba.corej.core.exec.GroupSplice.Member> within = singleColumnMembers(c.name(),
+                "within", c.kwargs().get("within"), "requires a single within column");
+        net.cumba.corej.core.exec.GroupSplice.Member orderMember = orderingMember(c);
         GroupKeyPolicy policy = groupKeyPolicy(c, GroupKeyPolicy.DROP_MISSING_KEYS);
         GroupSemantics.NeighbourRelation relation = neighbourRelation(c);
         return run ->
         {
             String name = resolveDomainPrefix(rawName, run.ctx());
             String value = resolveDomainPrefix(rawValue, run.ctx());
-            String withinCol = resolveDomainPrefix(rawWithinCol, run.ctx());
-            String order = resolveDomainPrefix(rawOrder, run.ctx());
+            String withinCol = resolveDomainPrefix(
+                    spliceSingle(c.name(), "within", within, run.ctx()), run.ctx());
+            String order = resolveDomainPrefix(
+                    spliceSingle(c.name(), "by", List.of(orderMember), run.ctx()), run.ctx());
             IDataTable table = GroupReadTable.of(run.ctx(), name, value, withinCol, order);
             DataTableMeta meta = table.getMetaData();
             int nameIdx = meta.getColumnIndex(name);
@@ -3464,33 +3562,24 @@ public final class ExprCompiler
         }
         String rawTarget = groupOperandName(c.args().get(0));
         Expr by = c.kwargs().get("by");
-        if (!(by instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.LIST)
+        if (by == null)
         {
-            throw unsupported("is_sorted_by requires a by=[…] descriptor list");
+            throw unsupported("is_sorted_by requires a by=[…] sort-key list");
         }
-        @SuppressWarnings("unchecked")
-        List<Expr> descs = (List<Expr>) lit.value();
-        List<String> rawSortVars = new ArrayList<>(descs.size());
-        for (Expr d : descs)
+        // W1b SK (O16): the one sort-key reader — a bare column is asc(COL), a descriptor's
+        // column or a bare member may be a $ / computed member spliced at evaluation; the
+        // direction is still ignored here (coordinator D20 — W2 SB1 honours it)
+        List<net.cumba.corej.core.exec.SortKeys.Key> keys;
+        try
         {
-            if (!(d instanceof Expr.Call dc) || dc.args().size() != 1
-                    || !("asc".equals(dc.name()) || "desc".equals(dc.name())))
-            {
-                throw unsupported("is_sorted_by descriptor must be asc(COL) or desc(COL)");
-            }
-            Expr key = dc.args().get(0);
-            if (key instanceof Expr.Lit keyLit && keyLit.kind() == Expr.LitKind.STRING)
-            {
-                // Runbook W8 (D-W8-6, R1): the descriptor used to REQUIRE the quoted spelling; a
-                // quoted name is a string, never a column.
-                throw unsupported("is_sorted_by descriptor " + dc.name() + "(\"" + keyLit.value()
-                        + "\") takes a column reference, not a string literal — write " + dc.name()
-                        + "(" + keyLit.value() + "); a quoted name is a string, never a column");
-            }
-            rawSortVars.add(groupOperandName(key));
+            keys = net.cumba.corej.core.exec.SortKeys.read(c.name(), by);
+        }
+        catch (ExpressionException ex)
+        {
+            throw unsupported(messageOf(ex));
         }
         Expr withinArg = c.kwargs().get("within");
-        List<String> within = withinColumns(withinArg);
+        List<net.cumba.corej.core.exec.GroupSplice.Member> within = withinColumns(withinArg);
         if (withinArg != null && within.size() != 1)
         {
             // Combined review of runbook W2–W8, round 2 (corpus M4): the ordering plan partitions
@@ -3500,7 +3589,6 @@ public final class ExprCompiler
             throw unsupported("is_sorted_by's within= takes one column (or a one-element list),"
                     + " not " + within);
         }
-        String rawWithinCol = within.isEmpty() ? null : within.get(0);
         // ⚠ FOLD_BLANK_KEYS is this operator's SHIPPED default, and it is the questionable one for
         // an ordering operator — keeping blank keys chains one subject's last row to another's
         // first within each blank kind ("" its own bucket, each missing marker its own since
@@ -3511,8 +3599,12 @@ public final class ExprCompiler
         {
             EvaluationContext ctx = run.ctx();
             String target = resolveDomainPrefix(rawTarget, ctx);
-            List<String> sortVars = resolveDomainPrefixes(rawSortVars, ctx);
-            String withinCol = rawWithinCol == null ? null : resolveDomainPrefix(rawWithinCol, ctx);
+            List<String> sortVars = resolveDomainPrefixes(
+                    net.cumba.corej.core.exec.SortKeys.columns(
+                            net.cumba.corej.core.exec.SortKeys.resolve(c.name(), keys, ctx, false)),
+                    ctx);
+            String withinCol = within.isEmpty() ? null
+                    : resolveDomainPrefix(spliceSingle(c.name(), "within", within, ctx), ctx);
             return GroupSemantics.targetIsNotSortedByViolations(
                     groupReadTable(ctx, List.of(sortVars), target, withinCol), run.rowCount(),
                     target, sortVars, withinCol, policy);
@@ -3521,16 +3613,14 @@ public final class ExprCompiler
 
 
     /**
-     * The {@code ordering=} column name, declining when absent (the legacy operators require it).
+     * The one ascending sort key of a keyword-bound single-key reader
+     * ({@code empty_within_except_last_row}, {@code has_next_corresponding_record}): {@code by=} or
+     * the older {@code ordering=} (O17, W1b SK), through {@link #sortKeyMember}.
      */
-    private static String orderingColumn(Expr.Call c)
+    private static net.cumba.corej.core.exec.GroupSplice.Member orderingMember(Expr.Call c)
     {
-        Expr ord = c.kwargs().get("ordering");
-        if (ord == null)
-        {
-            throw unsupported(c.name() + " requires an ordering= column");
-        }
-        return groupOperandName(ord);
+        return sortKeyMember(c.name(), c.kwargs().get(net.cumba.corej.core.exec.SortKeys.PARAMETER),
+                c.kwargs().get(net.cumba.corej.core.exec.SortKeys.LEGACY_PARAMETER));
     }
 
 
@@ -4231,13 +4321,6 @@ public final class ExprCompiler
     }
 
 
-    /** Whether {@code e} is a STRING literal. */
-    private static boolean isStringLiteral(Expr e)
-    {
-        return e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING;
-    }
-
-
     /**
      * The raw name of a group-operator operand: a plain column reference, or a {@code --}-prefix
      * domain wildcard — returned RAW and resolved against the run's domain prefix inside the plan
@@ -4371,28 +4454,39 @@ public final class ExprCompiler
      * The {@code within=} partitioning columns: a single column reference, a list of column
      * references, or empty when absent. Declines a non-column member (Phase-N residual).
      */
-    private static List<String> withinColumns(@Nullable Expr within)
+    private static List<net.cumba.corej.core.exec.GroupSplice.Member> withinColumns(
+            @Nullable Expr within)
     {
         if (within == null)
         {
             return List.of();
         }
-        if (within instanceof Expr.Ref || isStringLiteral(within))
-        {
-            return List.of(groupOperandName(within)); // a string literal is refused there (R1)
-        }
         if (within instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
         {
             @SuppressWarnings("unchecked")
             List<Expr> items = (List<Expr>) lit.value();
-            List<String> cols = new ArrayList<>(items.size());
+            List<net.cumba.corej.core.exec.GroupSplice.Member> cols = new ArrayList<>(items.size());
             for (Expr item : items)
             {
-                cols.add(groupOperandName(item));
+                cols.add(withinMember(item));
             }
             return cols;
         }
-        throw unsupported("within= must be a column reference or a list of column references");
+        return List.of(withinMember(within));
+    }
+
+
+    /**
+     * One {@code within=} / single-reference member (W1b BS2c, D4): a {@code $} reference or a
+     * computed expression is spliced at evaluation ({@code GroupSplice.spliced}), anything else is
+     * read as a name ({@link #groupOperandName}: a string literal is refused, R1).
+     */
+    private static net.cumba.corej.core.exec.GroupSplice.Member withinMember(Expr item)
+    {
+        net.cumba.corej.core.exec.GroupSplice.Member spliced = net.cumba.corej.core.exec.GroupSplice
+                .spliced(item);
+        return spliced != null ? spliced
+                : new net.cumba.corej.core.exec.GroupSplice.Name(groupOperandName(item));
     }
 
 
@@ -4403,42 +4497,41 @@ public final class ExprCompiler
      * column). Mirrors the retired leaf model's {@code getWithinComponents()} normalisation, so the
      * partition semantics survived the v1 model's retirement unchanged.
      */
-    private static List<List<String>> withinComponents(@Nullable Expr within)
+    private static List<List<net.cumba.corej.core.exec.GroupSplice.Member>> withinComponents(
+            @Nullable Expr within)
     {
         if (within == null)
         {
             return List.of();
         }
-        if (within instanceof Expr.Ref || isStringLiteral(within))
-        {
-            return List.of(List.of(groupOperandName(within))); // a string literal is refused (R1)
-        }
         if (within instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
         {
             @SuppressWarnings("unchecked")
             List<Expr> items = (List<Expr>) lit.value();
-            List<List<String>> components = new ArrayList<>(items.size());
+            List<List<net.cumba.corej.core.exec.GroupSplice.Member>> components = new ArrayList<>(
+                    items.size());
             for (Expr item : items)
             {
                 if (item instanceof Expr.Lit inner && inner.kind() == Expr.LitKind.LIST)
                 {
                     @SuppressWarnings("unchecked")
                     List<Expr> group = (List<Expr>) inner.value();
-                    List<String> comp = new ArrayList<>(group.size());
+                    List<net.cumba.corej.core.exec.GroupSplice.Member> comp = new ArrayList<>(
+                            group.size());
                     for (Expr g : group)
                     {
-                        comp.add(groupOperandName(g));
+                        comp.add(withinMember(g));
                     }
                     components.add(comp);
                 }
                 else
                 {
-                    components.add(List.of(groupOperandName(item)));
+                    components.add(List.of(withinMember(item)));
                 }
             }
             return components;
         }
-        throw unsupported("within= must be a column reference or a list of column references");
+        return List.of(List.of(withinMember(within)));
     }
 
     /**
@@ -5925,6 +6018,14 @@ public final class ExprCompiler
                 // Distinct.spec reads the call; the ungrouped value / tuple set is a
                 // dataset-level constant, the grouped value sets are broadcast per row.
                 yield compileDistinct(c);
+            }
+            if (net.cumba.corej.core.exec.Sequence.NAME.equals(c.name()))
+            {
+                // Runbook W1b RO (PLAN-engine-gap-row-ordinal R1): sequence on the same plan —
+                // Sequence.spec reads the call; the ordered values per group broadcast per row,
+                // or one dataset-level list.
+                yield RealRowAggregates.value(c,
+                        net.cumba.corej.core.exec.Sequence.spec(c)::evaluate);
             }
             MetadataAttribute metaAttr = MetadataAttribute.fromFunction(c.name());
             if (metaAttr != null)
@@ -8769,6 +8870,8 @@ public final class ExprCompiler
         case LIST -> throw unsupported("a list literal is not a scalar operand");
         case SUBSTITUTION -> throw unsupported(
                 "a /pattern/replacement/ literal is the right operand of ~, not a scalar operand");
+        case SIDED -> throw unsupported(
+                "a sided key {left: X, right: Y} is a group= member under domain=, not a scalar operand");
         };
     }
 
@@ -8785,6 +8888,7 @@ public final class ExprCompiler
             case LIST -> throw unsupported("list literal has no scalar text");
             case SUBSTITUTION -> throw unsupported(
                     "a /pattern/replacement/ literal has no scalar text");
+            case SIDED -> throw unsupported("a sided key {left: X, right: Y} has no scalar text");
             };
         }
         if (e instanceof Expr.Ref ref)

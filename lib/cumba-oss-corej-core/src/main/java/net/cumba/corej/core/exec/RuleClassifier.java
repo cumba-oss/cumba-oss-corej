@@ -397,7 +397,8 @@ public final class RuleClassifier
         // the study-level test sees the pinned domain exactly as before the port.
         if (GroupedAggregate.isFunction(call.name())
                 || (ReadValue.NAME.equals(call.name()) && call.kwargs().containsKey("group"))
-                || RecordCount.NAME.equals(call.name()) || Distinct.NAME.equals(call.name()))
+                || RecordCount.NAME.equals(call.name()) || Distinct.NAME.equals(call.name())
+                || Sequence.NAME.equals(call.name()))
         {
             // (record_count since runbook W6, PLAN-record-count-function D-W6-9: the same
             // usage its RECORD_COUNT operation denoted — the group members with a raw `$`
@@ -442,6 +443,12 @@ public final class RuleClassifier
                 else if (item instanceof Expr.Lit member && member.kind() == Expr.LitKind.STRING)
                 {
                     group.add(String.valueOf(member.value()));
+                }
+                else if (item instanceof Expr.Lit member && member.kind() == Expr.LitKind.SIDED
+                        && ((Expr.SidedKey) member.value()).left() instanceof Expr.Ref left)
+                {
+                    // W1b RO (R3): a sided member reads this row's left column
+                    group.add(left.name());
                 }
             }
         }

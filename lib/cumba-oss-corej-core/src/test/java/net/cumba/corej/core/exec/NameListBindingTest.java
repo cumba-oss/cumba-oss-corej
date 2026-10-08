@@ -176,12 +176,9 @@ class NameListBindingTest
         assertHint("computed-name read", loadError("not empty(colref($keys))", keys));
         assertHint("a binding of the binding",
                 loadError("not empty($b)", "$keys", "[USUBJID, AESEQ]", "$b", "$keys"));
-        // a name slot that does not splice refuses it as it refuses a string list of names (stage
-        // A's wording is pinned in StageACheckerTest; the compile seam's may surface first) —
-        // since W1a BS2b every group= splices, so the one left is is_sorted_by's by= (sort-key
-        // descriptors)
-        String grouped = loadError("not is_sorted_by(AESEQ, by=$keys)", keys);
-        assertTrue(grouped.contains("$keys") && !"null".equals(grouped), grouped);
+        // since W1a BS2b every group= splices, and since W1b SK (O16 #3) is_sorted_by's by= too:
+        // a name list is the sort keys, each ascending
+        assertEquals("null", loadError("not is_sorted_by(AESEQ, by=$keys)", keys));
         assertEquals("null", loadError("max(AESEQ, group=$keys) > 0", keys));
     }
 

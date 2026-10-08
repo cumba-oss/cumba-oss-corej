@@ -445,6 +445,7 @@ public final class EmptyColumnCollapse
         return net.cumba.corej.core.exec.ReadValue.NAME.equals(c.name())
                 || net.cumba.corej.core.exec.RecordCount.NAME.equals(c.name())
                 || net.cumba.corej.core.exec.Distinct.NAME.equals(c.name())
+                || net.cumba.corej.core.exec.Sequence.NAME.equals(c.name())
                 || net.cumba.corej.core.exec.GroupedAggregate.isFunction(c.name())
                 || c.kwargs().containsKey("domain");
     }

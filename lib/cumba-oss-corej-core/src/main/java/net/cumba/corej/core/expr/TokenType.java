@@ -26,6 +26,12 @@ public enum TokenType
     LBRACKET,
     RBRACKET,
     COMMA,
+    /** The opening brace of the sided key literal, left: X, right: Y (runbook W1b RO). */
+    LBRACE,
+    /** The closing brace of the sided key literal. */
+    RBRACE,
+    /** The colon separating a side's key from its column inside the sided key literal. */
+    COLON,
 
     /** Single {@code =} — keyword-argument separator (e.g. {@code within=[...]}). */
     EQ,

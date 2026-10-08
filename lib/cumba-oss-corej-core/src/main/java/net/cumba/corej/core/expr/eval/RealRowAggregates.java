@@ -86,7 +86,7 @@ final class RealRowAggregates
      * column to count by real row (T2 review LOW-2).
      */
     static final Set<String> VALUE_AGGREGATES = Set.of("max", "max_date", "min_date",
-            "record_count", "distinct");
+            "record_count", "distinct", "sequence");
 
     private RealRowAggregates()
     {

@@ -768,6 +768,24 @@ public final class BuiltinFunctions implements FunctionProvider
                 List.of(p("x", Primitive.STRING), p("list", new ListOf(Primitive.STRING))),
                 (run, args) -> Primitives.containsAny(args.get(0), args.get(1), run.rowCount()));
 
+        // -- the ordered-list functions (PLAN-engine-gap-row-ordinal R2 / R4 / R6, runbook W1b
+        // RO; coordinator D11): ordinary registry functions over vectors — a per-row list
+        // (sequence's output) and a dataset-level list alike
+        // (net.cumba.corej.core.exec.OrderedLists)
+        List<Parameter> twoLists = List.of(p("a", new ListOf(Unknown.UNKNOWN)),
+                p("b", new ListOf(Unknown.UNKNOWN)));
+        bool(fns, "is_prefix_of", twoLists, (run, args) -> net.cumba.corej.core.exec.OrderedLists
+                .isPrefixOf(args.get(0), args.get(1), run.rowCount(), false));
+        bool(fns, "is_not_prefix_of", twoLists,
+                (run, args) -> net.cumba.corej.core.exec.OrderedLists.isPrefixOf(args.get(0),
+                        args.get(1), run.rowCount(), true));
+        bool(fns, "is_increasing", List.of(p("list", new ListOf(Unknown.UNKNOWN))),
+                (run, args) -> net.cumba.corej.core.exec.OrderedLists.isIncreasing(args.get(0),
+                        run.rowCount()));
+        value(fns, "collapse_runs", List.of(p("list", new ListOf(Unknown.UNKNOWN))),
+                (run, args) -> net.cumba.corej.core.exec.OrderedLists.collapseRuns(args.get(0),
+                        run.rowCount()));
+
         // -- BOOLEAN case-insensitive equality -------------------------------
         bool(fns, "equalsIgnoreCase", List.of(p("a"), p("b")), (run, args) -> Primitives
                 .equality(args.get(0), args.get(1), run.rowCount(), false, true, false, false));

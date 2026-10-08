@@ -73,7 +73,10 @@ class BuiltinFunctionsRegistrationTest
             "is_integer/1/BOOLEAN", "is_missing/1/BOOLEAN", "is_not_complete_date_part/1/BOOLEAN",
             "is_not_integer/1/BOOLEAN", "is_numeric/1/BOOLEAN", "is_partial_date/1/BOOLEAN",
             "is_present/1/BOOLEAN", "is_valid_date/1/BOOLEAN", "is_valid_duration/1/BOOLEAN",
-            "is_valid_name/1/BOOLEAN", "is_valid_testcd/1/BOOLEAN", "latest_possible/1/VALUE",
+            // PLAN-engine-gap-row-ordinal R2 / R4 / R6 (runbook W1b RO): the ordered-list functions
+            "is_prefix_of/2/BOOLEAN", "is_not_prefix_of/2/BOOLEAN", "is_increasing/1/BOOLEAN",
+            "collapse_runs/1/VALUE", "is_valid_name/1/BOOLEAN", "is_valid_testcd/1/BOOLEAN",
+            "latest_possible/1/VALUE",
             // PLAN-engine-gap-byte-length §5.2 (runbook W1b BL1): unit= / encoding=
             "len/1-3/VALUE", "length/1-3/VALUE", "library_available/0/BOOLEAN", "lowcase/1/VALUE",
             "lower/1/VALUE", "month/1/VALUE", "non_empty/1/BOOLEAN", "normalize_space/1/VALUE",

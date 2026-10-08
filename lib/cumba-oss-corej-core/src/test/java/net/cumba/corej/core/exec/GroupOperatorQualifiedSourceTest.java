@@ -117,6 +117,6 @@ class GroupOperatorQualifiedSourceTest
         {
             assertTrue(registered.contains(name), name + " is not a registered function");
         }
-        assertEquals(23, GroupReadTable.GROUP_OPERATORS.size());
+        assertEquals(24, GroupReadTable.GROUP_OPERATORS.size());
     }
 }

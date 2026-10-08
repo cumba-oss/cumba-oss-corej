@@ -77,7 +77,7 @@ public final class GroupReadTable extends AbstractDataTable
             "empty_within_except_last_row", "has_next_corresponding_record", "is_sorted_by",
             "is_last_in_group", "has_mixed_emptiness_within_group", "contains_all",
             "not_contains_all", "inconsistent_enumerated_columns", "max", "max_date", "min_date",
-            "record_count", "distinct");
+            "record_count", "distinct", "sequence");
 
     /**
      * The operators that count records ({@code PLAN-merged-evaluation-table} OD-6): every

@@ -1670,13 +1670,16 @@ class StageACheckerTest
         {
             assertEquals(List.of(), check(rule, expression).findings(), expression);
         }
+        // W1b SK (O16 #3): is_sorted_by's by= splices too — a name list, the expression it
+        // holds, each key ascending
+        for (String expression : List.of("not is_sorted_by(AESEQ, by=[asc(USUBJID), $nk])",
+                "not is_sorted_by(AESEQ, by=[asc(USUBJID), natural_key_variables()])"))
+        {
+            assertEquals(List.of(), check(rule, expression).findings(), expression);
+        }
         // negatives
-        for (String expression : List.of(
-                // BS2b: is_sorted_by's by= takes asc()/desc() descriptors, never a splice
-                "not is_sorted_by(AESEQ, by=[asc(USUBJID), $nk])",
-                "not is_sorted_by(AESEQ, by=[asc(USUBJID), natural_key_variables()])",
-                "is_unique_set([\"USUBJID\"])", "is_unique_set([USUBJID, $num])",
-                "empty(max(AESEQ, group=[USUBJID, $num]))",
+        for (String expression : List.of("is_unique_set([\"USUBJID\"])",
+                "is_unique_set([USUBJID, $num])", "empty(max(AESEQ, group=[USUBJID, $num]))",
                 "empty(max(AESEQ, group=[USUBJID, $scalar]))",
                 "AETERM in distinct(AETERM, group=[USUBJID, upper(AETERM)])",
                 // review r1 L7: a PER-ROW binding can never be spliced (GroupSplice ERRORs on the
@@ -1699,9 +1702,6 @@ class StageACheckerTest
             assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(check(rule, expression)),
                     expression);
         }
-        String message = check(rule, "not is_sorted_by(AESEQ, by=[asc(USUBJID), $nk])").findings()
-                .get(0).message();
-        assertTrue(message.contains("'by' of 'is_sorted_by'") && message.contains("$nk"), message);
         String groupPerRow = check(rule, "empty(max(AESEQ, group=[USUBJID, $scalar]))").findings()
                 .get(0).message();
         assertTrue(groupPerRow.contains("per-row") && groupPerRow.contains("'group' of 'max'"),
@@ -1914,8 +1914,11 @@ class StageACheckerTest
         {
             StageAReport report = check(expression);
             assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(report), expression);
-            assertTrue(report.findings().get(0).message().contains(
-                    "takes a column reference, not string"), report.findings().toString());
+            // W1b BS2c: is_last_in_group's ordering= splices now, so a per-row computed member
+            // is the splice refusal there; has_mixed_emptiness' name keeps the strict wording
+            String message = report.findings().get(0).message();
+            assertTrue(message.contains("takes a column reference, not string")
+                    || message.contains("cannot splice the per-row member"), message);
         }
         assertEquals(List.of(),
                 check("has_mixed_emptiness_within_group(AETERM, group=[USUBJID])").findings());
@@ -1990,15 +1993,13 @@ class StageACheckerTest
             assertTrue(message.contains("never a list element") && message.contains("\"$")
                     && message.contains("bind the whole list"), message);
         }
-        // the splice slots are the only legal homes, and a non-splicing column-reference list
-        // (since W1a BS2b: is_sorted_by's by= of sort-key descriptors) files its own finding
-        // exactly once (no double report)
+        // the splice slots are the only legal homes — since W1b SK (O16 #3) is_sorted_by's by=
+        // is one of them (a name list is the keys, each ascending), so no finding there either
         assertEquals(List.of(), check(rule, "is_unique_set([USUBJID, $nk])").findings());
         assertEquals(List.of(), check(rule, "record_count(group=[USUBJID, $nk]) > 1").findings());
         assertEquals(List.of(), check(rule, "empty(max(AESEQ, group=[USUBJID, $nk]))").findings());
-        StageAReport once = check(rule, "not is_sorted_by(AESEQ, by=[asc(USUBJID), $nk])");
-        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(once));
-        assertEquals(1, once.findings().size(), once.findings().toString());
+        assertEquals(List.of(),
+                check(rule, "not is_sorted_by(AESEQ, by=[asc(USUBJID), $nk])").findings());
         // the binding alone as the right operand is the fix
         assertEquals(List.of(), check(rule, "AETERM in $codes").findings());
     }
@@ -2381,16 +2382,13 @@ class StageACheckerTest
         assertEquals(List.of(), kinds(check(rule, "is_unique_set([USUBJID, $keys])")));
         assertEquals(List.of(), kinds(check(rule, "record_count(group=$keys) > 1")));
         assertEquals(List.of(), kinds(check(rule, "\"x\" in values($keys)")));
-        // W1a BS2b: every group= splices; the non-splicing name slot left is is_sorted_by's
-        // by= (sort-key descriptors)
+        // W1a BS2b: every group= splices; since W1b SK (O16 #3) is_sorted_by's by= splices too
+        // — a name list is the keys, each ascending
         assertEquals(List.of(), kinds(check(rule, "max(AESEQ, group=$keys) > 0")));
         assertEquals(List.of(), kinds(check(rule, "max(AESEQ, group=[USUBJID, $keys]) > 0")));
-        StageAReport grouped = check(rule, "not is_sorted_by(AESEQ, by=$keys)");
-        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(grouped));
-        assertTrue(grouped.findings().get(0).message().contains("splice"),
-                grouped.findings().toString());
-        StageAReport member = check(rule, "not is_sorted_by(AESEQ, by=[asc(USUBJID), $keys])");
-        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(member));
+        assertEquals(List.of(), kinds(check(rule, "not is_sorted_by(AESEQ, by=$keys)")));
+        assertEquals(List.of(),
+                kinds(check(rule, "not is_sorted_by(AESEQ, by=[asc(USUBJID), $keys])")));
         StageAReport membership = check(rule, "AETERM in $keys");
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(membership));
         assertTrue(membership.findings().get(0).message().contains("holds column names"),

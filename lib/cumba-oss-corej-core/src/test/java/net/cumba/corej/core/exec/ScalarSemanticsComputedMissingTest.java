@@ -524,7 +524,10 @@ class ScalarSemanticsComputedMissingTest
     // null), and every value it answers is lookupValue's -- a cell, the not-supplied default of
     // the column's type, or the ruled absent-joined-column value -- so no element is null
     // (MergedViewLookupColumnReaderTest compares it with lookupValue row by row).
-    private static final int EXPECTED_MULTI_VALUE_PRODUCERS = 4;
+    // runbook W1b RO: Sequence.targetCells — Distinct.targetCells' twin, read against both
+    // halves (never a null producer: an absent column or an unservable expression reads the
+    // computed missing; the elements it produces are cells, never null)
+    private static final int EXPECTED_MULTI_VALUE_PRODUCERS = 5;
 
     /**
      * ⛔ The permanent positive control for the element detector — a declaration carrying a

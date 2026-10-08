@@ -163,6 +163,20 @@ class NameSlotRosterTest
         BASE.put("valid_external_dictionary_hierarchy",
                 "valid_external_dictionary_hierarchy(X, Y, external_dictionary_type=\"meddra\")");
         BASE.put("distinct", "distinct(X)");
+        // runbook W1b RO / SK: sequence on distinct's plan, the ordered-list functions over
+        // lists, and by= on the three renamed single-key readers (O17)
+        BASE.put("sequence", "sequence(X)");
+        // (a per-row list: a BOOLEAN registry call with a list LITERAL at parameter 0 does not
+        // compile today — "a list literal is not a scalar operand" — the same for contains_all)
+        BASE.put("is_prefix_of", "is_prefix_of(split_by(X, \",\"), split_by(X, \",\"))");
+        BASE.put("is_not_prefix_of", "is_not_prefix_of(split_by(X, \",\"), split_by(X, \",\"))");
+        BASE.put("is_increasing", "is_increasing(split_by(X, \",\"))");
+        BASE.put("collapse_runs", "collapse_runs(split_by(X, \",\"))");
+        BASE.put("is_last_in_group.by", "is_last_in_group(group=[USUBJID], by=AESEQ)");
+        BASE.put("empty_within_except_last_row.by",
+                "empty_within_except_last_row(X, USUBJID, by=AESEQ)");
+        BASE.put("has_next_corresponding_record.by",
+                "has_next_corresponding_record(X, Y, within=USUBJID, by=AESEQ)");
         BASE.put("max", "max(NUM, group=[USUBJID])");
         BASE.put("max_date", "max_date(DT, group=[USUBJID])");
         BASE.put("min_date", "min_date(DT, group=[USUBJID])");

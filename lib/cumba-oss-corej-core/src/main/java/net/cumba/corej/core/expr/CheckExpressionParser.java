@@ -271,6 +271,7 @@ public final class CheckExpressionParser
             yield e;
         }
         case LBRACKET -> parseList();
+        case LBRACE -> parseSided();
         case IDENT -> parseIdentOperand(tok);
         default -> throw new ExpressionException(
                 "Expected an operand but found '" + tok.text() + "'", tok.position());
@@ -304,6 +305,60 @@ public final class CheckExpressionParser
         }
         expect(TokenType.RBRACKET, "]");
         return new Expr.Lit(Expr.LitKind.LIST, items);
+    }
+
+
+    /**
+     * The sided key literal {@code {left: X, right: Y}} (runbook W1b RO, R3): exactly the two keys
+     * {@code left} and {@code right}, in either order, each a column operand; printed in the
+     * canonical {@code left, right} order. Where it may stand is the loader's judgement
+     * ({@code RulePackageLoader.validateSidedKeys}: a {@code group=} member under {@code domain=}).
+     */
+    private Expr parseSided()
+    {
+        Token open = peek();
+        expect(TokenType.LBRACE, "{");
+        Expr left = null;
+        Expr right = null;
+        for (int i = 0; i < 2; i++)
+        {
+            Token key = peek();
+            if (key.type() != TokenType.IDENT
+                    || !("left".equals(key.text()) || "right".equals(key.text())))
+            {
+                throw new ExpressionException(
+                        "a sided key is written {left: X, right: Y}, not '" + key.text() + "'",
+                        key.position());
+            }
+            advance();
+            expect(TokenType.COLON, ":");
+            Expr side = parseOperand();
+            if ("left".equals(key.text()) ? left != null : right != null)
+            {
+                throw new ExpressionException(
+                        "a sided key names " + key.text() + " once: {left: X, right: Y}",
+                        key.position());
+            }
+            if ("left".equals(key.text()))
+            {
+                left = side;
+            }
+            else
+            {
+                right = side;
+            }
+            if (i == 0)
+            {
+                expect(TokenType.COMMA, ",");
+            }
+        }
+        expect(TokenType.RBRACE, "}");
+        if (left == null || right == null)
+        {
+            throw new ExpressionException("a sided key names both sides: {left: X, right: Y}",
+                    open.position());
+        }
+        return new Expr.Lit(Expr.LitKind.SIDED, new Expr.SidedKey(left, right));
     }
 
 

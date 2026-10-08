@@ -274,6 +274,11 @@ public final class DomainScan
             // target table, not reads of the primary).
             return net.cumba.corej.core.exec.Distinct.isGrouped(c) ? Domain.ROW : Domain.DATASET;
         }
+        if (net.cumba.corej.core.exec.Sequence.NAME.equals(name))
+        {
+            // Runbook W1b RO: sequence on distinct's plan — per row when grouped, scalar otherwise
+            return net.cumba.corej.core.exec.Sequence.isGrouped(c) ? Domain.ROW : Domain.DATASET;
+        }
         if (net.cumba.corej.core.exec.GroupedAggregate.isFunction(name)
                 || (net.cumba.corej.core.exec.ReadValue.NAME.equals(name)
                         && c.kwargs().containsKey("group")))

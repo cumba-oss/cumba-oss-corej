@@ -118,7 +118,7 @@ public final class OutputVariableDeriver
      */
     private static final Set<String> TARGET_ONLY_CALLS = Set.of(GroupedAggregate.MAX,
             GroupedAggregate.MAX_DATE, GroupedAggregate.MIN_DATE, RecordCount.NAME, Distinct.NAME,
-            ReadValue.NAME);
+            Sequence.NAME, ReadValue.NAME);
 
     /**
      * {@code true} for a D5 location variable — the names an {@code !X} may not exclude (E-3.4).
