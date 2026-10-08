@@ -158,8 +158,10 @@ public final class BuiltinFunctions implements FunctionProvider
             // declaring MIXED, hands a missing operand and every row answers missing). The
             // kernel reads its arguments only — never the run context — so it stays pure for
             // the element-wise lift E5 flags it with in W2 (ElementwiseLiftRosterDriftTest).
-            // unit="chars" (the default) keeps today's UTF-16 count until BL2 (W2) switches it
-            // to code points.
+            // unit="chars" (the default) counts Unicode CODE POINTS (runbook W2 BL2, owner Q3
+            // "agree
+            // to change and use code points"), as max_value_length always has: a supplementary-
+            // plane character is one character, not its two UTF-16 units.
             boolean bytes = countsBytes(args.size() > 1 ? args.get(1) : null);
             Charset charset = bytes ? charsetOf(args.size() > 2 ? args.get(2) : null) : null;
             if (bytes && charset == null)
@@ -174,7 +176,7 @@ public final class BuiltinFunctions implements FunctionProvider
                     return tv.cell();
                 }
                 String text = tv.cell().getValueAsString();
-                return charset == null ? (long) text.length()
+                return charset == null ? (long) text.codePointCount(0, text.length())
                         : (long) text.getBytes(charset).length;
             });
         };

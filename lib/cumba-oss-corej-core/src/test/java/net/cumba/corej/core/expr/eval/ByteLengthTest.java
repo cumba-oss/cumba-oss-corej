@@ -20,8 +20,8 @@ import org.junit.jupiter.api.Test;
  * {@code max_value_length}. {@code unit="bytes"} counts the value encoded in {@code encoding};
  * {@code encoding} omitted reads the evaluated table's own {@code Encoding} metadata, and a table
  * without one — or declaring {@code MIXED} — answers <b>missing</b>, never a guess.
- * {@code unit="chars"} is the default and (until BL2, W2) keeps today's answer: UTF-16 units for
- * {@code len}, code points for {@code max_value_length}.
+ * {@code unit="chars"} is the default and counts code points in both functions ({@code len} since
+ * runbook W2 BL2; before it, UTF-16 units).
  */
 class ByteLengthTest
 {
@@ -67,14 +67,22 @@ class ByteLengthTest
 
 
     @Test
-    void lenInCharsKeepsTodaysUtf16CountUntilBl2()
+    void lenInCharsCountsCodePoints()
     {
-        // BL1's precondition (runbook §6.2): len(x) and len(x, unit="chars") answer the same as
-        // before — UTF-16 units — until BL2 (W2) switches them to code points.
-        IDataTable t = MockTable.of().col("X", SMILEY, E_ACUTE).build();
-        assertTrue(eval("len(X) == 2", t).get(0));
-        assertTrue(eval("len(X, unit=\"chars\") == 2", t).get(0));
+        // runbook W2 BL2 (PLAN-engine-gap-byte-length §4.2, owner Q3 "agree to change and use
+        // code points"): len(x) and len(x, unit="chars") count Unicode code points, as
+        // max_value_length always has — a supplementary-plane character is ONE character, not
+        // its two UTF-16 units (BL1 pinned 2 here until this unit). A BMP character is one either
+        // way, and so is the alias.
+        IDataTable t = MockTable.of().col("X", SMILEY, E_ACUTE, SMILEY + "ab", "").build();
+        assertTrue(eval("len(X) == 1", t).get(0));
+        assertTrue(eval("len(X, unit=\"chars\") == 1", t).get(0));
+        assertTrue(eval("length(X) == 1", t).get(0), "the alias counts the same");
         assertTrue(eval("len(X, unit=\"chars\") == 1", t).get(1));
+        assertTrue(eval("len(X) == 3", t).get(2));
+        assertTrue(eval("len(X) == 0", t).get(3), "an empty string is still 0");
+        assertTrue(eval("len(X) == max_value_length(X)", t).get(2),
+                "len and max_value_length agree on the longest value's unit");
     }
 
 
