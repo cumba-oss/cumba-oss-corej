@@ -209,7 +209,7 @@ public final class StageAChecker
      * D1-A, runbook W1a E2), from {@link #scanBindings}: typed {@code list<column-reference>} at
      * level dataset, read only at a splice slot (coordinator decision 9).
      */
-    private final Set<String> nameListBindings = new HashSet<>();
+    private final Map<String, Expr> nameListBindings = new HashMap<>();
 
     /**
      * Every walked reference to a name-list binding → the root it stands in; a splice slot admits
@@ -2146,7 +2146,11 @@ public final class StageAChecker
                 // refuses it exactly as it refuses a spliced string list. Either way the
                 // reference is claimed here, so the value-position hint is not filed for it.
                 admittedNameListReads.add(arg);
-                if (!splices(c, param))
+                if (splices(c, param))
+                {
+                    findDomainPrefixMember(c, arg);
+                }
+                else
                 {
                     find(StageAErrorKind.PARAMETER_TYPE,
                             "argument '" + param.name() + "' of '" + c.name()
@@ -2279,6 +2283,23 @@ public final class StageAChecker
     }
 
 
+    /**
+     * R5 review A-M2 / BS2b MED-3: a spliced name-list binding holding a {@code --} member under
+     * {@code domain=} ({@link NameListBinding#domainPrefixRefusal} — the loader's seam pass files
+     * the same sentence on the paths stage A never walks).
+     */
+    private void findDomainPrefixMember(Expr.Call c, Expr nameListRef)
+    {
+        String name = ((Expr.Ref) nameListRef).name();
+        String refusal = NameListBinding.domainPrefixRefusal(c, name, nameListBindings.get(name),
+                null);
+        if (refusal != null)
+        {
+            find(StageAErrorKind.PARAMETER_TYPE, refusal + at(c));
+        }
+    }
+
+
     private void findPerRowSplice(Expr.Call c, Parameter param, Expr node)
     {
         // one sentence for both spellings (ListOperandLevel.spliceRefusal), the loader's seam pass
@@ -2328,7 +2349,7 @@ public final class StageAChecker
      */
     private TypedExpr bindingRef(Expr.Ref r)
     {
-        if (nameListBindings.contains(r.name()))
+        if (nameListBindings.containsKey(r.name()))
         {
             nameListReads.put(r, where);
         }
@@ -2341,7 +2362,7 @@ public final class StageAChecker
     {
         return e instanceof Expr.Ref ref
                 && ref.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF
-                && nameListBindings.contains(ref.name());
+                && nameListBindings.containsKey(ref.name());
     }
 
 
@@ -2395,7 +2416,11 @@ public final class StageAChecker
                 // D1-A (W1a E2): a name-list binding as a member — spliced where the reader
                 // splices, the same refusal as a string-list member elsewhere
                 admittedNameListReads.add(element.node());
-                if (!splicing)
+                if (splicing)
+                {
+                    findDomainPrefixMember(c, element.node());
+                }
+                else
                 {
                     find(StageAErrorKind.PARAMETER_TYPE,
                             "argument '" + param.name() + "' of '" + c.name()
@@ -2627,7 +2652,7 @@ public final class StageAChecker
                 // is a dataset-level list of column NAMES, not of cells — the walk above typed its
                 // members as references and joined their row level, which is the written list's
                 // reading in a value position, not the binding's
-                nameListBindings.add(compiled.name());
+                nameListBindings.put(compiled.name(), compiled.expression());
                 bindingLevels.put(compiled.name(), Level.DATASET);
                 bindingTypes.put(compiled.name(), new ListOf(Primitive.COLUMN_REFERENCE));
                 continue;

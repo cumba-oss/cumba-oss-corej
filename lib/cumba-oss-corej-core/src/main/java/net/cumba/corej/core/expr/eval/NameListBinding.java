@@ -125,6 +125,63 @@ public final class NameListBinding
 
 
     /**
+     * Whether {@code call} reads its splice slots against ANOTHER dataset: it names {@code domain=}
+     * ({@code read_value} always does — it requires it). Only the {@code GroupedAggregate} readers
+     * take {@code domain=}; the compiler-dispatched splicing readers never name it.
+     *
+     * @param call
+     *            the call
+     * @return {@code true} for a foreign read
+     */
+    public static boolean isForeign(Expr.Call call)
+    {
+        return call.kwargs()
+                .containsKey(net.cumba.corej.core.exec.GroupedAggregate.DOMAIN_PARAMETER)
+                || net.cumba.corej.core.exec.ReadValue.NAME.equals(call.name());
+    }
+
+
+    /**
+     * Runbook W1a fold (R5 review A-M2 / BS2b MED-3, coordinator decision: load-time refusal): a
+     * name-list binding spliced at a slot of a {@link #isForeign foreign} call, holding a
+     * {@code --} member. Under {@code domain=} a {@code --} name resolves against the EVALUATED
+     * dataset's prefix, not the domain's, so it would be looked up in the other table and partition
+     * nothing; the written member is refused at load ({@code GroupedAggregate.columnName} — this
+     * sentence mirrors it), and so is the written list bound to a name. One sentence for stage A
+     * and the loader's seam pass.
+     *
+     * @param call
+     *            the splicing call
+     * @param binding
+     *            the spliced binding's name, {@code $} included
+     * @param nameList
+     *            its expression
+     * @param where
+     *            where the call is written, or {@code null} when the caller says so itself
+     * @return the refusal, or {@code null} when the call is not foreign, the binding is not a name
+     *         list, or it holds no {@code --} member
+     */
+    public static @Nullable String domainPrefixRefusal(Expr.Call call, String binding,
+            @Nullable Expr nameList, @Nullable String where)
+    {
+        if (!isForeign(call) || !(nameList instanceof Expr.Lit lit) || !isNameList(lit))
+        {
+            return null;
+        }
+        for (String name : names(lit))
+        {
+            if (name.startsWith("--") && name.indexOf('.') < 0)
+            {
+                return (where == null ? "" : where + ": ") + call.name()
+                        + " does not resolve `--` (" + name + ", spliced from " + binding
+                        + ") under domain=: name the column of the dataset explicitly";
+            }
+        }
+        return null;
+    }
+
+
+    /**
      * The loader's twin of stage A's judgement, for a tree stage A never walks: the first
      * {@code $}-reference to a name-list binding outside a splice slot, as {@link #hint}, or
      * {@code null} when the tree reads none.

@@ -221,4 +221,67 @@ class NameListBindingTest
         assertEquals(List.of(1L, 2L),
                 fired("not is_unique_set($keys)", "$keys", "[\"USUBJID\", \"AESEQ\"]"));
     }
+
+    // ------------------------------------------------------------------ W1a fold (R5)
+
+
+    @Test
+    void aDoubleDashMemberSplicedUnderDomainIsALoadError()
+    {
+        // R5 review A-M2 / BS2b MED-3 (coordinator decision: load-time refusal): under domain= a
+        // spliced `--` name would resolve against the EVALUATED dataset, not the domain, so the
+        // written name list holding one is refused at load as the written member is
+        // (GroupedAggregate.columnName) — before, it loaded and only ERRORed at run time
+        String inline = loadError("record_count(domain=DM, group=[USUBJID, --SEQ]) > 0");
+        assertTrue(inline.contains("does not resolve `--` (--SEQ) under domain="), inline);
+        String[] keys =
+        {
+                "$keys", "[USUBJID, --SEQ]"
+        };
+        for (String check : List.of("record_count(domain=DM, group=$keys) > 0",
+                "max(AESEQ, domain=DM, group=$keys) > 0",
+                "record_count(domain=DM, group=[STUDYID, $keys]) > 0",
+                "read_value(AESEQ, domain=DM, group=$keys, mode=\"FIRST\") > 0"))
+        {
+            String error = loadError(check, keys);
+            assertTrue(error.contains("does not resolve `--` (--SEQ") && error.contains("$keys")
+                    && error.contains("under domain="), () -> check + " → " + error);
+        }
+        // controls: without domain= the `--` member resolves against the evaluated dataset (the
+        // splice is what the name means there); under domain= a list of plain names loads
+        assertEquals("null", loadError("max(AESEQ, group=$keys) > 0", keys));
+        assertEquals("null",
+                loadError("record_count(domain=DM, group=$keys) > 0", "$keys", "[USUBJID]"));
+    }
+
+
+    @Test
+    void aDoubleDashMemberSplicedUnderDomainInACheckLessRuleIsTheLoadersFinding()
+    {
+        // the path stage A never walks: the loader's seam files the same sentence
+        Rule checkLess = load(json(null, List.of("USUBJID"), "$keys", "[USUBJID, --SEQ]", "$v",
+                "record_count(domain=DM, group=$keys)"));
+        String error = String.valueOf(checkLess.getLoadError());
+        assertTrue(
+                error.contains("does not resolve `--` (--SEQ") && error.contains("the binding $v"),
+                error);
+        Rule plain = load(json(null, List.of("USUBJID"), "$keys", "[USUBJID]", "$v",
+                "record_count(domain=DM, group=$keys)"));
+        assertNull(plain.getLoadError(), plain.getLoadError());
+    }
+
+
+    @Test
+    void aPositionalSpliceSlotReadsTheNameListAsItsKeywordDoes()
+    {
+        // R5 review BS2b MED-1: is_last_in_group binds group= positionally too (bindStrict), so the
+        // loader's seams read the slot by parameter index — the positional spelling of a Check-less
+        // binding loads exactly as the keyword one does (it was decision 9's value-read hint)
+        for (String call : List.of("is_last_in_group(AESEQ, group=$keys)",
+                "is_last_in_group(AESEQ, $keys)"))
+        {
+            Rule r = load(json(null, List.of("USUBJID"), "$keys", "[USUBJID]", "$v", call));
+            assertNull(r.getLoadError(), () -> call + " → " + r.getLoadError());
+        }
+    }
 }

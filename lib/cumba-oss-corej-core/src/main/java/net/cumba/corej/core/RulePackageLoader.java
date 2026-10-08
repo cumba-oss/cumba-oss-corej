@@ -834,14 +834,8 @@ public class RulePackageLoader
                 java.util.Set<String> nameLists = new java.util.HashSet<>();
                 for (net.cumba.corej.core.model.CompiledBinding binding : compiled)
                 {
-                    rejectPerRowPerCallOperands(binding.expression(), rule,
+                    rejectUnjudgedLevels(binding.expression(), rule, nameLists,
                             "the binding " + binding.name());
-                    String read = net.cumba.corej.core.expr.eval.NameListBinding.firstValueRead(
-                            binding.expression(), nameLists, "the binding " + binding.name());
-                    if (read != null)
-                    {
-                        throw new net.cumba.corej.core.expr.RuleDefinitionException(read);
-                    }
                     if (net.cumba.corej.core.expr.eval.NameListBinding
                             .isNameList(binding.expression()))
                     {
@@ -2387,8 +2381,11 @@ public class RulePackageLoader
      * not ({@code CHECKER_FAILURE}, never armed). So the seams are re-run <b>unjudged</b> over the
      * same expressions — the levels, the Precondition, the compiled bindings — and a refusal is the
      * rule's load error with the seam's own message, instead of a cause-less "no native expression
-     * form" at compile time. Package-private so it is tested directly; its call site in
-     * {@link #installNativeExpr} is proven wired by a rule whose stage A walk genuinely fails.
+     * form" at compile time. The level seams included (runbook W1a fold, R5 review A-M1): every
+     * tree gets the judgement a Check-less rule's bindings get ({@code ListOperandLevel} and the
+     * name-list value read), so no per-row operand reads row 0 silently after a stage A failure.
+     * Package-private so it is tested directly; its call site in {@link #installNativeExpr} is
+     * proven wired by a rule whose stage A walk genuinely fails.
      *
      * @param rule
      *            the rule under load
@@ -2416,8 +2413,32 @@ public class RulePackageLoader
             if (compiled != null)
             {
                 compiled.forEach(b -> validateRegistryCallSeams(b.expression(), false));
-                compiled.forEach(b -> rejectPerRowPerCallOperands(b.expression(), rule,
-                        "the binding " + b.name()));
+            }
+            // Runbook W1a fold (R5 review A-M1): the LEVEL judgements stage A makes where it walks
+            // — a set function's or a per-call parameter's operand, a $ inside filter=, a spliced
+            // member, a name-list binding read outside a splice slot — are the loader's here, over
+            // every tree stage A did not finish: each binding (against the name lists authored
+            // before it), every Check level and the Precondition (against all of them)
+            java.util.Set<String> nameLists = new java.util.HashSet<>();
+            if (compiled != null)
+            {
+                for (net.cumba.corej.core.model.CompiledBinding b : compiled)
+                {
+                    rejectUnjudgedLevels(b.expression(), rule, nameLists,
+                            "the binding " + b.name());
+                    if (net.cumba.corej.core.expr.eval.NameListBinding.isNameList(b.expression()))
+                    {
+                        nameLists.add(b.name());
+                    }
+                }
+            }
+            for (net.cumba.corej.core.expr.ast.Expr level : levels)
+            {
+                rejectUnjudgedLevels(level, rule, nameLists, "the Check");
+            }
+            if (precondition != null)
+            {
+                rejectUnjudgedLevels(precondition, rule, nameLists, "the Precondition");
             }
             return false;
         }
@@ -2426,6 +2447,26 @@ public class RulePackageLoader
             String error = ex.getMessage();
             rule.addLoadError(error);
             return true;
+        }
+    }
+
+
+    /**
+     * The level seams of one tree stage A did not judge: {@link #rejectPerRowPerCallOperands} and
+     * the name-list value read ({@code NameListBinding.firstValueRead}, coordinator decision 9).
+     *
+     * @throws net.cumba.corej.core.expr.RuleDefinitionException
+     *             for the first refusal
+     */
+    private static void rejectUnjudgedLevels(net.cumba.corej.core.expr.ast.Expr tree, Rule rule,
+            java.util.Set<String> nameLists, String where)
+    {
+        rejectPerRowPerCallOperands(tree, rule, where);
+        String read = net.cumba.corej.core.expr.eval.NameListBinding.firstValueRead(tree, nameLists,
+                where);
+        if (read != null)
+        {
+            throw new net.cumba.corej.core.expr.RuleDefinitionException(read);
         }
     }
 

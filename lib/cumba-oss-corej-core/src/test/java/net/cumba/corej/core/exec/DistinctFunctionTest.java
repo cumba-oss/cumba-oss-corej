@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -624,5 +625,29 @@ class DistinctFunctionTest
         // load-time readers read the keyword only. RED before the fix: it loaded.
         expectError("distinct(USUBJID, DS)", "write the others as keywords");
         assertNull(load("distinct(USUBJID, domain=DS)", "USUBJID not in $v").getLoadError());
+    }
+
+
+    /**
+     * R5 review A-M2 / BS2b MED-3: the {@code foreign = dataset != null} wiring of a BS2b reader —
+     * a {@code --} name that reaches the splice under {@code domain=} (a string-list binding, not a
+     * written name list, so the load-time refusal does not see it) ERRORs the rule rather than
+     * resolving against the evaluated dataset and partitioning nothing.
+     */
+    @Test
+    void aSplicedDoubleDashNameUnderDomainErrorsTheRule()
+    {
+        DatasetResolver study = resolver(dm(), ds());
+        EvaluationContext spliced = EvaluationContext.builder().table(dm()).datasetResolver(study)
+                .domainPrefix("DM").variables(Map.of("$K", List.of("--DECOD"))).ruleId("X-1")
+                .build();
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> vector("distinct(DSSTDTC, domain=DS, group=[USUBJID, $K])", spliced));
+        assertTrue(ex.getMessage().contains("--DECOD") && ex.getMessage().contains("domain="),
+                ex.getMessage());
+        // control: a splice without a `--` name runs under domain=
+        EvaluationContext named = EvaluationContext.builder().table(dm()).datasetResolver(study)
+                .variables(Map.of("$K", List.of("DSDECOD"))).ruleId("X-1").build();
+        assertNotNull(vector("distinct(DSSTDTC, domain=DS, group=[USUBJID, $K])", named));
     }
 }

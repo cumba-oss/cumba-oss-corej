@@ -40,8 +40,9 @@ import org.jspecify.annotations.Nullable;
  * Two callers: stage A ({@code StageAChecker.listFunctionReads}, the armed kind
  * {@code OPERATION_READS_CURSOR_BINDING}) where it walks the rule, and the loader's seam pass
  * ({@link #firstRefusal}) where it does not — a Check-less rule's bindings, a
- * {@code Match_Datasets} Filter, the re-run after a {@code CHECKER_FAILURE} — so a per-row operand
- * never silently reads row 0 on either path.
+ * {@code Match_Datasets} Filter, and the re-run after a {@code CHECKER_FAILURE}
+ * ({@code RulePackageLoader.rerunSeamsUnjudged}), which judges every Check level, the Precondition
+ * and every binding — so a per-row operand never silently reads row 0 on either path.
  * </p>
  *
  * <p>
@@ -257,9 +258,11 @@ public final class ListOperandLevel
 
     /**
      * The splice-slot refusals of one call ({@code GroupSplice.spliceSlots}): each spliced member —
-     * a {@code $} reference or a computed expression — that reads the row cursor. The loader's twin
-     * of stage A's G3 arm ({@code StageAChecker.findPerRowSplice}); only {@link #firstRefusal}
-     * calls it, so stage A never files a per-row splice twice.
+     * a {@code $} reference or a computed expression — that reads the row cursor, and each
+     * name-list binding holding a {@code --} member under {@code domain=}
+     * ({@link NameListBinding#domainPrefixRefusal}, R5 review A-M2). The loader's twin of stage A's
+     * G3 arm ({@code StageAChecker.findPerRowSplice}); only {@link #firstRefusal} calls it, so
+     * stage A never files a per-row splice twice.
      *
      * @param c
      *            the call
@@ -277,14 +280,26 @@ public final class ListOperandLevel
         {
             for (Expr member : slot.operands())
             {
+                String refusal = null;
                 if (net.cumba.corej.core.exec.GroupSplice.spliced(member) != null
                         && readsRowCursor(member, rule))
+                {
+                    refusal = spliceRefusal(c.name(), slot.parameter(), where, member);
+                }
+                else if (member instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF)
+                {
+                    // R5 review A-M2: a name list holding a `--` member under domain=
+                    CompiledBinding bound = rule.compiledBinding(ref.name());
+                    refusal = NameListBinding.domainPrefixRefusal(c, ref.name(),
+                            bound == null ? null : bound.expression(), where);
+                }
+                if (refusal != null)
                 {
                     if (out.isEmpty())
                     {
                         out = new ArrayList<>();
                     }
-                    out.add(spliceRefusal(c.name(), slot.parameter(), where, member));
+                    out.add(refusal);
                 }
             }
         }

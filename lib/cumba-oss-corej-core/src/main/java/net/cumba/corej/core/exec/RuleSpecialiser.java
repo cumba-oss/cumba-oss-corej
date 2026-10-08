@@ -357,7 +357,8 @@ public final class RuleSpecialiser
             List<net.cumba.corej.core.expr.ast.Expr> args = new ArrayList<>();
             for (net.cumba.corej.core.expr.ast.Expr a : c.args())
             {
-                net.cumba.corej.core.expr.ast.Expr r = lists.contains(a) ? spliceList(a, bound)
+                net.cumba.corej.core.expr.ast.Expr r = isSpliceArgument(lists, a)
+                        ? spliceList(a, bound)
                         : inlineSplicedNames(a, bound);
                 changed |= r != a;
                 args.add(r);
@@ -366,7 +367,8 @@ public final class RuleSpecialiser
             for (Map.Entry<String, net.cumba.corej.core.expr.ast.Expr> kw : c.kwargs().entrySet())
             {
                 net.cumba.corej.core.expr.ast.Expr v = kw.getValue();
-                net.cumba.corej.core.expr.ast.Expr r = lists.contains(v) ? spliceList(v, bound)
+                net.cumba.corej.core.expr.ast.Expr r = isSpliceArgument(lists, v)
+                        ? spliceList(v, bound)
                         : inlineSplicedNames(v, bound);
                 changed |= r != v;
                 kwargs.put(kw.getKey(), r);
@@ -403,11 +405,37 @@ public final class RuleSpecialiser
     }
 
 
-    /** A splice list with each {@code $} member holding written names replaced by those names. */
+    /** Whether {@code argument} is one of the call's splice arguments — by identity. */
+    private static boolean isSpliceArgument(List<net.cumba.corej.core.expr.ast.Expr> lists,
+            net.cumba.corej.core.expr.ast.Expr argument)
+    {
+        for (net.cumba.corej.core.expr.ast.Expr list : lists)
+        {
+            if (list == argument)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    /**
+     * A splice list with each {@code $} member holding written names replaced by those names; a
+     * bare {@code $} operand at the slot (R5 review BS2b LOW-1) is the one-member list it reads as
+     * (C5), so a binding of written names becomes the list of those names.
+     */
     private static net.cumba.corej.core.expr.ast.Expr spliceList(
             net.cumba.corej.core.expr.ast.Expr list,
             Map<String, net.cumba.corej.core.expr.ast.Expr> bound)
     {
+        if (list instanceof net.cumba.corej.core.expr.ast.Expr.Ref)
+        {
+            List<net.cumba.corej.core.expr.ast.Expr> names = writtenNames(list, bound);
+            return names == null ? list
+                    : new net.cumba.corej.core.expr.ast.Expr.Lit(
+                            net.cumba.corej.core.expr.ast.Expr.LitKind.LIST, names);
+        }
         List<?> members = (List<?>) ((net.cumba.corej.core.expr.ast.Expr.Lit) list).value();
         List<net.cumba.corej.core.expr.ast.Expr> out = new ArrayList<>();
         boolean changed = false;

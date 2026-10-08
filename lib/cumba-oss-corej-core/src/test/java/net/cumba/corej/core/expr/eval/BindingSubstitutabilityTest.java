@@ -291,7 +291,9 @@ class BindingSubstitutabilityTest
     {
         for (String call : List.of("record_count(group=[USUBJID, ‹m›])",
                 // W1a BS2b: the loader's seam reads the widened roster too
-                "max(AESEQ, group=[USUBJID, ‹m›])", "distinct(AETERM, group=‹m›)"))
+                "max(AESEQ, group=[USUBJID, ‹m›])", "distinct(AETERM, group=‹m›)",
+                // R5 review BS2b MED-1: a slot bound by POSITION is read by parameter index
+                "is_last_in_group(AESEQ, [USUBJID, ‹m›])"))
             for (String member : List.of("$k", "upper(AETERM)"))
             {
                 Map<String, Object> rule = new LinkedHashMap<>();

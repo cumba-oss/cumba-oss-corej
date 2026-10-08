@@ -126,13 +126,6 @@ public final class GroupSplice
             java.util.Map.entry("is_inconsistent_across_dataset", List.of(KEYS_PARAMETER)));
 
     /**
-     * The slots whose list is the call's FIRST positional operand ({@code is_unique_set([…])},
-     * {@code values([…])}); every other slot is a keyword ({@code group=}).
-     */
-    private static final java.util.Set<String> POSITIONAL_SLOT_CALLS = java.util.Set
-            .of("is_unique_set", "is_not_unique_set", VALUES_CALL);
-
-    /**
      * The readers that splice, as a message names them: every {@code list<column-reference>}
      * parameter except the two that take written names only.
      */
@@ -283,16 +276,18 @@ public final class GroupSplice
     }
 
     /**
-     * The splice slot of a call: the parameter and the authored operands that are spliced — the
+     * The splice slot of a call: the parameter, the authored operands that are spliced — the
      * elements of the list literal, or the one bare operand ({@code f($keys)} reads as
-     * {@code f([$keys])}, C5).
+     * {@code f([$keys])}, C5) — and the authored argument itself.
      *
      * @param parameter
      *            the parameter name ({@code members} / {@code group} / {@code columns})
      * @param operands
      *            the authored operands
+     * @param argument
+     *            the authored argument at the slot (the list literal, or the bare operand)
      */
-    public record Slot(String parameter, List<Expr> operands)
+    public record Slot(String parameter, List<Expr> operands, Expr argument)
     {
     }
 
@@ -300,7 +295,11 @@ public final class GroupSplice
      * The splice slots {@code call} carries, each with its authored operands — the member list of
      * {@code is_(not_)unique_set}, the {@code group=} of the grouped readers, the {@code columns}
      * of {@code values} ({@link #SPLICE_SLOTS}); empty for a call that splices nothing or whose
-     * slots are absent. The loader's level seam asks it ({@code ListOperandLevel.firstRefusal}).
+     * slots are absent. The loader's level seam asks it ({@code ListOperandLevel.firstRefusal}). A
+     * slot is read by its parameter's INDEX in the registry descriptor, as the readers bind it
+     * ({@code ArgumentBinder}, D9) — positionally or by keyword alike (R5 review BS2b MED-1:
+     * {@code is_last_in_group(AESEQ, $keys)} binds {@code group} by position); a call the binder
+     * refuses is read by keyword only (its binding error is filed by the reader).
      *
      * @param call
      *            the call
@@ -313,12 +312,23 @@ public final class GroupSplice
         {
             return List.of();
         }
+        List<@Nullable Expr> bound = bound(call);
+        List<net.cumba.corej.core.expr.eval.Parameter> declared = bound == null ? List.of()
+                : java.util.Objects.requireNonNull(
+                        net.cumba.corej.core.expr.eval.FunctionRegistry.descriptor(call.name()))
+                        .parameters();
         List<Slot> out = new ArrayList<>(parameters.size());
         for (String parameter : parameters)
         {
-            Expr operand = POSITIONAL_SLOT_CALLS.contains(call.name())
-                    ? (call.args().isEmpty() ? null : call.args().get(0))
-                    : call.kwargs().get(parameter);
+            Expr operand = call.kwargs().get(parameter);
+            for (int i = 0; bound != null && i < declared.size(); i++)
+            {
+                if (declared.get(i).name().equals(parameter))
+                {
+                    operand = bound.get(i);
+                    break;
+                }
+            }
             if (operand == null)
             {
                 continue;
@@ -327,39 +337,62 @@ public final class GroupSplice
             {
                 @SuppressWarnings("unchecked")
                 List<Expr> items = (List<Expr>) lit.value();
-                out.add(new Slot(parameter, items));
+                out.add(new Slot(parameter, items, operand));
             }
             else
             {
-                out.add(new Slot(parameter, List.of(operand)));
+                out.add(new Slot(parameter, List.of(operand), operand));
             }
         }
         return out;
     }
 
 
+    /** The call bound to its descriptor, or {@code null} when it has none or the binder refuses. */
+    private static @Nullable List<@Nullable Expr> bound(Expr.Call call)
+    {
+        net.cumba.corej.core.expr.eval.FunctionDescriptor descriptor = net.cumba.corej.core.expr.eval.FunctionRegistry
+                .descriptor(call.name());
+        if (descriptor == null)
+        {
+            return null;
+        }
+        try
+        {
+            return net.cumba.corej.core.expr.eval.ArgumentBinder.bind(descriptor, call);
+        }
+        catch (net.cumba.corej.core.expr.ExpressionException refused)
+        {
+            return null;
+        }
+    }
+
+
     /**
-     * The splice lists {@code call} carries: the list literals at its {@link #SPLICE_SLOTS splice
-     * slots} — the lists whose {@code $} members {@link #splice} reads as column NAMES. The
-     * bind-time specialiser asks it ({@code RuleSpecialiser.inlineSplicedNames},
-     * {@code PLAN-string-literal-prefix-rewrite} review MED-1): a {@code $} member whose binding
-     * holds a written name is that name written in the list (G1), inlined at the splice site only —
-     * never under {@code domain=}.
+     * The splice arguments {@code call} carries: the list literals at its {@link #SPLICE_SLOTS
+     * splice slots} — the lists whose {@code $} members {@link #splice} reads as column NAMES —
+     * and, since the W1a fold (R5 review BS2b LOW-1), a bare {@code $} operand there, the
+     * one-member list it reads as (C5). The bind-time specialiser asks it
+     * ({@code RuleSpecialiser.inlineSplicedNames}, {@code PLAN-string-literal-prefix-rewrite}
+     * review MED-1): a {@code $} member whose binding holds a written name is that name written in
+     * the list (G1), inlined at the splice site only — never under {@code domain=}. Compared by
+     * IDENTITY: an equal operand elsewhere in the call is not the slot's.
      *
      * @param call
      *            the call
-     * @return the list literals that are spliced (empty when none)
+     * @return the authored splice arguments (empty when none)
      */
     public static List<Expr> spliceLists(Expr.Call call)
     {
         List<Expr> out = List.of();
         for (Slot slot : spliceSlots(call))
         {
-            Expr list = POSITIONAL_SLOT_CALLS.contains(call.name()) ? call.args().get(0)
-                    : call.kwargs().get(slot.parameter());
-            if (list instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+            Expr argument = slot.argument();
+            if ((argument instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+                    || (argument instanceof Expr.Ref ref
+                            && ref.kind() == OperandKind.OPERATION_REF))
             {
-                out = out.isEmpty() ? List.of(lit) : concat(out, lit);
+                out = out.isEmpty() ? List.of(argument) : concat(out, argument);
             }
         }
         return out;

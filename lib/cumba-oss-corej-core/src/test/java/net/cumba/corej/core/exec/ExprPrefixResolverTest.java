@@ -312,6 +312,33 @@ class ExprPrefixResolverTest
         // a list binding of written names splices element by element, each specialised
         assertEquals(List.of(1L, 2L), fired(duplicated(), "record_count(group=[$k]) > 1", "$k",
                 "[\"USUBJID\", \"--SEQ\"]"));
+        // R5 review BS2b LOW-1: the BARE operand at a splice slot is the one-member list (C5), so
+        // it is inlined as the member is — group=$k / is_unique_set($k) answer as [$k] does
+        for (String[] pair : new String[][]
+        {
+                {
+                        "record_count(group=$k) > 1", "record_count(group=[$k]) > 1"
+                },
+                {
+                        "not is_unique_set($k)", "not is_unique_set([$k])"
+                }
+        })
+        {
+            for (String binding : List.of("\"--SEQ\"", "[\"USUBJID\", \"--SEQ\"]"))
+            {
+                assertEquals(fired(duplicated(), pair[1], "$k", binding),
+                        fired(duplicated(), pair[0], "$k", binding), pair[0] + " " + binding);
+                // the specialised Check spells the bare operand as the inlined list
+                Rule bare = RuleSpecialiser.specialise(load(pair[0], "$k", binding), duplicated(),
+                        "AE");
+                Rule listed = RuleSpecialiser.specialise(load(pair[1], "$k", binding), duplicated(),
+                        "AE");
+                assertNotNull(bare);
+                assertNotNull(listed);
+                assertEquals(ExpressionPrinter.print(listed.getCheckExpr()),
+                        ExpressionPrinter.print(bare.getCheckExpr()), pair[0] + " " + binding);
+            }
+        }
     }
 
     // ------------------------------------------------------------------ fold: S8 reach (MED-2)
