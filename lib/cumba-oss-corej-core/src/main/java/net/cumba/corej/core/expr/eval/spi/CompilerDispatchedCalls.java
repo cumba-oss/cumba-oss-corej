@@ -270,6 +270,11 @@ public final class CompilerDispatchedCalls implements FunctionProvider
         return List.copyOf(fns);
     }
 
+    /**
+     * {@code codelist_decode(X)} — the per-record Define-XML codelist decode accessor (runbook W1b
+     * DV, coordinator D14: a {@code vlm_}-free name, not a {@code define_*} alias).
+     */
+    public static final String CODELIST_DECODE = "codelist_decode";
 
     private static List<FunctionDescriptor> buildValueCalls()
     {
@@ -279,7 +284,13 @@ public final class CompilerDispatchedCalls implements FunctionProvider
         // a NAME SLOT (PLAN-string-literal-prefix-rewrite S2). The two decode-pair accessors take
         // varname() or nothing (compileDefineDecodeMatches / the CT2003 arm refuse a name), so
         // their parameter is not one.
-        namedValue(fns, "max_value_length");
+        // runbook W1b BL1 (PLAN-engine-gap-byte-length §5.2): unit= / encoding=, literal
+        // strings judged by ExprCompiler's static-string seams like len's
+        fns.add(new FunctionDescriptor("max_value_length",
+                List.of(Parameter.optional("name", Unknown.UNKNOWN).asNameSlot(),
+                        Parameter.optional(BuiltinFunctions.UNIT_PARAMETER, Primitive.STRING),
+                        Parameter.optional(BuiltinFunctions.ENCODING_PARAMETER, Primitive.STRING)),
+                FunctionKind.VALUE, null));
         namedValue(fns, "vlm_data_type");
         namedValue(fns, "vlm_length");
         namedValue(fns, "vlm_mandatory");
@@ -290,6 +301,13 @@ public final class CompilerDispatchedCalls implements FunctionProvider
         namedValue(fns, "vlm_value_length");
         namedValue(fns, "vlm_has_codelist");
         namedValue(fns, "vlm_decode_matches");
+        // runbook W1b DV (PLAN-engine-gap-define-vlm-method §4.1 / Q3 (c)): the value-level
+        // method / comment presence and origin type of the matched entry, and the per-record
+        // Define-XML codelist decode of the record's value — all name slots
+        namedValue(fns, "vlm_has_method");
+        namedValue(fns, "vlm_has_comment");
+        namedValue(fns, "vlm_origin_type");
+        namedValue(fns, CODELIST_DECODE);
         value(fns, "library_variable_code_pair_matches");
         value(fns, "define_variable_decode_matches");
         // PLAN-cg0218-transition-day-precision C1: joined(<boolean>) — the list<boolean> the

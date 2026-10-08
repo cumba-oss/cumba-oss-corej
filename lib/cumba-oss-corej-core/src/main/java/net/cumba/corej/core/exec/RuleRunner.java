@@ -85,6 +85,28 @@ public final class RuleRunner
 
 
     /**
+     * {@link #execute(Rule, IDataTable, DatasetResolver, String, MetadataProvider, JoinCache, MetadataProvider, int, ExpressionResultCache, RuntimeDictionaryProvider, VlmResolver, DefinePresence, Set, Set, Severity)}
+     * with the Define-XML presence derived from the define provider — {@code PARSED} when one is
+     * given, {@code ABSENT} otherwise. Exact for every caller that builds its provider from a
+     * define it parsed itself (the scenario runner, the report tests); the study-validation path,
+     * where a supplied define can fail to parse, passes the fact it knows (runbook W1b DP1a).
+     */
+    public static RuleExecutionResult execute(Rule rule, IDataTable table, DatasetResolver resolver,
+            @Nullable String domainPrefix, @Nullable MetadataProvider libraryProvider,
+            @Nullable JoinCache joinCache, @Nullable MetadataProvider defineProvider,
+            int maxErrorsPerRule, @Nullable ExpressionResultCache exprCache,
+            @Nullable RuntimeDictionaryProvider dictionaryProvider,
+            @Nullable VlmResolver vlmResolver, Set<String> reportedDatasets,
+            Set<String> crossStandardDatasets, Severity severityThreshold)
+    {
+        return execute(rule, table, resolver, domainPrefix, libraryProvider, joinCache,
+                defineProvider, maxErrorsPerRule, exprCache, dictionaryProvider, vlmResolver,
+                defineProvider != null ? DefinePresence.PARSED : DefinePresence.ABSENT,
+                reportedDatasets, crossStandardDatasets, severityThreshold);
+    }
+
+
+    /**
      * Executes a rule against a data table — the engine's one entry point for rule execution
      * ({@code LibraryValidator.executeRule} in production, the {@code .cdt} harness's
      * {@code ScenarioCapture}, and the tests through their {@code RuleRunnerCalls} shorthand). ⚑
@@ -200,6 +222,9 @@ public final class RuleRunner
      *            supplied
      * @param vlmResolver
      *            the per-record value-level metadata resolver, or {@code null}
+     * @param definePresence
+     *            whether the run was given a Define-XML, and what became of it — the fact
+     *            {@code define_available()} answers (runbook W1b DP1a)
      * @param reportedDatasets
      *            upper-cased dataset names covered by a bare presence rule in this run
      * @param crossStandardDatasets
@@ -216,15 +241,16 @@ public final class RuleRunner
             @Nullable JoinCache joinCache, @Nullable MetadataProvider defineProvider,
             int maxErrorsPerRule, @Nullable ExpressionResultCache exprCache,
             @Nullable RuntimeDictionaryProvider dictionaryProvider,
-            @Nullable VlmResolver vlmResolver, Set<String> reportedDatasets,
-            Set<String> crossStandardDatasets, Severity severityThreshold)
+            @Nullable VlmResolver vlmResolver, DefinePresence definePresence,
+            Set<String> reportedDatasets, Set<String> crossStandardDatasets,
+            Severity severityThreshold)
     {
         try
         {
             return stampSeverity(rule,
                     executeResolved(rule, table, resolver, domainPrefix, libraryProvider, joinCache,
                             defineProvider, maxErrorsPerRule, exprCache, dictionaryProvider,
-                            vlmResolver, reportedDatasets, crossStandardDatasets,
+                            vlmResolver, definePresence, reportedDatasets, crossStandardDatasets,
                             severityThreshold));
         }
         catch (net.cumba.corej.core.expr.eval.UnresolvableCodelistException e)
@@ -383,8 +409,9 @@ public final class RuleRunner
             @Nullable MetadataProvider defineProvider, int maxErrorsPerRule,
             @Nullable ExpressionResultCache exprCache,
             @Nullable RuntimeDictionaryProvider dictionaryProvider,
-            @Nullable VlmResolver vlmResolver, Set<String> reportedDatasets,
-            Set<String> crossStandardDatasets, Severity severityThreshold)
+            @Nullable VlmResolver vlmResolver, DefinePresence definePresence,
+            Set<String> reportedDatasets, Set<String> crossStandardDatasets,
+            Severity severityThreshold)
     {
         String ruleId = rule.effectiveId();
         String message = rule.getOutcome() != null ? rule.getOutcome().getMessage() : null;
@@ -869,9 +896,10 @@ public final class RuleRunner
         EvaluationContext ctx = EvaluationContext.builder().table(evalTable).variables(variables)
                 .numericExpectedColumns(expectations.numericDefaultColumns())
                 .numericExpectedDynamicSites(expectations.numericDynamicSites())
-                .defineProvider(defineProvider).vlmResolver(vlmResolver).ruleId(ruleId)
-                .datasetResolver(resolver).domainPrefix(domainPrefix)
-                .variableWildcardPrefix(varWildcardPrefix).suppMerge(rule.isSuppMergeEnabled())
+                .defineProvider(defineProvider).vlmResolver(vlmResolver)
+                .definePresence(definePresence).ruleId(ruleId).datasetResolver(resolver)
+                .domainPrefix(domainPrefix).variableWildcardPrefix(varWildcardPrefix)
+                .suppMerge(rule.isSuppMergeEnabled())
                 .sharedIndexCache(joinCache != null ? joinCache.getSharedIndexCache() : null)
                 .domainName(evalTable.getMetaData().getName())
                 .evaluationDomain(rule.getEvaluationDomain()).maxErrorsPerRule(maxErrorsPerRule)

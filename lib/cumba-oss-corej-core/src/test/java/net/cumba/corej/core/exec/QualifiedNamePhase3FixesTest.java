@@ -153,7 +153,8 @@ class QualifiedNamePhase3FixesTest
         List<String> accessors = net.cumba.corej.core.expr.eval.FunctionRegistry.all().stream()
                 .map(net.cumba.corej.core.expr.eval.FunctionDescriptor::name)
                 .filter(n -> n.startsWith("vlm_")).toList();
-        assertEquals(10, accessors.size(), accessors.toString());
+        // 13 since runbook W1b DV (vlm_has_method / vlm_has_comment / vlm_origin_type)
+        assertEquals(13, accessors.size(), accessors.toString());
         for (String fn : accessors)
         {
             for (String call : new String[]

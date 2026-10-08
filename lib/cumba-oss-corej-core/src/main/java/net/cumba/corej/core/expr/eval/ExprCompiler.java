@@ -2246,6 +2246,67 @@ public final class ExprCompiler
         return registryAnswerPlan(c, bound, fn);
     }
 
+    /**
+     * The two registry length functions and the dispatched one that take {@code unit=} /
+     * {@code encoding=} (BL1).
+     */
+    private static final Set<String> BYTE_LENGTH_FUNCTIONS = Set.of("len", "length",
+            "max_value_length");
+
+    /**
+     * Runbook W1b BL1 (coordinator decision, W2 R2): the default encoding of a byte count is
+     * resolved by the COMPILER into the {@code encoding} operand — the evaluated table's own
+     * {@code Encoding} metadata ({@code extract_metadata("encoding")}), missing when the table
+     * declares none or {@code MIXED} — so the registry kernel reads its arguments only and stays
+     * pure for the element-wise lift E5 flags {@code len} with in W2. {@code null} for any other
+     * absent slot (the implementation's documented default applies).
+     */
+    private static @Nullable ValuePlan tableEncodingOperand(@Nullable FunctionDescriptor descriptor,
+            List<@Nullable Expr> bound, int slot)
+    {
+        if (descriptor == null || !BYTE_LENGTH_FUNCTIONS.contains(descriptor.name()))
+        {
+            return null;
+        }
+        List<Parameter> params = descriptor.parameters();
+        if (slot >= params.size()
+                || !net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.ENCODING_PARAMETER
+                        .equals(params.get(slot).name()))
+        {
+            return null;
+        }
+        int unitSlot = -1;
+        for (int i = 0; i < params.size(); i++)
+        {
+            if (net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNIT_PARAMETER
+                    .equals(params.get(i).name()))
+            {
+                unitSlot = i;
+            }
+        }
+        if (unitSlot < 0 || unitSlot >= bound.size()
+                || !(bound.get(unitSlot) instanceof Expr.Lit unit
+                        && unit.kind() == Expr.LitKind.STRING
+                        && net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNIT_BYTES
+                                .equals(unit.value())))
+        {
+            return null; // characters: no encoding needed
+        }
+        return run -> ConstVector.of(tableEncoding(run.ctx()));
+    }
+
+
+    /**
+     * The evaluated table's declared decode charset ({@code Encoding}, PLAN-provider-encoding-
+     * metadata), or {@code null} when it declares none; {@code MIXED} is handed through as the name
+     * it is (the kernel reads it as "no single charset").
+     */
+    static @Nullable String tableEncoding(EvaluationContext ctx)
+    {
+        Object value = ctx.getTable().getMetaData().getMetaData("Encoding");
+        return value == null ? null : value.toString();
+    }
+
 
     /**
      * The registry tail's evaluation of a BOOLEAN predicate with at least one parameter: the value
@@ -2279,7 +2340,7 @@ public final class ExprCompiler
             Expr arg = bound.get(i);
             // A null slot is an optional parameter left absent: the implementation receives null
             // at its position and applies its documented default (the retired arity overload).
-            rest.add(arg == null ? null
+            rest.add(arg == null ? tableEncodingOperand(descriptor, bound, i)
                     : literalArg1 && i == 1 ? regexLiteralPlan(name, arg)
                             : isListLiteralAtListParameter(descriptor, i, arg) ? argumentPlan(arg)
                                     : valuePlan(arg));
@@ -4660,6 +4721,20 @@ public final class ExprCompiler
      */
     private static ValuePlan compileMaxValueLength(Expr.Call c)
     {
+        // runbook W1b BL1 (PLAN-engine-gap-byte-length §5.2): unit= / encoding= — bound through
+        // the descriptor so the literal seams judge them exactly as the registry path judges
+        // len's (the loader's seam pass ran them at load; a direct compile runs them here)
+        FunctionDescriptor descriptor = Objects
+                .requireNonNull(FunctionRegistry.descriptor("max_value_length"));
+        List<@Nullable Expr> bound = ArgumentBinder.bind(descriptor, c);
+        rejectNonLiteralStaticStrings(descriptor, bound, false);
+        rejectNonLiteralListArguments(descriptor, bound);
+        boolean bytes = bound.size() > 1 && bound.get(1) instanceof Expr.Lit unit
+                && net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNIT_BYTES
+                        .equals(unit.value());
+        String writtenCharset = bound.size() > 2 && bound.get(2) instanceof Expr.Lit enc
+                ? String.valueOf(enc.value())
+                : null;
         // the descriptor declares `name` (optional), so name= is honoured as the positional is
         // (PLAN-string-literal-prefix-rewrite review LOW-5: it was silently ignored)
         Expr arg = NameSlots.nameArgument(c);
@@ -4694,6 +4769,21 @@ public final class ExprCompiler
             // QNU N4 (D72): a qualified name reads the column THROUGH THE JOIN, like every other
             // J.X — it used to look the whole dotted text up on the primary and answer 0.
             Vector joined = joinedColumnOf(ctx, colName);
+            if (bytes)
+            {
+                // BL1: the written charset, else the table's own Encoding; none / MIXED / an
+                // unknown name => missing (the byte count is not knowable)
+                java.nio.charset.Charset charset = net.cumba.corej.core.expr.eval.spi.BuiltinFunctions
+                        .charsetOf(ConstVector
+                                .of(writtenCharset != null ? writtenCharset : tableEncoding(ctx)));
+                if (charset == null)
+                {
+                    return ConstVector.of(null);
+                }
+                long maxBytes = joined != null ? maxByteLength(joined, ctx.rowCount(), charset)
+                        : OperatorRegistry.maxValueByteLength(ctx, colName, charset);
+                return ConstVector.of(Long.toString(maxBytes));
+            }
             long max = joined != null ? maxCodePointLength(joined, ctx.rowCount())
                     : OperatorRegistry.maxValueLength(ctx, colName);
             return ConstVector.of(Long.toString(max));
@@ -4741,6 +4831,28 @@ public final class ExprCompiler
             acc.add(blank, missing, value);
         }
         return acc.result();
+    }
+
+
+    /**
+     * {@link OperatorRegistry#maxValueByteLength}'s scan over a joined column (runbook W1b BL1):
+     * the largest byte count of the non-missing cells encoded in {@code charset}, {@code 0} when
+     * there is none. ⛔ Keep the two in step.
+     */
+    private static long maxByteLength(Vector column, int rowCount, java.nio.charset.Charset charset)
+    {
+        long max = 0L;
+        for (int r = 0; r < rowCount; r++)
+        {
+            TypedValue tv = column.value(r);
+            IDataValue dv = tv.cell();
+            if (tv.isMissing() || dv.isMissingOrInvalid())
+            {
+                continue;
+            }
+            max = Math.max(max, dv.getValueAsString().getBytes(charset).length);
+        }
+        return max;
     }
 
 
@@ -4815,7 +4927,7 @@ public final class ExprCompiler
         DataValueType type = switch (fn)
         {
         case "vlm_length", "vlm_value_length" -> DataValueType.LONG;
-        case "vlm_type_conforms", "vlm_codelist_extensible", "vlm_has_codelist", "vlm_decode_matches" -> DataValueType.BOOLEAN;
+        case "vlm_type_conforms", "vlm_codelist_extensible", "vlm_has_codelist", "vlm_decode_matches", "vlm_has_method", "vlm_has_comment" -> DataValueType.BOOLEAN;
         default -> DataValueType.STRING;
         };
         return run ->
@@ -4870,6 +4982,12 @@ public final class ExprCompiler
                 case "vlm_has_codelist" -> !m.codedValues().isEmpty();
                 case "vlm_decode_matches" -> vlmDecodeMatches(m, targetVar, vlmDecodeVar, table,
                         meta, row);
+                // runbook W1b DV (PLAN-engine-gap-define-vlm-method §4.1): the matched entry's
+                // ItemRef/@MethodOID, ItemDef/@def:CommentOID and origin type (the variable-
+                // level rule: def:Origin/@Type, else @Origin, else "")
+                case "vlm_has_method" -> m.hasMethod();
+                case "vlm_has_comment" -> m.hasComment();
+                case "vlm_origin_type" -> m.originType();
                 default -> throw unsupported("unknown vlm accessor " + fn);
                 };
             });
@@ -5251,6 +5369,82 @@ public final class ExprCompiler
      * share the name, like {@link #LIBRARY_CODE_PAIR_MATCHES}).
      */
     static final String DEFINE_VARIABLE_DECODE_MATCHES = "define_variable_decode_matches";
+
+    /** Runbook W1b DV, Q3 (c): the per-record Define-XML codelist decode accessor. */
+    static final String CODELIST_DECODE = net.cumba.corej.core.expr.eval.spi.CompilerDispatchedCalls.CODELIST_DECODE;
+
+    /**
+     * {@code codelist_decode(X)} ({@code PLAN-engine-gap-define-vlm-method} Q3 (c), runbook W1b DV,
+     * coordinator D14): per record, the Define-XML decode of the record's value of {@code X} in the
+     * codelist the variable-level {@code ItemDef} binds — the {@code CodedValue → Decode} map
+     * {@code define_variable_decode_matches} reads (English / first {@code TranslatedText}).
+     * {@code X} is a bare column, a string literal naming one (a name slot), {@code varname()} /
+     * absent (the current variable); a qualified name is refused as the {@code vlm_*} accessors
+     * refuse it. Missing when the define declares no such variable, the variable binds no codelist
+     * or none with decodes, the value is empty, or the value is not a decoded term; a {@code null}
+     * define provider yields missing on every row and the rule SKIPs via the DEFINE provider gate
+     * ({@code MetadataExprScan.readsDefinePerRecord}).
+     */
+    private static ValuePlan compileCodelistDecode(Expr.Call c)
+    {
+        Expr arg = NameSlots.nameArgument(c);
+        boolean fromCursor = arg == null || isCurrentVariableName(arg);
+        String literalName = null;
+        if (!fromCursor)
+        {
+            literalName = switch (Objects.requireNonNull(arg))
+            {
+            case Expr.Ref ref -> ref.name();
+            case Expr.Lit lit when lit.kind() == Expr.LitKind.STRING -> (String) lit.value();
+            default -> throw unsupported(CODELIST_DECODE
+                    + " expects a column reference, a string literal, or varname()");
+            };
+            if (literalName.indexOf('.') > 0)
+            {
+                throw new RuleDefinitionException(CODELIST_DECODE + "(" + literalName
+                        + ") reads the Define-XML codelist of a column of the dataset under"
+                        + " evaluation: write it bare ("
+                        + literalName.substring(literalName.indexOf('.') + 1)
+                        + "), never qualified — a joined dataset's define metadata is not served");
+            }
+        }
+        boolean cursor = fromCursor;
+        String captured = literalName;
+        return run ->
+        {
+            EvaluationContext ctx = run.ctx();
+            MetadataProvider define = ctx.getDefineProvider();
+            String domain = ctx.getDomainName();
+            String var;
+            if (cursor)
+            {
+                Object resolved = ctx.resolveVariable("variable_name");
+                var = resolved == null ? null : resolved.toString();
+            }
+            else
+            {
+                var = captured == null ? null : resolveDomainPrefix(captured, ctx);
+            }
+            if (define == null || domain == null || var == null)
+            {
+                return ConstVector.of(null);
+            }
+            Map<String, String> codeDecode = DefineMetadataListCodec.decodeStringMap(
+                    define.getVariableMetadata(domain, var).get("codelist_code_decode"));
+            if (codeDecode.isEmpty())
+            {
+                return ConstVector.of(null);
+            }
+            IDataTable table = ctx.getTable();
+            DataTableMeta meta = table.getMetaData();
+            String column = var;
+            return new ComputedVector(run.rowCount(), DataValueType.STRING, row ->
+            {
+                String value = cellString(table, meta, column, row);
+                return value == null || value.isEmpty() ? null : codeDecode.get(value);
+            });
+        };
+    }
 
     /**
      * Fix #123 — candidate suffixes for the decode partner, <b>longest first</b> so
@@ -5641,7 +5835,7 @@ public final class ExprCompiler
             {
                 yield metadataPlan(metaAttr, c);
             }
-            if ("max_value_length".equals(c.name()) && c.args().size() <= 1)
+            if ("max_value_length".equals(c.name()) && c.args().size() <= 3)
             {
                 yield compileMaxValueLength(c);
             }
@@ -5656,6 +5850,10 @@ public final class ExprCompiler
             if (DEFINE_VARIABLE_DECODE_MATCHES.equals(c.name()) && c.args().size() <= 1)
             {
                 yield compileDefineVariableDecodeMatches(c);
+            }
+            if (CODELIST_DECODE.equals(c.name()) && c.args().size() <= 1)
+            {
+                yield compileCodelistDecode(c);
             }
             if (net.cumba.corej.core.exec.RowMax.NAME.equals(c.name()))
             {
@@ -6634,9 +6832,16 @@ public final class ExprCompiler
         // implementation as a null argument vector — distinct from a plan that EVALUATES to null
         // (a missing column), which still propagates to an empty enclosing result below.
         List<@Nullable ValuePlan> argPlans = new ArrayList<>(bound.size());
-        for (Expr arg : bound)
+        boolean contextOperand = false;
+        for (int i = 0; i < bound.size(); i++)
         {
-            argPlans.add(arg == null ? null : argumentPlan(arg));
+            Expr arg = bound.get(i);
+            // runbook W1b BL1: an absent encoding= of a byte count is resolved by the compiler
+            // from the evaluated table (tableEncodingOperand) — a context read, never folded
+            ValuePlan resolved = arg == null ? tableEncodingOperand(descriptor, bound, i)
+                    : argumentPlan(arg);
+            contextOperand |= arg == null && resolved != null;
+            argPlans.add(resolved);
         }
         // Constant-fold a pure value function whose arguments are ALL literals: evaluate it once at
         // compile time (against a 1-row context-free run — the allowlisted transforms read only
@@ -6644,7 +6849,7 @@ public final class ExprCompiler
         // value is row-independent, so this is identical to what the per-row path would yield on
         // every row, with the same missing/empty handling. Context-dependent calls (value/varname/
         // record_count/colref/var_*/ds_*) are excluded by the allowlist.
-        if (isPureFoldable(c.name()) && c.kwargs().isEmpty()
+        if (isPureFoldable(c.name()) && c.kwargs().isEmpty() && !contextOperand
                 && bound.stream().allMatch(a -> a == null || a instanceof Expr.Lit))
         {
             List<Vector> litArgs = new ArrayList<>(argPlans.size());
@@ -8742,6 +8947,25 @@ public final class ExprCompiler
                 throw unsupported("argument '" + name + "' of '" + descriptor.name()
                         + "' takes a static string literal, not " + describe(e));
             }
+            if (BYTE_LENGTH_FUNCTIONS.contains(descriptor.name())
+                    && net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.ENCODING_PARAMETER
+                            .equals(name))
+            {
+                // runbook W1b BL1: an unknown charset name is a load error
+                String charset = String.valueOf(lit.value());
+                try
+                {
+                    java.nio.charset.Charset.forName(charset);
+                }
+                catch (IllegalArgumentException bad)
+                {
+                    ExpressionException error = unsupported(
+                            "argument '" + name + "' of '" + descriptor.name()
+                                    + "' names no charset this runtime knows: " + charset);
+                    error.initCause(bad);
+                    throw error;
+                }
+            }
             if (net.cumba.corej.core.exec.RowMax.PATTERN_PARAMETER.equals(name))
             {
                 try
@@ -8828,6 +9052,13 @@ public final class ExprCompiler
      * {@code column_series_metadata} (each a regular expression, validated as one).
      */
     private static final Map<String, Set<String>> STATIC_STRING_PARAMETERS = Map.of(
+            // runbook W1b BL1 (PLAN-engine-gap-byte-length §5.2): the charset name of a byte
+            // count is a literal, validated as one (rejectNonLiteralStaticStrings)
+            "len", Set.of(net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.ENCODING_PARAMETER),
+            "length",
+            Set.of(net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.ENCODING_PARAMETER),
+            "max_value_length",
+            Set.of(net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.ENCODING_PARAMETER),
             net.cumba.corej.core.exec.DictionaryFunctions.VALUE,
             Set.of(net.cumba.corej.core.exec.DictionaryFunctions.LEVEL_PARAMETER),
             net.cumba.corej.core.exec.DictionaryFunctions.CODE,
@@ -8852,7 +9083,18 @@ public final class ExprCompiler
      * ({@link ListOperandLevel#PER_CALL_PARAMETERS}).
      */
     private static final Map<String, Map<String, @Nullable Set<String>>> STATIC_STRING_VOCABULARIES = Map
-            .of(net.cumba.corej.core.exec.LibraryLists.CODELIST_TERMS,
+            .of(
+                    // runbook W1b BL1: unit= of the two length functions spells bytes or chars
+                    "len",
+                    map1(net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNIT_PARAMETER,
+                            net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNITS),
+                    "length",
+                    map1(net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNIT_PARAMETER,
+                            net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNITS),
+                    "max_value_length",
+                    map1(net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNIT_PARAMETER,
+                            net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNITS),
+                    net.cumba.corej.core.exec.LibraryLists.CODELIST_TERMS,
                     map2(net.cumba.corej.core.exec.LibraryLists.LEVEL_PARAMETER,
                             net.cumba.corej.core.exec.LibraryLists.LEVELS,
                             net.cumba.corej.core.exec.LibraryLists.RETURNTYPE_PARAMETER,

@@ -108,4 +108,27 @@ public interface LibraryProvider
         return List.of();
     }
 
+
+    /**
+     * The implementation guide's description of a variable — the CDISC Notes column of an SDTMIG /
+     * SENDIG domain table (the metadata store's {@code description}; runbook W1b DT1,
+     * {@code PLAN-engine-gap-define-text} Route D). Empty when the library does not know the
+     * standard, the dataset, the variable, or publishes no notes for it.
+     *
+     * @param aStandardName
+     *            the standard, matched hyphen- and case-insensitively
+     * @param aStandardVersion
+     *            the version as the define spells it
+     * @param aDatasetName
+     *            the dataset (domain) name
+     * @param aVariableName
+     *            the variable name
+     * @return the description, or empty
+     */
+    default Optional<String> variableDescription(String aStandardName, String aStandardVersion,
+            String aDatasetName, String aVariableName)
+    {
+        return Optional.empty();
+    }
+
 }

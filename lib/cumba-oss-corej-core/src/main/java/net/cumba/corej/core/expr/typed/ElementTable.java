@@ -178,7 +178,13 @@ public final class ElementTable
             Map.entry("vlm_has_codelist", Primitive.BOOLEAN),
             Map.entry("vlm_decode_matches", Primitive.BOOLEAN),
             Map.entry("vlm_codelist_coded_values", new ListOf(Primitive.STRING)),
-            Map.entry("vlm_codelist_coded_codes", new ListOf(Primitive.STRING)));
+            Map.entry("vlm_codelist_coded_codes", new ListOf(Primitive.STRING)),
+            // runbook W1b DV: the value-level method / comment presence, the origin type, and
+            // the per-record codelist decode (ExprCompiler.compileCodelistDecode)
+            Map.entry("vlm_has_method", Primitive.BOOLEAN),
+            Map.entry("vlm_has_comment", Primitive.BOOLEAN),
+            Map.entry("vlm_origin_type", Primitive.STRING),
+            Map.entry("codelist_decode", Primitive.STRING));
 
     /**
      * Result types of the value functions whose answer is the attribute their static key literal

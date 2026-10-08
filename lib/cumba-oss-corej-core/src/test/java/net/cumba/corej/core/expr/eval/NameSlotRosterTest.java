@@ -136,6 +136,11 @@ class NameSlotRosterTest
         BASE.put("none", "none(joined(X == \"a\"))");
         BASE.put("joined", "any(joined(X == \"a\"))");
         BASE.put("codelist_terms", "codelist_terms([\"C1\"], \"term\", \"value\")");
+        // runbook W1b BL1: unit= / encoding= are static literals with a closed vocabulary / a
+        // charset name, so the auto-built call cannot find an evaluating combination
+        BASE.put("len", "len(X, \"bytes\", \"UTF-8\")");
+        BASE.put("length", "length(X, \"bytes\", \"UTF-8\")");
+        BASE.put("max_value_length", "max_value_length(X, \"bytes\", \"UTF-8\")");
         BASE.put("contains_all", "contains_all(X, keys=[\"a\"])");
         BASE.put("not_contains_all", "not_contains_all(X, keys=[\"a\"])");
         BASE.put("shares_elements_with", "shares_elements_with(X, keys=[\"a\"])");
@@ -1086,8 +1091,16 @@ class NameSlotRosterTest
         @Override
         public Map<String, String> getVariableMetadata(String domain, String variable)
         {
-            return name.equalsIgnoreCase(variable) ? meta(MetadataAttribute.Scope.VARIABLE)
-                    : Map.of();
+            if (!name.equalsIgnoreCase(variable))
+            {
+                return Map.of();
+            }
+            Map<String, String> m = meta(MetadataAttribute.Scope.VARIABLE);
+            // runbook W1b DV: the known variable's codelist decodes its cells (q1 / q2), so
+            // codelist_decode(<name>) answers and codelist_decode(<neutral>) is missing
+            m.put("codelist_code_decode", net.cumba.corej.core.metadata.DefineMetadataListCodec
+                    .encodeStringMap(Map.of("q1", "Decoded1", "q2", "Other")));
+            return m;
         }
 
 

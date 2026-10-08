@@ -42,8 +42,10 @@ class BuiltinFunctionsRegistrationTest
             "colref/1/VALUE", "concat/2-3/VALUE", "contains/2/BOOLEAN", "count/1/VALUE",
             // PLAN-engine-gap-list-elementwise §6.1 Q1 (b) (runbook W1b LE1′)
             "contains_any/2/BOOLEAN", "date_contains/2/BOOLEAN", "date_overlaps/2/BOOLEAN",
-            "day/1/VALUE", "dictionary_available/1/BOOLEAN", "does_not_contain/2/BOOLEAN",
-            "dy/2/VALUE",
+            "day/1/VALUE",
+            // PLAN-engine-gap-define-presence §4 (runbook W1b DP1a): the authorable presence gate
+            "define_available/0/BOOLEAN", "dictionary_available/1/BOOLEAN",
+            "does_not_contain/2/BOOLEAN", "dy/2/VALUE",
             // runbook W2b (PLAN-operation-replacements §8): the day count ported from its operation
             "date_diff_days/2/VALUE",
             // wave 3 (PLAN-per-row-functions): the per-row functions ported from their operations
@@ -72,7 +74,8 @@ class BuiltinFunctionsRegistrationTest
             "is_not_integer/1/BOOLEAN", "is_numeric/1/BOOLEAN", "is_partial_date/1/BOOLEAN",
             "is_present/1/BOOLEAN", "is_valid_date/1/BOOLEAN", "is_valid_duration/1/BOOLEAN",
             "is_valid_name/1/BOOLEAN", "is_valid_testcd/1/BOOLEAN", "latest_possible/1/VALUE",
-            "len/1/VALUE", "length/1/VALUE", "library_available/0/BOOLEAN", "lowcase/1/VALUE",
+            // PLAN-engine-gap-byte-length §5.2 (runbook W1b BL1): unit= / encoding=
+            "len/1-3/VALUE", "length/1-3/VALUE", "library_available/0/BOOLEAN", "lowcase/1/VALUE",
             "lower/1/VALUE", "month/1/VALUE", "non_empty/1/BOOLEAN", "normalize_space/1/VALUE",
             "prefix/2/VALUE", "prefix_matches/2-3/BOOLEAN", "present/1/BOOLEAN",
             "referenced_dataset_variables/1/VALUE", "referenced_domain_class/1/VALUE",

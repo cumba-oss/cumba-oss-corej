@@ -23,7 +23,8 @@ class StoreLibraryProviderTest
     private MetadataStore store() throws IOException
     {
         StoredVariable sex = StoredVariable.builder().name("SEX").label("Sex").core("Exp")
-                .codelistIds(List.of("C66731")).build();
+                .codelistIds(List.of("C66731")).description("Sex of the subject.")
+                .notes("not the CDISC Notes").build();
         StoredVariable usubjid = StoredVariable.builder().name("USUBJID")
                 .label("Unique Subject Identifier").core("Req").build();
         StoredVariable dsdecod = StoredVariable.builder().name("DSDECOD")
@@ -59,6 +60,29 @@ class StoreLibraryProviderTest
                         "standards/adam/adamig-1-3"))
                 .write(file);
         return MetadataStore.open(file);
+    }
+
+
+    /**
+     * Runbook W1b DT1 ({@code PLAN-engine-gap-define-text} Route D): the CDISC Notes the
+     * define-conformance kind compares against are the store's {@code description} (675/675 SENDIG
+     * 3.1.1 and 1723/1723 SDTMIG 3.3 records carry it; {@code notes} is empty on all of them) —
+     * never {@code notes}, and empty for a variable without one.
+     */
+    @Test
+    void variableDescriptionAnswersTheStoredDescriptionNotTheNotes() throws IOException
+    {
+        try (MetadataStore store = store())
+        {
+            StoreLibraryProvider p = StoreLibraryProvider.over(store);
+            assertEquals(Optional.of("Sex of the subject."),
+                    p.variableDescription("SDTMIG", "3.4", "DM", "SEX"));
+            assertEquals(Optional.of("Sex of the subject."),
+                    p.variableDescription("SDTM-IG", "3.4", "DM", "SEX"), "the 2.0 spelling");
+            assertEquals(Optional.empty(), p.variableDescription("SDTMIG", "3.4", "DM", "USUBJID"),
+                    "a variable without a description answers empty");
+            assertEquals(Optional.empty(), p.variableDescription("SDTMIG", "3.4", "DM", "NOPE"));
+        }
     }
 
 

@@ -118,6 +118,8 @@ public final class RuleEvaluator
                 aContext);
         case CheckDefinition.LibraryVariableLabelMatches _ -> libraryVariableLabel(aRule, guarded,
                 aContext);
+        case CheckDefinition.LibraryVariableDescriptionCopied _ -> libraryVariableDescriptionCopied(
+                aRule, guarded, aContext);
         case CheckDefinition.LibraryCodelistRefRequired _ -> libraryCodelistRefRequired(aRule,
                 guarded, aContext);
         case CheckDefinition.LibraryCodelistCCodeMatches _ -> libraryCodelistCCode(aRule, guarded,
@@ -943,6 +945,50 @@ public final class RuleEvaluator
             }
         }
         return findings;
+    }
+
+
+    /**
+     * Runbook W1b DT1 ({@code PLAN-engine-gap-define-text} Route D): the ItemDef referenced by the
+     * scoped ItemGroupDef/ItemRef carries a comment whose English text is the governing
+     * SDTMIG/SENDIG standard's CDISC Notes for the variable, copied — equal after whitespace
+     * normalisation (Q2), letter case kept.
+     */
+    private static List<ConformanceFinding> libraryVariableDescriptionCopied(ConformanceRule aRule,
+            List<ElementNode> aNodes, DocumentContext aContext)
+    {
+        LibraryProvider library = libraryProvider(aContext);
+        List<ConformanceFinding> findings = new ArrayList<>();
+        for (ElementNode node : aNodes)
+        {
+            VariableBinding binding = resolveVariable(node, aContext).orElse(null);
+            if (binding == null || !binding.standard().isSdtmigOrSendig())
+            {
+                continue;
+            }
+            Optional<String> comment = binding.itemDef().attribute("CommentOID")
+                    .flatMap(oid -> aContext.oidResolver().resolve("CommentDef", "OID", oid))
+                    .flatMap(def -> englishText(def, "Description"));
+            if (comment.isEmpty())
+            {
+                continue;
+            }
+            Optional<String> notes = library.variableDescription(binding.standard().name(),
+                    binding.standard().version(), binding.dataset(), binding.variable());
+            if (notes.isPresent()
+                    && collapseWhitespace(comment.get()).equals(collapseWhitespace(notes.get())))
+            {
+                findings.add(finding(aRule, node, binding.variable()));
+            }
+        }
+        return findings;
+    }
+
+
+    /** Trims and collapses each run of whitespace to one space (DT1 Q2). */
+    private static String collapseWhitespace(String aText)
+    {
+        return aText.trim().replaceAll("\\s+", " ");
     }
 
 

@@ -113,6 +113,20 @@ public final class StoreLibraryProvider implements LibraryProvider
     }
 
 
+    /**
+     * The IG's CDISC Notes are the store's {@code description} — populated on every SENDIG 3.1.1
+     * (675) and SDTMIG 3.3 (1 723) variable record, where {@code notes} is empty on all of them
+     * (measured 2026-10-08, runbook W1b DT1 phase 0).
+     */
+    @Override
+    public Optional<String> variableDescription(String aStandardName, String aStandardVersion,
+            String aDatasetName, String aVariableName)
+    {
+        return variable(aStandardName, aStandardVersion, aDatasetName, aVariableName)
+                .map(StoredVariable::description);
+    }
+
+
     @Override
     public Optional<String> qualifierVariableLabel(String aStandardName, String aStandardVersion,
             String aFragment)

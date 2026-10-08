@@ -235,6 +235,9 @@ public final class LibraryValidator
      */
     private final @Nullable VlmResolver vlmResolver;
 
+    /** Runbook W1b DP1a: the Define-XML presence fact behind {@code define_available()}. */
+    private final net.cumba.corej.core.exec.DefinePresence definePresence;
+
     /**
      * T1 — runtime external-dictionary provider, or {@code null} when no dictionaries are supplied
      * (dictionary rules then SKIP).
@@ -346,6 +349,7 @@ public final class LibraryValidator
         provider = aBuilder.provider;
         defineProvider = aBuilder.defineProvider;
         vlmResolver = aBuilder.vlmResolver;
+        definePresence = aBuilder.definePresence;
         dictionaryProvider = aBuilder.dictionaryProvider;
         rules = List.copyOf(aBuilder.rules);
         targetDatasets = Map.copyOf(aBuilder.targetDatasets);
@@ -1291,7 +1295,8 @@ public final class LibraryValidator
         {
             result = RuleRunner.execute(rule, table, resolver, domainPrefix, provider, joinCache,
                     defineProvider, maxErrorsPerRule, exprCache, dictionaryProvider, vlmResolver,
-                    presenceReportedDatasets, crossStandardDatasets, severityThreshold);
+                    definePresence, presenceReportedDatasets, crossStandardDatasets,
+                    severityThreshold);
         }
         catch (RuntimeException e)
         {
@@ -1454,6 +1459,8 @@ public final class LibraryValidator
 
         private @Nullable VlmResolver vlmResolver;
 
+        private net.cumba.corej.core.exec.DefinePresence definePresence = net.cumba.corej.core.exec.DefinePresence.ABSENT;
+
         private @Nullable RuntimeDictionaryProvider dictionaryProvider;
 
         private final List<Rule> rules = new ArrayList<>();
@@ -1517,6 +1524,17 @@ public final class LibraryValidator
         public Builder vlmResolver(@Nullable VlmResolver aVlmResolver)
         {
             vlmResolver = aVlmResolver;
+            return this;
+        }
+
+
+        /**
+         * Runbook W1b DP1a: whether the run was given a Define-XML, and what became of it — the
+         * fact {@code define_available()} answers. Defaults to {@code ABSENT}.
+         */
+        public Builder definePresence(net.cumba.corej.core.exec.DefinePresence aDefinePresence)
+        {
+            definePresence = aDefinePresence;
             return this;
         }
 

@@ -61,6 +61,18 @@ public final class StubLibraryProvider implements LibraryProvider
             SDTMIG_34 + "|DM|SEX", "Exp", SDTMIG_34 + "|AE|AETERM", "Req",
             ADAMIG_13 + "|DM|USUBJID", "Req");
 
+    /**
+     * The IG's CDISC Notes per variable (the store's {@code description}), keyed like
+     * {@link #VARIABLE_LABELS} — AE only, so a DM comment can never equal a library description
+     * (runbook W1b DT1).
+     */
+    private static final Map<String, String> DESCRIPTIONS = Map.of(SDTMIG_34 + "|AE|AETERM",
+            "Verbatim name of the event.", SDTMIG_34 + "|AE|AESEV",
+            "The severity or intensity of the event.", SDTMIG_34 + "|AE|AEACN",
+            "Describes changes to the study treatment as a result of the event.",
+            SDTMIG_34 + "|AE|AEDECOD", "Dictionary-derived text description of AETERM.",
+            SDTMIG_34 + "|AE|AESER", "Was the event serious?");
+
     private static final Map<String, List<String>> VERSIONS = Map.of("SDTMIG",
             List.of("3.2", "3.3", "3.4"), "SENDIG", List.of("3.0", "3.1"));
 
@@ -136,6 +148,15 @@ public final class StubLibraryProvider implements LibraryProvider
     {
         return Optional.ofNullable(
                 CORE.get(key(aStandardName, aStandardVersion, aDatasetName, aVariableName)));
+    }
+
+
+    @Override
+    public Optional<String> variableDescription(String aStandardName, String aStandardVersion,
+            String aDatasetName, String aVariableName)
+    {
+        return Optional.ofNullable(DESCRIPTIONS
+                .get(key(aStandardName, aStandardVersion, aDatasetName, aVariableName)));
     }
 
 

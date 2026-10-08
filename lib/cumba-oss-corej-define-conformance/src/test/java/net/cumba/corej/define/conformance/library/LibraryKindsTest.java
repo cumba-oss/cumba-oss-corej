@@ -351,6 +351,143 @@ class LibraryKindsTest
     }
 
     // ------------------------------------------------------------------
+    // library_variable_description_copied (PLAN-engine-gap-define-text Route D, runbook W1b DT1)
+    // ------------------------------------------------------------------
+
+    /**
+     * SDTMIG 3.4 AE with four variables: AETERM's comment copies the IG's CDISC Notes verbatim,
+     * AESEV's copies them with different whitespace (a line break and a double space), AEACN's
+     * comment is the sponsor's own text, AEDECOD has no comment, and AESER's comment copies the
+     * Notes in different letter case.
+     */
+    private static final String AE_WITH_COMMENTS = """
+            <def:Standards>
+              <def:Standard OID="STD.IG" Name="SDTMIG" Type="IG" Version="3.4"/>
+            </def:Standards>
+            <ItemGroupDef OID="IG.AE" Name="AE" Domain="AE" def:StandardOID="STD.IG">
+              <ItemRef ItemOID="IT.AE.AETERM" Mandatory="Yes"/>
+              <ItemRef ItemOID="IT.AE.AESEV" Mandatory="No"/>
+              <ItemRef ItemOID="IT.AE.AEACN" Mandatory="No"/>
+              <ItemRef ItemOID="IT.AE.AEDECOD" Mandatory="No"/>
+              <ItemRef ItemOID="IT.AE.AESER" Mandatory="No"/>
+            </ItemGroupDef>
+            <ItemDef OID="IT.AE.AETERM" Name="AETERM" def:CommentOID="COM.AETERM"/>
+            <ItemDef OID="IT.AE.AESEV" Name="AESEV" def:CommentOID="COM.AESEV"/>
+            <ItemDef OID="IT.AE.AEACN" Name="AEACN" def:CommentOID="COM.AEACN"/>
+            <ItemDef OID="IT.AE.AEDECOD" Name="AEDECOD"/>
+            <ItemDef OID="IT.AE.AESER" Name="AESER" def:CommentOID="COM.AESER"/>
+            <def:CommentDef OID="COM.AETERM">
+              <Description>
+                <TranslatedText xml:lang="en">Verbatim name of the event.</TranslatedText>
+              </Description>
+            </def:CommentDef>
+            <def:CommentDef OID="COM.AESEV">
+              <Description>
+                <TranslatedText xml:lang="en">  The severity or intensity
+                  of the  event. </TranslatedText>
+              </Description>
+            </def:CommentDef>
+            <def:CommentDef OID="COM.AEACN">
+              <Description>
+                <TranslatedText xml:lang="en">Collected on the AE CRF page.</TranslatedText>
+              </Description>
+            </def:CommentDef>
+            <def:CommentDef OID="COM.AESER">
+              <Description>
+                <TranslatedText xml:lang="en">WAS THE EVENT SERIOUS?</TranslatedText>
+              </Description>
+            </def:CommentDef>
+            """;
+
+    @Test
+    void descriptionCopiedFiresOnlyWhereTheCommentEqualsTheLibraryNotesAfterWhitespaceNormalisation()
+    {
+        RuleResult result = evaluate(rule("ItemGroupDef/ItemRef", """
+                kind: "library_variable_description_copied"
+                """), context(AE_WITH_COMMENTS));
+        // AETERM: verbatim copy -> fires. AESEV: the same text under different whitespace (Q2:
+        // whitespace-normalised equality) -> fires. AEACN: the sponsor's own text -> silent.
+        // AEDECOD: no comment -> silent. AESER: same words, different case -> silent (case-
+        // sensitive, D17).
+        assertEquals(List.of("AETERM", "AESEV"), values(result));
+    }
+
+
+    @Test
+    void descriptionCopiedIsSilentWhereTheLibraryHasNoNotesOrTheStandardIsNotAnIg()
+    {
+        // the stub knows no DM descriptions at all: a DM comment equal to anything stays silent
+        RuleResult noNotes = evaluate(rule("ItemGroupDef/ItemRef", """
+                kind: "library_variable_description_copied"
+                """), context("""
+                <def:Standards>
+                  <def:Standard OID="STD.IG" Name="SDTMIG" Type="IG" Version="3.4"/>
+                </def:Standards>
+                <ItemGroupDef OID="IG.DM" Name="DM" Domain="DM" def:StandardOID="STD.IG">
+                  <ItemRef ItemOID="IT.DM.SEX" Mandatory="Yes"/>
+                </ItemGroupDef>
+                <ItemDef OID="IT.DM.SEX" Name="SEX" def:CommentOID="COM.SEX"/>
+                <def:CommentDef OID="COM.SEX">
+                  <Description>
+                    <TranslatedText xml:lang="en">Sex</TranslatedText>
+                  </Description>
+                </def:CommentDef>
+                """));
+        assertEquals(List.of(), values(noNotes));
+        // an ADaM dataset is out of reach, like the label kinds (SDTMIG / SENDIG only)
+        RuleResult adam = evaluate(rule("ItemGroupDef/ItemRef", """
+                kind: "library_variable_description_copied"
+                """), context("""
+                <def:Standards>
+                  <def:Standard OID="STD.IG" Name="ADaMIG" Type="IG" Version="1.3"/>
+                </def:Standards>
+                <ItemGroupDef OID="IG.AE" Name="AE" Domain="AE" def:StandardOID="STD.IG">
+                  <ItemRef ItemOID="IT.AE.AETERM" Mandatory="Yes"/>
+                </ItemGroupDef>
+                <ItemDef OID="IT.AE.AETERM" Name="AETERM" def:CommentOID="COM.AETERM"/>
+                <def:CommentDef OID="COM.AETERM">
+                  <Description>
+                    <TranslatedText xml:lang="en">Verbatim name of the event.</TranslatedText>
+                  </Description>
+                </def:CommentDef>
+                """));
+        assertEquals(List.of(), values(adam));
+    }
+
+
+    @Test
+    void descriptionCopiedReadsTheEnglishCommentTextOnly()
+    {
+        // a Japanese-only comment carries no English text to compare; an English text beside it
+        // is the one compared (Q4)
+        RuleResult result = evaluate(rule("ItemGroupDef/ItemRef", """
+                kind: "library_variable_description_copied"
+                """), context("""
+                <def:Standards>
+                  <def:Standard OID="STD.IG" Name="SDTMIG" Type="IG" Version="3.4"/>
+                </def:Standards>
+                <ItemGroupDef OID="IG.AE" Name="AE" Domain="AE" def:StandardOID="STD.IG">
+                  <ItemRef ItemOID="IT.AE.AETERM" Mandatory="Yes"/>
+                  <ItemRef ItemOID="IT.AE.AESEV" Mandatory="No"/>
+                </ItemGroupDef>
+                <ItemDef OID="IT.AE.AETERM" Name="AETERM" def:CommentOID="COM.AETERM"/>
+                <ItemDef OID="IT.AE.AESEV" Name="AESEV" def:CommentOID="COM.AESEV"/>
+                <def:CommentDef OID="COM.AETERM">
+                  <Description>
+                    <TranslatedText xml:lang="ja">Verbatim name of the event.</TranslatedText>
+                  </Description>
+                </def:CommentDef>
+                <def:CommentDef OID="COM.AESEV">
+                  <Description>
+                    <TranslatedText xml:lang="ja">x</TranslatedText>
+                    <TranslatedText>The severity or intensity of the event.</TranslatedText>
+                  </Description>
+                </def:CommentDef>
+                """));
+        assertEquals(List.of("AESEV"), values(result));
+    }
+
+    // ------------------------------------------------------------------
     // library_codelist_ref_required (PMDA DD0124)
     // ------------------------------------------------------------------
 

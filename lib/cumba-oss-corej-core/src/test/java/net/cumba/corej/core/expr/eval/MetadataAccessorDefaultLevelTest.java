@@ -141,8 +141,8 @@ class MetadataAccessorDefaultLevelTest
             (attr.supports(MetadataLevel.DATA) ? data : nonData).add(attr.functionName());
         }
         assertEquals(new TreeSet<>(DATA_ACCESSORS), data);
-        assertEquals(17, nonData.size(), nonData.toString());
-        assertEquals(27, MetadataAttribute.values().length);
+        assertEquals(18, nonData.size(), nonData.toString());
+        assertEquals(28, MetadataAttribute.values().length);
     }
 
 
@@ -229,7 +229,7 @@ class MetadataAccessorDefaultLevelTest
                 assertTrue(named.get(0).contains(fn + "(\"AETERM\", \""), named.get(0));
             }
         }
-        assertEquals(17, checked);
+        assertEquals(18, checked);
     }
 
 

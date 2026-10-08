@@ -174,6 +174,17 @@ public class EvaluationContext
     VlmResolver vlmResolver;
 
     /**
+     * Whether the run was given a Define-XML, and what became of it ({@link DefinePresence}) — the
+     * fact {@code define_available()} answers ({@code PLAN-engine-gap-define-presence} §4, runbook
+     * W1b DP1a). Set by {@code StudyValidationService} through the validator and the runner; a
+     * context built without it reads {@link DefinePresence#ABSENT}. Deliberately a separate fact
+     * from {@link #defineProvider}: a supplied define that failed to parse leaves the provider on
+     * the datatable fallback or {@code null}, yet it was supplied (owner Q2).
+     */
+    @Builder.Default
+    DefinePresence definePresence = DefinePresence.ABSENT;
+
+    /**
      * T1 — the runtime external-dictionary provider (MedDRA / WHODrug / LOINC / UNII / SNOMED /
      * NEOPLASM value-maps), consulted by the {@code valid_external_dictionary_*} operations and the
      * {@code dictionary_available} skip-gate. {@code null} when no dictionaries are supplied —

@@ -8,6 +8,7 @@ between(x:number, lo:number, hi:number) kind=boolean
 ceil(x:unknown) kind=value
 char(x:unknown) kind=value
 coalesce(a:unknown, b:unknown, c:unknown?) kind=value
+codelist_decode(name:unknown@name?) kind=value
 codelist_terms(codelists:list<string>, level:string, returntype:string?) kind=value aggregate provider=library
 colref(x:unknown@name) kind=value perRow
 column_series_metadata(name:string@name?, name_pattern:string, min_length:number?) kind=value aggregate
@@ -24,6 +25,7 @@ date_contains(outer:date, inner:date) kind=boolean
 date_diff_days(name:column-reference, reference:unknown) kind=value
 date_overlaps(a:date, b:date) kind=boolean
 day(x:unknown) kind=value
+define_available() kind=boolean
 define_dataset_names() kind=value aggregate provider=define
 define_key_variables() kind=value aggregate provider=define
 define_variable_decode_matches(name:unknown?) kind=value
@@ -97,8 +99,8 @@ is_valid_testcd(x:unknown) kind=boolean elementwise
 joined(condition:boolean) kind=value
 latest_date(a:date, b:date) kind=value
 latest_possible(x:unknown) kind=value
-len(x:unknown) kind=value
-length(x:unknown) kind=value
+len(x:unknown, unit:string?, encoding:string?) kind=value
+length(x:unknown, unit:string?, encoding:string?) kind=value
 library_available() kind=boolean
 library_variable_code_pair_matches(name:unknown?) kind=value
 lowcase(x:unknown) kind=value elementwise
@@ -107,7 +109,7 @@ lpad(x:unknown, width:number, fill:string?) kind=value
 matches_label_template(label:string, template:string) kind=boolean
 max(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?) kind=value
 max_date(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?, missing_values:string?) kind=value
-max_value_length(name:unknown@name?) kind=value
+max_value_length(name:unknown@name?, unit:string?, encoding:string?) kind=value
 min_date(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?, missing_values:string?) kind=value
 minus(value:unknown, subtract:unknown) kind=value aggregate
 month(x:unknown) kind=value
@@ -170,8 +172,11 @@ vlm_codelist_extensible(name:unknown@name?) kind=value
 vlm_data_type(name:unknown@name?) kind=value
 vlm_decode_matches(name:unknown@name?) kind=value
 vlm_has_codelist(name:unknown@name?) kind=value
+vlm_has_comment(name:unknown@name?) kind=value
+vlm_has_method(name:unknown@name?) kind=value
 vlm_length(name:unknown@name?) kind=value
 vlm_mandatory(name:unknown@name?) kind=value
+vlm_origin_type(name:unknown@name?) kind=value
 vlm_type_conforms(name:unknown@name?) kind=value
 vlm_value_length(name:unknown@name?) kind=value
 year(x:unknown) kind=value
@@ -195,6 +200,7 @@ var_format scope=variable levels=DATA,DEFINE result=string default=DATA kwargs=d
 var_has_codelist scope=variable levels=DEFINE result=boolean
 var_has_comment scope=variable levels=DEFINE result=boolean
 var_has_method scope=variable levels=DEFINE result=boolean
+var_has_value_list scope=variable levels=DEFINE result=boolean
 var_label scope=variable levels=DATA,DEFINE,LIBRARY result=string default=DATA kwargs=dataset
 var_length scope=variable levels=DATA,DEFINE,LIBRARY result=number default=DATA kwargs=dataset
 var_mandatory scope=variable levels=DEFINE result=string
@@ -295,8 +301,14 @@ is_last_in_group.keep_missings: literal boolean plan-build
 is_not_unique_set.keep_missings: literal boolean plan-build
 is_sorted_by.keep_missings: literal boolean plan-build
 is_unique_set.keep_missings: literal boolean plan-build
+len.encoding: literal
+len.unit: literal {bytes,chars}
+length.encoding: literal
+length.unit: literal {bytes,chars}
 max.keep_missings: literal boolean plan-build
 max_date.keep_missings: literal boolean plan-build
+max_value_length.encoding: literal
+max_value_length.unit: literal {bytes,chars}
 min_date.keep_missings: literal boolean plan-build
 present_on_multiple_rows_within.keep_missings: literal boolean plan-build
 read_value.keep_missings: literal boolean plan-build

@@ -209,7 +209,9 @@ class ElementwiseLiftRosterDriftTest
             assertTrue(surface.contains("\n" + name + "(x:unknown) kind=value elementwise\n"),
                     name);
         }
-        assertTrue(surface.contains("\nlen(x:unknown) kind=value\n"), "len is not flagged in E4");
+        assertTrue(
+                surface.contains("\nlen(x:unknown, unit:string?, encoding:string?) kind=value\n"),
+                "len is not flagged in E4 (its unit= / encoding= are runbook W1b BL1's)");
         for (String name : BOOLEAN_ROSTER)
         {
             // the parameter rendering differs (x:string, x:unknown, invalid_duration's negative=)

@@ -269,8 +269,13 @@ class QualifiedNameUniformityTest
             latest_date | b | N | V:latest_date(date("2020-01-10"), date(@D))
             latest_possible | x | N | V:latest_possible(@D)
             len | x | N | V:len(@S)
+            len | unit | - | static string {bytes,chars} (runbook W1b BL1)
+            len | encoding | - | static string, a charset name (runbook W1b BL1)
             length | x | N | V:length(@S)
+            length | unit | - | static string {bytes,chars} (runbook W1b BL1)
+            length | encoding | - | static string, a charset name (runbook W1b BL1)
             library_available | - | - | nullary
+            define_available | - | - | nullary (runbook W1b DP1a)
             library_variable_code_pair_matches | name | - | varname() only (compileLibraryCodePairMatches refuses any other argument)
             lowcase | x | N | V:lowcase(@S)
             lower | x | N | V:lower(@S)
@@ -289,6 +294,8 @@ class QualifiedNameUniformityTest
             max_date | keep_missings | - | static boolean
             max_date | missing_values | - | static string
             max_value_length | name | N | V:max_value_length(@S) ; S:max_value_length("@S")
+            max_value_length | unit | - | static string {bytes,chars} (runbook W1b BL1)
+            max_value_length | encoding | - | static string, a charset name (runbook W1b BL1)
             min_date | name | N | V:min_date(@D, group=[#G])
             min_date | domain | - | a dataset (plan Q1)
             min_date | filter | N | V:min_date(#D, group=[#G], filter=(@S == "a"))
@@ -408,6 +415,10 @@ class QualifiedNameUniformityTest
             vlm_mandatory | name | N | X:provider — a VlmResolver (Define-XML); qualified: refused at load (N4)
             vlm_type_conforms | name | N | X:provider — a VlmResolver (Define-XML); qualified: refused at load (N4)
             vlm_value_length | name | N | X:provider — a VlmResolver (Define-XML); qualified: refused at load (N4)
+            vlm_has_method | name | N | X:provider — a VlmResolver (Define-XML); qualified: refused at load (N4)
+            vlm_has_comment | name | N | X:provider — a VlmResolver (Define-XML); qualified: refused at load (N4)
+            vlm_origin_type | name | N | X:provider — a VlmResolver (Define-XML); qualified: refused at load (N4)
+            codelist_decode | name | N | X:provider — the DEFINE provider's codelist decodes; qualified: refused at load (N4, runbook W1b DV)
             year | x | N | V:year(@D)
             var_name | name | N | V:var_name("@S", "DATA")
             var_name | level | - | static level
@@ -456,6 +467,8 @@ class QualifiedNameUniformityTest
             var_has_codelist | level | - | static level
             var_has_method | name | N | X:provider — DEFINE level only ; C4:V:var_has_method("@S", "DEFINE")
             var_has_method | level | - | static level
+            var_has_value_list | name | N | X:provider — DEFINE level only ; C4:V:var_has_value_list("@S", "DEFINE")
+            var_has_value_list | level | - | static level
             var_external_dictionary | name | N | X:provider — DEFINE level only ; C4:V:var_external_dictionary("@S", "DEFINE")
             var_external_dictionary | level | - | static level
             var_external_dictionary_version | name | N | X:provider — DEFINE level only ; C4:V:var_external_dictionary_version("@S", "DEFINE")
@@ -815,26 +828,29 @@ class QualifiedNameUniformityTest
     {
         // +1 descriptor / +2 parameters / +1 accessor since PLAN-library-template-label-resolution
         // (matches_label_template(label, template) and label_template(…, "LIBRARY")).
-        assertEquals(175, FunctionRegistry.all().size(),
+        assertEquals(180, FunctionRegistry.all().size(),
                 "registered descriptors (165 + any / all / none / joined, PLAN-cg0218; + 2"
                         + " column-status predicates, PLAN-present-empty-column-fold; + the nullary"
                         + " get_permitted_column_order, PLAN-permitted-addition-position; + union,"
                         + " PLAN-union-function / runbook W1a U1; + values,"
                         + " PLAN-elementwise-list-functions / runbook W1a E1; + contains_any,"
-                        + " PLAN-engine-gap-list-elementwise / runbook W1b LE1')");
-        assertEquals(295,
+                        + " PLAN-engine-gap-list-elementwise / runbook W1b LE1'; + define_available,"
+                        + " runbook W1b DP1a; + vlm_has_method / vlm_has_comment /"
+                        + " vlm_origin_type / codelist_decode, runbook W1b DV)");
+        assertEquals(305,
                 FunctionRegistry.all().stream().mapToInt(d -> d.parameters().size()).sum(),
                 "declared parameters (283 + one each for any / all / none / joined + one each"
                         + " for var_is_single_value / var_is_all_missing + three for union + one for"
-                        + " values + two for contains_any)");
-        assertEquals(27, MetadataAttribute.values().length, "metadata accessors");
+                        + " values + two for contains_any + two each for len / length /"
+                        + " max_value_length (W1b BL1) + one each for the four W1b DV calls)");
+        assertEquals(28, MetadataAttribute.values().length, "metadata accessors");
         assertEquals(Set.of("date", "date_part", "num", "time", "time_part"),
                 new TreeSet<>(ExprCompiler.comparisonMarkers()), "comparison markers");
         assertEquals(14, Expr.BinOp.values().length, "operators");
         List<Row> rows = rows();
         long probed = rows.stream().filter(Row::probed).count();
         long nameClass = rows.stream().filter(Row::name).count();
-        assertEquals(260, nameClass, "name-bearing parameters in the hand table");
+        assertEquals(265, nameClass, "name-bearing parameters in the hand table");
         assertEquals(212, probed, "probed parameters in the hand table");
         // T2 r1 L2: every unprobed name-bearing row states one of the three admitted reasons.
         List<String> unprobed = new ArrayList<>();
@@ -848,14 +864,16 @@ class QualifiedNameUniformityTest
                 unprobed.add(r.id());
             }
         }
-        assertEquals(48, unprobed.size(), "unprobed name-bearing rows: " + unprobed);
+        assertEquals(53, unprobed.size(), "unprobed name-bearing rows: " + unprobed);
         // T2 r2 L5: the non-name class is pinned too — a row that flips to '-' to dodge a probe
         // moves this count. +1 for label_template's stem= keyword (R2-3), a static selector.
         // +4 for the quantifier family (PLAN-cg0218): any / all / none take joined(…), joined
         // takes a condition — none of the four slots can carry a column name itself. +1 for the
         // nullary get_permitted_column_order (PLAN-permitted-addition-position).
         // +3 for union's three list operands (PLAN-union-function, runbook W1a U1).
-        assertEquals(145, rows.stream().filter(r -> !r.name()).count(), "non-name rows");
+        // +6 for unit= / encoding= of len / length / max_value_length (runbook W1b BL1), +1 for
+        // var_has_value_list's level, +1 for the nullary define_available (W1b DP1a / DV).
+        assertEquals(153, rows.stream().filter(r -> !r.name()).count(), "non-name rows");
     }
 
     // ------------------------------------------------------------------

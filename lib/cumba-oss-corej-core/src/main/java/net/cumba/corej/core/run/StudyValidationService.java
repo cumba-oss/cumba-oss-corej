@@ -268,6 +268,11 @@ public final class StudyValidationService
         // The direct (ODM-backed) Define-XML provider, captured so the per-record value-level
         // metadata resolver (VlmResolver) can be built from the same parsed model.
         net.cumba.corej.core.gen.DefineXMLProvider directDefine = null;
+        // Runbook W1b DP1a (PLAN-engine-gap-define-presence §4.2): the presence fact behind
+        // define_available() — ABSENT when no path was given, else PARSED / UNPARSEABLE by the
+        // direct parse. Deliberately not `defineProvider != null`: on a parse failure the
+        // provider is the datatable fallback or null, and the define WAS supplied (owner Q2).
+        net.cumba.corej.core.exec.DefinePresence definePresence = net.cumba.corej.core.exec.DefinePresence.ABSENT;
         if (params.defineXmlPath() != null)
         {
             // The datatable-backed define provider serves dataset-level define metadata for every
@@ -298,6 +303,8 @@ public final class StudyValidationService
                         defineMetadataBasis);
             }
             directDefine = direct;
+            definePresence = direct != null ? net.cumba.corej.core.exec.DefinePresence.PARSED
+                    : net.cumba.corej.core.exec.DefinePresence.UNPARSEABLE;
             defineProvider = direct != null
                     ? new net.cumba.corej.core.metadata.DefineXmlMetadataProvider(direct,
                             datatableDefine)
@@ -446,8 +453,9 @@ public final class StudyValidationService
 
         LibraryValidator.Builder vb = LibraryValidator.builder().provider(provider)
                 .defineProvider(defineProvider).vlmResolver(vlmResolver)
-                .dictionaryProvider(dictionaryProvider).rules(rules).sequential(true)
-                .ruleThreads(params.ruleThreads()).maxErrorsPerRule(params.maxErrorsPerRule())
+                .definePresence(definePresence).dictionaryProvider(dictionaryProvider).rules(rules)
+                .sequential(true).ruleThreads(params.ruleThreads())
+                .maxErrorsPerRule(params.maxErrorsPerRule())
                 .severityThreshold(params.severityThreshold()).runtimeListener(listener)
                 .crossStandardDatasets(crossStandard).useCase(params.useCase())
                 .mergeStandard(mergeStandardOf(runStandard)).taskDecorator(params.taskDecorator());

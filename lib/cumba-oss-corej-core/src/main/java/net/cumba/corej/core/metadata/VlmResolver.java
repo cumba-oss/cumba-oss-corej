@@ -66,7 +66,8 @@ public final class VlmResolver
      */
     public record VlmMatch(@Nullable String dataType, @Nullable Integer length,
             @Nullable String mandatory, List<String> codedValues, List<String> codedCodes,
-            @Nullable String codelistCCode, Map<String, String> codeDecodeMap)
+            @Nullable String codelistCCode, Map<String, String> codeDecodeMap, boolean hasMethod,
+            boolean hasComment, String originType)
     {
 
         /** Defensively copies the collection components so the record is genuinely immutable. */
@@ -246,8 +247,15 @@ public final class VlmResolver
             codeDecodeMap = codeDecodeMap(cl);
             cCode = extCodeId(cl);
         }
+        // runbook W1b DV (PLAN-engine-gap-define-vlm-method §4.1): the value-level ItemRef's
+        // MethodOID, the value-level ItemDef's CommentOID (read as var_has_comment reads it) and
+        // its origin type under the one variable-level rule (OdmDefineXMLProvider.originType:
+        // def:Origin/@Type, else the v1.0 @Origin, else "")
+        boolean hasMethod = ref.getMethodOID() != null;
+        boolean hasComment = vd != null && vd.getCommentOID() != null;
+        String originType = vd == null ? "" : OdmDefineXMLProvider.originType(vd);
         return new VlmMatch(dataType, length, ref.getMandatory(), codedValues, codedCodes, cCode,
-                codeDecodeMap);
+                codeDecodeMap, hasMethod, hasComment, originType);
     }
 
 

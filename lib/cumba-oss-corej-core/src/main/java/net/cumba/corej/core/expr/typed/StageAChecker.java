@@ -73,6 +73,9 @@ import org.jspecify.annotations.Nullable;
 public final class StageAChecker
 {
 
+    /** The one varname-anchored call whose parameters stage A judges (runbook W1b BL1). */
+    private static final String MAX_VALUE_LENGTH = "max_value_length";
+
     private static final System.Logger LOGGER = System.getLogger(StageAChecker.class.getName());
 
     /**
@@ -1233,7 +1236,7 @@ public final class StageAChecker
         {
             return accessor(c, attr, children);
         }
-        if (name.startsWith("vlm_"))
+        if (net.cumba.corej.core.expr.eval.MetadataExprScan.readsDefinePerRecord(name))
         {
             // P3 (OPEN-T (c), owner 2026-10-05): a VLM accessor's result type is its ElementTable
             // row — the carrier type ExprCompiler.compileVlmAccessor declares — so a binding over
@@ -1246,6 +1249,17 @@ public final class StageAChecker
             Level level = nameArg == null || isCurrentVariableName(nameArg)
                     ? Level.VARIABLE_METADATA
                     : Level.DATASET;
+            if (MAX_VALUE_LENGTH.equals(name))
+            {
+                // runbook W1b BL1: unit= / encoding= are STRING parameters, so a wrong-typed
+                // literal there is stage A's PARAMETER_TYPE finding (the name slot is unknown-
+                // typed and binds anything, as before)
+                FunctionDescriptor anchored = FunctionRegistry.descriptor(name);
+                if (anchored != null)
+                {
+                    checkParameterBinding(c, anchored, children);
+                }
+            }
             return new TypedExpr(c, ElementTable.resultType(name), level, children);
         }
         FunctionDescriptor descriptor = FunctionRegistry.descriptor(name);
@@ -1477,8 +1491,10 @@ public final class StageAChecker
             return false;
         }
         // the library-gate arm binds its descriptor since the Precondition became a root
-        return BroadcastFold.isLibraryGateCall(probe)
-                || (MetadataAttribute.fromFunction(name) == null && !name.startsWith("vlm_")
+        return BroadcastFold.isLibraryGateCall(probe) || MAX_VALUE_LENGTH.equals(name)
+                || (MetadataAttribute.fromFunction(name) == null
+                        && !net.cumba.corej.core.expr.eval.MetadataExprScan
+                                .readsDefinePerRecord(name)
                         && !VARNAME_ANCHORED_CALLS.contains(name));
     }
 

@@ -270,13 +270,14 @@ class StageAResidueDriftTest
         assertEquals(List.of(), parameterTypeFindings(
                 callWith(tuple, 0, new Expr.Ref("ARMCD", OperandKind.COLUMN))));
         for (String name : List.of("var_exists", "ds_exists", "var_is_empty", "var_label",
-                "vlm_length", "max_value_length", "date", "colref", "num"))
+                "vlm_length", "date", "colref", "num"))
         {
             assertFalse(StageAChecker.judgesParameters(name), name);
         }
+        // max_value_length joined the judged set with its STRING unit= / encoding= (W1b BL1)
         for (String name : List.of("tuple", "dy", "date_diff_days", "referenced_dataset_variables",
                 "valid_external_dictionary_code_term_pair", "record_count", "library_available",
-                "dictionary_available", "is_last_in_group"))
+                "dictionary_available", "is_last_in_group", "max_value_length"))
         {
             assertTrue(StageAChecker.judgesParameters(name), name);
         }

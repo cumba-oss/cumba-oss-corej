@@ -35,7 +35,8 @@ class DefineXmlMetadataProviderTest
             {
                 return List.of(Map.of("name", "DOMAIN", "label", "Domain Abbreviation", "dataType",
                         "Char", "role", "Identifier", "orderNumber", "1", "codelist", "CL.DOMAIN",
-                        "ccode", "C66734", "codelist_coded_codes", "[\"DM\",\"AE\"]"));
+                        "ccode", "C66734", "codelist_coded_codes", "[\"DM\",\"AE\"]",
+                        "has_value_list", "true"));
             }
 
 
@@ -76,6 +77,8 @@ class DefineXmlMetadataProviderTest
         assertEquals("C66734", meta.get("ccode"));
         assertEquals("[\"DM\",\"AE\"]", meta.get("codelist_coded_codes"),
                 "coded codes carried JSON-encoded");
+        // runbook W1b DV: the def:ValueListRef presence flag backing var_has_value_list("DEFINE")
+        assertEquals("true", meta.get("has_value_list"), "has_value_list carried through");
     }
 
 

@@ -1,11 +1,13 @@
 package net.cumba.corej.core.expr.eval.spi;
 
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
 import net.cumba.corej.core.exec.ArithmeticSemantics;
 import net.cumba.corej.core.exec.EvaluationContext;
@@ -146,15 +148,38 @@ public final class BuiltinFunctions implements FunctionProvider
             // ⚑ Free on the authored corpus for a second, independent reason: 81 of the 88 `len(`
             // sites compare against a literal and NOT ONE is `== 0` or `!= 0`; every other literal
             // answers the same under "length 0" and under D34 #5's "a missing sorts low".
+            //
+            // PLAN-engine-gap-byte-length §5.1-5.2 (runbook W1b BL1, owner-ruled 2026-10-07):
+            // unit="bytes" counts the value encoded in `encoding` — the written charset, or the
+            // one the COMPILER resolved from the evaluated table's own Encoding metadata into
+            // the encoding operand (ExprCompiler.tableEncodingOperand; a table without one, or
+            // declaring MIXED, hands a missing operand and every row answers missing). The
+            // kernel reads its arguments only — never the run context — so it stays pure for
+            // the element-wise lift E5 flags it with in W2 (ElementwiseLiftRosterDriftTest).
+            // unit="chars" (the default) keeps today's UTF-16 count until BL2 (W2) switches it
+            // to code points.
+            boolean bytes = countsBytes(args.size() > 1 ? args.get(1) : null);
+            Charset charset = bytes ? charsetOf(args.size() > 2 ? args.get(2) : null) : null;
+            if (bytes && charset == null)
+            {
+                return ConstVector.of(null);
+            }
             return new ComputedVector(run.rowCount(), DataValueType.LONG, row ->
             {
                 TypedValue tv = x.value(row);
-                return tv.missing() != null ? tv.cell()
-                        : (long) tv.cell().getValueAsString().length();
+                if (tv.missing() != null)
+                {
+                    return tv.cell();
+                }
+                String text = tv.cell().getValueAsString();
+                return charset == null ? (long) text.length()
+                        : (long) text.getBytes(charset).length;
             });
         };
-        value(fns, "len", len);
-        value(fns, "length", len);
+        List<Parameter> lenParameters = List.of(p("x"), opt(UNIT_PARAMETER, Primitive.STRING),
+                opt(ENCODING_PARAMETER, Primitive.STRING));
+        value(fns, "len", lenParameters, len);
+        value(fns, "length", lenParameters, len);
         // count(x) / size(x): the number of ELEMENTS in a list-valued operand — 1 for a present
         // scalar, 0 for a missing one.
         //
@@ -572,6 +597,16 @@ public final class BuiltinFunctions implements FunctionProvider
         // answer.
         bool(fns, "library_available", List.of(), (run, _) -> allRows(run.rowCount(),
                 LibraryAnswerability.libraryAnswerable(run.ctx().getLibraryProvider())));
+        // define_available() (PLAN-engine-gap-define-presence §4, runbook W1b DP1a; owner-ruled
+        // 2026-10-07): true iff a Define-XML was SUPPLIED to the run — also one that failed to
+        // parse (Q2: supplied is supplied; the parse failure is DP1b's study-level ERROR), false
+        // otherwise. Authorable (Q4), a study-level fact (StudyRuleClassifier), a run constant
+        // folded like library_available() (BroadcastFold.isLibraryGateCall). It declares NO
+        // provider need, so the rule that reports the absence is never SKIPPED for it. It reads
+        // the presence FACT, never `getDefineProvider() != null`: on a parse failure the provider
+        // is the datatable fallback or null, and both say nothing about "supplied".
+        bool(fns, "define_available", List.of(), (run, _) -> allRows(run.rowCount(),
+                run.ctx().getDefinePresence() != net.cumba.corej.core.exec.DefinePresence.ABSENT));
         bool(fns, "available", List.of(p("x")), (run, args) -> allRows(run.rowCount(),
                 resultAvailable(args.get(0).value(0).resolved())));
         // T1: dictionary_available(<type>): true iff a dictionary of the named type is loaded into
@@ -1406,6 +1441,73 @@ public final class BuiltinFunctions implements FunctionProvider
     private static void value(List<FunctionDescriptor> fns, String name, EvalFunction fn)
     {
         fns.add(new FunctionDescriptor(name, List.of(p("x")), FunctionKind.VALUE, fn));
+    }
+
+
+    /** As {@link #value(List, String, EvalFunction)} with the declared parameters. */
+    private static void value(List<FunctionDescriptor> fns, String name, List<Parameter> params,
+            EvalFunction fn)
+    {
+        fns.add(new FunctionDescriptor(name, params, FunctionKind.VALUE, fn));
+    }
+
+    /** The {@code unit=} parameter of {@code len} / {@code max_value_length} (runbook W1b BL1). */
+    public static final String UNIT_PARAMETER = "unit";
+
+    /** The {@code encoding=} parameter of {@code len} / {@code max_value_length} (BL1). */
+    public static final String ENCODING_PARAMETER = "encoding";
+
+    /** {@code unit="bytes"}: the value encoded in the charset. */
+    public static final String UNIT_BYTES = "bytes";
+
+    /** {@code unit="chars"} (the default): characters. */
+    public static final String UNIT_CHARS = "chars";
+
+    /** The closed vocabulary of {@code unit=}. */
+    public static final Set<String> UNITS = Set.of(UNIT_BYTES, UNIT_CHARS);
+
+    /** Whether a {@code unit=} operand says {@code "bytes"} (absent / {@code "chars"}: no). */
+    public static boolean countsBytes(@Nullable Vector unit)
+    {
+        return unit != null && UNIT_BYTES.equals(scalarText(unit));
+    }
+
+
+    /**
+     * The charset a byte count encodes with (runbook W1b BL1): the one the encoding operand names,
+     * or {@code null} when that operand is missing, blank or {@code MIXED} — the table declared no
+     * single decode charset, so the byte count is unknown and the answer is missing. A written
+     * literal was validated at load ({@code ExprCompiler.rejectNonLiteralStaticStrings}); a table's
+     * own charset name the JVM does not know answers missing too.
+     */
+    public static @Nullable Charset charsetOf(@Nullable Vector encoding)
+    {
+        String name = encoding == null ? null : scalarText(encoding);
+        if (name == null || name.isBlank() || "MIXED".equalsIgnoreCase(name.trim()))
+        {
+            return null;
+        }
+        try
+        {
+            return Charset.forName(name.trim());
+        }
+        catch (IllegalArgumentException unknown)
+        {
+            return null;
+        }
+    }
+
+
+    /** The text of a scalar operand's first cell, or {@code null} when missing. */
+    private static @Nullable String scalarText(Vector v)
+    {
+        TypedValue tv = v.value(0);
+        if (tv.missing() != null)
+        {
+            return null;
+        }
+        Object o = tv.resolved();
+        return o == null ? null : o.toString();
     }
 
 

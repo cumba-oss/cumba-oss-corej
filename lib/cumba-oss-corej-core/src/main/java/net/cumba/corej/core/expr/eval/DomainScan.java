@@ -234,7 +234,7 @@ public final class DomainScan
         {
             return accessor(attr, c);
         }
-        if (name.startsWith("vlm_"))
+        if (MetadataExprScan.readsDefinePerRecord(name))
         {
             return Domain.CELL;
         }

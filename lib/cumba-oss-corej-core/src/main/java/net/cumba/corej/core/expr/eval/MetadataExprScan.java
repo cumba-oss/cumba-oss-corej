@@ -39,7 +39,7 @@ public final class MetadataExprScan
         case Expr.Binary b -> containsMetadataFunction(b.left())
                 || containsMetadataFunction(b.right());
         case Expr.Call c -> MetadataAttribute.fromFunction(c.name()) != null
-                || c.name().startsWith("vlm_")
+                || readsDefinePerRecord(c.name())
                 || "library_variable_code_pair_matches".equals(c.name()) || anyContains(c.args())
                 || anyContains(c.kwargs().values());
         case Expr.Ref _,Expr.Lit _ -> false;
@@ -217,6 +217,21 @@ public final class MetadataExprScan
 
 
     /**
+     * Whether {@code name} is a per-record Define-XML accessor: the {@code vlm_*} value-level
+     * family, and {@code codelist_decode} (runbook W1b DV, Q3 (c)) — read per (record × variable),
+     * served by the DEFINE provider / the VLM resolver, so every reader that keys on the
+     * {@code vlm_} prefix (the DEFINE need here, the CELL domain, stage A's VARIABLE_VALUE level,
+     * the broadcast fold's ROW leaf) treats both alike.
+     */
+    public static boolean readsDefinePerRecord(String name)
+    {
+        return name.startsWith("vlm_")
+                || net.cumba.corej.core.expr.eval.spi.CompilerDispatchedCalls.CODELIST_DECODE
+                        .equals(name);
+    }
+
+
+    /**
      * The provider-backed levels ({@link MetadataLevel#DEFINE} / {@link MetadataLevel#LIBRARY})
      * read by any metadata accessor in {@code e}. {@link MetadataLevel#DATA} is never returned (it
      * needs no provider). An accessor whose level literal is unparseable is skipped (the compiler
@@ -251,7 +266,7 @@ public final class MetadataExprScan
             // VLM accessors (vlm_*, Value Check against Define XML VLM) read the Define-XML
             // value-level metadata, so they require the DEFINE provider: the rule SKIPs when no
             // Define-XML is supplied (RuleRunner's DEFINE provider gate), like every define_* rule.
-            if (c.name().startsWith("vlm_"))
+            if (readsDefinePerRecord(c.name()))
             {
                 out.add(MetadataLevel.DEFINE);
             }

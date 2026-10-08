@@ -90,7 +90,9 @@ public final class StudyRuleClassifier
      * checked recursively.
      */
     private static final Set<String> STUDY_LEVEL_FUNCTIONS = Set.of("dataset_names",
-            "define_dataset_names", "study_domains", "standard_domains", "minus", "union");
+            "define_dataset_names", "study_domains", "standard_domains", "minus", "union",
+            // runbook W1b DP1a: whether the run was given a Define-XML — one finding per study
+            "define_available");
 
     /**
      * Whether {@code function} names a registry function whose result is a study-level fact — it

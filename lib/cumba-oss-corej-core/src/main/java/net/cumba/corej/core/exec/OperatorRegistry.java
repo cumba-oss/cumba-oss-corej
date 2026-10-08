@@ -237,6 +237,44 @@ public final class OperatorRegistry
 
 
     /**
+     * Runbook W1b BL1 ({@code PLAN-engine-gap-byte-length} §5.2): {@link #maxValueLength} in bytes
+     * — the largest byte count over the column's non-missing values encoded in {@code charset},
+     * {@code 0} when the column is absent or every value is missing. Backs
+     * {@code max_value_length(X, unit="bytes"[, encoding=])}; the compiler resolves the charset
+     * (the written one, else the table's own {@code Encoding}) and answers missing when there is
+     * none, so this is never reached without one. ⛔ Keep in step with
+     * {@code ExprCompiler.maxByteLength} (the joined-column scan).
+     */
+    public static long maxValueByteLength(EvaluationContext ctx, @Nullable String name,
+            java.nio.charset.Charset charset)
+    {
+        if (name == null)
+        {
+            return 0L;
+        }
+        DataTableMeta meta = ctx.getTable().getMetaData();
+        int colIdx = meta.getColumnIndex(name);
+        if (colIdx < 0)
+        {
+            return 0L;
+        }
+        IDataTableColumn col = ctx.getTable().getColumn(colIdx);
+        int rowCount = ctx.rowCount();
+        long max = 0L;
+        for (int r = 0; r < rowCount; r++)
+        {
+            IDataValue dv = col.getDataValue(r);
+            if (dv.isMissingOrInvalid())
+            {
+                continue;
+            }
+            max = Math.max(max, dv.getValueAsString().getBytes(charset).length);
+        }
+        return max;
+    }
+
+
+    /**
      * The prefix of {@link #existsAsVariable}: Boolean context variable, dotted cross-dataset
      * forms, {@code ${…}} substitution, and the nameless-leaf guard. Returns {@code null} when none
      * of these decide, so the caller continues with the local-schema lookup.

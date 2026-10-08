@@ -59,6 +59,8 @@ import org.jspecify.annotations.Nullable;
                 name = "library_dataset_label_matches"),
         @JsonSubTypes.Type(value = CheckDefinition.LibraryVariableLabelMatches.class,
                 name = "library_variable_label_matches"),
+        @JsonSubTypes.Type(value = CheckDefinition.LibraryVariableDescriptionCopied.class,
+                name = "library_variable_description_copied"),
         @JsonSubTypes.Type(value = CheckDefinition.LibraryCodelistRefRequired.class,
                 name = "library_codelist_ref_required"),
         @JsonSubTypes.Type(value = CheckDefinition.LibraryCodelistCCodeMatches.class,
@@ -501,6 +503,22 @@ public sealed interface CheckDefinition
      * Same out-of-reach semantics as {@link LibraryDatasetLabelMatches}.
      */
     record LibraryVariableLabelMatches(@Nullable Condition when) implements CheckDefinition
+    {
+    }
+
+
+    /**
+     * IG CDISC Notes copied into a comment ({@code Requires: library}, runbook W1b DT1,
+     * {@code PLAN-engine-gap-define-text} Route D, owner-ruled 2026-10-07): scoped to
+     * {@code ItemGroupDef/ItemRef}, fires when the referenced {@code ItemDef}'s
+     * {@code def:CommentOID} resolves to a {@code def:CommentDef} whose English text equals, after
+     * trimming and collapsing whitespace (Q2; letter case kept), the description the parent
+     * dataset's governing SDTMIG / SENDIG standard publishes for the variable — the sponsor pasted
+     * the IG's notes instead of documenting the study. Same out-of-reach semantics as
+     * {@link LibraryVariableLabelMatches}: an ItemDef without a comment, a comment without English
+     * text, a variable the library has no description for, or a non-IG standard is silent.
+     */
+    record LibraryVariableDescriptionCopied(@Nullable Condition when) implements CheckDefinition
     {
     }
 

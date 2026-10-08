@@ -141,6 +141,13 @@ public enum MetadataAttribute
      */
     VAR_HAS_METHOD("var_has_method", Scope.VARIABLE, "has_method", Normalization.BOOLEAN, DEFINE),
     /**
+     * DEFINE-only presence flag: whether the variable's {@code ItemDef} carries a
+     * {@code def:ValueListRef} — the variable is documented per value (runbook W1b DV,
+     * {@code PLAN-engine-gap-define-vlm-method} §4.1). Missing for a variable the define does not
+     * declare.
+     */
+    VAR_HAS_VALUE_LIST("var_has_value_list", Scope.VARIABLE, "has_value_list", Normalization.BOOLEAN, DEFINE),
+    /**
      * DEFINE-only external-dictionary name of the variable's bound codelist (Define-XML
      * {@code CodeList/ExternalCodeList/@Dictionary}). Backs
      * {@code define_variable_external_dictionary}; empty when the variable's codelist declares no

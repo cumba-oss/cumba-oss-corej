@@ -350,7 +350,8 @@ public final class BroadcastFold
                 && c.args().isEmpty() && c.kwargs().isEmpty();
         if (cursorNullary || isExistsCall(c) || isBroadcastColumnPredicate(c)
                 || isWholeColumnVerdictCall(c) || isLibraryGateCall(c)
-                || MetadataAttribute.fromFunction(name) != null || name.startsWith("vlm_")
+                || MetadataAttribute.fromFunction(name) != null
+                || MetadataExprScan.readsDefinePerRecord(name)
                 || DomainScan.VARNAME_ANCHORED_CALLS.contains(name)
                 || net.cumba.corej.core.exec.RecordCount.NAME.equals(name)
                 || net.cumba.corej.core.exec.Distinct.NAME.equals(name))
@@ -680,6 +681,10 @@ public final class BroadcastFold
     public static boolean isLibraryGateCall(Expr.Call c)
     {
         return ("library_available".equals(c.name()) && c.args().isEmpty())
+                // runbook W1b DP1a: define_available() is a run constant too — the presence of
+                // a supplied Define-XML — and must fold valid with no define provider (that
+                // absence is exactly what it reports). Authorable, unlike its three siblings.
+                || ("define_available".equals(c.name()) && c.args().isEmpty())
                 || ("available".equals(c.name()) && c.args().size() == 1)
                 // T1: dictionary_available(<type>) is the external-dictionary skip-gate — a
                 // dataset-constant broadcast verdict that folds valid even with no dictionary

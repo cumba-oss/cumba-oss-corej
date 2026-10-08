@@ -18,6 +18,7 @@ import net.cumba.cdisc.define.ItemDef;
 import net.cumba.cdisc.define.ItemGroupDef;
 import net.cumba.cdisc.define.ItemRef;
 import net.cumba.cdisc.define.MetaDataVersion;
+import net.cumba.cdisc.define.Origin;
 import net.cumba.cdisc.define.RangeCheck;
 import net.cumba.cdisc.define.ValueListDef;
 import net.cumba.cdisc.define.ValueListRef;
@@ -309,6 +310,118 @@ class VlmResolverTest
                 "dangling WhereClauseRef warning");
         assertTrue(warnings.stream().anyMatch(w -> w.contains("IT.MISSING")),
                 "dangling RangeCheck ItemOID warning");
+    }
+
+    // ------------------------------------------------------------------
+    // Runbook W1b DV (PLAN-engine-gap-define-vlm-method §4.1): hasMethod / hasComment / originType
+    // ------------------------------------------------------------------
+
+
+    /**
+     * LBSTRESC per LBTESTCD: GLUC's value-level ItemRef carries a MethodOID and its ItemDef a
+     * def:Origin element; HGB's ItemDef carries a CommentOID and the v1.0 @Origin attribute;
+     * SODIUM's carries nothing. The parent ItemRef and ItemDef carry a method AND a comment — which
+     * must never leak into the value-level answer.
+     */
+    private static MetaDataVersion methodMdv()
+    {
+        ItemDef lbtestcd = ItemDef.builder().oid("IT.LBTESTCD").name("LBTESTCD").dataType("text")
+                .build();
+        ItemDef lbstresc = ItemDef.builder().oid("IT.LBSTRESC").name("LBSTRESC").dataType("text")
+                .commentOID("COM.PARENT")
+                .valueListRef(ValueListRef.builder().valueListOID("VL.LBSTRESC").build()).build();
+        ItemDef gluc = ItemDef.builder().oid("IT.LBSTRESC.GLUC").name("SET_GLUC").dataType("float")
+                .originElement(Origin.builder().type("Derived").build()).build();
+        ItemDef hgb = ItemDef.builder().oid("IT.LBSTRESC.HGB").name("SET_HGB").dataType("float")
+                .commentOID("COM.HGB").origin("Collected").build();
+        ItemDef sodium = ItemDef.builder().oid("IT.LBSTRESC.SODIUM").name("SET_SODIUM")
+                .dataType("float").build();
+        WhereClauseDef wcGluc = where("WC.GLUC", "GLUC");
+        WhereClauseDef wcHgb = where("WC.HGB", "HGB");
+        WhereClauseDef wcSodium = where("WC.SODIUM", "SODIUM");
+        ValueListDef vl = ValueListDef.builder().oid("VL.LBSTRESC")
+                .itemRefs(List.of(
+                        ItemRef.builder().itemOID("IT.LBSTRESC.GLUC").orderNumber(1)
+                                .methodOID("MT.GLUC")
+                                .whereClauseRefs(List.of(
+                                        WhereClauseRef.builder().whereClauseOID("WC.GLUC").build()))
+                                .build(),
+                        ItemRef.builder().itemOID("IT.LBSTRESC.HGB").orderNumber(2)
+                                .whereClauseRefs(List.of(
+                                        WhereClauseRef.builder().whereClauseOID("WC.HGB").build()))
+                                .build(),
+                        ItemRef.builder().itemOID("IT.LBSTRESC.SODIUM").orderNumber(3)
+                                .whereClauseRefs(List.of(WhereClauseRef.builder()
+                                        .whereClauseOID("WC.SODIUM").build()))
+                                .build()))
+                .build();
+        ItemGroupDef lb = ItemGroupDef.builder().oid("IG.LB").name("LB").domain("LB")
+                .itemRefs(List.of(
+                        ItemRef.builder().itemOID("IT.LBSTRESC").methodOID("MT.PARENT").build(),
+                        ItemRef.builder().itemOID("IT.LBTESTCD").build()))
+                .build();
+        return MetaDataVersion.builder().itemGroupDefs(List.of(lb))
+                .itemDefs(List.of(lbstresc, lbtestcd, gluc, hgb, sodium)).valueListDefs(List.of(vl))
+                .whereClauseDefs(List.of(wcGluc, wcHgb, wcSodium)).codeLists(List.of()).build();
+    }
+
+
+    private static WhereClauseDef where(String oid, String testcd)
+    {
+        return WhereClauseDef.builder().oid(oid).rangeChecks(List.of(RangeCheck.builder()
+                .comparator("EQ").itemOID("IT.LBTESTCD").checkValues(List.of(cv(testcd))).build()))
+                .build();
+    }
+
+
+    @Test
+    void hasMethodReadsTheValueLevelItemRefNotTheParentOrTheItemDef()
+    {
+        VlmResolver r = VlmResolver.from(methodMdv());
+        assertNotNull(r);
+        VlmResolver.VlmMatch gluc = r.resolve("LB", "LBSTRESC", row(Map.of("LBTESTCD", "GLUC")));
+        VlmResolver.VlmMatch hgb = r.resolve("LB", "LBSTRESC", row(Map.of("LBTESTCD", "HGB")));
+        VlmResolver.VlmMatch sodium = r.resolve("LB", "LBSTRESC",
+                row(Map.of("LBTESTCD", "SODIUM")));
+        assertNotNull(gluc);
+        assertNotNull(hgb);
+        assertNotNull(sodium);
+        assertTrue(gluc.hasMethod(), "ItemRef/@MethodOID on the value-level ItemRef");
+        assertFalse(hgb.hasMethod(), "the parent ItemRef's MethodOID does not count (Q3 (b))");
+        assertFalse(sodium.hasMethod());
+        assertNull(r.resolve("LB", "LBSTRESC", row(Map.of("LBTESTCD", "XXX"))),
+                "an unmatched record has no entry: the accessors answer missing");
+    }
+
+
+    @Test
+    void hasCommentReadsTheValueLevelItemDefsCommentOid()
+    {
+        VlmResolver r = VlmResolver.from(methodMdv());
+        assertNotNull(r);
+        assertFalse(r.resolve("LB", "LBSTRESC", row(Map.of("LBTESTCD", "GLUC"))).hasComment(),
+                "the parent ItemDef's CommentOID does not count");
+        assertTrue(r.resolve("LB", "LBSTRESC", row(Map.of("LBTESTCD", "HGB"))).hasComment(),
+                "ItemDef/@def:CommentOID on the value-level ItemDef, read as var_has_comment"
+                        + " reads it");
+        assertFalse(r.resolve("LB", "LBSTRESC", row(Map.of("LBTESTCD", "SODIUM"))).hasComment());
+    }
+
+
+    @Test
+    void originTypeFollowsTheVariableLevelRuleElementFirstThenTheV10Attribute()
+    {
+        VlmResolver r = VlmResolver.from(methodMdv());
+        assertNotNull(r);
+        assertEquals("Derived",
+                r.resolve("LB", "LBSTRESC", row(Map.of("LBTESTCD", "GLUC"))).originType(),
+                "def:Origin/@Type");
+        assertEquals("Collected",
+                r.resolve("LB", "LBSTRESC", row(Map.of("LBTESTCD", "HGB"))).originType(),
+                "the v1.0 ItemDef/@Origin fallback");
+        assertEquals("",
+                r.resolve("LB", "LBSTRESC", row(Map.of("LBTESTCD", "SODIUM"))).originType(),
+                "no origin on a matched entry is the empty string, as var_origin_type (D14)");
     }
 
 }

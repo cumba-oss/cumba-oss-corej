@@ -352,7 +352,7 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
      * read below; the attribute form still resolves via {@link ItemDef#getOrigin()}.
      * </p>
      */
-    private static String originType(ItemDef def)
+    static String originType(ItemDef def)
     {
         Origin origin = def.getOriginElement();
         if (origin != null && origin.getType() != null)
@@ -443,6 +443,9 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
             v.put("origin_type", originType(def));
             v.put("has_comment", boolStr(def.getCommentOID() != null));
             v.put("has_method", boolStr(ref.getMethodOID() != null));
+            // runbook W1b DV: the variable is documented per value (def:ValueListRef), backing
+            // var_has_value_list("DEFINE")
+            v.put("has_value_list", boolStr(def.getValueListRef() != null));
             v.put("external_dictionary", externalDictionary);
             v.put("external_dictionary_version", externalDictionaryVersion);
             out.add(v);
