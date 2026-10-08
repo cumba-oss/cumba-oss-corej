@@ -30,8 +30,52 @@ import org.junit.jupiter.api.Test;
 class ElementwiseLiftRosterDriftTest
 {
 
-    /** The flagged VALUE set after E4: the case folds and their aliases. */
-    static final Set<String> ROSTER = Set.of("upper", "upcase", "lower", "lowcase");
+    /**
+     * The flagged VALUE set after runbook W2 E5: E4's case folds and their aliases, the 17 further
+     * names of census class (a) ({@code PLAN-elementwise-list-functions} §7.1) and the five
+     * conversions / formatters registered since {@code PLAN-dynamic-column-functions} (owner Q2:
+     * {@code num}, {@code str}, {@code date}, {@code time}, {@code lpad}) — 26 names, 22 of them
+     * flagged by E5.
+     */
+    static final Set<String> ROSTER = Set.of("upper", "upcase", "lower", "lowcase", "abs", "ceil",
+            "floor", "round", "char", "day", "month", "year", "earliest_possible",
+            "latest_possible", "len", "length", "normalize_space", "trim", "prefix", "suffix",
+            "substring", "num", "str", "date", "time", "lpad");
+
+    /**
+     * The value parameter 0 each roster function's purity probe hands its kernel: an ISO date for
+     * the temporal and date-part functions, a numeric text for the numeric ones, plain text for the
+     * rest — chosen so the kernel answers a present value.
+     */
+    private static String probeValue(String name)
+    {
+        return switch (name)
+        {
+        case "day", "month", "year", "earliest_possible", "latest_possible", "date" -> "2020-01-15";
+        case "time" -> "09:15";
+        case "abs", "ceil", "floor", "round", "num" -> "-1.5";
+        default -> " Ab c ";
+        };
+    }
+
+
+    /**
+     * The other arguments a roster function's probe binds — one slot per declared parameter,
+     * {@code null} at an absent optional as the compiler binds a call; the required numbers of
+     * {@code prefix} / {@code suffix} ({@code n}), {@code substring} ({@code start}) and
+     * {@code lpad} ({@code width}) broadcast constants.
+     */
+    private static java.util.List<Vector> probeArgs(FunctionDescriptor d, Vector x)
+    {
+        Vector[] args = new Vector[d.parameters().size()];
+        args[0] = x;
+        for (int i = 1; i < args.length; i++)
+        {
+            Parameter p = d.parameters().get(i);
+            args[i] = p.required() ? ConstVector.of(2L) : null;
+        }
+        return java.util.Arrays.asList(args);
+    }
 
     /**
      * The flagged BOOLEAN set after EB1: the 16 one-subject well-formedness predicates the owner
@@ -118,13 +162,32 @@ class ElementwiseLiftRosterDriftTest
             EvalFunction fn = d.fn();
             assertNotNull(fn, name);
             assertTrue(ElementwiseLift.isLifted(fn), name + " publishes the lifted function");
-            // purity (§3.4): a context-free run, a scalar and a list — never run.ctx()
+            // purity (§3.4): a context-free run (EvalRun.ofRowCount, no context — a kernel that
+            // read run.ctx() throws here), a scalar and a list; the list answers, element by
+            // element, exactly what the kernel answers for each element alone. len's unit= /
+            // encoding= are absent here (the default chars arm): BL1 resolves a byte count's
+            // default encoding in the COMPILER (W2-D11), so the kernel never reads the context.
             EvalRun run = EvalRun.ofRowCount(1);
-            assertEquals("A", ((Vector) fn.apply(run, List.of(ConstVector.of("a")))).value(0)
-                    .resolved().toString().toUpperCase(java.util.Locale.ROOT), name);
-            Object folded = ((Vector) fn.apply(run, List.of(ConstVector.of(List.of("a", "B")))))
+            String value = probeValue(name);
+            EvalFunction kernel = ElementwiseLift.kernelOf(fn);
+            Object scalar = ((Vector) fn.apply(run, probeArgs(d, ConstVector.of(value)))).value(0)
+                    .resolved();
+            Object alone = ((Vector) kernel.apply(run, probeArgs(d, ConstVector.of(value))))
                     .value(0).resolved();
-            assertTrue(folded instanceof List<?> list && list.size() == 2, name + " lifts a list");
+            assertEquals(String.valueOf(alone), String.valueOf(scalar),
+                    name + " answers a scalar as its kernel does");
+            Object lifted = ((Vector) fn.apply(run,
+                    probeArgs(d, ConstVector.of(List.of(value, value))))).value(0).resolved();
+            assertTrue(lifted instanceof List<?> list && list.size() == 2,
+                    name + " lifts a list: " + lifted);
+            for (Object element : (List<?>) lifted)
+            {
+                String text = element instanceof net.cumba.datatable.values.IDataValue cell
+                        ? cell.getValueAsString()
+                        : String.valueOf(element);
+                assertEquals(String.valueOf(alone), text,
+                        name + " answers each element as the kernel answers it alone");
+            }
         }
     }
 
@@ -133,9 +196,10 @@ class ElementwiseLiftRosterDriftTest
     void theAliasesShareTheirKernel()
     {
         // upcase / lowcase are registered over the same EvalFunction as upper / lower, so they lift
-        // identically (W2 UA relies on it)
+        // identically (W2 UA relies on it); so is length over len (E5)
         assertSame(kernel("upper"), kernel("upcase"));
         assertSame(kernel("lower"), kernel("lowcase"));
+        assertSame(kernel("len"), kernel("length"));
     }
 
 
@@ -206,12 +270,16 @@ class ElementwiseLiftRosterDriftTest
         String surface = RuleLanguage.surface();
         for (String name : ROSTER)
         {
-            assertTrue(surface.contains("\n" + name + "(x:unknown) kind=value elementwise\n"),
-                    name);
+            // the parameter rendering differs (prefix's n, substring's start / length, len's
+            // unit= / encoding=, lpad's width / fill)
+            assertTrue(surface.lines().anyMatch(line -> line.startsWith(name + "(x:unknown")
+                    && line.endsWith(" kind=value elementwise")), name);
         }
-        assertTrue(
-                surface.contains("\nlen(x:unknown, unit:string?, encoding:string?) kind=value\n"),
-                "len is not flagged in E4 (its unit= / encoding= are runbook W1b BL1's)");
+        assertTrue(surface.contains(
+                "\nlen(x:unknown, unit:string?, encoding:string?) kind=value elementwise\n"),
+                "len is flagged in E5 with BL1's unit= / encoding= kept");
+        assertTrue(surface.contains("\nduration(x:unknown) kind=value\n"),
+                "duration is no census class (a) name and stays unflagged");
         for (String name : BOOLEAN_ROSTER)
         {
             // the parameter rendering differs (x:string, x:unknown, invalid_duration's negative=)

@@ -1267,8 +1267,24 @@ public final class StageAChecker
         if ("num".equals(name) && c.args().size() == 1 && c.kwargs().isEmpty())
         {
             // The one conversion that is already a value function (R10 / D91f: num() stays in
-            // the value plan).
-            return new TypedExpr(c, Primitive.NUMBER, children.get(0).level(), children);
+            // the value plan). Element-wise since runbook W2 E5 (R2 premise 1): over a list a
+            // list of numbers (num reads any value), over a value of unknown shape unknown — as
+            // every lifted call (resultType); a bare-name list is the values() hint (Q14 (c)).
+            ExprType argument = children.get(0).type();
+            ExprType type = Primitive.NUMBER;
+            if (isLiftedValueFunction(name))
+            {
+                Expr value = c.args().get(0);
+                if (value instanceof Expr.Lit lit && NameListBinding.isNameList(lit))
+                {
+                    find(StageAErrorKind.PARAMETER_TYPE,
+                            ExprCompiler.bareNameListHint(lit) + at(c));
+                }
+                // the undereferenced unknown: a column (a cell, never a list) keeps NUMBER
+                type = argument.dereference() instanceof ListOf ? new ListOf(Primitive.NUMBER)
+                        : argument == Unknown.UNKNOWN ? Unknown.UNKNOWN : Primitive.NUMBER;
+            }
+            return new TypedExpr(c, type, children.get(0).level(), children);
         }
         if (BroadcastFold.isExistsCall(c) || BroadcastFold.isBroadcastColumnPredicate(c))
         {
@@ -1690,6 +1706,38 @@ public final class StageAChecker
         }
         TypedExpr arg = children.get(0);
         ExprType at = arg.type().dereference();
+        // runbook W2 E5 (PLAN-elementwise-list-functions §7.6, R2 premise 1): date / time /
+        // earliest_possible / latest_possible are element-wise — a list at x is judged by its
+        // ELEMENT exactly as a value is judged below and answers a list of the scalar result; a
+        // value of unknown shape (a $ binding: a list or a scalar, decided at evaluation) is
+        // unknown, as every lifted call over one is (resultType). ⚠ The UNDEREFERENCED type: a
+        // column reference dereferences to unknown too, but a cell is never a list, so a column
+        // keeps the scalar result
+        boolean lifted = isLiftedValueFunction(name);
+        if (lifted && arg.type() == Unknown.UNKNOWN)
+        {
+            return new TypedExpr(c, Unknown.UNKNOWN, arg.level(), children);
+        }
+        boolean overList = lifted && at instanceof ListOf;
+        if (overList)
+        {
+            Expr value = c.args().get(0);
+            if (value instanceof Expr.Lit lit && NameListBinding.isNameList(lit))
+            {
+                // Q14 (c): a bare-name list is a list of column NAMES — the ruled values() hint
+                find(StageAErrorKind.PARAMETER_TYPE, ExprCompiler.bareNameListHint(lit) + at(c));
+                at = Unknown.UNKNOWN;
+            }
+            else if (isNameListRef(value))
+            {
+                // decision 9: a $keys binding of names keeps its one finding, filed after the walk
+                at = Unknown.UNKNOWN;
+            }
+            else
+            {
+                at = ((ListOf) at).element().dereference();
+            }
+        }
         ExprType result;
         if (conversion)
         {
@@ -1738,7 +1786,57 @@ public final class StageAChecker
             result = at == Primitive.TIME ? Primitive.TIME
                     : at == Primitive.DURATION ? Primitive.DURATION : Primitive.DATE;
         }
-        return new TypedExpr(c, result, arg.level(), children);
+        return new TypedExpr(c, overList ? new ListOf(result) : result, arg.level(), children);
+    }
+
+
+    /**
+     * The <b>type source</b> of a binding whose root is an element-wise VALUE call
+     * ({@link FunctionDescriptor#elementwise()}; runbook W2 E5,
+     * {@code PLAN-elementwise-list-functions} §7.6's reported-binding hazard): the scalar
+     * function's declared result — its {@link ElementTable} row, or the base of a temporal
+     * conversion / hull bound (date, time) — or {@code null} when the root is no such call or
+     * declares nothing. Stage A types a lifted call over a {@code $} value {@code unknown} (a list
+     * or a scalar, decided at evaluation), yet what it answers when it answers nothing is the
+     * scalar function's missing either way (a list value is never "no value"), so a REPORTED
+     * binding of one keeps a type source: the load gate
+     * ({@code RulePackageLoader.validateReportedBindingTypes}) accepts it and the finding's default
+     * ({@code BindingValue.reportedDefault}) reads it — {@code ""} for a string / date / time,
+     * {@code MIS} for a number. ⚠ Not the {@link #CASE_FOLDS}: a fold hands its argument's missing
+     * through unchanged, so it has exactly its argument's type source
+     * ({@link #columnTypedBindings}), never its own row ({@code PLAN-elementwise-list-functions}
+     * §3.4).
+     *
+     * @param root
+     *            a binding's expression
+     * @return the declared scalar result type, or {@code null}
+     */
+    public static @Nullable ExprType liftedTypeSource(Expr root)
+    {
+        if (!(root instanceof Expr.Call c) || c.args().isEmpty() || CASE_FOLDS.contains(c.name())
+                || !isLiftedValueFunction(c.name()))
+        {
+            return null;
+        }
+        ExprType row = switch (c.name())
+        {
+        case "date", "earliest_possible", "latest_possible" -> Primitive.DATE;
+        case "time" -> Primitive.TIME;
+        default -> ElementTable.resultType(c.name());
+        };
+        return row instanceof Primitive ? row : null;
+    }
+
+
+    /**
+     * Whether {@code name} is a registered element-wise VALUE function
+     * ({@link FunctionDescriptor#elementwise()}) — the flag, never a name set, decides the lifted
+     * typing of the arms that type a call by name ({@link #temporalCall}, the {@code num} arm).
+     */
+    private static boolean isLiftedValueFunction(String name)
+    {
+        FunctionDescriptor d = FunctionRegistry.descriptor(name);
+        return d != null && d.elementwise() && d.kind() == FunctionKind.VALUE;
     }
 
 

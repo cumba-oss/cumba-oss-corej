@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.SequencedMap;
 import net.cumba.corej.core.KeyedJoinFixtures;
 import net.cumba.corej.core.RulePackageLoader;
@@ -2506,6 +2507,101 @@ class StageACheckerTest
             assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
                     kinds(check("not empty(lift_probe(1))")));
         }
+    }
+
+    // ------------------------------------------------------------------
+    // PLAN-elementwise-list-functions §7.6 — the E5 roster in Stage A (runbook W2 E5)
+    // ------------------------------------------------------------------
+
+
+    /**
+     * Every name E5 flags types as the E4 arm types a fold: over a list a list of its scalar row
+     * (the temporal conversions and hull bounds a list of their base, {@code num} a list of numbers
+     * — their own arms, R2 premise 1), over an unknown unknown, over a scalar the row; a lifted
+     * list against a scalar is the armed comparison refusal (Q8).
+     */
+    @Test
+    void theE5RosterLiftsInStageA()
+    {
+        Map<String, String> rows = new java.util.LinkedHashMap<>();
+        for (String number : List.of("len", "length", "abs", "ceil", "floor", "round", "char",
+                "day", "month", "year", "num"))
+        {
+            rows.put(number + "(@)", "number");
+        }
+        for (String text : List.of("trim", "normalize_space", "str"))
+        {
+            rows.put(text + "(@)", "string");
+        }
+        rows.put("prefix(@, 2)", "string");
+        rows.put("suffix(@, 2)", "string");
+        rows.put("substring(@, 1, 2)", "string");
+        rows.put("lpad(@, 4)", "string");
+        rows.put("date(@)", "date");
+        rows.put("earliest_possible(@)", "date");
+        rows.put("latest_possible(@)", "date");
+        rows.put("time(@)", "time");
+        for (Map.Entry<String, String> e : rows.entrySet())
+        {
+            String template = e.getKey();
+            String row = e.getValue();
+            String scalar = switch (row)
+            {
+            case "number" -> "1";
+            case "string" -> "\"a\"";
+            case "date" -> "date(\"2020\")";
+            default -> "time(\"09:00\")";
+            };
+            StageAReport list = check(scalar + " in " + template.replace("@", "values([A, B])"));
+            assertEquals(List.of(), kinds(list), template + " " + list.findings());
+            assertEquals("list<" + row + ">", root(list).children().get(1).type().describe(),
+                    template);
+            TypedExpr perRow = root(check(template.replace("@", "$u") + " == " + scalar)).children()
+                    .get(0);
+            assertEquals("unknown", perRow.type().describe(), template + " over a $ value");
+            TypedExpr column = root(check(template.replace("@", "AETERM") + " == " + scalar))
+                    .children().get(0);
+            assertEquals(row, column.type().describe(), template + " over a column");
+            assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                    kinds(check(template.replace("@", "values([A, B])") + " == " + scalar)),
+                    template + " == scalar (Q8)");
+        }
+    }
+
+
+    /**
+     * {@code date} / {@code time} / {@code earliest_possible} / {@code latest_possible} and
+     * {@code num} have their own Stage A arms (R2 premise 1): a list is judged by its ELEMENT as
+     * the scalar arm judges a value — {@code date(values([A, B]))} was refused as "converts a
+     * string, not list&lt;unknown&gt;", a list of numbers to {@code date()} is D55's shape per
+     * element.
+     */
+    @Test
+    void theTemporalAndNumericArmsJudgeAListByItsElement()
+    {
+        String day = "date(\"2020\") in ";
+        assertEquals(List.of(), kinds(check(day + "date(values([A, B]))")));
+        assertEquals(List.of(), kinds(check(day + "earliest_possible(values([A, B]))")));
+        // a list of strings is judged as a string is: the hull bound takes a date (D22) — the
+        // date() of the list is the spelling, as for a scalar
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check(day + "latest_possible(split_by(A, \",\"))")));
+        assertEquals(List.of(), kinds(check(day + "latest_possible(date(split_by(A, \",\")))")));
+        assertEquals(List.of(), kinds(check("time(\"09\") in time([\"09:15\", \"10\"])")));
+        assertEquals(List.of(), kinds(check("1 in num(values([A, B]))")));
+        StageAReport numbers = check(day + "date([1, 2])");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(numbers));
+        assertTrue(numbers.findings().get(0).message().contains("never a number (D55)"),
+                numbers.findings().toString());
+        StageAReport strings = check(day + "earliest_possible([\"a\", 1])");
+        assertTrue(
+                kinds(strings).contains(StageAErrorKind.HETEROGENEOUS_LIST)
+                        || kinds(strings).contains(StageAErrorKind.PARAMETER_TYPE),
+                strings.findings().toString());
+        assertEquals("list<time>", root(check("time(\"09\") in time(values([A, B]))")).children()
+                .get(1).type().describe());
+        // a date of a list of dates is idempotent per element, as date(date(X)) is
+        assertEquals(List.of(), kinds(check(day + "date(date(values([A, B])))")));
     }
 
     // ------------------------------------------------------------------

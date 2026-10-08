@@ -192,13 +192,11 @@ class ByteLengthTest
     void theSurfaceListsTheTwoParametersWithTheirVocabulary()
     {
         String surface = net.cumba.corej.core.RuleLanguage.surface();
-        assertTrue(
-                surface.contains("\nlen(x:unknown, unit:string?, encoding:string?) kind=value\n"),
+        assertTrue(surface.contains(
+                "\nlen(x:unknown, unit:string?, encoding:string?) kind=value" + " elementwise\n"),
                 surface);
-        assertTrue(
-                surface.contains(
-                        "\nlength(x:unknown, unit:string?, encoding:string?) kind=value\n"),
-                surface);
+        assertTrue(surface.contains("\nlength(x:unknown, unit:string?, encoding:string?)"
+                + " kind=value elementwise\n"), surface);
         assertTrue(surface.contains("\nmax_value_length(name:unknown@name?, unit:string?,"
                 + " encoding:string?) kind=value\n"), surface);
         assertTrue(surface.contains("\nlen.unit: literal {bytes,chars}\n"), surface);

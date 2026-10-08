@@ -1367,9 +1367,12 @@ public final class ExprCompiler
         // semantics (D81d), never the list compared as one value.
         // ⭐ And values([X, Y]) (PLAN-elementwise-list-functions Q8, runbook W1a E1): the list-LHS
         // shape (D81d) — any of the named cells a member.
+        // ⭐ And a lifted call over a statically list-shaped value — trim(values([X, Y])),
+        // date(split_by(X, ",")) (runbook W2 E5): a list on every row, so any element a member
+        // (D81d), never the list's rendering as one probe.
         boolean listLhs = isListAccessor(nameExpr)
                 || (isColrefCall(nameExpr) && isListValuedFunctionCall(nameExpr))
-                || isValuesCall(nameExpr) || dynamicLhs;
+                || isValuesCall(nameExpr) || isLiftedListCall(nameExpr) || dynamicLhs;
         Expr right = b.right();
         // RHS is a list-valued metadata accessor (e.g. var_codelist_coded_values("LIBRARY")): under
         // the per-(variable, row) iteration it is a per-column constant list, so resolve it to the
@@ -1424,6 +1427,24 @@ public final class ExprCompiler
         // never numeric (numbers have no case). (The retired legacy membership path ran the same
         // classification on the JSON-array node types, isNumber() vs isTextual(), which agree
         // element-for-element with these Expr.Lit kinds.)
+        if (listLhs && "num".equals(markerOf(b.left())))
+        {
+            // runbook W2 E5: a num()-marked list probe (num(values([X, Y])), num($n) over a list)
+            // against an all-numeric literal compares each element NUMERICALLY, as the scalar
+            // num(X) in [10, 20] does — any element a member (D81d); a mixed literal stays Q3's
+            // load error (numericMemberSet throws)
+            Set<Double> numericMembers = numericMemberSet(right);
+            if (numericMembers != null)
+            {
+                return run ->
+                {
+                    Vector v = nameP.eval(run);
+                    return v == null ? new BitSet()
+                            : anyElementMembership(v, run.rowCount(), negate,
+                                    cell -> ScalarSemantics.isNumericMember(cell, numericMembers));
+                };
+            }
+        }
         if (!caseInsensitive && !listLhs)
         {
             Set<Double> numericMembers = numericMemberSet(right);
@@ -1500,10 +1521,21 @@ public final class ExprCompiler
         String probeMarker = markerOf(b.left());
         boolean temporalLiteralSet = b.right() instanceof Expr.Lit setLit
                 && setLit.kind() == Expr.LitKind.LIST;
-        // the members are known only as a value; a list probe (D81d any-of) stays on its own arm
-        boolean temporalValueSet = !listLhs && isValueReadMemberSource(b.right());
+        // the members are known only as a value
+        boolean temporalValueSet = isValueReadMemberSource(b.right());
         String temporalMarker = probeMarker != null ? probeMarker
                 : sharedTemporalMemberMarker(b.right());
+        boolean temporal = "date".equals(temporalMarker) || "time".equals(temporalMarker);
+        if (listLhs && temporal && (temporalLiteralSet || temporalValueSet))
+        {
+            // ⭐ runbook W2 E5 (after P-W2a): the LIST half of a temporal probe — date($s) over a
+            // per-row list, date(values([X, Y])), a list-valued accessor against date members —
+            // compares EACH ELEMENT by the hull rule, exactly as the scalar probe is compared
+            // (D81), and the row is a member when any element is (D81d). The textual any-element
+            // arm it replaces read 2020-01-01 as no member of {2020-01-01T09:15}.
+            return temporalListMembership(nameP, b.right(), temporalLiteralSet, negate,
+                    "time".equals(temporalMarker));
+        }
         if (temporalLiteralSet && "date".equals(temporalMarker))
         {
             Expr temporalSet = b.right();
@@ -1995,6 +2027,176 @@ public final class ExprCompiler
             }
         }
         return out;
+    }
+
+
+    /**
+     * The temporal membership of a LIST probe (runbook W2 E5): per row, any element of the probe
+     * compared with the members by the hull rule ({@link Primitives#isTemporalMember} /
+     * {@link Primitives#isTimeMember}, the comparators the scalar probe's arms run). The members
+     * are a list literal's (folded once), a value's — a call or {@code ~} through its value plan, a
+     * {@code $} through its compiled binding or its resolved value — folded with the {@code toSet}
+     * contract per row ({@link #temporalBoundMembership}'s). A row whose probe is not a list is one
+     * element wide; a missing element is a member of nothing.
+     */
+    private static ExprProgram.BoolPlan temporalListMembership(ValuePlan nameP, Expr right,
+            boolean literal, boolean negate, boolean time)
+    {
+        Set<String> literalSet = literal ? literalMembers((Expr.Lit) right, false) : null;
+        ValuePlan membersP = literal || right instanceof Expr.Ref ? null : valuePlan(right);
+        return run ->
+        {
+            Vector v = nameP.eval(run);
+            if (v == null)
+            {
+                return new BitSet();
+            }
+            int rows = run.rowCount();
+            if (literalSet != null)
+            {
+                return anyElementMembership(v, rows, negate,
+                        cell -> time ? Primitives.isTimeMember(cell, literalSet)
+                                : Primitives.isTemporalMember(cell, literalSet));
+            }
+            Vector members;
+            if (membersP != null)
+            {
+                members = membersP.eval(run);
+            }
+            else
+            {
+                String name = ((Expr.Ref) right).name();
+                members = boundVector(run, name);
+                if (members == null)
+                {
+                    Set<String> set = toSet(run.ctx().resolveVariable(name), false).present();
+                    return anyElementMembership(v, rows, negate,
+                            cell -> time ? Primitives.isTimeMember(cell, set)
+                                    : Primitives.isTemporalMember(cell, set));
+                }
+            }
+            if (members == null)
+            {
+                return new BitSet();
+            }
+            Vector bound = members;
+            if (bound instanceof ConstVector constant)
+            {
+                Set<String> set = toSet(constant.memberValue(), false).present();
+                return anyElementMembership(v, rows, negate,
+                        cell -> time ? Primitives.isTimeMember(cell, set)
+                                : Primitives.isTemporalMember(cell, set));
+            }
+            RowMembers perRow = new RowMembers(bound);
+            return anyElementMembership(v, rows, negate, (row, cell) ->
+            {
+                Set<String> set = perRow.at(row);
+                return time ? Primitives.isTimeMember(cell, set)
+                        : Primitives.isTemporalMember(cell, set);
+            });
+        };
+    }
+
+    /**
+     * A per-row member set with {@link #temporalBoundMembership}'s one-slot "same list instance"
+     * cache: consecutive rows holding the same list fold it once.
+     */
+    private static final class RowMembers
+    {
+
+        private final Vector bound;
+
+        private @Nullable Object lastList;
+
+        private @Nullable Set<String> lastSet;
+
+        RowMembers(Vector aBound)
+        {
+            bound = aBound;
+        }
+
+
+        Set<String> at(int row)
+        {
+            Object cell = bound.value(row).resolved();
+            Set<String> cached = lastSet;
+            if (cell instanceof Collection<?> && cell == lastList && cached != null)
+            {
+                return cached;
+            }
+            Set<String> set = toSet(cell, false).present();
+            if (cell instanceof Collection<?>)
+            {
+                lastList = cell;
+                lastSet = set;
+            }
+            return set;
+        }
+    }
+
+    /** {@link #anyElementMembership(Vector, int, boolean, RowElementTest)} without the row. */
+    private static BitSet anyElementMembership(Vector probes, int rowCount, boolean negate,
+            java.util.function.Predicate<IDataValue> member)
+    {
+        return anyElementMembership(probes, rowCount, negate, (_, cell) -> member.test(cell));
+    }
+
+    /** One element of a row's probe tested against that row's members. */
+    @FunctionalInterface
+    private interface RowElementTest
+    {
+
+        boolean test(int row, IDataValue element);
+    }
+
+    /**
+     * Per row: whether ANY element of the probe passes {@code member} (D81d's any-of), negated for
+     * {@code not in} — a row holding a list reads each element through the element adapter
+     * ({@link ElementwiseLift#element}, a missing element with its identity), any other row is the
+     * one value it holds. An empty list has no member, so {@code not in} fires on it, as
+     * {@link Primitives#listMembership} answers.
+     */
+    private static BitSet anyElementMembership(Vector probes, int rowCount, boolean negate,
+            RowElementTest member)
+    {
+        BitSet out = new BitSet(rowCount);
+        DataValueType type = probes.declaredType();
+        for (int r = 0; r < rowCount; r++)
+        {
+            TypedValue probe = probes.value(r);
+            boolean any = false;
+            if (probe.resolved() instanceof Collection<?> items)
+            {
+                for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(items))
+                {
+                    if (member.test(r, ElementwiseLift.element(item, type).cell()))
+                    {
+                        any = true;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                any = member.test(r, probe.cell());
+            }
+            if (negate != any)
+            {
+                out.set(r);
+            }
+        }
+        return out;
+    }
+
+
+    /**
+     * Whether {@code e} is an element-wise (lifted) value call over a statically list-shaped value
+     * ({@link #isListValuedFunctionCall}'s flag arm) — a list on every row (runbook W2 E5).
+     */
+    private static boolean isLiftedListCall(Expr e)
+    {
+        return e instanceof Expr.Call call && !call.args().isEmpty() && isElementwise(call.name())
+                && isListValuedFunctionCall(e);
     }
 
 
@@ -6573,10 +6775,24 @@ public final class ExprCompiler
                 {
                     // num(X) compiles to a per-cell parse publishing DOUBLE
                     // (Primitives.numConversion) — the type the Phase 3 gate interrogates.
+                    // ⭐ runbook W2 E5 (PLAN-elementwise-list-functions §7.6, R2 premise 2): this
+                    // arm, not the registry's valueCallPlan, compiles num — so the element-wise
+                    // lift is applied HERE: an operand that is not statically scalar (a $ value, a
+                    // list literal, values(…), a list-valued call) goes through the descriptor's
+                    // LIFTED function, which parses each element of a list; a statically scalar
+                    // one keeps the direct parse (the hot path pays nothing). Before, num($n) over
+                    // ["1", "2"] parsed the list's rendering: missing on every row.
+                    EvalFunction lifted = isStaticallyScalar(c.args().get(0)) ? null
+                            : liftedConversion(c.name());
                     yield run ->
                     {
                         Vector v = inner.eval(run);
-                        return v == null ? null : Primitives.numConversion(v, run.rowCount());
+                        if (v == null)
+                        {
+                            return null;
+                        }
+                        return lifted == null ? Primitives.numConversion(v, run.rowCount())
+                                : (Vector) lifted.apply(run, List.of(v));
                     };
                 }
                 // date(X) / time(X) (phase 3b, SPEC §1.2/§5.1): the conversion is INTERPRETIVE —
@@ -6756,6 +6972,18 @@ public final class ExprCompiler
         }
         default -> throw unsupported("unsupported operand " + e.getClass().getSimpleName());
         };
+    }
+
+
+    /**
+     * The registered function of the conversion {@code name} — its element-wise lift when the
+     * descriptor is flagged (runbook W2 E5), else the scalar implementation; {@code null} when the
+     * name has no implementation (the conversion arm then keeps its direct evaluation).
+     */
+    private static @Nullable EvalFunction liftedConversion(String name)
+    {
+        FunctionDescriptor d = FunctionRegistry.descriptor(name);
+        return d == null ? null : d.fn();
     }
 
 

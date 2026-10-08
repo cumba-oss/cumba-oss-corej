@@ -182,8 +182,10 @@ public final class BuiltinFunctions implements FunctionProvider
         };
         List<Parameter> lenParameters = List.of(p("x"), opt(UNIT_PARAMETER, Primitive.STRING),
                 opt(ENCODING_PARAMETER, Primitive.STRING));
-        value(fns, "len", lenParameters, len);
-        value(fns, "length", lenParameters, len);
+        // ⭐ Element-wise (runbook W2 E5, PLAN-elementwise-list-functions Q13): len lifts — the
+        // per-element length of a list at x; count / size stay the list's cardinality.
+        elementwise(fns, "len", lenParameters, len);
+        elementwise(fns, "length", lenParameters, len);
         // count(x) / size(x): the number of ELEMENTS in a list-valued operand — 1 for a present
         // scalar, 0 for a missing one.
         //
@@ -193,7 +195,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // test is true for EVERY non-empty list, and the rule built on it fired on data that
         // conformed. There was no list-cardinality function in the registry at all, and the one
         // rule that needed it was the only list-valued `len()` in the whole corpus, so there was
-        // no precedent to inherit correctness from either.
+        // no precedent to inherit correctness from either. ⚑ Since runbook W2 E5 len LIFTS over a
+        // list (owner Q13): len(["One Label"]) is [9], the per-element length — still a list, never
+        // the cardinality, which is this function's.
         //
         // ⚑ An empty / missing cell counts 0, following ScalarSemantics.isMissing (the F3 fold):
         // cardinality, so a missing has no identity to keep here — unlike len, where len("") is 0
@@ -227,7 +231,7 @@ public final class BuiltinFunctions implements FunctionProvider
         // the dataset's label, because no collapse function existed. A dataset label with a doubled
         // internal space therefore raised a false ERROR against an identical published label. This
         // is the missing half, so both sides can apply exactly the same normalisation.
-        value(fns, "normalize_space", (run, args) ->
+        elementwise(fns, "normalize_space", (run, args) ->
         {
             Vector x = args.get(0);
             // normalize_space(«missing») is that missing (D36, identity kept);
@@ -244,7 +248,7 @@ public final class BuiltinFunctions implements FunctionProvider
         // that missing (D85c, the input's own cell — char(.A) is .A); a present "" has no first
         // character ⇒ the computed MIS. Either way char(value()) <= 32 (the leading-space test)
         // does not fire on a blank on its own (numeric <= over a missing LHS yields no violation).
-        value(fns, "char", (run, args) ->
+        elementwise(fns, "char", (run, args) ->
         {
             Vector x = args.get(0);
             return new ComputedVector(run.rowCount(), DataValueType.LONG, row ->
@@ -329,9 +333,15 @@ public final class BuiltinFunctions implements FunctionProvider
         // routing (ExprCompiler.family / numTag select the comparison family) and their one
         // evaluation each (Primitives.numConversion; the interpretive ISO identity of
         // ExprCompiler.isoConversion), which the compiler arm and this implementation share.
-        value(fns, "num", (run, args) -> Primitives.numConversion(args.get(0), run.rowCount()));
-        value(fns, "date", (run, args) -> ExprCompiler.isoConversion(args.get(0), "date()"));
-        value(fns, "time", (run, args) -> ExprCompiler.isoConversion(args.get(0), "time()"));
+        // ⭐ Element-wise (runbook W2 E5, owner Q2): each conversion lifts over a list at x. The
+        // compiler's conversion arm (ExprCompiler.operandPlan) calls num's LIFTED function when
+        // its operand is not statically scalar; date / time are the interpretive identity, so
+        // their list is already converted element by element — the flag carries the list typing
+        // (Stage A's temporal arm) and the list routing (isListValuedFunctionCall).
+        elementwise(fns, "num",
+                (run, args) -> Primitives.numConversion(args.get(0), run.rowCount()));
+        elementwise(fns, "date", (run, args) -> ExprCompiler.isoConversion(args.get(0), "date()"));
+        elementwise(fns, "time", (run, args) -> ExprCompiler.isoConversion(args.get(0), "time()"));
         // -- the duration family (PLAN-engine-gap-dur-order §5, runbook W1b DO) --------------
         // duration(x): the comparison marker / conversion (Q2) — interpretive like date(): the
         // carrier is the ISO text verbatim, read by the family's hull (IsoDurationBounds: months
@@ -345,7 +355,7 @@ public final class BuiltinFunctions implements FunctionProvider
         // duration family from either side (D6).
         value(fns, "duration_between", List.of(p("start"), p("end")),
                 (run, args) -> durationBetween(run.rowCount(), args.get(0), args.get(1)));
-        value(fns, TextFunctions.STR,
+        elementwise(fns, TextFunctions.STR,
                 (run, args) -> TextFunctions.str(run.rowCount(), args.get(0)));
 
         // -- VALUE formatting (PLAN-dynamic-column-functions §2.2, owner Q2) -------------------
@@ -360,7 +370,7 @@ public final class BuiltinFunctions implements FunctionProvider
         fns.add(new FunctionDescriptor(TextFunctions.LPAD,
                 List.of(p("x"), p("width", Primitive.NUMBER), opt("fill", Primitive.STRING)),
                 FunctionKind.VALUE, (run, args) -> TextFunctions.lpad(run.rowCount(), args.get(0),
-                        args.get(1), args.get(2))));
+                        args.get(1), args.get(2))).liftingElementwise());
 
         // -- VALUE current-variable accessors (varname / value) -------------
         // varname(): the NAME of the "current variable" — the per-column cursor the metadata /
@@ -407,17 +417,17 @@ public final class BuiltinFunctions implements FunctionProvider
         // A missing input ⇒ that missing (its own cell, D85c: abs(.A) is .A); a present
         // non-numeric input ⇒ the computed MIS. abs preserves fractions (DOUBLE);
         // round/floor/ceil yield an integral LONG. round is half-up toward +∞ (Math.round).
-        value(fns, "abs", (run, args) -> numericValue(run.rowCount(), args.get(0),
+        elementwise(fns, "abs", (run, args) -> numericValue(run.rowCount(), args.get(0),
                 DataValueType.DOUBLE, Math::abs));
-        value(fns, "round", (run, args) -> numericValue(run.rowCount(), args.get(0),
+        elementwise(fns, "round", (run, args) -> numericValue(run.rowCount(), args.get(0),
                 DataValueType.LONG, Math::round));
-        value(fns, "floor", (run, args) -> numericValue(run.rowCount(), args.get(0),
+        elementwise(fns, "floor", (run, args) -> numericValue(run.rowCount(), args.get(0),
                 DataValueType.LONG, Math::floor));
-        value(fns, "ceil", (run, args) -> numericValue(run.rowCount(), args.get(0),
+        elementwise(fns, "ceil", (run, args) -> numericValue(run.rowCount(), args.get(0),
                 DataValueType.LONG, Math::ceil));
 
         // -- VALUE string / null helpers (native-only) -----------------------
-        value(fns, "trim", (run, args) ->
+        elementwise(fns, "trim", (run, args) ->
         {
             Vector x = args.get(0);
             // trim(«missing») is that missing (D36, identity kept); trim("") = "" (D34 #1).
@@ -497,7 +507,7 @@ public final class BuiltinFunctions implements FunctionProvider
                             "a numeric function operand");
                     return new ComputedVector(run.rowCount(), DataValueType.STRING,
                             row -> substring(x, start, length, row));
-                }));
+                }).liftingElementwise());
 
         // -- VALUE delimiter split (T9; native-only) -------------------------
         // split_by(x, delimiter): the per-row token LIST produced by splitting x on the literal
@@ -550,9 +560,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // day("2024-03")=missing, year("2024-03-15T08:00")=2024. The components are NOT
         // calendar-validated here (use is_valid_date for that); a syntactically well-formed but
         // impossible value such as "2024-13" still yields month=13.
-        value(fns, "year", (run, args) -> dateComponent(run.rowCount(), args.get(0), 0));
-        value(fns, "month", (run, args) -> dateComponent(run.rowCount(), args.get(0), 1));
-        value(fns, "day", (run, args) -> dateComponent(run.rowCount(), args.get(0), 2));
+        elementwise(fns, "year", (run, args) -> dateComponent(run.rowCount(), args.get(0), 0));
+        elementwise(fns, "month", (run, args) -> dateComponent(run.rowCount(), args.get(0), 1));
+        elementwise(fns, "day", (run, args) -> dateComponent(run.rowCount(), args.get(0), 2));
 
         // -- BOOLEAN range (native-only) -------------------------------------
         // between(x, lo, hi): fires where x is numeric and lo <= x <= hi (inclusive). lo/hi may be
@@ -851,10 +861,12 @@ public final class BuiltinFunctions implements FunctionProvider
         // D86a (D36; see affixValue).
         fns.add(new FunctionDescriptor("prefix", List.of(p("x"), p("n", Primitive.NUMBER)),
                 FunctionKind.VALUE,
-                (run, args) -> affixValue(run.rowCount(), args.get(0), args.get(1), true)));
+                (run, args) -> affixValue(run.rowCount(), args.get(0), args.get(1), true))
+                        .liftingElementwise());
         fns.add(new FunctionDescriptor("suffix", List.of(p("x"), p("n", Primitive.NUMBER)),
                 FunctionKind.VALUE,
-                (run, args) -> affixValue(run.rowCount(), args.get(0), args.get(1), false)));
+                (run, args) -> affixValue(run.rowCount(), args.get(0), args.get(1), false))
+                        .liftingElementwise());
 
         // -- BOOLEAN case-insensitive regex search (native-only) -------------
         // imatches(x, /regex/): unanchored case-insensitive search (Matcher.find with
@@ -972,9 +984,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // has no answer, and 9999-12-31 is a real clinical value that must never be manufactured.
         // A missing cell yields that missing, its own cell (D85c: earliest_possible(.A) is .A).
         fns.add(new FunctionDescriptor("earliest_possible", List.of(p("x")), FunctionKind.VALUE,
-                (run, args) -> hullBound(run.rowCount(), args.get(0), false)));
+                (run, args) -> hullBound(run.rowCount(), args.get(0), false)).liftingElementwise());
         fns.add(new FunctionDescriptor("latest_possible", List.of(p("x")), FunctionKind.VALUE,
-                (run, args) -> hullBound(run.rowCount(), args.get(0), true)));
+                (run, args) -> hullBound(run.rowCount(), args.get(0), true)).liftingElementwise());
 
         // -- VALUE two-value date extremes (earliest_date / latest_date) -----
         // PLAN-scalar-date-extremes (SDE D1 the names, S1–S7 the contract): the earlier / later of
@@ -1676,8 +1688,18 @@ public final class BuiltinFunctions implements FunctionProvider
      */
     private static void elementwise(List<FunctionDescriptor> fns, String name, EvalFunction fn)
     {
-        fns.add(new FunctionDescriptor(name, List.of(p("x")), FunctionKind.VALUE, fn)
-                .liftingElementwise());
+        elementwise(fns, name, List.of(p("x")), fn);
+    }
+
+
+    /**
+     * As {@link #elementwise(List, String, EvalFunction)} with the declared parameters: the value
+     * parameter 0 lifts, every other parameter stays scalar per row (owner Q3).
+     */
+    private static void elementwise(List<FunctionDescriptor> fns, String name,
+            List<Parameter> params, EvalFunction fn)
+    {
+        fns.add(new FunctionDescriptor(name, params, FunctionKind.VALUE, fn).liftingElementwise());
     }
 
 

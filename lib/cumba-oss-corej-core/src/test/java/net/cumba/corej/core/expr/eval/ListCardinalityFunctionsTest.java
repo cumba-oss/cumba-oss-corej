@@ -1,6 +1,7 @@
 package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -44,17 +45,23 @@ class ListCardinalityFunctionsTest
 
     /**
      * ⭐ The regression this whole item is about, stated as a contrast: on the same one-element
-     * list, {@code len} answers 27 and {@code count} answers 1. Asserting {@code count} alone would
-     * not record WHY the function had to exist.
+     * list, {@code count} answers 1 — and {@code len} answered 27, the length of the RENDERED list
+     * {@code "[Unique Subject Identifier]"}, until runbook W2 E5 made it element-wise (owner Q13 of
+     * {@code PLAN-elementwise-list-functions}): it answers the per-element length, still a list,
+     * never the cardinality. Asserting {@code count} alone would not record WHY the function had to
+     * exist.
      */
     @Test
-    void countIsElementCountWhereLenIsStringLength()
+    void countIsElementCountWhereLenIsTheLengthOfEachElement()
     {
         List<String> oneCandidate = List.of("Unique Subject Identifier");
 
         assertEquals(1L, call("count", oneCandidate), "one candidate is ONE");
-        assertEquals(27L, call("len", oneCandidate),
-                "len sees the RENDERED list '[Unique Subject Identifier]' — the defect");
+        Object lengths = apply("len", oneCandidate).value(0).resolved();
+        assertTrue(
+                lengths instanceof List<?> list && list.size() == 1
+                        && "25".equals(list.get(0).toString()),
+                "len lifts: the one element's length, as a list — " + lengths);
     }
 
 

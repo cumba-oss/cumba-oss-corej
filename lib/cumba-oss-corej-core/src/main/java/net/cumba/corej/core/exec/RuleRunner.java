@@ -872,8 +872,23 @@ public final class RuleRunner
                     .columnTypedBindings(compiledBindings);
             for (net.cumba.corej.core.model.CompiledBinding compiled : compiledBindings)
             {
-                lazyVars.put(compiled.name(), new BindingValue(compiled,
-                        bindingTypes.get(compiled.name()), columnTyped.contains(compiled.name())));
+                net.cumba.corej.core.expr.typed.ExprType staticType = bindingTypes
+                        .get(compiled.name());
+                if (staticType == null
+                        || staticType == net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)
+                {
+                    // runbook W2 E5: a lifted call over a $ value keeps the scalar function's
+                    // declared result as its type source (StageAChecker.liftedTypeSource) — the
+                    // one the load gate accepted it on
+                    net.cumba.corej.core.expr.typed.ExprType lifted = net.cumba.corej.core.expr.typed.StageAChecker
+                            .liftedTypeSource(compiled.expression());
+                    if (lifted != null)
+                    {
+                        staticType = lifted;
+                    }
+                }
+                lazyVars.put(compiled.name(), new BindingValue(compiled, staticType,
+                        columnTyped.contains(compiled.name())));
             }
             variables = lazyVars;
         }

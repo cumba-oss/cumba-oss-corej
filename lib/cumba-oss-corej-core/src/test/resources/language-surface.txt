@@ -1,12 +1,12 @@
 LEVEL=5
 functions:
-abs(x:unknown) kind=value
+abs(x:unknown) kind=value elementwise
 all(list:list<boolean>) kind=boolean
 any(list:list<boolean>) kind=boolean
 available(x:unknown) kind=boolean
 between(x:number, lo:number, hi:number) kind=boolean
-ceil(x:unknown) kind=value
-char(x:unknown) kind=value
+ceil(x:unknown) kind=value elementwise
+char(x:unknown) kind=value elementwise
 coalesce(a:unknown, b:unknown, c:unknown?) kind=value
 codelist_decode(name:unknown@name?) kind=value
 codelist_terms(codelists:list<string>, level:string, returntype:string?) kind=value aggregate provider=library
@@ -21,11 +21,11 @@ count(x:unknown) kind=value
 cross_dataset_variable_metadata(name:string, domain:string@name) kind=value aggregate perVariable
 dataset_class_from_library() kind=value aggregate provider=library
 dataset_names() kind=value aggregate
-date(x:unknown) kind=value
+date(x:unknown) kind=value elementwise
 date_contains(outer:date, inner:date) kind=boolean
 date_diff_days(name:column-reference, reference:unknown) kind=value
 date_overlaps(a:date, b:date) kind=boolean
-day(x:unknown) kind=value
+day(x:unknown) kind=value elementwise
 define_available() kind=boolean
 define_dataset_names() kind=value aggregate provider=define
 define_key_variables() kind=value aggregate provider=define
@@ -44,7 +44,7 @@ duration(x:unknown) kind=value
 duration_between(start:unknown, end:unknown) kind=value
 dy(name:column-reference, reference:column-reference) kind=value
 earliest_date(a:date, b:date) kind=value
-earliest_possible(x:unknown) kind=value
+earliest_possible(x:unknown) kind=value elementwise
 empty(x:unknown) kind=boolean
 empty_within_except_last_row(name:unknown, group:unknown, ordering:unknown?, keep_missings:boolean?, by:unknown?) kind=boolean
 ends_with(x:unknown, value:unknown) kind=boolean
@@ -52,7 +52,7 @@ equalsIgnoreCase(a:unknown, b:unknown) kind=boolean
 expected_variables() kind=value aggregate provider=library
 extract_metadata(name:string) kind=value aggregate
 find_vars(entry:string@name) kind=value
-floor(x:unknown) kind=value
+floor(x:unknown) kind=value elementwise
 get_codelist_attributes(name:unknown, version:unknown, ct_attribute:string) kind=value aggregate provider=library
 get_column_order_from_dataset() kind=value aggregate
 get_column_order_from_library() kind=value aggregate provider=library
@@ -105,28 +105,28 @@ is_valid_name(x:unknown) kind=boolean elementwise
 is_valid_testcd(x:unknown) kind=boolean elementwise
 joined(condition:boolean) kind=value
 latest_date(a:date, b:date) kind=value
-latest_possible(x:unknown) kind=value
-len(x:unknown, unit:string?, encoding:string?) kind=value
-length(x:unknown, unit:string?, encoding:string?) kind=value
+latest_possible(x:unknown) kind=value elementwise
+len(x:unknown, unit:string?, encoding:string?) kind=value elementwise
+length(x:unknown, unit:string?, encoding:string?) kind=value elementwise
 library_available() kind=boolean
 library_variable_code_pair_matches(name:unknown?) kind=value
 lowcase(x:unknown) kind=value elementwise
 lower(x:unknown) kind=value elementwise
-lpad(x:unknown, width:number, fill:string?) kind=value
+lpad(x:unknown, width:number, fill:string?) kind=value elementwise
 matches_label_template(label:string, template:string) kind=boolean
 max(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?) kind=value
 max_date(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?, missing_values:string?) kind=value
 max_value_length(name:unknown@name?, unit:string?, encoding:string?) kind=value
 min_date(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?, missing_values:string?) kind=value
 minus(value:unknown, subtract:unknown) kind=value aggregate
-month(x:unknown) kind=value
+month(x:unknown) kind=value elementwise
 natural_key_variables() kind=value aggregate provider=library
 non_empty(x:unknown) kind=boolean
 none(list:list<boolean>) kind=boolean
-normalize_space(x:unknown) kind=value
+normalize_space(x:unknown) kind=value elementwise
 not_contains_all(source:unknown, required:unknown?, keys:list<unknown>?) kind=boolean
-num(x:unknown) kind=value
-prefix(x:unknown, n:number) kind=value
+num(x:unknown) kind=value elementwise
+prefix(x:unknown, n:number) kind=value elementwise
 prefix_matches(x:unknown, pattern:regex, n:number?) kind=boolean
 present(x:unknown) kind=boolean
 present_on_multiple_rows_within(name:unknown, within:unknown, keep_missings:boolean?) kind=boolean
@@ -138,7 +138,7 @@ referenced_domain_class(name:column-reference) kind=value provider=library
 referenced_key_is_unique(dataset:unknown@name, key_variable:unknown, keys:list<column-reference>?) kind=value
 referenced_record_count(dataset:unknown@name, value:unknown, key_variable:unknown, keys:list<column-reference>?) kind=value
 required_variables() kind=value aggregate provider=library
-round(x:unknown) kind=value
+round(x:unknown) kind=value elementwise
 row_max(name_pattern:string) kind=value perRow
 sequence(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>?, by:list<column-reference>?, keep_missings:boolean?) kind=value
 shares_elements_with(name:unknown, value:unknown?, keys:list<unknown>?) kind=boolean
@@ -148,15 +148,15 @@ split_by(x:unknown, delimiter:string) kind=value
 split_sibling_length_mismatch() kind=value aggregate
 standard_domains() kind=value aggregate provider=library
 starts_with(x:unknown, value:unknown) kind=boolean
-str(x:unknown) kind=value
+str(x:unknown) kind=value elementwise
 study_domains() kind=value aggregate
-substring(x:unknown, start:number, length:number?) kind=value
-suffix(x:unknown, n:number) kind=value
+substring(x:unknown, start:number, length:number?) kind=value elementwise
+suffix(x:unknown, n:number) kind=value elementwise
 suffix_matches(x:unknown, pattern:regex, n:number?) kind=boolean
-time(x:unknown) kind=value
+time(x:unknown) kind=value elementwise
 time_contains(outer:time, inner:time) kind=boolean
 time_overlaps(a:time, b:time) kind=boolean
-trim(x:unknown) kind=value
+trim(x:unknown) kind=value elementwise
 tuple(c1:column-reference, c2:column-reference, columns:list<column-reference>?...) kind=value
 union(first:list<unknown>, second:list<unknown>, more:list<list<unknown>>?...) kind=value aggregate
 upcase(x:unknown) kind=value elementwise
@@ -189,7 +189,7 @@ vlm_mandatory(name:unknown@name?) kind=value
 vlm_origin_type(name:unknown@name?) kind=value
 vlm_type_conforms(name:unknown@name?) kind=value
 vlm_value_length(name:unknown@name?) kind=value
-year(x:unknown) kind=value
+year(x:unknown) kind=value elementwise
 accessors:
 ds_class scope=dataset levels=DATA,DEFINE,LIBRARY result=string default=DATA
 ds_domain scope=dataset levels=DATA result=string default=DATA

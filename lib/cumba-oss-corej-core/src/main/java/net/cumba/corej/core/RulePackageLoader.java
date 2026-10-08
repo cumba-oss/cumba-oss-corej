@@ -6163,10 +6163,13 @@ public class RulePackageLoader
                                 : "exclude it with !" + name));
                 continue;
             }
+            // runbook W2 E5: a lifted call over a $ value types unknown, yet keeps the scalar
+            // function's declared result as its type source (StageAChecker.liftedTypeSource)
             if (binding != null
                     && (type == null
                             || type == net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)
-                    && !columnTyped.contains(name))
+                    && !columnTyped.contains(name) && net.cumba.corej.core.expr.typed.StageAChecker
+                            .liftedTypeSource(binding.expression()) == null)
             {
                 errors.add(untypedReportedBinding(name, binding.expression(),
                         authored.contains(name)));
