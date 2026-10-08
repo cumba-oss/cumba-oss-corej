@@ -43,16 +43,20 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * ⛔ The {@code ${…}} path ({@code ExprCompiler.substitutedScalarCell}) is <b>not</b> routed here
  * (owner Q8: no behaviour change). The two are built on the same arms and answer cell-identically
- * except at one site shape, pinned as an expected divergence: a numeric position over an absent
- * column whose resolved name is not otherwise numeric-expected — {@code colref} MIS (Q14),
- * {@code ${…}} {@code ""} (Q8).
+ * except at two site shapes: a numeric position over an absent column whose resolved name is not
+ * otherwise numeric-expected — {@code colref} MIS (Q14), {@code ${…}} {@code ""} (Q8), pinned as an
+ * expected divergence — and a name naming a supplemental qualifier (next paragraph).
  * </p>
  *
  * <p>
- * ⚠ A SUPP-QNAM-pivoted qualifier (the merged view's SUPP part) is <b>not</b> read here, as it is
- * not by {@code ${…}}: the pivot is not a column of the evaluation table, and {@code find_vars}
- * does not return pivoted names either (owner Q12). The authored bare name does read the pivot — an
- * asymmetry handed to {@code PLAN-qualified-name-uniformity-review}.
+ * ⚠ A supplemental qualifier (the merged view's SUPP column) <b>is</b> read here, exactly as the
+ * authored bare name reads it (MQ7, {@code PLAN-merged-evaluation-table} W3d; {@code DCF Q8} lifted
+ * for this point, Q12's F1 closed): a bare name the primary lacks resolves to the record's
+ * qualifier before it takes the absent default ({@link Target}'s resolution), and
+ * {@code Supp_Merge: false} turns that off — pinned by
+ * {@code RuleRunnerSuppMergeTest.colrefReadsTheMergedQualifierTheAuthoredNameReads}. The
+ * {@code ${…}} path does not read qualifiers, and {@code find_vars} does not return qualifier names
+ * (owner Q12): those stay the evaluation table's own columns.
  * </p>
  *
  * <p>

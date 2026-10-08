@@ -3763,15 +3763,14 @@ public final class RuleRunner
             @Nullable String message, CheckCondition check, EvaluationContext ctx)
     {
         // Caller (execute) only routes GROUP-sensitivity rules with non-null, non-empty
-        // groupingVariables here. Resolve the -- domain wildcard (e.g. --TESTCD -> LBTESTCD)
-        // against the context's domain prefix BEFORE building the grouping index: the table
-        // carries domain-resolved column names, so a raw --prefix name matches no column and
-        // createIndex would return null — silently yielding zero violations. Mirrors
-        // ExprCompiler.resolveDomainPrefix, which every other evaluation path already applies.
-        List<String> groupVars = resolveGroupingPrefixes(
-                Objects.requireNonNull(rule.effectiveGroupingVariables(), "grouping variables"),
-                ctx.getVariableWildcardPrefix() != null ? ctx.getVariableWildcardPrefix()
-                        : ctx.getDomainPrefix());
+        // groupingVariables here. The names are already concrete: RuleSpecialiser (D77) resolved
+        // their `--` wildcard (e.g. --TESTCD -> LBTESTCD) against the VARIABLE prefix at bind
+        // time, under the same prefix the evaluation context carries (EC-36), so the grouping
+        // index and the Check cannot disagree. The runner's own re-substitution
+        // (resolveGroupingPrefixes) only ever re-resolved concrete names and was removed (runbook
+        // unit CL; FINDINGS-engine-fixture-retirement F4).
+        List<String> groupVars = Objects.requireNonNull(rule.effectiveGroupingVariables(),
+                "grouping variables");
         GroupKeyPolicy groupingPolicy = GroupKeyPolicy.DROP_MISSING_KEYS
                 .withDeclared(rule.groupingKeepMissings());
         IDataTable table = ctx.getTable();
@@ -4436,40 +4435,6 @@ public final class RuleRunner
             if (g != null && MatchDataset.qualifierOf(g) == null)
             {
                 out.add(g);
-            }
-        }
-        return out;
-    }
-
-
-    /**
-     * Resolves the {@code --} domain-prefix wildcard in a rule's {@code Grouping_Variables} against
-     * the evaluation context's VARIABLE wildcard prefix (e.g. {@code --TESTCD} -> {@code LBTESTCD}
-     * for domain {@code LB}; {@code MHTESTCD} on an AP dataset; {@code TESTCD} on SUPP), mirroring
-     * {@code ExprCompiler.resolveDomainPrefix} — the grouping index and the Check MUST resolve
-     * identically or the rule silently under-reports. A non-wildcard name (no leading {@code --},
-     * or a dotted reference) or an absent prefix is returned unchanged. Used by
-     * {@link #executeGrouped} so the grouping index is built over the domain-resolved column names
-     * the table actually carries.
-     */
-    private static List<String> resolveGroupingPrefixes(List<String> names,
-            @Nullable String domainPrefix)
-    {
-        // EC-36: substitution is unconditional once a prefix exists. The old `length() == 2` gate
-        // left --TESTCD raw for every AP dataset (4-char code) and every SUPP dataset (""), so the
-        // grouping index collapsed to a single group while the Check resolved correctly — the rule
-        // then under-reported instead of failing loudly. Callers now pass the VARIABLE prefix.
-        boolean usable = domainPrefix != null;
-        List<String> out = new ArrayList<>(names.size());
-        for (String name : names)
-        {
-            if (usable && name != null && name.startsWith("--") && name.indexOf('.') < 0)
-            {
-                out.add(domainPrefix + name.substring(2));
-            }
-            else
-            {
-                out.add(name);
             }
         }
         return out;

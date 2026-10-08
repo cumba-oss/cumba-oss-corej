@@ -66,6 +66,22 @@ class SplitDatasetUtilTest
     }
 
 
+    /**
+     * {@code SUPPQUAL} is the generic supplemental-qualifier dataset (SDTMIG §8.4), not a split of
+     * a {@code SUPPQUA} parent: it has the letter-split shape ({@code SUPP} + 3 letters + 1 letter)
+     * and was cut to {@code SUPPQUA} (runbook table B, CL; coordinator D8 — a recorded correction).
+     */
+    @Test
+    void nonSplits_suppqualIsNotALetterSplit()
+    {
+        assertEquals("SUPPQUAL", SplitDatasetUtil.unsplitName("SUPPQUAL"));
+        assertEquals("SUPPQUAL", SplitDatasetUtil.unsplitName("SUPPQUAL1"),
+                "a digit split of SUPPQUAL unsplits to SUPPQUAL");
+        assertEquals("SUPPQUA", SplitDatasetUtil.unsplitName("SUPPQUAX"),
+                "the letter-split shape beside it stays a split");
+    }
+
+
     @Test
     void nullAndEdgeCases()
     {

@@ -712,7 +712,7 @@ public final class ScalarSemantics
         }
         for (Double member : numericMembers)
         {
-            if (member != null && numericEquals(probe, member))
+            if (numericEquals(probe, member))
             {
                 return true;
             }

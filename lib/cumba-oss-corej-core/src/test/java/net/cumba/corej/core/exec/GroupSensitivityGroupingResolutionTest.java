@@ -30,10 +30,11 @@ import org.junit.jupiter.api.Test;
  * {@code --} names, so {@code createIndex} found no matching column, returned {@code null}, and the
  * rule silently produced <b>zero</b> violations on every dataset. Today the names are resolved at
  * bind time by {@code RuleSpecialiser} (D77) — an unresolved {@code --} reaching the runner ERRORs
- * the rule — and {@code RuleRunner.resolveGroupingPrefixes} only re-applies the substitution to
- * names that are already concrete. The failure mode left to guard is a resolution to the WRONG
- * prefix: concrete names that match no column, which the absent-column fallback below silently
- * collapses into one group. That is why the resolution test carries TWO groups.</li>
+ * the rule — and the runner builds the grouping index over those concrete names (its own
+ * re-substitution, {@code resolveGroupingPrefixes}, only ever re-resolved concrete names and was
+ * removed by runbook unit CL). The failure mode left to guard is a resolution to the WRONG prefix:
+ * concrete names that match no column, which the absent-column fallback below silently collapses
+ * into one group. That is why the resolution test carries TWO groups.</li>
  * <li><b>Silently dropping unavailable grouping columns.</b> A grouping column absent from the
  * dataset (e.g. the permissible {@code --SCAT}) must be dropped — grouping by the remaining present
  * columns — rather than nulling the whole index. When none remain, the whole dataset is a single

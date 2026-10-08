@@ -67,18 +67,25 @@ public final class SplitDatasetUtil
     /**
      * SUPP letter-suffix split: {@code SUPP} + 2-to-6 letter base + 1 suffix letter (total length
      * 7-11, all uppercase ASCII letters). E.g. {@code SUPPLBHM} (SUPP+LBH+M), {@code SUPPFACM}
-     * (SUPP+FAC+M), {@code SUPPAEX} (SUPP+AE+X).
+     * (SUPP+FAC+M), {@code SUPPAEX} (SUPP+AE+X). {@code SUPPQUAL} is not one
+     * ({@link #GENERIC_SUPP}).
      */
     private static boolean isSuppLetterSplit(String name)
     {
         int len = name.length();
-        if (len < 7 || len > 11)
+        if (len < 7 || len > 11 || GENERIC_SUPP.equals(name))
         {
             return false;
         }
         return name.startsWith("SUPP") && isAllUpperLetters(name);
     }
 
+    /**
+     * The generic supplemental-qualifier dataset (SDTMIG §8.4): it has the letter-split shape
+     * ({@code SUPP} + {@code QUA} + {@code L}) but is no split — {@code unsplitName} cut it to
+     * {@code SUPPQUA} until runbook unit CL (coordinator D8).
+     */
+    private static final String GENERIC_SUPP = "SUPPQUAL";
 
     /**
      * AP letter-suffix split: {@code AP} + 2-to-4 letter base + 1 suffix letter (total length 5-7,

@@ -40,15 +40,17 @@ import org.jspecify.annotations.Nullable;
  * ({@code ±0} one value, D84); a Char set the shared string branch ({@code genericStringExtreme}:
  * plain lexicographic order — owner K3, 2026-09-30, "text is text"; date-looking text gets no date
  * rule). A matched column with no candidate in <em>any</em> row takes no part in that decision
- * (round 2 H2: a CSV / XLSX provider types an all-blank column {@code STRING}, so an all-blank
- * {@code TR02EDT} beside a numeric {@code TR01EDT} is not a mixed set). A set in which Num
- * <em>and</em> Char columns both carry values is a {@link ColumnTypeMismatchException} — the rule
- * ERRORs (column-type doctrine), since the two have no common order and a per-row choice could hand
- * a numeric cell back under a declared {@code STRING} vector. A textual value is never parsed as a
- * number — the retired reducer did, so a row of CHAR {@code "9"} / {@code "10"} answered
- * {@code "10"} and now answers {@code "9"} (named movement, population 0: both corpus rules read
- * ADaM {@code TRxxEDT}, which is numeric). On a tie the first candidate in column order wins. The
- * winning <b>cell</b> is returned, identity and type kept.
+ * (round 2 H2: a provider infers a column's type from its values, so an all-blank column has an
+ * arbitrary one — CSV types it {@code STRING}, XLSX {@code DOUBLE} — and an all-blank
+ * {@code TR02EDT} beside a numeric {@code TR01EDT}, or an all-blank Char-intended column beside a
+ * Char set, is not a mixed set). A set in which Num <em>and</em> Char columns both carry values is
+ * a {@link ColumnTypeMismatchException} — the rule ERRORs (column-type doctrine), since the two
+ * have no common order and a per-row choice could hand a numeric cell back under a declared
+ * {@code STRING} vector. A textual value is never parsed as a number — the retired reducer did, so
+ * a row of CHAR {@code "9"} / {@code "10"} answered {@code "10"} and now answers {@code "9"} (named
+ * movement, population 0: both corpus rules read ADaM {@code TRxxEDT}, which is numeric). On a tie
+ * the first candidate in column order wins. The winning <b>cell</b> is returned, identity and type
+ * kept.
  * </p>
  *
  * <p>
@@ -181,10 +183,11 @@ public final class RowMax
         if (!numericNames.isEmpty() && !characterNames.isEmpty())
         {
             // Combined review of runbook W2–W8, round 2 H2: a column with no candidate in ANY
-            // row answers nothing and takes no part in the type decision. A CSV / XLSX provider
-            // types a column STRING unless a sampled cell is numeric evidence, so an all-blank
-            // TR02EDT arrives as Char beside a numeric TR01EDT — that is not a mixed set. One
-            // early-exit scan per column, once per dataset, only when both kinds matched.
+            // row answers nothing and takes no part in the type decision. A provider types an
+            // all-blank column arbitrarily: CSV types a column STRING unless a sampled cell is
+            // numeric evidence (an all-blank TR02EDT arrives as Char beside a numeric TR01EDT),
+            // XLSX types it DOUBLE (a blank cell is no text evidence) — neither is a mixed set.
+            // One early-exit scan per column, once per dataset, only when both kinds matched.
             List<String> liveNumeric = candidateBearing(table, numericNames);
             List<String> liveCharacter = candidateBearing(table, characterNames);
             if (!liveNumeric.isEmpty() && !liveCharacter.isEmpty())

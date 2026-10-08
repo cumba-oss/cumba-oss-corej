@@ -357,7 +357,9 @@ class WildcardPrefixResolutionTest
     @Test
     void groupingVariablesResolveOnTheVariablePrefix_apDataset() throws Exception
     {
-        // Reproduced defect: resolveGroupingPrefixes kept a `length() == 2` gate fed from the
+        // Reproduced defect: the runner's grouping resolution (resolveGroupingPrefixes, since
+        // replaced by RuleSpecialiser's bind-time resolution) kept a `length() == 2` gate fed from
+        // the
         // domain code, so on an AP dataset (4-char code) --CAT stayed raw, the grouping index
         // collapsed to ONE group and the rule under-reported by half — while the Check resolved
         // --TERM correctly. That is the split-brain the plan forbids.
