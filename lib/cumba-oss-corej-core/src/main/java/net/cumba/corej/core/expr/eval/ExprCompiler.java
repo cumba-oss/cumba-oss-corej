@@ -2146,7 +2146,7 @@ public final class ExprCompiler
     private interface RowElementTest
     {
 
-        boolean test(int row, IDataValue element);
+        boolean holds(int row, IDataValue element);
     }
 
     /**
@@ -2169,7 +2169,7 @@ public final class ExprCompiler
             {
                 for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(items))
                 {
-                    if (member.test(r, ElementwiseLift.element(item, type).cell()))
+                    if (member.holds(r, ElementwiseLift.element(item, type).cell()))
                     {
                         any = true;
                         break;
@@ -2178,7 +2178,7 @@ public final class ExprCompiler
             }
             else
             {
-                any = member.test(r, probe.cell());
+                any = member.holds(r, probe.cell());
             }
             if (negate != any)
             {

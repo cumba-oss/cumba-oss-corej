@@ -2523,7 +2523,7 @@ class StageACheckerTest
     @Test
     void theE5RosterLiftsInStageA()
     {
-        Map<String, String> rows = new java.util.LinkedHashMap<>();
+        Map<String, String> rows = new LinkedHashMap<>();
         for (String number : List.of("len", "length", "abs", "ceil", "floor", "round", "char",
                 "day", "month", "year", "num"))
         {

@@ -65,7 +65,7 @@ class ElementwiseLiftRosterDriftTest
      * {@code prefix} / {@code suffix} ({@code n}), {@code substring} ({@code start}) and
      * {@code lpad} ({@code width}) broadcast constants.
      */
-    private static java.util.List<Vector> probeArgs(FunctionDescriptor d, Vector x)
+    private static List<Vector> probeArgs(FunctionDescriptor d, Vector x)
     {
         Vector[] args = new Vector[d.parameters().size()];
         args[0] = x;
