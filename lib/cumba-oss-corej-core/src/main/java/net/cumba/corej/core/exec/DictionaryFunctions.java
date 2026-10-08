@@ -2,6 +2,8 @@ package net.cumba.corej.core.exec;
 
 import java.util.BitSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.UngatedProviderReachException;
 import net.cumba.corej.core.expr.eval.Vector;
@@ -79,8 +81,50 @@ public final class DictionaryFunctions
     /** The parameter naming the dictionary level on the membership functions. */
     public static final String LEVEL_PARAMETER = "dictionary_term_type";
 
+    /**
+     * Runbook W2 DI1 ({@code PLAN-engine-gap-dict-unsupported} §4.1, §5.1 Q1/Q2): the MedDRA level
+     * a column reads, by its name's suffix — longest suffix first, so {@code AEHLGTCD} is
+     * {@code HLGTCD} and never {@code HLGT}. {@code --DECOD} is the PT. {@code --BODSYS} is
+     * deliberately absent: it may carry a secondary SOC, so it keeps the bare-name lookup.
+     */
+    private static final List<Map.Entry<String, String>> HIERARCHY_LEVEL_SUFFIXES = List.of(
+            Map.entry("HLGTCD", "HLGTCD"), Map.entry("HLTCD", "HLTCD"), Map.entry("LLTCD", "LLTCD"),
+            Map.entry("SOCCD", "SOCCD"), Map.entry("PTCD", "PTCD"), Map.entry("HLGT", "HLGT"),
+            Map.entry("HLT", "HLT"), Map.entry("LLT", "LLT"), Map.entry("SOC", "SOC"),
+            Map.entry("DECOD", "PT"));
+
     private DictionaryFunctions()
     {
+    }
+
+
+    /**
+     * Runbook W2 DI1: the hierarchy level a column reads, derived at load from its name — the
+     * authored spelling ({@code --HLT}), the resolved one ({@code AEHLT}) or a qualified one
+     * ({@code AE.AEHLT}) all name the same level. {@code null} for a name that maps to no level
+     * (e.g. {@code --BODSYS}, a {@code $} binding): such a call keeps the bare-name lookup.
+     *
+     * @param aColumnName
+     *            the column name as written in the call, or {@code null} when the argument is not a
+     *            column reference
+     * @return the house-format level ({@code PT}, {@code PTCD}, {@code LLT}, …), or {@code null}
+     */
+    public static @Nullable String hierarchyLevelOf(@Nullable String aColumnName)
+    {
+        if (aColumnName == null || aColumnName.startsWith("$"))
+        {
+            return null;
+        }
+        String name = aColumnName.substring(aColumnName.lastIndexOf('.') + 1)
+                .toUpperCase(Locale.ROOT);
+        for (Map.Entry<String, String> suffix : HIERARCHY_LEVEL_SUFFIXES)
+        {
+            if (name.endsWith(suffix.getKey()))
+            {
+                return suffix.getValue();
+            }
+        }
+        return null;
     }
 
 
@@ -132,6 +176,31 @@ public final class DictionaryFunctions
      */
     public static BitSet hierarchy(EvalRun run, List<Vector> args)
     {
+        return hierarchy(run, args, null, null);
+    }
+
+
+    /**
+     * {@code valid_external_dictionary_hierarchy} with the levels the two columns read (runbook W2
+     * DI1, {@link #hierarchyLevelOf}), which the compiler derives from the call's column names at
+     * load. A house file carrying the level-scoped section answers at those levels; a file without
+     * it, or a column that maps to no level, answers through the bare-name map as before
+     * ({@code ValueMapDictionary.onHierarchyPath}).
+     *
+     * @param run
+     *            the evaluation run
+     * @param args
+     *            the bound argument vectors
+     * @param childLevel
+     *            the level of the child column, or {@code null}
+     * @param parentLevel
+     *            the level of the parent column, or {@code null}
+     * @return the rows whose child lies on the parent's hierarchy path, or whose child or parent is
+     *         blank
+     */
+    public static BitSet hierarchy(EvalRun run, List<Vector> args, @Nullable String childLevel,
+            @Nullable String parentLevel)
+    {
         String type = typeOf(args.get(2), run.rowCount());
         RuntimeDictionaryProvider provider = availableProvider(run, HIERARCHY, type);
         boolean caseSensitive = caseSensitive(args.get(3), run.rowCount());
@@ -144,8 +213,8 @@ public final class DictionaryFunctions
             String childText = text(child.value(row).cell());
             String parentText = text(parent.value(row).cell());
             // H1: a blank child OR blank parent is on-path (no fire).
-            if (childText.isEmpty() || parentText.isEmpty()
-                    || provider.onHierarchyPath(type, childText, parentText, caseSensitive))
+            if (childText.isEmpty() || parentText.isEmpty() || provider.onHierarchyPath(type,
+                    childLevel, childText, parentLevel, parentText, caseSensitive))
             {
                 out.set(row);
             }

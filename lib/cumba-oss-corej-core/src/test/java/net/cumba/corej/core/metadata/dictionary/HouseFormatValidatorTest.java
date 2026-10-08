@@ -281,6 +281,39 @@ class HouseFormatValidatorTest
     }
 
 
+    /**
+     * Runbook W2 DI1: {@code hierarchy_by_level} is held to its OWN levels — a key must be a term
+     * of the level it is filed under and an ancestor a term of the level it names, written as that
+     * level publishes it. A PT name filed under HLT (a term of another level only) is rejected, as
+     * is an ancestor level the document does not carry and an ancestor spelt in another case.
+     */
+    @Test
+    void theLevelScopedHierarchyIsHeldToItsOwnLevels() throws IOException
+    {
+        String levels = "\"levels\":{\"PT\":{\"HEADACHE\":\"Headache\"},"
+                + "\"HLT\":{\"HEADACHES NEC\":\"Headaches NEC\"},"
+                + "\"SOC\":{\"NERVOUS SYSTEM DISORDERS\":\"Nervous system disorders\"}}";
+        assertEquals(List.of(),
+                HouseFormatValidator.caseContractViolations("meddra",
+                        json("{\"type\":\"meddra\"," + levels + ",\"hierarchy_by_level\":{\"PT\":{"
+                                + "\"Headache\":{\"HLT\":[\"Headaches NEC\"],"
+                                + "\"SOC\":[\"Nervous system disorders\"]}}}}")));
+
+        List<String> v = HouseFormatValidator.caseContractViolations("meddra",
+                json("{\"type\":\"meddra\"," + levels + ",\"hierarchy_by_level\":{"
+                        + "\"HLT\":{\"Headache\":{\"SOC\":[\"Nervous system disorders\"]}},"
+                        + "\"PT\":{\"Headache\":{\"HLGT\":[\"Headaches\"],"
+                        + "\"SOC\":[\"NERVOUS SYSTEM DISORDERS\"]}}}}"));
+
+        assertEquals(3, v.size(), v.toString());
+        assertTrue(v.stream().anyMatch(m -> m.contains("hierarchy_by_level[HLT] key 'Headache'")),
+                v.toString());
+        assertTrue(v.stream().anyMatch(m -> m.contains("[HLGT]")), v.toString());
+        assertTrue(v.stream().anyMatch(m -> m.contains("'NERVOUS SYSTEM DISORDERS'")),
+                v.toString());
+    }
+
+
     /** A decode that is not a term of this dictionary is unconstrained — BENIGN, a LOINC name. */
     @Test
     void aNonTermDecodeIsUnconstrained() throws IOException

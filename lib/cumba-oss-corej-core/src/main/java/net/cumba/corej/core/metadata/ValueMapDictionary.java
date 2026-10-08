@@ -22,7 +22,9 @@ import org.jspecify.annotations.Nullable;
  * <li><b>membership</b> — the term (upper-cased) is a key of {@code levels[termType]};</li>
  * <li><b>case</b> — {@code levels[termType][upper(term)]} equals the term verbatim (the value holds
  * the preferred case);</li>
- * <li><b>hierarchy-path</b> — the parent is in {@code hierarchy[term]};</li>
+ * <li><b>hierarchy-path</b> — the parent is in {@code hierarchy[term]}, or, keyed by the levels of
+ * the two variables read, in {@code hierarchy_by_level[termLevel][term][parentLevel]} (runbook W2
+ * DI1, {@link LevelScopedHierarchy});</li>
  * <li><b>code&harr;decode pair</b> — some registry / attribute map carries {@code map[code] ==
  * decode};</li>
  * <li><b>per-term attribute</b> — {@code attributes[attr][upper(term)]}.</li>
@@ -58,6 +60,9 @@ public final class ValueMapDictionary
 {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** The house format's level-scoped hierarchy section (runbook W2 DI1). */
+    public static final String HIERARCHY_BY_LEVEL = "hierarchy_by_level";
 
     /**
      * Where a dictionary came from and which release it is — written by the dictionary installer,
@@ -96,6 +101,12 @@ public final class ValueMapDictionary
     /** Case-folded hierarchy index (keys and ancestor values upper-cased). */
     private final Map<String, List<String>> hierarchyFolded;
 
+    /**
+     * The level-scoped hierarchy ({@code hierarchy_by_level}, runbook W2 DI1), or
+     * {@link LevelScopedHierarchy#EMPTY} for a file without it — the legacy arm.
+     */
+    private final LevelScopedHierarchy hierarchyByLevel;
+
     /** Pair registries exactly as authored: registry &rarr; code &rarr; decode. */
     private final Map<String, Map<String, String>> pairs;
 
@@ -110,13 +121,15 @@ public final class ValueMapDictionary
 
     private ValueMapDictionary(String type, Provenance provenance,
             Map<String, Map<String, String>> levels, Map<String, List<String>> hierarchy,
-            Map<String, Map<String, String>> pairs, Map<String, Map<String, String>> attributes)
+            LevelScopedHierarchy hierarchyByLevel, Map<String, Map<String, String>> pairs,
+            Map<String, Map<String, String>> attributes)
     {
         this.type = type;
         this.provenance = provenance;
         this.levels = levels;
         this.hierarchy = hierarchy;
         this.hierarchyFolded = foldHierarchy(hierarchy);
+        this.hierarchyByLevel = hierarchyByLevel;
         this.pairs = pairs;
         this.pairsFolded = foldKeys(pairs);
         this.attributes = attributes;
@@ -160,7 +173,7 @@ public final class ValueMapDictionary
         // no hierarchy probe, so {"hierarchy":{"X":[]}} is no more content than {"levels":{"X":{}}}
         // — counting it would register the dictionary as available and bypass the SKIP arm.
         return anyEntry(levels) || hierarchy.values().stream().anyMatch(l -> !l.isEmpty())
-                || anyEntry(pairs) || anyEntry(attributes);
+                || !hierarchyByLevel.isEmpty() || anyEntry(pairs) || anyEntry(attributes);
     }
 
 
@@ -213,7 +226,9 @@ public final class ValueMapDictionary
     {
         String t = root.hasNonNull("type") ? root.get("type").asText() : "";
         return new ValueMapDictionary(t, readProvenance(root), readLevels(root.get("levels")),
-                readNestedStringList(root.get("hierarchy")), readNestedStringMap(root.get("pairs")),
+                readNestedStringList(root.get("hierarchy")),
+                LevelScopedHierarchy.read(root.get(HIERARCHY_BY_LEVEL)),
+                readNestedStringMap(root.get("pairs")),
                 readNestedStringMap(root.get("attributes")));
     }
 
@@ -421,6 +436,27 @@ public final class ValueMapDictionary
         List<String> parents = caseSensitive ? hierarchy.get(term)
                 : hierarchyFolded.get(upper(term));
         return parents != null && parents.contains(caseSensitive ? parent : upper(parent));
+    }
+
+
+    /**
+     * Hierarchy-path keyed by the <b>levels of the two variables read</b> (runbook W2 DI1,
+     * {@code PLAN-engine-gap-dict-unsupported} §4.1): a file carrying {@code hierarchy_by_level}
+     * answers at {@code termLevel} / {@code parentLevel} only ({@link LevelScopedHierarchy}) — a PT
+     * name that is also an HLT or LLT name reads its own level's entry. ⭐ <b>The legacy arm:</b> a
+     * file without that section (every file installed before DI1, the corpus dummy), or a call with
+     * a column that maps to no level ({@code null}), answers through the bare-name
+     * {@link #onHierarchyPath(String, String, boolean)} exactly as before.
+     */
+    public boolean onHierarchyPath(@Nullable String termLevel, @Nullable String term,
+            @Nullable String parentLevel, @Nullable String parent, boolean caseSensitive)
+    {
+        if (termLevel == null || parentLevel == null || hierarchyByLevel.isEmpty())
+        {
+            return onHierarchyPath(term, parent, caseSensitive);
+        }
+        return term != null && parent != null
+                && hierarchyByLevel.onPath(termLevel, term, parentLevel, parent, caseSensitive);
     }
 
 

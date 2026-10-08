@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import net.cumba.corej.core.metadata.ValueMapDictionary;
 
 /**
  * Validates a house-format dictionary document before it is written or shipped.
@@ -277,7 +278,8 @@ public final class HouseFormatValidator
      * validator-only invariant with no engine backing — and it made WHODrug uninstallable for every
      * licensee (owner ruling).</li>
      * <li><b>hierarchy</b> — every key and every ancestor resolves to a level term, written exactly
-     * as some level publishes it;</li>
+     * as some level publishes it; in the level-scoped {@code hierarchy_by_level} (runbook W2 DI1)
+     * as the level it is filed under publishes it;</li>
      * <li><b>pairs / attributes</b> — any code, decode, key or value that <em>is</em> a level term
      * is written as some level publishes it (a decode that is not a term of this dictionary — the
      * NEOPLASM {@code BENIGN}/{@code MALIGNANT} classes, a LOINC long name — is
@@ -320,6 +322,7 @@ public final class HouseFormatValidator
                         ancestor.asText(), true);
             }
         }
+        levelScopedHierarchyViolations(out, aDict, aRoot);
         for (String section : new String[]
         {
                 "pairs", "attributes"
@@ -336,6 +339,66 @@ public final class HouseFormatValidator
             }
         }
         return out;
+    }
+
+
+    /**
+     * Runbook W2 DI1: {@code hierarchy_by_level} is held to its OWN levels — unlike the bare-name
+     * {@code hierarchy}, whose terms may come from any level, a key filed under a level must be a
+     * term of that level and an ancestor a term of the level it is filed as, each written exactly
+     * as that level publishes it (codes included: a {@code *CD} level's preferred form is the code
+     * itself). The engine reads the section by the level of the variable, so a term filed at the
+     * wrong level would answer for the wrong variable.
+     */
+    private static void levelScopedHierarchyViolations(List<String> aOut, String aDict,
+            JsonNode aRoot)
+    {
+        JsonNode levels = aRoot.path("levels");
+        for (Map.Entry<String, JsonNode> level : fields(
+                aRoot.path(ValueMapDictionary.HIERARCHY_BY_LEVEL)))
+        {
+            String where = ValueMapDictionary.HIERARCHY_BY_LEVEL + "[" + level.getKey() + "] ";
+            for (Map.Entry<String, JsonNode> e : fields(level.getValue()))
+            {
+                checkLevelTerm(aOut, aDict, where + "key", levels, level.getKey(), e.getKey());
+                for (Map.Entry<String, JsonNode> parent : fields(e.getValue()))
+                {
+                    if (!parent.getValue().isArray())
+                    {
+                        continue;
+                    }
+                    for (JsonNode ancestor : parent.getValue())
+                    {
+                        checkLevelTerm(aOut, aDict, where + "ancestor of '" + e.getKey() + "'",
+                                levels, parent.getKey(), ancestor.asText());
+                    }
+                }
+            }
+        }
+    }
+
+
+    private static void checkLevelTerm(List<String> aOut, String aDict, String aWhere,
+            JsonNode aLevels, String aLevel, String aText)
+    {
+        JsonNode level = aLevels.path(aLevel);
+        if (!level.isObject())
+        {
+            aOut.add(aDict + ": " + aWhere + " '" + aText + "' is filed at level [" + aLevel
+                    + "], which the document's levels do not carry");
+            return;
+        }
+        JsonNode preferred = level.get(upper(aText));
+        if (preferred == null)
+        {
+            aOut.add(aDict + ": " + aWhere + " '" + aText + "' is not a term of level [" + aLevel
+                    + "]");
+        }
+        else if (!preferred.asText().equals(aText))
+        {
+            aOut.add(aDict + ": " + aWhere + " '" + aText + "' is not written in level [" + aLevel
+                    + "]'s preferred form '" + preferred.asText() + "'");
+        }
     }
 
 

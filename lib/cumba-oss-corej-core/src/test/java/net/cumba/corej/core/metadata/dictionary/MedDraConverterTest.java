@@ -110,6 +110,113 @@ class MedDraConverterTest
     }
 
     // ------------------------------------------------------------------
+    // Runbook W2 DI1 — the level-scoped primary path (hierarchy_by_level)
+    // ------------------------------------------------------------------
+
+
+    /**
+     * DI1 (PLAN-engine-gap-dict-unsupported §4.1, Q1/Q2): the PT {@code Alpha} sits on two paths,
+     * only one primary; its level-scoped entry carries exactly the primary HLT, HLGT and SOC.
+     */
+    @Test
+    void aPtOnTwoPathsIsKeyedToItsPrimaryPathOnly() throws IOException
+    {
+        writeCollidingDistribution();
+
+        JsonNode byLevel = converter.convert(raw).path("hierarchy_by_level");
+
+        assertEquals(List.of("Hlt One"), scoped(byLevel, "PT", "Alpha", "HLT"), byLevel.toString());
+        assertEquals(List.of("Hlgt One"), scoped(byLevel, "PT", "Alpha", "HLGT"));
+        assertEquals(List.of("Soc One"), scoped(byLevel, "PT", "Alpha", "SOC"),
+                "the secondary path's Soc Two is not an ancestor");
+    }
+
+
+    /** Q2 (owner: "yes codes as well"): the PT code keys the primary path's codes. */
+    @Test
+    void aPtCodeIsKeyedToItsPrimaryPathCodes() throws IOException
+    {
+        writeCollidingDistribution();
+
+        JsonNode byLevel = converter.convert(raw).path("hierarchy_by_level");
+
+        assertEquals(List.of("20000001"), scoped(byLevel, "PTCD", "10000001", "HLTCD"));
+        assertEquals(List.of("30000001"), scoped(byLevel, "PTCD", "10000001", "HLGTCD"));
+        assertEquals(List.of("40000001"), scoped(byLevel, "PTCD", "10000001", "SOCCD"));
+        assertEquals(List.of("10000001"), scoped(byLevel, "LLTCD", "50000003", "PTCD"),
+                "an LLT code names its PT code");
+    }
+
+
+    /**
+     * Owner fact (2026-10-08): a PT name can also be an HLT name. {@code Beta} is both; each level
+     * keeps its own entry — the PT's primary SOC is Soc One, the HLT's is Soc Two.
+     */
+    @Test
+    void aNameThatIsBothPtAndHltKeepsOneEntryPerLevel() throws IOException
+    {
+        writeCollidingDistribution();
+
+        JsonNode byLevel = converter.convert(raw).path("hierarchy_by_level");
+
+        assertEquals(List.of("Soc One"), scoped(byLevel, "PT", "Beta", "SOC"));
+        assertEquals(List.of("Soc Two"), scoped(byLevel, "HLT", "Beta", "SOC"));
+        assertEquals(List.of("Hlgt Two"), scoped(byLevel, "HLT", "Beta", "HLGT"));
+    }
+
+
+    /**
+     * Owner fact: a PT name can also be an LLT name. The LLT {@code Gamma} belongs to the PT
+     * {@code Alpha}; the PT {@code Gamma} has its own primary path under Soc Two.
+     */
+    @Test
+    void aNameThatIsBothPtAndLltKeepsOneEntryPerLevel() throws IOException
+    {
+        writeCollidingDistribution();
+
+        JsonNode byLevel = converter.convert(raw).path("hierarchy_by_level");
+
+        assertEquals(List.of("Alpha"), scoped(byLevel, "LLT", "Gamma", "PT"));
+        assertEquals(List.of("Soc Two"), scoped(byLevel, "PT", "Gamma", "SOC"));
+    }
+
+
+    /**
+     * HLT and HLGT keys keep their SET of primary SOCs, from primary rows only: {@code Hlt Two} is
+     * reached primarily by {@code Gamma} (Soc Two) and only secondarily by {@code Alpha}.
+     */
+    @Test
+    void hltAndHlgtKeysKeepTheirPrimarySocs() throws IOException
+    {
+        writeCollidingDistribution();
+
+        JsonNode byLevel = converter.convert(raw).path("hierarchy_by_level");
+
+        assertEquals(List.of("Soc One"), scoped(byLevel, "HLT", "Hlt One", "SOC"));
+        assertEquals(List.of("Soc Two"), scoped(byLevel, "HLT", "Hlt Two", "SOC"));
+        assertEquals(List.of("Soc Two"), scoped(byLevel, "HLGT", "Hlgt Two", "SOC"));
+        assertEquals(List.of("40000002"), scoped(byLevel, "HLGTCD", "30000002", "SOCCD"));
+    }
+
+
+    /**
+     * The legacy {@code hierarchy} section is written exactly as before (HLT / HLGT names only),
+     * beside the new one, and the colliding document passes the house-format validator.
+     */
+    @Test
+    void theLegacyHierarchyStaysAndTheCollidingDocumentValidates() throws IOException
+    {
+        writeCollidingDistribution();
+
+        ObjectNode doc = converter.convert(raw);
+
+        assertEquals(List.of("Soc Two"), ancestors(doc.path("hierarchy"), "Beta"),
+                "the legacy map keys the HLT Beta only — no PT key is emitted there");
+        assertFalse(doc.path("hierarchy").has("Alpha"), "no PT key in the legacy map");
+        assertEquals(List.of(), HouseFormatValidator.validate("meddra", stamped(doc)));
+    }
+
+    // ------------------------------------------------------------------
     // ⛔ The hazard: silently picking one of two vendor spellings — WITHIN a level
     // ------------------------------------------------------------------
 
@@ -233,6 +340,42 @@ class MedDraConverterTest
         List<String> out = new java.util.ArrayList<>();
         aHierarchy.path(aTerm).forEach(ancestor -> out.add(ancestor.asText()));
         return out;
+    }
+
+
+    private static List<String> scoped(JsonNode aByLevel, String aLevel, String aKey,
+            String aParentLevel)
+    {
+        List<String> out = new java.util.ArrayList<>();
+        aByLevel.path(aLevel).path(aKey).path(aParentLevel)
+                .forEach(ancestor -> out.add(ancestor.asText()));
+        return out;
+    }
+
+
+    /**
+     * DI1's synthetic distribution (MedDRA is licensed — fixtures stay synthetic): the PT
+     * {@code Alpha} on two paths (primary Hlt One / Hlgt One / Soc One, secondary Hlt Two / Hlgt
+     * Two / Soc Two); {@code Beta} both a PT (primary under Soc One) and an HLT (under Hlgt Two /
+     * Soc Two, reached primarily by the PT {@code Delta}); {@code Gamma} both an LLT (of the PT
+     * {@code Alpha}) and a PT (primary under Soc Two).
+     */
+    private void writeCollidingDistribution() throws IOException
+    {
+        write("llt.asc", "10000001$Alpha$10000001$", "10000002$Beta$10000002$",
+                "50000003$Gamma$10000001$", "10000004$Delta$10000004$");
+        write("pt.asc", "10000001$Alpha$$40000001$", "10000002$Beta$$40000001$",
+                "10000003$Gamma$$40000002$", "10000004$Delta$$40000002$");
+        write("hlt.asc", "20000001$Hlt One$", "20000002$Hlt Two$", "20000003$Beta$");
+        write("hlgt.asc", "30000001$Hlgt One$", "30000002$Hlgt Two$");
+        write("soc.asc", "40000001$Soc One$S1$", "40000002$Soc Two$S2$");
+        write("mdhier.asc",
+                "10000001$20000001$30000001$40000001$Alpha$Hlt One$Hlgt One$Soc One$S1$$40000001$Y$",
+                "10000001$20000002$30000002$40000002$Alpha$Hlt Two$Hlgt Two$Soc Two$S2$$40000001$N$",
+                "10000002$20000001$30000001$40000001$Beta$Hlt One$Hlgt One$Soc One$S1$$40000001$Y$",
+                "10000003$20000002$30000002$40000002$Gamma$Hlt Two$Hlgt Two$Soc Two$S2$$40000002$Y$",
+                "10000004$20000003$30000002$40000002$Delta$Beta$Hlgt Two$Soc Two$S2$$40000002$Y$");
+        write("meddra_release.asc", "27.0$English$$");
     }
 
 

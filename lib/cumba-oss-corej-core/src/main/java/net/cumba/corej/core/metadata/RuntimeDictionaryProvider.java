@@ -320,6 +320,19 @@ public final class RuntimeDictionaryProvider
 
 
     /**
+     * Hierarchy-path check keyed by the levels the two columns read (runbook W2 DI1) — see
+     * {@link ValueMapDictionary#onHierarchyPath(String, String, String, String, boolean)}.
+     */
+    public boolean onHierarchyPath(@Nullable String type, @Nullable String termLevel,
+            @Nullable String term, @Nullable String parentLevel, @Nullable String parent,
+            boolean caseSensitive)
+    {
+        ValueMapDictionary d = get(type);
+        return d != null && d.onHierarchyPath(termLevel, term, parentLevel, parent, caseSensitive);
+    }
+
+
+    /**
      * code&harr;decode pairing — does {@code code} decode to {@code decode} in {@code type}?
      * {@code caseSensitive} selects the verbatim (D-TA-3 default) or case-folded comparison.
      */

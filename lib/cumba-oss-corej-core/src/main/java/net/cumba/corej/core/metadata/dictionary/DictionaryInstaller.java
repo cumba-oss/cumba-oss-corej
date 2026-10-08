@@ -373,12 +373,13 @@ public final class DictionaryInstaller
 
     /**
      * The document's entry counts, one clause per inner section, e.g.
-     * {@code levels.PT: 25391; levels.PTCD: 25391; hierarchy: 1737}.
+     * {@code levels.PT: 25391; levels.PTCD: 25391; hierarchy_by_level.PT: 25391; hierarchy: 1737}.
      */
     private static String entryCountsOf(ObjectNode aDoc)
     {
         List<String> parts = new ArrayList<>();
-        for (String sectionName : List.of("levels", "pairs", "attributes"))
+        for (String sectionName : List.of("levels", "pairs", "attributes",
+                net.cumba.corej.core.metadata.ValueMapDictionary.HIERARCHY_BY_LEVEL))
         {
             JsonNode section = aDoc.path(sectionName);
             if (section.isObject())

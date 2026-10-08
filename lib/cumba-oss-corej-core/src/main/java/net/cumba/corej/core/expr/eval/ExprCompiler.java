@@ -2895,6 +2895,31 @@ public final class ExprCompiler
 
 
     /**
+     * Runbook W2 DI1 ({@code PLAN-engine-gap-dict-unsupported} §4.1): a
+     * {@code valid_external_dictionary_hierarchy} call reads its dictionary at the levels of the
+     * two columns it names — derived HERE, at load, from the columns' names
+     * ({@code DictionaryFunctions.hierarchyLevelOf}: {@code --DECOD} is the PT, {@code --SOCCD} the
+     * SOC code, …), child and parent alike, and bound into the function once. A column whose name
+     * maps to no level keeps the bare-name lookup. Every other function is returned as is.
+     */
+    private static EvalFunction hierarchyLevelsBound(String name, List<@Nullable Expr> bound,
+            EvalFunction fn)
+    {
+        if (!net.cumba.corej.core.exec.DictionaryFunctions.HIERARCHY.equals(name)
+                || bound.size() < 2)
+        {
+            return fn;
+        }
+        String childLevel = net.cumba.corej.core.exec.DictionaryFunctions
+                .hierarchyLevelOf(bound.get(0) instanceof Expr.Ref ref ? ref.name() : null);
+        String parentLevel = net.cumba.corej.core.exec.DictionaryFunctions
+                .hierarchyLevelOf(bound.get(1) instanceof Expr.Ref ref ? ref.name() : null);
+        return (run, args) -> net.cumba.corej.core.exec.DictionaryFunctions.hierarchy(run, args,
+                childLevel, parentLevel);
+    }
+
+
+    /**
      * The registry tail's evaluation of a BOOLEAN predicate with at least one parameter: the value
      * operand at parameter 0 ({@code operandPlan}, the availability gate's unusable-answer wrap),
      * the other arguments as values (a regex literal at {@link #LITERAL_ARG1}'s slot 1), the
@@ -2912,8 +2937,8 @@ public final class ExprCompiler
         // Check tail reaches here only with one): an absent one is a defect, named here
         Expr value = Objects.requireNonNull(bound.get(0),
                 () -> "'" + name + "' reached the registry tail without a value operand");
-        EvalFunction fn = isStaticallyScalar(value) ? ElementwiseLift.kernelOf(registered)
-                : registered;
+        EvalFunction fn = hierarchyLevelsBound(name, bound,
+                isStaticallyScalar(value) ? ElementwiseLift.kernelOf(registered) : registered);
         ValuePlan compiledArg0 = operandPlan(value, true);
         // The availability gate reads an unusable provider answer as "not available" (§0.2 a).
         ValuePlan arg0 = AVAILABILITY_GATE.equals(name) ? unusableAsUnavailable(compiledArg0)

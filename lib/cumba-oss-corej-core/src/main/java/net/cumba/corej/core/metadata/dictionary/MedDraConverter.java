@@ -13,9 +13,13 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import net.cumba.corej.core.metadata.ValueMapDictionary;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Converts a MedDRA {@code MedAscii} distribution into the house format.
@@ -54,8 +58,24 @@ import java.util.Set;
  * {@code CDISC-CG0460} and {@code CDISC-CG0461} — check {@code --SOC}, which SDTM defines as the
  * <i>primary</i> system organ class: a full closure would additionally admit every secondary SOC,
  * so a row coded against a secondary SOC would resolve and the rules could never fire — silently,
- * which is the defect this construction exists to prevent. No rule probes the hierarchy at PT or
- * LLT, so those keys are not emitted.
+ * which is the defect this construction exists to prevent. This bare-name map is the <b>legacy</b>
+ * shape and stays exactly as it was (HLT and HLGT names only, the levels merged under one key), so
+ * every reader of a file written before DI1 answers as before.
+ * </p>
+ *
+ * <h2>The level-scoped hierarchy — {@code hierarchy_by_level} (runbook W2 DI1)</h2>
+ *
+ * <p>
+ * Beside it, from the same primary rows, the converter writes the primary path keyed <b>per
+ * level</b> ({@code PLAN-engine-gap-dict-unsupported} §4.1, §5.1 Q1/Q2): a PT name &rarr; its
+ * primary HLT, HLGT and SOC names, a PT code ({@code PTCD}, field 0 of {@code mdhier.asc}) &rarr;
+ * their codes; an LLT &rarr; its PT ({@code llt.asc} field 2), whose own entry carries the path; an
+ * HLT &rarr; the HLGTs and SOCs, an HLGT &rarr; the SOCs it reaches on primary rows (a set — an HLT
+ * can sit under several HLGTs). A PT has exactly one primary row, so its lists hold one term each.
+ * A name may recur at several levels — a PT can also be an HLT and an LLT (owner fact, 2026-10-08)
+ * — and each level keeps its own entry; the engine reads the level of the variable
+ * ({@code ValueMapDictionary.onHierarchyPath} with levels). Codes are code-like identifiers, never
+ * words, and sit at their own {@code *CD} levels.
  * </p>
  *
  * <p>
@@ -88,6 +108,24 @@ public final class MedDraConverter implements DictionaryConverter
 
     private static final int PRIMARY_FLAG_AT = 11;
 
+    /** {@code llt.asc}'s field holding the LLT's PT code. */
+    private static final int LLT_PT_CODE_AT = 2;
+
+    /**
+     * The level names, as the {@code levels} and {@code hierarchy_by_level} sections spell them.
+     */
+    private static final String LLT = "LLT";
+
+    private static final String PT = "PT";
+
+    private static final String HLT = "HLT";
+
+    private static final String HLGT = "HLGT";
+
+    private static final String SOC = "SOC";
+
+    private static final String CODE = "CD";
+
     @Override
     public String type()
     {
@@ -98,26 +136,58 @@ public final class MedDraConverter implements DictionaryConverter
     @Override
     public ObjectNode convert(Path aRawDir) throws IOException
     {
-        Map<String, String> lltByCode = readTerms(aRawDir, "llt.asc");
-        Map<String, String> ptByCode = readTerms(aRawDir, "pt.asc");
-        Map<String, String> hltByCode = readTerms(aRawDir, "hlt.asc");
-        Map<String, String> hlgtByCode = readTerms(aRawDir, "hlgt.asc");
-        Map<String, String> socByCode = readTerms(aRawDir, "soc.asc");
+        Map<String, String> lltPtCodes = new LinkedHashMap<>();
+        Map<String, String> lltByCode = readTerms(aRawDir, "llt.asc", lltPtCodes);
+        Map<String, String> ptByCode = readTerms(aRawDir, "pt.asc", null);
+        Map<String, String> hltByCode = readTerms(aRawDir, "hlt.asc", null);
+        Map<String, String> hlgtByCode = readTerms(aRawDir, "hlgt.asc", null);
+        Map<String, String> socByCode = readTerms(aRawDir, "soc.asc", null);
 
         ObjectNode root = JsonNodeFactory.instance.objectNode();
         ObjectNode levels = root.putObject("levels");
-        putLevel(levels, "LLT", lltByCode);
-        putLevel(levels, "PT", ptByCode);
-        putLevel(levels, "HLT", hltByCode);
-        putLevel(levels, "HLGT", hlgtByCode);
-        putLevel(levels, "SOC", socByCode);
+        putLevel(levels, LLT, lltByCode);
+        putLevel(levels, PT, ptByCode);
+        putLevel(levels, HLT, hltByCode);
+        putLevel(levels, HLGT, hlgtByCode);
+        putLevel(levels, SOC, socByCode);
 
+        PrimaryPaths paths = primaryPaths(aRawDir, ptByCode, hltByCode, hlgtByCode, socByCode);
         ObjectNode hierarchy = root.putObject("hierarchy");
-        for (Map.Entry<String, Set<String>> e : primarySocsByName(aRawDir, hltByCode, hlgtByCode,
-                socByCode).entrySet())
+        for (Map.Entry<String, Set<String>> e : paths.socsByName().entrySet())
         {
             ArrayNode ancestors = hierarchy.putArray(e.getKey());
             e.getValue().forEach(ancestors::add);
+        }
+        Map<String, Map<String, Map<String, Set<String>>>> byLevel = paths.byLevel();
+        Map<String, Map<String, Set<String>>> ptCodePaths = byLevel.getOrDefault(PT + CODE,
+                Map.of());
+        for (Map.Entry<String, String> llt : lltPtCodes.entrySet())
+        {
+            String ptCode = llt.getValue();
+            String ptName = ptByCode.get(ptCode);
+            if (ptName != null && ptCodePaths.containsKey(ptCode))
+            {
+                add(byLevel, LLT, lltByCode.get(llt.getKey()), PT, ptName);
+                add(byLevel, LLT + CODE, llt.getKey(), PT + CODE, ptCode);
+            }
+        }
+        ObjectNode scoped = root.putObject(ValueMapDictionary.HIERARCHY_BY_LEVEL);
+        for (Map.Entry<String, Map<String, Map<String, Set<String>>>> level : byLevel.entrySet())
+        {
+            if (level.getValue().isEmpty())
+            {
+                continue;
+            }
+            ObjectNode levelNode = scoped.putObject(level.getKey());
+            for (Map.Entry<String, Map<String, Set<String>>> entry : level.getValue().entrySet())
+            {
+                ObjectNode entryNode = levelNode.putObject(entry.getKey());
+                entry.getValue().forEach((parentLevel, terms) ->
+                {
+                    ArrayNode list = entryNode.putArray(parentLevel);
+                    terms.forEach(list::add);
+                });
+            }
         }
         return root;
     }
@@ -145,17 +215,39 @@ public final class MedDraConverter implements DictionaryConverter
         return "";
     }
 
+    /**
+     * What the primary rows of {@code mdhier.asc} yield.
+     *
+     * @param socsByName
+     *            the legacy map: the distinct primary SOC names of each HLT and HLGT name, the two
+     *            levels merged under one key
+     * @param byLevel
+     *            the level-scoped map: level &rarr; key &rarr; ancestor level &rarr; ancestor terms
+     *            (the LLT levels are added by the caller)
+     */
+    private record PrimaryPaths(Map<String, Set<String>> socsByName,
+            Map<String, Map<String, Map<String, Set<String>>>> byLevel)
+    {
+    }
 
     /**
-     * The distinct primary-path SOC names reached from each HLT and HLGT name, in file order. Rows
-     * whose codes do not resolve against the level files carry nothing resolvable and are skipped.
+     * The primary-path ancestors, in file order — the legacy HLT/HLGT &rarr; SOC map and the
+     * level-scoped one (PT, HLT and HLGT names and codes). Rows whose SOC does not resolve against
+     * the level files carry nothing resolvable and are skipped; an unresolvable HLT, HLGT or PT
+     * code only drops that term.
      */
-    private static Map<String, Set<String>> primarySocsByName(Path aRawDir,
+    private static PrimaryPaths primaryPaths(Path aRawDir, Map<String, String> aPtByCode,
             Map<String, String> aHltByCode, Map<String, String> aHlgtByCode,
             Map<String, String> aSocByCode)
         throws IOException
     {
         Map<String, Set<String>> out = new LinkedHashMap<>();
+        Map<String, Map<String, Map<String, Set<String>>>> byLevel = new LinkedHashMap<>();
+        for (String level : List.of(LLT, LLT + CODE, PT, PT + CODE, HLT, HLT + CODE, HLGT,
+                HLGT + CODE))
+        {
+            byLevel.put(level, new LinkedHashMap<>());
+        }
         try (BufferedReader in = reader(requiredFile(aRawDir, HIERARCHY_FILE)))
         {
             for (String line = in.readLine(); line != null; line = in.readLine())
@@ -166,24 +258,73 @@ public final class MedDraConverter implements DictionaryConverter
                 {
                     continue;
                 }
-                String soc = aSocByCode.get(fields[SOC_CODE_AT].trim());
+                String socCode = fields[SOC_CODE_AT].trim();
+                String soc = aSocByCode.get(socCode);
                 if (soc == null)
                 {
                     continue;
                 }
-                String hlt = aHltByCode.get(fields[HLT_CODE_AT].trim());
+                String hltCode = fields[HLT_CODE_AT].trim();
+                String hlt = aHltByCode.get(hltCode);
                 if (hlt != null)
                 {
                     out.computeIfAbsent(hlt, _ -> new LinkedHashSet<>()).add(soc);
                 }
-                String hlgt = aHlgtByCode.get(fields[HLGT_CODE_AT].trim());
+                String hlgtCode = fields[HLGT_CODE_AT].trim();
+                String hlgt = aHlgtByCode.get(hlgtCode);
                 if (hlgt != null)
                 {
                     out.computeIfAbsent(hlgt, _ -> new LinkedHashSet<>()).add(soc);
                 }
+                String ptCode = fields[0].trim();
+                addPath(byLevel, PT, aPtByCode.get(ptCode), ptCode, hlt, hltCode, hlgt, hlgtCode,
+                        soc, socCode);
+                addPath(byLevel, HLT, hlt, hltCode, null, null, hlgt, hlgtCode, soc, socCode);
+                addPath(byLevel, HLGT, hlgt, hlgtCode, null, null, null, null, soc, socCode);
             }
         }
-        return out;
+        return new PrimaryPaths(out, byLevel);
+    }
+
+
+    /**
+     * Files one primary row's ancestors under {@code aLevel}'s name and code (both, or neither when
+     * the name does not resolve); a {@code null} ancestor is not on the row.
+     */
+    private static void addPath(Map<String, Map<String, Map<String, Set<String>>>> aByLevel,
+            String aLevel, @Nullable String aName, String aCode, @Nullable String aHlt,
+            @Nullable String aHltCode, @Nullable String aHlgt, @Nullable String aHlgtCode,
+            String aSoc, String aSocCode)
+    {
+        if (aName == null)
+        {
+            return;
+        }
+        if (aHlt != null)
+        {
+            add(aByLevel, aLevel, aName, HLT, aHlt);
+            add(aByLevel, aLevel + CODE, aCode, HLT + CODE, Objects.requireNonNull(aHltCode));
+        }
+        if (aHlgt != null)
+        {
+            add(aByLevel, aLevel, aName, HLGT, aHlgt);
+            add(aByLevel, aLevel + CODE, aCode, HLGT + CODE, Objects.requireNonNull(aHlgtCode));
+        }
+        add(aByLevel, aLevel, aName, SOC, aSoc);
+        add(aByLevel, aLevel + CODE, aCode, SOC + CODE, aSocCode);
+    }
+
+
+    private static void add(Map<String, Map<String, Map<String, Set<String>>>> aByLevel,
+            String aLevel, @Nullable String aKey, String aParentLevel, String aTerm)
+    {
+        if (aKey == null)
+        {
+            return;
+        }
+        aByLevel.computeIfAbsent(aLevel, _ -> new LinkedHashMap<>())
+                .computeIfAbsent(aKey, _ -> new LinkedHashMap<>())
+                .computeIfAbsent(aParentLevel, _ -> new LinkedHashSet<>()).add(aTerm);
     }
 
 
@@ -191,10 +332,14 @@ public final class MedDraConverter implements DictionaryConverter
      * Reads one level file into a code&rarr;name map, registering every name in that level's own
      * preferred-form table.
      *
+     * @param aParentCodes
+     *            when not {@code null}, receives each code's field 2 ({@code llt.asc}: the PT code)
      * @throws IOException
      *             when two names in this file fold to the same term but disagree on case
      */
-    private static Map<String, String> readTerms(Path aRawDir, String aFileName) throws IOException
+    private static Map<String, String> readTerms(Path aRawDir, String aFileName,
+            @Nullable Map<String, String> aParentCodes)
+        throws IOException
     {
         Map<String, String> preferred = new LinkedHashMap<>();
         Map<String, String> byCode = new LinkedHashMap<>();
@@ -215,6 +360,11 @@ public final class MedDraConverter implements DictionaryConverter
                 }
                 register(preferred, name, aFileName);
                 byCode.putIfAbsent(code, name);
+                if (aParentCodes != null && fields.length > LLT_PT_CODE_AT
+                        && !fields[LLT_PT_CODE_AT].isBlank())
+                {
+                    aParentCodes.putIfAbsent(code, fields[LLT_PT_CODE_AT].trim());
+                }
             }
         }
         return byCode;

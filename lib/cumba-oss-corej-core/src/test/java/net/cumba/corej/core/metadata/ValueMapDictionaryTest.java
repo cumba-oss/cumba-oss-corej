@@ -188,6 +188,47 @@ class ValueMapDictionaryTest
     }
 
 
+    /**
+     * Runbook W2 DI1 — the level-scoped section at the dictionary's own API: each lookup reads its
+     * own level ({@code X} is a PT under {@code S1} and an HLT under {@code S2}), the parent level
+     * is scoped, an LLT is read through its PT, a {@code null} level or a file without the section
+     * takes the bare-name map, and a section alone is content.
+     */
+    @Test
+    void theLevelScopedSectionAnswersPerLevelAndTheLegacyArmOtherwise() throws Exception
+    {
+        ValueMapDictionary d = ValueMapDictionary.parse(MAPPER.readTree("{\"type\":\"meddra\","
+                + "\"hierarchy\":{\"X\":[\"S1\",\"S2\"]},\"hierarchy_by_level\":{"
+                + "\"PT\":{\"X\":{\"HLT\":[\"H\"],\"SOC\":[\"S1\"]}},"
+                + "\"HLT\":{\"X\":{\"SOC\":[\"S2\"]},\"H\":{\"SOC\":[\"S1\"]}},"
+                + "\"LLT\":{\"L\":{\"PT\":[\"X\"]}}}}"));
+        assertTrue(d.onHierarchyPath("PT", "X", "SOC", "S1", true));
+        assertFalse(d.onHierarchyPath("PT", "X", "SOC", "S2", true), "the HLT X's SOC");
+        assertTrue(d.onHierarchyPath("HLT", "X", "SOC", "S2", true));
+        assertFalse(d.onHierarchyPath("PT", "X", "SOC", "H", true), "an HLT name is no SOC");
+        assertTrue(d.onHierarchyPath("LLT", "L", "SOC", "S1", true), "LLT -> PT -> SOC");
+        assertTrue(d.onHierarchyPath("LLT", "L", "HLT", "H", true));
+        assertFalse(d.onHierarchyPath("SOC", "S1", "SOC", "S1", true), "no SOC entries");
+        assertTrue(d.onHierarchyPath("PT", "x", "SOC", "s1", false),
+                "case_sensitive=false folds key and term");
+        assertTrue(d.onHierarchyPath(null, "X", "SOC", "S2", true),
+                "an unmapped column: the bare-name map, which merges the levels");
+        assertFalse(d.onHierarchyPath("PT", null, "SOC", "S1", true));
+        ValueMapDictionary legacy = ValueMapDictionary
+                .parse(MAPPER.readTree("{\"type\":\"meddra\",\"hierarchy\":{\"X\":[\"S2\"]}}"));
+        assertTrue(legacy.onHierarchyPath("PT", "X", "SOC", "S2", true),
+                "a file without the section answers as before");
+        assertTrue(ValueMapDictionary.parse(MAPPER.readTree(
+                "{\"type\":\"meddra\",\"hierarchy_by_level\":{\"HLT\":{\"H\":{\"SOC\":[\"S\"]}}}}"))
+                .hasContent(), "the section alone is content");
+        ValueMapDictionary cyclic = ValueMapDictionary.parse(MAPPER.readTree(
+                "{\"type\":\"meddra\",\"hierarchy_by_level\":{\"PT\":{\"A\":{\"LLT\":[\"B\"]}},"
+                        + "\"LLT\":{\"B\":{\"PT\":[\"A\"]}}}}"));
+        assertFalse(cyclic.onHierarchyPath("PT", "A", "SOC", "S", true),
+                "a cyclic file ends at the chain bound");
+    }
+
+
     @Test
     void emptyLevelsAndNullArgumentGuards() throws Exception
     {
