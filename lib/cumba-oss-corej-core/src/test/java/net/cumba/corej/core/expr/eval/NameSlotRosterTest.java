@@ -441,7 +441,7 @@ class NameSlotRosterTest
                 }
                 else if (slot && !expands)
                 {
-                    excluded.add(key);
+                    excluded.add(key + "@" + i);
                 }
                 String kw = d.parameters().get(i).name();
                 Expr.Call keyword = new Expr.Call(d.name(), List.of(), Map.of(kw, lit(NAME)));
@@ -453,7 +453,7 @@ class NameSlotRosterTest
                 }
                 else if (kwSlot && !kwExpands)
                 {
-                    excluded.add(key);
+                    excluded.add(key + "=");
                 }
             }
         }
@@ -484,7 +484,11 @@ class NameSlotRosterTest
             }
         }
         assertEquals(List.of(), wrong);
-        assertEquals(Set.of("cross_dataset_variable_metadata.domain", "find_vars.entry"), excluded,
+        // per form: the positional slot (@index) and the keyword (=) are each excluded, so an
+        // exclusion dropped from either reader's form reds here
+        assertEquals(Set.of("cross_dataset_variable_metadata.domain@1",
+                "cross_dataset_variable_metadata.domain=", "find_vars.entry@0", "find_vars.entry="),
+                excluded,
                 "the marked slots the expander leaves alone: exactly the two ruled exclusions");
         // the four former EXISTS_NAME_CALLS are among them
         for (String fn : List.of("ds_exists", "ds_not_exists", "var_exists", "var_not_exists"))
