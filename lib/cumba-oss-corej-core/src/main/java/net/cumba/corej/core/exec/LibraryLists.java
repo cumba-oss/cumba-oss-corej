@@ -504,8 +504,9 @@ public final class LibraryLists
         MetadataProvider provider = ListFunctionSupport.library(run,
                 GET_DATASET_FILTERED_VARIABLES);
         IDataTable table = run.ctx().getTable();
-        String keyName = ListFunctionSupport.staticString(args.get(0));
-        String keyValue = ListFunctionSupport.staticString(args.get(1));
+        String keyName = ListFunctionSupport.staticString(args.get(0), run.rowCount());
+        String keyValue = ListFunctionSupport.staticString(args.get(1), run.rowCount(),
+                GET_DATASET_FILTERED_VARIABLES, KEY_VALUE_PARAMETER);
         String ruleId = ListFunctionSupport.ruleId(run);
         List<String> selected = StandardVariableSelector.select(provider, table,
                 run.ctx().getDatasetResolver(),
@@ -558,9 +559,10 @@ public final class LibraryLists
         MetadataProvider provider = ListFunctionSupport.library(run, GET_MODEL_FILTERED_VARIABLES);
         IDataTable table = run.ctx().getTable();
         DatasetResolver resolver = run.ctx().getDatasetResolver();
-        String keyName = ListFunctionSupport.staticString(args.get(0));
-        String keyValue = ListFunctionSupport.staticString(args.get(1));
-        String rawClass = ListFunctionSupport.staticString(args.get(2));
+        String keyName = ListFunctionSupport.staticString(args.get(0), run.rowCount());
+        String keyValue = ListFunctionSupport.staticString(args.get(1), run.rowCount(),
+                GET_MODEL_FILTERED_VARIABLES, KEY_VALUE_PARAMETER);
+        String rawClass = ListFunctionSupport.staticString(args.get(2), run.rowCount());
         String modelClass = rawClass == null ? null
                 : SdtmObservationClasses.normalise(rawClass.trim());
         List<Map<String, String>> source = modelClass != null
@@ -677,7 +679,9 @@ public final class LibraryLists
                     .degradedAnswer(provider, run, VALID_CODELIST_DATES, List.of()));
         }
         Set<String> applicable = applicableCtPackageTypes(
-                ListFunctionSupport.staticStrings(args.get(0)), provider);
+                ListFunctionSupport.staticStrings(args.get(0), run.rowCount(), VALID_CODELIST_DATES,
+                        CT_PACKAGE_TYPES_PARAMETER),
+                provider);
         TreeSet<String> dates = new TreeSet<>();
         for (String pkg : packages)
         {
@@ -744,9 +748,10 @@ public final class LibraryLists
     public static Vector codelistTerms(EvalRun run, List<Vector> args)
     {
         MetadataProvider provider = ListFunctionSupport.library(run, CODELIST_TERMS);
-        List<String> names = ListFunctionSupport.staticStrings(args.get(0));
-        String level = ListFunctionSupport.staticString(args.get(1));
-        String returntype = ListFunctionSupport.staticString(args.get(2));
+        List<String> names = ListFunctionSupport.staticStrings(args.get(0), run.rowCount(),
+                CODELIST_TERMS, CODELISTS_PARAMETER);
+        String level = ListFunctionSupport.staticString(args.get(1), run.rowCount());
+        String returntype = ListFunctionSupport.staticString(args.get(2), run.rowCount());
         List<String> values;
         if ("term".equals(level) && "value".equals(returntype))
         {

@@ -178,7 +178,8 @@ public final class ScalarMetadataFunctions
      */
     public static Vector extractMetadata(EvalRun run, List<Vector> args)
     {
-        String key = ListFunctionSupport.staticString(args.get(0));
+        String key = ListFunctionSupport.staticString(args.get(0), run.rowCount(), EXTRACT_METADATA,
+                NAME_PARAMETER);
         if (key == null)
         {
             return ConstVector.of(null);
@@ -232,8 +233,8 @@ public final class ScalarMetadataFunctions
      */
     public static Vector crossDatasetVariableMetadata(EvalRun run, List<Vector> args)
     {
-        String field = ListFunctionSupport.staticString(args.get(0));
-        String domain = ListFunctionSupport.staticString(args.get(1));
+        String field = ListFunctionSupport.staticString(args.get(0), run.rowCount());
+        String domain = ListFunctionSupport.staticString(args.get(1), run.rowCount());
         IDataTable table = run.ctx().getTable();
         DatasetResolver resolver = run.ctx().getDatasetResolver();
         // the dataset name resolves as every dataset-name position does (PLAN-split-supp-
@@ -270,8 +271,9 @@ public final class ScalarMetadataFunctions
      */
     public static Vector variableCount(EvalRun run, List<Vector> args)
     {
-        String template = ListFunctionSupport.staticString(args.get(0));
-        String pattern = ListFunctionSupport.staticString(args.get(1));
+        String template = ListFunctionSupport.staticString(args.get(0), run.rowCount(),
+                VARIABLE_COUNT, NAME_PARAMETER);
+        String pattern = ListFunctionSupport.staticString(args.get(1), run.rowCount());
         IDataTable table = run.ctx().getTable();
         if (pattern != null)
         {
@@ -305,11 +307,11 @@ public final class ScalarMetadataFunctions
      */
     public static Vector columnSeriesMetadata(EvalRun run, List<Vector> args)
     {
-        String base = ListFunctionSupport.staticString(args.get(0));
-        Pattern compiled = compile(
-                java.util.Objects.requireNonNull(ListFunctionSupport.staticString(args.get(1)),
-                        "column_series_metadata: name_pattern is required"));
-        Integer minLength = staticInteger(args.get(2));
+        String base = ListFunctionSupport.staticString(args.get(0), run.rowCount());
+        Pattern compiled = compile(java.util.Objects.requireNonNull(
+                ListFunctionSupport.staticString(args.get(1), run.rowCount()),
+                "column_series_metadata: name_pattern is required"));
+        Integer minLength = staticInteger(args.get(2), run.rowCount());
         DataTableMeta meta = run.ctx().getTable().getMetaData();
         int colCount = meta.getColumnCount();
         // suffix -> declared length, keyed by the parsed trailing integer of each matched member.
@@ -457,14 +459,9 @@ public final class ScalarMetadataFunctions
 
 
     /** A static integer argument (an integer literal, guaranteed by the compile seam), or null. */
-    private static @Nullable Integer staticInteger(@Nullable Vector arg)
+    private static @Nullable Integer staticInteger(@Nullable Vector arg, int rowCount)
     {
-        if (arg == null)
-        {
-            return null;
-        }
-        Object value = arg.value(0).resolved();
-        return value instanceof Number n ? n.intValue() : null;
+        return Minus.rawOperand(arg, rowCount) instanceof Number n ? n.intValue() : null;
     }
 
 

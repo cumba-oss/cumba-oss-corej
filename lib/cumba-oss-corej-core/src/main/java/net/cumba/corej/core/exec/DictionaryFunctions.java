@@ -96,9 +96,9 @@ public final class DictionaryFunctions
      */
     public static BitSet codeTermPair(EvalRun run, List<Vector> args)
     {
-        String type = typeOf(args.get(2));
+        String type = typeOf(args.get(2), run.rowCount());
         RuntimeDictionaryProvider provider = availableProvider(run, CODE_TERM_PAIR, type);
-        boolean caseSensitive = caseSensitive(args.get(3));
+        boolean caseSensitive = caseSensitive(args.get(3), run.rowCount());
         Vector code = args.get(0);
         Vector term = args.get(1);
         int rowCount = run.rowCount();
@@ -132,9 +132,9 @@ public final class DictionaryFunctions
      */
     public static BitSet hierarchy(EvalRun run, List<Vector> args)
     {
-        String type = typeOf(args.get(2));
+        String type = typeOf(args.get(2), run.rowCount());
         RuntimeDictionaryProvider provider = availableProvider(run, HIERARCHY, type);
-        boolean caseSensitive = caseSensitive(args.get(3));
+        boolean caseSensitive = caseSensitive(args.get(3), run.rowCount());
         Vector child = args.get(0);
         Vector parent = args.get(1);
         int rowCount = run.rowCount();
@@ -176,10 +176,10 @@ public final class DictionaryFunctions
      */
     public static BitSet termMembership(EvalRun run, List<Vector> args, String function)
     {
-        String type = typeOf(args.get(1));
+        String type = typeOf(args.get(1), run.rowCount());
         RuntimeDictionaryProvider provider = availableProvider(run, function, type);
-        String level = typeOf(args.get(2));
-        boolean caseSensitive = caseSensitive(args.get(3));
+        String level = typeOf(args.get(2), run.rowCount());
+        boolean caseSensitive = caseSensitive(args.get(3), run.rowCount());
         Vector value = args.get(0);
         int rowCount = run.rowCount();
         BitSet out = new BitSet(rowCount);
@@ -211,9 +211,9 @@ public final class DictionaryFunctions
      */
     public static BitSet hasDecode(EvalRun run, List<Vector> args)
     {
-        String type = typeOf(args.get(1));
+        String type = typeOf(args.get(1), run.rowCount());
         RuntimeDictionaryProvider provider = availableProvider(run, HAS_DECODE, type);
-        boolean caseSensitive = caseSensitive(args.get(2));
+        boolean caseSensitive = caseSensitive(args.get(2), run.rowCount());
         Vector code = args.get(0);
         int rowCount = run.rowCount();
         BitSet out = new BitSet(rowCount);
@@ -253,14 +253,18 @@ public final class DictionaryFunctions
     }
 
 
-    private static String typeOf(Vector typeArgument)
+    /**
+     * The dictionary type, read through {@link Minus#rawOperand} (W1a fold, R5 review A-L3): a
+     * constant's member value, else row 0 — never row 0 of a zero-row table.
+     */
+    private static String typeOf(Vector typeArgument, int rowCount)
     {
-        Object type = typeArgument.value(0).resolved();
+        Object type = Minus.rawOperand(typeArgument, rowCount);
         return type == null ? "" : type.toString();
     }
 
 
-    private static boolean caseSensitive(@Nullable Vector flag)
+    private static boolean caseSensitive(@Nullable Vector flag, int rowCount)
     {
         // D-TA-3 / Fix #266: case-SENSITIVE unless the rule authors case_sensitive=false. The
         // compiler hands an absent optional parameter through as a null slot. Since W1a BS1 the
@@ -268,11 +272,9 @@ public final class DictionaryFunctions
         // value is the default, and a computed value of another type — reachable only where
         // stage A does not type the call — is the rule's ERROR (D35 "written wrong"), never a
         // silent "case-sensitive".
-        if (flag == null)
-        {
-            return true;
-        }
-        Object value = flag.value(0).resolved();
+        // The value is read through Minus.rawOperand (R5 review A-L3): a zero-row table reads it as
+        // absent — the default — never as row 0.
+        Object value = Minus.rawOperand(flag, rowCount);
         if (value == null || value instanceof Boolean)
         {
             return !Boolean.FALSE.equals(value);

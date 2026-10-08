@@ -5,11 +5,13 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.corej.core.expr.eval.ConstVector;
 import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.ProviderNeed;
 import net.cumba.corej.core.expr.eval.UnusableProviderAnswerException;
 import net.cumba.corej.core.expr.eval.Vector;
+import net.cumba.datatable.values.DataValueType;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -201,19 +203,19 @@ public final class ListFunctionSupport
      * {@code ExprCompiler.rejectNonLiteralListArguments} holds a literal to that) or, since W1a
      * BS1, any dataset-level list expression, bound or inline
      * ({@code PLAN-binding-substitutability} C11; a per-row one is the level finding, so row 0 IS
-     * the value) — as its texts. An absent optional argument is the empty list.
+     * the value) — as its texts. An absent optional argument is the empty list. The value is read
+     * through {@link Minus#rawOperand} (W1a fold, R5 review A-L3): a constant's member value, else
+     * row 0 — never row 0 of a zero-row table, which reads as absent.
      *
      * @param arg
      *            the bound argument, or {@code null} when absent
+     * @param rowCount
+     *            the run's row count
      * @return the texts
      */
-    static List<String> staticStrings(@Nullable Vector arg)
+    static List<String> staticStrings(@Nullable Vector arg, int rowCount)
     {
-        if (arg == null)
-        {
-            return List.of();
-        }
-        Object value = arg.value(0).resolved();
+        Object value = Minus.rawOperand(arg, rowCount);
         if (value instanceof Collection<?> items)
         {
             List<String> out = new ArrayList<>(items.size());
@@ -228,23 +230,95 @@ public final class ListFunctionSupport
 
 
     /**
+     * {@link #staticStrings(Vector, int)} for a parameter BS1 widened to computed values
+     * ({@code ListOperandLevel.PER_CALL_PARAMETERS}: {@code codelists}, {@code ct_package_types}):
+     * a computed value that is not a list — reachable only where stage A does not type the call (a
+     * Check-less rule's binding, a direct evaluation) — is the rule's ERROR (D35 "written wrong",
+     * W1a fold, R5 review A-L4), as {@code union} refuses a scalar operand, never a silent
+     * singleton.
+     *
+     * @param arg
+     *            the bound argument, or {@code null} when absent
+     * @param rowCount
+     *            the run's row count
+     * @param function
+     *            the function, for the message
+     * @param parameter
+     *            the parameter, for the message
+     * @return the texts
+     * @throws RuleDefinitionException
+     *             for a present value that is not a list
+     */
+    static List<String> staticStrings(@Nullable Vector arg, int rowCount, String function,
+            String parameter)
+    {
+        Object value = Minus.rawOperand(arg, rowCount);
+        if (value != null && !(value instanceof Collection<?>))
+        {
+            throw new RuleDefinitionException("argument '" + parameter + "' of '" + function
+                    + "' takes a list of strings, not the value " + value);
+        }
+        return staticStrings(arg, rowCount);
+    }
+
+
+    /**
      * A dataset-level string argument (a string literal, or since W1a BS1 any dataset-level string
      * expression where the parameter is widened — {@code ListOperandLevel.PER_CALL_PARAMETERS}; a
      * per-row one is the level finding, so row 0 IS the value) as its text, or {@code null} when
-     * the optional argument is absent or its value is missing.
+     * the optional argument is absent or its value is missing. Read through
+     * {@link Minus#rawOperand}, as {@link #staticStrings(Vector, int)} is.
      *
      * @param arg
      *            the bound argument, or {@code null}
+     * @param rowCount
+     *            the run's row count
      * @return the text, or {@code null}
      */
-    static @Nullable String staticString(@Nullable Vector arg)
+    static @Nullable String staticString(@Nullable Vector arg, int rowCount)
     {
-        if (arg == null)
+        Object value = Minus.rawOperand(arg, rowCount);
+        return value == null ? null : value.toString();
+    }
+
+
+    /**
+     * {@link #staticString(Vector, int)} for a parameter BS1 widened to computed values
+     * ({@code extract_metadata} / {@code variable_count} {@code name}, the Library walks'
+     * {@code key_value}): a computed value that is not a string — {@code extract_metadata(name=1 +
+     * 1)} where stage A does not type the call — is the rule's ERROR (R5 review A-L4), never the
+     * silent text {@code "2.0"}.
+     *
+     * @param arg
+     *            the bound argument, or {@code null}
+     * @param rowCount
+     *            the run's row count
+     * @param function
+     *            the function, for the message
+     * @param parameter
+     *            the parameter, for the message
+     * @return the text, or {@code null}
+     * @throws RuleDefinitionException
+     *             for a present value that is not a string
+     */
+    static @Nullable String staticString(@Nullable Vector arg, int rowCount, String function,
+            String parameter)
+    {
+        Object value = Minus.rawOperand(arg, rowCount);
+        if (value == null)
         {
             return null;
         }
-        Object value = arg.value(0).resolved();
-        return value == null ? null : value.toString();
+        // a computed number renders as its text ("2"), so the vector's declared type decides
+        DataValueType type = java.util.Objects.requireNonNull(arg).declaredType();
+        if (!(value instanceof String text) || type == DataValueType.LONG
+                || type == DataValueType.DOUBLE || type == DataValueType.BOOLEAN)
+        {
+            throw new RuleDefinitionException(
+                    "argument '" + parameter + "' of '" + function + "' takes a string, not the "
+                            + type.name().toLowerCase(java.util.Locale.ROOT) + " value " + value);
+        }
+        return text;
     }
 
 
