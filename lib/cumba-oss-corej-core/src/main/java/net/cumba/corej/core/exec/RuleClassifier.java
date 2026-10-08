@@ -987,6 +987,11 @@ public final class RuleClassifier
             }
             yield operand;
         }
+        // Runbook W2 RC-SUBST (W1b fold): `X ~ /re/repl/` reads X — its left side is the operand
+        // (`is_increasing($mids ~ /…/$1/)`); without this arm the Check read signal-free and the
+        // runner collapsed its per-row findings to one
+        case Expr.Binary binary when binary.op() == Expr.BinOp.SUBST -> operandText(binary.left(),
+                usages);
         default -> null;
         };
     }
