@@ -512,7 +512,7 @@ class PerRowFunctionsTest
         expected.put("row_max(name_pattern=\\\"[unclosed\\\")", "not a valid regular expression");
         // W1's boolean-literal seam reaches the new dictionary functions too.
         expected.put("dictionary_has_decode(CMTRT, external_dictionary_type=\\\"whodrug\\\","
-                + " case_sensitive=\\\"no\\\")", "boolean literal");
+                + " case_sensitive=\\\"no\\\")", "takes a boolean");
         // Arity: the level and the column are required; row_max takes no target (R6).
         expected.put(
                 "valid_external_dictionary_value(AEDECOD, external_dictionary_type=\\\"meddra\\\")",
