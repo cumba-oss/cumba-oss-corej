@@ -49,7 +49,9 @@ class StudyValidationParamsTest
     @Test
     void useCase_aWellFormedCodeOfAnyCaseIsAccepted_theVocabularyIsNotChecked()
     {
-        assertEquals("nonclin", base().useCase("nonclin").build().useCase());
+        // Runbook W2 UC (OPEN-DECISIONS UC-OQ2 (b), owner 2026-10-07): upper-cased, so every
+        // surface and the report's TIG_Use_Case read the canonical code
+        assertEquals("NONCLIN", base().useCase("nonclin").build().useCase());
         assertEquals("XYZ", base().useCase("XYZ").build().useCase(),
                 "T1-3: the corpus defines no vocabulary, so an unknown code is not an error");
     }
@@ -80,6 +82,19 @@ class StudyValidationParamsTest
         assertEquals("PROD", StudyValidationParams.normalizeUseCase(" PROD\t"));
         assertNull(StudyValidationParams.normalizeUseCase(" \t "));
         assertNull(StudyValidationParams.normalizeUseCase(null));
+        assertEquals("INDH", StudyValidationParams.normalizeUseCase(" indh "),
+                "W2 UC: stripped and upper-cased");
+        java.util.Locale saved = java.util.Locale.getDefault();
+        try
+        {
+            java.util.Locale.setDefault(java.util.Locale.forLanguageTag("tr"));
+            assertEquals("INDH", StudyValidationParams.normalizeUseCase("indh"),
+                    "Locale.ROOT: a Turkish default locale must not dot the I");
+        }
+        finally
+        {
+            java.util.Locale.setDefault(saved);
+        }
     }
 
 
@@ -210,7 +225,7 @@ class StudyValidationParamsTest
         assertEquals(List.of("adamig-1-3"), p.rulesPackages());
         assertEquals(List.of("standards/adam/adamig-1-3", "standards/tig/1-0/adam"),
                 p.metadataProducts());
-        assertEquals("uc", p.useCase());
+        assertEquals("UC", p.useCase(), "upper-cased (W2 UC)");
         assertEquals(List.of("adamct"), p.controlledTerminologyPackages());
         assertEquals("2-1", p.defineVersion());
         assertEquals("/rules", p.rulesDir());

@@ -340,8 +340,12 @@ class StudyValidationServiceUseCaseTest
         assertFires(result, "UC-INDH");
         assertFires(result, "UC-NONE");
         assertFires(result, "UC-STUDY");
+        // Runbook W2 UC: the run's code is upper-cased at the boundary, so the reason and the
+        // report header name INDH
         assertSkippedOnDm(result, "UC-MULTI",
-                "use case indh not in Scope.Use_Case [NONCLIN, PROD]");
+                "use case INDH not in Scope.Use_Case [NONCLIN, PROD]");
+        assertEquals("INDH", result.sections().conformanceDetails().get("TIG_Use_Case"),
+                "-uc indh prints INDH");
     }
 
 

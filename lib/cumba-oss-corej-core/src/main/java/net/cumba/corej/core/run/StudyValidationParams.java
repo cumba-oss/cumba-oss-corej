@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -219,9 +220,10 @@ public final class StudyValidationParams
 
 
     /**
-     * The run's use case ({@code -uc}), stripped; {@code null} when none was given (absent or
-     * blank). Owner ruling X1: rules whose {@code Scope.Use_Case} names only other use cases are
-     * reported {@code SKIPPED}; the value is also echoed as the report's {@code TIG_Use_Case}.
+     * The run's use case ({@code -uc}), stripped and upper-cased; {@code null} when none was given
+     * (absent or blank). Owner ruling X1: rules whose {@code Scope.Use_Case} names only other use
+     * cases are reported {@code SKIPPED}; the value is also echoed as the report's
+     * {@code TIG_Use_Case}.
      */
     public @Nullable String useCase()
     {
@@ -453,17 +455,22 @@ public final class StudyValidationParams
 
 
     /**
-     * The run's use case as the engine reads it: stripped, and {@code null} for {@code null} or
-     * blank — "no use case", which filters nothing (owner ruling X1, T1-3). Shared by the builder
-     * and the client boundaries (CLI, REST) so every surface normalises alike.
+     * The run's use case as the engine reads it: stripped and upper-cased ({@link Locale#ROOT}),
+     * and {@code null} for {@code null} or blank — "no use case", which filters nothing (owner
+     * ruling X1, T1-3). Shared by the builder and the client boundaries (CLI, REST) so every
+     * surface normalises alike: {@code -uc indh} runs, skips and reports as {@code INDH} (runbook
+     * W2 UC, {@code OPEN-DECISIONS} {@code UC-OQ2} (b), owner 2026-10-07). The rule match was
+     * already case-insensitive; upper-casing changes what the report echoes ({@code TIG_Use_Case})
+     * and the skip reason's spelling, not which rules run.
      *
      * @param aUseCase
      *            the raw value, possibly {@code null}
-     * @return the stripped value, or {@code null} when none was given
+     * @return the stripped, upper-cased value, or {@code null} when none was given
      */
     public static @Nullable String normalizeUseCase(@Nullable String aUseCase)
     {
-        return aUseCase == null || aUseCase.isBlank() ? null : aUseCase.strip();
+        return aUseCase == null || aUseCase.isBlank() ? null
+                : aUseCase.strip().toUpperCase(Locale.ROOT);
     }
 
 
@@ -616,7 +623,7 @@ public final class StudyValidationParams
 
 
         /**
-         * The run's use case ({@code -uc}): stripped, and blank read as none
+         * The run's use case ({@code -uc}): stripped and upper-cased, and blank read as none
          * ({@link #normalizeUseCase}). A value that is not a single code is rejected by
          * {@link #build()} (ruling T1-3).
          */
