@@ -18,6 +18,15 @@ import org.jspecify.annotations.Nullable;
  * Thread-safe and shareable across rule executions, like {@link ExprProgram}: every per-evaluation
  * value lives in the {@link EvalRun}.
  * </p>
+ *
+ * <p>
+ * A <b>predicate</b> binding ({@code PLAN-elementwise-boolean-predicates} P7, runbook W1a EB2) — an
+ * element-wise BOOLEAN predicate call, {@code $b: is_valid_date($l)} — decides <em>per
+ * evaluation</em>, on its argument vectors: a scalar argument is exactly the condition's per-row
+ * verdict above (byte-identical to the condition form), a list a {@link BoolListVector} the
+ * quantifiers fold. The decision cannot be made at compile time: the plan is memoised structurally
+ * across rules, and one rule's {@code $l} may be a list where another's is a scalar.
+ * </p>
  */
 public final class BindingProgram
 {
@@ -26,23 +35,32 @@ public final class BindingProgram
 
     private final ExprProgram.@Nullable BoolPlan condition;
 
+    private final ExprCompiler.@Nullable AnswerPlan predicate;
+
     private BindingProgram(ExprCompiler.@Nullable ValuePlan aValue,
-            ExprProgram.@Nullable BoolPlan aCondition)
+            ExprProgram.@Nullable BoolPlan aCondition, ExprCompiler.@Nullable AnswerPlan aPredicate)
     {
         value = aValue;
         condition = aCondition;
+        predicate = aPredicate;
     }
 
 
     static BindingProgram value(ExprCompiler.ValuePlan aValue)
     {
-        return new BindingProgram(aValue, null);
+        return new BindingProgram(aValue, null, null);
     }
 
 
     static BindingProgram condition(ExprProgram.BoolPlan aCondition)
     {
-        return new BindingProgram(null, aCondition);
+        return new BindingProgram(null, aCondition, null);
+    }
+
+
+    static BindingProgram predicate(ExprCompiler.AnswerPlan aPredicate)
+    {
+        return new BindingProgram(null, null, aPredicate);
     }
 
 
@@ -54,6 +72,18 @@ public final class BindingProgram
     public boolean isCondition()
     {
         return condition != null;
+    }
+
+
+    /**
+     * Whether the binding is an element-wise predicate call, decided per evaluation (a condition
+     * verdict over a scalar, a {@link BoolListVector} over a list).
+     *
+     * @return whether the binding is a predicate
+     */
+    public boolean isPredicate()
+    {
+        return predicate != null;
     }
 
 
@@ -71,6 +101,18 @@ public final class BindingProgram
         if (condition != null)
         {
             BitSet verdict = condition.eval(run);
+            return new ComputedVector(run.rowCount(), DataValueType.BOOLEAN, verdict::get);
+        }
+        if (predicate != null)
+        {
+            Object answer = predicate.eval(run);
+            if (answer instanceof BoolListVector list)
+            {
+                return list;
+            }
+            // the scalar case is the condition form; an unresolved operand is false everywhere,
+            // as the Check's registry tail answers it
+            BitSet verdict = answer instanceof BitSet bits ? bits : new BitSet();
             return new ComputedVector(run.rowCount(), DataValueType.BOOLEAN, verdict::get);
         }
         ExprCompiler.ValuePlan plan = java.util.Objects.requireNonNull(value,

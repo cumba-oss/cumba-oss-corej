@@ -249,20 +249,29 @@ public record FunctionDescriptor(String name, List<Parameter> parameters, Functi
 
     /**
      * This descriptor declared <b>element-wise</b> ({@code PLAN-elementwise-list-functions} §3.4,
-     * owner Q2 / Q3; runbook W1a E4): a scalar value function whose parameter 0 — the value
-     * parameter — also takes a <b>list</b>, applied to every element and answering a list of the
-     * same length (a missing element its own missing, Q5; an empty or missing list itself, Q6).
-     * Opt-in, declared here, never inferred: {@link #fn()} becomes the kernel wrapped in
-     * {@link ElementwiseLift} (the four cases of its javadoc), so every caller of the descriptor's
-     * function — the compiler, a direct registry call — sees one function. Every other argument
-     * stays scalar per row and applies unchanged to each element of that row (Q3).
+     * owner Q2 / Q3; runbook W1a E4): a scalar function whose parameter 0 — the value parameter —
+     * also takes a <b>list</b>, applied to every element and answering a list of the same length (a
+     * missing element its own missing, Q5; an empty or missing list itself, Q6). Opt-in, declared
+     * here, never inferred: {@link #fn()} becomes the kernel wrapped in {@link ElementwiseLift}
+     * (the four cases of its javadoc), so every caller of the descriptor's function — the compiler,
+     * a direct registry call — sees one function. Every other argument stays scalar per row and
+     * applies unchanged to each element of that row (Q3).
      *
      * <p>
-     * The guard: only a VALUE kind with an implementation lifts; never an aggregate, a row reader
-     * or a per-variable map (their one answer is not per element); parameter 0 must exist, be a
-     * plain value slot — not a collector, not a {@code column-reference} (a name, not a value), not
-     * a {@code regex}, not a list, and <b>not a name slot</b> (a quoted spelling there is
-     * specialised as a name at bind time, so the list would be read as names — runbook R2,
+     * <b>The kind decides the list</b> ({@code PLAN-elementwise-boolean-predicates} P2, owner Q1 /
+     * Q2; runbook W1a EB1): a {@link FunctionKind#VALUE} function answers {@code list<T>} of its
+     * own row ({@code upper(values([X, Y]))}); a {@link FunctionKind#BOOLEAN} predicate answers a
+     * {@code list<boolean>} — one two-valued answer per element, the predicate's own, held as bits
+     * in a {@link BoolListVector} and folded per row by the quantifiers {@code any} / {@code all} /
+     * {@code none} ({@code is_valid_date(values([X, Y]))}).
+     * </p>
+     *
+     * <p>
+     * The guard: only a VALUE or BOOLEAN kind with an implementation lifts; never an aggregate, a
+     * row reader or a per-variable map (their one answer is not per element); parameter 0 must
+     * exist, be a plain value slot — not a collector, not a {@code column-reference} (a name, not a
+     * value), not a {@code regex}, not a list, and <b>not a name slot</b> (a quoted spelling there
+     * is specialised as a name at bind time, so the list would be read as names — runbook R2,
      * 2026-10-07).
      * </p>
      *
@@ -274,8 +283,9 @@ public record FunctionDescriptor(String name, List<Parameter> parameters, Functi
         {
             return this;
         }
-        if (kind != FunctionKind.VALUE || aggregate || perRow || perVariableMap || fn == null
-                || parameters.isEmpty() || parameters.get(0).collector()
+        if ((kind != FunctionKind.VALUE && kind != FunctionKind.BOOLEAN) || aggregate || perRow
+                || perVariableMap || fn == null || parameters.isEmpty()
+                || parameters.get(0).collector()
                 || parameters.get(0).type() == ExprType.Primitive.COLUMN_REFERENCE
                 || parameters.get(0).type() == ExprType.Primitive.REGEX
                 || parameters.get(0).type() instanceof ExprType.ListOf
@@ -283,8 +293,9 @@ public record FunctionDescriptor(String name, List<Parameter> parameters, Functi
         {
             throw new IllegalArgumentException(name + " cannot be lifted over its value parameter");
         }
-        return new FunctionDescriptor(name, parameters, kind, ElementwiseLift.lift(name, fn),
-                provider, aggregate, perRow, perVariableMap, true);
+        return new FunctionDescriptor(name, parameters, kind,
+                ElementwiseLift.lift(name, fn, kind == FunctionKind.BOOLEAN), provider, aggregate,
+                perRow, perVariableMap, true);
     }
 
 

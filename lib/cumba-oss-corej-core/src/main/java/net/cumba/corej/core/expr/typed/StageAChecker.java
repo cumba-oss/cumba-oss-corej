@@ -19,6 +19,7 @@ import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.convert.BindingInliner;
 import net.cumba.corej.core.expr.eval.ArgumentBinder;
+import net.cumba.corej.core.expr.eval.BoolListVector;
 import net.cumba.corej.core.expr.eval.BroadcastFold;
 import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
@@ -178,6 +179,18 @@ public final class StageAChecker
      * identity), or {@code null}: a {@code joined} met anywhere else is a P4 finding.
      */
     private @Nullable Expr expectedJoined;
+
+    /**
+     * The quantifier arguments admitted as a {@code list<boolean>} producer — an element-wise
+     * predicate call or a {@code $} reference ({@code PLAN-elementwise-boolean-predicates} P5,
+     * runbook W1a EB3), by node identity: a {@code list<boolean>}-typed node anywhere else, and not
+     * the root of a binding, is the Q3 / P4 finding ({@link #boolListJudged}).
+     */
+    private final Set<Expr> admittedBoolLists = java.util.Collections
+            .newSetFromMap(new IdentityHashMap<>());
+
+    /** The binding expression being scanned (its root may be a {@code list<boolean>}, Q3). */
+    private @Nullable Expr bindingRoot;
 
     /**
      * Review r2 F1: every list literal holding a {@code $} (binding) element, with the root it was
@@ -442,7 +455,7 @@ public final class StageAChecker
     {
         TypedExpr root = walk(expr);
         if (root.type().dereference() != Unknown.UNKNOWN
-                && root.type().dereference() != Primitive.BOOLEAN)
+                && root.type().dereference() != Primitive.BOOLEAN && !isBoolList(root.type()))
         {
             find(StageAErrorKind.PARAMETER_TYPE,
                     position + " must be boolean, not " + root.type().describe());
@@ -521,9 +534,44 @@ public final class StageAChecker
         case Expr.Not n -> not(n);
         case Expr.Binary b -> binary(b);
         case Expr.Lit lit -> literal(lit);
-        case Expr.Ref r -> ref(r);
-        case Expr.Call c -> call(c);
+        case Expr.Ref r -> boolListJudged(ref(r));
+        case Expr.Call c -> boolListJudged(call(c));
         };
+    }
+
+
+    /**
+     * Q3 / P4 of {@code PLAN-elementwise-boolean-predicates} (runbook W1a EB3): a node typed
+     * {@code list<boolean>} — an element-wise predicate over a list, or a {@code $} binding holding
+     * one — is legal as a quantifier's argument ({@link #admittedBoolLists}) and as the root of a
+     * binding ({@link #bindingRoot}); anywhere else — a condition position, a comparison or
+     * membership operand (where {@code ExprType.compatible} would admit list-vs-list and
+     * {@code true in $ok}), a function argument, a binding of the binding — it is the armed finding
+     * carrying the hint. Filed once, at the node; {@link #requireBoolean} and {@link #walkRoot}
+     * leave it to this ledger.
+     */
+    private TypedExpr boolListJudged(TypedExpr typed)
+    {
+        if (!isBoolList(typed.type()))
+        {
+            return typed;
+        }
+        Expr node = typed.node();
+        if (admittedBoolLists.contains(node) || node == bindingRoot)
+        {
+            return typed;
+        }
+        find(StageAErrorKind.PARAMETER_TYPE,
+                (node instanceof Expr.Ref ref ? BoolListVector.bindingHint(ref.name())
+                        : BoolListVector.quantifyHint(((Expr.Call) node).name())) + at(node));
+        return typed;
+    }
+
+
+    private static boolean isBoolList(ExprType type)
+    {
+        return type.dereference() instanceof ListOf list
+                && list.element().dereference() == Primitive.BOOLEAN;
     }
 
 
@@ -553,7 +601,7 @@ public final class StageAChecker
     private void requireBoolean(TypedExpr operand, String position, Expr context)
     {
         ExprType t = operand.type().dereference();
-        if (t != Unknown.UNKNOWN && t != Primitive.BOOLEAN)
+        if (t != Unknown.UNKNOWN && t != Primitive.BOOLEAN && !isBoolList(t))
         {
             find(StageAErrorKind.PARAMETER_TYPE,
                     position + " must be boolean, not " + t.describe() + at(context));
@@ -1252,7 +1300,13 @@ public final class StageAChecker
                 // per row — both RECORD granularity whatever the condition's own level says (the
                 // descriptor binding above held joined's argument to BOOLEAN and the quantifier's
                 // to list<boolean>; a VALUE descriptor declares no result type, so joined's is
-                // pinned here).
+                // pinned here). PLAN-elementwise-boolean-predicates P8 (runbook W1a EB3): over an
+                // element-wise predicate or a $ binding the quantifier's level is its argument's
+                // — per row over values(…), a dataset constant over a dataset-level list.
+                if (JoinedRowFold.isQuantifier(name) && !quantifiesJoined(c))
+                {
+                    return new TypedExpr(c, Primitive.BOOLEAN, typed.level(), children);
+                }
                 ExprType type = JoinedRowFold.JOINED.equals(name) ? new ListOf(Primitive.BOOLEAN)
                         : Primitive.BOOLEAN;
                 return new TypedExpr(c, type, join(typed.level(), Level.RECORD), children);
@@ -1296,15 +1350,34 @@ public final class StageAChecker
                         + (inOperand ? "as an operand or argument in " + where : "in " + where)
                         + at(c));
             }
-            if (c.args().size() == 1 && c.kwargs().isEmpty()
-                    && c.args().get(0) instanceof Expr.Call joined
-                    && JoinedRowFold.JOINED.equals(joined.name()))
+            if (c.args().size() == 1 && c.kwargs().isEmpty())
             {
-                return joined;
+                Expr arg = c.args().get(0);
+                if (arg instanceof Expr.Call joined && JoinedRowFold.JOINED.equals(joined.name()))
+                {
+                    // C8's producer is a list<boolean> too: admitted here, judged by its own
+                    // position rule below
+                    admittedBoolLists.add(joined);
+                    return joined;
+                }
+                // PLAN-elementwise-boolean-predicates P5 (runbook W1a EB3): the other producers
+                // of a list<boolean> — an element-wise predicate (its list typed below), a
+                // condition (the singleton P6 rules) and a $ binding holding either, judged on
+                // the binding's EXPRESSION so the bound and the inline spelling are one verdict
+                // (D3 / D16, BindingSubstitutabilityCensusTest); a list or a scalar is decided at
+                // evaluation (P7)
+                if (isPredicateAnswerShape(arg, new HashSet<>()))
+                {
+                    admittedBoolLists.add(arg);
+                    return null;
+                }
+                find(StageAErrorKind.PARAMETER_TYPE,
+                        BoolListVector.quantifierArgumentHint(name) + at(c));
+                return null;
             }
-            find(StageAErrorKind.JOINED_QUANTIFIER, name
-                    + "(…) takes exactly one argument, joined(<condition>) — the quantifier ranges"
-                    + " over the joined rows of the current primary record" + at(c));
+            find(StageAErrorKind.JOINED_QUANTIFIER,
+                    name + "(…) takes exactly one argument — joined(<condition>), an element-wise"
+                            + " predicate over a list or a $-binding holding its answer" + at(c));
             return null;
         }
         if (JoinedRowFold.JOINED.equals(name))
@@ -1322,6 +1395,39 @@ public final class StageAChecker
             }
         }
         return null;
+    }
+
+
+    /** Whether the quantifier's one argument is {@code joined(…)} (C8's arm). */
+    private static boolean quantifiesJoined(Expr.Call c)
+    {
+        return c.args().size() == 1 && c.args().get(0) instanceof Expr.Call joined
+                && JoinedRowFold.JOINED.equals(joined.name());
+    }
+
+
+    /**
+     * P5: whether {@code e} can be a predicate's answer — a condition
+     * ({@link ExprCompiler#isConditionExpr}: a comparison, {@code and} / {@code or} / {@code not},
+     * a BOOLEAN call — the element-wise predicates among them, whose answer over a list is the
+     * {@code list<boolean>}), or a {@code $} reference to a compiled binding whose expression is
+     * one (followed through bindings of bindings; a reference the rule does not bind is left to the
+     * evaluation, P7). A value — {@code values([B1, B2])} (cells, D36: a boolean column may be
+     * missing), {@code distinct(X)}, a list literal, a name list — is not, bound or inline alike.
+     */
+    private boolean isPredicateAnswerShape(Expr e, Set<String> seen)
+    {
+        if (e instanceof Expr.Ref ref
+                && ref.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF)
+        {
+            CompiledBinding binding = rule.compiledBinding(ref.name());
+            if (binding == null)
+            {
+                return true;
+            }
+            return seen.add(ref.name()) && isPredicateAnswerShape(binding.expression(), seen);
+        }
+        return ExprCompiler.isConditionExpr(e);
     }
 
 
@@ -1785,8 +1891,7 @@ public final class StageAChecker
             }
         }
         checkParameterBinding(c, descriptor, children);
-        ExprType type = descriptor.kind() == FunctionKind.BOOLEAN ? Primitive.BOOLEAN
-                : resultType(c, descriptor, children);
+        ExprType type = resultType(c, descriptor, children);
         if (net.cumba.corej.core.exec.Union.NAME.equals(c.name()))
         {
             // PLAN-union-function §3.4 (runbook W1a U1): the operands' element types joined as a
@@ -1871,22 +1976,29 @@ public final class StageAChecker
     private static ExprType resultType(Expr.Call c, FunctionDescriptor descriptor,
             List<TypedExpr> children)
     {
+        boolean predicate = descriptor.kind() == FunctionKind.BOOLEAN;
         if (descriptor.elementwise() && !children.isEmpty())
         {
             ExprType argument = children.get(0).type();
             if (argument.dereference() instanceof ListOf)
             {
-                return new ListOf(ElementTable.resultType(c.name()));
+                // PLAN-elementwise-boolean-predicates P2 (runbook W1a EB3): the kind decides the
+                // list — a predicate over a list is list<boolean>
+                return new ListOf(
+                        predicate ? Primitive.BOOLEAN : ElementTable.resultType(c.name()));
             }
-            if (argument == Unknown.UNKNOWN)
+            if (argument == Unknown.UNKNOWN && !predicate)
             {
                 // review r1 sem L1: a lift over a binding of unknown static type (a list or a
                 // scalar — nobody knows at load) is unknown, so `X in upper($u)` is not refused;
-                // a column reference keeps the scalar row (a cell is never a list)
+                // a column reference keeps the scalar row (a cell is never a list). A PREDICATE
+                // over an unknown keeps BOOLEAN: a quantifier admits it by shape, not by type
+                // (quantifierPosition), and a reported `$b: is_valid_date($u)` keeps its type
+                // source — the list case is decided at evaluation either way (P7).
                 return Unknown.UNKNOWN;
             }
         }
-        return ElementTable.resultType(c.name(), staticKey(c));
+        return predicate ? Primitive.BOOLEAN : ElementTable.resultType(c.name(), staticKey(c));
     }
 
 
@@ -1973,6 +2085,16 @@ public final class StageAChecker
             Parameter param = !collector || slot < params.size() - 1 ? params.get(slot)
                     : params.get(params.size() - 1);
             ExprType declared = param.collector() ? ExprType.elementOf(param.type()) : param.type();
+            if (JoinedRowFold.isQuantifier(c.name()) && admittedBoolLists.contains(arg)
+                    && !(arg instanceof Expr.Call call && JoinedRowFold.JOINED.equals(call.name())))
+            {
+                // PLAN-elementwise-boolean-predicates P5 / P6 (runbook W1a EB3): the element arm's
+                // argument is judged by shape (quantifierPosition) and, for a $ binding, by its
+                // expression (isPredicateAnswerShape) — a scalar predicate's
+                // answer is the singleton P6 rules, so the declared list<boolean> is not held
+                // against it here
+                continue;
+            }
             if (descriptor.elementwise() && slot == 0 && arg instanceof Expr.Lit lit
                     && net.cumba.corej.core.expr.eval.NameListBinding.isNameList(lit))
             {
@@ -2504,7 +2626,9 @@ public final class StageAChecker
         for (CompiledBinding compiled : order)
         {
             where = "binding " + compiled.name();
+            bindingRoot = compiled.expression();
             TypedExpr typed = walk(compiled.expression());
+            bindingRoot = null;
             if (NameListBinding.isNameList(compiled.expression()))
             {
                 // D1-A (runbook W1a E2): a list literal of bare column references bound to a name

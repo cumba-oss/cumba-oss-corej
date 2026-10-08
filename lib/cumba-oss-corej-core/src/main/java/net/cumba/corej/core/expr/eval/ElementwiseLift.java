@@ -56,6 +56,17 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
+ * <b>Predicates</b> ({@code PLAN-elementwise-boolean-predicates} §3.3, P2 / P6; runbook W1a EB1): a
+ * {@link FunctionKind#BOOLEAN} kernel answers a {@link BitSet} over its run, so its lift keeps the
+ * bits — the same four cases, each building the {@link BoolListVector} form of its shape (case 2
+ * the K column sets, case 3 one broadcast set over the K elements, case 4 one set over the
+ * flattened range with the row offsets); case 1 and a per-row vector no row of which holds a list
+ * answer the kernel's bit set unchanged. A row holding a scalar or a missing inside a per-row list
+ * vector is one element wide, which is exactly P6's singleton (its quantifier reads the kernel's
+ * own answer on that value).
+ * </p>
+ *
+ * <p>
  * <b>Purity.</b> A flagged kernel reads {@code run.rowCount()} and its argument vectors only — the
  * lifted cases hand it a run over the element range with the caller's context, never a row of the
  * evaluated table ({@code ElementwiseLiftRosterDriftTest} pins it).
@@ -80,7 +91,26 @@ final class ElementwiseLift
      */
     static EvalFunction lift(String name, EvalFunction kernel)
     {
-        return kernel instanceof Lifted ? kernel : new Lifted(name, kernel);
+        return lift(name, kernel, false);
+    }
+
+
+    /**
+     * The lifted function of {@code kernel}, a VALUE kernel ({@code predicate} false, a
+     * {@link Vector} per call) or a BOOLEAN one ({@code predicate} true, a {@link BitSet} per call,
+     * lifted into a {@link BoolListVector}) — idempotent.
+     *
+     * @param name
+     *            the function name, for messages
+     * @param kernel
+     *            the scalar implementation
+     * @param predicate
+     *            whether the kernel is a BOOLEAN predicate
+     * @return the function {@link FunctionDescriptor#fn()} publishes for a flagged descriptor
+     */
+    static EvalFunction lift(String name, EvalFunction kernel, boolean predicate)
+    {
+        return kernel instanceof Lifted ? kernel : new Lifted(name, kernel, predicate);
     }
 
 
@@ -109,9 +139,19 @@ final class ElementwiseLift
      *            the function name, for messages
      * @param kernel
      *            the scalar implementation
+     * @param predicate
+     *            whether the kernel is a BOOLEAN predicate (a {@link BitSet} per call, lifted into
+     *            a {@link BoolListVector}) rather than a VALUE function (a {@link Vector} per call)
      */
-    record Lifted(String name, EvalFunction kernel) implements EvalFunction
+    record Lifted(String name, EvalFunction kernel, boolean predicate) implements EvalFunction
     {
+
+        /** A VALUE kernel's lift. */
+        Lifted(String name, EvalFunction kernel)
+        {
+            this(name, kernel, false);
+        }
+
 
         @Override
         public Object apply(EvalRun run, List<Vector> args)
@@ -126,19 +166,73 @@ final class ElementwiseLift
             Vector x = args.isEmpty() ? null : args.get(0);
             if (x instanceof ListVector list)
             {
-                return overElementVectors(run, list, args, kwargs);
+                return predicate ? bitsOverElementVectors(run, list, args, kwargs)
+                        : overElementVectors(run, list, args, kwargs);
             }
             if (x instanceof ConstVector constant
                     && constant.value() instanceof Collection<?> items)
             {
-                return othersBroadcast(args) ? overConstantList(run, constant, items, args, kwargs)
+                if (othersBroadcast(args))
+                {
+                    return predicate ? bitsOverConstantList(run, constant, items, args, kwargs)
+                            : overConstantList(run, constant, items, args, kwargs);
+                }
+                return predicate ? bitsOverRows(run, constant, args, kwargs)
                         : overRows(run, constant, args, kwargs);
             }
             if (x instanceof ComputedVector)
             {
-                return overRows(run, x, args, kwargs);
+                return predicate ? bitsOverRows(run, x, args, kwargs)
+                        : overRows(run, x, args, kwargs);
             }
             return kernel.apply(run, args, kwargs);
+        }
+
+
+        /** Case 2 for a predicate: K kernel calls, the K bit sets as the columns form. */
+        private BoolListVector bitsOverElementVectors(EvalRun run, ListVector list,
+                List<Vector> args, Map<String, Expr> kwargs)
+        {
+            List<BitSet> columns = new ArrayList<>(list.size());
+            for (Vector element : list.elements())
+            {
+                columns.add(bits(kernel.apply(run, withFirst(args, element), kwargs)));
+            }
+            return BoolListVector.ofColumns(run.rowCount(), columns);
+        }
+
+
+        /** Case 3 for a predicate: one kernel call over the K elements, broadcast. */
+        private BoolListVector bitsOverConstantList(EvalRun run, ConstVector constant,
+                Collection<?> items, List<Vector> args, Map<String, Expr> kwargs)
+        {
+            ListValueGuard.requireNoNullElement(items, () -> "the list argument of " + name);
+            List<Object> elements = new ArrayList<>(items);
+            int k = elements.size();
+            DataValueType type = constant.declaredType();
+            Vector view = ComputedVector.carried(k, type, i -> element(elements.get(i), type));
+            BitSet folded = bits(
+                    kernel.apply(new EvalRun(run.ctx(), 0, k), withFirst(args, view), kwargs));
+            return BoolListVector.broadcast(run.rowCount(), k, folded);
+        }
+
+
+        /**
+         * Case 4 for a predicate (or case 1 when no row holds a list): the rows' elements as one
+         * range, the kernel called once, the bits kept with the row offsets.
+         */
+        private Object bitsOverRows(EvalRun run, Vector x, List<Vector> args,
+                Map<String, Expr> kwargs)
+        {
+            int rows = run.rowCount();
+            Flat flat = Flat.of(x, rows, name);
+            if (flat == null)
+            {
+                return kernel.apply(run, args, kwargs);
+            }
+            BitSet folded = bits(kernel.apply(new EvalRun(run.ctx(), 0, flat.total()),
+                    flattenedSlot(x, flat, args), kwargs));
+            return BoolListVector.flattened(rows, flat.offsets, folded);
         }
 
 
@@ -191,22 +285,8 @@ final class ElementwiseLift
             {
                 return result(kernel.apply(run, args, kwargs));
             }
-            DataValueType type = x.declaredType();
-            Vector view = ComputedVector.carried(flat.total(), type, i ->
-            {
-                int row = flat.rowOf(i);
-                return flat.listRows.get(row) ? element(flat.item(x, row, i), type) : x.value(row);
-            });
-            List<Vector> slot = new ArrayList<>(args.size());
-            slot.add(view);
-            for (int a = 1; a < args.size(); a++)
-            {
-                Vector other = args.get(a);
-                slot.add(other == null || other instanceof ConstVector ? other
-                        : ComputedVector.remapped(other, flat.total(), flat::rowOf));
-            }
-            Vector folded = result(
-                    kernel.apply(new EvalRun(run.ctx(), 0, flat.total()), slot, kwargs));
+            Vector folded = result(kernel.apply(new EvalRun(run.ctx(), 0, flat.total()),
+                    flattenedSlot(x, flat, args), kwargs));
             DataValueType resultType = folded.declaredType();
             return ComputedVector.carried(rows, resultType, row ->
             {
@@ -228,6 +308,29 @@ final class ElementwiseLift
         }
     }
 
+    /**
+     * The argument slots of the one kernel call over a flattened range (case 4): the element view
+     * at parameter 0 — a list row's element, a scalar row's own value — and every other per-row
+     * argument row-expanded through the layout (a broadcast constant as it is).
+     */
+    private static List<Vector> flattenedSlot(Vector x, Flat flat, List<Vector> args)
+    {
+        DataValueType type = x.declaredType();
+        Vector view = ComputedVector.carried(flat.total(), type, i ->
+        {
+            int row = flat.rowOf(i);
+            return flat.listRows.get(row) ? element(flat.item(x, row, i), type) : x.value(row);
+        });
+        List<Vector> slot = new ArrayList<>(args.size());
+        slot.add(view);
+        for (int a = 1; a < args.size(); a++)
+        {
+            Vector other = args.get(a);
+            slot.add(other == null || other instanceof ConstVector ? other
+                    : ComputedVector.remapped(other, flat.total(), flat::rowOf));
+        }
+        return slot;
+    }
 
     /**
      * The row layout of a per-row vector some row of which holds a list: {@code offsets[r]} is the
@@ -397,6 +500,17 @@ final class ElementwiseLift
         }
         throw new IllegalStateException(
                 "a lifted kernel must answer a Vector, not " + kernelAnswer);
+    }
+
+
+    private static BitSet bits(Object kernelAnswer)
+    {
+        if (kernelAnswer instanceof BitSet b)
+        {
+            return b;
+        }
+        throw new IllegalStateException(
+                "a lifted predicate kernel must answer a BitSet, not " + kernelAnswer);
     }
 
 

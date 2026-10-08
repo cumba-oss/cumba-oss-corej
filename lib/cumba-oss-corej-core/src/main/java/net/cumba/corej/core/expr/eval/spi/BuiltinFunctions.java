@@ -784,15 +784,15 @@ public final class BuiltinFunctions implements FunctionProvider
                         run.rowCount(), false));
 
         // -- BOOLEAN integer -------------------------------------------------
-        bool(fns, "is_integer", List.of(p("x")),
+        predicate(fns, "is_integer", List.of(p("x")),
                 (run, args) -> Primitives.isInteger(args.get(0), run.rowCount(), false));
-        bool(fns, "is_not_integer", List.of(p("x")),
+        predicate(fns, "is_not_integer", List.of(p("x")),
                 (run, args) -> Primitives.isInteger(args.get(0), run.rowCount(), true));
 
         // -- BOOLEAN numeric -------------------------------------------------
         // is_numeric(x): finite-decimal hand-rolled scan; the negated form is written
         // `not is_numeric(X)`, so no is_not_numeric is registered.
-        bool(fns, "is_numeric", List.of(p("x")),
+        predicate(fns, "is_numeric", List.of(p("x")),
                 (run, args) -> Primitives.isNumeric(args.get(0), run.rowCount(), false));
 
         // -- BOOLEAN valid test code / variable name -------------------------
@@ -801,9 +801,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // first char [A-Z_], rest [A-Z0-9_], length 1..8 (uppercase only). Both are hand-rolled
         // scans (no regex); a missing/"" cell does not fire (so `not is_valid_*` fires on a blank,
         // matching the legacy not_matches_regex).
-        bool(fns, "is_valid_testcd", List.of(p("x")),
+        predicate(fns, "is_valid_testcd", List.of(p("x")),
                 (run, args) -> Primitives.isValidTestcd(args.get(0), run.rowCount()));
-        bool(fns, "is_valid_name", List.of(p("x")),
+        predicate(fns, "is_valid_name", List.of(p("x")),
                 (run, args) -> Primitives.isValidName(args.get(0), run.rowCount()));
 
         // -- BOOLEAN has-letter / has-digit ----------------------------------
@@ -811,9 +811,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // digit [0-9]. Both mirror the legacy unanchored matches_regex ".*[a-zA-Z].*" / ".*[0-9].*"
         // a missing/"" cell does not fire. (No shipped rule authors either as of 2026-09-19 —
         // the sole consumer went with the CORE family; the twin authors a regex instead.)
-        bool(fns, "has_alpha", List.of(p("x")),
+        predicate(fns, "has_alpha", List.of(p("x")),
                 (run, args) -> Primitives.hasAlpha(args.get(0), run.rowCount()));
-        bool(fns, "has_digit", List.of(p("x")),
+        predicate(fns, "has_digit", List.of(p("x")),
                 (run, args) -> Primitives.hasDigit(args.get(0), run.rowCount()));
 
         // -- BOOLEAN duration ------------------------------------------------
@@ -827,28 +827,29 @@ public final class BuiltinFunctions implements FunctionProvider
         // negative argument too (a positional/named boolean literal compiled to a broadcast
         // constant), so both spellings share one default (DEFAULT_NEGATIVE = accept the signed
         // grammar, EC-20 alignment).
-        bool(fns, "invalid_duration", List.of(p("x"), opt("negative", Primitive.BOOLEAN)),
+        predicate(fns, "invalid_duration", List.of(p("x"), opt("negative", Primitive.BOOLEAN)),
                 (run, args) -> Primitives.invalidDuration(args.get(0), run.rowCount(),
                         args.get(1) == null
                                 || !(args.get(1).value(0).resolved() instanceof Boolean b) || b));
-        bool(fns, "is_valid_duration", List.of(p("x")),
+        predicate(fns, "is_valid_duration", List.of(p("x")),
                 (run, args) -> Primitives.stringPredicate(args.get(0), run.rowCount(),
                         s -> !ScalarSemantics.isInvalidDuration(s, false)));
 
         // -- BOOLEAN date validity (calendar-validating, decision #4) --------
-        bool(fns, "is_valid_date", List.of(p("x", Primitive.STRING)), (run, args) -> Primitives
+        predicate(fns, "is_valid_date", List.of(p("x", Primitive.STRING)), (run, args) -> Primitives
                 .stringPredicate(args.get(0), run.rowCount(), CalendarDates::isValidDate));
-        bool(fns, "is_complete_date", List.of(p("x", Primitive.STRING)), (run, args) -> Primitives
-                .stringPredicate(args.get(0), run.rowCount(), CalendarDates::isCompleteDate));
+        predicate(fns, "is_complete_date", List.of(p("x", Primitive.STRING)),
+                (run, args) -> Primitives.stringPredicate(args.get(0), run.rowCount(),
+                        CalendarDates::isCompleteDate));
         EvalFunction partialDate = (run, args) -> Primitives.stringPredicate(args.get(0),
                 run.rowCount(), CalendarDates::isPartialDate);
-        bool(fns, "is_partial_date", List.of(p("x", Primitive.STRING)), partialDate);
-        bool(fns, "is_incomplete_date", List.of(p("x", Primitive.STRING)), partialDate);
+        predicate(fns, "is_partial_date", List.of(p("x", Primitive.STRING)), partialDate);
+        predicate(fns, "is_incomplete_date", List.of(p("x", Primitive.STRING)), partialDate);
         // invalid_date: calendar-validating AND firing on a missing/blank cell. The previous
         // stringPredicate wiring carried a !isMissing guard that silently SUPPRESSED the blank case
         // (a blank is not a valid date, so it must be reported — never hidden); invalidDateCalendar
         // drops that guard while keeping calendar validation (decision in BuiltinFunctionsTest).
-        bool(fns, "invalid_date", List.of(p("x", Primitive.STRING)),
+        predicate(fns, "invalid_date", List.of(p("x", Primitive.STRING)),
                 (run, args) -> Primitives.invalidDateCalendar(args.get(0), run.rowCount()));
         // is_complete_date_part(x) / is_not_complete_date_part(x) — Fix #157. Judges ONLY the
         // leading YYYY-MM-DD date portion, so a truncated time ("2020-01-01T10") is complete here
@@ -857,9 +858,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // (not a complete date part), so the negative form fires on a blank — mirrors
         // is_integer/is_not_integer, NOT the is_complete_date/is_incomplete_date pair (which is
         // deliberately non-exhaustive: an invalid date is neither).
-        bool(fns, "is_complete_date_part", List.of(p("x", Primitive.STRING)),
+        predicate(fns, "is_complete_date_part", List.of(p("x", Primitive.STRING)),
                 (run, args) -> Primitives.isCompleteDatePart(args.get(0), run.rowCount(), false));
-        bool(fns, "is_not_complete_date_part", List.of(p("x", Primitive.STRING)),
+        predicate(fns, "is_not_complete_date_part", List.of(p("x", Primitive.STRING)),
                 (run, args) -> Primitives.isCompleteDatePart(args.get(0), run.rowCount(), true));
 
         // -- VALUE date hull bounds (earliest_possible / latest_possible) -----
@@ -1416,6 +1417,23 @@ public final class BuiltinFunctions implements FunctionProvider
             EvalFunction fn)
     {
         fns.add(new FunctionDescriptor(name, params, FunctionKind.BOOLEAN, fn));
+    }
+
+
+    /**
+     * As {@link #bool}, the predicate declared {@linkplain FunctionDescriptor#liftingElementwise()
+     * element-wise} ({@code PLAN-elementwise-boolean-predicates} Q1 / Q5, runbook W1a EB1): the 16
+     * one-subject well-formedness predicates the owner ruled into the initial roster. {@code fn} is
+     * the scalar kernel (a {@code BitSet} over its run); over a list at parameter 0 the registered
+     * function answers a {@code BoolListVector} the quantifiers {@code any} / {@code all} /
+     * {@code none} fold. The two-operand predicates stay scalar
+     * ({@code PLAN-engine-gap-list-elementwise} decides which of their parameters lifts).
+     */
+    private static void predicate(List<FunctionDescriptor> fns, String name, List<Parameter> params,
+            EvalFunction fn)
+    {
+        fns.add(new FunctionDescriptor(name, params, FunctionKind.BOOLEAN, fn)
+                .liftingElementwise());
     }
 
 

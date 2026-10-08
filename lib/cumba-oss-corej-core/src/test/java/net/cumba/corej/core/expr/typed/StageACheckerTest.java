@@ -2250,11 +2250,16 @@ class StageACheckerTest
     @Test
     void aQuantifierTakesExactlyJoined()
     {
-        // (a bare boolean where list<boolean> is declared is a PARAMETER_TYPE finding as well)
+        // runbook W1a EB3 re-pin (PLAN-elementwise-boolean-predicates P5 / P6, D3 / D16): a
+        // parenthesised comparison is a condition, so it is the singleton P6 rules — the same
+        // verdict as `$b: EPOCH == SE.EPOCH` read by any($b); the bare spelling stays the parser's
+        // refusal (CheckExpressionParserBooleanArgumentTest). A value — the cells of columns, a
+        // string list — is the P5 PARAMETER_TYPE finding; the arity rule stays C8's.
         StageAReport report = check(ruleJoiningSe(), "any((EPOCH == SE.EPOCH))");
-        assertTrue(kinds(report).contains(StageAErrorKind.JOINED_QUANTIFIER),
-                report.findings().toString());
-        assertTrue(joinedQuantifierMessages(report).get(0).contains("joined(<condition>)"),
+        assertEquals(List.of(), report.findings(), "a condition is a singleton (P6)");
+        report = check(ruleJoiningSe(), "any(values([EPOCH, SE.EPOCH]))");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(report));
+        assertTrue(report.findings().get(0).message().contains("joined(<condition>)"),
                 report.findings().toString());
         report = check(ruleJoiningSe(),
                 "any(joined(EPOCH == SE.EPOCH), joined(SE.EPOCH == \"X\"))");
@@ -2446,5 +2451,158 @@ class StageACheckerTest
             assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
                     kinds(check("not empty(lift_probe(1))")));
         }
+    }
+
+    // ------------------------------------------------------------------
+    // PLAN-elementwise-boolean-predicates §3.5 (runbook W1a EB1–EB3) — the lifted BOOLEAN
+    // predicates, the widened quantifier argument, list<boolean> refused everywhere else
+    // ------------------------------------------------------------------
+
+
+    @Test
+    void aLiftedPredicateIsALegalQuantifierArgumentAndTypesAsAListOfBooleans()
+    {
+        for (String q : List.of("any", "all", "none"))
+        {
+            StageAReport report = check(
+                    "not empty(A) and " + q + "(is_valid_date(values([A, B])))");
+            assertEquals(List.of(), report.findings(), q);
+            TypedExpr quantifier = root(report).children().get(1);
+            assertEquals(Primitive.BOOLEAN, quantifier.type());
+            assertEquals(new ExprType.ListOf(Primitive.BOOLEAN),
+                    quantifier.children().get(0).type(), "the lifted predicate is list<boolean>");
+            // P8: the level is the argument's — values(…) reads the row
+            assertEquals(Granularity.Simple.RECORD, quantifier.level().granularity());
+        }
+        // a per-row list and a scalar (P6: decided at evaluation, typed as the scalar predicate)
+        assertEquals(List.of(), kinds(check("any(is_valid_date(split_by(A, \",\")))")));
+        StageAReport scalar = check("any(is_valid_date(A))");
+        assertEquals(List.of(), scalar.findings());
+        assertEquals(Primitive.BOOLEAN, root(scalar).children().get(0).type(),
+                "a scalar argument keeps the scalar row — the quantifier reads it as a singleton");
+        // no Match_Datasets entry is needed: joined(…) alone ranges over joined rows
+    }
+
+
+    @Test
+    void aListBooleanBindingIsLegalOnlyAsAQuantifierArgument()
+    {
+        Rule rule = withBindings("$ok", "is_valid_date(values([A, B]))", "$b", "is_valid_date(A)",
+                "$u", "coalesce(A, B)", "$l", "[\"2020-01-01\", \"x\"]", "$d", "is_valid_date($l)");
+        assertEquals(new ExprType.ListOf(Primitive.BOOLEAN),
+                StageAChecker.bindingTypes(rule).get("$ok"), "the binding position (Q3)");
+        assertEquals(new ExprType.ListOf(Primitive.BOOLEAN),
+                StageAChecker.bindingTypes(rule).get("$d"), "over a dataset-level list");
+        assertEquals(List.of(), kinds(check(rule, "any($ok)")));
+        assertEquals(List.of(), kinds(check(rule, "not empty(A) and not all($ok) or none($d)")));
+        // a scalar condition binding is the singleton P6 rules; a VALUE binding — bound or
+        // inline alike (D3 / D16) — is not a predicate's answer, whatever its static type
+        assertEquals(List.of(), kinds(check(rule, "any($b)")));
+        StageAReport value = check(rule, "any($u)");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(value));
+        assertTrue(value.findings().get(0).message().contains("(…) takes one argument"),
+                value.findings().toString());
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(check("any(coalesce(A, B))")));
+        // P8: a dataset-level list<boolean> quantifies as a constant, never per row (the
+        // literal list's own level is STUDY — a dataset constant for the broadcast fold)
+        StageAReport dataset = check(rule, "any($d)");
+        assertNotEquals(Granularity.Simple.RECORD, root(dataset).level().granularity());
+        assertEquals(Granularity.Simple.STUDY, root(dataset).level().granularity());
+    }
+
+
+    @Test
+    void aPredicateOverAListOutsideAQuantifierIsAParameterTypeFindingWithTheHint()
+    {
+        // P4 — a condition position: the Check root, an and-operand, under not, the Precondition
+        for (String expression : List.of("is_valid_date(values([A, B]))",
+                "not empty(A) and is_valid_date(values([A, B]))",
+                "not is_valid_date(values([A, B]))"))
+        {
+            StageAReport report = check(expression);
+            assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(report), expression);
+            assertEquals(1, report.findings().size(), report.findings().toString());
+            String message = report.findings().get(0).message();
+            assertTrue(message.contains("one boolean per element"), message);
+            assertTrue(message.contains("any("), message);
+        }
+        StageAReport pre = StageAChecker.check(new Rule(), levels(pre("not empty(A)")),
+                pre("is_valid_date(values([A, B]))"));
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(pre));
+        assertTrue(pre.findings().get(0).message().contains("any("), pre.findings().toString());
+        // Q3 — a value position: compared, a membership operand, a function argument, inline
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("is_valid_date(values([A, B])) == true")));
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("count(is_valid_date(values([A, B]))) > 1")));
+        // … and through a binding, where ExprType.compatible would admit list-vs-list and `in`
+        Rule rule = withBindings("$ok", "is_valid_date(values([A, B]))", "$ok2",
+                "is_valid_date(values([B, A]))", "$n", "count($ok)");
+        for (String expression : List.of("$ok == true", "$ok == $ok2", "true in $ok",
+                "$ok in [true]", "count($ok) > 1", "$n > 0"))
+        {
+            StageAReport report = check(rule, expression);
+            assertTrue(
+                    report.findings().stream()
+                            .anyMatch(f -> f.kind() == StageAErrorKind.PARAMETER_TYPE
+                                    && f.message().contains("$ok")),
+                    expression + " → " + report.findings());
+        }
+        // the binding itself is clean when a quantifier reads it, and the hint names the binding
+        StageAReport bound = check(rule, "$ok == true");
+        assertTrue(bound.findings().stream().anyMatch(f -> f.message().contains("any($ok)")),
+                bound.findings().toString());
+    }
+
+
+    @Test
+    void aQuantifierArgumentThatIsNotAPredicatesAnswerIsAParameterTypeFinding()
+    {
+        Rule rule = withBindings("$s", "[\"a\", \"b\"]", "$n", "[1, 2]", "$keys", "[A, B]");
+        // P5: the cells of several columns, a VALUE lift's list, a string list, a comparison
+        // (a bare condition inside a quantifier — none(A == "x") — is the parser's refusal)
+        for (String expression : List.of("any(values([A, B]))", "any(upper(values([A, B])))",
+                "all($s)", "any(\"x\")", "any(A)"))
+        {
+            StageAReport report = check(rule, expression);
+            assertTrue(
+                    report.findings().stream()
+                            .anyMatch(f -> f.kind() == StageAErrorKind.PARAMETER_TYPE),
+                    expression + " → " + report.findings());
+            assertTrue(report.findings().stream().anyMatch(f -> f.message().contains("(…) takes")),
+                    expression + " → " + report.findings());
+        }
+        // the arity rule and the positions are C8's, unchanged (the descriptor binding files
+        // ARITY beside it, as for any(joined(…), joined(…)))
+        assertTrue(kinds(check("any(is_valid_date(A), is_valid_date(B))"))
+                .contains(StageAErrorKind.JOINED_QUANTIFIER));
+        // R2's premise: seven roster predicates type parameter 0 string — a list is judged by
+        // its element type (list<number> the finding, list<string> the lift), a name list the
+        // decision-9 hint
+        assertEquals(List.of(), kinds(check(rule, "any(is_valid_date($s))")));
+        StageAReport numbers = check(rule, "any(is_valid_date($n))");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(numbers));
+        assertTrue(
+                numbers.findings().get(0).message()
+                        .contains("takes string (or a list of them), not list<number>"),
+                numbers.findings().toString());
+        StageAReport names = check(rule, "any(is_valid_date($keys))");
+        assertTrue(
+                names.findings().stream().anyMatch(f -> f.message().contains("holds column names")),
+                names.findings().toString());
+    }
+
+
+    @Test
+    void aQuantifierNestedInsideJoinedStaysRefusedForTheLiftedShape()
+    {
+        // §3.8 point 3 (runbook R2): the composition through joined(…) is not asked for
+        StageAReport report = check(ruleJoiningSe(),
+                "none(joined(any(is_valid_date(values([SE.SESTDTC, SE.SEENDTC])))))");
+        assertEquals(List.of(StageAErrorKind.JOINED_QUANTIFIER), kinds(report));
+        // and the joined form itself is as it was
+        assertEquals(List.of(),
+                check(ruleJoiningSe(), "EPOCH != SE.EPOCH and none(joined(EPOCH == SE.EPOCH))")
+                        .findings());
     }
 }

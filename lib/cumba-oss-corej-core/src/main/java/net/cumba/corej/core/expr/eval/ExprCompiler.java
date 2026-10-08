@@ -89,6 +89,22 @@ public final class ExprCompiler
         Vector eval(EvalRun run);
     }
 
+
+    /**
+     * The evaluated answer of a registered BOOLEAN predicate call ({@code
+     * PLAN-elementwise-boolean-predicates} §3.4 / P7, runbook W1a EB2): a {@link BitSet} over the
+     * run (the scalar kernel's verdict), a {@link BoolListVector} (an element-wise predicate over a
+     * list), or {@code null} when its value operand did not resolve. Read by the Check's registry
+     * tail (a {@code BitSet} is the condition, a list the P4 rule ERROR), by the quantifiers'
+     * element arm (either shape is folded) and by a predicate binding (decided per evaluation).
+     */
+    interface AnswerPlan
+    {
+
+        @Nullable
+        Object eval(EvalRun run);
+    }
+
     private static final System.Logger LOGGER = System.getLogger(ExprCompiler.class.getName());
 
     /**
@@ -298,6 +314,14 @@ public final class ExprCompiler
      */
     public static BindingProgram compileBinding(Expr e)
     {
+        if (e instanceof Expr.Call c && isElementwisePredicate(c))
+        {
+            // PLAN-elementwise-boolean-predicates P7 (runbook W1a EB2): `$b: is_valid_date($l)`
+            // cannot be a condition OR a list at compile time without carrying one rule's answer
+            // into another through the structural cache — the arm evaluates the argument vectors
+            // and decides: a scalar is exactly today's condition result, a list a BoolListVector
+            return BindingProgram.predicate(predicateAnswerPlan(c));
+        }
         if (isConditionExpr(e))
         {
             return BindingProgram.condition(compileBool(e));
@@ -925,7 +949,20 @@ public final class ExprCompiler
     private static boolean isElementwise(String name)
     {
         FunctionDescriptor d = FunctionRegistry.descriptor(name);
-        return d != null && d.elementwise();
+        return d != null && d.elementwise() && d.kind() == FunctionKind.VALUE;
+    }
+
+
+    /**
+     * Whether {@code c} calls an element-wise BOOLEAN predicate ({@code
+     * PLAN-elementwise-boolean-predicates} Q1 / Q5, runbook W1a EB1): a flagged
+     * {@link FunctionKind#BOOLEAN} descriptor, whose answer over a list is a
+     * {@link BoolListVector}.
+     */
+    public static boolean isElementwisePredicate(Expr.Call c)
+    {
+        FunctionDescriptor d = FunctionRegistry.descriptor(c.name());
+        return d != null && d.elementwise() && d.kind() == FunctionKind.BOOLEAN;
     }
 
 
@@ -2062,15 +2099,205 @@ public final class ExprCompiler
 
 
     /**
+     * The quantifier family {@code any} / {@code all} / {@code none}, dispatched on the argument's
+     * shape ({@code PLAN-elementwise-boolean-predicates} §3.4 / §3.8, runbook W1a EB2): C8's
+     * {@code joined(<condition>)} keeps its fused real-row plan ({@link #compileJoinedQuantifier},
+     * its refusals included); an element-wise predicate call ({@code is_valid_date(values([X,
+     * Y]))}) or a {@code $} reference is the <b>element arm</b> — the argument's answer is
+     * evaluated ({@link AnswerPlan}, or the binding's {@link Vector}) and folded per row by
+     * {@link BoolListVector#reduce}: a {@link BoolListVector} element-wise, a scalar answer as the
+     * singleton P6 rules ({@code any(b) = all(b) = b}, {@code none(b) = not b}); a binding whose
+     * vector is neither is the P5 rule ERROR (D35). Any other argument is refused here as stage A
+     * refuses it (P5).
+     */
+    private static ExprProgram.BoolPlan compileQuantifier(Expr.Call c)
+    {
+        net.cumba.corej.core.exec.JoinedRowFold.Quantifier quantifier = Objects
+                .requireNonNull(net.cumba.corej.core.exec.JoinedRowFold.quantifier(c.name()));
+        Expr arg = c.args().size() == 1 && c.kwargs().isEmpty() ? c.args().get(0) : null;
+        if (arg instanceof Expr.Call joined
+                && net.cumba.corej.core.exec.JoinedRowFold.JOINED.equals(joined.name()))
+        {
+            return compileJoinedQuantifier(c);
+        }
+        if (arg instanceof Expr.Call call && isElementwisePredicate(call))
+        {
+            AnswerPlan answer = predicateAnswerPlan(call);
+            return run -> reduceAnswer(quantifier, answer.eval(run), run.rowCount());
+        }
+        if (arg instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF)
+        {
+            ValuePlan bound = valueRefPlan(ref.name());
+            String binding = ref.name();
+            String name = c.name();
+            return run -> reduceBoundAnswer(quantifier, bound.eval(run), binding, name,
+                    run.rowCount());
+        }
+        throw unsupported(BoolListVector.quantifierArgumentHint(c.name()));
+    }
+
+
+    /** The element arm's fold of a predicate's answer (a list element-wise, a scalar as P6). */
+    private static BitSet reduceAnswer(
+            net.cumba.corej.core.exec.JoinedRowFold.Quantifier quantifier, @Nullable Object answer,
+            int rowCount)
+    {
+        if (answer instanceof BoolListVector list)
+        {
+            return list.reduce(quantifier, rowCount);
+        }
+        // a scalar verdict (or an unresolved operand: the predicate's answer is false everywhere)
+        return singleton(quantifier, answer instanceof BitSet b ? b : new BitSet(), rowCount);
+    }
+
+
+    /**
+     * The element arm over a {@code $} binding's vector: a {@link BoolListVector} (a lifted
+     * predicate over a list, P7), a per-row condition answer (a {@code BOOLEAN} computed vector of
+     * {@link Boolean}s — a condition or scalar-predicate binding, the singleton P6), else the P5
+     * rule ERROR — never a guess over cells (D36: a boolean column may be missing).
+     */
+    private static BitSet reduceBoundAnswer(
+            net.cumba.corej.core.exec.JoinedRowFold.Quantifier quantifier, @Nullable Vector v,
+            String binding, String quantifierName, int rowCount)
+    {
+        if (v instanceof BoolListVector list)
+        {
+            return list.reduce(quantifier, rowCount);
+        }
+        if (v instanceof ComputedVector && v.declaredType() == DataValueType.BOOLEAN)
+        {
+            BitSet verdict = new BitSet(rowCount);
+            for (int row = 0; row < rowCount; row++)
+            {
+                if (v.value(row).resolved() instanceof Boolean b)
+                {
+                    if (b)
+                    {
+                        verdict.set(row);
+                    }
+                }
+                else
+                {
+                    throw new RuleDefinitionException(BoolListVector.boundArgumentError(
+                            quantifierName, binding, "a missing boolean at row " + (row + 1)));
+                }
+            }
+            return singleton(quantifier, verdict, rowCount);
+        }
+        throw new RuleDefinitionException(BoolListVector.boundArgumentError(quantifierName, binding,
+                v == null ? "no value" : "a value of type " + v.declaredType()));
+    }
+
+
+    /**
+     * P6: {@code any(b) = all(b) = b}, {@code none(b) = not b} — a new set, never the cached one.
+     */
+    private static BitSet singleton(net.cumba.corej.core.exec.JoinedRowFold.Quantifier quantifier,
+            BitSet verdict, int rowCount)
+    {
+        BitSet out = (BitSet) verdict.clone();
+        if (quantifier == net.cumba.corej.core.exec.JoinedRowFold.Quantifier.NONE)
+        {
+            out.flip(0, rowCount);
+        }
+        return out;
+    }
+
+
+    /**
+     * The {@link AnswerPlan} of a registered BOOLEAN predicate call outside the Check's registry
+     * tail — the quantifiers' element arm and a predicate binding (P7): the same binding, operand
+     * compilation and function the tail uses ({@link #registryAnswerPlan}), so the two spellings
+     * are one plan.
+     */
+    static AnswerPlan predicateAnswerPlan(Expr.Call c)
+    {
+        FunctionDescriptor descriptor = FunctionRegistry.descriptor(c.name());
+        if (descriptor == null || descriptor.kind() != FunctionKind.BOOLEAN)
+        {
+            throw unsupported("'" + c.name() + "' is not a boolean predicate");
+        }
+        List<@Nullable Expr> bound;
+        try
+        {
+            bound = ArgumentBinder.bind(descriptor, c);
+        }
+        catch (ExpressionException ex)
+        {
+            throw unsupported(messageOf(ex));
+        }
+        rejectLiteralColumnArguments(descriptor, bound);
+        EvalFunction fn = descriptor.fn();
+        if (fn == null || bound.isEmpty())
+        {
+            throw unsupported("'" + c.name() + "' has no value operand to lift");
+        }
+        return registryAnswerPlan(c, bound, fn);
+    }
+
+
+    /**
+     * The registry tail's evaluation of a BOOLEAN predicate with at least one parameter: the value
+     * operand at parameter 0 ({@code operandPlan}, the availability gate's unusable-answer wrap),
+     * the other arguments as values (a regex literal at {@link #LITERAL_ARG1}'s slot 1), the
+     * function applied per run — {@code null} when the value operand did not resolve, else the
+     * kernel's {@link BitSet} or, for an element-wise predicate over a list, its
+     * {@link BoolListVector}. An element-wise predicate over a <b>statically scalar</b> operand is
+     * called through its kernel ({@link ElementwiseLift#kernelOf}), as {@link #valueCallPlan} does
+     * for a lifted value function: the hot scalar path pays nothing for the lift.
+     */
+    private static AnswerPlan registryAnswerPlan(Expr.Call c, List<@Nullable Expr> bound,
+            EvalFunction registered)
+    {
+        String name = c.name();
+        Expr value = bound.get(0);
+        EvalFunction fn = value != null && isStaticallyScalar(value)
+                ? ElementwiseLift.kernelOf(registered)
+                : registered;
+        ValuePlan compiledArg0 = operandPlan(value, true);
+        // The availability gate reads an unusable provider answer as "not available" (§0.2 a).
+        ValuePlan arg0 = AVAILABILITY_GATE.equals(name) ? unusableAsUnavailable(compiledArg0)
+                : compiledArg0;
+        List<@Nullable ValuePlan> rest = new ArrayList<>(Math.max(0, bound.size() - 1));
+        boolean literalArg1 = LITERAL_ARG1.contains(name);
+        for (int i = 1; i < bound.size(); i++)
+        {
+            Expr arg = bound.get(i);
+            // A null slot is an optional parameter left absent: the implementation receives null
+            // at its position and applies its documented default (the retired arity overload).
+            rest.add(arg == null ? null
+                    : literalArg1 && i == 1 ? regexLiteralPlan(name, arg) : valuePlan(arg));
+        }
+        return run ->
+        {
+            Vector v0 = arg0.eval(run);
+            if (v0 == null)
+            {
+                return null;
+            }
+            List<Vector> args = new ArrayList<>(rest.size() + 1);
+            args.add(v0);
+            for (ValuePlan p : rest)
+            {
+                args.add(p == null ? null : p.eval(run));
+            }
+            return fn.apply(run, args, c.kwargs());
+        };
+    }
+
+
+    /**
      * {@code any(joined(c))} / {@code all(joined(c))} / {@code none(joined(c))}
      * ({@code PLAN-cg0218-transition-day-precision} C2 / C3): the inner condition is compiled as
      * any boolean, and {@link net.cumba.corej.core.exec.JoinedRowFold#fold} folds its bit set over
      * the evaluation table's real rows per run — one fused plan, no {@code list<boolean>} value.
      * The inner condition may be the maximal pure subtree (then {@link #cachedBool} wraps it and
      * its bit set can be a shared cache entry): the fold reads it and writes a new set. A nested
-     * quantifier ({@code any(joined(none(joined(…))))}), or an argument that is not
-     * {@code joined(<condition>)}, is refused here as at stage A (P4, which parks the rule first;
-     * the refusal here holds for a rule compiled without it — review C8 L2).
+     * quantifier ({@code any(joined(none(joined(…))))}), or a malformed {@code joined(…)}, is
+     * refused here as at stage A (P4, which parks the rule first; the refusal here holds for a rule
+     * compiled without it — review C8 L2). Reached from {@link #compileQuantifier} for a
+     * {@code joined(…)} argument; the other argument shapes are its element arm (runbook W1a EB2).
      */
     private static ExprProgram.BoolPlan compileJoinedQuantifier(Expr.Call c)
     {
@@ -2224,7 +2451,7 @@ public final class ExprCompiler
         }
         if (net.cumba.corej.core.exec.JoinedRowFold.isQuantifier(name))
         {
-            return compileJoinedQuantifier(c);
+            return compileQuantifier(c);
         }
         if (("ds_exists".equals(name) || "ds_not_exists".equals(name)) && arity == 1)
         {
@@ -2412,24 +2639,11 @@ public final class ExprCompiler
         // qualified asymmetry Fix #126 built), and folding them would produce the identical verdict
         // by a different route — so the special case is kept rather than quietly replaced.
         boolean firesOnAbsentColumn = FIRES_ON_ABSENT_COLUMN.contains(name);
-        ValuePlan compiledArg0 = operandPlan(bound.get(0), true);
-        // The availability gate reads an unusable provider answer as "not available" (§0.2 a).
-        ValuePlan arg0 = AVAILABILITY_GATE.equals(name) ? unusableAsUnavailable(compiledArg0)
-                : compiledArg0;
-        List<@Nullable ValuePlan> rest = new ArrayList<>(Math.max(0, bound.size() - 1));
-        boolean literalArg1 = LITERAL_ARG1.contains(name);
-        for (int i = 1; i < bound.size(); i++)
-        {
-            Expr arg = bound.get(i);
-            // A null slot is an optional parameter left absent: the implementation receives null
-            // at its position and applies its documented default (the retired arity overload).
-            rest.add(arg == null ? null
-                    : literalArg1 && i == 1 ? regexLiteralPlan(name, arg) : valuePlan(arg));
-        }
+        AnswerPlan answer = registryAnswerPlan(c, bound, fn);
         return run ->
         {
-            Vector v0 = arg0.eval(run);
-            if (v0 == null)
+            Object verdict = answer.eval(run);
+            if (verdict == null)
             {
                 if (firesOnAbsentColumn)
                 {
@@ -2439,13 +2653,16 @@ public final class ExprCompiler
                 }
                 return new BitSet();
             }
-            List<Vector> args = new ArrayList<>(rest.size() + 1);
-            args.add(v0);
-            for (ValuePlan p : rest)
+            if (verdict instanceof BitSet bits)
             {
-                args.add(p == null ? null : p.eval(run));
+                return bits;
             }
-            return (BitSet) fn.apply(run, args, c.kwargs());
+            // PLAN-elementwise-boolean-predicates P4 (runbook W1a EB2): an element-wise predicate
+            // over a list in a CONDITION position answers one boolean per element, which is no
+            // verdict — statically list-shaped arguments are stage A's finding, a `$` argument
+            // that turns out a list at evaluation is the rule ERROR with the same hint (D35),
+            // never today's silent answer on the list's rendering
+            throw new RuleDefinitionException(BoolListVector.quantifyHint(name));
         };
     }
 

@@ -438,13 +438,32 @@ public final class OutputVariableDeriver
             {
                 if (isListValued(binding.expression())
                         || (binding.expression() instanceof Expr.Call call
-                                && BULK_RESULT_FUNCTIONS.contains(call.name())))
+                                && BULK_RESULT_FUNCTIONS.contains(call.name()))
+                        || isBooleanList(rule, binding))
                 {
                     ids.add(binding.name());
                 }
             }
         }
         return ids;
+    }
+
+
+    /**
+     * PLAN-elementwise-boolean-predicates Q3 (runbook W1a EB5): a binding whose static type is
+     * {@code list<boolean>} — an element-wise predicate over a list, {@code $ok:
+     * is_valid_date(values([X, Y]))}, read by {@code any($ok)} — is bulk too: one answer per
+     * element is no reported value (the loader refuses it when AUTHORED in Output_Variables). The
+     * root's {@code ElementTable} row is the scalar predicate's, so the stage-A type (memoised per
+     * rule, {@code Rule.staticBindingTypes}) is what tells the lifted form apart.
+     */
+    private static boolean isBooleanList(net.cumba.corej.core.model.Rule rule,
+            net.cumba.corej.core.model.CompiledBinding binding)
+    {
+        return rule.staticBindingTypes()
+                .get(binding.name()) instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf list
+                && list.element()
+                        .dereference() == net.cumba.corej.core.expr.typed.ExprType.Primitive.BOOLEAN;
     }
 
 

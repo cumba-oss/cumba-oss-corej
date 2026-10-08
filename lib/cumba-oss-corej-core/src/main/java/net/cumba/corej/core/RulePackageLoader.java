@@ -5869,6 +5869,20 @@ public class RulePackageLoader
             net.cumba.corej.core.model.CompiledBinding binding = byName.get(name);
             net.cumba.corej.core.expr.typed.ExprType type = types.get(name);
             if (binding != null
+                    && type instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf list
+                    && list.element()
+                            .dereference() == net.cumba.corej.core.expr.typed.ExprType.Primitive.BOOLEAN)
+            {
+                // PLAN-elementwise-boolean-predicates Q3 (runbook W1a EB5): a list<boolean> — an
+                // element-wise predicate's one-answer-per-element — is no reported value
+                errors.add(name + " is reported, but "
+                        + net.cumba.corej.core.expr.eval.BoolListVector.bindingHint(name)
+                        + " — report the columns it reads instead, and "
+                        + (authored.contains(name) ? "remove " + name + " from Output_Variables"
+                                : "exclude it with !" + name));
+                continue;
+            }
+            if (binding != null
                     && (type == null
                             || type == net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)
                     && !columnTyped.contains(name))
