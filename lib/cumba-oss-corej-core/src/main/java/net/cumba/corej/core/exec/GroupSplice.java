@@ -568,8 +568,27 @@ public final class GroupSplice
      */
     private static @Nullable Object evaluate(Computed computed, EvaluationContext ctx)
     {
-        Vector v = NativeExprEvaluator.bindingProgram(computed.expr())
-                .evaluate(EvalRun.fullRange(ctx));
+        return datasetLevelValue(computed.expr(), ctx);
+    }
+
+
+    /**
+     * The dataset-level value of {@code expr} on {@code ctx} — the binding program's vector over
+     * the whole table, read as a dataset-level binding is handed over
+     * ({@link BindingValue#firstValue}): what a {@code $}-binding holding {@code expr} would
+     * answer, so an operand written in place answers as the binding does (G1). The set operands of
+     * {@code shares_(no_)elements_with} read a non-{@code $} operand this way (runbook W1b SH); a
+     * per-row expression is refused at load ({@code ListOperandLevel}), never read here.
+     *
+     * @param expr
+     *            the expression
+     * @param ctx
+     *            the rule's context
+     * @return the value, {@code null} for a missing one
+     */
+    public static @Nullable Object datasetLevelValue(Expr expr, EvaluationContext ctx)
+    {
+        Vector v = NativeExprEvaluator.bindingProgram(expr).evaluate(EvalRun.fullRange(ctx));
         return BindingValue.firstValue(v, ctx.rowCount());
     }
 

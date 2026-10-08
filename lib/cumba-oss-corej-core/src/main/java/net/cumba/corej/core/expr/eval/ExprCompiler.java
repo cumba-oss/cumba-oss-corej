@@ -134,7 +134,20 @@ public final class ExprCompiler
      * branch, {@code numTag}) a conversion still reads as its marker name via {@code markerOf}, so
      * every expression that compiled before routes identically.
      */
-    private static final Set<String> CONVERSIONS = Set.of("num", "date", "time");
+    private static final Set<String> CONVERSIONS = Set.of("num", "date", "time", "duration");
+
+    /**
+     * The hull operand of the {@code duration} family ({@code PLAN-engine-gap-dur-order} §5 Q4,
+     * runbook W1b DO; coordinator D6): {@code duration_between(start, end)} answers a duration
+     * hull, so a comparison on it routes into the family exactly as a {@code duration(…)} marker
+     * routes it — read by {@link #markerOf}, never unwrapped by {@link #untag}. It is a registered
+     * VALUE function (its descriptor is in {@code BuiltinFunctions}), not a marker of
+     * {@link #comparisonMarkers()}.
+     */
+    private static final String DURATION_BETWEEN = "duration_between";
+
+    /** The {@code duration(…)} marker's name — the routing key of the duration family. */
+    private static final String DURATION = "duration";
 
     /**
      * The complete compiler-structural comparison-marker vocabulary: {@link #TAGS} (erased mode
@@ -1960,6 +1973,7 @@ public final class ExprCompiler
         {
         case "date" -> compileDate(op, leftP, rightP);
         case "time" -> compileTime(op, leftP, rightP);
+        case "duration" -> compileDuration(op, leftP, rightP);
         case "date_part" -> compileDatePart(op, leftP, rightP, false);
         case "time_part" -> compileDatePart(op, leftP, rightP, true);
         default -> compilePlain(op, leftP, rightP, numTag, lStatic, rStatic);
@@ -2122,6 +2136,32 @@ public final class ExprCompiler
                 return new BitSet();
             }
             return Primitives.timeComparison(lv, rv, run.rowCount(), direction, orEqual, negate);
+        };
+    }
+
+
+    /**
+     * The {@code duration}-family comparison (runbook W1b DO, {@code PLAN-engine-gap-dur-order}
+     * §5): reached through a {@code duration(…)} marker on either side or a
+     * {@code duration_between} hull operand — the family is selected HERE, at compile time, by the
+     * written marker, never by a cell's content (§6.1 Q3).
+     */
+    private static ExprProgram.BoolPlan compileDuration(Expr.BinOp op, ValuePlan leftP,
+            ValuePlan rightP)
+    {
+        int direction = dateDirection(op);
+        boolean orEqual = dateOrEqual(op);
+        boolean negate = op == Expr.BinOp.NEQ;
+        return run ->
+        {
+            Vector lv = leftP.eval(run);
+            Vector rv = rightP.eval(run);
+            if (lv == null || rv == null)
+            {
+                return new BitSet();
+            }
+            return Primitives.durationComparison(lv, rv, run.rowCount(), direction, orEqual,
+                    negate);
         };
     }
 
@@ -3450,13 +3490,30 @@ public final class ExprCompiler
         {
             throw unsupported("has_next_corresponding_record requires a name and a value operand");
         }
-        String rawName = groupOperandName(c.args().get(0));
-        String rawValue = groupOperandName(c.args().get(1));
+        // Runbook W1b DO (PLAN-engine-gap-dur-order §5 / §6.1 Q3, ruled explicit): the operands
+        // may carry the duration(…) marker — both or neither. Marked, the relation compares the
+        // two cells through the duration family's hull (IsoDurationComparison); unmarked, it keeps
+        // today's arm (numeric, then the date hull), where no duration positions. The marker
+        // routes; a cell's content never does.
+        Expr nameArg = c.args().get(0);
+        Expr valueArg = c.args().get(1);
+        boolean nameMarked = isDurationMarker(nameArg);
+        boolean valueMarked = isDurationMarker(valueArg);
+        if (nameMarked != valueMarked)
+        {
+            throw unsupported(c.name() + " compares durations only when both operands carry the"
+                    + " duration(…) marker — write duration(…) on both, or on neither");
+        }
+        String rawName = groupOperandName(
+                nameMarked ? ((Expr.Call) nameArg).args().get(0) : nameArg);
+        String rawValue = groupOperandName(
+                valueMarked ? ((Expr.Call) valueArg).args().get(0) : valueArg);
         List<net.cumba.corej.core.exec.GroupSplice.Member> within = singleColumnMembers(c.name(),
                 "within", c.kwargs().get("within"), "requires a single within column");
         net.cumba.corej.core.exec.GroupSplice.Member orderMember = orderingMember(c);
         GroupKeyPolicy policy = groupKeyPolicy(c, GroupKeyPolicy.DROP_MISSING_KEYS);
-        GroupSemantics.NeighbourRelation relation = neighbourRelation(c);
+        GroupSemantics.NeighbourRelation relation = nameMarked ? durationRelation(c)
+                : neighbourRelation(c);
         return run ->
         {
             String name = resolveDomainPrefix(rawName, run.ctx());
@@ -3519,10 +3576,46 @@ public final class ExprCompiler
      */
     private static GroupSemantics.NeighbourRelation neighbourRelation(Expr.Call c)
     {
+        NextRecordRelation rel = relationOf(c);
+        if (rel == null || rel == NextRecordRelation.IDENTITY)
+        {
+            return GroupSemantics::identityCorresponds;
+        }
+        int direction = rel.direction();
+        return (cur,
+                next) -> GroupSemantics.identityCorresponds(cur, next) || Primitives.compareCells(
+                        cur, next.isMissingOrInvalid() ? null : next.getValueAsString(), direction,
+                        true, false, false);
+    }
+
+
+    /**
+     * The relation of a {@code has_next_corresponding_record} call whose operands carry the
+     * {@code duration(…)} marker (runbook W1b DO): identity <b>in disjunction with</b> the duration
+     * family's hull comparison ({@link IsoDurationComparison}, {@code "<="} / {@code ">="} the
+     * or-equal order, the default / {@code "=="} the point equality — so {@code P1W} corresponds to
+     * {@code P7D} and {@code P0D, P60W, P120W} is non-decreasing); a missing or blank cell keeps
+     * exactly its identity disposition (the comparison arm answers {@code false} on it, as the date
+     * arm does — EC-87 D-3).
+     */
+    private static GroupSemantics.NeighbourRelation durationRelation(Expr.Call c)
+    {
+        NextRecordRelation rel = relationOf(c);
+        int direction = rel == null ? 0 : rel.direction();
+        return (cur, next) -> GroupSemantics.identityCorresponds(cur, next)
+                || (!ScalarSemantics.isMissing(cur) && !next.isMissingOrInvalid()
+                        && IsoDurationComparison.fires(cur.getValueAsString(),
+                                next.getValueAsString(), direction, true, false));
+    }
+
+
+    /** The validated {@code relation=} spelling of {@code c}, or {@code null} when absent. */
+    private static @Nullable NextRecordRelation relationOf(Expr.Call c)
+    {
         Expr e = c.kwargs().get("relation");
         if (e == null)
         {
-            return GroupSemantics::identityCorresponds;
+            return null;
         }
         if (!(e instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.STRING)
         {
@@ -3535,15 +3628,7 @@ public final class ExprCompiler
             throw unsupported(c.name() + " unknown relation= `" + spelling + "` — expected one of "
                     + NextRecordRelation.SPELLINGS);
         }
-        if (rel == NextRecordRelation.IDENTITY)
-        {
-            return GroupSemantics::identityCorresponds;
-        }
-        int direction = rel.direction();
-        return (cur,
-                next) -> GroupSemantics.identityCorresponds(cur, next) || Primitives.compareCells(
-                        cur, next.isMissingOrInvalid() ? null : next.getValueAsString(), direction,
-                        true, false, false);
+        return rel;
     }
 
 
@@ -4103,54 +4188,80 @@ public final class ExprCompiler
      */
     private static ExprProgram.BoolPlan compileSharesNoElementsWith(Expr.Call c)
     {
-        if (c.args().isEmpty() || !(c.args().get(0) instanceof Expr.Ref nameRef))
+        if (c.args().isEmpty())
         {
-            throw unsupported("shares_no_elements_with requires a reference name operand");
+            throw unsupported("shares_no_elements_with requires a name operand");
         }
-        String name = nameRef.name();
+        // Runbook W1b SH (PLAN-binding-substitutability G1; coordinator D21): a $-reference keeps
+        // its path (the context's hand-over value); any other operand is the expression a binding
+        // would hold, evaluated once over the rule's dataset as a computed splice member is
+        // (GroupSplice.datasetLevelValue) — so the two spellings answer alike. A per-row operand
+        // is refused at load (ListOperandLevel), bound and inline alike.
+        SetOperand nameOperand = SetOperand.of(c.args().get(0));
         List<String> literalKeys = c.kwargs().containsKey("keys")
                 ? keyLiterals(c.kwargs().get("keys"))
                 : null;
-        // The value side: either the literal keys= list, or a reference name (non-null exactly
-        // when literalKeys is null — kept as the empty string otherwise so NullAway sees a
-        // non-null dereference in the closure; the literalKeys branch never reads it).
-        String valueName = "";
-        if (literalKeys == null)
+        java.util.function.Function<EvaluationContext, @Nullable Object> valueSetOf;
+        if (literalKeys != null)
         {
-            if (c.args().size() >= 2 && c.args().get(1) instanceof Expr.Ref valueRef)
-            {
-                valueName = valueRef.name();
-            }
-            else
-            {
-                throw unsupported("shares_no_elements_with requires a reference value operand"
-                        + " or a keys= list");
-            }
+            valueSetOf = ctx -> literalKeys;
         }
-        String valueRefName = valueName;
+        else
+        {
+            if (c.args().size() < 2)
+            {
+                throw unsupported(
+                        "shares_no_elements_with requires a value operand or a keys= list");
+            }
+            SetOperand valueOperand = SetOperand.of(c.args().get(1));
+            valueSetOf = valueOperand::resolve;
+        }
         return run ->
         {
             EvaluationContext ctx = run.ctx();
             // CheckEvaluator.evaluateLeaf guard: a $-NAME absent from the context short-circuits
             // to an empty result BEFORE the operator's flag-all null contract can apply.
-            if (name.startsWith("$") && !ctx.getVariables().containsKey(name))
+            if (nameOperand.absent(ctx))
             {
                 return new BitSet();
             }
-            Object nameSet = name.startsWith("$") ? ctx.resolveVariable(name) : null;
-            Object valueSet;
-            if (literalKeys != null)
-            {
-                valueSet = literalKeys;
-            }
-            else
-            {
-                valueSet = valueRefName.startsWith("$") ? ctx.resolveVariable(valueRefName) : null;
-            }
-            return GroupSemantics.sharesNoElementsVerdict(nameSet, valueSet, run.rowCount());
+            return GroupSemantics.sharesNoElementsVerdict(nameOperand.resolve(ctx),
+                    valueSetOf.apply(ctx), run.rowCount());
         };
     }
 
+    /**
+     * One operand of {@code shares_(no_)elements_with}: a {@code $}-reference resolved through the
+     * context (the shipped path; any other reference is unresolvable, {@code null}), or an
+     * expression evaluated once as a dataset-level value (W1b SH).
+     */
+    private record SetOperand(@Nullable String ref, @Nullable Expr expr)
+    {
+
+        static SetOperand of(Expr operand)
+        {
+            return operand instanceof Expr.Ref r ? new SetOperand(r.name(), null)
+                    : new SetOperand(null, operand);
+        }
+
+
+        boolean absent(EvaluationContext ctx)
+        {
+            return ref != null && ref.startsWith("$") && !ctx.getVariables().containsKey(ref);
+        }
+
+
+        @Nullable
+        Object resolve(EvaluationContext ctx)
+        {
+            if (ref != null)
+            {
+                return ref.startsWith("$") ? ctx.resolveVariable(ref) : null;
+            }
+            return net.cumba.corej.core.exec.GroupSplice
+                    .datasetLevelValue(Objects.requireNonNull(expr), ctx);
+        }
+    }
 
     /**
      * Native plan for {@code is_not_ordered_subset_of(NAME, $VALUE)} — a broadcast order-preserving
@@ -5944,6 +6055,13 @@ public final class ExprCompiler
                 // The type lives in the compiler's routing (family -> compileDate/compileTime)
                 // and in the stage-A checker, never in the cells. The D55 date(NUM) bind gate is
                 // OBSERVE-ONLY here (see observeIsoConversionRead for the measured E2 reasons).
+                if (DURATION.equals(conversion))
+                {
+                    // duration(X) (runbook W1b DO): interpretive like date()/time() — the carrier
+                    // is the ISO text verbatim; the D55 observe is a date's (a SAS numeric day
+                    // count), not a duration's, so the plan is the plain identity
+                    yield inner;
+                }
                 String context = conversion + "()";
                 yield run ->
                 {
@@ -5954,6 +6072,26 @@ public final class ExprCompiler
             if (tagOf(c) != null)
             {
                 yield operandPlan(untag(c), namePosition);
+            }
+            if (("earliest_possible".equals(c.name()) || "latest_possible".equals(c.name()))
+                    && c.args().size() == 1 && c.kwargs().isEmpty()
+                    && isDurationMarker(c.args().get(0)))
+            {
+                // the hull bounds over a duration(…) operand (PLAN-engine-gap-dur-order §5 Q6):
+                // routed HERE by the argument's written marker — the registry function sees only
+                // the ISO text and reads a date; nothing at run time may tell a duration from a
+                // date by its content (Q3's doctrine). The bound is the hull's end as a point
+                // duration (D6), so the outer marker reads it as the date precedent reads a date
+                // bound.
+                boolean high = "latest_possible".equals(c.name());
+                ValuePlan inner = operandPlan(c.args().get(0), namePosition);
+                yield run ->
+                {
+                    Vector v = inner.eval(run);
+                    return v == null ? null
+                            : net.cumba.corej.core.expr.eval.spi.BuiltinFunctions
+                                    .durationHullBound(run.rowCount(), v, high);
+                };
             }
             if (net.cumba.corej.core.exec.JoinedRowFold.JOINED.equals(c.name()))
             {
@@ -8778,7 +8916,30 @@ public final class ExprCompiler
     private static @Nullable String markerOf(Expr e)
     {
         String t = tagOf(e);
-        return t != null ? t : conversionOf(e);
+        if (t != null)
+        {
+            return t;
+        }
+        String c = conversionOf(e);
+        if (c != null)
+        {
+            return c;
+        }
+        // the duration family's hull operand routes as its marker does (D6) — a two-argument
+        // call, so neither tagOf nor conversionOf reads it, and untag leaves it whole
+        if (e instanceof Expr.Call call && DURATION_BETWEEN.equals(call.name())
+                && call.args().size() == 2 && call.kwargs().isEmpty())
+        {
+            return DURATION;
+        }
+        return null;
+    }
+
+
+    /** Whether {@code e} is the written {@code duration(<operand>)} marker (one argument). */
+    private static boolean isDurationMarker(Expr e)
+    {
+        return DURATION.equals(conversionOf(e));
     }
 
 
@@ -8791,7 +8952,7 @@ public final class ExprCompiler
      */
     private static Expr untag(Expr e)
     {
-        return markerOf(e) != null ? ((Expr.Call) e).args().get(0) : e;
+        return tagOf(e) != null || conversionOf(e) != null ? ((Expr.Call) e).args().get(0) : e;
     }
 
 
@@ -8820,6 +8981,10 @@ public final class ExprCompiler
         if ("time".equals(w))
         {
             return "time";
+        }
+        if (DURATION.equals(w))
+        {
+            return DURATION;
         }
         return "plain"; // null / num
     }

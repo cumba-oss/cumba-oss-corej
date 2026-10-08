@@ -647,7 +647,9 @@ class FindingValuesTypedDefaultTest
         // by their key literal). A new value function without a row reds here, so a binding over
         // it cannot silently become a binding with no type source.
         java.util.Set<String> byStageABranch = java.util.Set.of("colref", "value", "varname",
-                "date", "time", "earliest_possible", "latest_possible");
+                "date", "time", "earliest_possible", "latest_possible",
+                // the duration marker (runbook W1b DO) is typed by the same temporal branch
+                "duration");
         java.util.Set<String> unpinned = new java.util.TreeSet<>();
         for (net.cumba.corej.core.expr.eval.FunctionDescriptor d : net.cumba.corej.core.expr.eval.FunctionRegistry
                 .all())

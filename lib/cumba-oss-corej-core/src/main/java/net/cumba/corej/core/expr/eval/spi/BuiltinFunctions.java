@@ -24,7 +24,9 @@ import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionKind;
 import net.cumba.corej.core.expr.eval.FunctionProvider;
+import net.cumba.corej.core.expr.eval.IsoDateBounds;
 import net.cumba.corej.core.expr.eval.IsoDateComparison;
+import net.cumba.corej.core.expr.eval.IsoDurationBounds;
 import net.cumba.corej.core.expr.eval.ListVector;
 import net.cumba.corej.core.expr.eval.Parameter;
 import net.cumba.corej.core.expr.eval.Primitives;
@@ -328,6 +330,19 @@ public final class BuiltinFunctions implements FunctionProvider
         value(fns, "num", (run, args) -> Primitives.numConversion(args.get(0), run.rowCount()));
         value(fns, "date", (run, args) -> ExprCompiler.isoConversion(args.get(0), "date()"));
         value(fns, "time", (run, args) -> ExprCompiler.isoConversion(args.get(0), "time()"));
+        // -- the duration family (PLAN-engine-gap-dur-order §5, runbook W1b DO) --------------
+        // duration(x): the comparison marker / conversion (Q2) — interpretive like date(): the
+        // carrier is the ISO text verbatim, read by the family's hull (IsoDurationBounds: months
+        // and years as ranges, Q1). ExprCompiler compiles the written marker to the identity
+        // itself; this body serves the registry's own paths.
+        value(fns, "duration", (run, args) -> args.get(0));
+        // duration_between(start, end): the duration hull between two ISO instants (Q4) — two
+        // complete instants give a point (their difference at the coarser precision, as the
+        // date operator compares them), a partial one the range [lower(end) - upper(start),
+        // upper(end) - lower(start)], rendered as the family's lower/upper carrier. Compared
+        // through the duration family from either side (D6).
+        value(fns, "duration_between", List.of(p("start"), p("end")),
+                (run, args) -> durationBetween(run.rowCount(), args.get(0), args.get(1)));
         value(fns, TextFunctions.STR,
                 (run, args) -> TextFunctions.str(run.rowCount(), args.get(0)));
 
@@ -1166,6 +1181,141 @@ public final class BuiltinFunctions implements FunctionProvider
                     : IsoDateComparison.bound(cell.getValueAsString(), high);
             return bound != null ? bound : ScalarSemantics.computedMissing();
         });
+    }
+
+
+    /**
+     * Per-row {@code earliest_possible(x)} / {@code latest_possible(x)} over a {@code duration(…)}
+     * operand (runbook W1b DO, Q6): the hull's end as a point duration
+     * ({@link IsoDurationBounds#lower} / {@link IsoDurationBounds#upper} — {@code P1M} bounds as
+     * {@code P28D} / {@code P31D}), or the computed {@code MIS} where the cell is no duration; a
+     * missing cell yields that missing, its own cell (D85c). Routed by {@code ExprCompiler} on the
+     * written marker — the registry's own {@code hullBound} reads a date.
+     *
+     * @param rowCount
+     *            the run's row count
+     * @param x
+     *            the marked operand's vector
+     * @param high
+     *            {@code true} for the upper bound
+     * @return the per-row bound
+     */
+    public static ComputedVector durationHullBound(int rowCount, Vector x, boolean high)
+    {
+        return new ComputedVector(rowCount, DataValueType.STRING, row ->
+        {
+            TypedValue tv = x.value(row);
+            IDataValue cell = tv.cell();
+            if (tv.missing() != null)
+            {
+                return cell;
+            }
+            String text = ScalarSemantics.isMissing(cell) ? null : cell.getValueAsString();
+            String bound = high ? IsoDurationBounds.upper(text) : IsoDurationBounds.lower(text);
+            return bound != null ? bound : ScalarSemantics.computedMissing();
+        });
+    }
+
+
+    /**
+     * Per-row {@code duration_between(start, end)} (runbook W1b DO, Q4): the duration from
+     * {@code start} to {@code end} as the family's carrier — a point ({@code P1DT12H},
+     * {@code -P2D}) when both instants are complete, taken at the coarser of their precisions as
+     * the date operator compares two complete values; else the hull
+     * {@code [lower(end) - upper(start), upper(end) - lower(start)]} of the two instants' own hulls
+     * ({@link IsoDateBounds}), rendered {@code lower/upper}. A missing operand yields that missing
+     * (identity combined per D86a); a blank or unpositionable instant the computed {@code MIS}.
+     */
+    private static ComputedVector durationBetween(int rowCount, Vector start, Vector end)
+    {
+        return new ComputedVector(rowCount, DataValueType.STRING, row ->
+        {
+            TypedValue ts = start.value(row);
+            TypedValue te = end.value(row);
+            MissingValue missing = ArithmeticSemantics.combinedMissing(ts, te, null);
+            if (missing != null)
+            {
+                return ArithmeticSemantics.carrierCell(missing, ts, te, null);
+            }
+            if (ScalarSemantics.isMissing(ts.cell()) || ScalarSemantics.isMissing(te.cell()))
+            {
+                return ScalarSemantics.computedMissing();
+            }
+            String carrier = durationBetween(ts.cell().getValueAsString(),
+                    te.cell().getValueAsString());
+            return carrier != null ? carrier : ScalarSemantics.computedMissing();
+        });
+    }
+
+
+    /** The carrier of the duration from {@code start} to {@code end}, or {@code null}. */
+    static @Nullable String durationBetween(String start, String end)
+    {
+        if (!IsoDateBounds.canPosition(start) || !IsoDateBounds.canPosition(end))
+        {
+            return null;
+        }
+        if (IsoDateBounds.isDetermined(start) && IsoDateBounds.isDetermined(end))
+        {
+            // two complete instants: a point at the coarser of the two precisions — the date
+            // operator's own reading of a complete pair (IsoDateComparison branch 2)
+            String s = IsoDateBounds.lower(start);
+            String e = IsoDateBounds.lower(end);
+            int precision = Math.min(precisionOf(start), precisionOf(end));
+            Double from = epochSeconds(s, precision);
+            Double to = epochSeconds(e, precision);
+            return from == null || to == null ? null : IsoDurationBounds.render(to - from);
+        }
+        Double lowerStart = epochSeconds(IsoDateBounds.lower(start), Integer.MAX_VALUE);
+        Double upperStart = epochSeconds(IsoDateBounds.upper(start), Integer.MAX_VALUE);
+        Double lowerEnd = epochSeconds(IsoDateBounds.lower(end), Integer.MAX_VALUE);
+        Double upperEnd = epochSeconds(IsoDateBounds.upper(end), Integer.MAX_VALUE);
+        if (lowerStart == null || upperStart == null || lowerEnd == null || upperEnd == null)
+        {
+            return null;
+        }
+        return IsoDurationBounds.renderHull(lowerEnd - upperStart, upperEnd - lowerStart);
+    }
+
+
+    /**
+     * The precision of a complete instant as the length of its UTC-normalised, fraction-stripped
+     * text ({@code yyyy-MM-dd} = 10, with {@code THH:mm} = 16, with seconds = 19).
+     */
+    private static int precisionOf(String instant)
+    {
+        String core = ScalarSemantics
+                .stripFractionalSeconds(ScalarSemantics.normalizeToUtc(instant.trim()));
+        return core.length();
+    }
+
+
+    /**
+     * The epoch seconds of a {@code yyyy-MM-ddTHH:mm:ss} bound, truncated to {@code precision}
+     * characters first (a whole-day bound when {@code precision} is 10), or {@code null} when it
+     * does not parse.
+     */
+    private static @Nullable Double epochSeconds(@Nullable String bound, int precision)
+    {
+        if (bound == null)
+        {
+            return null;
+        }
+        String text = bound.length() > precision ? bound.substring(0, precision) : bound;
+        try
+        {
+            java.time.LocalDateTime instant = switch (text.length())
+            {
+            case 10 -> java.time.LocalDate.parse(text).atStartOfDay();
+            case 13 -> java.time.LocalDateTime.parse(text + ":00");
+            default -> java.time.LocalDateTime.parse(text);
+            };
+            return (double) instant.toEpochSecond(java.time.ZoneOffset.UTC);
+        }
+        catch (java.time.format.DateTimeParseException e)
+        {
+            return null;
+        }
     }
 
 

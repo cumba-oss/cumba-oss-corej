@@ -1148,6 +1148,12 @@ public class RulePackageLoader
                 // EC-87: the next-record comparison relation is a Check-operator kwarg only.
                 validateInlineCheckRelation(call);
             }
+            if ("has_next_corresponding_record".equals(call.name())
+                    || "does_not_have_next_corresponding_record".equals(call.name()))
+            {
+                // runbook W1b DO: the duration(…) marker on both operands or on neither
+                validateInlineDurationMarkers(call);
+            }
             validateInlineUniqueSetShape(call);
         }
         childrenOf(expr).forEach(RulePackageLoader::validateInlineCallShapes);
@@ -1573,6 +1579,39 @@ public class RulePackageLoader
                     "`keep_missings` is not supported by `" + call.name()
                             + "`; only the group-aware operators consume it");
         }
+    }
+
+
+    /**
+     * Runbook W1b DO ({@code PLAN-engine-gap-dur-order} §5, Q3 ruled explicit): the
+     * {@code duration(…)} marker on {@code has_next_corresponding_record}'s two compared operands
+     * is written on <b>both</b> or on <b>neither</b> — one marked operand would silently compare a
+     * duration as text, so it is a load error on the inline surface (the compiler's own
+     * {@code unsupported} throw would only degrade the rule to a run-time ERROR, see
+     * {@link #validateInlineCheckRelation}).
+     */
+    private static void validateInlineDurationMarkers(net.cumba.corej.core.expr.ast.Expr.Call call)
+    {
+        if (call.args().size() < 2)
+        {
+            return;
+        }
+        boolean nameMarked = isDurationMarker(call.args().get(0));
+        boolean valueMarked = isDurationMarker(call.args().get(1));
+        if (nameMarked != valueMarked)
+        {
+            throw new net.cumba.corej.core.expr.RuleDefinitionException("`" + call.name()
+                    + "` compares durations only when both operands carry the duration(…)"
+                    + " marker — write duration(…) on both, or on neither");
+        }
+    }
+
+
+    /** Whether {@code e} is the written one-argument {@code duration(…)} marker. */
+    private static boolean isDurationMarker(net.cumba.corej.core.expr.ast.Expr e)
+    {
+        return e instanceof net.cumba.corej.core.expr.ast.Expr.Call c && "duration".equals(c.name())
+                && c.args().size() == 1 && c.kwargs().isEmpty();
     }
 
 

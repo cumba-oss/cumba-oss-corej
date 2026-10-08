@@ -18,8 +18,9 @@ import org.junit.jupiter.api.Test;
  * ordinary registry functions over vectors, so they read per-row lists ({@code sequence}'s output)
  * and dataset-level lists alike. Element identity is the set-operation element's (text exact, a
  * missing by identity). {@code is_increasing} compares numerically iff every element is numeric,
- * else as text; an empty or one-element list is increasing; a missing element answers false (the
- * two-valued BOOLEAN kind has no missing).
+ * else as text; an empty or one-element list is increasing; a list holding a missing element
+ * answers true (D22, runbook W1b P5a: the ruled "missing, so no finding" of a two-valued
+ * predicate).
  */
 class OrderedListFunctionsTest
 {
@@ -91,13 +92,28 @@ class OrderedListFunctionsTest
         // S2's SESEQ in date order is 1, 3, 2 — not increasing; S1's 1, 2, 3 is; S3's one is
         assertEquals(List.of(4L, 5L, 6L), fired(se(), "not is_increasing($s)", "$s",
                 "sequence(SESEQ, group=[USUBJID], by=[asc(SESTDTC)])"));
-        // a missing element: S2's SEDY by SESEQ is 1, missing, 2 — the predicate is false, so
-        // the positive spelling does not fire and the negated one does
         assertEquals(List.of(1L, 2L, 3L, 4L, 5L, 6L, 7L), fired(se(), "is_increasing($d)", "$d",
                 "sequence(SEDY, group=[USUBJID], by=[asc(SESEQ)], filter=(not empty(SEDY)) )"),
                 "filtered: S2 reads 1, 2 and S3 the empty list — increasing");
-        assertEquals(List.of(4L, 5L, 6L, 7L), fired(se(), "not is_increasing($d)", "$d",
+    }
+
+
+    @Test
+    void aMissingElementAnswersTrueSoTheNegatedFormGivesNoFinding()
+    {
+        // D22 (runbook W1b P5a; owner ruling, PLAN-engine-gap-row-ordinal §6.2: "a missing element
+        // => the predicate answers missing, so no finding"): the two-valued BOOLEAN kind has no
+        // missing, so a list holding a missing element answers TRUE — vacuously, as [] and a
+        // one-element list do — and the authored `not is_increasing(...)` gives no finding. S2's
+        // SEDY by SESEQ is 1, missing, 2; S3's is the one missing cell.
+        assertEquals(List.of(), fired(se(), "not is_increasing($d)", "$d",
                 "sequence(SEDY, group=[USUBJID], by=[asc(SESEQ)])"));
+        assertEquals(List.of(1L, 2L, 3L, 4L, 5L, 6L, 7L), fired(se(), "is_increasing($d)", "$d",
+                "sequence(SEDY, group=[USUBJID], by=[asc(SESEQ)])"));
+        assertTrue(OrderedLists.isIncreasing(java.util.Arrays.asList(3L, null, 1L)),
+                "a missing element: no finding, whatever its neighbours");
+        assertTrue(OrderedLists.isIncreasing(java.util.Collections.singletonList(null)));
+        assertEquals(false, OrderedLists.isIncreasing(List.of(3L, 1L)), "still strict");
     }
 
 

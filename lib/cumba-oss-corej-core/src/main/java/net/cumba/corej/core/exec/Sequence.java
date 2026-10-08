@@ -365,8 +365,11 @@ public final class Sequence
             Expr target, boolean foreign)
     {
         DataTableMeta meta = table.getMetaData();
-        if (target instanceof Expr.Ref ref)
+        if (target instanceof Expr.Ref ref
+                && ref.kind() != net.cumba.corej.core.expr.OperandKind.OPERATION_REF)
         {
+            // a $-binding target (W1b DT) is a computed target, pre-resolved — never a column
+            // named `$x`
             int colIdx = meta.getColumnIndex(GroupedAggregate.resolvePrefix(ref.name(), ctx));
             if (colIdx < 0)
             {

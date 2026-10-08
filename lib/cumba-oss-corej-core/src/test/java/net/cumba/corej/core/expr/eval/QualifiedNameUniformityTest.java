@@ -130,6 +130,9 @@ class QualifiedNameUniformityTest
             dataset_class_from_library | - | - | nullary
             dataset_names | - | - | nullary
             date | x | N | V:date(@D)
+            duration | x | N | V:duration(@U)
+            duration_between | start | N | V:duration_between(@D, "2020-01-10")
+            duration_between | end | N | V:duration_between("2020-01-10", @D)
             date_contains | outer | N | B:date_contains(date(@D), date(#D))
             date_contains | inner | N | B:date_contains(date(#D), date(@D))
             date_diff_days | name | N | V:date_diff_days(@D, #D)
@@ -845,7 +848,7 @@ class QualifiedNameUniformityTest
     {
         // +1 descriptor / +2 parameters / +1 accessor since PLAN-library-template-label-resolution
         // (matches_label_template(label, template) and label_template(…, "LIBRARY")).
-        assertEquals(185, FunctionRegistry.all().size(),
+        assertEquals(187, FunctionRegistry.all().size(),
                 "registered descriptors (165 + any / all / none / joined, PLAN-cg0218; + 2"
                         + " column-status predicates, PLAN-present-empty-column-fold; + the nullary"
                         + " get_permitted_column_order, PLAN-permitted-addition-position; + union,"
@@ -855,8 +858,8 @@ class QualifiedNameUniformityTest
                         + " runbook W1b DP1a; + vlm_has_method / vlm_has_comment /"
                         + " vlm_origin_type / codelist_decode, runbook W1b DV; + sequence /"
                         + " is_prefix_of / is_not_prefix_of / is_increasing / collapse_runs,"
-                        + " runbook W1b RO)");
-        assertEquals(320,
+                        + " runbook W1b RO; + duration / duration_between, runbook W1b DO)");
+        assertEquals(323,
                 FunctionRegistry.all().stream().mapToInt(d -> d.parameters().size()).sum(),
                 "declared parameters (283 + one each for any / all / none / joined + one each"
                         + " for var_is_single_value / var_is_all_missing + three for union + one for"
@@ -865,19 +868,20 @@ class QualifiedNameUniformityTest
                         + " + six for sequence, two each for is_(not_)prefix_of, one each for"
                         + " is_increasing / collapse_runs, one by= each for is_last_in_group /"
                         + " empty_within_except_last_row / has_next_corresponding_record, W1b"
-                        + " RO / SK)");
+                        + " RO / SK; + one for duration and two for duration_between, W1b DO)");
         assertEquals(28, MetadataAttribute.values().length, "metadata accessors");
-        assertEquals(Set.of("date", "date_part", "num", "time", "time_part"),
-                new TreeSet<>(ExprCompiler.comparisonMarkers()), "comparison markers");
+        assertEquals(Set.of("date", "date_part", "duration", "num", "time", "time_part"),
+                new TreeSet<>(ExprCompiler.comparisonMarkers()),
+                "comparison markers (+ duration, runbook W1b DO)");
         assertEquals(15, Expr.BinOp.values().length, "operators (14 + the substitution ~, W1b SX)");
         List<Row> rows = rows();
         long probed = rows.stream().filter(Row::probed).count();
         long nameClass = rows.stream().filter(Row::name).count();
-        assertEquals(273, nameClass,
+        assertEquals(276, nameClass,
                 "name-bearing parameters in the hand table (265 + ~ left, W1b SX; + sequence's"
                         + " name / filter / group / by and the three by=, W1b RO / SK)");
-        assertEquals(220, probed, "probed parameters in the hand table (212 + ~ left, W1b SX;"
-                + " + sequence's four and the three by=, W1b RO / SK)");
+        assertEquals(223, probed, "probed parameters in the hand table (212 + ~ left, W1b SX;"
+                + " + sequence's four and the three by=, W1b RO / SK; + duration and duration_between's two, W1b DO)");
         // T2 r1 L2: every unprobed name-bearing row states one of the three admitted reasons.
         List<String> unprobed = new ArrayList<>();
         for (Row r : rows)
@@ -1942,6 +1946,6 @@ class QualifiedNameUniformityTest
             }
         }
         assertEquals(List.of(), invalid);
-        assertEquals(220, probed);
+        assertEquals(223, probed);
     }
 }

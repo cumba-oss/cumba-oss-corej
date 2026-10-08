@@ -115,7 +115,7 @@ public final class StageAChecker
 
     /** The temporal conversions, part accessors and hull bounds {@link #temporalCall} types. */
     private static final Set<String> TEMPORAL_CALLS = Set.of("date", "time", "date_part",
-            "time_part", "earliest_possible", "latest_possible");
+            "time_part", "earliest_possible", "latest_possible", "duration");
 
     /** The {@code by=[asc(COL), desc(COL)]} sort-key descriptor calls of is_sorted_by. */
     private static final Set<String> ORDERING_DESCRIPTORS = Set.of("asc", "desc");
@@ -757,7 +757,8 @@ public final class StageAChecker
     /** §5.2's mixed pair, one direction: a temporal side against a statically-known string. */
     private static boolean mixedTemporalString(ExprType a, ExprType b)
     {
-        return (a == Primitive.DATE || a == Primitive.TIME) && b == Primitive.STRING;
+        return (a == Primitive.DATE || a == Primitive.TIME || a == Primitive.DURATION)
+                && b == Primitive.STRING;
     }
 
 
@@ -1680,7 +1681,7 @@ public final class StageAChecker
         {
             return null;
         }
-        boolean conversion = "date".equals(name) || "time".equals(name);
+        boolean conversion = "date".equals(name) || "time".equals(name) || "duration".equals(name);
         boolean part = "date_part".equals(name) || "time_part".equals(name);
         if (c.args().size() != 1 || !c.kwargs().isEmpty())
         {
@@ -1692,7 +1693,7 @@ public final class StageAChecker
         ExprType result;
         if (conversion)
         {
-            if (at == Primitive.NUMBER)
+            if (at == Primitive.NUMBER && !"duration".equals(name))
             {
                 // D55's static shape. ⚠ The advice names what the language OFFERS: a SAS numeric
                 // date has no conversion function yet (SPEC §5.4 — date_from_sas_days /
@@ -1723,13 +1724,19 @@ public final class StageAChecker
         }
         else
         {
-            if (at != Unknown.UNKNOWN && at != Primitive.DATE && at != Primitive.TIME)
+            if (at != Unknown.UNKNOWN && at != Primitive.DATE && at != Primitive.TIME
+                    && at != Primitive.DURATION)
             {
-                find(StageAErrorKind.PARAMETER_TYPE, name + " takes a date or time (D22), not "
-                        + at.describe() + " — convert with date(...) / time(...) first" + at(c));
+                find(StageAErrorKind.PARAMETER_TYPE,
+                        name + " takes a date, time or duration" + " (D22), not " + at.describe()
+                                + " — convert with date(...) / time(...) / duration(...) first"
+                                + at(c));
             }
             // D22's overload: the result base follows the argument; date is the default base.
-            result = at == Primitive.TIME ? Primitive.TIME : Primitive.DATE;
+            // The duration base (runbook W1b DO, Q6) is reached only through the written
+            // duration(…) marker — the compiler routes the bound by that marker.
+            result = at == Primitive.TIME ? Primitive.TIME
+                    : at == Primitive.DURATION ? Primitive.DURATION : Primitive.DATE;
         }
         return new TypedExpr(c, result, arg.level(), children);
     }
@@ -1740,7 +1747,8 @@ public final class StageAChecker
      */
     private static ExprType resultOf(String conversionName)
     {
-        return "time".equals(conversionName) ? Primitive.TIME : Primitive.DATE;
+        return "time".equals(conversionName) ? Primitive.TIME
+                : "duration".equals(conversionName) ? Primitive.DURATION : Primitive.DATE;
     }
 
 

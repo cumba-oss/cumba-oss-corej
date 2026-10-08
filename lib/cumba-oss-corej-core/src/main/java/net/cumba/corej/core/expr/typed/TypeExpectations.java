@@ -201,7 +201,7 @@ public final class TypeExpectations
 
     /** Call names that route a comparison into the temporal families (no plain gate). */
     private static final Set<String> TEMPORAL_CALLS = Set.of("date", "time", "date_part",
-            "time_part");
+            "time_part", "duration", "duration_between");
 
     /**
      * How deep the walk is inside a {@code domain=}-pinned call's target / {@code filter=} /

@@ -60,6 +60,29 @@ public final class ListOperandLevel
             .of(net.cumba.corej.core.exec.Minus.NAME, net.cumba.corej.core.exec.Union.NAME);
 
     /**
+     * The broadcast set predicates whose operands are dataset-level sets (runbook W1b SH —
+     * {@code PLAN-binding-substitutability} G1, coordinator D21): {@code shares_no_elements_with}
+     * and its positive twin read a {@code $}-reference or, since SH, the expression it holds
+     * written in place, once per run; a per-row operand is the same level refusal for both
+     * spellings.
+     */
+    public static final Set<String> BROADCAST_SET_FUNCTIONS = Set.of("shares_no_elements_with",
+            "shares_elements_with");
+
+    /**
+     * The grouped readers whose target ({@code name}, positional 0) is read through
+     * {@code GroupedAggregate.readTarget} and admits a dataset-level {@code $}-binding since
+     * runbook W1b DT (coordinator D21): a {@code $} inside the target is judged per reference as
+     * inside {@code filter=}, and a bare {@code $} target holding a string literal keeps the
+     * literal refusal (the target is not a name slot).
+     */
+    public static final Set<String> TARGET_FUNCTIONS = Set.of(
+            net.cumba.corej.core.exec.GroupedAggregate.MAX,
+            net.cumba.corej.core.exec.GroupedAggregate.MAX_DATE,
+            net.cumba.corej.core.exec.GroupedAggregate.MIN_DATE,
+            net.cumba.corej.core.exec.Distinct.NAME, net.cumba.corej.core.exec.Sequence.NAME);
+
+    /**
      * The registry parameters read <b>once per call</b> whose value is read at evaluation (never at
      * plan-build time), keyed <b>function → parameters</b> — W1a BS1 widened each from a literal to
      * any dataset-level expression of its declared type: {@code extract_metadata} /
@@ -328,7 +351,7 @@ public final class ListOperandLevel
     public static List<String> refusals(Expr.Call c, Rule rule, String where)
     {
         List<String> out = new ArrayList<>();
-        if (LIST_SET_FUNCTIONS.contains(c.name()))
+        if (LIST_SET_FUNCTIONS.contains(c.name()) || BROADCAST_SET_FUNCTIONS.contains(c.name()))
         {
             List<Expr> operands = new ArrayList<>(c.args());
             operands.addAll(c.kwargs().values());
@@ -343,6 +366,16 @@ public final class ListOperandLevel
         }
         if (FILTER_FUNCTIONS.contains(c.name()))
         {
+            if (TARGET_FUNCTIONS.contains(c.name()))
+            {
+                Expr target = c.args().isEmpty()
+                        ? c.kwargs().get(net.cumba.corej.core.exec.GroupedAggregate.NAME_PARAMETER)
+                        : c.args().get(0);
+                if (target != null)
+                {
+                    targetReferences(target, c.name(), rule, where, out);
+                }
+            }
             Expr filter = c.kwargs()
                     .get(net.cumba.corej.core.exec.GroupedAggregate.FILTER_PARAMETER);
             if (filter != null)
@@ -440,10 +473,59 @@ public final class ListOperandLevel
     }
 
 
-    /** {@code "a set union"} / {@code "a set difference"}, for the message. */
+    /**
+     * The {@code $}-references inside a grouped reader's target (W1b DT), each judged on its own as
+     * inside {@code filter=} ({@link #filterReferences}: the target's columns are the target
+     * table's and vary per row by nature); a bare {@code $} target whose binding holds a string
+     * literal is the literal refusal — symmetric with the refused {@code distinct("X")}, the target
+     * not being a name slot (D-W8-6).
+     */
+    private static void targetReferences(Expr target, String function, Rule rule, String where,
+            List<String> out)
+    {
+        if (target instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF)
+        {
+            CompiledBinding bound = rule.compiledBinding(ref.name());
+            if (bound != null && bound.expression() instanceof Expr.Lit lit
+                    && lit.kind() == Expr.LitKind.STRING)
+            {
+                out.add("argument '" + net.cumba.corej.core.exec.GroupedAggregate.NAME_PARAMETER
+                        + "' of '" + function + "' in " + where
+                        + " takes a column reference, not the literal " + lit.value()
+                        + " (the binding " + ref.name()
+                        + ") — a quoted name is a string, never a column");
+                return;
+            }
+        }
+        List<String> refusals = new ArrayList<>();
+        filterReferences(target, function, rule, where, refusals);
+        for (String refusal : refusals)
+        {
+            // the same judgement, named for the target
+            out.add(refusal
+                    .replace("argument 'filter' of '" + function + "'",
+                            "argument '" + net.cumba.corej.core.exec.GroupedAggregate.NAME_PARAMETER
+                                    + "' of '" + function + "'")
+                    .replace(
+                            "a filter runs over the target dataset's rows, so a $-reference"
+                                    + " inside it must hold one dataset-level value",
+                            "the target is read over the target dataset's rows, so a $-reference"
+                                    + " inside it must hold one dataset-level value"));
+        }
+    }
+
+
+    /**
+     * {@code "a set union"} / {@code "a set difference"} / {@code "a set intersection"}, for the
+     * message.
+     */
     public static String setOperation(String function)
     {
-        return net.cumba.corej.core.exec.Union.NAME.equals(function) ? "a set union"
+        if (net.cumba.corej.core.exec.Union.NAME.equals(function))
+        {
+            return "a set union";
+        }
+        return BROADCAST_SET_FUNCTIONS.contains(function) ? "a set intersection"
                 : "a set difference";
     }
 

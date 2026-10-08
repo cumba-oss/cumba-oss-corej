@@ -57,6 +57,7 @@ class BindingSubstitutabilityCensusTest
         case BOOLEAN -> "true";
         case DATE -> "\"2020-01-01\"";
         case TIME -> "\"10:00\"";
+        case DURATION -> "\"P1D\"";
         case REGEX -> "/a/";
         case COLUMN_REFERENCE -> "X";
         case DATASET_REFERENCE -> "DM";
@@ -86,6 +87,7 @@ class BindingSubstitutabilityCensusTest
         case BOOLEAN -> "true";
         case DATE -> "\"2020-01-01\"";
         case TIME -> "\"10:00\"";
+        case DURATION -> "\"P1D\"";
         case REGEX -> "/a/";
         case COLUMN_REFERENCE -> "X";
         case DATASET_REFERENCE -> "DM";
@@ -110,27 +112,25 @@ class BindingSubstitutabilityCensusTest
      * <li><b>C7 — declared exception (G2, a {@code regex} is a literal type):</b> the
      * {@code pattern} of {@code imatches} / {@code prefix_matches} / {@code suffix_matches} takes
      * the {@code /regex/} literal only; a binding holding one is refused. Stays.</li>
-     * <li><b>NEW candidate (not in §3), reported by BS0:</b> {@code distinct}'s {@code name} — the
-     * quoted name {@code "X"} is admitted inline, but a name-form binding {@code $x: "X"} is
-     * refused by the tailored reader ("must be a plain column reference"): the parameter is not
-     * declared a name slot, so {@code inlineBoundNames} never inlines it (compare {@code colref},
-     * {@code var_*}). Class X-inconsistent; a ruling on whether to declare it a name slot is owed
-     * to the plan, not taken here.</li>
+     * <li><b>LEFT with W1b DT (coordinator D21), was a BS0 candidate:</b> the target ({@code name})
+     * of {@code distinct} / {@code max} / {@code max_date} / {@code min_date} / {@code sequence}
+     * refused every binding ("must be a plain column reference") while the expression it holds was
+     * admitted inline; since DT a dataset-level binding is pre-resolved there as a {@code $} inside
+     * {@code filter=} is (BS3), a per-row one is the level refusal for both spellings, and a
+     * binding holding a string literal keeps the literal refusal (the target is not a name
+     * slot).</li>
      * </ul>
      * Everything else the census visits (static strings, static lists, closed vocabularies,
      * {@code external_dictionary_type}, the list-set operands since U3, the splice slots, every
      * typed parameter) refuses or admits both spellings alike.
      */
     private static final Set<String> EXPECTED = new TreeSet<>(Set.of(
-            "distinct[0] name: bound=argument 'name' of 'distinct' must be a plain column reference; ‹arg› is not one | inline=clean",
             "imatches[1] pattern: bound=imatches requires a /regex/ literal pattern argument | inline=clean",
             "prefix_matches[1] pattern: bound=prefix_matches requires a /regex/ literal pattern argument | inline=clean",
             "suffix_matches[1] pattern: bound=suffix_matches requires a /regex/ literal pattern argument | inline=clean",
-            // runbook W1b RO / BS2c: sequence's target is distinct's (a binding is not a plain
-            // column there); is_last_in_group's ordering= splices now, so the bound per-row
+            // runbook W1b BS2c: is_last_in_group's ordering= splices now, so the bound per-row
             // column $x is the splice refusal while the inline column passes to the group=
             // filler's own finding
-            "sequence[0] name: bound=argument 'name' of 'sequence' must be a plain column reference; ‹arg› is not one | inline=clean",
             "is_last_in_group[0] ordering: bound=stage A: PARAMETER_TYPE: Check (ERROR): argument 'ordering' of 'is_last_in_group' cannot splice the per-row member `‹arg | inline=stage A: PARAMETER_TYPE: Check (ERROR): argument 'group' of 'is_last_in_group' takes list<column-reference>, not string "));
 
     /** Floor of (descriptor, parameter) pairs the census must visit — the registry was walked. */

@@ -89,6 +89,9 @@ class BuiltinFunctionsRegistrationTest
             // PLAN-dynamic-column-functions §2.1/§2.2 (owner Q2, Q10): the four conversions,
             // registered, and the two formatting functions
             "date/1/VALUE", "find_vars/1/VALUE", "lpad/2-3/VALUE", "num/1/VALUE", "printf/1+/VALUE",
+            // PLAN-engine-gap-dur-order §5 (runbook W1b DO): the duration marker / conversion and
+            // the between-instants hull operand
+            "duration/1/VALUE", "duration_between/2/VALUE",
             // PLAN-library-template-label-resolution D6 (b): the label-template matcher
             "matches_label_template/2/BOOLEAN", "str/1/VALUE", "time/1/VALUE",
             "valid_external_dictionary_code/3-4/BOOLEAN",

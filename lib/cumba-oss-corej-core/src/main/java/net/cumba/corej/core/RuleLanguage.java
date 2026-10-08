@@ -75,14 +75,14 @@ public final class RuleLanguage
      * ({@code functions:}, always first), then — since {@code PLAN-engine-language-runbook} §6.0
      * (G) — the metadata accessors with their scope, levels, result type and keywords
      * ({@code accessors:}), the operator spellings, keywords and literal forms the lexer reads
-     * ({@code operators:}, {@code keywords:}, {@code literal-forms:}), the built-in operands
-     * ({@code operands:}), the retired call names ({@code retired:}), the static — literal-only —
-     * parameters with their vocabularies ({@code static-parameters:}), the enumerated parameter
-     * values read at plan build ({@code parameter-values:}), the keyed result types
-     * ({@code keyed-results:}), the bound JSON property rosters of the rule model ({@code keys:})
-     * and the authored enum values ({@code enums:}). Deterministic: sorted, one entry per line, no
-     * measured figures. Every element a wave of the runbook changes has a line here, so the golden
-     * sees the change.
+     * ({@code operators:}, {@code keywords:}, {@code literal-forms:}), the comparison markers
+     * ({@code markers:}, since runbook W1b DO), the built-in operands ({@code operands:}), the
+     * retired call names ({@code retired:}), the static — literal-only — parameters with their
+     * vocabularies ({@code static-parameters:}), the enumerated parameter values read at plan build
+     * ({@code parameter-values:}), the keyed result types ({@code keyed-results:}), the bound JSON
+     * property rosters of the rule model ({@code keys:}) and the authored enum values
+     * ({@code enums:}). Deterministic: sorted, one entry per line, no measured figures. Every
+     * element a wave of the runbook changes has a line here, so the golden sees the change.
      *
      * @return the listing (without the {@code LEVEL=} header)
      */
@@ -102,6 +102,10 @@ public final class RuleLanguage
             sb.append(line).append('\n');
         }
         sb.append("operators: ").append(String.join(" ", sorted(ExpressionLexer.operators())))
+                .append('\n');
+        // the comparison markers (runbook W1b DO, coordinator D6): the names that select a
+        // comparison family — derived from the compiler's own roster, never transcribed
+        sb.append("markers: ").append(String.join(" ", ExprCompiler.comparisonMarkers()))
                 .append('\n');
         sb.append("keywords: ").append(String.join(",", sorted(ExpressionLexer.keywords())))
                 .append('\n');

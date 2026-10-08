@@ -27,6 +27,12 @@ public sealed interface ExprType permits ExprType.Primitive, ExprType.ListOf, Ex
         DATE,
         /** Time-of-day, partial precision retained (§1.1). */
         TIME,
+        /**
+         * An ISO-8601 duration read through the {@code duration(…)} marker, months and years as
+         * ranges (runbook W1b DO, {@code PLAN-engine-gap-dur-order} §5). Its carrier is the ISO
+         * text verbatim, as a date's is.
+         */
+        DURATION,
         /** Literal-only, never computed, never stored in a column (§1.1). */
         REGEX,
         /**

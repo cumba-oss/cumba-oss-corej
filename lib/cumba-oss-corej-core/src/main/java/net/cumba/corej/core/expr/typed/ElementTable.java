@@ -60,6 +60,9 @@ public final class ElementTable
             Map.entry("day", Primitive.NUMBER), Map.entry("month", Primitive.NUMBER),
             Map.entry("year", Primitive.NUMBER), Map.entry("record_count", Primitive.NUMBER),
             Map.entry("max_value_length", Primitive.NUMBER),
+            // the duration family (runbook W1b DO): the hull between two instants; the marker
+            // duration(x) and the bounds over it are typed by the checker's temporal branch
+            Map.entry("duration_between", Primitive.DURATION),
             // char(x) is the Unicode CODE POINT of x's first character (a LONG), not a string —
             // the phase-2 corpus measurement caught this: CDISC-AD0144 compares
             // char(PARAMCD) against char("A") / char("Z").

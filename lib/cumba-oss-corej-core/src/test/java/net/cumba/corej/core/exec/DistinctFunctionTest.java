@@ -548,7 +548,9 @@ class DistinctFunctionTest
         // domain= only the domain's own qualifier names a column of it.
         expectError("distinct(DM.USUBJID)", "names no Match_Datasets entry DM");
         expectError("distinct(DM.USUBJID, domain=TA)", "under domain=TA");
-        expectError("distinct($x)", "must be a plain column reference");
+        // runbook W1b DT: a $-binding target is admitted (pre-resolved), so an UNDEFINED $x is
+        // the bindings' own load error, no longer the reader's shape refusal
+        expectError("distinct($x)", "which no binding defines");
         expectError("distinct(ARMCD, group=" + q("USUBJID") + ")",
                 "takes a list of column references");
         expectError("distinct(ARMCD, domain=1)", "dataset reference");

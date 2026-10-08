@@ -1,5 +1,6 @@
 package net.cumba.corej.core.exec;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.OffsetTime;
 import java.time.ZoneOffset;
@@ -1518,18 +1519,91 @@ public final class ScalarSemantics
      * {@code P1Y}, {@code P2M3D}, {@code PT24H}). When {@code allowNegative} is {@code true}, a
      * leading minus-sign variant (e.g. {@code -P1Y}) is also accepted as valid. Mirrors the legacy
      * {@code invalid_duration} operator, which is the complement of the Python oracle's
-     * {@code is_valid_duration}.
+     * {@code is_valid_duration}. ⭐ One parser: the verdict is {@link #parseDuration}'s, so the
+     * validity predicates and the {@code duration} comparison family's hull
+     * ({@code IsoDurationBounds}, runbook W1b DO) can never disagree on what is a duration.
      */
     public static boolean isInvalidDuration(String s, boolean allowNegative)
     {
+        return parseDuration(s, allowNegative) == null;
+    }
+
+    /**
+     * The parsed components of a valid ISO-8601 duration ({@link #parseDuration}): each
+     * designator's number as written ({@code null} where absent), a fraction only in the lowest
+     * populated one, and the sign. {@code weeks} excludes every other component (the {@code PnW}
+     * form).
+     *
+     * @param negative
+     *            whether the duration carries the leading {@code -}
+     * @param years
+     *            the {@code Y} component
+     * @param months
+     *            the {@code M} component before {@code T}
+     * @param weeks
+     *            the {@code W} component
+     * @param days
+     *            the {@code D} component
+     * @param hours
+     *            the {@code H} component
+     * @param minutes
+     *            the {@code M} component after {@code T}
+     * @param seconds
+     *            the {@code S} component
+     */
+    public record IsoDuration(boolean negative, @Nullable BigDecimal years,
+            @Nullable BigDecimal months, @Nullable BigDecimal weeks, @Nullable BigDecimal days,
+            @Nullable BigDecimal hours, @Nullable BigDecimal minutes, @Nullable BigDecimal seconds)
+    {
+    }
+
+    /**
+     * Parses {@code s} as an ISO-8601 duration under the grammar of {@link #isInvalidDuration} —
+     * the regex plus the post-match rules (a {@code T} needs one time component; a decimal point or
+     * comma only in the smallest populated component) — or answers {@code null} where it is not
+     * one. The one parser both the validity predicates and the duration hull read (runbook W1b DO).
+     *
+     * @param s
+     *            the text
+     * @param allowNegative
+     *            whether a leading {@code -} is admitted
+     * @return the components, or {@code null} for an invalid duration
+     */
+    public static @Nullable IsoDuration parseDuration(@Nullable String s, boolean allowNegative)
+    {
         if (s == null || s.isEmpty() || "P".equals(s) || "PT".equals(s))
         {
-            return true;
+            return null;
         }
         Pattern pattern = allowNegative ? ISO_8601_DURATION_WITH_NEGATIVE
                 : ISO_8601_DURATION_POSITIVE;
         Matcher m = pattern.matcher(s);
-        return !m.matches() || !isValidDurationPostMatch(m);
+        if (!m.matches() || !isValidDurationPostMatch(m))
+        {
+            return null;
+        }
+        return new IsoDuration(s.charAt(0) == '-', durationComponent(m.group(1)),
+                durationComponent(m.group(2)), durationComponent(m.group(8)),
+                durationComponent(m.group(3)), durationComponent(m.group(5)),
+                durationComponent(m.group(6)), durationComponent(m.group(7)));
+    }
+
+
+    /**
+     * The number of a matched component ({@code "1,5D"} is {@code 1.5}), {@code null} if absent.
+     */
+    private static @Nullable BigDecimal durationComponent(@Nullable String matched)
+    {
+        if (matched == null)
+        {
+            return null;
+        }
+        String digits = matched.substring(0, matched.length() - 1).replace(',', '.');
+        if (digits.endsWith("."))
+        {
+            digits = digits + "0";
+        }
+        return new BigDecimal(digits);
     }
 
 

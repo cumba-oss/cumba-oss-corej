@@ -692,6 +692,63 @@ public final class Primitives
 
 
     /**
+     * The {@code duration}-type operator ({@code PLAN-engine-gap-dur-order} §5, runbook W1b DO):
+     * dispatches exactly like {@link #timeComparison} — numeric↔numeric compares numerically,
+     * string↔string goes to {@link IsoDurationComparison}'s hull semantics, a mixed numeric/ISO
+     * pair fires for every direction, missing on either side ⇒ {@code negate} save for the order
+     * carve-out ({@link #orderWithMissing}). Reached only through the {@code duration(…)} marker or
+     * the {@code duration_between} hull operand (the family is selected at compile time, never by a
+     * cell's content — §6.1 Q3).
+     *
+     * @param direction
+     *            0 = equality, 1 = greater, -1 = less
+     */
+    public static BitSet durationComparison(Vector lhs, Vector rhs, int rowCount, int direction,
+            boolean orEqual, boolean negate)
+    {
+        return scan(lhs, rowCount, (dv, r) ->
+        {
+            MissingValue lhsMissing = TypedValue.missingIdentityOf(dv);
+            if (lhsMissing == null && ScalarSemantics.isMissing(dv))
+            {
+                return negate;
+            }
+            TypedValue target = rhs.value(r);
+            MissingValue rhsMissing = target.missing();
+            if (lhsMissing != null || rhsMissing != null)
+            {
+                return missingVerdict(lhsMissing, rhsMissing, direction, orEqual, negate);
+            }
+            return compareDurationCells(dv, target.resolved(), direction, orEqual, negate);
+        });
+    }
+
+
+    /**
+     * The per-pair verdict of a {@code duration}-operator comparison — {@link #compareCells}'
+     * contract mirrored onto the duration type (same missing short-circuits; a mixed numeric/ISO
+     * pair is a violation regardless of direction, the operator's own rule).
+     */
+    private static boolean compareDurationCells(IDataValue aLhs, @Nullable Object aRhs,
+            int aDirection, boolean aOrEqual, boolean aNegate)
+    {
+        if (ScalarSemantics.isMissing(aLhs) || aRhs == null)
+        {
+            return aNegate;
+        }
+        Double lhsD = ScalarSemantics.tryNumericLhs(aLhs);
+        Double rhsD = ScalarSemantics.tryNumericRhs(aRhs);
+        if (lhsD != null && rhsD != null)
+        {
+            return aNegate != ScalarSemantics.matchNumeric(lhsD, rhsD, aDirection, aOrEqual);
+        }
+        // a mixed numeric/ISO pair is a violation regardless of direction (the operator's rule)
+        return lhsD != null || rhsD != null || IsoDurationComparison.fires(aLhs.getValueAsString(),
+                aRhs.toString(), aDirection, aOrEqual, aNegate);
+    }
+
+
+    /**
      * The time twin of {@link #isIsoText}: an hour-only comparand ({@code "10"}) parses as a
      * number, and without this reroute the mixed-shape branch would fire every operator on every
      * row. A string that positions as a time-of-day takes the hull reading instead.

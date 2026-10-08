@@ -378,7 +378,8 @@ public final class GroupedAggregate
      * The target: a bare column of the target table, a {@code --}-prefix column (primary only — the
      * prefix resolves against the primary's domain), or any VALUE expression over the target
      * table's own columns. A quoted name is a string, never a column (R1); a {@code $} reference
-     * names a binding and is refused; a dotted one is a merged column of the one evaluation table
+     * names a dataset-level binding of the rule, pre-resolved as inside {@code filter=} (W1b DT — a
+     * per-row one is refused at load); a dotted one is a merged column of the one evaluation table
      * without {@code domain=}, and under {@code domain=D} names D's own column when qualified by
      * {@code D} (refused otherwise — W3c, N5 lifted per MQ8). ⚠ Every reference <em>outside</em> a
      * nested grouped call is a column of the target table. Inside a nested call
@@ -401,11 +402,17 @@ public final class GroupedAggregate
                     + "' takes a column reference, not the literal " + lit.value()
                     + " — a quoted name is a string, never a column");
         }
-        if (target instanceof Expr.Ref ref)
+        if (target instanceof Expr.Ref ref && ref.kind() != OperandKind.OPERATION_REF)
         {
             columnName(fn, NAME_PARAMETER, ref, dataset);
             return target;
         }
+        // Runbook W1b DT (PLAN-binding-substitutability G1; coordinator D21): a $-binding as the
+        // target — bare, or inside a computed target — is admitted like the expression it holds
+        // written inline, pre-resolved against the rule's dataset as a $ inside filter= is (BS3,
+        // broadcastBindings); its level is judged at load (ListOperandLevel: a per-row binding
+        // is refused, a binding holding a string literal keeps the literal refusal — the target
+        // is not a name slot).
         // D14 / D119c: an expression target — every reference outside a nested grouped call is a
         // column of the target table (the same rule as the filter). A nested call's target and
         // filter columns are its own domain='s; its group= columns are read on both its domain=
@@ -607,11 +614,11 @@ public final class GroupedAggregate
         switch (e)
         {
         case Expr.Ref ref when ref.kind() == OperandKind.OPERATION_REF
-                && FILTER_PARAMETER.equals(parameter) ->
+                && (FILTER_PARAMETER.equals(parameter) || NAME_PARAMETER.equals(parameter)) ->
         {
             // W1a BS3: the rule's own binding, one dataset-level value — resolved before the
             // filter runs and handed in as a constant (broadcastBindings), never a column of the
-            // target table. The target (NAME_PARAMETER) keeps its refusal: not in C16.
+            // target table. Since W1b DT the target (NAME_PARAMETER) reads a $ the same way.
         }
         case Expr.Ref ref -> columnName(fn, parameter, ref, dataset);
         case Expr.Call call ->
@@ -1435,9 +1442,11 @@ public final class GroupedAggregate
         DataTableMeta meta = table.getMetaData();
         IntFunction<IDataValue> cellAt;
         DataValueType type;
-        if (target instanceof Expr.Ref ref)
+        if (target instanceof Expr.Ref ref && ref.kind() != OperandKind.OPERATION_REF)
         {
-            // The fast path (every corpus site): a direct column read, no compile.
+            // The fast path (every corpus site): a direct column read, no compile. A $-binding
+            // (W1b DT) is a computed target: evaluated below, pre-resolved — never a column
+            // named `$x`.
             int colIdx = meta.getColumnIndex(resolvePrefix(ref.name(), ctx));
             if (colIdx < 0)
             {

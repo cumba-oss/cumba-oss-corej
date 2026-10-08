@@ -19,9 +19,12 @@ import org.jspecify.annotations.Nullable;
  * — element identity is the set operation's, {@link Minus#setElement}: text exact, a missing by its
  * marker), {@code is_increasing(list)} (every element strictly greater than its predecessor —
  * numerically iff every element is a number, else as text; an empty or one-element list is
- * increasing; a missing element answers {@code false}, the two-valued BOOLEAN kind having no
- * missing) and {@code collapse_runs(list)} (adjacent duplicates collapsed, {@code [S, T, T, F, T]}
- * to {@code [S, T, F, T]}).
+ * increasing; a list holding a missing element answers {@code true} — vacuously, as the empty list
+ * does: the owner ruled a missing element <i>"answers missing, so no finding"</i>
+ * ({@code PLAN-engine-gap-row-ordinal} §6.2), the two-valued BOOLEAN kind has no missing, and the
+ * authored {@code not is_increasing(…)} must then give no finding — coordinator D22, runbook W1b
+ * P5a) and {@code collapse_runs(list)} (adjacent duplicates collapsed, {@code [S, T, T, F, T]} to
+ * {@code [S, T, F, T]}).
  *
  * <p>
  * A scalar where a list is read is the rule's ERROR ({@link RuleDefinitionException}), never a
@@ -98,7 +101,9 @@ public final class OrderedLists
 
     /**
      * Whether {@code items} is strictly increasing: numerically when every element is a number
-     * ({@link CellOrder#isNumeric}), else as text; a missing element makes it {@code false}.
+     * ({@link CellOrder#isNumeric}), else as text. A missing element answers {@code true} (D22: the
+     * ruled "missing, so no finding" of a two-valued predicate — the negated authoring
+     * {@code not is_increasing(…)} then fires on no such list).
      *
      * @param items
      *            the elements
@@ -111,7 +116,7 @@ public final class OrderedLists
         {
             if (CellOrder.isMissing(item))
             {
-                return false;
+                return true;
             }
             numeric &= CellOrder.isNumeric(item);
         }

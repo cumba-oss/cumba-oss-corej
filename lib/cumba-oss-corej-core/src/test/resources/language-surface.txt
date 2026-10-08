@@ -40,6 +40,8 @@ domain_is_custom() kind=value aggregate provider=library
 ds_exists(name:unknown@name) kind=boolean
 ds_not_exists(name:unknown@name) kind=boolean
 duplicate_label_variables() kind=value aggregate
+duration(x:unknown) kind=value
+duration_between(start:unknown, end:unknown) kind=value
 dy(name:column-reference, reference:column-reference) kind=value
 earliest_date(a:date, b:date) kind=value
 earliest_possible(x:unknown) kind=value
@@ -215,6 +217,7 @@ var_origin_type scope=variable levels=DEFINE result=string
 var_role scope=variable levels=DEFINE,LIBRARY result=string
 var_type scope=variable levels=DATA,DEFINE,LIBRARY result=string default=DATA kwargs=dataset
 operators: ! != !~ && * + - / < <= = == =~ > >= || ~
+markers: date date_part duration num time time_part
 keywords: and,false,in,not,or,true
 literal-forms: "string" number /regex/ [list] `quoted ref` &NAME& ${binding} --wildcard $binding DATASET.X /pattern/replacement/ {left: X, right: Y}
 operands:
