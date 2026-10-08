@@ -1956,10 +1956,17 @@ public final class ExprCompiler
     }
 
 
+    /**
+     * Whether {@code e} is a one-argument {@code upper(…)} — or {@code upcase(…)}, its registered
+     * alias (runbook W2 UA, {@code FINDINGS-unowned-residuals} G2): the case-insensitive membership
+     * surface, read at three places (the probe unwrap of a {@code colref($x)} probe, the
+     * case-insensitive flag, an {@code upper("…")} member in {@link #setTerm}). {@code lower} /
+     * {@code lowcase} have no such surface.
+     */
     private static boolean isUpperCall(Expr e)
     {
-        return e instanceof Expr.Call c && "upper".equals(c.name()) && c.args().size() == 1
-                && c.kwargs().isEmpty();
+        return e instanceof Expr.Call c && ("upper".equals(c.name()) || "upcase".equals(c.name()))
+                && c.args().size() == 1 && c.kwargs().isEmpty();
     }
 
 
