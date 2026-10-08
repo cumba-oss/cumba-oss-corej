@@ -371,8 +371,6 @@ class NameSlotRosterTest
                 BroadcastFold.BROADCAST_COLUMN_PREDICATES);
         sets.put("StudyRuleClassifier.STUDY_SAFE_CALLS",
                 field("net.cumba.corej.core.exec.StudyRuleClassifier", "STUDY_SAFE_CALLS"));
-        sets.put("WildcardExpander.EXISTS_NAME_CALLS",
-                field("net.cumba.corej.core.gen.WildcardExpander", "EXISTS_NAME_CALLS"));
         List<String> outside = new ArrayList<>();
         int members = 0;
         for (Map.Entry<String, Set<String>> e : sets.entrySet())
@@ -389,12 +387,112 @@ class NameSlotRosterTest
             }
         }
         assertEquals(List.of(), outside, "argument 0 of every hand-kept name call is a name slot");
-        assertEquals(25, members, "members checked (5 + 1 + 4 + 2 + 2 + 2 + 3 + 2 + 4)");
-        // BindingInliner's set is gone: it asks NameSlots (N6)
+        assertEquals(21, members, "members checked (5 + 1 + 4 + 2 + 2 + 2 + 3 + 2)");
+        // BindingInliner's set is gone: it asks NameSlots (N6); so does WildcardExpander (W2 WX)
         assertFalse(java.util.Arrays
                 .stream(Class.forName("net.cumba.corej.core.expr.convert.BindingInliner")
                         .getDeclaredFields())
                 .anyMatch(f -> "VARIABLE_PRESENCE".equals(f.getName())));
+        assertFalse(java.util.Arrays
+                .stream(Class.forName("net.cumba.corej.core.gen.WildcardExpander")
+                        .getDeclaredFields())
+                .anyMatch(f -> "EXISTS_NAME_CALLS".equals(f.getName())));
+    }
+
+
+    /**
+     * Runbook W2 WX ({@code PLAN-wildcard-expander-name-slots} X2): the wildcard expander expands a
+     * quoted template exactly at the marked name slots — positional and keyword, every descriptor
+     * and every metadata accessor — minus the two ruled exclusions, {@code find_vars} (W2: it
+     * resolves its template itself) and {@code cross_dataset_variable_metadata.domain} (W3:
+     * {@code "*"} there is every dataset). An equality, not the former subset of a hand-kept list.
+     */
+    @Test
+    void theWildcardExpanderExpandsExactlyTheMarkedSlotsMinusTheRuledExclusions() throws Exception
+    {
+        Class<?> expander = Class.forName("net.cumba.corej.core.gen.WildcardExpander");
+        java.lang.reflect.Method atPosition = expander.getDeclaredMethod("isExpandableNameSlot",
+                Expr.Call.class, int.class);
+        java.lang.reflect.Method atKeyword = expander.getDeclaredMethod("isExpandableNameSlot",
+                Expr.Call.class, String.class);
+        atPosition.setAccessible(true);
+        atKeyword.setAccessible(true);
+        Set<String> excluded = new TreeSet<>();
+        List<String> wrong = new ArrayList<>();
+        int expandable = 0;
+        List<Expr.Call> probes = new ArrayList<>();
+        for (FunctionDescriptor d : providers())
+        {
+            for (int i = 0; i < d.parameters().size(); i++)
+            {
+                List<Expr> args = new ArrayList<>();
+                for (int j = 0; j <= i; j++)
+                {
+                    args.add(lit(NAME));
+                }
+                Expr.Call positional = new Expr.Call(d.name(), args, Map.of());
+                String key = d.name() + "." + d.parameters().get(i).name();
+                boolean slot = NameSlots.isNameSlot(positional, i);
+                boolean expands = (Boolean) atPosition.invoke(null, positional, i);
+                expandable += expands ? 1 : 0;
+                if (expands && !slot)
+                {
+                    wrong.add(key + " @" + i + " expands but is not a name slot");
+                }
+                else if (slot && !expands)
+                {
+                    excluded.add(key);
+                }
+                String kw = d.parameters().get(i).name();
+                Expr.Call keyword = new Expr.Call(d.name(), List.of(), Map.of(kw, lit(NAME)));
+                boolean kwSlot = NameSlots.isNameSlot(keyword, kw);
+                boolean kwExpands = (Boolean) atKeyword.invoke(null, keyword, kw);
+                if (kwExpands && !kwSlot)
+                {
+                    wrong.add(key + " =" + " expands but is not a name slot");
+                }
+                else if (kwSlot && !kwExpands)
+                {
+                    excluded.add(key);
+                }
+            }
+        }
+        for (MetadataAttribute attr : MetadataAttribute.values())
+        {
+            String fn = attr.functionName();
+            probes.add(new Expr.Call(fn, List.of(lit(NAME)), Map.of()));
+            probes.add(new Expr.Call(fn, List.of(lit(NAME), lit("DATA")), Map.of()));
+            probes.add(new Expr.Call(fn, List.of(lit("DATA")), Map.of()));
+            for (Expr.Call c : probes)
+            {
+                for (int i = 0; i < c.args().size(); i++)
+                {
+                    boolean slot = NameSlots.isNameSlot(c, i);
+                    if (slot != (Boolean) atPosition.invoke(null, c, i))
+                    {
+                        wrong.add(fn + " @" + i + " of " + c.args().size() + ": slot=" + slot);
+                    }
+                }
+            }
+            probes.clear();
+            Expr.Call dataset = new Expr.Call(fn, List.of(lit(NAME), lit("DATA")),
+                    Map.of("dataset", lit(NAME)));
+            if (NameSlots.isNameSlot(dataset,
+                    "dataset") != (Boolean) atKeyword.invoke(null, dataset, "dataset"))
+            {
+                wrong.add(fn + " dataset=");
+            }
+        }
+        assertEquals(List.of(), wrong);
+        assertEquals(Set.of("cross_dataset_variable_metadata.domain", "find_vars.entry"), excluded,
+                "the marked slots the expander leaves alone: exactly the two ruled exclusions");
+        // the four former EXISTS_NAME_CALLS are among them
+        for (String fn : List.of("ds_exists", "ds_not_exists", "var_exists", "var_not_exists"))
+        {
+            assertTrue((Boolean) atPosition.invoke(null,
+                    new Expr.Call(fn, List.of(lit(NAME)), Map.of()), 0), fn);
+        }
+        assertTrue(expandable >= 20, "descriptor slots that expand: " + expandable);
     }
 
 

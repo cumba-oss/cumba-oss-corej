@@ -18,6 +18,10 @@ import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.OperandClassifier;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.expr.eval.FunctionDescriptor;
+import net.cumba.corej.core.expr.eval.FunctionRegistry;
+import net.cumba.corej.core.expr.eval.NameSlots;
+import net.cumba.corej.core.expr.eval.Parameter;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionAny;
@@ -53,12 +57,12 @@ import org.jspecify.annotations.Nullable;
  * ({@code has_multiple_values_for(TRTxxPN,
  * TRTxxP)}, {@code is_unique_relationship(...)}), comparison / membership operands
  * ({@code *FN not in [0, 1]}), and {@code group=}/{@code within=} list keywords. A wildcard
- * <em>string literal</em> is expanded only as an exists-family name operand
- * ({@code var_exists("TRTxxPN")}, {@link #EXISTS_NAME_CALLS}); value-position strings and regex
- * literals are never expanded, and the engine's own {@code ${*}} membership and {@code --}-prefix
- * domain wildcards are out of scope ({@link #isWildcard} excludes them). Production loads the
- * native {@code rules/} corpus, so without this path the shipped wildcard rules would test
- * literally-named columns ({@code TRTxxPN}, {@code *FN}, …) that never exist.
+ * <em>string literal</em> is expanded only at a name slot ({@code var_exists("TRTxxPN")},
+ * {@code var_label("TRTxxPN")}; {@link #isExpandableNameSlot(Expr.Call, int)}); value-position
+ * strings and regex literals are never expanded, and the engine's own {@code ${*}} membership and
+ * {@code --}-prefix domain wildcards are out of scope ({@link #isWildcard} excludes them).
+ * Production loads the native {@code rules/} corpus, so without this path the shipped wildcard
+ * rules would test literally-named columns ({@code TRTxxPN}, {@code *FN}, …) that never exist.
  */
 @CustomLog
 public final class WildcardExpander
@@ -868,7 +872,7 @@ public final class WildcardExpander
     /**
      * Fix #84 (Group B / B4): returns {@code true} when a bare {@code "*"} wildcard appears in a
      * NAME (target-variable) position of the Check tree — a leaf {@code name}, a native column
-     * {@link Expr.Ref}, or an exists-family string-literal name operand — as opposed to a leaf
+     * {@link Expr.Ref}, or a string literal at an expandable name slot — as opposed to a leaf
      * {@code value} / comparison RHS / membership-list position. Only a name-position bare
      * {@code *} engages the empty-suffix pairing machinery (guard, seed-skip, fallback-skip); a
      * value-position literal {@code "*"} (e.g. the pre-existing
@@ -892,8 +896,9 @@ public final class WildcardExpander
 
     /**
      * Native-expression analogue of {@link #hasNamePositionBareStar}: a column {@link Expr.Ref} or
-     * an exists-family string-literal name operand equal to {@code "*"}. Value-position literals
-     * (comparison RHS, membership / list-literal elements) are never counted.
+     * a string literal at an expandable name slot ({@link #nameSlotLiterals}) equal to {@code "*"}.
+     * Value-position literals (comparison RHS, membership / list-literal elements) are never
+     * counted.
      */
     private static boolean exprHasNamePositionBareStar(Expr e)
     {
@@ -906,9 +911,7 @@ public final class WildcardExpander
         case Expr.Not n -> exprHasNamePositionBareStar(n.inner());
         case Expr.Binary b -> exprHasNamePositionBareStar(b.left())
                 || exprHasNamePositionBareStar(b.right());
-        case Expr.Call c -> (EXISTS_NAME_CALLS.contains(c.name()) && !c.args().isEmpty()
-                && c.args().get(0) instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
-                && "*".equals(lit.value()))
+        case Expr.Call c -> nameSlotLiterals(c).stream().anyMatch("*"::equals)
                 || c.args().stream().anyMatch(WildcardExpander::exprHasNamePositionBareStar)
                 || c.kwargs().values().stream()
                         .anyMatch(WildcardExpander::exprHasNamePositionBareStar);
@@ -1010,15 +1013,99 @@ public final class WildcardExpander
     }
 
     /**
-     * The exists-family callables whose first positional argument is a NAME operand that may be
-     * written as a <em>string literal</em> ({@code var_exists("TRTxxPN")}). A bare-reference
-     * wildcard is expanded wherever it appears (a {@code WILDCARD_COLUMN} ref is unambiguously a
-     * column), so this allowlist exists only to safely expand a quoted-literal name without ever
-     * expanding a value-position string (e.g. the {@code "*"} in
-     * {@code contains(var_label("LIBRARY"), "*")}).
+     * Runbook W2 WX ({@code PLAN-wildcard-expander-name-slots} W2): {@code find_vars} resolves its
+     * template entry itself at run time (D93c, SPEC §7.2 item 6), so the expander leaves every slot
+     * of it alone — a static expansion would turn its one call into one rule per column.
      */
-    private static final Set<String> EXISTS_NAME_CALLS = Set.of("ds_exists", "ds_not_exists",
-            "var_exists", "var_not_exists");
+    private static final String FIND_VARS = "find_vars";
+
+    /**
+     * Runbook W2 WX (W3): {@code cross_dataset_variable_metadata}'s {@code domain} — positional 1
+     * or the keyword — where {@code "*"} means every dataset, not a column-name template.
+     */
+    private static final String CROSS_DATASET_VARIABLE_METADATA = "cross_dataset_variable_metadata";
+
+    private static final String DOMAIN_PARAMETER = "domain";
+
+    /**
+     * Whether a STRING literal at positional argument {@code position} of {@code call} is a
+     * column-name template the expander expands: a name slot ({@code NameSlots} — the registry's
+     * marked parameters, the metadata accessors' name positions; runbook W2 WX, replacing the
+     * hand-kept exists-family list) other than the two ruled exclusions ({@link #FIND_VARS},
+     * {@link #CROSS_DATASET_VARIABLE_METADATA}'s {@code domain}). A bare-reference wildcard is
+     * expanded wherever it appears (a {@code WILDCARD_COLUMN} ref is unambiguously a column); this
+     * question exists only to expand a quoted name without ever expanding a value-position string
+     * (the {@code "*"} in {@code contains(var_label("LIBRARY"), "*")}). Read reflectively by
+     * {@code NameSlotRosterTest} (X2).
+     *
+     * @param call
+     *            the call
+     * @param position
+     *            the positional argument index
+     * @return whether a quoted template there is expanded
+     */
+    static boolean isExpandableNameSlot(Expr.Call call, int position)
+    {
+        if (FIND_VARS.equals(call.name()) || !NameSlots.isNameSlot(call, position))
+        {
+            return false;
+        }
+        FunctionDescriptor d = FunctionRegistry.descriptor(call.name());
+        Parameter p = d == null ? null : NameSlots.parameterAt(d, position);
+        return p == null || !isExcludedParameter(call.name(), p.name());
+    }
+
+
+    /**
+     * {@link #isExpandableNameSlot(Expr.Call, int)} for a keyword argument.
+     *
+     * @param call
+     *            the call
+     * @param keyword
+     *            the keyword argument's name
+     * @return whether a quoted template given for that keyword is expanded
+     */
+    static boolean isExpandableNameSlot(Expr.Call call, String keyword)
+    {
+        return !FIND_VARS.equals(call.name()) && !isExcludedParameter(call.name(), keyword)
+                && NameSlots.isNameSlot(call, keyword);
+    }
+
+
+    private static boolean isExcludedParameter(String function, String parameter)
+    {
+        return CROSS_DATASET_VARIABLE_METADATA.equals(function)
+                && DOMAIN_PARAMETER.equals(parameter);
+    }
+
+
+    /**
+     * The STRING literals {@code call} carries at its expandable name slots — positional and
+     * keyword — the one reading the three readers (the bare-star guard, the collection and the
+     * substitution's twin) share.
+     */
+    private static List<String> nameSlotLiterals(Expr.Call call)
+    {
+        List<String> out = new ArrayList<>(1);
+        for (int i = 0; i < call.args().size(); i++)
+        {
+            if (call.args().get(i) instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
+                    && isExpandableNameSlot(call, i))
+            {
+                out.add((String) lit.value());
+            }
+        }
+        for (Map.Entry<String, Expr> kw : call.kwargs().entrySet())
+        {
+            if (kw.getValue() instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
+                    && isExpandableNameSlot(call, kw.getKey()))
+            {
+                out.add((String) lit.value());
+            }
+        }
+        return out;
+    }
+
 
     /**
      * Collects wildcard names from a native expression tree — the {@link Expr} analogue of
@@ -1027,9 +1114,8 @@ public final class WildcardExpander
      * wherever it occurs — comparison operands, function arguments, group-operator name operands,
      * membership operands, and list / keyword positions. The engine's own {@code ${*}} membership
      * wildcards and {@code --}-prefix domain wildcards are excluded by {@link #isWildcard} (no
-     * lowercase / not a bare {@code *}). A wildcard <em>string literal</em> is collected only as
-     * the name operand of an exists-family call ({@link #EXISTS_NAME_CALLS}), never in a value
-     * position.
+     * lowercase / not a bare {@code *}). A wildcard <em>string literal</em> is collected only at an
+     * expandable name slot ({@link #nameSlotLiterals}), never in a value position.
      *
      * @param e
      *            the expression node to walk
@@ -1050,11 +1136,12 @@ public final class WildcardExpander
         }
         case Expr.Call c ->
         {
-            if (EXISTS_NAME_CALLS.contains(c.name()) && !c.args().isEmpty()
-                    && c.args().get(0) instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
-                    && isWildcard((String) lit.value()))
+            for (String literal : nameSlotLiterals(c))
             {
-                names.add((String) lit.value());
+                if (isWildcard(literal))
+                {
+                    names.add(literal);
+                }
             }
             c.args().forEach(a -> collectWildcardNamesFromExpr(a, names));
             c.kwargs().values().forEach(a -> collectWildcardNamesFromExpr(a, names));
@@ -1736,7 +1823,11 @@ public final class WildcardExpander
     enum StringLiteralPolicy
     {
 
-        /** Wildcard flavour: only arg 0 of the exists family. The pre-existing behaviour. */
+        /**
+         * Wildcard flavour: only the string literals at an expandable name slot
+         * ({@link #isExpandableNameSlot(Expr.Call, int)}; until runbook W2 WX, arg 0 of the exists
+         * family).
+         */
         EXISTS_NAME_ONLY,
 
         /**
@@ -1784,8 +1875,8 @@ public final class WildcardExpander
      * Rewrites the wildcards of a native expression tree to their concrete columns for one
      * expansion tuple, mirroring {@link #collectWildcardNamesFromExpr}: every wildcard bare
      * {@link Expr.Ref} is rewritten wherever it occurs (and re-classified so a former
-     * {@code WILDCARD_COLUMN} becomes a plain {@code COLUMN}); an exists-family string-literal name
-     * operand is rewritten to a concrete string literal; list-literal elements are rewritten
+     * {@code WILDCARD_COLUMN} becomes a plain {@code COLUMN}); a string literal at an expandable
+     * name slot is rewritten to a concrete string literal; list-literal elements are rewritten
      * recursively; every other node is structurally copied unchanged so value-position scalar
      * literals are never substituted.
      *
@@ -1925,7 +2016,8 @@ public final class WildcardExpander
 
 
     /**
-     * Rewrites a call: an exists-family string-literal name operand (arg&nbsp;0) becomes a concrete
+     * Rewrites a call: a string literal at an expandable name slot
+     * ({@link #isExpandableNameSlot(Expr.Call, int)}, positional or keyword) becomes a concrete
      * string literal; every other arg and every keyword value is rewritten via the generic walk (so
      * bare wildcard refs anywhere — including group-operator name operands and {@code group=}/
      * {@code within=} list kwargs — are expanded).
@@ -1937,14 +2029,10 @@ public final class WildcardExpander
         for (int i = 0; i < c.args().size(); i++)
         {
             Expr arg = c.args().get(i);
-            if (i == 0 && EXISTS_NAME_CALLS.contains(c.name()) && arg instanceof Expr.Lit lit
-                    && lit.kind() == Expr.LitKind.STRING)
+            if (arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
+                    && isExpandableNameSlot(c, i))
             {
-                String original = (String) lit.value();
-                String concrete = rename.apply(original);
-                newArgs.add(concrete != null && !concrete.equals(original)
-                        ? new Expr.Lit(Expr.LitKind.STRING, concrete)
-                        : arg);
+                newArgs.add(renamedLiteral(lit, rename));
             }
             else
             {
@@ -1957,11 +2045,28 @@ public final class WildcardExpander
             Map<String, Expr> rebuilt = new LinkedHashMap<>();
             for (Map.Entry<String, Expr> kw : newKwargs.entrySet())
             {
-                rebuilt.put(kw.getKey(), substituteExpr(kw.getValue(), rename, policy));
+                Expr value = kw.getValue();
+                rebuilt.put(kw.getKey(),
+                        value instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
+                                && isExpandableNameSlot(c, kw.getKey())
+                                        ? renamedLiteral(lit, rename)
+                                        : substituteExpr(value, rename, policy));
             }
             newKwargs = rebuilt;
         }
         return new Expr.Call(c.name(), newArgs, newKwargs);
+    }
+
+
+    /** A name-slot string literal under {@code rename}: the concrete name, else as written. */
+    private static Expr renamedLiteral(Expr.Lit lit,
+            java.util.function.UnaryOperator<String> rename)
+    {
+        String original = (String) lit.value();
+        String concrete = rename.apply(original);
+        return concrete != null && !concrete.equals(original)
+                ? new Expr.Lit(Expr.LitKind.STRING, concrete)
+                : lit;
     }
 
 
