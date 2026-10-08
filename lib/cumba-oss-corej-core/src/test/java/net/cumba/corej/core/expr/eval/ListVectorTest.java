@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.cumba.corej.core.exec.ScalarSemantics;
 import net.cumba.datatable.values.DataValueType;
@@ -74,6 +75,32 @@ class ListVectorTest
         assertSame(row1, v.value(1), "memoised: the same carrier, no second read");
         assertEquals(2, calls.get());
         assertEquals(List.of("b", "y"), texts(row1));
+    }
+
+
+    /**
+     * E9 ({@code PLAN-elementwise-list-functions} §3.8): {@code count} / {@code size} over a
+     * {@link ListVector} answer K on every row <b>without materialising a row</b> — no element cell
+     * is read — and the answer is the size the materialised row has (a missing member counts).
+     */
+    @Test
+    void countAndSizeAnswerKWithoutMaterialisingARow()
+    {
+        for (String name : List.of("count", "size"))
+        {
+            AtomicInteger calls = new AtomicInteger();
+            ListVector v = new ListVector(3, List.of(counting(calls, "a", "b", "c"),
+                    counting(calls, "x", "", "z"), ConstVector.of("k")));
+            EvalFunction fn = Objects.requireNonNull(FunctionRegistry.descriptor(name)).fn();
+            Vector out = (Vector) fn.apply(EvalRun.ofRowCount(3), List.of(v));
+            for (int row = 0; row < 3; row++)
+            {
+                assertEquals(3L, out.value(row).resolved(), name + " row " + row);
+            }
+            assertEquals(0, calls.get(), name + ": no element cell read — the fast path");
+            assertEquals(3, ((List<?>) v.value(1).resolved()).size(),
+                    name + ": the materialised row agrees");
+        }
     }
 
 

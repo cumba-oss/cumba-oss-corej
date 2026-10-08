@@ -23,6 +23,7 @@ import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionKind;
 import net.cumba.corej.core.expr.eval.FunctionProvider;
 import net.cumba.corej.core.expr.eval.IsoDateComparison;
+import net.cumba.corej.core.expr.eval.ListVector;
 import net.cumba.corej.core.expr.eval.Parameter;
 import net.cumba.corej.core.expr.eval.Primitives;
 import net.cumba.corej.core.expr.eval.TemporalPredicates;
@@ -171,6 +172,13 @@ public final class BuiltinFunctions implements FunctionProvider
         EvalFunction count = (run, args) ->
         {
             Vector x = args.get(0);
+            if (x instanceof ListVector list)
+            {
+                // E9 (PLAN-elementwise-list-functions §3.8): a ListVector — values([X, Y]), a
+                // lifted upper(values(…)) — is K members on every row (a missing member is a
+                // member), so its cardinality is answered once, without materialising a row's list
+                return ConstVector.of((long) list.size());
+            }
             return new ComputedVector(run.rowCount(), DataValueType.LONG, row ->
             {
                 if (x.isMissing(row))
