@@ -2368,9 +2368,12 @@ public final class StageAChecker
         }
     }
 
-    /** The slots that splice a list of names, for the two non-splicing refusals below. */
-    private static final String SPLICING_READERS = "record_count's group=, is_(not_)unique_set's"
-            + " members and values' columns";
+    /**
+     * The slots that splice a list of names, for the two non-splicing refusals below — the roster
+     * is {@code GroupSplice.SPLICE_SLOTS} (W1a BS2b: every {@code list<column-reference>} slot
+     * whose members are names).
+     */
+    private static final String SPLICING_READERS = net.cumba.corej.core.exec.GroupSplice.SPLICING_READERS;
 
     /**
      * G3: a {@code list<column-reference>} parameter given a list literal is typed element by
@@ -2424,8 +2427,7 @@ public final class StageAChecker
                             + " at element " + position + spelled
                             + (splice
                                     ? " — a spliced list of names (a $ binding or a dataset-level"
-                                            + " expression) is read only by record_count's group=,"
-                                            + " is_(not_)unique_set's members and values' columns"
+                                            + " expression) is read only by " + SPLICING_READERS
                                     : "")
                             + at(c));
         }
@@ -2434,27 +2436,17 @@ public final class StageAChecker
 
     /**
      * Whether the reader behind {@code (call, parameter)} splices a {@code $} binding holding a
-     * list of column names at evaluation — {@code record_count}'s {@code group=}
-     * ({@code RecordCount.spec}: {@code allowSplice = true}) and the member list of
-     * {@code is_unique_set} / {@code is_not_unique_set} ({@code ExprCompiler.compileUniqueSet}),
-     * both through the one {@code GroupSplice}. {@code GroupedAggregate} ({@code max},
-     * {@code max_date}, {@code min_date}), {@code ReadValue}, {@code Distinct} and the
-     * {@code keys=} readers pass {@code allowSplice = false}, so a splice there stays a finding.
+     * list of column names at evaluation — the one roster {@code GroupSplice.SPLICE_SLOTS} (W1a
+     * BS2b, {@code PLAN-binding-substitutability} C6 / Q2: every {@code list<column-reference>}
+     * slot whose members are names — the {@code group=} of {@code record_count}, {@code max},
+     * {@code max_date}, {@code min_date}, {@code read_value} and {@code distinct}, the member list
+     * of {@code is_(not_)unique_set}, the {@code columns} of {@code values}), so a splice at
+     * {@code is_sorted_by}'s {@code by=} (sort-key descriptors) or {@code tuple}'s collector stays
+     * a finding.
      */
     private static boolean splices(Expr.Call c, Parameter param)
     {
-        if (net.cumba.corej.core.exec.RecordCount.NAME.equals(c.name()))
-        {
-            return net.cumba.corej.core.exec.GroupedAggregate.GROUP_PARAMETER.equals(param.name());
-        }
-        if (net.cumba.corej.core.exec.GroupSplice.VALUES_CALL.equals(c.name()))
-        {
-            // the third splicing reader (PLAN-elementwise-list-functions §3.2, runbook W1a E1):
-            // values' columns list — ExprCompiler.valuesPlan splices through the same GroupSplice
-            return net.cumba.corej.core.exec.GroupSplice.VALUES_PARAMETER.equals(param.name());
-        }
-        return ("is_unique_set".equals(c.name()) || "is_not_unique_set".equals(c.name()))
-                && "members".equals(param.name());
+        return net.cumba.corej.core.exec.GroupSplice.splices(c.name(), param.name());
     }
 
 

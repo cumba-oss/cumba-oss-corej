@@ -572,7 +572,9 @@ class GroupedAggregateFunctionsTest
         expectError("max(AVAL)", "requires argument 'group'");
         expectError("max(AVAL, group=[])", "at least one column");
         expectError("max(AVAL, group=[\\\"USUBJID\\\"])", "a quoted name is a string");
-        expectError("max(AVAL, group=[$x])", "plain column reference");
+        // W1a BS2b (C6): a `$` member of group= splices (BindingSubstitutabilityTest) — an
+        // undeclared one is the binding guard's load error, never a silent read
+        expectError("max(AVAL, group=[$x])", "which no binding defines");
         // W3c (N5 lifted per MQ8): without domain= a qualified name is a column of the one
         // evaluation table; W3d (D-SRC extended to the group operators, owner 2026-10-05): its
         // qualifier must name an ordinary inner keyed entry of the rule — none here, a load

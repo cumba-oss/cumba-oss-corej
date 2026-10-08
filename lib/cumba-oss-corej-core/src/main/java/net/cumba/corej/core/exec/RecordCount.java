@@ -224,8 +224,9 @@ public final class RecordCount
         Expr filter = GroupedAggregate.readFilter(NAME,
                 GroupedAggregate.slot(bound, params, GroupedAggregate.FILTER_PARAMETER), dataset);
         filter = filter == null ? null : GroupedAggregate.stripQualifier(filter, dataset);
-        List<GroupSplice.Member> members = GroupedAggregate.readSpliceGroup(NAME,
-                GroupedAggregate.slot(bound, params, GroupedAggregate.GROUP_PARAMETER), dataset);
+        List<GroupSplice.Member> members = GroupedAggregate.readGroup(NAME,
+                GroupedAggregate.slot(bound, params, GroupedAggregate.GROUP_PARAMETER), dataset,
+                false);
         // The load-time checks below read the authored plain names; a spliced member meets the
         // same qualified-name and regex gates at evaluation (GroupSplice, countPerGroup).
         List<String> group = GroupSplice.names(members);
@@ -286,13 +287,12 @@ public final class RecordCount
     private static Vector evaluate(Spec spec, EvalRun run)
     {
         EvaluationContext ctx = run.ctx();
-        List<String> names = GroupedAggregate.resolvePrefixes(
-                spec.spliced() ? splice(spec.members(), ctx, spec.dataset() != null) : spec.group(),
-                ctx);
+        List<String> names = GroupedAggregate.groupNames(NAME, spec.members(), ctx,
+                spec.dataset() != null);
         // D-W6-8: a spliced call keys its memo on the expanded names too — the derived contexts of
         // one execution share the memo, and their variables maps may resolve the $-list
         // differently.
-        String memoKey = spec.spliced() ? spec.canonical() + " group=" + names : spec.canonical();
+        String memoKey = GroupedAggregate.memoKey(spec.canonical(), spec.members(), names);
         if (names.isEmpty())
         {
             Object memo = ctx.getAggregateMemo().computeIfAbsent(
@@ -302,34 +302,6 @@ public final class RecordCount
         }
         return GroupedAggregate.broadcast(run, NAME, memoKey, names, spec.dataset() != null,
                 () -> countPerGroup(ctx, spec, names), _ -> ZERO);
-    }
-
-
-    /**
-     * The splice: every {@code $} member replaced by the column names its binding holds, every
-     * computed member by the names its value holds (W1a BS2) — {@link GroupSplice}, the one
-     * implementation shared with {@code is_(not_)unique_set}'s members (QNU N15 / N29).
-     *
-     * @param foreign
-     *            whether the call names {@code domain=} — a spliced {@code --} name would then
-     *            resolve against the evaluated dataset's prefix and be looked up in the OTHER
-     *            table, silently partitioning nothing (combined review of runbook W2–W8, W5/W6 L6),
-     *            so it ERRORs the rule as the reader refuses an authored one at load
-     * @throws GroupSplice.GroupSpliceException
-     *             for a {@code $} member that does not hold a list of names, that splices a
-     *             {@code --} name under {@code domain=}, or that splices a qualified name — the
-     *             rule ERRORs (D-W6-7) on {@code RuleRunner}'s sentinel channel
-     */
-    private static List<String> splice(List<GroupSplice.Member> group, EvaluationContext ctx,
-            boolean foreign)
-    {
-        // Under domain= a qualified member (C2, PLAN-rprfdy-offset-tp-join) is judged at load —
-        // D-DOMAIN, D-SRC, D-REGEX — and a spliced one never reaches those gates, so it would key
-        // the record side through a join nobody checked (review round 1, lane 2 SPECULATIVE).
-        // Without domain= it is a column of the one evaluation table and splices through (W3c).
-        return GroupSplice.splice(NAME, "group= member", group, ctx, foreign,
-                "a qualified group= member is judged at load, so author it in the group= list"
-                        + " itself");
     }
 
 

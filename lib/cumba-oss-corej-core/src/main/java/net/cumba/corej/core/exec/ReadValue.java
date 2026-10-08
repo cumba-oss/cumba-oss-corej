@@ -103,14 +103,33 @@ public final class ReadValue
      *            the boolean filter over {@code D}'s own columns, or {@code null} for every row
      * @param mode
      *            the row-selection policy
+     * @param members
+     *            the {@code group=} members (W5): plain names, and the {@code $} or computed
+     *            members spliced at evaluation ({@link GroupSplice.Member}, W1a BS2b); empty for
+     *            the ungrouped read
+     * @param policy
+     *            the missing-key policy
+     * @param canonical
+     *            the canonical call text (the memo key)
      */
     public record Spec(String column, String dataset, @Nullable Expr filter, Mode mode,
-            List<String> group, GroupKeyPolicy policy, String canonical)
+            List<GroupSplice.Member> members, GroupKeyPolicy policy, String canonical)
     {
 
         public Spec
         {
-            group = List.copyOf(group);
+            members = List.copyOf(members);
+        }
+
+
+        /**
+         * The plain {@code group=} names as authored; a spliced member is resolved at evaluation.
+         *
+         * @return the {@link GroupSplice.Name} members' names
+         */
+        public List<String> group()
+        {
+            return GroupSplice.names(members);
         }
 
 
@@ -160,14 +179,14 @@ public final class ReadValue
          */
         public Vector evaluate(EvalRun run, Expr.@Nullable Call site)
         {
-            if (!group.isEmpty())
+            if (!members.isEmpty())
             {
                 // W5 (PLAN-grouped-aggregate-functions D-W5-9, owner D14): the per-group read —
                 // the mode's selection within each group of D, broadcast to the primary by key
                 // (GroupedAggregate); a primary row with no group answers X's type default
                 // (D13's no-match answer), never an error.
                 return GroupedAggregate.broadcast(run, NAME,
-                        new Expr.Ref(column, OperandKind.COLUMN), dataset, filter, group, policy,
+                        new Expr.Ref(column, OperandKind.COLUMN), dataset, filter, members, policy,
                         canonical, this::selectWithin, DataValueSupport::defaultForType, site);
             }
             EvaluationContext ctx = run.ctx();
@@ -386,14 +405,15 @@ public final class ReadValue
         }
         // W5: group= is the grouped aggregates' reader (bare columns of D, at least one when
         // given); keep_missings= from the same reader.
-        List<String> group = GroupedAggregate.readGroup(NAME, kwargs.get("group"), dataset, false);
+        List<GroupSplice.Member> members = GroupedAggregate.readGroup(NAME, kwargs.get("group"),
+                dataset, false);
         GroupKeyPolicy policy = GroupedAggregate.readPolicy(NAME, kwargs.get("keep_missings"));
-        if (group.isEmpty() && kwargs.containsKey("keep_missings"))
+        if (members.isEmpty() && kwargs.containsKey("keep_missings"))
         {
             throw new ExpressionException("`keep_missings` on " + NAME
                     + " requires a non-empty `group`; with no grouping key it would have no effect");
         }
-        return new Spec(column, dataset, filter, mode, group, policy,
+        return new Spec(column, dataset, filter, mode, members, policy,
                 net.cumba.corej.core.expr.ExpressionPrinter.print(c));
     }
 

@@ -20,8 +20,8 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * It is legal <b>only</b> where D1 names a read of column names (coordinator decision 9,
  * 2026-10-08): as the names in a splice slot — {@code record_count}'s {@code group=}, the members
- * of {@code is_(not_)unique_set}, {@code values}' columns ({@link GroupSplice#spliceSlot}) — and so
- * as the per-row values inside {@code values($keys)}. Anywhere else — a value position
+ * of {@code is_(not_)unique_set}, {@code values}' columns ({@link GroupSplice#spliceSlots}) — and
+ * so as the per-row values inside {@code values($keys)}. Anywhere else — a value position
  * ({@code X in $keys}, a comparison, a function's value argument, a binding of the binding),
  * {@code Output_Variables} — it is a load error carrying {@link #hint}: refusing keeps the
  * name/value distinction the rulings protect, the form is new (0 corpus carriers), and widening
@@ -175,10 +175,9 @@ public final class NameListBinding
         }
         case Expr.Call call ->
         {
-            GroupSplice.Slot slot = GroupSplice.spliceSlot(call);
             Set<Expr> spliced = java.util.Collections
                     .newSetFromMap(new java.util.IdentityHashMap<>());
-            if (slot != null)
+            for (GroupSplice.Slot slot : GroupSplice.spliceSlots(call))
             {
                 spliced.addAll(slot.operands());
             }

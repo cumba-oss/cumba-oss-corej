@@ -177,9 +177,12 @@ class NameListBindingTest
         assertHint("a binding of the binding",
                 loadError("not empty($b)", "$keys", "[USUBJID, AESEQ]", "$b", "$keys"));
         // a name slot that does not splice refuses it as it refuses a string list of names (stage
-        // A's wording is pinned in StageACheckerTest; the compile seam's may surface first)
-        String grouped = loadError("max(AESEQ, group=$keys) > 0", keys);
+        // A's wording is pinned in StageACheckerTest; the compile seam's may surface first) —
+        // since W1a BS2b every group= splices, so the one left is is_sorted_by's by= (sort-key
+        // descriptors)
+        String grouped = loadError("not is_sorted_by(AESEQ, by=$keys)", keys);
         assertTrue(grouped.contains("$keys") && !"null".equals(grouped), grouped);
+        assertEquals("null", loadError("max(AESEQ, group=$keys) > 0", keys));
     }
 
 

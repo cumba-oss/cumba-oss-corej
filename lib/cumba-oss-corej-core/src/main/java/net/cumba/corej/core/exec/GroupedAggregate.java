@@ -204,8 +204,9 @@ public final class GroupedAggregate
      *            the {@code domain=} dataset, or {@code null} for the primary
      * @param filter
      *            the boolean filter over the target table's own columns, or {@code null}
-     * @param group
-     *            the group column names (non-empty)
+     * @param members
+     *            the {@code group=} members (non-empty): plain names, and the {@code $} or computed
+     *            members spliced at evaluation ({@link GroupSplice.Member}, W1a BS2b)
      * @param policy
      *            the missing-key policy
      * @param missingIsIndeterminate
@@ -214,13 +215,25 @@ public final class GroupedAggregate
      *            the canonical call text (the memo key)
      */
     public record Spec(String function, Expr target, @Nullable String dataset,
-            @Nullable Expr filter, List<String> group, GroupKeyPolicy policy,
+            @Nullable Expr filter, List<GroupSplice.Member> members, GroupKeyPolicy policy,
             boolean missingIsIndeterminate, String canonical)
     {
 
         public Spec
         {
-            group = List.copyOf(group);
+            members = List.copyOf(members);
+        }
+
+
+        /**
+         * The plain {@code group=} names as authored — what the load-time checks read; a spliced
+         * member is resolved at evaluation.
+         *
+         * @return the {@link GroupSplice.Name} members' names
+         */
+        public List<String> group()
+        {
+            return GroupSplice.names(members);
         }
 
 
@@ -263,7 +276,7 @@ public final class GroupedAggregate
             };
             // Only max is column-typed (its result is its target column's type); max_date /
             // min_date answer a date, so an absent column keeps their no-group missing.
-            return broadcast(run, function, target, dataset, filter, group, policy, canonical,
+            return broadcast(run, function, target, dataset, filter, members, policy, canonical,
                     aggregator, _ -> ScalarSemantics.computedMissing(),
                     MAX.equals(function) ? site : null);
         }
@@ -301,11 +314,12 @@ public final class GroupedAggregate
         Expr target = stripQualifier(readTarget(fn, targetExpr, dataset), dataset);
         Expr filter = readFilter(fn, slot(bound, params, FILTER_PARAMETER), dataset);
         filter = filter == null ? null : stripQualifier(filter, dataset);
-        List<String> group = readGroup(fn, slot(bound, params, GROUP_PARAMETER), dataset, true);
+        List<GroupSplice.Member> members = readGroup(fn, slot(bound, params, GROUP_PARAMETER),
+                dataset, true);
         GroupKeyPolicy policy = readPolicy(fn, slot(bound, params, KEEP_MISSINGS_PARAMETER));
         boolean indeterminate = readMissingValues(fn,
                 slot(bound, params, MISSING_VALUES_PARAMETER));
-        return new Spec(fn, target, dataset, filter, group, policy, indeterminate,
+        return new Spec(fn, target, dataset, filter, members, policy, indeterminate,
                 ExpressionPrinter.print(c));
     }
 
@@ -629,14 +643,33 @@ public final class GroupedAggregate
 
 
     /**
-     * {@code group=[…]} — the group column names of the target table; a single reference is a
-     * one-column key. Required and non-empty when {@code required} (D-W5-1: the three extremes),
-     * optional for {@code read_value} (an empty result means "ungrouped"). No {@code $} member and
-     * no computed member: the readers behind this overload do not splice ({@code GroupedAggregate},
-     * {@code ReadValue}, {@code Distinct} — {@code PLAN-binding-substitutability} C6 is open).
+     * {@code group=[…]} — the group members of the target table; a single reference is a one-column
+     * key. Required and non-empty when {@code required} (D-W5-1: the three extremes), optional for
+     * {@code read_value}, {@code distinct} and {@code record_count} (an empty result means
+     * "ungrouped"). Every reader behind it <b>splices</b> (runbook W6 for {@link RecordCount}; W1a
+     * BS2b — {@code PLAN-binding-substitutability} C6, ruled Q2 — for {@code max} /
+     * {@code max_date} / {@code min_date}, {@code read_value} and {@code distinct}): a member that
+     * is a {@code $} reference or a computed expression ({@link GroupSplice#spliced}) is kept as a
+     * {@link GroupSplice.Member} and spliced at evaluation into the column names it holds
+     * ({@code group=[USUBJID, --TESTCD, $TIMING_VARIABLES]}, the retired executor's
+     * {@code expandGroupRefs}; since W1a BS2 — C4 / C5 — the expression such a binding holds,
+     * written in place, and the bare {@code group=$names} / {@code group=<expression>} as the
+     * one-member list); every other member is a plain name, read strictly ({@link #columnName}).
+     * The level of a spliced member is judged at load, for both spellings (stage A's G3 arm, the
+     * loader's {@code ListOperandLevel.spliceRefusals}).
+     *
+     * @param fn
+     *            the function name, for the message
+     * @param group
+     *            the {@code group=} argument, or {@code null} when absent
+     * @param dataset
+     *            the {@code domain=} dataset, or {@code null}
+     * @param required
+     *            whether an absent or empty {@code group=} is the reader's load error
+     * @return the members (empty when absent and not required)
      */
-    static List<String> readGroup(String fn, @Nullable Expr group, @Nullable String dataset,
-            boolean required)
+    static List<GroupSplice.Member> readGroup(String fn, @Nullable Expr group,
+            @Nullable String dataset, boolean required)
     {
         if (group == null)
         {
@@ -645,44 +678,6 @@ public final class GroupedAggregate
                 throw new ExpressionException(fn
                         + " requires group=[…], the columns whose combined value defines a group");
             }
-            return List.of();
-        }
-        List<String> out = new ArrayList<>();
-        for (Expr item : groupItems(fn, group))
-        {
-            out.add(groupMember(fn, item, dataset));
-        }
-        if (out.isEmpty())
-        {
-            throw new ExpressionException(fn + "'s group= must name at least one column");
-        }
-        return List.copyOf(out);
-    }
-
-
-    /**
-     * {@code group=[…]} of a reader that <b>splices</b> (runbook W6, {@link RecordCount}): a member
-     * that is a {@code $} reference or a computed expression ({@link GroupSplice#spliced}) is kept
-     * as a {@link GroupSplice.Member} and spliced at evaluation into the column names it holds
-     * ({@code group=[USUBJID, --TESTCD, $TIMING_VARIABLES]}, the retired executor's
-     * {@code expandGroupRefs}; since W1a BS2 — {@code PLAN-binding-substitutability} C4 / C5 — the
-     * expression such a binding holds, written in place, and the bare {@code group=$names} /
-     * {@code group=<expression>} as the one-member list); every other member is a plain name, read
-     * strictly as {@link #readGroup} reads it.
-     *
-     * @param fn
-     *            the function name, for the message
-     * @param group
-     *            the {@code group=} argument, or {@code null} when absent
-     * @param dataset
-     *            the {@code domain=} dataset, or {@code null}
-     * @return the members (empty when absent)
-     */
-    static List<GroupSplice.Member> readSpliceGroup(String fn, @Nullable Expr group,
-            @Nullable String dataset)
-    {
-        if (group == null)
-        {
             return List.of();
         }
         List<GroupSplice.Member> out = new ArrayList<>();
@@ -702,6 +697,84 @@ public final class GroupedAggregate
             throw new ExpressionException(fn + "'s group= must name at least one column");
         }
         return List.copyOf(out);
+    }
+
+
+    /**
+     * The splice of a {@code group=} at evaluation: every {@code $} member replaced by the column
+     * names its binding holds, every computed member by the names its value holds (W1a BS2 / BS2b)
+     * — {@link GroupSplice}, the one implementation every {@code group=} reader and
+     * {@code is_(not_)unique_set} share (QNU N15 / N29).
+     *
+     * @param fn
+     *            the function name, for the message
+     * @param members
+     *            the members as authored
+     * @param ctx
+     *            the evaluation context
+     * @param foreign
+     *            whether the call names {@code domain=} — a spliced {@code --} name would then
+     *            resolve against the evaluated dataset's prefix and be looked up in the OTHER
+     *            table, silently partitioning nothing (combined review of runbook W2–W8, W5/W6 L6),
+     *            so it ERRORs the rule as the reader refuses an authored one at load; and a spliced
+     *            qualified member (C2, {@code PLAN-rprfdy-offset-tp-join}) is judged at load —
+     *            D-DOMAIN, D-SRC, D-REGEX — which a spliced one never reaches, so it is refused too
+     *            (review round 1, lane 2 SPECULATIVE). Without {@code domain=} it is a column of
+     *            the one evaluation table and splices through (W3c).
+     * @return the spliced names
+     * @throws GroupSplice.GroupSpliceException
+     *             for a member that does not hold a list of names, splices a {@code --} name under
+     *             {@code domain=}, or splices a qualified name under it — the rule ERRORs (D-W6-7)
+     *             on {@code RuleRunner}'s sentinel channel
+     */
+    static List<String> spliceGroup(String fn, List<GroupSplice.Member> members,
+            EvaluationContext ctx, boolean foreign)
+    {
+        return GroupSplice.splice(fn, "group= member", members, ctx, foreign,
+                "a qualified group= member is judged at load, so author it in the group= list"
+                        + " itself");
+    }
+
+
+    /**
+     * The {@code group=} names a call reads for this run: the spliced names when any member splices
+     * ({@link #spliceGroup}), else the authored names; prefixes resolved either way.
+     *
+     * @param fn
+     *            the function name
+     * @param members
+     *            the members as authored
+     * @param ctx
+     *            the evaluation context
+     * @param foreign
+     *            whether the call names {@code domain=}
+     * @return the group column names, prefixes resolved
+     */
+    static List<String> groupNames(String fn, List<GroupSplice.Member> members,
+            EvaluationContext ctx, boolean foreign)
+    {
+        return resolvePrefixes(GroupSplice.splices(members) ? spliceGroup(fn, members, ctx, foreign)
+                : GroupSplice.names(members), ctx);
+    }
+
+
+    /**
+     * The memo key of a grouped call for this run: the canonical call text, plus the spliced names
+     * when any member splices (D-W6-8: the derived contexts of one execution share the memo, and
+     * their variables maps may resolve a {@code $} list differently).
+     *
+     * @param canonical
+     *            the canonical call text
+     * @param members
+     *            the members as authored
+     * @param groupNames
+     *            the names of this run ({@link #groupNames})
+     * @return the memo key
+     */
+    static String memoKey(String canonical, List<GroupSplice.Member> members,
+            List<String> groupNames)
+    {
+        return GroupSplice.splices(members) ? canonical + " group=" + groupNames : canonical;
     }
 
 
@@ -1144,12 +1217,12 @@ public final class GroupedAggregate
      *            the {@code domain=} dataset, or {@code null} for the primary
      * @param filter
      *            the filter, or {@code null}
-     * @param group
-     *            the group column names (non-empty)
+     * @param members
+     *            the {@code group=} members (non-empty), spliced for this run ({@link #groupNames})
      * @param policy
      *            the missing-key policy
      * @param canonical
-     *            the canonical call text (the memo key)
+     *            the canonical call text (the memo key, plus the spliced names — {@link #memoKey})
      * @param aggregator
      *            the block aggregator
      * @param noGroup
@@ -1160,14 +1233,17 @@ public final class GroupedAggregate
      * @return the broadcast vector
      */
     static Vector broadcast(EvalRun run, String fn, Expr target, @Nullable String dataset,
-            @Nullable Expr filter, List<String> group, GroupKeyPolicy policy, String canonical,
-            Aggregator aggregator, java.util.function.Function<DataValueType, IDataValue> noGroup,
+            @Nullable Expr filter, List<GroupSplice.Member> members, GroupKeyPolicy policy,
+            String canonical, Aggregator aggregator,
+            java.util.function.Function<DataValueType, IDataValue> noGroup,
             Expr.@Nullable Call site)
     {
         EvaluationContext ctx = run.ctx();
-        List<String> groupNames = resolvePrefixes(group, ctx);
-        return broadcast(run, fn, canonical, groupNames, dataset != null, () -> groupTarget(ctx, fn,
-                target, dataset, filter, groupNames, policy, aggregator, noGroup), noGroup, site);
+        List<String> groupNames = groupNames(fn, members, ctx, dataset != null);
+        return broadcast(run, fn, memoKey(canonical, members, groupNames), groupNames,
+                dataset != null, () -> groupTarget(ctx, fn, target, dataset, filter, groupNames,
+                        policy, aggregator, noGroup),
+                noGroup, site);
     }
 
 

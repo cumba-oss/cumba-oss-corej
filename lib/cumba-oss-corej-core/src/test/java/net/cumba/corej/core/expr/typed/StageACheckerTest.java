@@ -1617,9 +1617,9 @@ class StageACheckerTest
     void g3ASplicedListBindingIsAcceptedOnlyWhereTheReaderSplices()
     {
         // G3: a $ binding holding a LIST OF NAMES spliced into a column-reference list — accepted
-        // exactly where the reader splices (RecordCount: allowSplice = true for group=, and
-        // is_(not_)unique_set's members through GroupSplice); every other element is still
-        // typed, and every other reader (GroupedAggregate, ReadValue, Distinct, keys=) refuses.
+        // exactly where the reader splices (GroupSplice.SPLICE_SLOTS: since W1a BS2b every group=,
+        // is_(not_)unique_set's members, values' columns); every other element is still typed,
+        // and a reader whose members are not names (is_sorted_by's by= descriptors) refuses.
         Rule rule = withBindings("$nk", "natural_key_variables()", "$fv", "find_vars(\"J.G\")",
                 "$cl", "colref([\"A\", \"B\"])", "$scalar", "upper(AETERM)", "$one", "\"S\"",
                 "$num", "len(AETERM)");
@@ -1650,16 +1650,29 @@ class StageACheckerTest
                 "is_unique_set([USUBJID, upper(\"aeterm\")])",
                 "record_count(group=[upper(\"aeterm\")]) > 1", "is_unique_set($nk)",
                 "is_unique_set(natural_key_variables())",
-                "record_count(group=natural_key_variables()) > 1"))
+                "record_count(group=natural_key_variables()) > 1",
+                // W1a BS2b (C6, ruled Q2): the group= of the grouped readers splices like
+                // record_count's — $ member, computed member, bare operand, a string as one name
+                "empty(max(AESEQ, group=[USUBJID, $nk]))", "empty(max(AESEQ, group=$nk))",
+                "empty(max_date(AESTDTC, group=[USUBJID, $nk]))",
+                "empty(min_date(AESTDTC, group=natural_key_variables()))",
+                "empty(read_value(TSVAL, domain=TS, mode=\"FIRST\", group=[$nk]))",
+                "AETERM in distinct(AETERM, group=[USUBJID, $nk])",
+                "empty(max(AESEQ, group=[USUBJID, $one]))",
+                "empty(max(AESEQ, group=[USUBJID, natural_key_variables()]))",
+                "AETERM in distinct(AETERM, group=[USUBJID, natural_key_variables()])"))
         {
             assertEquals(List.of(), check(rule, expression).findings(), expression);
         }
         // negatives
-        for (String expression : List.of("empty(max(AESEQ, group=[USUBJID, $nk]))",
-                "empty(max(AESEQ, group=$nk))", "empty(max_date(AESTDTC, group=[USUBJID, $nk]))",
-                "empty(read_value(TSVAL, domain=TS, mode=\"FIRST\", group=[$nk]))",
-                "AETERM in distinct(AETERM, group=[USUBJID, $nk])", "is_unique_set([\"USUBJID\"])",
-                "is_unique_set([USUBJID, $num])", "empty(max(AESEQ, group=[USUBJID, $one]))",
+        for (String expression : List.of(
+                // BS2b: is_sorted_by's by= takes asc()/desc() descriptors, never a splice
+                "not is_sorted_by(AESEQ, by=[asc(USUBJID), $nk])",
+                "not is_sorted_by(AESEQ, by=[asc(USUBJID), natural_key_variables()])",
+                "is_unique_set([\"USUBJID\"])", "is_unique_set([USUBJID, $num])",
+                "empty(max(AESEQ, group=[USUBJID, $num]))",
+                "empty(max(AESEQ, group=[USUBJID, $scalar]))",
+                "AETERM in distinct(AETERM, group=[USUBJID, upper(AETERM)])",
                 // review r1 L7: a PER-ROW binding can never be spliced (GroupSplice ERRORs on the
                 // hand-over Vector) — stage A's derived level is certain for these, so they are
                 // refused at load: colref(list) reads per row, upper(AETERM) is per row
@@ -1675,16 +1688,18 @@ class StageACheckerTest
                 "record_count(group=[USUBJID, upper(AETERM)]) > 1",
                 "record_count(group=upper(AETERM)) > 1", "is_unique_set([USUBJID, len(AETERM)])",
                 "record_count(group=[USUBJID, colref([\"A\", \"B\"])]) > 1",
-                "empty(max(AESEQ, group=[USUBJID, natural_key_variables()]))",
-                "AETERM in distinct(AETERM, group=[USUBJID, natural_key_variables()])",
                 "is_unique_relationship(AETERM, keys=[USUBJID, natural_key_variables()])"))
         {
             assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(check(rule, expression)),
                     expression);
         }
-        String message = check(rule, "empty(max(AESEQ, group=[USUBJID, $nk]))").findings().get(0)
-                .message();
-        assertTrue(message.contains("'group' of 'max'") && message.contains("$nk"), message);
+        String message = check(rule, "not is_sorted_by(AESEQ, by=[asc(USUBJID), $nk])").findings()
+                .get(0).message();
+        assertTrue(message.contains("'by' of 'is_sorted_by'") && message.contains("$nk"), message);
+        String groupPerRow = check(rule, "empty(max(AESEQ, group=[USUBJID, $scalar]))").findings()
+                .get(0).message();
+        assertTrue(groupPerRow.contains("per-row") && groupPerRow.contains("'group' of 'max'"),
+                groupPerRow);
         String perRow = check(rule, "is_unique_set([USUBJID, $cl])").findings().get(0).message();
         assertTrue(perRow.contains("per-row") && perRow.contains("$cl"), perRow);
         String inlinePerRow = check(rule, "is_unique_set([USUBJID, upper(AETERM)])").findings()
@@ -1970,10 +1985,12 @@ class StageACheckerTest
                     && message.contains("bind the whole list"), message);
         }
         // the splice slots are the only legal homes, and a non-splicing column-reference list
-        // files its own finding exactly once (no double report)
+        // (since W1a BS2b: is_sorted_by's by= of sort-key descriptors) files its own finding
+        // exactly once (no double report)
         assertEquals(List.of(), check(rule, "is_unique_set([USUBJID, $nk])").findings());
         assertEquals(List.of(), check(rule, "record_count(group=[USUBJID, $nk]) > 1").findings());
-        StageAReport once = check(rule, "empty(max(AESEQ, group=[USUBJID, $nk]))");
+        assertEquals(List.of(), check(rule, "empty(max(AESEQ, group=[USUBJID, $nk]))").findings());
+        StageAReport once = check(rule, "not is_sorted_by(AESEQ, by=[asc(USUBJID), $nk])");
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(once));
         assertEquals(1, once.findings().size(), once.findings().toString());
         // the binding alone as the right operand is the fix
@@ -2358,11 +2375,15 @@ class StageACheckerTest
         assertEquals(List.of(), kinds(check(rule, "is_unique_set([USUBJID, $keys])")));
         assertEquals(List.of(), kinds(check(rule, "record_count(group=$keys) > 1")));
         assertEquals(List.of(), kinds(check(rule, "\"x\" in values($keys)")));
-        StageAReport grouped = check(rule, "max(AESEQ, group=$keys) > 0");
+        // W1a BS2b: every group= splices; the non-splicing name slot left is is_sorted_by's
+        // by= (sort-key descriptors)
+        assertEquals(List.of(), kinds(check(rule, "max(AESEQ, group=$keys) > 0")));
+        assertEquals(List.of(), kinds(check(rule, "max(AESEQ, group=[USUBJID, $keys]) > 0")));
+        StageAReport grouped = check(rule, "not is_sorted_by(AESEQ, by=$keys)");
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(grouped));
         assertTrue(grouped.findings().get(0).message().contains("splice"),
                 grouped.findings().toString());
-        StageAReport member = check(rule, "max(AESEQ, group=[USUBJID, $keys]) > 0");
+        StageAReport member = check(rule, "not is_sorted_by(AESEQ, by=[asc(USUBJID), $keys])");
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(member));
         StageAReport membership = check(rule, "AETERM in $keys");
         assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(membership));

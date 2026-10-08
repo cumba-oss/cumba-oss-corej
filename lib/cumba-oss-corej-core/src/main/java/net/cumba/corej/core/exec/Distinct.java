@@ -119,22 +119,35 @@ public final class Distinct
      *            the {@code domain=} dataset, or {@code null} for the evaluated dataset
      * @param filter
      *            the boolean filter over the target table's own columns, or {@code null}
-     * @param group
-     *            the group column names; empty for an ungrouped call
+     * @param members
+     *            the {@code group=} members: plain names, and the {@code $} or computed members
+     *            spliced at evaluation ({@link GroupSplice.Member}, W1a BS2b); empty for an
+     *            ungrouped call
      * @param policy
      *            the missing-key policy
      * @param canonical
      *            the canonical call text (the memo key)
      */
     public record Spec(@Nullable Expr target, @Nullable List<String> tupleColumns,
-            @Nullable String dataset, @Nullable Expr filter, List<String> group,
+            @Nullable String dataset, @Nullable Expr filter, List<GroupSplice.Member> members,
             GroupKeyPolicy policy, String canonical)
     {
 
         public Spec
         {
-            group = List.copyOf(group);
+            members = List.copyOf(members);
             tupleColumns = tupleColumns == null ? null : List.copyOf(tupleColumns);
+        }
+
+
+        /**
+         * The plain {@code group=} names as authored; a spliced member is resolved at evaluation.
+         *
+         * @return the {@link GroupSplice.Name} members' names
+         */
+        public List<String> group()
+        {
+            return GroupSplice.names(members);
         }
 
 
@@ -169,10 +182,11 @@ public final class Distinct
      * literal target (R1); a list target holding anything but column references; a {@code group=}
      * beside a list target (the operation ignored it silently — P-Q8); {@code keep_missings}
      * without {@code group=}; a {@code --} reference under {@code domain=}; a {@code $} reference
-     * anywhere, and under {@code domain=D} a dotted reference whose qualifier is not {@code D}
-     * (W3c: without {@code domain=} a dotted name is a merged column of the one evaluation table,
-     * under {@code domain=D} a {@code D.X} is D's own {@code X}); the retired {@code filter(K="v")}
-     * call form; an unknown keyword (D19a).
+     * anywhere but as a spliced {@code group=} member (W1a BS2b,
+     * {@code GroupedAggregate.readGroup}), and under {@code domain=D} a dotted reference whose
+     * qualifier is not {@code D} (W3c: without {@code domain=} a dotted name is a merged column of
+     * the one evaluation table, under {@code domain=D} a {@code D.X} is D's own {@code X}); the
+     * retired {@code filter(K="v")} call form; an unknown keyword (D19a).
      *
      * @param c
      *            the authored call
@@ -221,10 +235,10 @@ public final class Distinct
         Expr filter = GroupedAggregate.readFilter(NAME,
                 GroupedAggregate.slot(bound, params, GroupedAggregate.FILTER_PARAMETER), dataset);
         filter = filter == null ? null : GroupedAggregate.stripQualifier(filter, dataset);
-        List<String> group = GroupedAggregate.readGroup(NAME,
+        List<GroupSplice.Member> members = GroupedAggregate.readGroup(NAME,
                 GroupedAggregate.slot(bound, params, GroupedAggregate.GROUP_PARAMETER), dataset,
                 false);
-        if (tupleColumns != null && !group.isEmpty())
+        if (tupleColumns != null && !members.isEmpty())
         {
             throw new ExpressionException(NAME + "([…]) answers the distinct row tuples of the"
                     + " whole " + (foreign ? "domain" : "dataset")
@@ -233,14 +247,14 @@ public final class Distinct
         }
         Expr keepMissings = GroupedAggregate.slot(bound, params,
                 GroupedAggregate.KEEP_MISSINGS_PARAMETER);
-        if (keepMissings != null && group.isEmpty())
+        if (keepMissings != null && members.isEmpty())
         {
             throw new ExpressionException("`" + GroupedAggregate.KEEP_MISSINGS_PARAMETER + "` on `"
                     + NAME + "` requires a non-empty `" + GroupedAggregate.GROUP_PARAMETER
                     + "=`; with no grouping key it would have no effect");
         }
         GroupKeyPolicy policy = GroupedAggregate.readPolicy(NAME, keepMissings);
-        return new Spec(target, tupleColumns, dataset, filter, group, policy,
+        return new Spec(target, tupleColumns, dataset, filter, members, policy,
                 ExpressionPrinter.print(c));
     }
 
@@ -279,17 +293,21 @@ public final class Distinct
     {
         EvaluationContext ctx = run.ctx();
         IDataTable primary = ctx.getTable();
-        if (spec.isTuple() || spec.group().isEmpty())
+        if (spec.isTuple() || spec.members().isEmpty())
         {
             Object memo = ctx.getAggregateMemo().computeIfAbsent(
                     DatasetExpressionCache.keyOf(primary, spec.canonical(), ctx.getDomainPrefix()),
                     () -> datasetLevel(ctx, spec));
             return (Vector) java.util.Objects.requireNonNull(memo, "the memo never stores null");
         }
-        List<String> names = GroupedAggregate.resolvePrefixes(spec.group(), ctx);
-        Object memo = ctx.getAggregateMemo().computeIfAbsent(
-                DatasetExpressionCache.keyOf(primary, spec.canonical(), ctx.getDomainPrefix()),
-                () -> perGroup(ctx, spec, names));
+        // W1a BS2b: a spliced group= resolves its names on this context and keys the memo on them
+        // (D-W6-8), as record_count does.
+        List<String> names = GroupedAggregate.groupNames(NAME, spec.members(), ctx,
+                spec.dataset() != null);
+        Object memo = ctx.getAggregateMemo()
+                .computeIfAbsent(DatasetExpressionCache.keyOf(primary,
+                        GroupedAggregate.memoKey(spec.canonical(), spec.members(), names),
+                        ctx.getDomainPrefix()), () -> perGroup(ctx, spec, names));
         @SuppressWarnings("unchecked")
         Map<Object, List<Object>> byKey = (Map<Object, List<Object>>) java.util.Objects
                 .requireNonNull(memo, "the memo never stores null");

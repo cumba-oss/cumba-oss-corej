@@ -17,9 +17,14 @@ import org.jspecify.annotations.Nullable;
  * The splice of a column-name list — ONE implementation for {@code record_count}'s {@code group=}
  * (D-W6-7, the retired executor's {@code expandGroupRefs}), the member list of
  * {@code is_unique_set} / {@code is_not_unique_set} ({@code PLAN-qualified-name-uniformity-review}
- * N15 / N29) and, since runbook W1a E1, the {@code columns} list of {@code values}
- * ({@code ExprCompiler.valuesPlan} — the third caller, {@code PLAN-elementwise-list-functions}
- * §3.2).
+ * N15 / N29), since runbook W1a E1 the {@code columns} list of {@code values}
+ * ({@code ExprCompiler.valuesPlan}, {@code PLAN-elementwise-list-functions} §3.2) and, since W1a
+ * BS2b ({@code PLAN-binding-substitutability} C6, ruled Q2: <i>"every list&lt;column-reference&gt;
+ * slot splices"</i>), the {@code group=} of the grouped readers {@code max} / {@code max_date} /
+ * {@code min_date} ({@code GroupedAggregate}), {@code read_value} and {@code distinct}. The roster
+ * is {@link #SPLICE_SLOTS}, read by every seam that has to agree with the readers: stage A's G3 arm
+ * ({@code StageAChecker.splices}), the loader's level seam ({@code ListOperandLevel.spliceRefusals}
+ * through {@link #spliceSlots}) and the bind-time name inlining ({@link #spliceLists}).
  *
  * <p>
  * A member is a {@link Member}: a plain {@link Name} passes through; a {@link Bound} {@code $}
@@ -64,10 +69,6 @@ public final class GroupSplice
     {
     }
 
-    /** The uniqueness-set operators whose argument 0 is a splice list (N15). */
-    private static final java.util.Set<String> UNIQUE_SET_CALLS = java.util.Set.of("is_unique_set",
-            "is_not_unique_set");
-
     /** The parameter name of the uniqueness operators' splice list, as the registry declares it. */
     public static final String MEMBERS_PARAMETER = "members";
 
@@ -82,6 +83,59 @@ public final class GroupSplice
 
     /** The parameter name of {@code values}' splice list, as the registry declares it. */
     public static final String VALUES_PARAMETER = "columns";
+
+    /**
+     * The splice slots — function name to the names of its parameters whose list of column names
+     * splices a {@code $} binding or a computed member (W1a BS2b, C6 / Q2: every
+     * {@code list<column-reference>} parameter whose members are plain names). Not in the roster,
+     * on purpose: {@code is_sorted_by}'s {@code by=}, whose members are {@code asc(X)} /
+     * {@code desc(X)} sort-key descriptors rather than names, and {@code tuple}'s trailing
+     * collector, whose elements are per-row column operands rather than a list.
+     */
+    private static final java.util.Map<String, List<String>> SPLICE_SLOTS = java.util.Map.ofEntries(
+            java.util.Map.entry("is_unique_set", List.of(MEMBERS_PARAMETER)),
+            java.util.Map.entry("is_not_unique_set", List.of(MEMBERS_PARAMETER)),
+            java.util.Map.entry(RecordCount.NAME, List.of(GroupedAggregate.GROUP_PARAMETER)),
+            java.util.Map.entry(VALUES_CALL, List.of(VALUES_PARAMETER)),
+            java.util.Map.entry(GroupedAggregate.MAX, List.of(GroupedAggregate.GROUP_PARAMETER)),
+            java.util.Map.entry(GroupedAggregate.MAX_DATE,
+                    List.of(GroupedAggregate.GROUP_PARAMETER)),
+            java.util.Map.entry(GroupedAggregate.MIN_DATE,
+                    List.of(GroupedAggregate.GROUP_PARAMETER)),
+            java.util.Map.entry(ReadValue.NAME, List.of(GroupedAggregate.GROUP_PARAMETER)),
+            java.util.Map.entry(Distinct.NAME, List.of(GroupedAggregate.GROUP_PARAMETER)));
+
+    /**
+     * The slots whose list is the call's FIRST positional operand ({@code is_unique_set([…])},
+     * {@code values([…])}); every other slot is a keyword ({@code group=}).
+     */
+    private static final java.util.Set<String> POSITIONAL_SLOT_CALLS = java.util.Set
+            .of("is_unique_set", "is_not_unique_set", VALUES_CALL);
+
+    /**
+     * The readers that splice, as a message names them: every {@code list<column-reference>}
+     * parameter except the two that take written names only.
+     */
+    public static final String SPLICING_READERS = "every list<column-reference> parameter"
+            + " (record_count's, max's, max_date's, min_date's, read_value's and distinct's"
+            + " group=, is_(not_)unique_set's members, values' columns) — not is_sorted_by's by="
+            + " (sort-key descriptors) and not tuple's columns";
+
+    /**
+     * Whether the reader behind {@code (function, parameter)} splices a {@code $} binding or a
+     * computed member holding a list of column names at evaluation ({@link #SPLICE_SLOTS}).
+     *
+     * @param function
+     *            the call name
+     * @param parameter
+     *            the parameter name, as the registry declares it
+     * @return {@code true} for a splice slot
+     */
+    public static boolean splices(String function, String parameter)
+    {
+        List<String> slots = SPLICE_SLOTS.get(function);
+        return slots != null && slots.contains(parameter);
+    }
 
     /**
      * One member of a splice list, as the reader keeps it from load to evaluation.
@@ -212,7 +266,7 @@ public final class GroupSplice
      * {@code f([$keys])}, C5).
      *
      * @param parameter
-     *            the parameter name ({@code members} / {@code group})
+     *            the parameter name ({@code members} / {@code group} / {@code columns})
      * @param operands
      *            the authored operands
      */
@@ -221,56 +275,51 @@ public final class GroupSplice
     }
 
     /**
-     * The splice slot {@code call} carries, or {@code null} for a call that splices nothing: the
-     * member list of {@code is_(not_)unique_set} and the {@code group=} of {@code record_count}.
-     * The loader's level seam asks it ({@code ListOperandLevel.firstRefusal}).
+     * The splice slots {@code call} carries, each with its authored operands — the member list of
+     * {@code is_(not_)unique_set}, the {@code group=} of the grouped readers, the {@code columns}
+     * of {@code values} ({@link #SPLICE_SLOTS}); empty for a call that splices nothing or whose
+     * slots are absent. The loader's level seam asks it ({@code ListOperandLevel.firstRefusal}).
      *
      * @param call
      *            the call
-     * @return the slot, or {@code null}
+     * @return the slots present on the call, in roster order
      */
-    public static @Nullable Slot spliceSlot(Expr.Call call)
+    public static List<Slot> spliceSlots(Expr.Call call)
     {
-        Expr operand;
-        String parameter;
-        if (UNIQUE_SET_CALLS.contains(call.name()) && !call.args().isEmpty())
+        List<String> parameters = SPLICE_SLOTS.get(call.name());
+        if (parameters == null)
         {
-            operand = call.args().get(0);
-            parameter = MEMBERS_PARAMETER;
+            return List.of();
         }
-        else if (RecordCount.NAME.equals(call.name()))
+        List<Slot> out = new ArrayList<>(parameters.size());
+        for (String parameter : parameters)
         {
-            operand = call.kwargs().get(GroupedAggregate.GROUP_PARAMETER);
-            parameter = GroupedAggregate.GROUP_PARAMETER;
+            Expr operand = POSITIONAL_SLOT_CALLS.contains(call.name())
+                    ? (call.args().isEmpty() ? null : call.args().get(0))
+                    : call.kwargs().get(parameter);
+            if (operand == null)
+            {
+                continue;
+            }
+            if (operand instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+            {
+                @SuppressWarnings("unchecked")
+                List<Expr> items = (List<Expr>) lit.value();
+                out.add(new Slot(parameter, items));
+            }
+            else
+            {
+                out.add(new Slot(parameter, List.of(operand)));
+            }
         }
-        else if (VALUES_CALL.equals(call.name()) && !call.args().isEmpty())
-        {
-            operand = call.args().get(0);
-            parameter = VALUES_PARAMETER;
-        }
-        else
-        {
-            return null;
-        }
-        if (operand == null)
-        {
-            return null;
-        }
-        if (operand instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
-        {
-            @SuppressWarnings("unchecked")
-            List<Expr> items = (List<Expr>) lit.value();
-            return new Slot(parameter, items);
-        }
-        return new Slot(parameter, List.of(operand));
+        return out;
     }
 
 
     /**
-     * The splice lists {@code call} carries: the member list of {@code is_(not_)unique_set}, the
-     * {@code group=} list of {@code record_count} and the {@code columns} list of {@code values} —
-     * the lists whose {@code $} members {@link #splice} reads as column NAMES. The bind-time
-     * specialiser asks it ({@code RuleSpecialiser.inlineSplicedNames},
+     * The splice lists {@code call} carries: the list literals at its {@link #SPLICE_SLOTS splice
+     * slots} — the lists whose {@code $} members {@link #splice} reads as column NAMES. The
+     * bind-time specialiser asks it ({@code RuleSpecialiser.inlineSplicedNames},
      * {@code PLAN-string-literal-prefix-rewrite} review MED-1): a {@code $} member whose binding
      * holds a written name is that name written in the list (G1), inlined at the splice site only —
      * never under {@code domain=}.
@@ -281,18 +330,26 @@ public final class GroupSplice
      */
     public static List<Expr> spliceLists(Expr.Call call)
     {
-        Expr list = null;
-        if ((UNIQUE_SET_CALLS.contains(call.name()) || VALUES_CALL.equals(call.name()))
-                && !call.args().isEmpty())
+        List<Expr> out = List.of();
+        for (Slot slot : spliceSlots(call))
         {
-            list = call.args().get(0);
+            Expr list = POSITIONAL_SLOT_CALLS.contains(call.name()) ? call.args().get(0)
+                    : call.kwargs().get(slot.parameter());
+            if (list instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+            {
+                out = out.isEmpty() ? List.of(lit) : concat(out, lit);
+            }
         }
-        else if (RecordCount.NAME.equals(call.name()))
-        {
-            list = call.kwargs().get(GroupedAggregate.GROUP_PARAMETER);
-        }
-        return list instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST ? List.of(lit)
-                : List.of();
+        return out;
+    }
+
+
+    private static List<Expr> concat(List<Expr> lists, Expr more)
+    {
+        List<Expr> out = new ArrayList<>(lists.size() + 1);
+        out.addAll(lists);
+        out.add(more);
+        return List.copyOf(out);
     }
 
 

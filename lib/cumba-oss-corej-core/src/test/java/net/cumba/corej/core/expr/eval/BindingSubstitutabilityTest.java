@@ -226,7 +226,19 @@ class BindingSubstitutabilityTest
             "not is_not_unique_set([USUBJID, ‹arg›])", "record_count(group=[USUBJID, ‹arg›]) > 1",
             "is_unique_set(‹arg›)", "record_count(group=‹arg›) > 1",
             // the third splicing reader (runbook W1a E1): values' columns, list and bare operand
-            "\"S1\" in values([USUBJID, ‹arg›])", "\"S1\" in values(‹arg›)");
+            "\"S1\" in values([USUBJID, ‹arg›])", "\"S1\" in values(‹arg›)",
+            // W1a BS2b (C6, ruled Q2: every list<column-reference> slot splices): the group= of
+            // the grouped readers — max / max_date / min_date, read_value, distinct — list member
+            // and bare operand alike
+            "empty(max(AESEQ, group=[USUBJID, ‹arg›]))", "empty(max(AESEQ, group=‹arg›))",
+            "empty(max_date(AESTDTC, group=[USUBJID, ‹arg›]))",
+            "empty(max_date(AESTDTC, group=‹arg›))",
+            "empty(min_date(AESTDTC, group=[USUBJID, ‹arg›]))",
+            "empty(min_date(AESTDTC, group=‹arg›))",
+            "AETERM in distinct(AETERM, group=[USUBJID, ‹arg›])",
+            "AETERM in distinct(AETERM, group=‹arg›)",
+            "empty(read_value(TSVAL, domain=TS, mode=\"FIRST\", group=[TSPARM, ‹arg›]))",
+            "empty(read_value(TSVAL, domain=TS, mode=\"FIRST\", group=‹arg›))");
 
     @Test
     void aDatasetLevelListOfNamesSplicesBoundAndInlineAlike() throws Exception
@@ -266,22 +278,24 @@ class BindingSubstitutabilityTest
     @Test
     void aPerRowSpliceMemberInACheckLessRuleIsTheLoadersFinding() throws Exception
     {
-        for (String member : List.of("$k", "upper(AETERM)"))
-        {
-            Map<String, Object> rule = new LinkedHashMap<>();
-            rule.put("Core", Map.of("Id", "BS2-CHECKLESS"));
-            rule.put("Bindings",
-                    List.of(Map.of("name", "$k", "expression", "upper(AETERM)"), Map.of("name",
-                            "$v", "expression", "record_count(group=[USUBJID, " + member + "])")));
-            rule.put("Match_Datasets", List.of(Map.of("Name", "AE")));
-            rule.put("Outcome", Map.of("Message", "m", "Output_Variables", List.of("$v")));
-            String json = MAPPER.writeValueAsString(Map.of("rules", Map.of("x", rule)));
-            Rule loaded = RulePackageLoader.loadFromString(json).getRules().get("x");
-            assertNotNull(loaded);
-            String error = String.valueOf(loaded.getLoadError());
-            assertTrue(error.contains("cannot splice the per-row"), member + " → " + error);
-            assertTrue(error.contains("the binding $v"), member + " → " + error);
-        }
+        for (String call : List.of("record_count(group=[USUBJID, ‹m›])",
+                // W1a BS2b: the loader's seam reads the widened roster too
+                "max(AESEQ, group=[USUBJID, ‹m›])", "distinct(AETERM, group=‹m›)"))
+            for (String member : List.of("$k", "upper(AETERM)"))
+            {
+                Map<String, Object> rule = new LinkedHashMap<>();
+                rule.put("Core", Map.of("Id", "BS2-CHECKLESS"));
+                rule.put("Bindings", List.of(Map.of("name", "$k", "expression", "upper(AETERM)"),
+                        Map.of("name", "$v", "expression", call.replace("‹m›", member))));
+                rule.put("Match_Datasets", List.of(Map.of("Name", "AE")));
+                rule.put("Outcome", Map.of("Message", "m", "Output_Variables", List.of("$v")));
+                String json = MAPPER.writeValueAsString(Map.of("rules", Map.of("x", rule)));
+                Rule loaded = RulePackageLoader.loadFromString(json).getRules().get("x");
+                assertNotNull(loaded);
+                String error = String.valueOf(loaded.getLoadError());
+                assertTrue(error.contains("cannot splice the per-row"), member + " → " + error);
+                assertTrue(error.contains("the binding $v"), member + " → " + error);
+            }
     }
 
 
@@ -335,6 +349,65 @@ class BindingSubstitutabilityTest
             for (Map.Entry<String, Integer> e : fired.entrySet())
             {
                 assertEquals(literal, e.getValue(), "the spellings answer alike: " + fired);
+            }
+        }
+    }
+
+
+    /**
+     * W1a BS2b (C6): the spliced {@code group=} of {@code max}, {@code distinct} and
+     * {@code read_value} reads the SAME columns the written names do — bound, inline, and the bare
+     * operand. On UNIQUE every (USUBJID, AETERM) tuple occurs once, so a per-group read keyed by
+     * both answers each row its own cell and nothing fires, while a group keyed by USUBJID alone
+     * (the planted wrong names) fires; on DUP rows 0 / 1 share the tuple and fire alike. Two
+     * families per reader, compared within themselves: a bare {@code USUBJID} beside the splice,
+     * and the splice-only spellings — a Check whose only column names arrive through a splice is a
+     * Dataset-level rule (ONE collapsed finding), the pre-existing property of
+     * {@code record_count}'s splice (lane 4, W2 candidate) that f($keys) and f([$keys]) share.
+     */
+    @Test
+    void aSplicedGroupReadsTheWrittenNamesColumns() throws Exception
+    {
+        IDataTable unique = MockTable.of().name("AE").col("USUBJID", "S1", "S1", "S2")
+                .col("AETERM", "a", "b", "a").col("AESEQ", "1", "2", "3").build();
+        IDataTable dup = MockTable.of().name("AE").col("USUBJID", "S1", "S1", "S2")
+                .col("AETERM", "a", "a", "b").col("AESEQ", "1", "2", "3").build();
+        String names = "minus([\"USUBJID\", \"AETERM\", \"X\"], subtract=[\"X\"])";
+        String term = "minus([\"AETERM\", \"X\"], subtract=[\"X\"])";
+        for (String check : List.of("max(AESEQ, group=‹g›) != AESEQ",
+                "count(distinct(AESEQ, group=‹g›)) > 1",
+                "read_value(AESEQ, domain=AE, mode=\"MAX\", group=‹g›) != AESEQ"))
+        {
+            List<Rule> mixed = List.of(load(check.replace("‹g›", "[USUBJID, AETERM]")),
+                    load(check.replace("‹g›", "[USUBJID, $k]"), "$k", "upper(\"aeterm\")"),
+                    load(check.replace("‹g›", "[USUBJID, upper(\"aeterm\")]")),
+                    load(check.replace("‹g›", "[USUBJID, $t]"), "$t", term),
+                    load(check.replace("‹g›", "[USUBJID, " + term + "]")));
+            List<Rule> spliceOnly = List.of(load(check.replace("‹g›", "$n"), "$n", names),
+                    load(check.replace("‹g›", "[$n]"), "$n", names),
+                    load(check.replace("‹g›", names)),
+                    load(check.replace("‹g›", "[" + names + "]")));
+            // the planted control: the wrong names are visible on UNIQUE
+            Rule wrong = load(check.replace("‹g›", "[USUBJID]"));
+            assertNull(wrong.getLoadError(), wrong.getLoadError());
+            assertTrue(violations(wrong, unique, study(unique)) > 0, check + ": sensitive");
+            for (List<Rule> family : List.of(mixed, spliceOnly))
+            {
+                Map<String, Integer> fired = new LinkedHashMap<>();
+                for (Rule rule : family)
+                {
+                    assertNull(rule.getLoadError(), check + " → " + rule.getLoadError());
+                    assertEquals(0, violations(rule, unique, study(unique)),
+                            check + ": every tuple is unique for " + spelling(rule));
+                    fired.put(spelling(rule), violations(rule, dup, study(dup)));
+                }
+                int first = fired.values().iterator().next();
+                assertTrue(first > 0, "rows 0 and 1 share the tuple: " + fired);
+                for (Map.Entry<String, Integer> e : fired.entrySet())
+                {
+                    assertEquals(first, e.getValue(),
+                            check + ": the spellings answer alike: " + fired);
+                }
             }
         }
     }

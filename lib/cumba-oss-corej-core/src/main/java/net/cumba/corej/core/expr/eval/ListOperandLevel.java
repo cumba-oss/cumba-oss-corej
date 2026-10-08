@@ -227,10 +227,11 @@ public final class ListOperandLevel
 
 
     /**
-     * The refusal's text for a per-row member of a splice slot ({@code record_count}'s
-     * {@code group=}, {@code is_(not_)unique_set}'s members) — one sentence for both spellings;
-     * stage A files it as {@code PARAMETER_TYPE} (the splice is a shape of the
-     * {@code list<column-reference>} parameter), the loader's seam pass as the load error.
+     * The refusal's text for a per-row member of a splice slot (every {@code group=},
+     * {@code is_(not_)unique_set}'s members, {@code values}' columns — {@code GroupSplice}'s
+     * roster) — one sentence for both spellings; stage A files it as {@code PARAMETER_TYPE} (the
+     * splice is a shape of the {@code list<column-reference>} parameter), the loader's seam pass as
+     * the load error.
      *
      * @param function
      *            the splicing function
@@ -255,7 +256,7 @@ public final class ListOperandLevel
 
 
     /**
-     * The splice-slot refusals of one call ({@code GroupSplice.spliceSlot}): each spliced member —
+     * The splice-slot refusals of one call ({@code GroupSplice.spliceSlots}): each spliced member —
      * a {@code $} reference or a computed expression — that reads the row cursor. The loader's twin
      * of stage A's G3 arm ({@code StageAChecker.findPerRowSplice}); only {@link #firstRefusal}
      * calls it, so stage A never files a per-row splice twice.
@@ -270,19 +271,21 @@ public final class ListOperandLevel
      */
     static List<String> spliceRefusals(Expr.Call c, Rule rule, String where)
     {
-        net.cumba.corej.core.exec.GroupSplice.Slot slot = net.cumba.corej.core.exec.GroupSplice
-                .spliceSlot(c);
-        if (slot == null)
+        List<String> out = List.of();
+        for (net.cumba.corej.core.exec.GroupSplice.Slot slot : net.cumba.corej.core.exec.GroupSplice
+                .spliceSlots(c))
         {
-            return List.of();
-        }
-        List<String> out = new ArrayList<>();
-        for (Expr member : slot.operands())
-        {
-            if (net.cumba.corej.core.exec.GroupSplice.spliced(member) != null
-                    && readsRowCursor(member, rule))
+            for (Expr member : slot.operands())
             {
-                out.add(spliceRefusal(c.name(), slot.parameter(), where, member));
+                if (net.cumba.corej.core.exec.GroupSplice.spliced(member) != null
+                        && readsRowCursor(member, rule))
+                {
+                    if (out.isEmpty())
+                    {
+                        out = new ArrayList<>();
+                    }
+                    out.add(spliceRefusal(c.name(), slot.parameter(), where, member));
+                }
             }
         }
         return out;
