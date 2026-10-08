@@ -81,7 +81,8 @@ class BuiltinFunctionsRegistrationTest
             "len/1-3/VALUE", "length/1-3/VALUE", "library_available/0/BOOLEAN", "lowcase/1/VALUE",
             "lower/1/VALUE", "month/1/VALUE", "non_empty/1/BOOLEAN", "normalize_space/1/VALUE",
             "prefix/2/VALUE", "prefix_matches/2-3/BOOLEAN", "present/1/BOOLEAN",
-            "referenced_dataset_variables/1/VALUE", "referenced_domain_class/1/VALUE",
+            // runbook W1b VA (V3): qualifiers=
+            "referenced_dataset_variables/1-2/VALUE", "referenced_domain_class/1/VALUE",
             "round/1/VALUE", "row_max/1/VALUE", "size/1/VALUE", "split_by/2/VALUE",
             "starts_with/2/BOOLEAN", "substring/2-3/VALUE", "suffix/2/VALUE",
             "suffix_matches/2-3/BOOLEAN", "time_contains/2/BOOLEAN", "time_overlaps/2/BOOLEAN",

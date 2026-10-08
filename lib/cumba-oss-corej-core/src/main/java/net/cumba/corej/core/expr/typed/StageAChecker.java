@@ -1834,7 +1834,7 @@ public final class StageAChecker
             }
             if (nameArg != null)
             {
-                accessorName(attr, c, nameArg);
+                accessorName(attr, c, nameArg, children.get(namePosition));
             }
         }
         stemKeyword(c, attr);
@@ -1848,6 +1848,7 @@ public final class StageAChecker
         {
             level = Level.VARIABLE_METADATA;
         }
+        level = computedAccessorOperands(attr, c, nameArg, children, level);
         return new TypedExpr(c, accessorType(attr), level, children);
     }
 
@@ -1927,17 +1928,22 @@ public final class StageAChecker
 
 
     /**
-     * §1.2: a name position requires a statically known name — a string literal (the {@code ${...}}
-     * template form included) or the current-variable cursor. The typed mirror of
-     * {@code ExprCompiler:4583}.
+     * §1.2: a name position takes a string — a string literal (the {@code ${...}} template form
+     * included), the current-variable cursor, or (runbook W1b VA, V2 / O15) any other expression,
+     * whose per-row value is the name and must therefore be a string; a column-shaped reference
+     * stays refused. The typed mirror of {@code ExprCompiler.metadataPlan}.
      */
-    private void accessorName(MetadataAttribute attr, Expr.Call c, Expr nameArg)
+    private void accessorName(MetadataAttribute attr, Expr.Call c, Expr nameArg, TypedExpr walked)
     {
         boolean literal = nameArg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING;
+        if (literal || isCurrentVariableName(nameArg))
+        {
+            return;
+        }
         // A name is a string (owner O15, 2026-10-08: ruling R1 wins over the bare-column form P3):
         // a column-shaped reference stays refused in both arities; the finding names the string
         // spelling the author meant (NameSlots.columnNameHint)
-        if (!literal && !isCurrentVariableName(nameArg))
+        if (NameSlots.isColumnShapedRef(nameArg))
         {
             find(StageAErrorKind.NON_STATIC_NAME,
                     attr.functionName() + " name must be a string literal"
@@ -1945,6 +1951,67 @@ public final class StageAChecker
                                     ? " or the variable_name operand"
                                     : "")
                             + NameSlots.columnNameHint(attr, c));
+            return;
+        }
+        requireStringOperand(attr, c, walked, "name");
+    }
+
+
+    /**
+     * Runbook W1b VA (V2): a computed name and a computed {@code dataset=} are per-row reads — the
+     * accessor's level joins theirs — and must answer strings; a column-shaped {@code dataset=} is
+     * refused like a column-shaped name, with the {@code str(...)} hint.
+     */
+    private Level computedAccessorOperands(MetadataAttribute attr, Expr.Call c,
+            @Nullable Expr nameArg, List<TypedExpr> children, Level level)
+    {
+        Level joined = level;
+        if (nameArg != null && !(nameArg instanceof Expr.Lit) && !isCurrentVariableName(nameArg)
+                && !NameSlots.isColumnShapedRef(nameArg))
+        {
+            joined = join(joined, children.get(NameSlots.accessorNamePosition(attr, c)).level());
+        }
+        int index = c.args().size();
+        for (Map.Entry<String, Expr> kw : c.kwargs().entrySet())
+        {
+            TypedExpr walked = index < children.size() ? children.get(index) : null;
+            index++;
+            Expr value = kw.getValue();
+            if (!"dataset".equals(kw.getKey()) || attr.scope() != MetadataAttribute.Scope.VARIABLE
+                    || (value instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING))
+            {
+                continue;
+            }
+            if (NameSlots.isColumnShapedRef(value))
+            {
+                String column = ((Expr.Ref) value).name();
+                find(StageAErrorKind.NON_STATIC_NAME, attr.functionName()
+                        + " dataset= takes a string literal or a computed value, not the column "
+                        + column + " — a dataset name is a string: write dataset=\"" + column
+                        + "\" for the dataset of that name, or dataset=str(" + column
+                        + ") for the dataset each row's value names" + at(c));
+                continue;
+            }
+            if (walked != null)
+            {
+                requireStringOperand(attr, c, walked, "dataset=");
+                joined = join(joined, walked.level());
+            }
+        }
+        return joined;
+    }
+
+
+    /** A computed accessor operand must answer a string (V2): its known type is held to it. */
+    private void requireStringOperand(MetadataAttribute attr, Expr.Call c, TypedExpr walked,
+            String slot)
+    {
+        ExprType type = walked.type().dereference();
+        if (type != Unknown.UNKNOWN && type != Primitive.STRING)
+        {
+            find(StageAErrorKind.PARAMETER_TYPE,
+                    attr.functionName() + " " + slot + " must be a string (a literal, or an"
+                            + " expression answering one), not " + type.describe() + at(c));
         }
     }
 
@@ -2210,6 +2277,23 @@ public final class StageAChecker
             }
             if (declared == Unknown.UNKNOWN)
             {
+                if (net.cumba.corej.core.exec.ReferencedRecordCount.KEY_VARIABLE_PARAMETER
+                        .equals(param.name())
+                        && (net.cumba.corej.core.exec.ReferencedRecordCount.NAME.equals(c.name())
+                                || net.cumba.corej.core.exec.ReferencedKeyUniqueness.NAME
+                                        .equals(c.name()))
+                        && arg instanceof Expr.Lit lit && NameListBinding.isNameList(lit))
+                {
+                    // runbook W1b VA (Q3): the candidate templates are strings resolved against
+                    // the referenced dataset, never columns of the dataset in hand — the
+                    // compiler refuses the same shape where stage A does not walk
+                    find(StageAErrorKind.PARAMETER_TYPE, "argument '" + param.name() + "' of '"
+                            + c.name() + "' takes the candidate column names as strings resolved"
+                            + " against the referenced dataset — write " + param.name()
+                            + "=[\"--SEQ\", \"ASEQ\"], not the bare names "
+                            + net.cumba.corej.core.expr.ExpressionPrinter.print(lit) + at(c));
+                    continue;
+                }
                 if (splices(c, param))
                 {
                     // W1b BS2c (coordinator D4) / SK (O17): the unknown-typed within= /

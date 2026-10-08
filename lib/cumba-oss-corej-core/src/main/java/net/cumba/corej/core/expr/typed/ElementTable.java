@@ -157,6 +157,10 @@ public final class ElementTable
             // the quantifiers any / all / none fold (StageAChecker pins the same type at the call)
             Map.entry("joined", new ListOf(Primitive.BOOLEAN)),
             Map.entry("referenced_dataset_variables", new ListOf(Primitive.STRING)),
+            // runbook W1b VA (PLAN-engine-gap-value-addressed V1 / V4): the value-addressed
+            // record count (a LONG per row) and the key-uniqueness verdict (a boolean per row)
+            Map.entry(net.cumba.corej.core.exec.ReferencedRecordCount.NAME, Primitive.NUMBER),
+            Map.entry(net.cumba.corej.core.exec.ReferencedKeyUniqueness.NAME, Primitive.BOOLEAN),
             // §1.5: tuple(…) is sugar for a list<column-reference> composite key
             Map.entry("tuple", new ListOf(Primitive.COLUMN_REFERENCE)),
             // PLAN-output-variable-null-key-provenance P3 (OPEN-T (c), owner 2026-10-05): the

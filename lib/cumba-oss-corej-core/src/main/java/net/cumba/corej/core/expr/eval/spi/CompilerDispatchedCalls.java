@@ -394,6 +394,22 @@ public final class CompilerDispatchedCalls implements FunctionProvider
                 Parameter.optional(net.cumba.corej.core.exec.SortKeys.PARAMETER,
                         new ListOf(Primitive.COLUMN_REFERENCE)),
                 keepMissings());
+        // runbook W1b VA (PLAN-engine-gap-value-addressed V1 / V4): the value-addressed record
+        // count and key verdict, compiled by ExprCompiler's dedicated arms (the keys= list is a
+        // splice slot, GroupSplice.SPLICE_SLOTS; `dataset` a name slot — a string names the
+        // dataset; `key_variable` a value whose templates the bind-time resolver keeps,
+        // ExprPrefixResolver.keepsTemplate — Q3)
+        value(fns, net.cumba.corej.core.exec.ReferencedRecordCount.NAME,
+                req(net.cumba.corej.core.exec.ReferencedRecordCount.DATASET_PARAMETER).asNameSlot(),
+                req(net.cumba.corej.core.exec.ReferencedRecordCount.VALUE_PARAMETER),
+                req(net.cumba.corej.core.exec.ReferencedRecordCount.KEY_VARIABLE_PARAMETER),
+                Parameter.optional(net.cumba.corej.core.exec.ReferencedRecordCount.KEYS_PARAMETER,
+                        new ListOf(Primitive.COLUMN_REFERENCE)));
+        value(fns, net.cumba.corej.core.exec.ReferencedKeyUniqueness.NAME,
+                req(net.cumba.corej.core.exec.ReferencedRecordCount.DATASET_PARAMETER).asNameSlot(),
+                req(net.cumba.corej.core.exec.ReferencedRecordCount.KEY_VARIABLE_PARAMETER),
+                Parameter.optional(net.cumba.corej.core.exec.ReferencedRecordCount.KEYS_PARAMETER,
+                        new ListOf(Primitive.COLUMN_REFERENCE)));
         return List.copyOf(fns);
     }
 

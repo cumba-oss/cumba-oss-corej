@@ -5169,6 +5169,198 @@ public final class ExprCompiler
 
 
     /**
+     * Runbook W1b VA ({@code PLAN-engine-gap-value-addressed} V1): {@code referenced_record_count(
+     * dataset, value, key_variable=, keys=[…])} — {@code dataset} and {@code value} are operand
+     * plans (a string literal, a column, a binding, a computed value), {@code key_variable} the
+     * per-row operand plan or the candidate string list (Q3), {@code keys} the spliced same-named
+     * key members ({@link GroupSplice.Member}: a written column, a {@code $} name list or a
+     * computed list of names — judged at load through {@code GroupSplice.SPLICE_SLOTS}).
+     */
+    private static ValuePlan compileReferencedRecordCount(Expr.Call c)
+    {
+        String fn = net.cumba.corej.core.exec.ReferencedRecordCount.NAME;
+        List<@Nullable Expr> bound = bindDispatched(fn, c);
+        ValuePlan dataset = operandPlan(Objects.requireNonNull(bound.get(0)), true);
+        ValuePlan value = operandPlan(Objects.requireNonNull(bound.get(1)), true);
+        KeyVariablePlan keyVariable = keyVariablePlan(fn, Objects.requireNonNull(bound.get(2)));
+        List<net.cumba.corej.core.exec.GroupSplice.Member> keys = referencedKeyMembers(fn,
+                bound.get(3));
+        return run ->
+        {
+            Vector d = dataset.eval(run);
+            Vector v = value.eval(run);
+            net.cumba.corej.core.exec.ReferencedRecordCount.KeyVariable kv = keyVariable.eval(run);
+            if (d == null || v == null || kv == null)
+            {
+                return null; // an unresolvable operand propagates, as for every value call
+            }
+            return net.cumba.corej.core.exec.ReferencedRecordCount.evaluate(run, d, v, kv, keys);
+        };
+    }
+
+
+    /**
+     * Runbook W1b VA (V4): {@code referenced_key_is_unique(dataset, key_variable=, keys=[…])} on
+     * the reading of {@link #compileReferencedRecordCount}.
+     */
+    private static ValuePlan compileReferencedKeyUniqueness(Expr.Call c)
+    {
+        String fn = net.cumba.corej.core.exec.ReferencedKeyUniqueness.NAME;
+        List<@Nullable Expr> bound = bindDispatched(fn, c);
+        ValuePlan dataset = operandPlan(Objects.requireNonNull(bound.get(0)), true);
+        KeyVariablePlan keyVariable = keyVariablePlan(fn, Objects.requireNonNull(bound.get(1)));
+        List<net.cumba.corej.core.exec.GroupSplice.Member> keys = referencedKeyMembers(fn,
+                bound.get(2));
+        return run ->
+        {
+            Vector d = dataset.eval(run);
+            net.cumba.corej.core.exec.ReferencedRecordCount.KeyVariable kv = keyVariable.eval(run);
+            if (d == null || kv == null)
+            {
+                return null;
+            }
+            return net.cumba.corej.core.exec.ReferencedKeyUniqueness.evaluate(run, d, kv, keys);
+        };
+    }
+
+
+    /** A compiler-dispatched call bound to its descriptor; the binder's refusal is a load error. */
+    private static List<@Nullable Expr> bindDispatched(String fn, Expr.Call c)
+    {
+        FunctionDescriptor descriptor = Objects.requireNonNull(FunctionRegistry.descriptor(fn));
+        try
+        {
+            return ArgumentBinder.bind(descriptor, c);
+        }
+        catch (ExpressionException ex)
+        {
+            throw unsupported(messageOf(ex));
+        }
+    }
+
+    /** The compiled {@code key_variable} of the value-addressed readers (W1b VA, Q3). */
+    @FunctionalInterface
+    private interface KeyVariablePlan
+    {
+
+        net.cumba.corej.core.exec.ReferencedRecordCount.@Nullable KeyVariable eval(EvalRun run);
+    }
+
+    /**
+     * The {@code key_variable} operand: a string list is the candidate templates resolved against
+     * the target ({@code ["--SEQ", "ASEQ"]}); a bare-name list is refused with the string spelling
+     * (the templates are not columns of the dataset in hand); anything else is the per-row operand
+     * plan naming the column ({@code IDVAR}).
+     */
+    private static KeyVariablePlan keyVariablePlan(String fn, Expr e)
+    {
+        String parameter = net.cumba.corej.core.exec.ReferencedRecordCount.KEY_VARIABLE_PARAMETER;
+        if (e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
+                && lit.value() instanceof List<?> items)
+        {
+            if (NameListBinding.isNameList(lit))
+            {
+                throw unsupported("argument '" + parameter + "' of '" + fn
+                        + "' takes the candidate column names as strings resolved against the"
+                        + " referenced dataset — write " + parameter + "=[\"--SEQ\", \"ASEQ\"],"
+                        + " not the bare names " + describe(e));
+            }
+            List<String> candidates = new ArrayList<>(items.size());
+            for (Object item : items)
+            {
+                if (!(item instanceof Expr.Lit s) || s.kind() != Expr.LitKind.STRING)
+                {
+                    throw unsupported("argument '" + parameter + "' of '" + fn
+                            + "' takes a column name or a list of candidate names as strings, not "
+                            + (item instanceof Expr member ? describe(member)
+                                    : String.valueOf(item))
+                            + " at a member");
+                }
+                candidates.add((String) s.value());
+            }
+            if (candidates.isEmpty())
+            {
+                throw unsupported(
+                        "argument '" + parameter + "' of '" + fn + "' names no candidate column");
+            }
+            net.cumba.corej.core.exec.ReferencedRecordCount.KeyVariable constant = net.cumba.corej.core.exec.ReferencedRecordCount.KeyVariable
+                    .candidates(candidates);
+            return _ -> constant;
+        }
+        ValuePlan perRow = operandPlan(e, true);
+        return run ->
+        {
+            Vector names = perRow.eval(run);
+            return names == null ? null
+                    : net.cumba.corej.core.exec.ReferencedRecordCount.KeyVariable.perRow(names);
+        };
+    }
+
+
+    /**
+     * The {@code keys=} members of the value-addressed readers: each written column a
+     * {@link net.cumba.corej.core.exec.GroupSplice.Name}, a {@code $} or computed member spliced at
+     * evaluation (C4 / C5: a bare spliced operand is the one-member list); a quoted name is a
+     * string, never a column, and is refused as every column-reference slot refuses it.
+     */
+    private static List<net.cumba.corej.core.exec.GroupSplice.Member> referencedKeyMembers(
+            String fn, @Nullable Expr e)
+    {
+        String parameter = net.cumba.corej.core.exec.GroupSplice.KEYS_PARAMETER;
+        if (e == null)
+        {
+            return List.of();
+        }
+        List<Expr> items;
+        if (e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
+                && lit.value() instanceof List<?> written)
+        {
+            items = written.stream().filter(Expr.class::isInstance).map(Expr.class::cast).toList();
+        }
+        else if (!(e instanceof Expr.Lit)
+                && net.cumba.corej.core.exec.GroupSplice.spliced(e) != null)
+        {
+            items = List.of(e);
+        }
+        else
+        {
+            throw unsupported("argument '" + parameter + "' of '" + fn
+                    + "' takes list<column-reference>, not " + describe(e)
+                    + " — write the key columns as a list: " + parameter + "=[USUBJID]");
+        }
+        List<net.cumba.corej.core.exec.GroupSplice.Member> members = new ArrayList<>(items.size());
+        for (Expr item : items)
+        {
+            if (item instanceof Expr.Lit lit)
+            {
+                throw unsupported("argument '" + parameter + "' of '" + fn
+                        + "' takes a column reference, not the literal " + lit.value()
+                        + " — a quoted name is a string, never a column");
+            }
+            if (item instanceof Expr.Ref ref
+                    && (ref.kind() == OperandKind.COLUMN || ref.kind() == OperandKind.DOTTED_REF))
+            {
+                // a qualified J.X is a column of the one evaluation table like any other (W3c of
+                // PLAN-merged-evaluation-table), looked up by that name on both sides
+                members.add(new net.cumba.corej.core.exec.GroupSplice.Name(ref.name()));
+                continue;
+            }
+            net.cumba.corej.core.exec.GroupSplice.Member spliced = net.cumba.corej.core.exec.GroupSplice
+                    .spliced(item);
+            if (spliced == null)
+            {
+                throw unsupported("argument '" + parameter + "' of '" + fn
+                        + "' takes list<column-reference>, not " + describe(item)
+                        + " at a member — a key is a column of the dataset under evaluation,"
+                        + " written bare, or a dataset-level list of names");
+            }
+            members.add(spliced);
+        }
+        return List.copyOf(members);
+    }
+
+
+    /**
      * QNU N4 ({@code D72}): the column a qualified {@code var_is_empty} / {@code max_value_length}
      * name reads — the joined column read through the {@code Match_Datasets} join exactly as the
      * operand {@code J.X} reads it ({@link #dottedVector}: an unmatched row reads the type default,
@@ -6267,6 +6459,18 @@ public final class ExprCompiler
             if (CODELIST_DECODE.equals(c.name()) && c.args().size() <= 1)
             {
                 yield compileCodelistDecode(c);
+            }
+            if (net.cumba.corej.core.exec.ReferencedRecordCount.NAME.equals(c.name()))
+            {
+                // Runbook W1b VA (PLAN-engine-gap-value-addressed V1): the value-addressed
+                // record count — its keys= spliced, its key_variable a per-row name or the
+                // candidate templates
+                yield compileReferencedRecordCount(c);
+            }
+            if (net.cumba.corej.core.exec.ReferencedKeyUniqueness.NAME.equals(c.name()))
+            {
+                // Runbook W1b VA (V4): the value-addressed key verdict on the same reading
+                yield compileReferencedKeyUniqueness(c);
             }
             if (net.cumba.corej.core.exec.RowMax.NAME.equals(c.name()))
             {
@@ -7612,6 +7816,11 @@ public final class ExprCompiler
         // that stem's suffix and no literal or index template governs the column; a missing
         // otherwise (LibraryTemplates#stemKey). No other keyword is accepted.
         String foreignDataset = null;
+        // Runbook W1b VA (PLAN-engine-gap-value-addressed V2, Q8 as amended by O15): a computed
+        // dataset= — the per-row value its expression answers — beside the literal; a bare column
+        // stays refused with the hint naming the str(...) spelling, as a bare column in the name
+        // position is (NameSlots.isColumnShapedRef, the one judgement).
+        ValuePlan datasetPlan = null;
         String stem = null;
         for (Map.Entry<String, Expr> kw : c.kwargs().entrySet())
         {
@@ -7619,6 +7828,22 @@ public final class ExprCompiler
                     && kw.getValue() instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING)
             {
                 foreignDataset = (String) lit.value();
+            }
+            else if ("dataset".equals(kw.getKey())
+                    && attr.scope() == MetadataAttribute.Scope.VARIABLE
+                    && NameSlots.isColumnShapedRef(kw.getValue()))
+            {
+                String column = ((Expr.Ref) kw.getValue()).name();
+                throw new RuleDefinitionException(attr.functionName()
+                        + " dataset= takes a string literal or a computed value, not the column "
+                        + column + " — a dataset name is a string: write dataset=\"" + column
+                        + "\" for the dataset of that name, or dataset=str(" + column
+                        + ") for the dataset each row's value names");
+            }
+            else if ("dataset".equals(kw.getKey())
+                    && attr.scope() == MetadataAttribute.Scope.VARIABLE)
+            {
+                datasetPlan = operandPlan(kw.getValue(), true);
             }
             else if (STEM_KEYWORD.equals(kw.getKey()) && attr == MetadataAttribute.LABEL_TEMPLATE)
             {
@@ -7654,7 +7879,7 @@ public final class ExprCompiler
             throw new RuleDefinitionException(attr.functionName() + " is not available at the "
                     + level + " level (rule is invalid)");
         }
-        if (foreignDataset != null
+        if ((foreignDataset != null || datasetPlan != null)
                 && (level != MetadataLevel.DATA || crossDatasetField(attr) == null))
         {
             throw new RuleDefinitionException(
@@ -7674,6 +7899,8 @@ public final class ExprCompiler
         boolean variableNameRef = false;
         String literalName = null;
         String qualifier = null;
+        // V2: a computed name — the per-row value its expression answers (O15)
+        ValuePlan namePlan = null;
         if (nameExpr == null)
         {
             // VARIABLE arity-1 (level) defaults the name to the current variable, resolved
@@ -7695,7 +7922,7 @@ public final class ExprCompiler
                 // join of the rule (undeclared, or declared and not supplied) answers a missing
                 // (decision D4 — the column is absent from the merged schema). The dataset=
                 // keyword stays the inventory channel (another dataset, join-free).
-                if (foreignDataset != null)
+                if (foreignDataset != null || datasetPlan != null)
                 {
                     throw new RuleDefinitionException(attr.functionName() + "(\"" + literalName
                             + "\") is qualified AND carries dataset= — one dataset channel: the"
@@ -7710,6 +7937,13 @@ public final class ExprCompiler
         {
             // The variable_name operand or a varname() call — both name the current variable.
             variableNameRef = true;
+        }
+        else if (!NameSlots.isColumnShapedRef(nameExpr))
+        {
+            // V2 (O15): any other expression is the per-row VALUE that names the variable —
+            // `var_label(str(SRCVAR), "DATA", dataset=str(SRCDOM))`, or a `$` binding holding
+            // such an expression (G1: the bound and the inline spelling answer alike)
+            namePlan = operandPlan(nameExpr, true);
         }
         else
         {
@@ -7730,6 +7964,12 @@ public final class ExprCompiler
         String joinQualifier = qualifier;
         // The provider-map key: the attribute's own, or the named stem's (R2-3).
         String providerKey = stem == null ? attr.providerKey() : LibraryTemplates.stemKey(stem);
+        if (namePlan != null || datasetPlan != null)
+        {
+            // V2: the per-row arm; the literal forms below keep their broadcast plan unchanged
+            return computedMetadataPlan(attr, level, namePlan, capturedName, fromVariableName,
+                    datasetPlan, foreign, providerKey);
+        }
         return run ->
         {
             EvaluationContext ctx = run.ctx();
@@ -7780,6 +8020,110 @@ public final class ExprCompiler
             }
             return ConstVector.of(attr.normalize(raw));
         };
+    }
+
+    /** The memo value of a computed accessor read that answered nothing (missing, D4). */
+    private static final Object NO_METADATA = new Object();
+
+    /**
+     * Runbook W1b VA (V2): the per-row plan of a {@code var_*} accessor whose name and / or
+     * {@code dataset=} is computed. Per row the name is the name expression's value (else the
+     * literal / the cursor variable) and the dataset the dataset expression's value (else the
+     * literal, else the dataset under evaluation); a missing or blank name or dataset answers
+     * missing; each distinct (dataset, name) pair is read once — through the
+     * {@code cross_dataset_variable_metadata} builder for a named dataset (the literal form's read,
+     * so the two agree byte for byte), through the provider channel otherwise — and broadcast to
+     * its rows. A value no metadata carries is missing (D4).
+     */
+    private static ValuePlan computedMetadataPlan(MetadataAttribute attr, MetadataLevel level,
+            @Nullable ValuePlan namePlan, @Nullable String literalName, boolean fromVariableName,
+            @Nullable ValuePlan datasetPlan, @Nullable String literalDataset, String providerKey)
+    {
+        String field = crossDatasetField(attr);
+        return run ->
+        {
+            EvaluationContext ctx = run.ctx();
+            int rowCount = run.rowCount();
+            Vector names = namePlan == null ? null : namePlan.eval(run);
+            Vector datasets = datasetPlan == null ? null : datasetPlan.eval(run);
+            if ((namePlan != null && names == null) || (datasetPlan != null && datasets == null))
+            {
+                return null;
+            }
+            String fixedName = literalName;
+            if (fromVariableName)
+            {
+                Object resolved = ctx.resolveVariable("variable_name");
+                if (resolved == null)
+                {
+                    return ConstVector.of(null);
+                }
+                fixedName = resolved.toString();
+            }
+            Map<String, Object> memo = new java.util.HashMap<>();
+            Map<String, VariableMetadataResult> foreignReads = new java.util.HashMap<>();
+            Object[] cells = new Object[rowCount];
+            for (int row = 0; row < rowCount; row++)
+            {
+                String name = names == null ? fixedName
+                        : net.cumba.corej.core.exec.ReferencedRecordCount
+                                .text(names.value(row).cell());
+                String dataset = datasets == null ? literalDataset
+                        : net.cumba.corej.core.exec.ReferencedRecordCount
+                                .text(datasets.value(row).cell());
+                if (name == null || (datasets != null && dataset == null))
+                {
+                    cells[row] = NO_METADATA;
+                    continue;
+                }
+                String key = (dataset == null ? "" : dataset) + '\0' + name;
+                Object value = memo.get(key);
+                if (value == null)
+                {
+                    value = dataset != null ? foreignRead(ctx, foreignReads, dataset, field, name)
+                            : providerRead(ctx, attr, level, name, providerKey);
+                    memo.put(key, value);
+                }
+                cells[row] = value;
+            }
+            return new ComputedVector(rowCount, DataValueType.STRING,
+                    row -> cells[row] == NO_METADATA ? ScalarSemantics.computedMissing()
+                            : cells[row]);
+        };
+    }
+
+
+    /** The named dataset's DATA-level field of {@code name}, the literal form's read (V2). */
+    private static Object foreignRead(EvaluationContext ctx,
+            Map<String, VariableMetadataResult> reads, String dataset, @Nullable String field,
+            String name)
+    {
+        VariableMetadataResult read = reads.computeIfAbsent(dataset, d -> VariableMetadataResult
+                .build(ctx.getDatasetResolver(), d, field, ctx.getTable().getMetaData().getName()));
+        Object value = read.getForVariable(name);
+        return value == null ? NO_METADATA : value;
+    }
+
+
+    /** The provider channel's value of {@code name} at {@code level}, normalised (V2). */
+    private static Object providerRead(EvaluationContext ctx, MetadataAttribute attr,
+            MetadataLevel level, String name, String providerKey)
+    {
+        String raw = readMetadata(ctx, attr, level, name, providerKey);
+        if (attr.isList())
+        {
+            List<String> decoded = DefineMetadataListCodec.decode(raw);
+            if (decoded == null)
+            {
+                return NO_METADATA;
+            }
+            // Register NNL §1 — the birth site of a per-row list value.
+            net.cumba.corej.core.exec.ListValueGuard.requireNoNullElement(decoded,
+                    () -> "list accessor " + attr.functionName());
+            return decoded;
+        }
+        String value = attr.normalize(raw);
+        return value == null ? NO_METADATA : value;
     }
 
 

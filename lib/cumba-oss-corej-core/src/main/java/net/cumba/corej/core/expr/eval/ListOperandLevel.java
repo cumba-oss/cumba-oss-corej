@@ -95,6 +95,9 @@ public final class ListOperandLevel
      * (coordinator decision 1).
      */
     public static final Map<String, Set<String>> PER_CALL_PARAMETERS = Map.ofEntries(
+            // runbook W1b VA (V3): the qualifiers flag of referenced_dataset_variables
+            Map.entry(net.cumba.corej.core.exec.ReferencedDatasetVariables.NAME, Set
+                    .of(net.cumba.corej.core.exec.ReferencedDatasetVariables.QUALIFIERS_PARAMETER)),
             Map.entry(net.cumba.corej.core.exec.ScalarMetadataFunctions.EXTRACT_METADATA,
                     Set.of(net.cumba.corej.core.exec.ScalarMetadataFunctions.NAME_PARAMETER)),
             Map.entry(net.cumba.corej.core.exec.ScalarMetadataFunctions.VARIABLE_COUNT,

@@ -99,7 +99,12 @@ public final class ExprPrefixResolver
     {
         return NAME_PATTERN_PARAMETER.equals(parameter)
                 || (INVENTORY_FOLD_OPERATION.equals(function)
-                        && INVENTORY_FOLD_PARAMETER.equals(parameter));
+                        && INVENTORY_FOLD_PARAMETER.equals(parameter))
+                // runbook W1b VA (Q3): the key_variable candidates ("--SEQ") resolve against the
+                // TARGET dataset at evaluation, never against the dataset in hand
+                || (ReferencedRecordCount.KEY_VARIABLE_PARAMETER.equals(parameter)
+                        && (ReferencedRecordCount.NAME.equals(function)
+                                || ReferencedKeyUniqueness.NAME.equals(function)));
     }
 
 

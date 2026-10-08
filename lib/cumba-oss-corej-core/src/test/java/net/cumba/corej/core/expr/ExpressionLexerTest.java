@@ -67,6 +67,41 @@ class ExpressionLexerTest
     }
 
 
+    /**
+     * Runbook W1b KW (owner O21, 2026-10-08): a keyword is read in any letter case — the identifier
+     * is lower-cased before the lookup — so {@code AND} / {@code Or} / {@code In} / {@code True}
+     * lex as the keyword; a back-quoted {@code `IN`} stays the column it names.
+     */
+    @Test
+    void keywordsAreReadInAnyCase()
+    {
+        assertArrayEquals(new TokenType[]
+        {
+                TokenType.AND, TokenType.OR, TokenType.NOT, TokenType.IN, TokenType.TRUE,
+                TokenType.FALSE, TokenType.EOF
+        }, types("AND OR NOT IN TRUE FALSE"));
+        assertArrayEquals(new TokenType[]
+        {
+                TokenType.AND, TokenType.OR, TokenType.NOT, TokenType.IN, TokenType.TRUE,
+                TokenType.FALSE, TokenType.EOF
+        }, types("And oR Not iN True fAlSe"));
+        for (String keyword : ExpressionLexer.keywords())
+        {
+            Token upper = ExpressionLexer.tokenize(keyword.toUpperCase(java.util.Locale.ROOT))
+                    .get(0);
+            assertEquals(ExpressionLexer.tokenize(keyword).get(0).type(), upper.type(),
+                    keyword + " upper-cased");
+            assertEquals(keyword.toUpperCase(java.util.Locale.ROOT), upper.text(),
+                    "the token keeps the spelling as written");
+        }
+        List<Token> quoted = lex("`IN` == \"x\"");
+        assertEquals(TokenType.IDENT, quoted.get(0).type(), "a back-quoted name is a column");
+        assertEquals("IN", quoted.get(0).text());
+        assertEquals(TokenType.IDENT, lex("INX").get(0).type(), "a longer identifier is not one");
+        assertEquals(TokenType.IDENT, lex("$AND").get(0).type());
+    }
+
+
     @Test
     void numbers()
     {

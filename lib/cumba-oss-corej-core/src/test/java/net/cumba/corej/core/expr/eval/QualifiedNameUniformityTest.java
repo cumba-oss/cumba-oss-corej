@@ -360,7 +360,15 @@ class QualifiedNameUniformityTest
             record_count | keep_missings | - | static boolean
             record_count | regex | - | static regex
             referenced_dataset_variables | name | N | V:referenced_dataset_variables(@R)
+            referenced_dataset_variables | qualifiers | - | static boolean literal, read once per call (runbook W1b VA, V3)
             referenced_domain_class | name | N | X:provider — operandPlan channel; needs a LIBRARY fixture ; C4:V:referenced_domain_class(@S)
+            referenced_key_is_unique | dataset | N | V:referenced_key_is_unique(@S, key_variable="USUBJID", keys=[#K])
+            referenced_key_is_unique | key_variable | N | V:referenced_key_is_unique(#S, key_variable=@S, keys=[#K])
+            referenced_key_is_unique | keys | N | V:referenced_key_is_unique(#S, key_variable="USUBJID", keys=[@K])
+            referenced_record_count | dataset | N | V:referenced_record_count(@S, #N, key_variable="USUBJID", keys=[#K])
+            referenced_record_count | value | N | V:referenced_record_count(#S, @N, key_variable="USUBJID", keys=[#K])
+            referenced_record_count | key_variable | N | V:referenced_record_count(#S, #N, key_variable=@S, keys=[#K])
+            referenced_record_count | keys | N | V:referenced_record_count(#S, #N, key_variable="USUBJID", keys=[@K])
             required_variables | - | - | nullary
             round | x | N | V:round(@N)
             row_max | name_pattern | N | X:selector — a regex over the primary's columns (D92b, plan Q2, ruled: closed by find_vars) ; C4:V:row_max(name_pattern="^@S$")
@@ -589,6 +597,16 @@ class QualifiedNameUniformityTest
             // Under domain="J" the qualifier names the domain itself (W3c, N5 lifted per MQ8):
             // J.S is J's own S, read through the INVENTORY like the bare S, never the join.
             "read_value/name", "read_value/filter",
+            // The value-addressed readers (runbook W1b VA): the dataset operand's VALUE names a
+            // dataset of the study, and no fixture column spells one — so every row answers
+            // missing through the join and without it alike, whichever operand the probe
+            // qualifies (a key member J.K is looked up by that name on the target, where it is
+            // absent and dropped). Their sensitivity to the data is ReferencedRecordCountTest's
+            // and ReferencedKeyUniquenessTest's.
+            "referenced_record_count/dataset", "referenced_record_count/value",
+            "referenced_record_count/key_variable", "referenced_record_count/keys",
+            "referenced_key_is_unique/dataset", "referenced_key_is_unique/key_variable",
+            "referenced_key_is_unique/keys",
             // A group operator over this fixture (a 1:1 join carrying P's data; unique K, ID and
             // S partner values; no enumerated S1) answers the same verdict through the join as
             // with J.X resolving nowhere — the operator's absent-column bail. Their sensitivity
@@ -851,7 +869,7 @@ class QualifiedNameUniformityTest
     {
         // +1 descriptor / +2 parameters / +1 accessor since PLAN-library-template-label-resolution
         // (matches_label_template(label, template) and label_template(…, "LIBRARY")).
-        assertEquals(188, FunctionRegistry.all().size(),
+        assertEquals(190, FunctionRegistry.all().size(),
                 "registered descriptors (165 + any / all / none / joined, PLAN-cg0218; + 2"
                         + " column-status predicates, PLAN-present-empty-column-fold; + the nullary"
                         + " get_permitted_column_order, PLAN-permitted-addition-position; + union,"
@@ -862,8 +880,9 @@ class QualifiedNameUniformityTest
                         + " vlm_origin_type / codelist_decode, runbook W1b DV; + sequence /"
                         + " is_prefix_of / is_not_prefix_of / is_increasing / collapse_runs,"
                         + " runbook W1b RO; + duration / duration_between, runbook W1b DO;"
-                        + " + is_not_unique_member_set, runbook W1b SS1)");
-        assertEquals(326,
+                        + " + is_not_unique_member_set, runbook W1b SS1; + referenced_record_count /"
+                        + " referenced_key_is_unique, runbook W1b VA)");
+        assertEquals(334,
                 FunctionRegistry.all().stream().mapToInt(d -> d.parameters().size()).sum(),
                 "declared parameters (283 + one each for any / all / none / joined + one each"
                         + " for var_is_single_value / var_is_all_missing + three for union + one for"
@@ -873,7 +892,9 @@ class QualifiedNameUniformityTest
                         + " is_increasing / collapse_runs, one by= each for is_last_in_group /"
                         + " empty_within_except_last_row / has_next_corresponding_record, W1b"
                         + " RO / SK; + one for duration and two for duration_between, W1b DO;"
-                        + " + three for is_not_unique_member_set, W1b SS1)");
+                        + " + three for is_not_unique_member_set, W1b SS1; + one qualifiers= for"
+                        + " referenced_dataset_variables, four for referenced_record_count and"
+                        + " three for referenced_key_is_unique, W1b VA)");
         assertEquals(28, MetadataAttribute.values().length, "metadata accessors");
         assertEquals(Set.of("date", "date_part", "duration", "num", "time", "time_part"),
                 new TreeSet<>(ExprCompiler.comparisonMarkers()),
@@ -882,13 +903,16 @@ class QualifiedNameUniformityTest
         List<Row> rows = rows();
         long probed = rows.stream().filter(Row::probed).count();
         long nameClass = rows.stream().filter(Row::name).count();
-        assertEquals(278, nameClass,
+        assertEquals(285, nameClass,
                 "name-bearing parameters in the hand table (265 + ~ left, W1b SX; + sequence's"
                         + " name / filter / group / by and the three by=, W1b RO / SK;"
-                        + " + is_not_unique_member_set's members / group, W1b SS1)");
-        assertEquals(225, probed, "probed parameters in the hand table (212 + ~ left, W1b SX;"
+                        + " + is_not_unique_member_set's members / group, W1b SS1; + the seven"
+                        + " value-addressed parameters of referenced_record_count /"
+                        + " referenced_key_is_unique, W1b VA)");
+        assertEquals(232, probed, "probed parameters in the hand table (212 + ~ left, W1b SX;"
                 + " + sequence's four and the three by=, W1b RO / SK; + duration and duration_between's two, W1b DO;"
-                + " + is_not_unique_member_set's members / group, W1b SS1)");
+                + " + is_not_unique_member_set's members / group, W1b SS1; + the seven"
+                + " value-addressed parameters, W1b VA)");
         // T2 r1 L2: every unprobed name-bearing row states one of the three admitted reasons.
         List<String> unprobed = new ArrayList<>();
         for (Row r : rows)
@@ -913,8 +937,9 @@ class QualifiedNameUniformityTest
         // +8 for sequence's domain / keep_missings and the six list parameters of
         // is_(not_)prefix_of / is_increasing / collapse_runs (runbook W1b RO).
         // +1 for is_not_unique_member_set's keep_missings (runbook W1b SS1).
-        assertEquals(163, rows.stream().filter(r -> !r.name()).count(),
-                "non-name rows (153 + the ~ literal, W1b SX; + 8, W1b RO)");
+        // +1 for referenced_dataset_variables' qualifiers= (runbook W1b VA, V3).
+        assertEquals(164, rows.stream().filter(r -> !r.name()).count(),
+                "non-name rows (153 + the ~ literal, W1b SX; + 8, W1b RO; + 1, W1b VA)");
     }
 
     // ------------------------------------------------------------------
@@ -1954,6 +1979,7 @@ class QualifiedNameUniformityTest
             }
         }
         assertEquals(List.of(), invalid);
-        assertEquals(225, probed, "+2 is_not_unique_member_set's members / group (W1b SS1)");
+        assertEquals(232, probed, "+2 is_not_unique_member_set's members / group (W1b SS1);"
+                + " +7 the value-addressed parameters (W1b VA)");
     }
 }

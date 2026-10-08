@@ -1,5 +1,6 @@
 package net.cumba.corej.core.expr.eval;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -232,7 +233,7 @@ public final class DomainScan
         MetadataAttribute attr = MetadataAttribute.fromFunction(name);
         if (attr != null)
         {
-            return accessor(attr, c);
+            return accessor(attr, c, kinds);
         }
         if (MetadataExprScan.readsDefinePerRecord(name))
         {
@@ -367,13 +368,33 @@ public final class DomainScan
      * {@code varname()} / {@code variable_name}; with an explicit literal name it is a
      * dataset-level fact about a named column.
      */
-    private static Domain accessor(MetadataAttribute attr, Expr.Call c)
+    private static Domain accessor(MetadataAttribute attr, Expr.Call c, BindingDomains kinds)
     {
         if (attr.scope() == MetadataAttribute.Scope.DATASET)
         {
             return Domain.DATASET;
         }
         List<Expr> args = c.args();
+        // Runbook W1b VA (PLAN-engine-gap-value-addressed V2, O15): a computed name — any
+        // argument in the name position that is neither a literal nor the cursor — and a computed
+        // dataset= are per-row reads: the accessor's domain is its operands' (a dataset-level
+        // expression of a name stays a dataset fact, a column's value a row read).
+        List<Expr> computed = new ArrayList<>(2);
+        int namePosition = NameSlots.accessorNamePosition(attr, c);
+        if (namePosition >= 0 && !(args.get(namePosition) instanceof Expr.Lit)
+                && !isCurrentVariableName(args.get(namePosition)))
+        {
+            computed.add(args.get(namePosition));
+        }
+        Expr dataset = c.kwargs().get("dataset");
+        if (dataset != null && !(dataset instanceof Expr.Lit))
+        {
+            computed.add(dataset);
+        }
+        if (!computed.isEmpty())
+        {
+            return Domain.DATASET.join(joinAll(computed, kinds));
+        }
         if (args.size() == 2 && !isCurrentVariableName(args.get(0)))
         {
             return Domain.DATASET;

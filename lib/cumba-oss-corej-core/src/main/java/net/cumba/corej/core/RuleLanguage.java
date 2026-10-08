@@ -107,8 +107,9 @@ public final class RuleLanguage
         // comparison family — derived from the compiler's own roster, never transcribed
         sb.append("markers: ").append(String.join(" ", ExprCompiler.comparisonMarkers()))
                 .append('\n');
+        // runbook W1b KW (owner O21): the keywords are read in any letter case
         sb.append("keywords: ").append(String.join(",", sorted(ExpressionLexer.keywords())))
-                .append('\n');
+                .append(" (any letter case)").append('\n');
         sb.append("literal-forms: ").append(String.join(" ", ExpressionLexer.literalForms()))
                 .append('\n');
         sb.append("operands:\n");

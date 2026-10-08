@@ -57,6 +57,14 @@ public final class ReferencedDatasetVariables
     /** The function name as authored. */
     public static final String NAME = "referenced_dataset_variables";
 
+    /**
+     * Runbook W1b VA ({@code PLAN-engine-gap-value-addressed} V3): {@code qualifiers=true} adds the
+     * {@code QNAM} values of the referenced dataset's SUPP companion(s) ({@link SuppQualifiers}) —
+     * the names row B's {@code SRCVAR} may hold — after the dataset's own columns; a literal
+     * boolean, read once per call.
+     */
+    public static final String QUALIFIERS_PARAMETER = "qualifiers";
+
     /** The empty answer — one instance, so a run of such rows folds to one set. */
     private static final List<Object> EMPTY = List.of();
 
@@ -66,7 +74,8 @@ public final class ReferencedDatasetVariables
 
 
     /**
-     * The {@code EvalFunction} body: {@code args} holds the bound {@code name} vector.
+     * The {@code EvalFunction} body: {@code args} holds the bound {@code name} vector and the
+     * optional {@code qualifiers} flag (W1b VA, V3).
      *
      * @param run
      *            the evaluation run
@@ -79,6 +88,9 @@ public final class ReferencedDatasetVariables
         EvaluationContext ctx = run.ctx();
         DatasetResolver resolver = ctx.getDatasetResolver();
         Vector domain = args.get(0);
+        // an absent optional reaches the implementation as a null argument vector
+        Vector flag = args.size() > 1 ? args.get(1) : null;
+        boolean qualifiers = flag != null && Boolean.TRUE.equals(flag.value(0).resolved());
         int rowCount = run.rowCount();
         Map<String, List<Object>> byDomain = new HashMap<>();
         for (int row = 0; row < rowCount; row++)
@@ -86,7 +98,7 @@ public final class ReferencedDatasetVariables
             String text = domainText(domain.value(row).cell());
             if (text != null)
             {
-                byDomain.computeIfAbsent(text, d -> columnsOf(resolver, d));
+                byDomain.computeIfAbsent(text, d -> columnsOf(ctx, resolver, d, qualifiers));
             }
         }
         return new ComputedVector(rowCount, DataValueType.STRING, row ->
@@ -111,50 +123,29 @@ public final class ReferencedDatasetVariables
 
     /**
      * The column names of every dataset {@code domain} names, in declaration order, de-duplicated
-     * across a split family's members; the empty list when no dataset carries the name.
+     * across a split family's members — with {@code qualifiers} the {@code QNAM} values of each
+     * member's SUPP sources after them (V3) — the empty list when no dataset carries the name.
      */
-    private static List<Object> columnsOf(@Nullable DatasetResolver resolver, String domain)
+    private static List<Object> columnsOf(EvaluationContext ctx, @Nullable DatasetResolver resolver,
+            String domain, boolean qualifiers)
     {
         if (resolver == null)
         {
             return EMPTY;
         }
-        // J7: the value is a DOMAIN (e.g. "LB"), but a resolver keyed by member name (lbch / lbhe /
-        // lbur for a split LB) answers null for it — a dataset named exactly like the domain is
-        // used alone; otherwise the members whose data-driven domain matches, through the
-        // fault-tolerant sorted walk (combined review of runbook W2–W8, W4 M1's twin: an
-        // unopenable UNRELATED study dataset must not ERROR this read — tablesForDomain resolved
-        // every inventory entry unguarded).
-        // T1 of PLAN-merged-evaluation-table: the one dataset-name resolution (case-insensitive)
-        Iterable<IDataTable> tables;
-        if (resolver instanceof DatasetResolver.WithInventory inventory
-                && SplitDomainResolution.isSuppFamilyName(domain))
-        {
-            tables = SplitDomainResolution.suppFamilyMembers(inventory, domain, null);
-        }
-        else
-        {
-            IDataTable exact = SplitDomainResolution.byName(resolver, domain);
-            if (exact != null)
-            {
-                tables = List.of(exact);
-            }
-            else if (resolver instanceof DatasetResolver.WithInventory inventory)
-            {
-                tables = SplitDomainResolution.membersOf(inventory, domain, null);
-            }
-            else
-            {
-                tables = List.of();
-            }
-        }
         Set<Object> columns = new LinkedHashSet<>();
-        for (IDataTable table : tables)
+        for (IDataTable table : tablesNamed(resolver, domain))
         {
             DataTableMeta meta = table.getMetaData();
             for (int c = 0; c < meta.getColumnCount(); c++)
             {
                 columns.add(meta.getColumn(c).getName());
+            }
+            if (qualifiers)
+            {
+                // the QNAM set is unordered: listed in sorted order, so the answer is stable
+                columns.addAll(new java.util.TreeSet<>(SuppQualifiers.of(table, resolver,
+                        ctx.getSharedIndexCache(), ctx.getRuleId())));
             }
         }
         if (columns.isEmpty())
@@ -165,5 +156,42 @@ public final class ReferencedDatasetVariables
         // Register NNL §1 — the birth site of a per-row list value.
         ListValueGuard.requireNoNullElement(names, () -> NAME + "(" + domain + ")");
         return names;
+    }
+
+
+    /**
+     * The datasets {@code domain} names: the one dataset of that name, else (with an inventory) the
+     * split family's members whose data-driven domain is the value, a SUPP family's members for a
+     * supplemental-family name; empty when none carries it. Shared with the value-addressed readers
+     * of W1b VA ({@link ReferencedRecordCount}, {@link ReferencedKeyUniqueness}).
+     */
+    static List<IDataTable> tablesNamed(@Nullable DatasetResolver resolver, String domain)
+    {
+        if (resolver == null)
+        {
+            return List.of();
+        }
+        // J7: the value is a DOMAIN (e.g. "LB"), but a resolver keyed by member name (lbch / lbhe /
+        // lbur for a split LB) answers null for it — a dataset named exactly like the domain is
+        // used alone; otherwise the members whose data-driven domain matches, through the
+        // fault-tolerant sorted walk (combined review of runbook W2–W8, W4 M1's twin: an
+        // unopenable UNRELATED study dataset must not ERROR this read — tablesForDomain resolved
+        // every inventory entry unguarded).
+        // T1 of PLAN-merged-evaluation-table: the one dataset-name resolution (case-insensitive)
+        if (resolver instanceof DatasetResolver.WithInventory inventory
+                && SplitDomainResolution.isSuppFamilyName(domain))
+        {
+            return SplitDomainResolution.suppFamilyMembers(inventory, domain, null);
+        }
+        IDataTable exact = SplitDomainResolution.byName(resolver, domain);
+        if (exact != null)
+        {
+            return List.of(exact);
+        }
+        if (resolver instanceof DatasetResolver.WithInventory inventory)
+        {
+            return SplitDomainResolution.membersOf(inventory, domain, null);
+        }
+        return List.of();
     }
 }

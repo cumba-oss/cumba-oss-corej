@@ -739,8 +739,13 @@ public final class BuiltinFunctions implements FunctionProvider
         // distinct(IDVAR, value_is_reference=true), whose target was never read); the column is
         // REQUIRED and explicit. No provider: the study's own datasets are read through the run's
         // resolver, never the Library.
+        // qualifiers=true (runbook W1b VA, V3) adds the SUPP companions' QNAM values — a literal
+        // boolean, read once per call (ListOperandLevel.PER_CALL_PARAMETERS).
         fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.ReferencedDatasetVariables.NAME,
-                List.of(p("name", Primitive.COLUMN_REFERENCE)), FunctionKind.VALUE,
+                List.of(p("name", Primitive.COLUMN_REFERENCE), opt(
+                        net.cumba.corej.core.exec.ReferencedDatasetVariables.QUALIFIERS_PARAMETER,
+                        Primitive.BOOLEAN)),
+                FunctionKind.VALUE,
                 net.cumba.corej.core.exec.ReferencedDatasetVariables::evaluate));
         // row_max(name_pattern="^TR(0[1-9]|[1-9][0-9])EDT$") — the per-row maximum over the
         // columns the static regex names (R6: no target; a non-literal or invalid pattern is a

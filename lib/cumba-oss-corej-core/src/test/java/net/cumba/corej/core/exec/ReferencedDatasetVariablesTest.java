@@ -193,4 +193,70 @@ class ReferencedDatasetVariablesTest
         Rule bare = load("referenced_dataset_variables()", "IDVAR not in $v");
         assertNotNull(bare.getLoadError(), "the RDOMAIN default of the operation is not carried");
     }
+
+
+    private static IDataTable ae()
+    {
+        return RealTableFixture.of("AE").str("STUDYID", "S").str("DOMAIN", "AE").str("USUBJID", "A")
+                .lng("AESEQ", 1L).str("AETERM", "x").build();
+    }
+
+
+    private static IDataTable suppae()
+    {
+        return RealTableFixture.of("SUPPAE").str("STUDYID", "S", "S").str("RDOMAIN", "AE", "AE")
+                .str("USUBJID", "A", "A").str("IDVAR", "AESEQ", "AESEQ").str("IDVARVAL", "1", "1")
+                .str("QNAM", "AETRTEM", "AESER2").str("QLABEL", "Treatment Emergent", "Serious 2")
+                .str("QVAL", "Y", "N").str("QORIG", "CRF", "CRF").build();
+    }
+
+
+    private static IDataTable adae()
+    {
+        return RealTableFixture.of("ADAE").str("USUBJID", "A", "B", "C")
+                .str("SRCDOM", "AE", "DM", "ZZ").str("SRCVAR", "AETRTEM", "USUBJID", "X").build();
+    }
+
+
+    /**
+     * Runbook W1b VA ({@code PLAN-engine-gap-value-addressed} V3): {@code qualifiers=true} adds the
+     * {@code QNAM} values of the referenced dataset's SUPP companion(s) — the names row B's
+     * {@code SRCVAR} may hold — after the dataset's own columns; the default and {@code false} keep
+     * the column names alone, and a dataset without a SUPP answers as before.
+     */
+    @Test
+    void qualifiersAddTheSuppCompanionsQnamValues()
+    {
+        EvaluationContext ctx = EvaluationContext.builder().table(adae())
+                .datasetResolver(new Inventory(adae(), ae(), suppae(), dm())).build();
+        List<List<?>> with = rows("referenced_dataset_variables(SRCDOM, qualifiers=true)", ctx);
+        assertEquals(
+                List.of("STUDYID", "DOMAIN", "USUBJID", "AESEQ", "AETERM", "AESER2", "AETRTEM"),
+                with.get(0), "the columns, then the SUPPAE qualifiers in sorted order");
+        assertEquals(List.of("DOMAIN", "USUBJID"), with.get(1), "DM has no SUPP companion");
+        assertEquals(List.of(), with.get(2));
+        List<List<?>> without = rows("referenced_dataset_variables(SRCDOM, qualifiers=false)", ctx);
+        assertEquals(List.of("STUDYID", "DOMAIN", "USUBJID", "AESEQ", "AETERM"), without.get(0));
+        assertEquals(without, rows("referenced_dataset_variables(SRCDOM)", ctx),
+                "the default is the column names alone");
+        // the sketch of row B: a QNAM-valued SRCVAR is no longer a finding
+        Rule rule = load("referenced_dataset_variables(SRCDOM, qualifiers=true)",
+                "not empty(SRCVAR) and upper(SRCVAR) not in $u");
+        assertNull(rule.getLoadError(), rule.getLoadError());
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, adae(),
+                new Inventory(adae(), ae(), suppae(), dm()));
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        assertEquals(List.of("C"),
+                result.getViolations().stream().map(f -> f.getValues().get("USUBJID")).toList());
+    }
+
+
+    @Test
+    void qualifiersTakesABooleanLiteral()
+    {
+        Rule quoted = load("referenced_dataset_variables(SRCDOM, qualifiers=\\\"yes\\\")",
+                "IDVAR not in $v");
+        assertNotNull(quoted.getLoadError(), quoted.getLoadError());
+        assertTrue(quoted.getLoadError().contains("boolean"), quoted.getLoadError());
+    }
 }

@@ -131,6 +131,15 @@ class NameSlotRosterTest
 
     static
     {
+        // runbook W1b VA (PLAN-engine-gap-value-addressed V1 / V4): the value-addressed record
+        // count and key verdict over the dataset the row's RDOMAIN names (DM in the world);
+        // `dataset` reads as a name (marked), `value` / `key_variable` are values — the
+        // key_variable templates resolve against the TARGET, so the specialiser keeps them
+        // (ExprPrefixResolver.keepsTemplate), and `keys` is a column-reference list
+        BASE.put("referenced_record_count", "referenced_record_count(RDOMAIN, USUBJID,"
+                + " key_variable=\"USUBJID\", keys=[USUBJID])");
+        BASE.put("referenced_key_is_unique",
+                "referenced_key_is_unique(RDOMAIN, key_variable=\"USUBJID\", keys=[USUBJID])");
         BASE.put("all", "all(joined(X == \"a\"))");
         BASE.put("any", "any(joined(X == \"a\"))");
         BASE.put("none", "none(joined(X == \"a\"))");

@@ -29,6 +29,14 @@ import org.jspecify.annotations.Nullable;
 public final class ExpressionLexer
 {
 
+    /**
+     * The keywords, by their canonical lower-case spelling. ⭐ Matched in <b>any letter case</b>
+     * (runbook W1b KW, owner O21, 2026-10-08): an identifier is lower-cased ({@code Locale.ROOT})
+     * before the lookup, so {@code AND} / {@code Or} / {@code In} / {@code True} lex as the keyword
+     * ({@link #scanIdentifier}); the printer keeps emitting the canonical lower case. A column
+     * named like a keyword is written back-quoted ({@code `IN`}), as every name that would not
+     * otherwise lex.
+     */
     private static final Map<String, TokenType> KEYWORDS = Map.of("and", TokenType.AND, "or",
             TokenType.OR, "not", TokenType.NOT, "in", TokenType.IN, "true", TokenType.TRUE, "false",
             TokenType.FALSE);
@@ -466,7 +474,8 @@ public final class ExpressionLexer
             pos++;
         }
         String text = src.substring(start, pos);
-        TokenType keyword = KEYWORDS.get(text);
+        // KW (O21): the keyword lookup folds the letter case; the token keeps the text as written
+        TokenType keyword = KEYWORDS.get(text.toLowerCase(java.util.Locale.ROOT));
         return new Token(keyword != null ? keyword : TokenType.IDENT, text, start);
     }
 

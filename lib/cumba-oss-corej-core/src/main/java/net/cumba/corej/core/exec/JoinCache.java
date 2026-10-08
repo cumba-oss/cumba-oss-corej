@@ -69,6 +69,12 @@ public final class JoinCache
         /** The merged schema's QNAM set per SUPP table ({@link SuppQualifiers}, W3d). */
         private final IdentityWeakCache<String, java.util.Set<String>> suppQnams;
 
+        /**
+         * The value-addressed pointer indexes per target table ({@link ReferencedRecordCount},
+         * runbook W1b VA) — sub-key: the pointer column, its numeric-ness and the key columns.
+         */
+        private final IdentityWeakCache<String, net.cumba.datatable.impl.merge.KeyMatchIndex> pointerIndexes;
+
         /** A cache for one validation run. */
         public SharedIndexCache()
         {
@@ -85,6 +91,19 @@ public final class JoinCache
             wildcardColumns = new WildcardForeignColumnCache(
                     new IdentityWeakCache<>(aIdentityHash));
             suppQnams = new IdentityWeakCache<>(aIdentityHash);
+            pointerIndexes = new IdentityWeakCache<>(aIdentityHash);
+        }
+
+
+        /**
+         * The pointer index of one target table under one key shape, built once per table and shape
+         * per run ({@link ReferencedRecordCount}, runbook W1b VA).
+         */
+        net.cumba.datatable.impl.merge.KeyMatchIndex getOrBuildPointerIndex(IDataTable aTarget,
+                String aShape,
+                java.util.function.Function<IDataTable, net.cumba.datatable.impl.merge.KeyMatchIndex> aBuild)
+        {
+            return pointerIndexes.getOrBuild(aTarget, aShape, _ -> aBuild.apply(aTarget));
         }
 
 

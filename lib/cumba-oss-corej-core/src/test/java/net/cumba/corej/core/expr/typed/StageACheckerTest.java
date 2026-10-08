@@ -309,23 +309,28 @@ class StageACheckerTest
         assertEquals(List.of(), kinds(check("var_label(\"BOGUS\") == \"L\"")));
         assertEquals(List.of(StageAErrorKind.METADATA_LEVEL_ILLEGAL),
                 kinds(check("ds_name(\"BOGUS\") == \"L\"")), "a ds_* one-string stays a level");
-        // non-literal level (in the one-argument form a computed argument is a computed NAME,
-        // NON_STATIC_NAME — the level is the second argument since D3)
+        // non-literal level (in the one-argument form a computed argument is a computed NAME —
+        // admitted since runbook W1b VA (V2, O15): its per-row value names the variable; the
+        // level is the second argument since D3)
         assertEquals(List.of(StageAErrorKind.METADATA_LEVEL_ILLEGAL),
                 kinds(check("var_label(\"X\", upper(AESEV)) == \"L\"")));
-        assertEquals(List.of(StageAErrorKind.NON_STATIC_NAME),
-                kinds(check("var_label(upper(AESEV)) == \"L\"")));
+        assertEquals(List.of(), kinds(check("var_label(upper(AESEV)) == \"L\"")));
         assertTrue(StageAErrorKind.METADATA_LEVEL_ILLEGAL.armed());
     }
 
 
     @Test
-    void aComputedAccessorNameIsAStageAError()
+    void aComputedAccessorNameIsAPerRowValueAndABareColumnStaysRefused()
     {
-        // §1.2: every name position outside the three dynamic forms needs a static name — the
-        // typed mirror of ExprCompiler:4583.
+        // §1.2 as amended by runbook W1b VA (V2, owner O15): a name position takes a string
+        // literal, the cursor, or a computed expression whose per-row VALUE is the name — typed
+        // string; a bare column stays refused (R1) with the string spelling — the typed mirror of
+        // ExprCompiler.metadataPlan.
+        assertEquals(List.of(), kinds(check("var_label(upper(AESEV), \"DATA\") == \"L\"")));
         assertEquals(List.of(StageAErrorKind.NON_STATIC_NAME),
-                kinds(check("var_label(upper(AESEV), \"DATA\") == \"L\"")));
+                kinds(check("var_label(AESEV, \"DATA\") == \"L\"")));
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("var_label(len(AESEV), \"DATA\") == \"L\"")));
         // the cursor forms are fine
         assertEquals(List.of(), check("var_label(varname(), \"DATA\") == \"L\"").findings());
         assertEquals(List.of(), check("var_label(variable_name, \"DATA\") == \"L\"").findings());

@@ -162,14 +162,15 @@ class DatasetNameResolutionRosterTest
             Map.entry("exec/VariableMetadataResult#buildFromAllDatasets:resolver.resolve",
                     "§9 an inventory walk by member name (domain=\"*\")"),
             Map.entry(
-                    "exec/ReferencedDatasetVariables#columnsOf:SplitDomainResolution.isSuppFamilyName",
-                    "C18 referenced_dataset_variables"),
+                    "exec/ReferencedDatasetVariables#tablesNamed:SplitDomainResolution.isSuppFamilyName",
+                    "C18 referenced_dataset_variables (and, through tablesNamed, the W1b VA"
+                            + " readers referenced_record_count / referenced_key_is_unique)"),
             Map.entry(
-                    "exec/ReferencedDatasetVariables#columnsOf:SplitDomainResolution.suppFamilyMembers",
-                    "C18 referenced_dataset_variables"),
-            Map.entry("exec/ReferencedDatasetVariables#columnsOf:SplitDomainResolution.byName",
+                    "exec/ReferencedDatasetVariables#tablesNamed:SplitDomainResolution.suppFamilyMembers",
+                    "C18 referenced_dataset_variables (and the W1b VA readers)"),
+            Map.entry("exec/ReferencedDatasetVariables#tablesNamed:SplitDomainResolution.byName",
                     "§9 the exact member of a non-family value (a domain's own name)"),
-            Map.entry("exec/ReferencedDatasetVariables#columnsOf:SplitDomainResolution.membersOf",
+            Map.entry("exec/ReferencedDatasetVariables#tablesNamed:SplitDomainResolution.membersOf",
                     "§9 the split-domain members of a two-character value (Fix #358)"),
             // ---- the text policy and the specialiser (C18, C22, C25)
             Map.entry(

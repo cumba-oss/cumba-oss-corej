@@ -133,8 +133,10 @@ present_on_multiple_rows_within(name:unknown, within:unknown, keep_missings:bool
 printf(format:string, args:list<unknown>?...) kind=value
 read_value(name:unknown, domain:dataset-reference, filter:unknown?, mode:string, group:list<column-reference>?, keep_missings:boolean?) kind=value
 record_count(domain:dataset-reference?, filter:unknown?, group:list<column-reference>?, keep_missings:boolean?, regex:regex?) kind=value
-referenced_dataset_variables(name:column-reference) kind=value
+referenced_dataset_variables(name:column-reference, qualifiers:boolean?) kind=value
 referenced_domain_class(name:column-reference) kind=value provider=library
+referenced_key_is_unique(dataset:unknown@name, key_variable:unknown, keys:list<column-reference>?) kind=value
+referenced_record_count(dataset:unknown@name, value:unknown, key_variable:unknown, keys:list<column-reference>?) kind=value
 required_variables() kind=value aggregate provider=library
 round(x:unknown) kind=value
 row_max(name_pattern:string) kind=value perRow
@@ -219,7 +221,7 @@ var_role scope=variable levels=DEFINE,LIBRARY result=string
 var_type scope=variable levels=DATA,DEFINE,LIBRARY result=string default=DATA kwargs=dataset
 operators: ! != !~ && * + - / < <= = == =~ > >= || ~
 markers: date date_part duration num time time_part
-keywords: and,false,in,not,or,true
+keywords: and,false,in,not,or,true (any letter case)
 literal-forms: "string" number /regex/ [list] `quoted ref` &NAME& ${binding} --wildcard $binding DATASET.X /pattern/replacement/ {left: X, right: Y}
 operands:
 dataset_class

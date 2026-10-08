@@ -134,7 +134,15 @@ class RuleLanguageSurfaceTest
         assertTrue(surface.contains("\noperators: "), surface);
         assertTrue(surface.contains(" =~ "), "the regex-match operator is listed");
         assertTrue(surface.contains(" !~ "), "the regex-non-match operator is listed");
-        assertTrue(surface.contains("\nkeywords: and,false,in,not,or,true\n"), surface);
+        // runbook W1b KW (owner O21): the keywords are read in any letter case
+        assertTrue(surface.contains("\nkeywords: and,false,in,not,or,true (any letter case)\n"),
+                surface);
+        // runbook W1b VA: the value-addressed readers and the qualifiers flag
+        assertTrue(surface.contains("\nreferenced_record_count(dataset:unknown@name,"
+                + " value:unknown, key_variable:unknown, keys:list<column-reference>?)"
+                + " kind=value\n"), surface);
+        assertTrue(surface.contains("\nreferenced_dataset_variables(name:column-reference,"
+                + " qualifiers:boolean?) kind=value\n"), surface);
         // W1a fold (R5 review A-L1): the plan-build parameters, literal by construction
         assertTrue(surface.contains("\nrecord_count.keep_missings: literal boolean plan-build\n"),
                 surface);

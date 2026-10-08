@@ -161,7 +161,11 @@ public final class GroupSplice
             // W1b SK (O16 / O17): the sort-key slots, and is_last_in_group's by=
             java.util.Map.entry("is_sorted_by", List.of(SortKeys.PARAMETER, WITHIN_PARAMETER)),
             java.util.Map.entry(Sequence.NAME,
-                    List.of(GroupedAggregate.GROUP_PARAMETER, SortKeys.PARAMETER)));
+                    List.of(GroupedAggregate.GROUP_PARAMETER, SortKeys.PARAMETER)),
+            // W1b VA (PLAN-engine-gap-value-addressed V1 / V4): the same-named keys of the
+            // value-addressed readers
+            java.util.Map.entry(ReferencedRecordCount.NAME, List.of(KEYS_PARAMETER)),
+            java.util.Map.entry(ReferencedKeyUniqueness.NAME, List.of(KEYS_PARAMETER)));
 
     /**
      * The readers that splice, as a message names them: every {@code list<column-reference>}
@@ -171,7 +175,8 @@ public final class GroupSplice
             + " (the group= of record_count, max, max_date, min_date, read_value, distinct,"
             + " sequence, is_last_in_group and has_mixed_emptiness_within_group — and its"
             + " qualifying_any_populated=; the keys= of is_(not_)unique_relationship and"
-            + " is_inconsistent_across_dataset; is_(not_)unique_set's members;"
+            + " is_inconsistent_across_dataset, referenced_record_count and"
+            + " referenced_key_is_unique; is_(not_)unique_set's members;"
             + " is_not_unique_member_set's members and group; values' columns),"
             + " every within= / ordering= / by= slot and empty_within_except_last_row's group"
             + " — not tuple's columns";
