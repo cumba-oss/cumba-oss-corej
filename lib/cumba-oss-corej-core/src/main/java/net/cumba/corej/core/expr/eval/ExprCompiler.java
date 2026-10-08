@@ -8969,6 +8969,38 @@ public final class ExprCompiler
 
 
     /**
+     * Read-only (W1a fold, R5 review A-L1; owner O15 — {@code keep_missings} is a plan-shape
+     * parameter): the parameters held to a LITERAL because their value is consumed when the plan is
+     * BUILT, never per call, as {@code "function.parameter"} → the literal form — every declared
+     * {@code keep_missings} ({@code boolean}: the group-key policy is read into the plan,
+     * {@link #groupKeyPolicyRequiringGroup}, {@code GroupedAggregate.readPolicy}; a computed one
+     * stays refused, coordinator decision 8) and {@code column_series_metadata}'s
+     * {@code min_length} ({@code non-negative-integer}, {@link #rejectScalarFunctionArguments}).
+     * The language surface lists them, so a unit that widens one changes the golden.
+     *
+     * @return the parameters, sorted
+     */
+    public static java.util.SortedMap<String, String> planBuildLiteralParameters()
+    {
+        java.util.SortedMap<String, String> out = new java.util.TreeMap<>();
+        for (FunctionDescriptor d : FunctionRegistry.all())
+        {
+            if (d.parameter(
+                    net.cumba.corej.core.exec.GroupedAggregate.KEEP_MISSINGS_PARAMETER) != null)
+            {
+                out.put(d.name() + "."
+                        + net.cumba.corej.core.exec.GroupedAggregate.KEEP_MISSINGS_PARAMETER,
+                        "boolean");
+            }
+        }
+        out.put(net.cumba.corej.core.exec.ScalarMetadataFunctions.COLUMN_SERIES_METADATA + "."
+                + net.cumba.corej.core.exec.ScalarMetadataFunctions.MIN_LENGTH_PARAMETER,
+                "non-negative-integer");
+        return Collections.unmodifiableSortedMap(out);
+    }
+
+
+    /**
      * The {@code (function → parameters)} the static-string seam holds to a string literal
      * ({@link #STATIC_STRING_PARAMETERS}) — exposed for the behavioural drift test of
      * {@code PLAN-stage-a-parameter-type-arming}, which plants a NUMBER literal at each and expects

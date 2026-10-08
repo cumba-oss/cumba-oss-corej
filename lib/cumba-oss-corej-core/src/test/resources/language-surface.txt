@@ -276,13 +276,30 @@ var_is_null -> var_is_empty
 static-parameters:
 codelist_terms.level: literal {codelist,term}
 codelist_terms.returntype: literal {code,pref_term,value}
+column_series_metadata.min_length: literal non-negative-integer plan-build
 column_series_metadata.name: literal
 column_series_metadata.name_pattern: literal
 cross_dataset_variable_metadata.domain: literal
 cross_dataset_variable_metadata.name: literal {data_type,format,label,length}
+distinct.keep_missings: literal boolean plan-build
+empty_within_except_last_row.keep_missings: literal boolean plan-build
 get_dataset_filtered_variables.key_name: literal {core,definition,describedValueDomain,description,examples,label,name,notes,ordinal,role,roleDescription,simpleDatatype,usageRestrictions,variableCcode}
 get_model_filtered_variables.key_name: literal {core,definition,describedValueDomain,description,examples,label,name,notes,ordinal,role,roleDescription,simpleDatatype,usageRestrictions,variableCcode}
 get_model_filtered_variables.model_class: literal {ASSOCIATED PERSONS,EVENTS,FINDINGS,FINDINGS ABOUT,GENERAL OBSERVATIONS,INTERVENTIONS,RELATIONSHIP,SPECIAL PURPOSE,STUDY REFERENCE,TRIAL DESIGN}
+has_mixed_emptiness_within_group.keep_missings: literal boolean plan-build
+has_multiple_values_for.keep_missings: literal boolean plan-build
+has_next_corresponding_record.keep_missings: literal boolean plan-build
+is_inconsistent_across_dataset.keep_missings: literal boolean plan-build
+is_last_in_group.keep_missings: literal boolean plan-build
+is_not_unique_set.keep_missings: literal boolean plan-build
+is_sorted_by.keep_missings: literal boolean plan-build
+is_unique_set.keep_missings: literal boolean plan-build
+max.keep_missings: literal boolean plan-build
+max_date.keep_missings: literal boolean plan-build
+min_date.keep_missings: literal boolean plan-build
+present_on_multiple_rows_within.keep_missings: literal boolean plan-build
+read_value.keep_missings: literal boolean plan-build
+record_count.keep_missings: literal boolean plan-build
 row_max.name_pattern: literal
 valid_external_dictionary_code.dictionary_term_type: literal
 valid_external_dictionary_value.dictionary_term_type: literal

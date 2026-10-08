@@ -273,6 +273,9 @@ public final class RuleLanguage
      * ({@code extract_metadata} / {@code variable_count} {@code name}, {@code key_value}) — each is
      * any dataset-level expression of its type now, judged by its level
      * ({@code ListOperandLevel.PER_CALL_PARAMETERS}, {@code PLAN-binding-substitutability} C9–C11).
+     * The plan-build parameters ({@code ExprCompiler.planBuildLiteralParameters}: every
+     * {@code keep_missings}, {@code column_series_metadata.min_length}) are listed as
+     * {@code literal <form> plan-build} (W1a fold, R5 review A-L1).
      */
     private static List<String> staticParameterLines()
     {
@@ -293,6 +296,11 @@ public final class RuleLanguage
                 out.add(e.getKey() + "." + p.getKey() + ": literal" + (vocabulary == null ? ""
                         : " {" + String.join(",", sorted(vocabulary)) + "}"));
             }
+        }
+        // W1a fold (R5 review A-L1): the plan-build parameters — literal by construction
+        for (Map.Entry<String, String> e : ExprCompiler.planBuildLiteralParameters().entrySet())
+        {
+            out.add(e.getKey() + ": literal " + e.getValue() + " plan-build");
         }
         return new ArrayList<>(out);
     }

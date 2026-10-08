@@ -135,6 +135,12 @@ class RuleLanguageSurfaceTest
         assertTrue(surface.contains(" =~ "), "the regex-match operator is listed");
         assertTrue(surface.contains(" !~ "), "the regex-non-match operator is listed");
         assertTrue(surface.contains("\nkeywords: and,false,in,not,or,true\n"), surface);
+        // W1a fold (R5 review A-L1): the plan-build parameters, literal by construction
+        assertTrue(surface.contains("\nrecord_count.keep_missings: literal boolean plan-build\n"),
+                surface);
+        assertTrue(surface.contains(
+                "\ncolumn_series_metadata.min_length: literal non-negative-integer plan-build\n"),
+                surface);
         assertTrue(surface.contains("\nliteral-forms: "), surface);
         assertTrue(surface.contains(" &NAME& "), "the expansion token form is listed");
         assertTrue(surface.contains("\noperands:\n"), surface);
