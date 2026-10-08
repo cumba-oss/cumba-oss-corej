@@ -20,7 +20,6 @@ import net.cumba.corej.core.expr.eval.FunctionRegistry;
 import net.cumba.corej.core.expr.eval.MetadataAttribute;
 import net.cumba.corej.core.expr.eval.MetadataLevel;
 import net.cumba.corej.core.expr.eval.Parameter;
-import net.cumba.corej.core.expr.eval.ProviderNeed;
 import net.cumba.corej.core.expr.typed.ElementTable;
 import net.cumba.corej.core.expr.typed.ExprType;
 import net.cumba.corej.core.expr.typed.StageAChecker;
@@ -253,11 +252,14 @@ public final class RuleLanguage
 
     /**
      * One line per <b>(function, parameter)</b> the compiler holds to a literal: {@code literal} (a
-     * string literal; with its closed vocabulary in braces where one exists), {@code literal-list}
-     * (a list literal of string literals) and the dictionary functions' {@code case_sensitive} flag
-     * (a boolean literal). A unit that widens a parameter to computed values drops its line (W1a U3
-     * dropped {@code minus}'s / {@code union}'s {@code binding-or-list} lines: an operand is judged
-     * by its level, {@code PLAN-union-function} §3.3).
+     * string literal; with its closed vocabulary in braces where one exists). A unit that widens a
+     * parameter to computed values drops its line: W1a U3 dropped {@code minus}'s / {@code union}'s
+     * {@code binding-or-list} lines ({@code PLAN-union-function} §3.3); W1a BS1 dropped the
+     * {@code literal-list} lines ({@code codelists}, {@code ct_package_types}), the dictionary
+     * functions' {@code case_sensitive} lines and the open-vocabulary {@code literal} lines
+     * ({@code extract_metadata} / {@code variable_count} {@code name}, {@code key_value}) — each is
+     * any dataset-level expression of its type now, judged by its level
+     * ({@code ListOperandLevel.PER_CALL_PARAMETERS}, {@code PLAN-binding-substitutability} C9–C11).
      */
     private static List<String> staticParameterLines()
     {
@@ -277,22 +279,6 @@ public final class RuleLanguage
                 Set<String> vocabulary = p.getValue();
                 out.add(e.getKey() + "." + p.getKey() + ": literal" + (vocabulary == null ? ""
                         : " {" + String.join(",", sorted(vocabulary)) + "}"));
-            }
-        }
-        for (Map.Entry<String, Set<String>> e : ExprCompiler.staticListParameters().entrySet())
-        {
-            for (String param : e.getValue())
-            {
-                out.add(e.getKey() + "." + param + ": literal-list");
-            }
-        }
-        for (FunctionDescriptor d : FunctionRegistry.all())
-        {
-            ProviderNeed need = d.provider();
-            if (need != null && need.kind() == ProviderNeed.Kind.DICTIONARY
-                    && d.parameter("case_sensitive") != null)
-            {
-                out.add(d.name() + ".case_sensitive: literal");
             }
         }
         return new ArrayList<>(out);

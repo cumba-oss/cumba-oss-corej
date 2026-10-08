@@ -197,9 +197,11 @@ public final class ListFunctionSupport
 
 
     /**
-     * A static list argument — a list literal of string literals, which the compile seam
-     * ({@code ExprCompiler.rejectNonLiteralListArguments}) guarantees for the parameters that read
-     * one — as its texts. An absent optional argument is the empty list.
+     * A dataset-level list argument — a list literal of string literals (the compile seam
+     * {@code ExprCompiler.rejectNonLiteralListArguments} holds a literal to that) or, since W1a
+     * BS1, any dataset-level list expression, bound or inline
+     * ({@code PLAN-binding-substitutability} C11; a per-row one is the level finding, so row 0 IS
+     * the value) — as its texts. An absent optional argument is the empty list.
      *
      * @param arg
      *            the bound argument, or {@code null} when absent
@@ -226,8 +228,10 @@ public final class ListFunctionSupport
 
 
     /**
-     * A static string argument (a string literal, guaranteed by the compile seam) as its text, or
-     * {@code null} when the optional argument is absent.
+     * A dataset-level string argument (a string literal, or since W1a BS1 any dataset-level string
+     * expression where the parameter is widened — {@code ListOperandLevel.PER_CALL_PARAMETERS}; a
+     * per-row one is the level finding, so row 0 IS the value) as its text, or {@code null} when
+     * the optional argument is absent or its value is missing.
      *
      * @param arg
      *            the bound argument, or {@code null}

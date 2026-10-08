@@ -45,10 +45,11 @@ class RegistryCallSeamsTest
         assertInlineLoadError("valid_external_dictionary_value(AEDECOD,"
                 + " external_dictionary_type=\"meddra\", dictionary_term_type=AELLT) == false",
                 "dictionary_term_type", "static string literal", "AELLT");
+        // W1a BS1: a per-row flag is the LEVEL finding (PLAN-binding-substitutability C10)
         assertInlineLoadError(
                 "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL,"
                         + " external_dictionary_type=\"unii\", case_sensitive=TSPARMCD) == false",
-                "case_sensitive", "boolean literal");
+                "argument 'case_sensitive'", "read once per call", "TSPARMCD");
     }
 
 
@@ -115,11 +116,17 @@ class RegistryCallSeamsTest
 
 
     /**
-     * Review r1 seams M2: the S2 / S3 literal halves stand down only where stage A can see the
-     * conflict — a {@code case_sensitive} declared UNKNOWN (a stub) keeps the seam's refusal.
+     * Review r1 seams M2 held that the S2 / S3 literal halves stand down only where stage A can see
+     * the conflict — a {@code case_sensitive} declared UNKNOWN (a stub) kept the dictionary-flag
+     * seam's refusal. W1a BS1 ({@code PLAN-binding-substitutability} C10) retired that seam: the
+     * flag is any dataset-level boolean, the type half keys on the REAL descriptors' declared
+     * {@code BOOLEAN} ({@code ListOperandLevel.PER_CALL_PARAMETERS}; {@code StageAResidueDriftTest}
+     * pins the declaration), and a value of another type that reaches evaluation is the function's
+     * run-time ERROR ({@code DictionaryFunctions.caseSensitive}). A stub outside the roster is
+     * therefore no longer refused at load — pinned so the retirement is visible.
      */
     @Test
-    void theLiteralHalvesStandDownOnlyForATypedParameter() throws Exception
+    void aStubFlagOutsideThePerCallRosterIsNotHeldToALiteralAnyMore() throws Exception
     {
         FunctionDescriptor probe = new FunctionDescriptor("__r1_m2_probe__",
                 List.of(Parameter.required("external_dictionary_type",
@@ -131,8 +138,7 @@ class RegistryCallSeamsTest
         {
             Rule rule = inline("__r1_m2_probe__(external_dictionary_type=\"meddra\","
                     + " case_sensitive=\"false\")");
-            assertNotNull(rule.getLoadError(), "the seam must still refuse the literal");
-            assertTrue(rule.getLoadError().contains("boolean literal"), rule.getLoadError());
+            assertNull(rule.getLoadError(), rule.getLoadError());
         }
     }
 

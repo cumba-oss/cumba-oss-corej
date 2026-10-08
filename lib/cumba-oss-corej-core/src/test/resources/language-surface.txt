@@ -273,29 +273,18 @@ variable_value_length
 retired:
 var_is_null -> var_is_empty
 static-parameters:
-codelist_terms.codelists: literal-list
 codelist_terms.level: literal {codelist,term}
 codelist_terms.returntype: literal {code,pref_term,value}
 column_series_metadata.name: literal
 column_series_metadata.name_pattern: literal
 cross_dataset_variable_metadata.domain: literal
 cross_dataset_variable_metadata.name: literal {data_type,format,label,length}
-dictionary_has_decode.case_sensitive: literal
-extract_metadata.name: literal
 get_dataset_filtered_variables.key_name: literal {core,definition,describedValueDomain,description,examples,label,name,notes,ordinal,role,roleDescription,simpleDatatype,usageRestrictions,variableCcode}
-get_dataset_filtered_variables.key_value: literal
 get_model_filtered_variables.key_name: literal {core,definition,describedValueDomain,description,examples,label,name,notes,ordinal,role,roleDescription,simpleDatatype,usageRestrictions,variableCcode}
-get_model_filtered_variables.key_value: literal
 get_model_filtered_variables.model_class: literal {ASSOCIATED PERSONS,EVENTS,FINDINGS,FINDINGS ABOUT,GENERAL OBSERVATIONS,INTERVENTIONS,RELATIONSHIP,SPECIAL PURPOSE,STUDY REFERENCE,TRIAL DESIGN}
 row_max.name_pattern: literal
-valid_codelist_dates.ct_package_types: literal-list
-valid_external_dictionary_code.case_sensitive: literal
 valid_external_dictionary_code.dictionary_term_type: literal
-valid_external_dictionary_code_term_pair.case_sensitive: literal
-valid_external_dictionary_hierarchy.case_sensitive: literal
-valid_external_dictionary_value.case_sensitive: literal
 valid_external_dictionary_value.dictionary_term_type: literal
-variable_count.name: literal
 variable_count.name_pattern: literal
 parameter-values:
 has_next_corresponding_record.relation: <=,==,>=

@@ -907,7 +907,7 @@ class ListFunctionsTest
         assertLoadError("codelist_terms(codelists=[DOMAIN], level=\"term\", returntype=\"value\")",
                 "takes a list of string literals", "\"DOMAIN\"");
         assertLoadError("codelist_terms(codelists=\"DOMAIN\", level=\"term\")",
-                "takes a static list of string literals");
+                "argument 'codelists'", "takes a list of strings");
         assertLoadError("codelist_terms(codelists=[\"DOMAIN\"], level=DOMAIN)", "argument 'level'",
                 "static string literal");
         assertLoadError("codelist_terms(codelists=[\"DOMAIN\"], level=\"bogus\")",

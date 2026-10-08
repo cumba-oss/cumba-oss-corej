@@ -1417,9 +1417,11 @@ public final class BuiltinFunctions implements FunctionProvider
                 net.cumba.corej.core.exec.LibraryLists::standardDomains, library);
         listFn(fns, net.cumba.corej.core.exec.LibraryLists.NATURAL_KEY_VARIABLES, List.of(),
                 net.cumba.corej.core.exec.LibraryLists::naturalKeyVariables, library);
-        // the LIBRARY walks with static keyword parameters (read once per call — the compile seam
-        // ExprCompiler.rejectNonLiteralStaticStrings / rejectNonLiteralListArguments holds them to
-        // literals and checks their vocabularies, D-W4-3)
+        // the LIBRARY walks with keyword parameters read once per call: the closed vocabularies
+        // (key_name, model_class, level, returntype) are literals checked by the compile seam
+        // ExprCompiler.rejectNonLiteralListArguments (D-W4-3); key_value, codelists and
+        // ct_package_types take any dataset-level expression since W1a BS1, judged by their level
+        // (ListOperandLevel.PER_CALL_PARAMETERS)
         listFn(fns, net.cumba.corej.core.exec.LibraryLists.GET_DATASET_FILTERED_VARIABLES, List.of(
                 opt(net.cumba.corej.core.exec.LibraryLists.KEY_NAME_PARAMETER, Primitive.STRING),
                 opt(net.cumba.corej.core.exec.LibraryLists.KEY_VALUE_PARAMETER, Primitive.STRING)),
@@ -1498,7 +1500,8 @@ public final class BuiltinFunctions implements FunctionProvider
                 ScalarMetadataFunctions::domainIsCustom, library);
         listFn(fns, ScalarMetadataFunctions.DATASET_CLASS_FROM_LIBRARY, List.of(),
                 ScalarMetadataFunctions::datasetClassFromLibrary, library);
-        // extract_metadata("file_format") — the metadata KEY, a string literal (R6: KEEP-name).
+        // extract_metadata("file_format") — the metadata KEY, any dataset-level string since W1a
+        // BS1 (R6: KEEP-name).
         listFn(fns, ScalarMetadataFunctions.EXTRACT_METADATA,
                 List.of(p(ScalarMetadataFunctions.NAME_PARAMETER, Primitive.STRING)),
                 ScalarMetadataFunctions::extractMetadata, null);

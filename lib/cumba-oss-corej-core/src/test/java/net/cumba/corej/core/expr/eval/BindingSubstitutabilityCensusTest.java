@@ -100,9 +100,13 @@ class BindingSubstitutabilityCensusTest
      * The measured asymmetries (clone HEAD after W1a U3, 2026-10-07), one row per (function,
      * parameter), classified against the plan's §3 table:
      * <ul>
-     * <li><b>C10 — leaves with BS1:</b> {@code case_sensitive} of the five dictionary functions — a
-     * bound boolean is refused by {@code rejectNonLiteralDictionaryFlags}, the literal inline
-     * admitted.</li>
+     * <li><b>C10 — left with BS1 (2026-10-08):</b> {@code case_sensitive} of the five dictionary
+     * functions was refused bound and admitted inline ({@code rejectNonLiteralDictionaryFlags}); it
+     * is any dataset-level boolean now, judged by its level
+     * ({@code ListOperandLevel.PER_CALL_PARAMETERS}). C9 / C11 (the open-vocabulary strings, the
+     * static lists) were symmetric here before BS1 — both spellings refused by one seam — and are
+     * symmetric after it — both admitted; {@code BindingSubstitutabilityTest} carries their
+     * evidence.</li>
      * <li><b>C7 — declared exception (G2, a {@code regex} is a literal type):</b> the
      * {@code pattern} of {@code imatches} / {@code prefix_matches} / {@code suffix_matches} takes
      * the {@code /regex/} literal only; a binding holding one is refused. Stays.</li>
@@ -118,15 +122,10 @@ class BindingSubstitutabilityCensusTest
      * typed parameter) refuses or admits both spellings alike.
      */
     private static final Set<String> EXPECTED = new TreeSet<>(Set.of(
-            "dictionary_has_decode[2] case_sensitive: bound=argument 'case_sensitive' of 'dictionary_has_decode' takes a boolean literal (‹arg› or false), not ‹operand› | inline=clean",
             "distinct[0] name: bound=argument 'name' of 'distinct' must be a plain column reference; ‹arg› is not one | inline=clean",
             "imatches[1] pattern: bound=imatches requires a /regex/ literal pattern argument | inline=clean",
             "prefix_matches[1] pattern: bound=prefix_matches requires a /regex/ literal pattern argument | inline=clean",
-            "suffix_matches[1] pattern: bound=suffix_matches requires a /regex/ literal pattern argument | inline=clean",
-            "valid_external_dictionary_code[3] case_sensitive: bound=argument 'case_sensitive' of 'valid_external_dictionary_code' takes a boolean literal (‹arg› or false), not ‹operand› | inline=clean",
-            "valid_external_dictionary_code_term_pair[3] case_sensitive: bound=argument 'case_sensitive' of 'valid_external_dictionary_code_term_pair' takes a boolean literal (‹arg› or false), not ‹o | inline=clean",
-            "valid_external_dictionary_hierarchy[3] case_sensitive: bound=argument 'case_sensitive' of 'valid_external_dictionary_hierarchy' takes a boolean literal (‹arg› or false), not ‹operan | inline=clean",
-            "valid_external_dictionary_value[3] case_sensitive: bound=argument 'case_sensitive' of 'valid_external_dictionary_value' takes a boolean literal (‹arg› or false), not ‹operand› | inline=clean"));
+            "suffix_matches[1] pattern: bound=suffix_matches requires a /regex/ literal pattern argument | inline=clean"));
 
     /** Floor of (descriptor, parameter) pairs the census must visit — the registry was walked. */
     private static final int VISITED_FLOOR = 150;

@@ -70,6 +70,12 @@ public final class DictionaryFunctions
     /** The parameter naming the dictionary type on every dictionary function. */
     public static final String TYPE_PARAMETER = "external_dictionary_type";
 
+    /**
+     * The optional {@code case_sensitive} flag of every dictionary function — since W1a BS1 any
+     * dataset-level boolean, bound or inline ({@code PLAN-binding-substitutability} C10).
+     */
+    public static final String CASE_SENSITIVE_PARAMETER = "case_sensitive";
+
     /** The parameter naming the dictionary level on the membership functions. */
     public static final String LEVEL_PARAMETER = "dictionary_term_type";
 
@@ -257,8 +263,23 @@ public final class DictionaryFunctions
     private static boolean caseSensitive(@Nullable Vector flag)
     {
         // D-TA-3 / Fix #266: case-SENSITIVE unless the rule authors case_sensitive=false. The
-        // compiler hands an absent optional parameter through as a null slot.
-        return flag == null || !Boolean.FALSE.equals(flag.value(0).resolved());
+        // compiler hands an absent optional parameter through as a null slot. Since W1a BS1 the
+        // flag is any dataset-level boolean (PLAN-binding-substitutability C10, Q4): a missing
+        // value is the default, and a computed value of another type — reachable only where
+        // stage A does not type the call — is the rule's ERROR (D35 "written wrong"), never a
+        // silent "case-sensitive".
+        if (flag == null)
+        {
+            return true;
+        }
+        Object value = flag.value(0).resolved();
+        if (value == null || value instanceof Boolean)
+        {
+            return !Boolean.FALSE.equals(value);
+        }
+        throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                "argument '" + CASE_SENSITIVE_PARAMETER
+                        + "' takes a boolean (true or false), not the value " + value);
     }
 
 

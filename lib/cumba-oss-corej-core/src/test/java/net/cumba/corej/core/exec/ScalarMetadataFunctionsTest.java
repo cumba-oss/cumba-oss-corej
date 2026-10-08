@@ -385,7 +385,9 @@ class ScalarMetadataFunctionsTest
     void theStaticArgumentsAreLoadErrorsWhenMisspelt() throws Exception
     {
         assertLoadError("variable_count(\"--LNKGRP\", name_pattern=\"^.+FL$\")", "never both");
-        assertLoadError("variable_count(--LNKGRP)", "static string literal", "--LNKGRP");
+        // W1a BS1: the template is any dataset-level string; a column there is the LEVEL finding
+        assertLoadError("variable_count(--LNKGRP)", "argument 'name' of 'variable_count'",
+                "read once per call", "--LNKGRP");
         assertLoadError("variable_count(name_pattern=\"[unbalanced\")",
                 "not a valid regular expression");
         assertLoadError("column_series_metadata(\"COVAL\", name_pattern=\"^COVAL\\\\d+$\","
@@ -399,7 +401,9 @@ class ScalarMetadataFunctionsTest
                 "label");
         assertLoadError("cross_dataset_variable_metadata(\"label\", domain=ADSL)",
                 "static string literal", "ADSL");
-        assertLoadError("extract_metadata(DOMAIN)", "static string literal");
+        // W1a BS1: the key is any dataset-level string; a column there is the LEVEL finding
+        assertLoadError("extract_metadata(DOMAIN)", "argument 'name' of 'extract_metadata'",
+                "read once per call");
         assertLoadError("domain_is_custom(DOMAIN)", "domain_is_custom");
     }
 

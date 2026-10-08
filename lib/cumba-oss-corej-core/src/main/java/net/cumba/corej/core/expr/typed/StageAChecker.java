@@ -2350,7 +2350,10 @@ public final class StageAChecker
 
     /**
      * §5.0's hand-over contract, row 3, for the readers that take an operand as a <b>dataset-level
-     * list</b>: {@code minus} and {@code union} ({@code not empty(minus($a, subtract=$p))}),
+     * value</b>: {@code minus} and {@code union} ({@code not empty(minus($a, subtract=$p))}) and,
+     * since W1a BS1, the registry parameters read once per call
+     * ({@link net.cumba.corej.core.expr.eval.ListOperandLevel#PER_CALL_PARAMETERS}:
+     * {@code extract_metadata(name=$k)}, {@code case_sensitive=$cs}, {@code codelists=$cl}, …),
      * written in the Check or nested in a compiled binding. A per-row or per-variable operand — a
      * compiled binding or, since W1a U3, the same expression inline — is a load error
      * ({@link StageAErrorKind#OPERATION_READS_CURSOR_BINDING}), never a run-time backstop throw.
@@ -2387,9 +2390,13 @@ public final class StageAChecker
         }
         case Expr.Call c ->
         {
-            if (LIST_SET_FUNCTIONS.contains(c.name()))
+            // one derivation for both spellings (ListOperandLevel): a $-reference by its
+            // installed domain, any other expression by DomainScan — the set functions' operands
+            // (U3) and the per-call parameters (BS1) alike
+            for (String refusal : net.cumba.corej.core.expr.eval.ListOperandLevel.refusals(c, rule,
+                    where))
             {
-                checkListFunctionCall(c, where);
+                find(StageAErrorKind.OPERATION_READS_CURSOR_BINDING, refusal);
             }
             c.args().forEach(a -> listFunctionReads(a, where));
             c.kwargs().values().forEach(a -> listFunctionReads(a, where));
@@ -2410,36 +2417,6 @@ public final class StageAChecker
         }
     }
 
-
-    /**
-     * Wave 4 ({@code PLAN-list-functions} D-W4-4), widened by {@code PLAN-union-function} §3.3
-     * (runbook W1a U3, ruled by D3 / D16): {@code minus} / {@code union} read every operand as a
-     * dataset-level list, so EVERY operand is judged by its level — a {@code $}-reference by its
-     * installed domain, any other expression by {@code DomainScan} — through the one derivation
-     * {@link net.cumba.corej.core.expr.eval.ListOperandLevel}; a per-row or per-variable operand is
-     * the same finding, bound or inline. (Until U3 only a {@code $}-reference was judged here and
-     * the compiler refused every inline operand by shape.)
-     */
-    private void checkListFunctionCall(Expr.Call c, String where)
-    {
-        List<Expr> operands = new ArrayList<>(c.args());
-        operands.addAll(c.kwargs().values());
-        for (Expr operand : operands)
-        {
-            if (net.cumba.corej.core.expr.eval.ListOperandLevel.needsCursor(operand, rule))
-            {
-                find(StageAErrorKind.OPERATION_READS_CURSOR_BINDING,
-                        net.cumba.corej.core.expr.eval.ListOperandLevel.refusal(c.name(), where,
-                                operand));
-            }
-        }
-    }
-
-    /**
-     * The set functions whose operands are dataset-level lists ({@code minus}, {@code union} —
-     * {@code PLAN-union-function} §3.4).
-     */
-    private static final Set<String> LIST_SET_FUNCTIONS = net.cumba.corej.core.expr.eval.ListOperandLevel.LIST_SET_FUNCTIONS;
 
     /** The {@code $}-references a compiled binding's expression makes. */
     private static Set<String> compiledBindingRefs(CompiledBinding compiled)

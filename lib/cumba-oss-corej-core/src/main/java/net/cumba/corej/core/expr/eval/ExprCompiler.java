@@ -7994,7 +7994,7 @@ public final class ExprCompiler
                 }
             }
         }
-        rejectNonLiteralDictionaryFlags(descriptor, bound, stageAJudged);
+        rejectWrongTypedLiteralsAtPerCallParameters(descriptor, bound, stageAJudged);
         rejectNonLiteralStaticStrings(descriptor, bound, stageAJudged);
         rejectInvalidFormats(descriptor, bound);
         rejectNonLiteralListArguments(descriptor, bound);
@@ -8003,45 +8003,60 @@ public final class ExprCompiler
 
 
     /**
-     * The companion seam for the dictionary functions' {@code case_sensitive} flag (review round 1
-     * of {@code PLAN-function-surface-wave1}, lane 2 M1): the retired operation surface parsed
-     * {@code case_sensitive} as a boolean field, so a non-boolean was a load error; on the function
-     * surface the function reads the flag as {@code Boolean.FALSE.equals(value(0))} — a column or a
-     * string bound there would silently mean "case-sensitive". Anything that is not a {@code BOOL}
-     * literal at a {@code case_sensitive} parameter of a DICTIONARY-backed descriptor is a load
-     * error.
-     *
-     * <p>
-     * {@code PLAN-stage-a-parameter-type-arming} (Q3): the <b>wrong-literal half</b> — a string, a
-     * number, any literal that is not a boolean — is a known-vs-known conflict against the
-     * {@code BOOLEAN} parameter, so the armed stage A refuses it in the loader's seam pass and the
-     * seam stands down there ({@code stageAJudged}). The <b>staticness half</b> stays everywhere: a
-     * column or a computed {@code a == b} dereferences to unknown, which stage A cannot refuse, and
-     * the flag is read once per call.
-     * </p>
+     * W1a BS1 ({@code PLAN-binding-substitutability} C9–C11, ruled Q4): the parameters read <b>once
+     * per call</b> whose value is read at evaluation ({@link ListOperandLevel#PER_CALL_PARAMETERS})
+     * take any dataset-level expression of their declared type, bound or inline. The <b>staticness
+     * half</b> of the retired seams — the dictionary flag seam
+     * ({@code rejectNonLiteralDictionaryFlags}, review round 1 of
+     * {@code PLAN-function-surface-wave1}), the open-vocabulary arm of
+     * {@link #rejectNonLiteralListArguments} and its static-list arm — was a LEVEL reason ("read
+     * once per call, so a column would be read at row 0") spelt as a shape refusal; it is the level
+     * judgement now, through the one derivation {@link ListOperandLevel}: stage A's
+     * {@code OPERATION_READS_CURSOR_BINDING} where it walks the rule, the loader's seam pass where
+     * it does not. What stays here is the <b>type half</b> for the paths stage A does not type
+     * ({@code stageAJudged} false — the compile sites, a Check-less rule, a Filter): a literal of
+     * another kind than the declared type — a string where a boolean is read, a string where a list
+     * is read, a number where a string is read — is a load error, never a silent "case-sensitive",
+     * a singleton list or the text {@code 1}. Where stage A walks the rule the same literal is its
+     * {@code PARAMETER_TYPE} ({@code PLAN-stage-a-parameter-type-arming} Q3).
      */
-    private static void rejectNonLiteralDictionaryFlags(FunctionDescriptor descriptor,
+    private static void rejectWrongTypedLiteralsAtPerCallParameters(FunctionDescriptor descriptor,
             List<@Nullable Expr> bound, boolean stageAJudged)
     {
-        ProviderNeed need = descriptor.provider();
-        if (need == null || need.kind() != ProviderNeed.Kind.DICTIONARY)
+        Set<String> perCall = ListOperandLevel.PER_CALL_PARAMETERS.getOrDefault(descriptor.name(),
+                Set.of());
+        if (perCall.isEmpty() || stageAJudged)
         {
             return;
         }
         List<Parameter> params = descriptor.parameters();
         for (int i = 0; i < params.size() && i < bound.size(); i++)
         {
-            Expr e = bound.get(i);
             Parameter param = params.get(i);
-            // the literal half stands down only where stage A can see the conflict: a parameter
-            // declared BOOLEAN (review r1 seams M2 — a stub declaring it unknown keeps the seam)
-            boolean stageAs = stageAJudged && e instanceof Expr.Lit
-                    && param.type() == net.cumba.corej.core.expr.typed.ExprType.Primitive.BOOLEAN;
-            if (e != null && "case_sensitive".equals(param.name())
-                    && !(e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.BOOL) && !stageAs)
+            if (!perCall.contains(param.name()) || !(bound.get(i) instanceof Expr.Lit lit))
             {
-                throw unsupported("argument 'case_sensitive' of '" + descriptor.name()
-                        + "' takes a boolean literal (true or false), not " + describe(e));
+                continue;
+            }
+            String expected = null;
+            if (param.type() == net.cumba.corej.core.expr.typed.ExprType.Primitive.BOOLEAN
+                    && lit.kind() != Expr.LitKind.BOOL)
+            {
+                expected = "a boolean (true or false)";
+            }
+            else if (param.type() == net.cumba.corej.core.expr.typed.ExprType.Primitive.STRING
+                    && lit.kind() != Expr.LitKind.STRING)
+            {
+                expected = "a string";
+            }
+            else if (param.type() instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf
+                    && lit.kind() != Expr.LitKind.LIST)
+            {
+                expected = "a list of strings";
+            }
+            if (expected != null)
+            {
+                throw unsupported("argument '" + param.name() + "' of '" + descriptor.name()
+                        + "' takes " + expected + ", not " + describe(lit));
             }
         }
     }
@@ -8049,14 +8064,15 @@ public final class ExprCompiler
 
     /**
      * Wave 3 ({@code PLAN-per-row-functions} D-W3-4), a companion of
-     * {@link #rejectNonLiteralDictionaryFlags}: the parameters a registry function reads ONCE per
-     * call rather than per row — the dictionary level ({@code dictionary_term_type}) of the
-     * membership functions and {@code row_max}'s column selector ({@code name_pattern}) — take a
-     * static string literal. A column or any other expression bound there would be read at row 0
-     * and silently stand for every row (the FDA-SD1078 silent shape); on the retired operation
-     * surface both were string fields, so a non-string was a load error there too. A
-     * {@code name_pattern} that does not compile as a regular expression is a load error as well
-     * (the operation answered {@code null} and the rule fired nothing, silently).
+     * {@code rejectNonLiteralDictionaryFlags} (retired by W1a BS1): the parameters a registry
+     * function reads ONCE per call rather than per row — the dictionary level
+     * ({@code dictionary_term_type}) of the membership functions and {@code row_max}'s column
+     * selector ({@code name_pattern}) — take a static string literal. A column or any other
+     * expression bound there would be read at row 0 and silently stand for every row (the
+     * FDA-SD1078 silent shape); on the retired operation surface both were string fields, so a
+     * non-string was a load error there too. A {@code name_pattern} that does not compile as a
+     * regular expression is a load error as well (the operation answered {@code null} and the rule
+     * fired nothing, silently).
      *
      * <p>
      * {@code PLAN-stage-a-parameter-type-arming} (Q3): only the <b>wrong-typed literal</b> case — a
@@ -8204,9 +8220,15 @@ public final class ExprCompiler
 
     /**
      * Wave 4 ({@code PLAN-list-functions} D-W4-3), keyed by <b>(function, parameter)</b> so a
-     * parameter name shared with another function is not caught by accident: the list functions'
-     * static string parameters, each with the vocabulary it must spell. A {@code null} vocabulary
-     * is "any string literal".
+     * parameter name shared with another function is not caught by accident: the string parameters
+     * held to a literal, each with the closed vocabulary it must spell (a literal type, G2 / Q3 of
+     * {@code PLAN-binding-substitutability}), or {@code null} for the two <b>name slots</b> that
+     * stay literal by coordinator decision — {@code column_series_metadata}'s base column and
+     * {@code cross_dataset_variable_metadata}'s source dataset
+     * ({@code RuleClassifier.scalarDomainOf} reads the domain at load). The open-vocabulary strings
+     * this table held until W1a BS1 ({@code extract_metadata} / {@code variable_count}
+     * {@code name}, {@code key_value}) take any dataset-level string now
+     * ({@link ListOperandLevel#PER_CALL_PARAMETERS}).
      */
     private static final Map<String, Map<String, @Nullable Set<String>>> STATIC_STRING_VOCABULARIES = Map
             .of(net.cumba.corej.core.exec.LibraryLists.CODELIST_TERMS,
@@ -8215,41 +8237,36 @@ public final class ExprCompiler
                             net.cumba.corej.core.exec.LibraryLists.RETURNTYPE_PARAMETER,
                             net.cumba.corej.core.exec.LibraryLists.RETURNTYPES),
                     net.cumba.corej.core.exec.LibraryLists.GET_DATASET_FILTERED_VARIABLES,
+                    map1(net.cumba.corej.core.exec.LibraryLists.KEY_NAME_PARAMETER,
+                            net.cumba.corej.core.metadata.LibraryVariableAttributes.KEYS),
+                    net.cumba.corej.core.exec.LibraryLists.GET_MODEL_FILTERED_VARIABLES,
                     map2(net.cumba.corej.core.exec.LibraryLists.KEY_NAME_PARAMETER,
                             net.cumba.corej.core.metadata.LibraryVariableAttributes.KEYS,
-                            net.cumba.corej.core.exec.LibraryLists.KEY_VALUE_PARAMETER, null),
-                    net.cumba.corej.core.exec.LibraryLists.GET_MODEL_FILTERED_VARIABLES,
-                    map3(net.cumba.corej.core.exec.LibraryLists.KEY_NAME_PARAMETER,
-                            net.cumba.corej.core.metadata.LibraryVariableAttributes.KEYS,
-                            net.cumba.corej.core.exec.LibraryLists.KEY_VALUE_PARAMETER, null,
                             net.cumba.corej.core.exec.LibraryLists.MODEL_CLASS_PARAMETER,
                             net.cumba.corej.core.metadata.SdtmObservationClasses.MODEL_CLASS_NAMES),
-                    // Wave 4b (PLAN-scalar-metadata-functions D-W4b-6): the scalar functions'
-                    // metadata keys, template, base column and source dataset — each read once
-                    // per call. cross_dataset_variable_metadata's key has a closed vocabulary
-                    // (the retired operation answered null for any other key, silently);
-                    // extract_metadata's stays open (any provider metadata key, D-W4b-3).
-                    net.cumba.corej.core.exec.ScalarMetadataFunctions.EXTRACT_METADATA,
-                    map1(net.cumba.corej.core.exec.ScalarMetadataFunctions.NAME_PARAMETER, null),
+                    // Wave 4b (PLAN-scalar-metadata-functions D-W4b-6): cross_dataset_variable_
+                    // metadata's key has a closed vocabulary (the retired operation answered null
+                    // for any other key, silently); its source dataset and column_series_
+                    // metadata's base column are name slots.
                     net.cumba.corej.core.exec.ScalarMetadataFunctions.CROSS_DATASET_VARIABLE_METADATA,
                     map2(net.cumba.corej.core.exec.ScalarMetadataFunctions.NAME_PARAMETER,
                             net.cumba.corej.core.exec.ScalarMetadataFunctions.VARIABLE_METADATA_FIELDS,
                             net.cumba.corej.core.exec.ScalarMetadataFunctions.DOMAIN_PARAMETER,
                             null),
-                    net.cumba.corej.core.exec.ScalarMetadataFunctions.VARIABLE_COUNT,
-                    map1(net.cumba.corej.core.exec.ScalarMetadataFunctions.NAME_PARAMETER, null),
                     net.cumba.corej.core.exec.ScalarMetadataFunctions.COLUMN_SERIES_METADATA,
                     map1(net.cumba.corej.core.exec.ScalarMetadataFunctions.NAME_PARAMETER, null));
 
     /**
      * Wave 4: the list functions' <b>list</b> parameters. A list literal bound there must hold
      * string literals only — {@code codelists=[DOMAIN]} would otherwise compile silently, since
-     * {@code DOMAIN} is a real column (R1: a bare name is a column, a quoted one a string). The
-     * static ones ({@code codelists}, {@code ct_package_types}) must BE a list literal (read once
-     * per call); {@code minus}'s / {@code union}'s operands are any dataset-level list expression
-     * ({@code PLAN-union-function} §3.3) — a list literal written there is held to the member rule.
+     * {@code DOMAIN} is a real column (R1: a bare name is a column, a quoted one a string). Until
+     * W1a BS1 {@code codelists} / {@code ct_package_types} had to BE a list literal (read once per
+     * call); since BS1 they are any dataset-level list expression, as {@code minus}'s /
+     * {@code union}'s operands are ({@code PLAN-union-function} §3.3) — a list literal written at
+     * any of them is held to the member rule, every other expression to its level
+     * ({@link ListOperandLevel}).
      */
-    private static final Map<String, Set<String>> STATIC_LIST_PARAMETERS = Map.of(
+    private static final Map<String, Set<String>> DATASET_LEVEL_LIST_PARAMETERS = Map.of(
             net.cumba.corej.core.exec.LibraryLists.CODELIST_TERMS,
             Set.of(net.cumba.corej.core.exec.LibraryLists.CODELISTS_PARAMETER),
             net.cumba.corej.core.exec.LibraryLists.VALID_CODELIST_DATES,
@@ -8319,15 +8336,6 @@ public final class ExprCompiler
     }
 
 
-    private static Map<String, @Nullable Set<String>> map3(String k1, @Nullable Set<String> v1,
-            String k2, @Nullable Set<String> v2, String k3, @Nullable Set<String> v3)
-    {
-        Map<String, @Nullable Set<String>> m = map2(k1, v1, k2, v2);
-        m.put(k3, v3);
-        return m;
-    }
-
-
     /**
      * Wave 4 ({@code PLAN-list-functions} D-W4-3): the argument seams of a registry call, run at
      * <b>load</b> for a call written inline in a Check or a Precondition — the binder's arity /
@@ -8388,16 +8396,6 @@ public final class ExprCompiler
 
 
     /**
-     * The {@code (function → parameters)} that must be a list literal of string literals
-     * ({@link #STATIC_LIST_PARAMETERS}), read-only — for the language surface.
-     */
-    public static Map<String, Set<String>> staticListParameters()
-    {
-        return STATIC_LIST_PARAMETERS;
-    }
-
-
-    /**
      * Whether a variable-scope accessor takes the {@code dataset=} keyword at the DATA level
      * ({@link #metadataPlan}: the join-free cross-dataset read of {@code var_label} /
      * {@code var_type} / {@code var_length} / {@code var_format}) — for the language surface.
@@ -8413,8 +8411,8 @@ public final class ExprCompiler
      * D-W4-3): the list functions' static string parameters take a string literal spelling a word
      * of their vocabulary ({@code level}, {@code returntype}, {@code key_name}, {@code model_class}
      * — the retired operation parser's {@code validateKeyName} / {@code validateModelClass}, now a
-     * compile seam), and their list parameters take string literals only (a bare {@code [DOMAIN]}
-     * is a load error naming the quoted spelling). ⚑ Not retired by the arming of
+     * compile seam), and a list literal at their list parameters holds string literals only (a bare
+     * {@code [DOMAIN]} is a load error naming the quoted spelling). ⚑ Not retired by the arming of
      * {@code PARAMETER_TYPE} ({@code PLAN-stage-a-parameter-type-arming} S4): a vocabulary is a
      * value check, and {@code [DOMAIN]} types as {@code list<unknown>}, compatible with
      * {@code list<string>}.
@@ -8424,7 +8422,8 @@ public final class ExprCompiler
     {
         Map<String, @Nullable Set<String>> vocabularies = STATIC_STRING_VOCABULARIES
                 .getOrDefault(descriptor.name(), Map.of());
-        Set<String> staticLists = STATIC_LIST_PARAMETERS.getOrDefault(descriptor.name(), Set.of());
+        Set<String> datasetLists = DATASET_LEVEL_LIST_PARAMETERS.getOrDefault(descriptor.name(),
+                Set.of());
         Set<String> listExpressions = LIST_EXPRESSION_PARAMETERS.getOrDefault(descriptor.name(),
                 Set.of());
         List<Parameter> params = descriptor.parameters();
@@ -8454,24 +8453,22 @@ public final class ExprCompiler
                             vocabularyMessage(descriptor.name(), name, value, vocabulary));
                 }
             }
-            if (staticLists.contains(name) || listExpressions.contains(name))
+            if (datasetLists.contains(name) || listExpressions.contains(name))
             {
                 if (e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
                 {
                     requireStringLiteralMembers(descriptor.name(), name, lit);
                 }
-                else if (staticLists.contains(name))
-                {
-                    throw unsupported("argument '" + name + "' of '" + descriptor.name()
-                            + "' takes a static list of string literals, not " + describe(e));
-                }
-                // PLAN-union-function §3.3 (runbook W1a U3, D3 / D16): a list-expression operand
-                // that is not a literal is judged by its LEVEL, not its shape — stage A's
+                // PLAN-union-function §3.3 (runbook W1a U3, D3 / D16) and
+                // PLAN-binding-substitutability C11 (W1a BS1): a list operand that is not a
+                // literal is judged by its LEVEL, not its shape — stage A's
                 // OPERATION_READS_CURSOR_BINDING where it walks the rule, the loader's seam pass
-                // (ListOperandLevel.firstRefusal) where it does not. The shape refusal that stood
-                // here ("takes a dataset-level list — a $-binding of one or a list literal") sent
-                // the author to bind the operand, where the same level finding met it one step
-                // later.
+                // (ListOperandLevel.firstRefusal) where it does not. The shape refusals that stood
+                // here ("takes a dataset-level list — a $-binding of one or a list literal";
+                // "takes a static list of string literals") sent the author to bind the operand,
+                // where the same level finding met it one step later. A non-list literal at
+                // codelists / ct_package_types is the type half's
+                // (rejectWrongTypedLiteralsAtPerCallParameters, stage A where it walks).
             }
         }
     }

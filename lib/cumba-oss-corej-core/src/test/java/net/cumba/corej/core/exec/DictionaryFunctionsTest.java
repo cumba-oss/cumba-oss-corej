@@ -207,13 +207,13 @@ class DictionaryFunctionsTest
 
 
     @Test
-    void aNonLiteralCaseSensitiveIsALoadError() throws Exception
+    void aPerRowCaseSensitiveIsALevelFinding() throws Exception
     {
-        // Review round 1 lane 2 M1: the retired operation parsed case_sensitive as a boolean
-        // field; the function reads the flag as Boolean.FALSE.equals(value(0)) — a column bound
-        // there would silently mean "case-sensitive". The STATICNESS half of the compile seam:
-        // a column (unknown to stage A) is refused at the compile sites, for both functions and
-        // both argument forms (PLAN-stage-a-parameter-type-arming S2, the kept half).
+        // Review round 1 lane 2 M1: the function reads the flag once per call, so a column there
+        // would silently mean "case-sensitive" (read at row 0). Until W1a BS1 the compile seam
+        // refused everything but a boolean literal by SHAPE; since BS1 (PLAN-binding-
+        // substitutability C10, D3 / D16) the flag is any dataset-level boolean, and a per-row
+        // one is the LEVEL finding — the same message for `$cs: AESOC` and for `AESOC` inline.
         for (String spelling : List.of(
                 "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL,"
                         + " external_dictionary_type=\\\"unii\\\", case_sensitive=TSPARMCD)",
@@ -221,8 +221,9 @@ class DictionaryFunctionsTest
                         + " external_dictionary_type=\\\"meddra\\\", case_sensitive=AESOC)"))
         {
             String error = loadError(spelling);
-            assertTrue(error.contains("case_sensitive") && error.contains("boolean literal"),
-                    spelling + ": " + error);
+            assertTrue(error.contains("OPERATION_READS_CURSOR_BINDING")
+                    && error.contains("argument 'case_sensitive'")
+                    && error.contains("read once per call"), spelling + ": " + error);
         }
         assertNull(load("valid_external_dictionary_code_term_pair(TSVALCD, TSVAL, \\\"unii\\\","
                 + " false)").getLoadError(), "the positional boolean literal binds");
@@ -233,16 +234,17 @@ class DictionaryFunctionsTest
     void aWrongTypedLiteralCaseSensitiveIsALoadError() throws Exception
     {
         // The LITERAL half (PLAN-stage-a-parameter-type-arming S2): a string or a number where a
-        // boolean literal is required. In a BINDING the compile site answers first (the bindings
-        // compile before stage A runs), so the seam's wording is pinned here; the same literal
-        // inline in a Check is the armed stage A's (RegistryCallSeamsTest).
+        // boolean is required. In a BINDING the compile site answers first (the bindings compile
+        // before stage A runs), so the seam's wording is pinned here
+        // (ExprCompiler.rejectWrongTypedLiteralsAtPerCallParameters since W1a BS1); the same
+        // literal inline in a Check is the armed stage A's (RegistryCallSeamsTest).
         for (String spelling : List.of(
                 "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL,"
                         + " external_dictionary_type=\\\"unii\\\", case_sensitive=\\\"false\\\")",
                 "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL, \\\"unii\\\", 0)"))
         {
             String error = loadError(spelling);
-            assertTrue(error.contains("case_sensitive") && error.contains("boolean literal"),
+            assertTrue(error.contains("case_sensitive") && error.contains("takes a boolean"),
                     spelling + ": " + error);
         }
     }

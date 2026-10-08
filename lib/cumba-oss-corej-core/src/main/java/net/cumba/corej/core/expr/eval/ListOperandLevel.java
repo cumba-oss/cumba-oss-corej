@@ -2,6 +2,7 @@ package net.cumba.corej.core.expr.eval;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.OperandKind;
@@ -23,11 +24,21 @@ import org.jspecify.annotations.Nullable;
  * the same answer.
  *
  * <p>
- * Two callers: stage A ({@code StageAChecker.checkListFunctionCall}, the armed kind
+ * Two kinds of reader are judged here: the set functions ({@link #LIST_SET_FUNCTIONS}: every
+ * operand of {@code minus} / {@code union} is a dataset-level list, W1a U3) and the registry
+ * parameters read <b>once per call</b> ({@link #PER_CALL_PARAMETERS}, W1a BS1 — C9–C11 of
+ * {@code PLAN-binding-substitutability}, ruled Q4: the open-vocabulary strings, the dictionary
+ * functions' {@code case_sensitive} and the static lists, which the compiler held to a literal
+ * until BS1 because a per-row value there would have been read at row 0).
+ * </p>
+ *
+ * <p>
+ * Two callers: stage A ({@code StageAChecker.listFunctionReads}, the armed kind
  * {@code OPERATION_READS_CURSOR_BINDING}) where it walks the rule, and the loader's seam pass
  * ({@link #firstRefusal}) where it does not — a Check-less rule's bindings, a
  * {@code Match_Datasets} Filter, the re-run after a {@code CHECKER_FAILURE} — so a per-row operand
  * never silently reads row 0 on either path.
+ * </p>
  */
 public final class ListOperandLevel
 {
@@ -35,6 +46,42 @@ public final class ListOperandLevel
     /** The set functions whose operands are dataset-level lists ({@code minus}, {@code union}). */
     public static final Set<String> LIST_SET_FUNCTIONS = Set
             .of(net.cumba.corej.core.exec.Minus.NAME, net.cumba.corej.core.exec.Union.NAME);
+
+    /**
+     * The registry parameters read <b>once per call</b> whose value is read at evaluation (never at
+     * plan-build time), keyed <b>function → parameters</b> — W1a BS1 widened each from a literal to
+     * any dataset-level expression of its declared type: {@code extract_metadata} /
+     * {@code variable_count} {@code name} and the {@code key_value} of the two Library walks (C9),
+     * the five dictionary functions' {@code case_sensitive} (C10), {@code codelist_terms}
+     * {@code codelists} and {@code valid_codelist_dates} {@code ct_package_types} (C11). NOT here:
+     * {@code keep_missings} (consumed at plan-build time — an owner question, coordinator decision
+     * 8), the closed vocabularies and regex parameters (literal types, G2) and the name slots
+     * {@code column_series_metadata.name} / {@code cross_dataset_variable_metadata.domain}
+     * (coordinator decision 1).
+     */
+    public static final Map<String, Set<String>> PER_CALL_PARAMETERS = Map.ofEntries(
+            Map.entry(net.cumba.corej.core.exec.ScalarMetadataFunctions.EXTRACT_METADATA,
+                    Set.of(net.cumba.corej.core.exec.ScalarMetadataFunctions.NAME_PARAMETER)),
+            Map.entry(net.cumba.corej.core.exec.ScalarMetadataFunctions.VARIABLE_COUNT,
+                    Set.of(net.cumba.corej.core.exec.ScalarMetadataFunctions.NAME_PARAMETER)),
+            Map.entry(net.cumba.corej.core.exec.LibraryLists.GET_DATASET_FILTERED_VARIABLES,
+                    Set.of(net.cumba.corej.core.exec.LibraryLists.KEY_VALUE_PARAMETER)),
+            Map.entry(net.cumba.corej.core.exec.LibraryLists.GET_MODEL_FILTERED_VARIABLES,
+                    Set.of(net.cumba.corej.core.exec.LibraryLists.KEY_VALUE_PARAMETER)),
+            Map.entry(net.cumba.corej.core.exec.LibraryLists.CODELIST_TERMS,
+                    Set.of(net.cumba.corej.core.exec.LibraryLists.CODELISTS_PARAMETER)),
+            Map.entry(net.cumba.corej.core.exec.LibraryLists.VALID_CODELIST_DATES,
+                    Set.of(net.cumba.corej.core.exec.LibraryLists.CT_PACKAGE_TYPES_PARAMETER)),
+            Map.entry(net.cumba.corej.core.exec.DictionaryFunctions.HAS_DECODE,
+                    Set.of(net.cumba.corej.core.exec.DictionaryFunctions.CASE_SENSITIVE_PARAMETER)),
+            Map.entry(net.cumba.corej.core.exec.DictionaryFunctions.VALUE,
+                    Set.of(net.cumba.corej.core.exec.DictionaryFunctions.CASE_SENSITIVE_PARAMETER)),
+            Map.entry(net.cumba.corej.core.exec.DictionaryFunctions.CODE,
+                    Set.of(net.cumba.corej.core.exec.DictionaryFunctions.CASE_SENSITIVE_PARAMETER)),
+            Map.entry(net.cumba.corej.core.exec.DictionaryFunctions.CODE_TERM_PAIR,
+                    Set.of(net.cumba.corej.core.exec.DictionaryFunctions.CASE_SENSITIVE_PARAMETER)),
+            Map.entry(net.cumba.corej.core.exec.DictionaryFunctions.HIERARCHY, Set
+                    .of(net.cumba.corej.core.exec.DictionaryFunctions.CASE_SENSITIVE_PARAMETER)));
 
     private ListOperandLevel()
     {
@@ -85,6 +132,89 @@ public final class ListOperandLevel
     }
 
 
+    /**
+     * The refusal's text for a parameter read once per call — one sentence for both spellings.
+     *
+     * @param function
+     *            the reading function
+     * @param parameter
+     *            the parameter
+     * @param where
+     *            where the call is written
+     * @param operand
+     *            the refused operand, printed as written
+     * @return the message
+     */
+    public static String parameterRefusal(String function, String parameter, String where,
+            Expr operand)
+    {
+        return "argument '" + parameter + "' of '" + function + "' in " + where
+                + " is read once per call and cannot take the per-row or per-variable value `"
+                + ExpressionPrinter.print(operand)
+                + "` — bound or inline, it takes a dataset-level value";
+    }
+
+
+    /**
+     * Every level refusal of one call: each operand of a set function, and each operand at a
+     * {@link #PER_CALL_PARAMETERS per-call parameter} (positional operands mapped to their
+     * parameter through the registry descriptor, keyword operands by name), that varies per row or
+     * per variable. Empty for any other call, and for a call whose every such operand is
+     * dataset-level. Stage A files each as a finding; the loader throws the first.
+     *
+     * @param c
+     *            the call
+     * @param rule
+     *            the rule it is written in
+     * @param where
+     *            where it is written, for the message
+     * @return the refusals, in operand order
+     */
+    public static List<String> refusals(Expr.Call c, Rule rule, String where)
+    {
+        List<String> out = new ArrayList<>();
+        if (LIST_SET_FUNCTIONS.contains(c.name()))
+        {
+            List<Expr> operands = new ArrayList<>(c.args());
+            operands.addAll(c.kwargs().values());
+            for (Expr operand : operands)
+            {
+                if (needsCursor(operand, rule))
+                {
+                    out.add(refusal(c.name(), where, operand));
+                }
+            }
+            return out;
+        }
+        Set<String> perCall = PER_CALL_PARAMETERS.get(c.name());
+        if (perCall == null)
+        {
+            return out;
+        }
+        FunctionDescriptor descriptor = FunctionRegistry.descriptor(c.name());
+        List<Parameter> params = descriptor == null ? List.of() : descriptor.parameters();
+        for (int i = 0; i < c.args().size() && i < params.size(); i++)
+        {
+            judge(params.get(i).name(), c.args().get(i), perCall, c.name(), rule, where, out);
+        }
+        for (Map.Entry<String, Expr> kw : c.kwargs().entrySet())
+        {
+            judge(kw.getKey(), kw.getValue(), perCall, c.name(), rule, where, out);
+        }
+        return out;
+    }
+
+
+    private static void judge(String parameter, Expr operand, Set<String> perCall, String function,
+            Rule rule, String where, List<String> out)
+    {
+        if (perCall.contains(parameter) && needsCursor(operand, rule))
+        {
+            out.add(parameterRefusal(function, parameter, where, operand));
+        }
+    }
+
+
     /** {@code "a set union"} / {@code "a set difference"}, for the message. */
     public static String setOperation(String function)
     {
@@ -95,7 +225,8 @@ public final class ListOperandLevel
 
     /**
      * The loader's twin of stage A's walk: the first per-row / per-variable operand of a set
-     * function anywhere in the expression, or {@code null} when every operand is dataset-level.
+     * function or at a per-call parameter anywhere in the expression ({@link #refusals}), or
+     * {@code null} when every such operand is dataset-level.
      *
      * @param expr
      *            the expression to walk
@@ -127,18 +258,13 @@ public final class ListOperandLevel
         }
         case Expr.Call c ->
         {
+            List<String> own = refusals(c, rule, where);
+            if (!own.isEmpty())
+            {
+                return own.get(0);
+            }
             List<Expr> operands = new ArrayList<>(c.args());
             operands.addAll(c.kwargs().values());
-            if (LIST_SET_FUNCTIONS.contains(c.name()))
-            {
-                for (Expr operand : operands)
-                {
-                    if (needsCursor(operand, rule))
-                    {
-                        return refusal(c.name(), where, operand);
-                    }
-                }
-            }
             return firstRefusal(operands, rule, where);
         }
         case Expr.Lit lit ->

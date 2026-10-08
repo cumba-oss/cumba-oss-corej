@@ -147,11 +147,16 @@ class RuleLanguageSurfaceTest
         assertTrue(
                 surface.contains("\ncodelist_terms.returntype: literal {code,pref_term,value}\n"),
                 surface);
-        assertTrue(surface.contains("\nextract_metadata.name: literal\n"), surface);
         assertTrue(surface.contains("\nrow_max.name_pattern: literal\n"), surface);
-        assertTrue(surface.contains("\ncodelist_terms.codelists: literal-list\n"), surface);
-        assertTrue(surface.contains("\nvalid_external_dictionary_code.case_sensitive: literal\n"),
+        assertTrue(surface.contains("\ncolumn_series_metadata.name: literal\n"), surface);
+        assertTrue(
+                surface.contains(
+                        "\nvalid_external_dictionary_code.dictionary_term_type: literal\n"),
                 surface);
+        // W1a BS1 widened these to dataset-level expressions: no literal line any more
+        assertFalse(surface.contains("extract_metadata.name:"), surface);
+        assertFalse(surface.contains("codelist_terms.codelists:"), surface);
+        assertFalse(surface.contains(".case_sensitive:"), surface);
         assertTrue(surface.contains("\nparameter-values:\n"), surface);
         assertTrue(surface.contains("\nread_value.mode: FIRST,MAX,MIN,ONLY\n"), surface);
         assertTrue(surface.contains("\nmax_date.missing_values: indeterminate,skip\n"), surface);
