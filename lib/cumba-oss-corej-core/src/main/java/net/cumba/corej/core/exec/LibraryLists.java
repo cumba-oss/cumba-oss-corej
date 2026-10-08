@@ -103,8 +103,15 @@ public final class LibraryLists
     /** The {@code level} vocabulary of {@link #CODELIST_TERMS}. */
     public static final Set<String> LEVELS = Set.of("term", "codelist");
 
+    /**
+     * The {@code returntype} {@code "synonym"} of {@link #CODELIST_TERMS}
+     * ({@code PLAN-engine-gap-dict-unsupported} §4.2, Q4; runbook W1b DI3).
+     */
+    public static final String RETURNTYPE_SYNONYM = "synonym";
+
     /** The {@code returntype} vocabulary of {@link #CODELIST_TERMS}. */
-    public static final Set<String> RETURNTYPES = Set.of("value", "code", "pref_term");
+    public static final Set<String> RETURNTYPES = Set.of("value", "code", "pref_term",
+            RETURNTYPE_SYNONYM);
 
     private static final System.Logger LOGGER = System.getLogger(LibraryLists.class.getName());
 
@@ -732,8 +739,12 @@ public final class LibraryLists
      * The six shapes: {@code (term, value)} term submission values · {@code (term, pref_term)} term
      * NCI preferred terms · {@code (term, code)} (the term-level default) NCI concept ids ·
      * {@code (codelist, value)} (the codelist-level default) the codelist's own submission value ·
-     * {@code (codelist, pref_term)} · {@code (codelist, code)}. Only {@code (term, value)} is
-     * served through {@link MetadataProvider#getCodelistTerms}; every other shape needs
+     * {@code (codelist, pref_term)} · {@code (codelist, code)} — plus, since runbook W1b DI3, the
+     * two {@code synonym} shapes: {@code (term, synonym)} every term's CDISC synonyms flattened in
+     * Library order, {@code (codelist, synonym)} the codelist's own (both read from the meta values
+     * {@link MetadataKeys#TERM_SYNONYMS} / {@link MetadataKeys#CODELIST_SYNONYMS}; a provider that
+     * carries none contributes nothing). Only {@code (term, value)} is served through
+     * {@link MetadataProvider#getCodelistTerms}; every other shape needs
      * {@link MetadataProvider#getCodelist}, whose default is deliberately empty. An empty union —
      * no CT package, an unknown codelist, a shape the provider declines — SKIPs: the downstream
      * {@code X not in $terms} would otherwise flag every row.
@@ -792,6 +803,10 @@ public final class LibraryLists
             return Stream.empty();
         }
         ICodeList cl = opt.get();
+        if ("codelist".equals(aLevel) && RETURNTYPE_SYNONYM.equals(aReturntype))
+        {
+            return synonyms(cl.getMetaValue(MetadataKeys.CODELIST_SYNONYMS).orElse(null));
+        }
         if ("codelist".equals(aLevel))
         {
             String value = switch (aReturntype == null ? "value" : aReturntype)
@@ -805,6 +820,11 @@ public final class LibraryLists
             }
             };
             return value == null ? Stream.empty() : Stream.of(value);
+        }
+        if ("term".equals(aLevel) && RETURNTYPE_SYNONYM.equals(aReturntype))
+        {
+            return cl.getEntries().stream().flatMap(
+                    e -> synonyms(e.getMetaValue(MetadataKeys.TERM_SYNONYMS).orElse(null)));
         }
         if ("term".equals(aLevel))
         {
@@ -832,6 +852,23 @@ public final class LibraryLists
     private static @Nullable String codelistMetaString(ICodeList aCodelist, String aKey)
     {
         return aCodelist.getMetaValue(aKey).map(Object::toString).orElse(null);
+    }
+
+
+    /**
+     * The present synonyms of a {@code TERM_SYNONYMS} / {@code CODELIST_SYNONYMS} meta value, in
+     * stored order: absent (unpublished, or a provider that carries none) and empty contribute
+     * nothing, and a blank synonym is absent — the {@code pref_term} arm's honest degradation, so
+     * the empty-union SKIP still fires (never a list of {@code ""}).
+     */
+    private static Stream<String> synonyms(@Nullable Object aMetaValue)
+    {
+        if (!(aMetaValue instanceof List<?> list))
+        {
+            return Stream.empty();
+        }
+        return list.stream().filter(String.class::isInstance).map(String.class::cast)
+                .filter(synonym -> !synonym.isBlank());
     }
 
 

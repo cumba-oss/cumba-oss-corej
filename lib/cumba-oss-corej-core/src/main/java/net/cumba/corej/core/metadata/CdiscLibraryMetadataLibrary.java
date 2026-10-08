@@ -571,9 +571,14 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
     /**
      * Builds the engine-facing {@link ICodeList} from one stored codelist version — the P3 seam of
      * PLAN-codelist-terms-returntype.md §4.1.1: same target type as before, different source. The
-     * stored {@code definition}/{@code synonyms} (term and codelist level) are deliberately NOT
-     * projected — no accessor and no meta-key exists for them (cache plan §4.3.1), which is the
-     * future-proofing the §3.2 ruling bought.
+     * stored {@code synonyms} are projected as meta values since runbook W1b DI3
+     * ({@code PLAN-engine-gap-dict-unsupported} §4.2, coordinator D16) —
+     * {@link MetadataKeys#TERM_SYNONYMS} on each term entry, {@link MetadataKeys#CODELIST_SYNONYMS}
+     * on the codelist — so {@code codelist_terms(returntype="synonym")} reads them with no change
+     * to the {@code cumba-datatable} entry interface; an unpublished ({@code null}) list is no meta
+     * value, a published empty one an empty list. The stored {@code definition} (term and codelist
+     * level) is still NOT projected — no accessor and no meta-key exists for it (cache plan
+     * §4.3.1).
      */
     private static ICodeList buildCodelist(StoredCodelist aCodelist)
     {
@@ -590,7 +595,7 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
                 continue;
             }
             String decode = term.preferredTerm() == null ? "" : term.preferredTerm();
-            entries.add(new CdiscCodelistEntry(code, decode, term.conceptId()));
+            entries.add(new CdiscCodelistEntry(code, decode, term.conceptId(), term.synonyms()));
         }
 
         Map<String, Object> meta = new LinkedHashMap<>();
@@ -606,6 +611,11 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
         if (preferredTerm != null)
         {
             meta.put(MetadataKeys.CODELIST_PREFERRED_TERM, preferredTerm);
+        }
+        List<String> synonyms = aCodelist.synonyms();
+        if (synonyms != null)
+        {
+            meta.put(MetadataKeys.CODELIST_SYNONYMS, synonyms);
         }
 
         // Codelist name is the submission value, which the buildCodelists loop guarantees is
@@ -905,8 +915,13 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
     }
 
 
-    private record CdiscCodelistEntry(String code, String decode,
-            @Nullable String conceptId) implements ICodelistEntry
+    /**
+     * One term of a store-built codelist. {@code synonyms} is the stored list itself (already an
+     * immutable copy — {@code StoredTerm}'s compact constructor), served as the
+     * {@link MetadataKeys#TERM_SYNONYMS} meta value; {@code null} (unpublished) is no meta value.
+     */
+    private record CdiscCodelistEntry(String code, String decode, @Nullable String conceptId,
+            @Nullable List<String> synonyms) implements ICodelistEntry
     {
 
         @Override
@@ -933,14 +948,15 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
         @Override
         public Set<String> getMetaKeys()
         {
-            return Set.of();
+            return synonyms == null ? Set.of() : Set.of(MetadataKeys.TERM_SYNONYMS);
         }
 
 
         @Override
         public Optional<Object> getMetaValue(String aKey)
         {
-            return Optional.empty();
+            return MetadataKeys.TERM_SYNONYMS.equals(aKey) ? Optional.ofNullable(synonyms)
+                    : Optional.empty();
         }
     }
 

@@ -276,7 +276,7 @@ retired:
 var_is_null -> var_is_empty
 static-parameters:
 codelist_terms.level: literal {codelist,term}
-codelist_terms.returntype: literal {code,pref_term,value}
+codelist_terms.returntype: literal {code,pref_term,synonym,value}
 column_series_metadata.min_length: literal non-negative-integer plan-build
 column_series_metadata.name: literal
 column_series_metadata.name_pattern: literal

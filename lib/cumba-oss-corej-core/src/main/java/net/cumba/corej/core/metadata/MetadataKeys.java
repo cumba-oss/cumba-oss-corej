@@ -171,4 +171,29 @@ public final class MetadataKeys
      */
     public static final String CODELIST_PREFERRED_TERM = "CodelistPreferredTerm";
 
+    /**
+     * {@code List<String>} — the codelist's own CDISC synonyms, as stored (the CT package's
+     * codelist {@code synonyms}); absent when unpublished. Serves
+     * {@code codelist_terms(level="codelist",
+     * returntype="synonym")} ({@code PLAN-engine-gap-dict-unsupported} §4.2, runbook W1b DI3).
+     *
+     * @see ICodeList
+     */
+    public static final String CODELIST_SYNONYMS = "CodelistSynonyms";
+
+    // ------------------------------------------------------------------
+    // ICodelistEntry level
+    // ------------------------------------------------------------------
+
+    /**
+     * {@code List<String>} — a term's CDISC synonyms, as stored (the CT term's {@code synonyms}, in
+     * Library order); absent when unpublished, an empty list when published empty. Serves
+     * {@code codelist_terms(level="term", returntype="synonym")}
+     * ({@code PLAN-engine-gap-dict-unsupported} §4.2, runbook W1b DI3 — a meta value, so the
+     * {@code cumba-datatable} entry interface is unchanged).
+     *
+     * @see net.cumba.datatable.metadata.ICodelistEntry
+     */
+    public static final String TERM_SYNONYMS = "TermSynonyms";
+
 }

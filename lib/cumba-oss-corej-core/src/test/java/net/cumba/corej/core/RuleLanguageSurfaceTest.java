@@ -150,7 +150,8 @@ class RuleLanguageSurfaceTest
         assertTrue(surface.contains("\nretired:\nvar_is_null -> var_is_empty\n"), surface);
         assertTrue(surface.contains("\nstatic-parameters:\n"), surface);
         assertTrue(
-                surface.contains("\ncodelist_terms.returntype: literal {code,pref_term,value}\n"),
+                surface.contains(
+                        "\ncodelist_terms.returntype: literal {code,pref_term,synonym,value}\n"),
                 surface);
         assertTrue(surface.contains("\nrow_max.name_pattern: literal\n"), surface);
         assertTrue(surface.contains("\ncolumn_series_metadata.name: literal\n"), surface);

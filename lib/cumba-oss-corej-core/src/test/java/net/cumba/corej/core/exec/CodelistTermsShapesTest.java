@@ -2,6 +2,7 @@ package net.cumba.corej.core.exec;
 
 import static net.cumba.datatable.testkit.TestMetadataFixtures.codelist;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
@@ -9,7 +10,9 @@ import java.util.Optional;
 import net.cumba.corej.core.metadata.MetadataKeys;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.ICodeList;
+import net.cumba.datatable.metadata.ICodelistEntry;
 import net.cumba.datatable.testkit.MockTable;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -29,6 +32,8 @@ import org.junit.jupiter.api.Test;
  * level=codelist, returntype=&lt;absent&gt;     -> codelist submission value (Python's else arm)
  * level=codelist, returntype=code            -> codelist concept id    (CODELIST_CONCEPT_ID)
  * level=codelist, returntype=pref_term       -> codelist preferred term (CODELIST_PREFERRED_TERM)
+ * level=term,     returntype=synonym         -> every term's synonyms (TERM_SYNONYMS), flattened
+ * level=codelist, returntype=synonym         -> the codelist's own synonyms (CODELIST_SYNONYMS)
  * </pre>
  */
 class CodelistTermsShapesTest
@@ -217,6 +222,116 @@ class CodelistTermsShapesTest
                 .entry("M", "Male", "C20197").entry("F", "", "C16576").build();
 
         assertEquals(List.of("Male"), run(new RichProvider(mixed), "term", "pref_term"));
+    }
+
+    // -----------------------------------------------------------------------
+    // returntype="synonym" — PLAN-engine-gap-dict-unsupported §4.2, Q4 (runbook W1b DI3)
+    // -----------------------------------------------------------------------
+
+
+    /** A term entry carrying its stored synonyms as the {@code TERM_SYNONYMS} meta value. */
+    private static ICodelistEntry synonymEntry(String aCode, String aDecode,
+            @Nullable List<String> aSynonyms)
+    {
+        ICodelistEntry plain = net.cumba.datatable.testkit.TestMetadataFixtures.entry(aCode,
+                aDecode, "C" + aCode);
+        return new ICodelistEntry()
+        {
+
+            @Override
+            public String getCodeValue()
+            {
+                return plain.getCodeValue();
+            }
+
+
+            @Override
+            public String getDecodeValue()
+            {
+                return plain.getDecodeValue();
+            }
+
+
+            @Override
+            public @Nullable String getConceptId()
+            {
+                return plain.getConceptId();
+            }
+
+
+            @Override
+            public java.util.Set<String> getMetaKeys()
+            {
+                return aSynonyms == null ? java.util.Set.of()
+                        : java.util.Set.of(MetadataKeys.TERM_SYNONYMS);
+            }
+
+
+            @Override
+            public Optional<Object> getMetaValue(String aKey)
+            {
+                return MetadataKeys.TERM_SYNONYMS.equals(aKey) ? Optional.ofNullable(aSynonyms)
+                        : Optional.empty();
+            }
+        };
+    }
+
+
+    @Test
+    void term_synonym_flattensEveryTermsSynonymsDeduplicatedInOrder()
+    {
+        // UNIT-shaped: "%" → [Percentage]; "%(v/v)" → [Percent Volume per Volume, vol%]; a term
+        // listing its own submission value and a synonym shared with another term (both occur in
+        // the store) — the union is order-preserving and de-duplicated
+        ICodeList unit = codelist("UNIT").meta(MetadataKeys.CODELIST_SUBMISSION_VALUE, "UNIT")
+                .entry(synonymEntry("%", "Percentage", List.of("Percentage")))
+                .entry(synonymEntry("%(v/v)", "Percent Volume per Volume",
+                        List.of("Percent Volume per Volume", "vol%")))
+                .entry(synonymEntry("PCT", "Percent", List.of("PCT", "Percentage"))).build();
+        assertEquals(List.of("Percentage", "Percent Volume per Volume", "vol%", "PCT"),
+                run(new RichProvider(unit), "term", "synonym"));
+    }
+
+
+    @Test
+    void term_synonym_aNullOrEmptyListContributesNothing_andAnAllEmptyCodelistSkips()
+    {
+        ICodeList mixed = codelist("UNIT").meta(MetadataKeys.CODELIST_SUBMISSION_VALUE, "UNIT")
+                .entry(synonymEntry("A", "Alpha", null)).entry(synonymEntry("B", "Beta", List.of()))
+                .entry(synonymEntry("C", "Gamma", List.of("", "  ", "Gamma"))).build();
+        assertEquals(List.of("Gamma"), run(new RichProvider(mixed), "term", "synonym"),
+                "an unpublished (null) and an empty list add nothing; a blank synonym is absent");
+        ICodeList none = codelist("UNIT").meta(MetadataKeys.CODELIST_SUBMISSION_VALUE, "UNIT")
+                .entry(synonymEntry("A", "Alpha", null)).entry(synonymEntry("B", "Beta", List.of()))
+                .build();
+        assertSkips(() -> run(new RichProvider(none), "term", "synonym"));
+        assertSkips(() -> run(new RichProvider(sexCodelist()), "term", "synonym"));
+    }
+
+
+    @Test
+    void codelist_synonym_returnsTheCodelistsOwnSynonyms()
+    {
+        ICodeList unit = codelist("UNIT").meta(MetadataKeys.CODELIST_SUBMISSION_VALUE, "UNIT")
+                .meta(MetadataKeys.CODELIST_SYNONYMS, List.of("Unit", "Units", "Unit"))
+                .entry(synonymEntry("%", "Percentage", List.of("Percentage"))).build();
+        assertEquals(List.of("Unit", "Units"), run(new RichProvider(unit), "codelist", "synonym"));
+        assertSkips(() -> run(new RichProvider(sexCodelist()), "codelist", "synonym"));
+    }
+
+
+    @Test
+    void synonym_isInTheReturntypeVocabulary()
+    {
+        assertTrue(LibraryLists.RETURNTYPES.contains("synonym"));
+    }
+
+
+    @Test
+    void synonym_providerWithoutGetCodelistSkips()
+    {
+        assertSkips(() -> run(new TermsOnlyProvider(), "term", "synonym"));
+        assertSkips(() -> run(new TermsOnlyProvider(), "codelist", "synonym"));
     }
 
     // -----------------------------------------------------------------------
