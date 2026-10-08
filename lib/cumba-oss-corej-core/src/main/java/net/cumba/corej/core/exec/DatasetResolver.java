@@ -35,9 +35,12 @@ public interface DatasetResolver
          * ({@code lbch}/{@code lbhe}/{@code lbur}) collapse to their domain ({@code LB}), and
          * {@code study_domains()} matches an {@code RDOMAIN} value. A dataset with no domain
          * (SUPP/SQ/RELREC) contributes {@code ""} (Python includes the empty domain). Default so
-         * the ~13 implementers need no edit.
+         * the ~13 implementers need no edit. The values are the cells as written — distinct by
+         * exact spelling, so {@code lb} and {@code LB} are two entries here;
+         * {@code study_domains()} upper-cases and de-duplicates them itself
+         * ({@code InventoryLists.studyDomains}, runbook W2 SD), its only consumer.
          *
-         * @return the distinct data-driven domains
+         * @return the distinct data-driven domains, as written
          */
         default Set<String> availableDomains()
         {

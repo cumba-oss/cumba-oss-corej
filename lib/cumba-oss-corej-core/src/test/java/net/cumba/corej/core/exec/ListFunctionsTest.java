@@ -671,6 +671,29 @@ class ListFunctionsTest
     }
 
 
+    /**
+     * Runbook W2 SD (owner 2026-10-04, "compare both values upper case"; W2-D13): study_domains()
+     * lists each DOMAIN value upper-cased (Locale.ROOT) and once after upper-casing, so a lower- or
+     * mixed-case DOMAIN cell ({@code lb}, {@code Lb}) is listed once as {@code LB} and an
+     * upper-case {@code RDOMAIN} compare matches it; the no-domain {@code ""} is kept.
+     */
+    @Test
+    void studyDomainsListsEachDomainUpperCasedAndOnce()
+    {
+        Map<String, IDataTable> tables = new LinkedHashMap<>();
+        tables.put("lb1", table("LB1", "DOMAIN", "lb"));
+        tables.put("lb2", table("LB2", "DOMAIN", "Lb"));
+        tables.put("lb3", table("LB3", "DOMAIN", "LB"));
+        tables.put("dm", table("DM", "DOMAIN", "dm"));
+        tables.put("supplb", MockTable.of().col("RDOMAIN", "LB").name("SUPPLB").build());
+        IDataTable dm = tables.get("dm");
+        List<Object> domains = list(
+                InventoryLists.studyDomains(run(dm, null, null, inventory(tables)), List.of()));
+        assertEquals(List.of("LB", "DM", ""), domains,
+                "upper-cased, de-duplicated after upper-casing, first-seen order, \"\" kept");
+    }
+
+
     @Test
     void splitSiblingLengthMismatchReportsTheDivergingVariablesOfAFamily()
     {

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.expr.eval.EvalRun;
@@ -88,7 +89,12 @@ public final class InventoryLists
      * {@code study_domains()} — J7, the distinct data-driven SDTM domains across the submission
      * (the {@code DOMAIN} cell, not the member name), so a split LB ({@code lbch} / {@code lbhe})
      * matches an {@code RDOMAIN} of {@code LB}; the no-domain datasets (SUPP, RELREC) contribute
-     * {@code ""}.
+     * {@code ""}. Each value is upper-cased ({@link Locale#ROOT}) and listed once AFTER
+     * upper-casing (runbook W2 SD, owner 2026-10-04 "compare both values upper case"; W2-D13), so a
+     * {@code lb} / {@code Lb} DOMAIN cell is the one {@code LB} an upper-case {@code RDOMAIN}
+     * matches. Here, not in {@link DatasetResolver.WithInventory#availableDomains()}: this function
+     * is that default's only consumer, and the resolver contract stays the data as written.
+     * ({@link #datasetNames} upper-cases too, without de-duplicating: member names are distinct.)
      *
      * @param run
      *            the evaluation run
@@ -99,7 +105,12 @@ public final class InventoryLists
     public static Vector studyDomains(EvalRun run, List<Vector> args)
     {
         DatasetResolver.WithInventory inventory = ListFunctionSupport.inventory(run, STUDY_DOMAINS);
-        return ListFunctionSupport.broadcast(STUDY_DOMAINS, inventory.availableDomains());
+        Set<String> domains = new LinkedHashSet<>();
+        for (String domain : inventory.availableDomains())
+        {
+            domains.add(domain.toUpperCase(Locale.ROOT));
+        }
+        return ListFunctionSupport.broadcast(STUDY_DOMAINS, domains);
     }
 
 
