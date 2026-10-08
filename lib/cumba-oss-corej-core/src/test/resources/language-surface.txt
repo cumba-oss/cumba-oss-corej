@@ -100,8 +100,8 @@ len(x:unknown) kind=value
 length(x:unknown) kind=value
 library_available() kind=boolean
 library_variable_code_pair_matches(name:unknown?) kind=value
-lowcase(x:unknown) kind=value
-lower(x:unknown) kind=value
+lowcase(x:unknown) kind=value elementwise
+lower(x:unknown) kind=value elementwise
 lpad(x:unknown, width:number, fill:string?) kind=value
 matches_label_template(label:string, template:string) kind=boolean
 max(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?) kind=value
@@ -146,8 +146,8 @@ time_overlaps(a:time, b:time) kind=boolean
 trim(x:unknown) kind=value
 tuple(c1:column-reference, c2:column-reference, columns:list<column-reference>?...) kind=value
 union(first:list<unknown>, second:list<unknown>, more:list<list<unknown>>?...) kind=value aggregate
-upcase(x:unknown) kind=value
-upper(x:unknown) kind=value
+upcase(x:unknown) kind=value elementwise
+upper(x:unknown) kind=value elementwise
 valid_codelist_dates(ct_package_types:list<string>?) kind=value aggregate provider=library
 valid_external_dictionary_code(name:column-reference, external_dictionary_type:string, dictionary_term_type:string, case_sensitive:boolean?) kind=boolean provider=dictionary<external_dictionary_type>
 valid_external_dictionary_code_term_pair(name:column-reference, external_dictionary_term_variable:column-reference, external_dictionary_type:string, case_sensitive:boolean?) kind=boolean provider=dictionary<external_dictionary_type>

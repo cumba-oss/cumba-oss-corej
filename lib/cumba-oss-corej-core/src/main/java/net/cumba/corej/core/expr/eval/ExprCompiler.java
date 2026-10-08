@@ -921,6 +921,14 @@ public final class ExprCompiler
     }
 
 
+    /** Whether {@code name} is a registered element-wise (lifted) function. */
+    private static boolean isElementwise(String name)
+    {
+        FunctionDescriptor d = FunctionRegistry.descriptor(name);
+        return d != null && d.elementwise();
+    }
+
+
     /**
      * Whether {@code e} is a call to a registered function whose declared result is a list
      * ({@code ElementTable}), e.g. {@code get_codelist_attributes(…)}.
@@ -933,6 +941,17 @@ public final class ExprCompiler
             // so ElementTable cannot say this; its LIST form is recognised by a list-valued
             // argument — a list literal or a list-valued call (find_vars) — and then reads as
             // any other list-valued call on the membership and tuple paths (boundMembership).
+            Expr arg = call.args().get(0);
+            return (arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+                    || isListValuedFunctionCall(arg);
+        }
+        if (e instanceof Expr.Call call && !call.args().isEmpty() && isElementwise(call.name()))
+        {
+            // PLAN-elementwise-list-functions §3.8 (runbook W1a E4): a lifted call over a
+            // statically list-shaped value argument — a list literal, a list-valued call, a lift
+            // over one — is a list by shape (its ElementTable row is the scalar's); `v in
+            // upper(values([X, Y]))` then reads the row's list as its members (boundMembership).
+            // A `$` argument is decided on the vector at evaluation and is not routed here.
             Expr arg = call.args().get(0);
             return (arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
                     || isListValuedFunctionCall(arg);
@@ -5086,10 +5105,34 @@ public final class ExprCompiler
     {
         if (arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
         {
+            if (NameListBinding.isNameList(lit))
+            {
+                // PLAN-elementwise-list-functions §3.3 (owner Q14 (c); runbook W1a E4): [X, Y] is a
+                // list of column NAMES everywhere — at a value parameter it is neither the names'
+                // text (what the same literal means as a $keys binding, D1-A) nor the cells. Stage
+                // A files the same hint for a Check; this is the seam for the paths it never walks.
+                throw unsupported(bareNameListHint(lit));
+            }
             ConstVector list = ConstVector.of(listLiteralValues(lit));
             return _ -> list;
         }
         return operandPlan(arg, true);
+    }
+
+
+    /**
+     * The ruled hint for a bare-name list at a value parameter, with the authored names in place:
+     * <i>"[X, Y] is a list of column names; to read their values write values([X, Y])"</i>.
+     *
+     * @param lit
+     *            the list literal of column references
+     * @return the hint
+     */
+    public static String bareNameListHint(Expr.Lit lit)
+    {
+        String names = "[" + String.join(", ", NameListBinding.names(lit)) + "]";
+        return names + " is a list of column names; to read their values write values(" + names
+                + ")";
     }
 
 
@@ -6241,7 +6284,20 @@ public final class ExprCompiler
             throw unsupported(messageOf(ex));
         }
         rejectLiteralColumnArguments(descriptor, bound);
-        EvalFunction fn = descriptor.fn();
+        EvalFunction registered = descriptor.fn();
+        if (registered != null && descriptor.elementwise() && !bound.isEmpty()
+                && bound.get(0) != null && isStaticallyScalar(bound.get(0)))
+        {
+            // PLAN-elementwise-list-functions §3.5 / §3.6 (runbook W1a E4): the descriptor's fn is
+            // the element-wise lift (ElementwiseLift), which decides the shape on the vector at
+            // evaluation. A value argument that is scalar BY SHAPE — a column, a scalar-typed
+            // call, a scalar literal — has nothing to decide, so the kernel is called directly and
+            // the hot scalar path pays nothing for the lift. A `$` reference, a list literal, a
+            // list-valued call or an unknown-typed call keeps the lifted function. The decision is
+            // structural (the plan is memoised across rules, §3.5), never a rule's binding.
+            registered = ElementwiseLift.kernelOf(registered);
+        }
+        EvalFunction fn = registered;
         if (fn == null)
         {
             // A compiler-dispatched VALUE call (vlm_* / max_value_length / the decode accessors,
@@ -6478,6 +6534,15 @@ public final class ExprCompiler
                 v.value(row).cell();
             }
         }
+        else if (v instanceof ListVector list)
+        {
+            // a lifted ListVector (runbook W1a E4) publishes K computed element vectors: force
+            // each, as the published instance must be complete for every reader of the memo
+            for (Vector element : list.elements())
+            {
+                materialised(element, run);
+            }
+        }
         return v;
     }
 
@@ -6487,6 +6552,40 @@ public final class ExprCompiler
     // unread local; delete the local, and it names this method. Each step was found by the gate,
     // not
     // by reading, which is the argument for arming Error Prone rather than surveying by eye.
+
+
+    /**
+     * Whether {@code e} is a value that is scalar <b>by shape</b> — never a list on any row — so a
+     * lifted call over it needs no element-wise decision: a column reference (a cell is never a
+     * list), a scalar literal, arithmetic, a registered call whose {@code ElementTable} row is a
+     * scalar primitive (a lifted call recursively by its own value argument). Anything the static
+     * type leaves open — a {@code $} reference, a list literal, {@code colref}, an unknown-typed
+     * call — answers {@code false} and is decided on the vector.
+     */
+    private static boolean isStaticallyScalar(Expr e)
+    {
+        return switch (e)
+        {
+        case Expr.Ref r -> r.kind() != OperandKind.OPERATION_REF;
+        case Expr.Lit lit -> lit.kind() != Expr.LitKind.LIST;
+        case Expr.Binary b -> isArith(b.op());
+        case Expr.Call c ->
+        {
+            if (COLREF.equals(c.name()) || isValuesCall(c))
+            {
+                yield false;
+            }
+            FunctionDescriptor d = FunctionRegistry.descriptor(c.name());
+            if (d != null && d.elementwise())
+            {
+                yield !c.args().isEmpty() && isStaticallyScalar(c.args().get(0));
+            }
+            yield net.cumba.corej.core.expr.typed.ElementTable.resultType(
+                    c.name()) instanceof net.cumba.corej.core.expr.typed.ExprType.Primitive;
+        }
+        default -> false;
+        };
+    }
 
     /**
      * Pure value functions that may be constant-folded when every argument is a literal: a

@@ -1747,7 +1747,7 @@ public final class StageAChecker
         }
         checkParameterBinding(c, descriptor, children);
         ExprType type = descriptor.kind() == FunctionKind.BOOLEAN ? Primitive.BOOLEAN
-                : resultType(c, children);
+                : resultType(c, descriptor, children);
         if (net.cumba.corej.core.exec.Union.NAME.equals(c.name()))
         {
             // PLAN-union-function §3.4 (runbook W1a U1): the operands' element types joined as a
@@ -1809,36 +1809,41 @@ public final class StageAChecker
     }
 
     /**
-     * The case-folds, which fold a list argument element-wise (G2) and hand a missing through
-     * unchanged ({@code BuiltinFunctions.caseFold}) — so a fold has exactly its argument's type
-     * source ({@link #columnTypedBindings}; the load gate's message,
-     * {@code RulePackageLoader.untypedReportedBinding}, reads the same set).
+     * The case-folds, which hand a missing through unchanged ({@code BuiltinFunctions.caseFold}) —
+     * so a fold has exactly its argument's <b>type source</b> ({@link #columnTypedBindings}; the
+     * load gate's message, {@code RulePackageLoader.untypedReportedBinding}, reads the same set). ⚠
+     * Not the lift: that a fold answers a list over a list is the descriptor's
+     * {@link FunctionDescriptor#elementwise()} flag ({@link #resultType}), which {@code substring}
+     * and the other lifted functions carry without being a type source
+     * ({@code PLAN-elementwise-list-functions} §3.4, runbook W1a E4).
      */
     public static final Set<String> CASE_FOLDS = Set.of("upper", "upcase", "lower", "lowcase");
 
     /**
-     * The result type of a registered value call: the {@link ElementTable} row, except that a
-     * case-fold over a list-typed argument answers {@code list<string>} — {@code upper} /
-     * {@code lower} fold element-wise ({@code BuiltinFunctions.foldValue}; owner 2026-09-28:
-     * <i>"upper allows a list of strings as parameter and returns a list"</i>), so
-     * {@code IDVAR not in upper($names)} is a list membership, not a scalar right operand
-     * ({@code PLAN-stage-a-parameter-type-arming} G2). A zero-argument spelling keeps its
+     * The result type of a registered value call: the {@link ElementTable} row, except that an
+     * <b>element-wise</b> call ({@link FunctionDescriptor#elementwise()}) over a list-typed value
+     * argument answers a <b>list of its row</b> — {@code upper(values([X, Y]))} and
+     * {@code upper($names)} are {@code list<string>} ({@code PLAN-elementwise-list-functions} §3.8;
+     * the G2 reading of {@code PLAN-stage-a-parameter-type-arming}, now keyed on the flag rather
+     * than the fold names), so {@code IDVAR not in upper($names)} is a list membership, not a
+     * scalar right operand. Over an unknown it stays unknown. A zero-argument spelling keeps its
      * {@link StageAErrorKind#ARITY} finding and the scalar row.
      */
-    private static ExprType resultType(Expr.Call c, List<TypedExpr> children)
+    private static ExprType resultType(Expr.Call c, FunctionDescriptor descriptor,
+            List<TypedExpr> children)
     {
-        if (CASE_FOLDS.contains(c.name()) && !children.isEmpty())
+        if (descriptor.elementwise() && !children.isEmpty())
         {
             ExprType argument = children.get(0).type();
             if (argument.dereference() instanceof ListOf)
             {
-                return new ListOf(Primitive.STRING);
+                return new ListOf(ElementTable.resultType(c.name()));
             }
             if (argument == Unknown.UNKNOWN)
             {
-                // review r1 sem L1: a fold over a binding of unknown static type (a list or a
+                // review r1 sem L1: a lift over a binding of unknown static type (a list or a
                 // scalar — nobody knows at load) is unknown, so `X in upper($u)` is not refused;
-                // a column reference keeps the string row (a cell folds to a string)
+                // a column reference keeps the scalar row (a cell is never a list)
                 return Unknown.UNKNOWN;
             }
         }
@@ -1929,6 +1934,17 @@ public final class StageAChecker
             Parameter param = !collector || slot < params.size() - 1 ? params.get(slot)
                     : params.get(params.size() - 1);
             ExprType declared = param.collector() ? ExprType.elementOf(param.type()) : param.type();
+            if (descriptor.elementwise() && slot == 0 && arg instanceof Expr.Lit lit
+                    && net.cumba.corej.core.expr.eval.NameListBinding.isNameList(lit))
+            {
+                // PLAN-elementwise-list-functions §3.3 (owner Q14 (c); runbook W1a E4): a bare-name
+                // list at the lifted value parameter is a list of column NAMES — the finding
+                // carries the ruled hint naming values(); a string-literal list is a value list
+                // (Q14 (d)) and types below as any list
+                find(StageAErrorKind.PARAMETER_TYPE,
+                        net.cumba.corej.core.expr.eval.ExprCompiler.bareNameListHint(lit) + at(c));
+                continue;
+            }
             if (declared == Unknown.UNKNOWN)
             {
                 continue;
@@ -1936,6 +1952,30 @@ public final class StageAChecker
             TypedExpr walked = walkedByIdentity.get(arg);
             if (walked == null)
             {
+                continue;
+            }
+            if (descriptor.elementwise() && slot == 0
+                    && walked.type().dereference() instanceof ListOf list)
+            {
+                // PLAN-elementwise-list-functions §3.8 / PLAN-elementwise-boolean-predicates §3.5
+                // (runbook W1a E4): a list at the lifted parameter is judged by its ELEMENT type —
+                // list<string> / list<unknown> at a string parameter is the lift, list<number>
+                // the finding. ⚠ After the name-list arm above and never claiming one: a $keys
+                // binding of names stays decision 9's hint (filed once after the walk), not a
+                // string list. A flagged parameter 0 is never a column-reference list (the
+                // descriptor guard), so the splice arms below do not apply to it.
+                if (isNameListRef(arg))
+                {
+                    continue;
+                }
+                ExprType element = list.element().dereference();
+                if (element != Unknown.UNKNOWN && !ExprType.compatible(element, declared))
+                {
+                    find(StageAErrorKind.PARAMETER_TYPE,
+                            "argument '" + param.name() + "' of '" + c.name() + "' takes "
+                                    + declared.describe() + " (or a list of them), not "
+                                    + walked.type().describe() + at(c));
+                }
                 continue;
             }
             if (isNameListRef(arg) && isColumnReferenceList(declared))

@@ -114,12 +114,19 @@ public final class BuiltinFunctions implements FunctionProvider
         List<FunctionDescriptor> fns = new ArrayList<>();
 
         // -- VALUE transforms ------------------------------------------------
+        // ⭐ Element-wise (PLAN-elementwise-list-functions §3.9, runbook W1a E4): the fold's
+        // list form — a dataset-level list folded once, a per-row list element by element, now
+        // also values([X, Y]) — is the descriptor's `liftingElementwise()` lift over the SCALAR
+        // kernel
+        // caseFold, so upper / lower and their aliases carry the flag the compiler, stage A and
+        // the language surface read, instead of a name set (StageAChecker.CASE_FOLDS keeps only
+        // its type-source meaning).
         EvalFunction lower = (run, args) -> caseFold(run.rowCount(), args.get(0), true);
-        value(fns, "lower", lower);
-        value(fns, "lowcase", lower);
+        elementwise(fns, "lower", lower);
+        elementwise(fns, "lowcase", lower);
         EvalFunction upper = (run, args) -> caseFold(run.rowCount(), args.get(0), false);
-        value(fns, "upper", upper);
-        value(fns, "upcase", upper);
+        elementwise(fns, "upper", upper);
+        elementwise(fns, "upcase", upper);
         EvalFunction len = (run, args) ->
         {
             Vector x = args.get(0);
@@ -1277,14 +1284,31 @@ public final class BuiltinFunctions implements FunctionProvider
 
 
     /**
-     * {@code upper(x)} / {@code lower(x)}: {@link #foldValue} per row — or ONCE when {@code x} is a
-     * {@link ConstVector}. A dataset-level operand ({@code upper($dataset_variables)} over a
-     * broadcast list) answers a {@code ConstVector} of its folded value, so the result stays
-     * dataset-level: a per-row {@code ComputedVector} over a constant has no row 0 on a zero-row
-     * table ({@code ComputedVector.value(0)} throws) and is not the constant hand-over form a
-     * {@code {}} binding promises (combined review of runbook W2–W8, W4 M2 — the root cause of
-     * {@code minus} reading an empty subtrahend over a zero-row dataset). A missing constant is
-     * handed through as the very same vector (identity kept, register D36).
+     * {@code upper(x)} / {@code lower(x)}, the <b>scalar kernel</b>: {@link #foldValue} per row —
+     * or ONCE when {@code x} is a {@link ConstVector}. A scalar constant ({@code upper("a")})
+     * answers a {@code ConstVector} of its folded value, so the result stays dataset-level: a
+     * per-row {@code ComputedVector} over a constant has no row 0 on a zero-row table
+     * ({@code ComputedVector.value(0)} throws) and is not the constant hand-over form a {@code {}}
+     * binding promises (combined review of runbook W2–W8, W4 M2 — the root cause of {@code minus}
+     * reading an empty subtrahend over a zero-row dataset). A missing constant is handed through as
+     * the very same vector (identity kept, register D36).
+     *
+     * <p>
+     * ⭐ The <b>list form</b> — {@code upper($dataset_variables)} over a broadcast list folded once
+     * into one constant, a per-row list ({@code split_by}) folded element by element, a MISSING
+     * element carried through unchanged in its position (register D36), and since runbook W1a E4
+     * {@code upper(values([X, Y]))} — is no longer this kernel's: it is the descriptor's
+     * {@link FunctionDescriptor#liftingElementwise() element-wise lift} ({@code ElementwiseLift}),
+     * which hands this kernel one element at a time and regroups. Confirmed as the list form of
+     * upper / lower (owner, 2026-09-28, {@code PLAN-case-insensitive-templates} §1 / register CIT
+     * §3: "upper allows a list of strings as parameter and returns a list of these strings
+     * converted to upper case", "implement lower(...) for the same list as well"): a rule
+     * normalises the DATASET side of a name comparison —
+     * {@code upper(get_column_order_from_dataset())}, {@code upper(varname())} — against the
+     * library's upper-case names (EC-28(a) / Fix #131: the case-insensitive contains twins are
+     * spelled {@code contains(upper(ref), upper(lit))}, so a collection must stay a collection for
+     * the membership branch in Primitives.substring to see it).
+     * </p>
      */
     private static Vector caseFold(int rowCount, Vector x, boolean toLower)
     {
@@ -1298,46 +1322,9 @@ public final class BuiltinFunctions implements FunctionProvider
     }
 
 
-    /**
-     * One value of {@link #caseFold}: a collection element-wise, a missing kept, a string folded.
-     */
+    /** One value of {@link #caseFold}: a missing kept, a string folded. */
     private static Object foldValue(TypedValue tv, boolean toLower)
     {
-        // EC-28(a) / Fix #131: a COLLECTION-valued operand is folded ELEMENT-WISE and stays a
-        // collection. The case-insensitive contains twins are spelled
-        // `contains(upper(ref), upper(lit))`, so without this the
-        // set would be flattened to its toString() here and `contains` could only ever do a
-        // substring probe on the rendered list — the very defect EC-28 fixes for the
-        // case-sensitive pair. Keeping it a collection lets the membership branch in
-        // Primitives.substring see it, giving case-insensitive EXACT membership.
-        // ⭐ Confirmed as the list form of upper / lower (owner, 2026-09-28,
-        // PLAN-case-insensitive-templates §1 / register CIT §3: "upper allows a list of
-        // strings as parameter and returns a list of these strings converted to upper case",
-        // "implement lower(...) for the same list as well"): a rule normalises the DATASET
-        // side of a name comparison — upper(get_column_order_from_dataset()),
-        // upper(varname()) — against the library's upper-case names. A MISSING element (a
-        // MissingValue) is carried through UNCHANGED, in its position (register D36: missing
-        // propagates through the string functions, upper named first); it is never folded to
-        // "" nor to its rendered marker. Only a present element is folded. The list reaching
-        // this fold passed the ListValueGuard at its birth site (an operation result at
-        // a constant list at ConstVector.of) or was built
-        // null-free per row (split_by, tuple), so no element is null (register NNL §1).
-        Object raw = tv.resolved();
-        if (raw instanceof Collection<?> col)
-        {
-            List<Object> folded = new ArrayList<>(col.size());
-            for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(col))
-            {
-                if (Primitives.MemberSet.missingIdentityOfMember(item) != null)
-                {
-                    folded.add(item);
-                    continue;
-                }
-                String s = item.toString();
-                folded.add(toLower ? s.toLowerCase(Locale.ROOT) : s.toUpperCase(Locale.ROOT));
-            }
-            return folded;
-        }
         // upper(«missing») is that missing (register D36, identity kept — D85c: the input's
         // own cell is handed through); upper("") = "" (D34 #1, an empty string is present).
         // The boundary is TypedValue.missing(), never Vector.isMissing — the latter is the F3
@@ -1402,6 +1389,18 @@ public final class BuiltinFunctions implements FunctionProvider
     private static void value(List<FunctionDescriptor> fns, String name, EvalFunction fn)
     {
         fns.add(new FunctionDescriptor(name, List.of(p("x")), FunctionKind.VALUE, fn));
+    }
+
+
+    /**
+     * As {@link #value(List, String, EvalFunction)}, the one-parameter transform declared
+     * {@linkplain FunctionDescriptor#liftingElementwise() element-wise}: {@code fn} is the scalar
+     * kernel, the registered function its lift over a list at {@code x}.
+     */
+    private static void elementwise(List<FunctionDescriptor> fns, String name, EvalFunction fn)
+    {
+        fns.add(new FunctionDescriptor(name, List.of(p("x")), FunctionKind.VALUE, fn)
+                .liftingElementwise());
     }
 
 

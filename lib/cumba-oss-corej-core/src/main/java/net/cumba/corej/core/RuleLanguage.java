@@ -197,6 +197,12 @@ public final class RuleLanguage
         {
             sb.append(" perVariable");
         }
+        if (aDescriptor.elementwise())
+        {
+            // the element-wise lift over a list at parameter 0 (PLAN-elementwise-list-functions
+            // §3.4, runbook W1a E4)
+            sb.append(" elementwise");
+        }
         if (aDescriptor.provider() != null)
         {
             sb.append(" provider=")

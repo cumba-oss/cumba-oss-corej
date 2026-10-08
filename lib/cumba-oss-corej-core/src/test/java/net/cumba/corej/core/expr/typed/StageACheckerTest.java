@@ -15,6 +15,10 @@ import net.cumba.corej.core.KeyedJoinFixtures;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.expr.eval.FunctionDescriptor;
+import net.cumba.corej.core.expr.eval.FunctionKind;
+import net.cumba.corej.core.expr.eval.Parameter;
+import net.cumba.corej.core.expr.eval.RegistryTestSeam;
 import net.cumba.corej.core.expr.typed.ExprType.Primitive;
 import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.MatchDataset;
@@ -2357,5 +2361,83 @@ class StageACheckerTest
                 argument.findings().stream()
                         .anyMatch(f -> f.message().contains("holds column names")),
                 argument.findings().toString());
+    }
+
+    // ------------------------------------------------------------------
+    // PLAN-elementwise-list-functions §3.8 — the lifted arm (runbook W1a E4)
+    // ------------------------------------------------------------------
+
+
+    /**
+     * A flagged ({@code elementwise}) call over a list-typed argument is a list of the function's
+     * scalar row; over an unknown it stays unknown (review r1 sem L1 kept); over a scalar the row.
+     */
+    @Test
+    void aLiftedCallOverAListIsAListOfItsScalarRow()
+    {
+        TypedExpr lifted = root(check("\"A\" in upper(values([A, B]))")).children().get(1);
+        assertEquals("list<string>", lifted.type().describe());
+        TypedExpr perRow = root(check("\"A\" in lower(split_by(AETERM, \",\"))")).children().get(1);
+        assertEquals("list<string>", perRow.type().describe());
+        TypedExpr scalar = root(check("upper(AETERM) == \"A\"")).children().get(0);
+        assertEquals("string", scalar.type().describe());
+        TypedExpr unknown = root(check("upper($u) == \"A\"")).children().get(0);
+        assertEquals("unknown", unknown.type().describe());
+        // the list against a scalar is the armed comparison refusal, as for every list
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("upper(values([A, B])) == \"A\"")));
+    }
+
+
+    /**
+     * Q14 (c): a bare-name list at the lifted parameter is a list of column NAMES — the finding
+     * carries the ruled hint naming {@code values}.
+     */
+    @Test
+    void aBareNameListAtTheLiftedParameterIsTheHint()
+    {
+        StageAReport report = check("not empty(upper([A, B]))");
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(report));
+        assertTrue(report.findings().get(0).message().contains(
+                "[A, B] is a list of column names; to read their values write values([A, B])"),
+                report.findings().toString());
+        // a string-literal list is a value list (Q14 (d)) and a list of strings
+        assertEquals(List.of(), kinds(check("not empty(upper([\"a\", \"b\"]))")));
+    }
+
+
+    /**
+     * A flagged parameter 0 with a declared type is judged by the list's ELEMENT type
+     * ({@code PLAN-elementwise-boolean-predicates} §3.5's premise, left possible here): a string
+     * list at a string parameter is the lift, a number list the finding; a name-list binding stays
+     * decision 9's hint, never admitted as a string list.
+     */
+    @Test
+    void aFlaggedTypedParameterJudgesAListByItsElementType()
+    {
+        FunctionDescriptor typed = new FunctionDescriptor("lift_probe",
+                List.of(Parameter.required("x", Primitive.STRING)), FunctionKind.VALUE,
+                (run, args) -> args.get(0)).liftingElementwise();
+        try (RegistryTestSeam.Registration _ = RegistryTestSeam.register(typed))
+        {
+            assertEquals(List.of(), kinds(check("not empty(lift_probe(AETERM))")));
+            assertEquals(List.of(), kinds(check("not empty(lift_probe(values([A, B])))")));
+            assertEquals(List.of(), kinds(check("not empty(lift_probe(split_by(AETERM, \",\")))")));
+            Rule strings = withBindings("$s", "[\"a\", \"b\"]", "$n", "[1, 2]", "$keys", "[A, B]");
+            assertEquals(List.of(), kinds(check(strings, "not empty(lift_probe($s))")));
+            StageAReport numbers = check(strings, "not empty(lift_probe($n))");
+            assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(numbers));
+            assertTrue(
+                    numbers.findings().get(0).message()
+                            .contains("takes string (or a list of them), not list<number>"),
+                    numbers.findings().toString());
+            StageAReport names = check(strings, "not empty(lift_probe($keys))");
+            assertEquals(1, names.findings().size(), names.findings().toString());
+            assertTrue(names.findings().get(0).message().contains("holds column names"),
+                    names.findings().toString());
+            // the scalar refusal is unchanged: a number at the string parameter
+            assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                    kinds(check("not empty(lift_probe(1))")));
+        }
     }
 }

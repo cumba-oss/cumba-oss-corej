@@ -167,6 +167,32 @@ public final class ComputedVector implements Vector
 
 
     /**
+     * A vector producing its rows' <b>carriers</b> directly: the producer answers the
+     * {@link TypedValue} of a row, every channel its own — a row handed through from another vector
+     * unchanged, or a list payload built per row — memoised as every row of this class is. The
+     * element-wise lift ({@link ElementwiseLift}) regroups a kernel's results with it: a scalar row
+     * is the kernel's carrier itself, a list row a {@link TypedValue#resolved} list.
+     *
+     * @param rowCount
+     *            the number of rows the vector spans
+     * @param declaredType
+     *            the statically-declared result type
+     * @param carrierProducer
+     *            computes the carrier of a 0-based row
+     * @return the vector
+     */
+    static ComputedVector carried(int rowCount, DataValueType declaredType,
+            IntFunction<TypedValue> carrierProducer)
+    {
+        return new ComputedVector(rowCount, declaredType, _ ->
+        {
+            throw new IllegalStateException(
+                    "a carried ComputedVector must produce through its carrier producer");
+        }, null, null, carrierProducer);
+    }
+
+
+    /**
      * A vector whose row {@code row} is {@code inner}'s row {@code rowMap(row)}, the carrier handed
      * through as it is — the real-row hand-back of an aggregate evaluated once per primary record
      * ({@code PLAN-merged-evaluation-table} W3e, OD-6): every merged row of a record reads that
