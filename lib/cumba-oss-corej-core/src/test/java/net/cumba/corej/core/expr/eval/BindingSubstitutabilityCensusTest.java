@@ -212,7 +212,7 @@ class BindingSubstitutabilityCensusTest
         }
         catch (com.fasterxml.jackson.databind.JsonMappingException unparseable)
         {
-            error = "unparseable: " + String.valueOf(unparseable.getOriginalMessage());
+            error = "unparseable: " + unparseable.getOriginalMessage();
         }
         if (error == null)
         {

@@ -8958,7 +8958,7 @@ public final class ExprCompiler
      */
     public static Map<String, Map<String, @Nullable Set<String>>> staticStringVocabularies()
     {
-        return java.util.Collections.unmodifiableMap(STATIC_STRING_VOCABULARIES);
+        return Collections.unmodifiableMap(STATIC_STRING_VOCABULARIES);
     }
 
 
@@ -9020,12 +9020,10 @@ public final class ExprCompiler
                             vocabularyMessage(descriptor.name(), name, value, vocabulary));
                 }
             }
-            if (datasetLists.contains(name) || listExpressions.contains(name))
+            if ((datasetLists.contains(name) || listExpressions.contains(name))
+                    && e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
             {
-                if (e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
-                {
-                    requireStringLiteralMembers(descriptor.name(), name, lit);
-                }
+                requireStringLiteralMembers(descriptor.name(), name, lit);
                 // PLAN-union-function §3.3 (runbook W1a U3, D3 / D16) and
                 // PLAN-binding-substitutability C11 (W1a BS1): a list operand that is not a
                 // literal is judged by its LEVEL, not its shape — stage A's

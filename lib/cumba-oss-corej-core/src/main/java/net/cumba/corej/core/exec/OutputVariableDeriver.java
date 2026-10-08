@@ -457,7 +457,7 @@ public final class OutputVariableDeriver
      * root's {@code ElementTable} row is the scalar predicate's, so the stage-A type (memoised per
      * rule, {@code Rule.staticBindingTypes}) is what tells the lifted form apart.
      */
-    private static boolean isBooleanList(net.cumba.corej.core.model.Rule rule,
+    private static boolean isBooleanList(Rule rule,
             net.cumba.corej.core.model.CompiledBinding binding)
     {
         return rule.staticBindingTypes()

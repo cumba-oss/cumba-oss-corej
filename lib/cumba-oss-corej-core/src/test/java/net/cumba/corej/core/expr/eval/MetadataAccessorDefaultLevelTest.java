@@ -20,6 +20,7 @@ import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.convert.BindingInliner;
 import net.cumba.corej.core.expr.typed.StageAChecker;
 import net.cumba.corej.core.expr.typed.StageAErrorKind;
+import net.cumba.corej.core.expr.typed.StageAFinding;
 import net.cumba.corej.core.expr.typed.StageAReport;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
@@ -325,7 +326,7 @@ class MetadataAccessorDefaultLevelTest
                 bound);
         assertEquals(parse("var_label(AETERM) == \"x\""), column);
         assertEquals(List.of(StageAErrorKind.NON_STATIC_NAME),
-                stageA(column).findings().stream().map(f -> f.kind()).toList());
+                stageA(column).findings().stream().map(StageAFinding::kind).toList());
     }
 
 

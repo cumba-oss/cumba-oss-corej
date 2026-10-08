@@ -100,7 +100,7 @@ class MissingListElementIdentityTest
         {
                 "S1"
         }, 1);
-        Object answer = net.cumba.corej.core.exec.Union
+        Object answer = Union
                 .evaluate(
                         net.cumba.corej.core.expr.eval.EvalRun
                                 .fullRange(EvaluationContext.builder().table(dm).build()),

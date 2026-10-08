@@ -1242,7 +1242,7 @@ public final class StageAChecker
         }
         if (VARNAME_ANCHORED_CALLS.contains(name))
         {
-            Expr nameArg = net.cumba.corej.core.expr.eval.NameSlots.nameArgument(c);
+            Expr nameArg = NameSlots.nameArgument(c);
             Level level = nameArg == null || isCurrentVariableName(nameArg)
                     ? Level.VARIABLE_METADATA
                     : Level.DATASET;
@@ -1421,11 +1421,8 @@ public final class StageAChecker
                 && ref.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF)
         {
             CompiledBinding binding = rule.compiledBinding(ref.name());
-            if (binding == null)
-            {
-                return true;
-            }
-            return seen.add(ref.name()) && isPredicateAnswerShape(binding.expression(), seen);
+            return binding == null
+                    || (seen.add(ref.name()) && isPredicateAnswerShape(binding.expression(), seen));
         }
         return ExprCompiler.isConditionExpr(e);
     }
@@ -2096,14 +2093,13 @@ public final class StageAChecker
                 continue;
             }
             if (descriptor.elementwise() && slot == 0 && arg instanceof Expr.Lit lit
-                    && net.cumba.corej.core.expr.eval.NameListBinding.isNameList(lit))
+                    && NameListBinding.isNameList(lit))
             {
                 // PLAN-elementwise-list-functions §3.3 (owner Q14 (c); runbook W1a E4): a bare-name
                 // list at the lifted value parameter is a list of column NAMES — the finding
                 // carries the ruled hint naming values(); a string-literal list is a value list
                 // (Q14 (d)) and types below as any list
-                find(StageAErrorKind.PARAMETER_TYPE,
-                        net.cumba.corej.core.expr.eval.ExprCompiler.bareNameListHint(lit) + at(c));
+                find(StageAErrorKind.PARAMETER_TYPE, ExprCompiler.bareNameListHint(lit) + at(c));
                 continue;
             }
             if (declared == Unknown.UNKNOWN)

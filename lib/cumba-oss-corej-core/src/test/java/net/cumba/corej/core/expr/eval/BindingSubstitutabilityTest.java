@@ -1,6 +1,7 @@
 package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -209,7 +210,7 @@ class BindingSubstitutabilityTest
             RuleExecutionResult result = RuleRunnerCalls.execute(rule, dm);
             assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
                     result.getStatusMessage());
-            assertTrue(result.getViolations().size() > 0, "the key resolves to the dataset name");
+            assertFalse(result.getViolations().isEmpty(), "the key resolves to the dataset name");
             expected = expected < 0 ? result.getViolations().size() : expected;
             assertEquals(expected, result.getViolations().size(),
                     "the three spellings answer alike");
