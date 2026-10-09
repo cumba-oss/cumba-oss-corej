@@ -71,7 +71,14 @@ jobs:
     # A cold run has to complete ONCE for ~/.pitest-history to be worth restoring;
     # warm runs on the other repos take well under a minute. Revisit once the
     # history cache is established, ideally by giving Pitest its own job.
-    timeout-minutes: 120
+    #
+    # ⚠ 300 since 2026-10-09: after the engine-runbook waves (~200 commits) the
+    # history matched nothing ("Incremental analysis reduced number of mutations
+    # by 0") and cumba-oss-corej-core ran cold for 110+ minutes until the old
+    # 120 cap cancelled the job (run 37947455129). A cancelled run writes no core
+    # history, so a re-run under the same cap fails the same way. 300 leaves room
+    # for one cold run under GitHub's 6-hour job ceiling; warm runs stay short.
+    timeout-minutes: 300
     # Consumed by the release job to name the release without recomputing it.
     outputs:
       version: ${{ steps.ver.outputs.version }}
