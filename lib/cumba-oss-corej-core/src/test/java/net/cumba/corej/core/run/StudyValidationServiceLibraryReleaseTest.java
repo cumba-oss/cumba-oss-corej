@@ -125,7 +125,15 @@ class StudyValidationServiceLibraryReleaseTest
     private CountingStudyManager run(Consumer<StudyValidationParams.Builder> customise)
         throws IOException
     {
-        IDataTableManager mgr = CountingStudyManager.create(dmTable(), studyMeta());
+        return run(false, customise);
+    }
+
+
+    private CountingStudyManager run(boolean canonical,
+            Consumer<StudyValidationParams.Builder> customise)
+        throws IOException
+    {
+        IDataTableManager mgr = CountingStudyManager.create(dmTable(), studyMeta(), canonical);
         StudyValidationParams.Builder b = StudyValidationParams.builder().manager(mgr)
                 .dataLibrary(tempDir.toString()).rulesDir(writeRule().toString())
                 .rulesPackages(List.of("custom-1-0")).metadataProducts(CUSTOM_PRODUCT);
@@ -175,6 +183,23 @@ class StudyValidationServiceLibraryReleaseTest
         Path ref1 = Files.createDirectory(tempDir.resolve("ref1"));
         Path ref2 = Files.createDirectory(tempDir.resolve("ref2"));
         assertBalanced(run(b -> b.referenceData(List.of(ref1.toString(), ref2.toString()))), 3);
+    }
+
+
+    /**
+     * T2 fold (review L2-L1): a manager answering its canonical cached reference for a library
+     * named twice counts two acquisitions ({@code IDataTableManager.releaseLibraryRef}: "released
+     * as often as it was called") - the identity dedupe released it once and leaked a count.
+     */
+    @Test
+    void aCanonicalReferenceAnsweredTwiceIsReleasedTwice() throws IOException
+    {
+        Path ref = Files.createDirectory(tempDir.resolve("ref"));
+        CountingStudyManager counting = run(true,
+                b -> b.referenceData(List.of(ref.toString(), ref.toString())));
+        assertBalanced(counting, 3);
+        assertEquals(2, counting.acquired.stream().distinct().count(),
+                "premise: the reference library is one object, answered twice");
     }
 
 

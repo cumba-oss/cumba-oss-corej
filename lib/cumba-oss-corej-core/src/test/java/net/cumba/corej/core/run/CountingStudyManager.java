@@ -46,10 +46,21 @@ final class CountingStudyManager implements InvocationHandler
 
     private final ILibraryMemberRef member;
 
-    private CountingStudyManager(IDataTable aDm, @Nullable IMetadataLibrary aMetadata)
+    /**
+     * T2 fold (review L2-L1): answer the SAME reference object for the same URI, as
+     * {@code RemoteDataTableManager} answers its canonical cached ref - every answer is one
+     * acquisition, released as often as it was answered.
+     */
+    private final boolean canonical;
+
+    private final java.util.Map<URI, IDataTableLibraryRef> byUri = new java.util.HashMap<>();
+
+    private CountingStudyManager(IDataTable aDm, @Nullable IMetadataLibrary aMetadata,
+            boolean aCanonical)
     {
         dm = aDm;
         metadata = aMetadata;
+        canonical = aCanonical;
         member = (ILibraryMemberRef) Proxy.newProxyInstance(getClass().getClassLoader(),
                 new Class<?>[]
                 {
@@ -69,7 +80,17 @@ final class CountingStudyManager implements InvocationHandler
     /** The manager, with the counting handler reachable through {@link #handler}. */
     static IDataTableManager create(IDataTable aDm, @Nullable IMetadataLibrary aMetadata)
     {
-        CountingStudyManager handler = new CountingStudyManager(aDm, aMetadata);
+        return create(aDm, aMetadata, false);
+    }
+
+
+    /**
+     * The manager; {@code aCanonical} answers one reference object per URI (a refcounted cache).
+     */
+    static IDataTableManager create(IDataTable aDm, @Nullable IMetadataLibrary aMetadata,
+            boolean aCanonical)
+    {
+        CountingStudyManager handler = new CountingStudyManager(aDm, aMetadata, aCanonical);
         return (IDataTableManager) Proxy
                 .newProxyInstance(CountingStudyManager.class.getClassLoader(), new Class<?>[]
                 {
@@ -116,6 +137,12 @@ final class CountingStudyManager implements InvocationHandler
 
     private IDataTableLibraryRef open(URI uri)
     {
+        IDataTableLibraryRef cached = canonical ? byUri.get(uri) : null;
+        if (cached != null)
+        {
+            acquired.add(cached);
+            return cached;
+        }
         IDataTableLibraryRef ref = (IDataTableLibraryRef) Proxy
                 .newProxyInstance(getClass().getClassLoader(), new Class<?>[]
                 {
@@ -129,6 +156,7 @@ final class CountingStudyManager implements InvocationHandler
                 default -> emptyValue(m.getReturnType());
                 });
         acquired.add(ref);
+        byUri.put(uri, ref);
         return ref;
     }
 
@@ -139,12 +167,26 @@ final class CountingStudyManager implements InvocationHandler
         {
             violations.add("release of a ref this manager never handed out: " + ref);
         }
-        else if (contains(released, ref))
+        else if (count(released, ref) >= count(acquired, ref))
         {
             violations.add("repeated release of " + ref);
         }
         released.add(ref);
         return null;
+    }
+
+
+    private static int count(List<Object> refs, Object ref)
+    {
+        int n = 0;
+        for (Object r : refs)
+        {
+            if (r == ref)
+            {
+                n++;
+            }
+        }
+        return n;
     }
 
 
