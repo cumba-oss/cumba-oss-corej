@@ -700,7 +700,7 @@ public final class BuiltinFunctions implements FunctionProvider
                 opt("case_sensitive", Primitive.BOOLEAN));
         fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.DictionaryFunctions.HIERARCHY,
                 hierarchyParams, FunctionKind.BOOLEAN,
-                net.cumba.corej.core.exec.DictionaryFunctions::hierarchy)
+                net.cumba.corej.core.exec.DictionaryFunctions.HIERARCHY_FUNCTION)
                         .withProvider(net.cumba.corej.core.expr.eval.ProviderNeed.dictionary(
                                 net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER)));
 

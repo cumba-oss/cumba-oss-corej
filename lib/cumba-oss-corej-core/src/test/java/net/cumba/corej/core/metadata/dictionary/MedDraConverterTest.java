@@ -143,8 +143,6 @@ class MedDraConverterTest
         assertEquals(List.of("20000001"), scoped(byLevel, "PTCD", "10000001", "HLTCD"));
         assertEquals(List.of("30000001"), scoped(byLevel, "PTCD", "10000001", "HLGTCD"));
         assertEquals(List.of("40000001"), scoped(byLevel, "PTCD", "10000001", "SOCCD"));
-        assertEquals(List.of("10000001"), scoped(byLevel, "LLTCD", "50000003", "PTCD"),
-                "an LLT code names its PT code");
     }
 
 
@@ -166,18 +164,35 @@ class MedDraConverterTest
 
 
     /**
-     * Owner fact: a PT name can also be an LLT name. The LLT {@code Gamma} belongs to the PT
-     * {@code Alpha}; the PT {@code Gamma} has its own primary path under Soc Two.
+     * Runbook W2 fold (R5 PB-M1, coordinator — O11 "build only what is needed now" and the owner's
+     * memory-first priority): the LLT and LLT-code levels are NOT written — they were about three
+     * quarters of the section's entries and no shipped rule reads {@code --LLT}. The PT
+     * {@code Gamma} (also an LLT name, owner fact) keeps its own primary path; a {@code --LLT} read
+     * takes the bare-name map, as before DI1. The {@code levels} section keeps the LLT terms (the
+     * term-validity rules read them).
      */
     @Test
-    void aNameThatIsBothPtAndLltKeepsOneEntryPerLevel() throws IOException
+    void theLltLevelsAreNotWrittenToTheLevelScopedSection() throws IOException
     {
         writeCollidingDistribution();
 
-        JsonNode byLevel = converter.convert(raw).path("hierarchy_by_level");
+        ObjectNode doc = converter.convert(raw);
+        JsonNode byLevel = doc.path("hierarchy_by_level");
 
-        assertEquals(List.of("Alpha"), scoped(byLevel, "LLT", "Gamma", "PT"));
+        assertFalse(byLevel.has("LLT"), byLevel.toString());
+        assertFalse(byLevel.has("LLTCD"), byLevel.toString());
+        assertEquals(List.of("PT", "PTCD", "HLT", "HLTCD", "HLGT", "HLGTCD"),
+                iterable(byLevel.fieldNames()));
         assertEquals(List.of("Soc Two"), scoped(byLevel, "PT", "Gamma", "SOC"));
+        assertEquals("Gamma", doc.path("levels").path("LLT").path("GAMMA").asText());
+    }
+
+
+    private static List<String> iterable(java.util.Iterator<String> aNames)
+    {
+        List<String> out = new java.util.ArrayList<>();
+        aNames.forEachRemaining(out::add);
+        return out;
     }
 
 

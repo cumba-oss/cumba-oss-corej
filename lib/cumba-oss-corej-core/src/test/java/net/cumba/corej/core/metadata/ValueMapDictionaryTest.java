@@ -229,6 +229,60 @@ class ValueMapDictionaryTest
     }
 
 
+    /**
+     * Runbook W2 fold (R5 PB-L1): a section that lacks the CHILD level does not disable the legacy
+     * arm for it — the lookup falls back to the bare-name map, as a file without the section does.
+     * Since PB-M1 the converter writes no LLT level, so a {@code --LLT} read on a new file answers
+     * exactly as before DI1; a level the section carries still answers from it alone.
+     */
+    @Test
+    void aSectionWithoutTheChildLevelFallsBackToTheBareNameMap() throws Exception
+    {
+        ValueMapDictionary d = ValueMapDictionary.parse(MAPPER.readTree("{\"type\":\"meddra\","
+                + "\"hierarchy\":{\"X\":[\"S1\",\"S2\"]},\"hierarchy_by_level\":{"
+                + "\"PT\":{\"X\":{\"SOC\":[\"S1\"]}}}}"));
+        assertTrue(d.onHierarchyPath("LLT", "X", "SOC", "S2", true),
+                "no LLT level in the section: the bare-name map answers");
+        assertFalse(d.onHierarchyPath("LLT", "Y", "SOC", "S2", true), "and misses as it does");
+        assertFalse(d.onHierarchyPath("PT", "X", "SOC", "S2", true),
+                "a level the section carries answers from it alone");
+    }
+
+
+    /**
+     * Runbook W2 fold (R5 PB-L4): a malformed file whose levels fan out into each other is read
+     * with a visited set — each (level, key) followed once per lookup — so the chain cannot
+     * multiply into an exponential walk below the depth bound: twenty keys per level, each naming
+     * all twenty keys of the next level, ten levels in a cycle, and no level naming the requested
+     * parent.
+     */
+    @Test
+    void aFanningMalformedSectionIsWalkedOncePerKey() throws Exception
+    {
+        StringBuilder json = new StringBuilder("{\"type\":\"meddra\",\"hierarchy_by_level\":{");
+        StringBuilder keys = new StringBuilder();
+        for (int k = 0; k < 20; k++)
+        {
+            keys.append(k == 0 ? "" : ",").append("\"k").append(k).append('"');
+        }
+        for (int level = 0; level < 10; level++)
+        {
+            json.append(level == 0 ? "" : ",").append("\"L").append(level).append("\":{");
+            for (int k = 0; k < 20; k++)
+            {
+                json.append(k == 0 ? "" : ",").append("\"k").append(k).append("\":{\"L")
+                        .append((level + 1) % 10).append("\":[").append(keys).append("]}");
+            }
+            json.append('}');
+        }
+        ValueMapDictionary d = ValueMapDictionary
+                .parse(MAPPER.readTree(json.append("}}").toString()));
+        assertFalse(org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(
+                java.time.Duration.ofSeconds(10),
+                () -> d.onHierarchyPath("L0", "k0", "SOC", "S", true)));
+    }
+
+
     @Test
     void emptyLevelsAndNullArgumentGuards() throws Exception
     {

@@ -130,6 +130,16 @@ class DefineVlmE2ETest
         assertEquals(List.of(1L, 2L, 3L),
                 firedRows(lb, "is_missing(vlm_value_length(\"LBSTRESC\"))"),
                 "every row is missing: the two carried .A cells and the computed MIS");
+        // Runbook W2 fold (R5 PB-L5) - which assertion pins what: row 1 above pins the CARRIED
+        // identity (a matched entry over .A answers .A); the is_missing line pins nothing that
+        // tells the two arms apart (every arm answers a missing). The no-match arm is pinned here:
+        // the unmatched HGB row compared with the plain MIS fires only when no match answers the
+        // computed MIS - a no-match handing the target's own .A through would not fire it
+        IDataTable plain = RealTables.of("LB").str("LBTESTCD", "GLUC", "HGB").str("LBSPEC", "", "")
+                .dbl("LBSTRESC", MissingValue.MIS_A.asDouble(), MissingValue.MIS_A.asDouble())
+                .dbl("M", MissingValue.MIS.asDouble(), MissingValue.MIS.asDouble()).build();
+        assertEquals(List.of(2L), firedRows(plain, "vlm_value_length(\"LBSTRESC\") == M"),
+                "the matched .A is not MIS; the unmatched row's computed MIS is");
     }
 
 

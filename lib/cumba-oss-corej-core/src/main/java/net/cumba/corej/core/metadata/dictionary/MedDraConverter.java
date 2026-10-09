@@ -69,13 +69,23 @@ import org.jspecify.annotations.Nullable;
  * Beside it, from the same primary rows, the converter writes the primary path keyed <b>per
  * level</b> ({@code PLAN-engine-gap-dict-unsupported} §4.1, §5.1 Q1/Q2): a PT name &rarr; its
  * primary HLT, HLGT and SOC names, a PT code ({@code PTCD}, field 0 of {@code mdhier.asc}) &rarr;
- * their codes; an LLT &rarr; its PT ({@code llt.asc} field 2), whose own entry carries the path; an
- * HLT &rarr; the HLGTs and SOCs, an HLGT &rarr; the SOCs it reaches on primary rows (a set — an HLT
- * can sit under several HLGTs). A PT has exactly one primary row, so its lists hold one term each.
- * A name may recur at several levels — a PT can also be an HLT and an LLT (owner fact, 2026-10-08)
- * — and each level keeps its own entry; the engine reads the level of the variable
- * ({@code ValueMapDictionary.onHierarchyPath} with levels). Codes are code-like identifiers, never
- * words, and sit at their own {@code *CD} levels.
+ * their codes; an HLT &rarr; the HLGTs and SOCs, an HLGT &rarr; the SOCs it reaches on primary rows
+ * (a set — an HLT can sit under several HLGTs). A PT has exactly one primary row, so its lists hold
+ * one term each. A name may recur at several levels — a PT can also be an HLT and an LLT (owner
+ * fact, 2026-10-08) — and each level keeps its own entry; the engine reads the level of the
+ * variable ({@code ValueMapDictionary.onHierarchyPath} with levels). Codes are code-like
+ * identifiers, never words, and sit at their own {@code *CD} levels.
+ * </p>
+ *
+ * <p>
+ * ⚑ <b>No LLT level</b> (runbook W2 fold, R5 PB-M1 — O11 "build only what is needed now", the
+ * owner's memory-first priority): an LLT &rarr; PT level was about three quarters of the section's
+ * entries (tens of MB on a release) and no shipped rule reads {@code --LLT}, so it is not written;
+ * a {@code --LLT} read takes the bare-name map, exactly as before the section existed
+ * ({@code ValueMapDictionary.onHierarchyPath}). ⚠ When a rule comes to read {@code --LLT} the level
+ * must be added back, keyed by LLT name and LLT code ({@code llt.asc} field 2 names the PT),
+ * because a PT name can also be an LLT name (owner fact) — the bare-name map cannot tell them
+ * apart.
  * </p>
  *
  * <p>
@@ -108,9 +118,6 @@ public final class MedDraConverter implements DictionaryConverter
 
     private static final int PRIMARY_FLAG_AT = 11;
 
-    /** {@code llt.asc}'s field holding the LLT's PT code. */
-    private static final int LLT_PT_CODE_AT = 2;
-
     /**
      * The level names, as the {@code levels} and {@code hierarchy_by_level} sections spell them.
      */
@@ -136,12 +143,11 @@ public final class MedDraConverter implements DictionaryConverter
     @Override
     public ObjectNode convert(Path aRawDir) throws IOException
     {
-        Map<String, String> lltPtCodes = new LinkedHashMap<>();
-        Map<String, String> lltByCode = readTerms(aRawDir, "llt.asc", lltPtCodes);
-        Map<String, String> ptByCode = readTerms(aRawDir, "pt.asc", null);
-        Map<String, String> hltByCode = readTerms(aRawDir, "hlt.asc", null);
-        Map<String, String> hlgtByCode = readTerms(aRawDir, "hlgt.asc", null);
-        Map<String, String> socByCode = readTerms(aRawDir, "soc.asc", null);
+        Map<String, String> lltByCode = readTerms(aRawDir, "llt.asc");
+        Map<String, String> ptByCode = readTerms(aRawDir, "pt.asc");
+        Map<String, String> hltByCode = readTerms(aRawDir, "hlt.asc");
+        Map<String, String> hlgtByCode = readTerms(aRawDir, "hlgt.asc");
+        Map<String, String> socByCode = readTerms(aRawDir, "soc.asc");
 
         ObjectNode root = JsonNodeFactory.instance.objectNode();
         ObjectNode levels = root.putObject("levels");
@@ -159,18 +165,6 @@ public final class MedDraConverter implements DictionaryConverter
             e.getValue().forEach(ancestors::add);
         }
         Map<String, Map<String, Map<String, Set<String>>>> byLevel = paths.byLevel();
-        Map<String, Map<String, Set<String>>> ptCodePaths = byLevel.getOrDefault(PT + CODE,
-                Map.of());
-        for (Map.Entry<String, String> llt : lltPtCodes.entrySet())
-        {
-            String ptCode = llt.getValue();
-            String ptName = ptByCode.get(ptCode);
-            if (ptName != null && ptCodePaths.containsKey(ptCode))
-            {
-                add(byLevel, LLT, lltByCode.get(llt.getKey()), PT, ptName);
-                add(byLevel, LLT + CODE, llt.getKey(), PT + CODE, ptCode);
-            }
-        }
         ObjectNode scoped = root.putObject(ValueMapDictionary.HIERARCHY_BY_LEVEL);
         for (Map.Entry<String, Map<String, Map<String, Set<String>>>> level : byLevel.entrySet())
         {
@@ -223,7 +217,7 @@ public final class MedDraConverter implements DictionaryConverter
      *            levels merged under one key
      * @param byLevel
      *            the level-scoped map: level &rarr; key &rarr; ancestor level &rarr; ancestor terms
-     *            (the LLT levels are added by the caller)
+     *            (PT, HLT, HLGT and their codes — no LLT level, R5 PB-M1)
      */
     private record PrimaryPaths(Map<String, Set<String>> socsByName,
             Map<String, Map<String, Map<String, Set<String>>>> byLevel)
@@ -243,8 +237,7 @@ public final class MedDraConverter implements DictionaryConverter
     {
         Map<String, Set<String>> out = new LinkedHashMap<>();
         Map<String, Map<String, Map<String, Set<String>>>> byLevel = new LinkedHashMap<>();
-        for (String level : List.of(LLT, LLT + CODE, PT, PT + CODE, HLT, HLT + CODE, HLGT,
-                HLGT + CODE))
+        for (String level : List.of(PT, PT + CODE, HLT, HLT + CODE, HLGT, HLGT + CODE))
         {
             byLevel.put(level, new LinkedHashMap<>());
         }
@@ -332,14 +325,10 @@ public final class MedDraConverter implements DictionaryConverter
      * Reads one level file into a code&rarr;name map, registering every name in that level's own
      * preferred-form table.
      *
-     * @param aParentCodes
-     *            when not {@code null}, receives each code's field 2 ({@code llt.asc}: the PT code)
      * @throws IOException
      *             when two names in this file fold to the same term but disagree on case
      */
-    private static Map<String, String> readTerms(Path aRawDir, String aFileName,
-            @Nullable Map<String, String> aParentCodes)
-        throws IOException
+    private static Map<String, String> readTerms(Path aRawDir, String aFileName) throws IOException
     {
         Map<String, String> preferred = new LinkedHashMap<>();
         Map<String, String> byCode = new LinkedHashMap<>();
@@ -360,11 +349,6 @@ public final class MedDraConverter implements DictionaryConverter
                 }
                 register(preferred, name, aFileName);
                 byCode.putIfAbsent(code, name);
-                if (aParentCodes != null && fields.length > LLT_PT_CODE_AT
-                        && !fields[LLT_PT_CODE_AT].isBlank())
-                {
-                    aParentCodes.putIfAbsent(code, fields[LLT_PT_CODE_AT].trim());
-                }
             }
         }
         return byCode;

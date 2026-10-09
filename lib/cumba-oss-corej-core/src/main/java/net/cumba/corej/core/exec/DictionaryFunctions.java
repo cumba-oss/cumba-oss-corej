@@ -4,6 +4,7 @@ import java.util.BitSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import net.cumba.corej.core.expr.eval.EvalFunction;
 import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.UngatedProviderReachException;
 import net.cumba.corej.core.expr.eval.Vector;
@@ -92,6 +93,59 @@ public final class DictionaryFunctions
             Map.entry("SOCCD", "SOCCD"), Map.entry("PTCD", "PTCD"), Map.entry("HLGT", "HLGT"),
             Map.entry("HLT", "HLT"), Map.entry("LLT", "LLT"), Map.entry("SOC", "SOC"),
             Map.entry("DECOD", "PT"));
+
+    /**
+     * The function {@code valid_external_dictionary_hierarchy}'s descriptor publishes (runbook W2
+     * fold, R5 PB-L3): the levels the call's two columns read (DI1, {@link #hierarchyLevelOf}) are
+     * bound INTO it at load by {@link #atLevels} — the compiler dispatches through the descriptor's
+     * function, never around it to a hard-wired method, so a function registered under the name is
+     * the one called.
+     */
+    public interface LevelScoped extends EvalFunction
+    {
+
+        /**
+         * This function with the call's levels bound.
+         *
+         * @param childLevel
+         *            the level of the child column, or {@code null} (no level: the bare-name map)
+         * @param parentLevel
+         *            the level of the parent column, or {@code null}
+         * @return the function the compiled call applies
+         */
+        EvalFunction atLevels(@Nullable String childLevel, @Nullable String parentLevel);
+    }
+
+
+    /**
+     * {@link #hierarchy(EvalRun, List, String, String)} with its levels bound — the registered
+     * implementation ({@link #HIERARCHY_FUNCTION}, levels {@code null}: the bare-name lookup).
+     *
+     * @param childLevel
+     *            the level of the child column, or {@code null}
+     * @param parentLevel
+     *            the level of the parent column, or {@code null}
+     */
+    public record Hierarchy(@Nullable String childLevel,
+            @Nullable String parentLevel) implements LevelScoped
+    {
+
+        @Override
+        public Object apply(EvalRun run, List<Vector> args)
+        {
+            return hierarchy(run, args, childLevel, parentLevel);
+        }
+
+
+        @Override
+        public EvalFunction atLevels(@Nullable String aChildLevel, @Nullable String aParentLevel)
+        {
+            return new Hierarchy(aChildLevel, aParentLevel);
+        }
+    }
+
+    /** The registered {@link #HIERARCHY} function, no level bound. */
+    public static final Hierarchy HIERARCHY_FUNCTION = new Hierarchy(null, null);
 
     private DictionaryFunctions()
     {

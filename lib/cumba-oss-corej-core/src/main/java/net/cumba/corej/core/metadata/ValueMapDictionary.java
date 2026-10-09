@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -225,9 +226,13 @@ public final class ValueMapDictionary
     public static ValueMapDictionary parse(JsonNode root)
     {
         String t = root.hasNonNull("type") ? root.get("type").asText() : "";
-        return new ValueMapDictionary(t, readProvenance(root), readLevels(root.get("levels")),
+        // R5 PB-M1: ONE intern map for the term-bearing sections — a PT name is a `levels` value
+        // and a hierarchy_by_level key, a SOC name recurs on every PT row
+        Map<String, String> canonical = new HashMap<>();
+        return new ValueMapDictionary(t, readProvenance(root),
+                readLevels(root.get("levels"), canonical),
                 readNestedStringList(root.get("hierarchy")),
-                LevelScopedHierarchy.read(root.get(HIERARCHY_BY_LEVEL)),
+                LevelScopedHierarchy.read(root.get(HIERARCHY_BY_LEVEL), canonical),
                 readNestedStringMap(root.get("pairs")),
                 readNestedStringMap(root.get("attributes")));
     }
@@ -255,9 +260,11 @@ public final class ValueMapDictionary
 
     /**
      * The {@code levels} index: term keys upper-cased on load (the folded membership index), the
-     * values kept verbatim (each value holds the term's preferred case).
+     * values kept verbatim (each value holds the term's preferred case) — both canonicalised
+     * through {@code canonical}, the intern map the level-scoped hierarchy shares (R5 PB-M1).
      */
-    private static Map<String, Map<String, String>> readLevels(@Nullable JsonNode node)
+    private static Map<String, Map<String, String>> readLevels(@Nullable JsonNode node,
+            Map<String, String> canonical)
     {
         Map<String, Map<String, String>> out = new LinkedHashMap<>();
         if (node == null || !node.isObject())
@@ -272,7 +279,10 @@ public final class ValueMapDictionary
             {
                 for (Map.Entry<String, JsonNode> e : innerNode.properties())
                 {
-                    inner.put(e.getKey().toUpperCase(Locale.ROOT), e.getValue().asText());
+                    inner.put(
+                            LevelScopedHierarchy.canonical(canonical,
+                                    e.getKey().toUpperCase(Locale.ROOT)),
+                            LevelScopedHierarchy.canonical(canonical, e.getValue().asText()));
                 }
             }
             out.put(outer.getKey(), inner);
@@ -444,15 +454,18 @@ public final class ValueMapDictionary
      * {@code PLAN-engine-gap-dict-unsupported} §4.1): a file carrying {@code hierarchy_by_level}
      * answers at {@code termLevel} / {@code parentLevel} only ({@link LevelScopedHierarchy}) — a PT
      * name that is also an HLT or LLT name reads its own level's entry. ⭐ <b>The legacy arm:</b> a
-     * file without that section (every file installed before DI1, the corpus dummy), or a call with
-     * a column that maps to no level ({@code null}), answers through the bare-name
+     * file without that section (every file installed before DI1, the corpus dummy), a section
+     * without the child's level (no LLT level since R5 PB-M1 — PB-L1), or a call with a column that
+     * maps to no level ({@code null}), answers through the bare-name
      * {@link #onHierarchyPath(String, String, boolean)} exactly as before.
      */
     public boolean onHierarchyPath(@Nullable String termLevel, @Nullable String term,
             @Nullable String parentLevel, @Nullable String parent, boolean caseSensitive)
     {
-        if (termLevel == null || parentLevel == null || hierarchyByLevel.isEmpty())
+        if (termLevel == null || parentLevel == null || !hierarchyByLevel.hasLevel(termLevel))
         {
+            // R5 PB-L1: a section without the CHILD level (no LLT level since PB-M1) answers as a
+            // file without the section — the bare-name map — never "off-path" for every row
             return onHierarchyPath(term, parent, caseSensitive);
         }
         return term != null && parent != null
