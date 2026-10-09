@@ -24,6 +24,98 @@ public final class DataValues
     }
 
 
+    /**
+     * A computed number as a <b>typed</b> list member (runbook W2 fold, R5 B-MED-2): a
+     * {@link DataValueType#DOUBLE} cell whose text is the number's canonical form
+     * ({@link ExprCompiler#canonicalNumberText}: {@code 10}, never {@code 10.0}) — what a
+     * dataset-level number renders, and what a member set keys a numeric cell by. A lifted
+     * function's numeric answers are carried in a list as these, whichever lift case built the list
+     * ({@code ElementwiseLift}, {@code ListVector}).
+     *
+     * @param value
+     *            the number, never {@code null}
+     * @return the cell
+     */
+    public static IDataValue number(Number value)
+    {
+        return new NumberCell(value, ExprCompiler.canonicalNumberText(value));
+    }
+
+    /**
+     * {@link #number}'s cell. ⚠ Equal by its canonical text — a list of them is compared by value
+     * wherever lists are (a dataset-level binding's uniformity proof, set operations, memo keys),
+     * as the boxed numbers they replace were; {@code 3L} and {@code 3.0} are one number.
+     */
+    private static final class NumberCell implements IDataValue
+    {
+
+        private final Number value;
+
+        private final String text;
+
+        NumberCell(Number aValue, String aText)
+        {
+            value = aValue;
+            text = aText;
+        }
+
+
+        @Override
+        public Object getValue()
+        {
+            return value;
+        }
+
+
+        @Override
+        public boolean isMissingOrInvalid()
+        {
+            return false;
+        }
+
+
+        @Override
+        public String getValueAsString()
+        {
+            return text;
+        }
+
+
+        @Override
+        public double getValueAsDouble()
+        {
+            return value.doubleValue();
+        }
+
+
+        @Override
+        public DataValueType getType()
+        {
+            return DataValueType.DOUBLE;
+        }
+
+
+        @Override
+        public boolean equals(@Nullable Object other)
+        {
+            return other instanceof NumberCell cell && text.equals(cell.text);
+        }
+
+
+        @Override
+        public int hashCode()
+        {
+            return text.hashCode();
+        }
+
+
+        @Override
+        public String toString()
+        {
+            return text;
+        }
+    }
+
     /** Wraps {@code value} as an {@link IDataValue}; {@code null} becomes a missing value. */
     public static IDataValue of(@Nullable Object value)
     {

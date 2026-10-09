@@ -211,4 +211,35 @@ class ElementwiseLiftTest
         assertEquals(List.of("X", "Y"), texts(apply(UPPER, 1, in).value(0)));
     }
 
+
+    /**
+     * Runbook W2 fold (R5 B-LOW-2): a bare builtin operand whose static type is a list
+     * ({@code library_variable_label_values}, stage A's {@code _values} / {@code _codes} row,
+     * {@code StageAChecker.builtinOperandType}) survives the load-time canonicalisation as a
+     * reference and reaches the compiler as a list value — so a lifted call over it is decided on
+     * the vector (the element-wise lift), like its bound {@code $c} twin, never through the scalar
+     * kernel that folded the list's rendering as one string.
+     */
+    @Test
+    void aLiftedCallOverAListTypedBuiltinOperandLiftsLikeItsBoundTwin()
+    {
+        net.cumba.datatable.IDataTable t = net.cumba.datatable.testkit.MockTable.of().name("DS")
+                .col("X", "1", "2").build();
+        net.cumba.corej.core.exec.EvaluationContext ctx = net.cumba.corej.core.exec.EvaluationContext
+                .builder().table(t).variables(java.util.Map.of("library_variable_label_values",
+                        List.of("Ab", "Cd"), "$c", List.of("Ab", "Cd")))
+                .build();
+        net.cumba.corej.core.expr.ast.Expr builtin = net.cumba.corej.core.expr.MetadataOperandMapping
+                .canonicalizeMetadataOperands(net.cumba.corej.core.expr.CheckExpressionParser
+                        .parse("lower(library_variable_label_values)"));
+        assertInstanceOf(net.cumba.corej.core.expr.ast.Expr.Ref.class,
+                ((net.cumba.corej.core.expr.ast.Expr.Call) builtin).args().get(0),
+                "the operand stays a reference after canonicalisation");
+        Vector lifted = Objects.requireNonNull(ExprCompiler.evaluateValueExpression(builtin, ctx));
+        Vector twin = Objects.requireNonNull(ExprCompiler.evaluateValueExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse("lower($c)"), ctx));
+        assertEquals(List.of("ab", "cd"), texts(twin.value(0)));
+        assertEquals(texts(twin.value(0)), texts(lifted.value(0)),
+                "each element folded, as the bound twin's");
+    }
 }

@@ -1494,12 +1494,14 @@ public final class ExprCompiler
         // never numeric (numbers have no case). (The retired legacy membership path ran the same
         // classification on the JSON-array node types, isNumber() vs isTextual(), which agree
         // element-for-element with these Expr.Lit kinds.)
-        if (listLhs && "num".equals(markerOf(b.left())))
+        if (listLhs && isNumberValued(b.left()))
         {
             // runbook W2 E5: a num()-marked list probe (num(values([X, Y])), num($n) over a list)
             // against an all-numeric literal compares each element NUMERICALLY, as the scalar
             // num(X) in [10, 20] does — any element a member (D81d); a mixed literal stays Q3's
-            // load error (numericMemberSet throws)
+            // load error (numericMemberSet throws). W2 fold (R5 B-MED-1): so does ANY lifted call
+            // whose scalar result is a NUMBER — abs($n), round(values([X, Y])) — as its scalar
+            // form takes the numeric-literal arm below
             Set<Double> numericMembers = numericMemberSet(right);
             if (numericMembers != null)
             {
@@ -2235,6 +2237,25 @@ public final class ExprCompiler
             }
         }
         return out;
+    }
+
+
+    /**
+     * Whether the membership probe {@code e} answers NUMBERS (runbook W2 fold, R5 B-MED-1): a
+     * {@code num()}-marked probe, or an element-wise (lifted) value call whose scalar
+     * {@code ElementTable} result is {@code number} ({@code abs}, {@code round}, {@code len},
+     * {@code year}, …) — over a list each element is that number, so the list probe takes the
+     * numeric any-element arm its scalar form's numeric-literal arm mirrors.
+     */
+    private static boolean isNumberValued(Expr e)
+    {
+        if ("num".equals(markerOf(e)))
+        {
+            return true;
+        }
+        return e instanceof Expr.Call call && isElementwise(call.name())
+                && net.cumba.corej.core.expr.typed.ElementTable.resultType(
+                        call.name()) == net.cumba.corej.core.expr.typed.ExprType.Primitive.NUMBER;
     }
 
 
@@ -8335,13 +8356,20 @@ public final class ExprCompiler
      * list), a scalar literal, arithmetic, a registered call whose {@code ElementTable} row is a
      * scalar primitive (a lifted call recursively by its own value argument). Anything the static
      * type leaves open — a {@code $} reference, a list literal, {@code colref}, an unknown-typed
-     * call — answers {@code false} and is decided on the vector.
+     * call — answers {@code false} and is decided on the vector. So does a bare builtin operand
+     * stage A types a list ({@code library_variable_label_values}: a {@code _values} /
+     * {@code _codes} name, {@code StageAChecker.builtinOperandType}) — it survives the load-time
+     * canonicalisation as a reference and holds a list (runbook W2 fold, R5 B-LOW-2), so a lifted
+     * call over it lifts like its bound {@code $c} twin.
      */
     private static boolean isStaticallyScalar(Expr e)
     {
         return switch (e)
         {
-        case Expr.Ref r -> r.kind() != OperandKind.OPERATION_REF;
+        case Expr.Ref r -> r.kind() != OperandKind.OPERATION_REF && !(r
+                .kind() == OperandKind.BUILTIN
+                && net.cumba.corej.core.expr.typed.StageAChecker.builtinOperandType(
+                        r.name()) instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf);
         case Expr.Lit lit -> lit.kind() != Expr.LitKind.LIST;
         // arithmetic is scalar; a substitution has its subject's shape (a list subject answers a
         // list — the element-wise lift)

@@ -1807,11 +1807,44 @@ public final class StageAChecker
      * ({@link #columnTypedBindings}), never its own row ({@code PLAN-elementwise-list-functions}
      * §3.4).
      *
+     * <p>
+     * ⭐ <b>Through an alias chain</b> (runbook W2 fold, R5 B-LOW-1): a binding that merely renames
+     * another ({@code $b: $a}, {@code $a: trim($u)}) has its root's type source — before E5 Stage A
+     * typed such a chain by its root ({@code trim} answered {@code string}), so a reported
+     * {@code $b} loaded; reading the binding's own root alone refused it. The chain is followed
+     * through {@code bindings} for at most as many hops as there are bindings (a cycle is a load
+     * error elsewhere and ends here as "no type source").
+     * </p>
+     *
      * @param root
      *            a binding's expression
+     * @param bindings
+     *            the rule's binding expressions by name ({@code $a} → its expression), to follow a
+     *            chain of renaming bindings; answers {@code null} for an unknown name
+     * @param bindingCount
+     *            the number of bindings — the chain's bound
      * @return the declared scalar result type, or {@code null}
      */
-    public static @Nullable ExprType liftedTypeSource(Expr root)
+    public static @Nullable ExprType liftedTypeSource(Expr root,
+            java.util.function.Function<String, @Nullable Expr> bindings, int bindingCount)
+    {
+        Expr current = root;
+        for (int hops = 0; current instanceof Expr.Ref alias
+                && alias.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF; hops++)
+        {
+            Expr next = hops < bindingCount ? bindings.apply(alias.name()) : null;
+            if (next == null)
+            {
+                return null;
+            }
+            current = next;
+        }
+        return liftedTypeSource(current);
+    }
+
+
+    /** {@link #liftedTypeSource(Expr, java.util.function.Function, int)} of a call root. */
+    private static @Nullable ExprType liftedTypeSource(Expr root)
     {
         if (!(root instanceof Expr.Call c) || c.args().isEmpty() || CASE_FOLDS.contains(c.name())
                 || !isLiftedValueFunction(c.name()))

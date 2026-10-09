@@ -34,7 +34,8 @@ class ElementwiseLiftRosterRuleTest
 
     /**
      * Row 1 / 2 / 3: text pairs A / B, a text column C missing on row 2, numbers N1 / N2, ISO dates
-     * D1 / D2, ISO times T1 / T2, a comma list X (missing on row 3) and a comma list of dates Y.
+     * D1 / D2, ISO times T1 / T2, a comma list X (missing on row 3), a comma list of dates Y and a
+     * comma list of numbers NL.
      */
     private static IDataTable ae()
     {
@@ -44,7 +45,8 @@ class ElementwiseLiftRosterRuleTest
                 .str("D2", "2022-02-28", "2020", "2018-06-01")
                 .str("T1", "09:15", "23:59:30", "00:00").str("T2", "10:30:05", "12", "06:45")
                 .str("X", "a,bb", "ccc", null)
-                .str("Y", "1999-01-01,2020-01-01", "2020-01-15", "2020-02-29T23:00").build();
+                .str("Y", "1999-01-01,2020-01-01", "2020-01-15", "2020-02-29T23:00")
+                .str("NL", "-10,3", "2.5", "4").build();
     }
 
     /**
@@ -202,6 +204,14 @@ class ElementwiseLiftRosterRuleTest
     }
 
 
+    /** Each rendering with a whole number's {@code .0} dropped — the canonical number text. */
+    private static List<String> canonical(List<String> renderings)
+    {
+        return renderings.stream()
+                .map(r -> r.matches("-?[0-9]+\\.0") ? r.substring(0, r.length() - 2) : r).toList();
+    }
+
+
     /** The rendering of a two-element list of the two scalar renderings, row by row. */
     private static List<String> pairs(List<String> first, List<String> second)
     {
@@ -225,8 +235,11 @@ class ElementwiseLiftRosterRuleTest
         {
             String name = e.getKey();
             String[] columns = e.getValue();
-            List<String> first = rendered(call(name, columns[1]));
-            List<String> second = rendered(call(name, columns[2]));
+            // a list element that is a computed number is its canonical text (R5 B-MED-2: "3",
+            // as a dataset-level number renders); the per-row scalar call's own cell still
+            // renders a whole double "3.0" (DataValues.of - unchanged), so it is compared canonical
+            List<String> first = canonical(rendered(call(name, columns[1])));
+            List<String> second = canonical(rendered(call(name, columns[2])));
             assertEquals(pairs(first, second),
                     rendered(call(name, "values([" + columns[1] + ", " + columns[2] + "])")),
                     name + " over values([X, Y])");
@@ -274,8 +287,9 @@ class ElementwiseLiftRosterRuleTest
                 rendered("len($n)", "$n", "[\"a\", \"bb\"]"));
         assertEquals(List.of("[a, c]", "[a, c]", "[a, c]"),
                 rendered("substring($s, 1, 1)", "$s", "[\"ab\", \"cd\"]"));
-        // a parsed element is a DOUBLE and renders as a per-row num(X) cell does ("1.0")
-        assertEquals(List.of("[1.0, 2.5]", "[1.0, 2.5]", "[1.0, 2.5]"),
+        // a parsed element is a typed number and renders canonically, as a dataset-level num()
+        // does ("1", never "1.0" - runbook W2 fold, R5 B-MED-2)
+        assertEquals(List.of("[1, 2.5]", "[1, 2.5]", "[1, 2.5]"),
                 rendered("num($n)", "$n", "[\"1\", \"2.5\"]"));
         assertEquals(List.of("[  a,  bb]", "[  a,  bb]", "[  a,  bb]"),
                 rendered("lpad($n, 3)", "$n", "[\"a\", \"bb\"]"));
@@ -362,8 +376,64 @@ class ElementwiseLiftRosterRuleTest
         assertEquals(List.of("ab", "Cd", "e"), rendered("trim($a)", "$a", "A"));
         assertEquals(List.of("2020-01-15", "2021-03", "2019-12-31T23:59"),
                 rendered("date($a)", "$a", "D1"));
-        assertEquals(List.of("[1.0, 2.0]", "[1.0, 2.0]", "[1.0, 2.0]"),
+        assertEquals(List.of("[1, 2]", "[1, 2]", "[1, 2]"),
                 rendered("num($n)", "$n", "[\"1\", \"2\"]"));
+        // R5 B-LOW-1: an alias chain over such a binding keeps the root's type source - with
+        // $u of unknown type (an extract_metadata key no table pins), $v: $b, $b: $a, $a: len($u)
+        // loads and renders as len($u) does; before, the chain's own root ($a, a reference)
+        // declared nothing and the reported $v was refused ("has no type source")
+        assertEquals(rendered("len($u)", "$u", "extract_metadata(\"foo\")"),
+                rendered("$b", "$u", "extract_metadata(\"foo\")", "$a", "len($u)", "$b", "$a"));
+    }
+
+
+    @Test
+    void aLiftedNumericListRendersCanonicallyWhateverProducedIt()
+    {
+        // runbook W2 fold, R5 B-MED-2: a lifted numeric list carries TYPED cells, so it renders
+        // as a dataset-level number does - "10", never "10.0" - whichever lift case built it
+        // case 3, a dataset-level list: each element as the scalar call over it renders
+        assertEquals(pairs(rendered("abs(-10)"), rendered("abs(3)")),
+                rendered("abs(split_by(\"-10,3\", \",\"))"));
+        assertEquals(List.of("[1, 2.5]", "[1, 2.5]", "[1, 2.5]"),
+                rendered("abs($n)", "$n", "[1.0, 2.5]"));
+        // case 4, a per-row list (NL: "-10,3" / "2.5" / "4")
+        assertEquals(List.of("[10, 3]", "[2.5]", "[4]"), rendered("abs(split_by(NL, \",\"))"));
+        assertEquals(List.of("[-10, 3]", "[2.5]", "[4]"),
+                rendered("num($n)", "$n", "split_by(NL, \",\")"));
+        // case 2, values([X, Y]) (N1: -1.5 / 2.25 / 3.0, N2: 0.5 / -7.75 / 10.0) - and case 2 and
+        // case 3 render one list identically
+        assertEquals(List.of("[1.5, 0.5]", "[2.25, 7.75]", "[3, 10]"),
+                rendered("abs(values([N1, N2]))"));
+        assertEquals(rendered("abs(values([N1, N2]))").get(2),
+                rendered("abs($n)", "$n", "[3.0, 10]").get(0));
+        assertEquals(List.of("[-2, 0]", "[2, -8]", "[3, 10]"), rendered("floor(values([N1, N2]))"));
+    }
+
+
+    @Test
+    void aNumberResultLiftedProbeComparesEachElementNumerically()
+    {
+        // runbook W2 fold, R5 B-MED-1: a lifted call whose scalar result is a NUMBER takes the
+        // numeric any-element arm against an all-numeric literal, as the scalar call does - not
+        // only num(): abs($n) over a list fires like abs(-10) in [10]
+        assertEquals(fired("abs(-10) in [10]"),
+                fired("abs($n) in [10]", "$n", "split_by(\"-10,3\", \",\")"));
+        assertEquals(List.of(1L, 2L, 3L),
+                fired("abs($n) in [10]", "$n", "split_by(\"-10,3\", \",\")"));
+        // a statically list-valued probe: row 3 holds 10 (N2 = 10.0); 10.0 and 10 are one number
+        assertEquals(List.of(3L), fired("abs(values([N1, N2])) in [10]"));
+        assertEquals(List.of(3L), fired("abs(values([N1, N2])) in [10.0]"));
+        assertEquals(List.of(1L, 2L), fired("abs(values([N1, N2])) not in [10]"));
+        assertEquals(List.of(2L), fired("round(values([N1, N2])) in [2.0]"));
+        // a per-row list (NL: "-10,3" / "2.5" / "4")
+        assertEquals(List.of(2L), fired("abs(split_by(NL, \",\")) in [2.50]"));
+        // the numeric arm is =='s, tolerance included (D9): 16.99999999997 is a member of [17]
+        // as abs(-16.99999999997) in [17] says - its text "16.99999999997" never is
+        assertEquals(fired("abs(-16.99999999997) in [17]"),
+                fired("abs($n) in [17]", "$n", "split_by(\"-16.99999999997,3\", \",\")"));
+        assertEquals(List.of(1L, 2L, 3L),
+                fired("abs($n) in [17]", "$n", "split_by(\"-16.99999999997,3\", \",\")"));
     }
 
     // ------------------------------------------------------------------ membership

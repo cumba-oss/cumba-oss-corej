@@ -6168,8 +6168,10 @@ public class RulePackageLoader
             if (binding != null
                     && (type == null
                             || type == net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)
-                    && !columnTyped.contains(name) && net.cumba.corej.core.expr.typed.StageAChecker
-                            .liftedTypeSource(binding.expression()) == null)
+                    && !columnTyped.contains(name)
+                    && net.cumba.corej.core.expr.typed.StageAChecker.liftedTypeSource(
+                            binding.expression(), alias -> expressionOf(byName.get(alias)),
+                            byName.size()) == null)
             {
                 errors.add(untypedReportedBinding(name, binding.expression(),
                         authored.contains(name)));
@@ -6180,6 +6182,14 @@ public class RulePackageLoader
             appendLoadError(rule, "[" + ruleId(rule) + "] Outcome.Output_Variables: "
                     + String.join("; ", errors));
         }
+    }
+
+
+    /** The expression of {@code binding}, or {@code null} when there is none (an unknown name). */
+    private static net.cumba.corej.core.expr.ast.@Nullable Expr expressionOf(
+            net.cumba.corej.core.model.@Nullable CompiledBinding binding)
+    {
+        return binding == null ? null : binding.expression();
     }
 
 

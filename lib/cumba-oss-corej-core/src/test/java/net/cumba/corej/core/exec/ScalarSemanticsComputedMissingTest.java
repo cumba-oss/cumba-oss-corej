@@ -786,7 +786,11 @@ class ScalarSemanticsComputedMissingTest
     // identity, a cell-sourced value verbatim, a derived cell for a resolved payload), a hull-keyed
     // positionable duration re-wrapped as its canonical hull text (DataValues.of); a list payload
     // raises the rule's ERROR (a list is not a key component). Never null.
-    private static final int EXPECTED_VALUE_PRODUCERS = 39;
+    // 39 -> 40 (runbook W2 fold, R5 B-MED-2): DataValues.number came (+1) — read: a lifted
+    // kernel's computed number as a typed list member, a present DOUBLE cell whose text is the
+    // canonical number text; its argument is a present Number (the callers pass a non-missing
+    // payload), so it never answers a missing and is never null.
+    private static final int EXPECTED_VALUE_PRODUCERS = 40;
 
     private static Method declared(Class<?> owner, String name)
     {

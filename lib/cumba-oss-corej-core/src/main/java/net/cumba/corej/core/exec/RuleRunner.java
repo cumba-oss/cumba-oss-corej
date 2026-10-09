@@ -870,6 +870,8 @@ public final class RuleRunner
             // the type source of a binding stage A leaves unknown (read_value, max, …).
             Set<String> columnTyped = net.cumba.corej.core.expr.typed.StageAChecker
                     .columnTypedBindings(compiledBindings);
+            Map<String, net.cumba.corej.core.expr.ast.Expr> bindingExpressions = new HashMap<>();
+            compiledBindings.forEach(b -> bindingExpressions.put(b.name(), b.expression()));
             for (net.cumba.corej.core.model.CompiledBinding compiled : compiledBindings)
             {
                 net.cumba.corej.core.expr.typed.ExprType staticType = bindingTypes
@@ -881,7 +883,8 @@ public final class RuleRunner
                     // declared result as its type source (StageAChecker.liftedTypeSource) — the
                     // one the load gate accepted it on
                     net.cumba.corej.core.expr.typed.ExprType lifted = net.cumba.corej.core.expr.typed.StageAChecker
-                            .liftedTypeSource(compiled.expression());
+                            .liftedTypeSource(compiled.expression(), bindingExpressions::get,
+                                    bindingExpressions.size());
                     if (lifted != null)
                     {
                         staticType = lifted;

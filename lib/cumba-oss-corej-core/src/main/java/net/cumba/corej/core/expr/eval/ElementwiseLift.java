@@ -48,11 +48,13 @@ import org.jspecify.annotations.Nullable;
  * {@link IDataValue} cell ({@code colref(list)}, {@code values}). A missing element reaches the
  * kernel as a missing with its identity and comes back <b>as the original element</b> when the
  * kernel answers a missing (Q5: the function's own rule per element — for the string functions
- * identity, D36 / D85c); a present result is carried as its payload (the kernel's text) or its
- * typed cell. ⚠ An element that is itself a list keeps <b>today's rendering</b>
- * ({@code item.toString()} is what the kernel folds) until runbook W4's E7a makes it the rule ERROR
- * Q7 rules — a lift never recurses. A {@code null} element is the {@link ListValueGuard}'s error,
- * as it was in the fold it replaces (register {@code NNL §1}).
+ * identity, D36 / D85c); a present result is carried as its payload (the kernel's text), its typed
+ * cell, or — a computed number — its canonical typed cell ({@link DataValues#number}, so every lift
+ * case renders and keys a number alike, runbook W2 fold R5 B-MED-2). ⚠ An element that is itself a
+ * list keeps <b>today's rendering</b> ({@code item.toString()} is what the kernel folds) until
+ * runbook W4's E7a makes it the rule ERROR Q7 rules — a lift never recurses. A {@code null} element
+ * is the {@link ListValueGuard}'s error, as it was in the fold it replaces (register
+ * {@code NNL §1}).
  * </p>
  *
  * <p>
@@ -478,7 +480,11 @@ final class ElementwiseLift
     /**
      * The kernel's answer for one element, as the list carries it: a missing answer to a missing
      * element is the element itself (identity kept); any other missing is the kernel's cell; a
-     * present answer is its typed cell when the kernel produced one, else its payload.
+     * present answer is its typed cell when the kernel produced one, a computed number its
+     * canonical typed cell ({@link DataValues#number} — runbook W2 fold, R5 B-MED-2: a lifted
+     * numeric list renders {@code [1, 2.5]} as a dataset-level number does, never {@code [1.0,
+     * 2.5]}, and case 2's {@link ListVector} carries the same cell), any other answer its payload
+     * (a string as its text).
      */
     private static Object result(TypedValue folded, Object original)
     {
@@ -488,7 +494,12 @@ final class ElementwiseLift
                     : folded.cell();
         }
         IDataValue source = folded.sourceCell();
-        return source != null ? source : Objects.requireNonNull(folded.resolved());
+        if (source != null)
+        {
+            return source;
+        }
+        Object payload = Objects.requireNonNull(folded.resolved());
+        return payload instanceof Number n ? DataValues.number(n) : payload;
     }
 
 

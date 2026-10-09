@@ -106,7 +106,10 @@ public final class ListVector implements Vector
      * One member's cell, in the representation {@code colref(list)} carries
      * ({@code DynamicColumnRead.Primary.read}): a missing cell as itself (identity kept — D85c), a
      * numeric cell typed, a present character value as its member-safe text ({@link DataValues#of}:
-     * a member set keys it by its text, the report renders it unquoted).
+     * a member set keys it by its text, the report renders it unquoted). A computed number — a
+     * lifted kernel's answer, which has no source cell — is its canonical typed cell
+     * ({@link DataValues#number}, runbook W2 fold R5 B-MED-2), exactly as the lift's other cases
+     * carry it.
      */
     private static IDataValue memberCell(TypedValue tv)
     {
@@ -114,6 +117,10 @@ public final class ListVector implements Vector
         if (tv.missing() == null && cell.getType() == DataValueType.STRING)
         {
             return DataValues.of(cell.getValueAsString());
+        }
+        if (tv.missing() == null && tv.sourceCell() == null && tv.resolved() instanceof Number n)
+        {
+            return DataValues.number(n);
         }
         return cell;
     }
