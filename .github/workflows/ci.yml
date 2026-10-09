@@ -578,9 +578,16 @@ jobs:
           SKIP=false
           [ "${{ github.event_name }}" = "workflow_dispatch" ] && SKIP=true
           echo "central.skipPublishing=$SKIP"
+          # Maven >= 3.10 sends a server's credentials only to that server's
+          # declared origins, and the id `central` is also Maven Central's own,
+          # whose origin is repo.maven.apache.org. The snapshot deploy goes to
+          # central.sonatype.com, so without this the token is withheld and the
+          # upload gets HTTP 401 (first measured on the 2026-10-09 commons run).
+          # Scoped to this command, whose only credentials are the Central token.
           mvn -B -P deploy-central deploy \
               -DskipTests -DskipPmd -DskipSpotbugs -Dspotless.check=true \
               -Dcentral.skipPublishing="$SKIP" \
+              -Dmaven.repository.credentialScope=id \
               -Drevision=${{ steps.ver.outputs.version }} | tee maven-central.log
           echo "--- signatures produced ---"
           find . -name '*.asc' -path '*/target/*' | sort
