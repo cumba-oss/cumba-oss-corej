@@ -10,8 +10,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Runbook W1b RO ({@code PLAN-engine-gap-row-ordinal} §5 R1, ruled Q3; coordinator D11 / D19; owner
- * O22) — the ONE reusable ordering over cell values: {@code sequence}'s sort keys and
- * {@code is_increasing} read it now, {@code is_sorted_by} adopts it in W2 (SB2).
+ * O22) — the ONE reusable ordering over cell values: {@code sequence}'s sort keys,
+ * {@code is_increasing} and, since runbook W2 SB2, {@code is_sorted_by}'s sort keys read it.
  *
  * <p>
  * ⭐ <b>A sort key is classified over its cells</b> (owner O22 (a), 2026-10-08; runbook W1b fold, R5
@@ -232,6 +232,20 @@ public final class CellOrder
         public int size()
         {
             return rank.length;
+        }
+
+
+        /**
+         * Whether the cell at position {@code i} is blank ({@code ""}) or missing — what a
+         * {@code nulls=} placement places ({@link SortKeys#sortRowsPlacingNulls}).
+         *
+         * @param i
+         *            a position
+         * @return {@code true} for a blank or missing cell
+         */
+        public boolean blankOrMissing(int i)
+        {
+            return rank[i] >= BLANK;
         }
 
 

@@ -873,10 +873,12 @@ public final class GroupSemantics
      * {@link KeyPart} identity (one whole-table bucket when the column is {@code null} or absent;
      * under the shipped {@link GroupKeyPolicy#FOLD_BLANK_KEYS} blank within values are kept, each
      * blank kind its own bucket — {@code W38-A1}), and within each group of &ge; 2 rows orders by
-     * the {@code keys} (multi-key string {@code compareTo}, each key in its own direction; a blank
-     * or missing key cell placed by the key's {@code nulls=} — first unless {@code nulls="last"},
-     * whatever the direction, two of them tied — runbook W2 SB1); if the {@code targetCol} is then
-     * not monotonically non-decreasing — compared numeric-first, string-fallback (so
+     * the {@code keys} — {@link CellOrder} per key, classified over the group's cells (a numeric
+     * key by value, any other ISO-then-text; runbook W2 SB2, the total order {@code sequence}
+     * reads), each key in its own direction, a blank or missing key cell placed by the key's
+     * {@code nulls=} — first unless {@code nulls="last"}, whatever the direction, two of them tied
+     * (runbook W2 SB1; {@link SortKeys#sortRowsPlacingNulls}); if the {@code targetCol} is then not
+     * monotonically non-decreasing — compared numeric-first, string-fallback (so
      * {@code "2" < "10"}) — every row of that group is flagged. Empty {@code keys}, a missing
      * target column, or {@code rowCount <= 1} yields no violations; an absent key column orders
      * nothing.
@@ -918,15 +920,6 @@ public final class GroupSemantics
         {
             return new BitSet();
         }
-        int[] sortColIdx = new int[keys.size()];
-        boolean[] descending = new boolean[keys.size()];
-        boolean[] nullsLast = new boolean[keys.size()];
-        for (int i = 0; i < keys.size(); i++)
-        {
-            sortColIdx[i] = meta.getColumnIndex(keys.get(i).column());
-            descending[i] = keys.get(i).descending();
-            nullsLast[i] = keys.get(i).nullsLast();
-        }
         int withinColIdx = withinColName != null ? meta.getColumnIndex(withinColName) : -1;
 
         Map<KeyPart, List<Integer>> groups = new LinkedHashMap<>();
@@ -954,40 +947,15 @@ public final class GroupSemantics
             {
                 continue;
             }
-            groupRows.sort((a, b) ->
+            int[] members = new int[groupRows.size()];
+            for (int i = 0; i < members.length; i++)
             {
-                for (int k = 0; k < sortColIdx.length; k++)
-                {
-                    int ci = sortColIdx[k];
-                    if (ci < 0)
-                    {
-                        continue;
-                    }
-                    IDataValue va = table.getColumn(ci).getDataValue(a);
-                    IDataValue vb = table.getColumn(ci).getDataValue(b);
-                    boolean na = ScalarSemantics.isMissing(va);
-                    boolean nb = ScalarSemantics.isMissing(vb);
-                    if (na || nb)
-                    {
-                        if (na && nb)
-                        {
-                            continue;
-                        }
-                        // the placement is the key's, never the direction's (W2-D3)
-                        return na == nullsLast[k] ? 1 : -1;
-                    }
-                    // desc reverses the order by swapping the operands (never by negation)
-                    int c = descending[k] ? vb.getValueAsString().compareTo(va.getValueAsString())
-                            : va.getValueAsString().compareTo(vb.getValueAsString());
-                    if (c != 0)
-                    {
-                        return c;
-                    }
-                }
-                return 0;
-            });
+                members[i] = groupRows.get(i);
+            }
+            // SB2: CellOrder per key, decorated once per group (never a re-read per comparison)
+            int[] ordered = SortKeys.sortRowsPlacingNulls(table, keys, members);
             String prevTarget = null;
-            for (int r : groupRows)
+            for (int r : ordered)
             {
                 IDataValue dv = table.getColumn(targetIdx).getDataValue(r);
                 String cur = ScalarSemantics.isMissing(dv) ? "" : dv.getValueAsString();

@@ -33,10 +33,12 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * {@code is_sorted_by} honours each key's direction and its {@code nulls=} placement — a blank or
- * missing key first unless {@code nulls="last"}, under {@code desc} too (runbook W2 SB1, W2-D3);
- * {@code sequence} orders by {@link CellOrder} with {@code desc} reversing the cell order
- * ({@link #sortRows}) and does not read {@code nulls=}.
+ * Both order by {@link CellOrder}, {@code desc} reversing a key's cell order. {@code is_sorted_by}
+ * places a blank or missing key cell by the key's {@code nulls=} — first unless
+ * {@code nulls="last"}, under {@code desc} too (runbook W2 SB1, W2-D3; on CellOrder since SB2,
+ * {@link #sortRowsPlacingNulls}); {@code sequence} keeps CellOrder's own placement — blank, then
+ * missing, after every value, reversed by {@code desc} ({@link #sortRows}) — and does not read
+ * {@code nulls=}.
  * </p>
  */
 public final class SortKeys
@@ -455,9 +457,36 @@ public final class SortKeys
      */
     public static int[] sortRows(IDataTable table, List<ResolvedKey> keys, int[] rows)
     {
+        return sort(table, keys, rows, false);
+    }
+
+
+    /**
+     * {@link #sortRows} with the blank and missing cells of each key placed by its {@code nulls=}
+     * (runbook W2 SB2, the order of {@code is_sorted_by}): first unless {@code nulls="last"},
+     * whatever the key's direction, two of them tied (file order); every other cell by
+     * {@link CellOrder}, {@code desc} reversing it.
+     *
+     * @param table
+     *            the table whose rows are ordered
+     * @param keys
+     *            the resolved keys
+     * @param rows
+     *            the row indices to order (not modified)
+     * @return the row indices in key order
+     */
+    public static int[] sortRowsPlacingNulls(IDataTable table, List<ResolvedKey> keys, int[] rows)
+    {
+        return sort(table, keys, rows, true);
+    }
+
+
+    private static int[] sort(IDataTable table, List<ResolvedKey> keys, int[] rows,
+            boolean placeNulls)
+    {
         DataTableMeta meta = table.getMetaData();
         List<CellOrder.Key> decorated = new ArrayList<>(keys.size());
-        List<Boolean> descending = new ArrayList<>(keys.size());
+        List<ResolvedKey> present = new ArrayList<>(keys.size());
         for (ResolvedKey key : keys)
         {
             int idx = meta.getColumnIndex(key.column());
@@ -470,7 +499,7 @@ public final class SortKeys
                     values.add(CellOrder.valueOf(column.getDataValue(row)));
                 }
                 decorated.add(CellOrder.key(values));
-                descending.add(key.descending());
+                present.add(key);
             }
         }
         int n = rows.length;
@@ -484,14 +513,30 @@ public final class SortKeys
             int width = decorated.size();
             CellOrder.Key[] byKey = decorated.toArray(CellOrder.Key[]::new);
             boolean[] reversed = new boolean[width];
+            boolean[] nullsLast = new boolean[width];
             for (int k = 0; k < width; k++)
             {
-                reversed[k] = descending.get(k);
+                reversed[k] = present.get(k).descending();
+                nullsLast[k] = present.get(k).nullsLast();
             }
             stableSort(positions, (a, b) ->
             {
                 for (int k = 0; k < width; k++)
                 {
+                    if (placeNulls)
+                    {
+                        boolean na = byKey[k].blankOrMissing(a);
+                        boolean nb = byKey[k].blankOrMissing(b);
+                        if (na || nb)
+                        {
+                            if (na && nb)
+                            {
+                                continue;
+                            }
+                            // the placement is the key's, never the direction's (W2-D3)
+                            return na == nullsLast[k] ? 1 : -1;
+                        }
+                    }
                     // desc reverses the cell order by swapping the operands (never by negation)
                     int c = reversed[k] ? byKey[k].compare(b, a) : byKey[k].compare(a, b);
                     if (c != 0)
