@@ -2249,13 +2249,10 @@ public final class ExprCompiler
      */
     private static boolean isNumberValued(Expr e)
     {
-        if ("num".equals(markerOf(e)))
-        {
-            return true;
-        }
-        return e instanceof Expr.Call call && isElementwise(call.name())
+        return "num".equals(markerOf(e)) || (e instanceof Expr.Call call
+                && isElementwise(call.name())
                 && net.cumba.corej.core.expr.typed.ElementTable.resultType(
-                        call.name()) == net.cumba.corej.core.expr.typed.ExprType.Primitive.NUMBER;
+                        call.name()) == net.cumba.corej.core.expr.typed.ExprType.Primitive.NUMBER);
     }
 
 

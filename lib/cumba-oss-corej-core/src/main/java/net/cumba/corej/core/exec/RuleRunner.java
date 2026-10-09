@@ -870,7 +870,7 @@ public final class RuleRunner
             // the type source of a binding stage A leaves unknown (read_value, max, …).
             Set<String> columnTyped = net.cumba.corej.core.expr.typed.StageAChecker
                     .columnTypedBindings(compiledBindings);
-            Map<String, net.cumba.corej.core.expr.ast.Expr> bindingExpressions = new HashMap<>();
+            Map<String, Expr> bindingExpressions = new HashMap<>();
             compiledBindings.forEach(b -> bindingExpressions.put(b.name(), b.expression()));
             for (net.cumba.corej.core.model.CompiledBinding compiled : compiledBindings)
             {
