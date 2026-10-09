@@ -352,7 +352,7 @@ public final class DictionaryFunctions
                 && (childLevel == null || parentLevel == null))
         {
             throw new UngatedProviderReachException(HIERARCHY,
-                    "with a column that names no MedDRA level (a load error since runbook W4 DI2)");
+                    "with a column that names no MedDRA level (a load error)");
         }
         if (!provider.answersHierarchyAt(type, childLevel))
         {

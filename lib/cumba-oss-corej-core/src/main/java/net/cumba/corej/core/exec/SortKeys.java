@@ -35,10 +35,16 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * Both order by {@link CellOrder}, {@code desc} reversing a key's cell order, and both place a
- * blank or missing key cell by the key's {@code nulls=} — first unless {@code nulls="last"}, under
+ * The four readers that SORT their rows order by {@link CellOrder}: {@code is_sorted_by} and
+ * {@code sequence} over their keys, {@code desc} reversing a key's cell order, a blank or missing
+ * key cell placed by the key's {@code nulls=} — first unless {@code nulls="last"}, under
  * {@code desc} too ({@link #sortRowsPlacingNulls}; runbook W2 SB1, W2-D3 for {@code is_sorted_by},
- * the W2 fold's R5 PC-1 for {@code sequence}, O16: "nulls= and direction honoured" in both).
+ * the W2 fold's R5 PC-1 for {@code sequence}, O16: "nulls= and direction honoured" in both); and
+ * {@code has_next_corresponding_record} / {@code empty_within_except_last_row} over their one
+ * ascending key, blanks first ({@link #sortRowsByColumn}; {@code PLAN-by-key-numeric-order}, owner
+ * BK1 — before, they compared the key cells' text whatever the column's type, so {@code 10} sorted
+ * between {@code 1} and {@code 2}). {@code is_last_in_group} reads its key as a maximum by the
+ * column's type ({@code GroupedPredicates}, D-W1-2a), not a sort.
  * </p>
  */
 public final class SortKeys
@@ -382,7 +388,7 @@ public final class SortKeys
         {
             throw new ExpressionException(call.name() + ": " + RETIRED_PARAMETER
                     + "= is retired \u2014 write " + PARAMETER + "="
-                    + ExpressionPrinter.print(ordering) + " (the same one ascending key, O17)");
+                    + ExpressionPrinter.print(ordering) + " (the same one ascending key)");
         }
     }
 
@@ -594,6 +600,30 @@ public final class SortKeys
     }
 
 
+    /**
+     * The rows in the order of ONE ascending key read straight from {@code column} — the order of
+     * {@code has_next_corresponding_record} and {@code empty_within_except_last_row}
+     * ({@code PLAN-by-key-numeric-order}, owner BK1: {@link CellOrder}, the order
+     * {@link #sortRowsPlacingNulls} gives {@code is_sorted_by} and {@code sequence}): the key
+     * classified over its cells in these rows, a numeric key by value, any other ISO part by part
+     * with the UTC offset applied first, then text; the blank and missing cells first, tied; ties
+     * kept in the order given (a stable sort: file order). The single-key readers take no
+     * {@code desc} and no {@code nulls=} ({@link #single}, O17), so the key is ascending with its
+     * blanks first — where the retired text comparison put a blank or missing cell (as {@code ""}).
+     *
+     * @param column
+     *            the key's column
+     * @param rows
+     *            the row indices to order (not modified)
+     * @return the row indices in key order
+     */
+    public static int[] sortRowsByColumn(IDataTableColumn column, int[] rows)
+    {
+        return sortDecorated(List.of(CellOrder.key(column, rows)), new boolean[1], new boolean[1],
+                rows);
+    }
+
+
     private static int[] sort(IDataTable table, List<ResolvedKey> keys, int[] rows)
     {
         DataTableMeta meta = table.getMetaData();
@@ -611,6 +641,27 @@ public final class SortKeys
                 present.add(key);
             }
         }
+        int width = decorated.size();
+        boolean[] reversed = new boolean[width];
+        boolean[] nullsLast = new boolean[width];
+        for (int k = 0; k < width; k++)
+        {
+            reversed[k] = present.get(k).descending();
+            nullsLast[k] = present.get(k).nullsLast();
+        }
+        return sortDecorated(decorated, reversed, nullsLast, rows);
+    }
+
+
+    /**
+     * The one sort over decorated keys ({@link #sortRowsPlacingNulls}, {@link #sortRowsByColumn}):
+     * an {@code int[]} of positions merge-sorted over the keys' decorated arrays, each key's blank
+     * and missing cells placed by {@code nullsLast[k]} whatever its direction (W2-D3), {@code desc}
+     * swapping the operands; with no key the rows keep the order given.
+     */
+    private static int[] sortDecorated(List<CellOrder.Key> decorated, boolean[] reversed,
+            boolean[] nullsLast, int[] rows)
+    {
         int n = rows.length;
         int[] positions = new int[n];
         for (int i = 0; i < n; i++)
@@ -621,13 +672,6 @@ public final class SortKeys
         {
             int width = decorated.size();
             CellOrder.Key[] byKey = decorated.toArray(CellOrder.Key[]::new);
-            boolean[] reversed = new boolean[width];
-            boolean[] nullsLast = new boolean[width];
-            for (int k = 0; k < width; k++)
-            {
-                reversed[k] = present.get(k).descending();
-                nullsLast[k] = present.get(k).nullsLast();
-            }
             stableSort(positions, (a, b) ->
             {
                 for (int k = 0; k < width; k++)

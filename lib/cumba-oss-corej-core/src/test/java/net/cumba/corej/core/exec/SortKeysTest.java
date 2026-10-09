@@ -242,6 +242,9 @@ class SortKeysTest
             String inline = loadError(pair[0]);
             assertTrue(inline.contains(pair[1] + ": ordering= is retired"), inline);
             assertTrue(inline.contains("write by=AESEQ"), inline);
+            // PLAN-by-key-numeric-order D3: the user-facing message names no internal ruling
+            // handle - it ended "(the same one ascending key, O17)"
+            assertTrue(inline.contains("write by=AESEQ (the same one ascending key)"), inline);
             String bound = loadError("$b", "$b", pair[0].replace("not ", ""));
             assertTrue(bound.contains("ordering= is retired"), bound);
             Rule checkless = SequenceFunctionTest.loadCheckless("$b", pair[0].replace("not ", ""));

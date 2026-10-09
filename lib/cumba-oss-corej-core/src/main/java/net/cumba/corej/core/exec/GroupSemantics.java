@@ -719,8 +719,9 @@ public final class GroupSemantics
 
 
     /**
-     * For one group, orders the rows by {@code orderCol} and flags every row except the last whose
-     * {@code nameCol} value is missing/empty ({@code empty_within_except_last_row}).
+     * For one group, orders the rows by {@code orderCol} ({@link #sortByOrderColumn}:
+     * {@link CellOrder}) and flags every row except the last whose {@code nameCol} value is
+     * missing/empty ({@code empty_within_except_last_row}).
      *
      * @param nameCol
      *            the checked column
@@ -796,10 +797,11 @@ public final class GroupSemantics
 
 
     /**
-     * For one group, orders the rows by {@code orderCol} and flags every row (except the last)
-     * whose {@code nameCol} value does not correspond to the {@code valueCol} value on the next
-     * ordered row ({@code does_not_have_next_corresponding_record}), the correspondence supplied by
-     * the caller (EC-87, {@code relation=}).
+     * For one group, orders the rows by {@code orderCol} ({@link #sortByOrderColumn}:
+     * {@link CellOrder}) and flags every row (except the last) whose {@code nameCol} value does not
+     * correspond to the {@code valueCol} value on the next ordered row
+     * ({@code does_not_have_next_corresponding_record}), the correspondence supplied by the caller
+     * (EC-87, {@code relation=}).
      *
      * @param nameCol
      *            the current-row column
@@ -839,10 +841,14 @@ public final class GroupSemantics
 
 
     /**
-     * Stable-sorts a group's row indices in place by {@code orderCol}, comparing the cells' string
-     * forms ({@code compareTo}, a missing cell treated as the empty string) — the legacy
-     * {@code sortByColumn} contract. The sort is stable, so rows with equal ordering keys keep
-     * their original relative order.
+     * Sorts a group's row indices in place by the one ascending key {@code orderCol} — the
+     * {@link CellOrder} order of {@code is_sorted_by} and {@code sequence}
+     * ({@link SortKeys#sortRowsByColumn}; {@code PLAN-by-key-numeric-order}, owner BK1): the key
+     * classified over the group's cells, a numeric key by value ({@code 9} before {@code 10}), any
+     * other ISO part by part with the UTC offset applied first, then text; the blank ({@code ""},
+     * whitespace only) and missing cells first, tied. The sort is stable, so rows with equal keys
+     * keep their original relative order. ⚠ Before, the cells' text was compared whatever the
+     * column's type ({@code "10"} before {@code "9"}).
      *
      * @param rows
      *            the absolute row indices to sort in place
@@ -851,16 +857,8 @@ public final class GroupSemantics
      */
     public static void sortByOrderColumn(int[] rows, IDataTableColumn orderCol)
     {
-        Integer[] boxed = Arrays.stream(rows).boxed().toArray(Integer[]::new);
-        Arrays.sort(boxed, (a, b) ->
-        {
-            IDataValue dvA = orderCol.getDataValue(a);
-            IDataValue dvB = orderCol.getDataValue(b);
-            String sa = ScalarSemantics.isMissing(dvA) ? "" : dvA.getValueAsString();
-            String sb = ScalarSemantics.isMissing(dvB) ? "" : dvB.getValueAsString();
-            return sa.compareTo(sb);
-        });
-        Arrays.setAll(rows, i -> boxed[i]);
+        int[] ordered = SortKeys.sortRowsByColumn(orderCol, rows);
+        System.arraycopy(ordered, 0, rows, 0, rows.length);
     }
 
     // -------------------------------------------------------------------------

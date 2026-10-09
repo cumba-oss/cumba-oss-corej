@@ -4009,8 +4009,10 @@ public final class ExprCompiler
 
     /**
      * Native plan for {@code empty_within_except_last_row(NAME, GROUP, by=ORDER)}: partitions by
-     * the {@code GROUP} column, orders each group by {@code ORDER}, and fires every row except the
-     * last whose {@code NAME} is missing/empty — via the shared {@link GroupSemantics}.
+     * the {@code GROUP} column, orders each group by {@code ORDER} ({@code CellOrder}: a numeric
+     * key by value, an ISO key part by part, UTC first — {@code PLAN-by-key-numeric-order}), and
+     * fires every row except the last whose {@code NAME} is missing/empty — via the shared
+     * {@link GroupSemantics}.
      */
     private static ExprProgram.BoolPlan compileEmptyWithinExceptLastRow(Expr.Call c)
     {
@@ -4058,9 +4060,10 @@ public final class ExprCompiler
      * Native plan for
      * {@code has_next_corresponding_record(NAME, VALUE, within=COL, by=ORDER[, relation=])} —
      * emitted only under {@code not} (the {@code does_not_have_next_corresponding_record} surface,
-     * Q1). Partitions by {@code within}, orders each group by {@code ORDER}, and fires every row
-     * (except the last) whose {@code NAME} does not <em>correspond</em> to the next ordered row's
-     * {@code VALUE}, via the shared {@link GroupSemantics}. Correspondence is {@code KeyPart}
+     * Q1). Partitions by {@code within}, orders each group by {@code ORDER} ({@code CellOrder}, as
+     * {@code empty_within_except_last_row} — {@code PLAN-by-key-numeric-order}), and fires every
+     * row (except the last) whose {@code NAME} does not <em>correspond</em> to the next ordered
+     * row's {@code VALUE}, via the shared {@link GroupSemantics}. Correspondence is {@code KeyPart}
      * identity (since {@code W38-A1} / Fix #249 a genuine missing corresponds only to the same
      * missing marker, {@code ""} to {@code ""}), widened by the optional {@code relation=}
      * comparison — see {@link #neighbourRelation}. ⚠ {@code keep_missings=} governs only the

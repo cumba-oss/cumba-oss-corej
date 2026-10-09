@@ -10,7 +10,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * Runbook W1b RO ({@code PLAN-engine-gap-row-ordinal} §5 R1, ruled Q3; coordinator D11 / D19; owner
  * O22) — the ONE reusable ordering over cell values: {@code sequence}'s sort keys,
- * {@code is_increasing} and, since runbook W2 SB2, {@code is_sorted_by}'s sort keys read it.
+ * {@code is_increasing}, since runbook W2 SB2 {@code is_sorted_by}'s sort keys and, since
+ * {@code PLAN-by-key-numeric-order} (owner BK1), the one {@code by=} key of
+ * {@code has_next_corresponding_record} and {@code empty_within_except_last_row} read it.
  *
  * <p>
  * ⭐ <b>A sort key is classified over its cells</b> (owner O22 (a), 2026-10-08; runbook W1b fold, R5
