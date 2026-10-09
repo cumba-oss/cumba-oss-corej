@@ -14,7 +14,8 @@ import org.junit.jupiter.api.Test;
  * {@code PLAN-message-folded-corpus-alignment} P2 to "can never fold OR collapse" —, (b) a
  * non-Record Sensitivity ({@code Dataset} / {@code Group} / {@code Study}), (c) a variable-cursor
  * domain; an unread {@code Keep_Row_Findings} entry; and D10's load error with a hint for the
- * retired {@code var_is_null}. A clean opted-in rule is the positive control.
+ * retired {@code var_is_null} (and, runbook W4 MA6, a retired metadata alias). A clean opted-in
+ * rule is the positive control.
  */
 class MessageFoldedLoadGateTest
 {
@@ -141,5 +142,21 @@ class MessageFoldedLoadGateTest
         assertTrue(error.contains("var_is_null was renamed to var_is_empty"), error);
         assertNull(load(record("var_is_empty(AEBDSYCD)", "")).getLoadError(),
                 "the new name loads (control)");
+    }
+
+
+    /**
+     * Runbook W4 MA6: the reference twin of the retired call name — a metadata alias in a Check is
+     * the rule's load error with its accessor spelling, through the same per-rule channel.
+     */
+    @Test
+    void aRetiredMetadataAliasIsALoadErrorWithAHint() throws IOException
+    {
+        String error = load(record("dataset_name == \\\"AE\\\"", "")).getLoadError();
+        assertNotNull(error, "MA6: no alias in an expression");
+        assertTrue(error.contains("retired operand 'dataset_name'")
+                && error.contains("write ds_name() (same value)"), error);
+        assertNull(load(record("ds_name() == \\\"AE\\\"", "")).getLoadError(),
+                "the accessor spelling loads (control)");
     }
 }

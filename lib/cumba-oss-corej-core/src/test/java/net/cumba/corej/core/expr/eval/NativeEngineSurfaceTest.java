@@ -238,7 +238,7 @@ class NativeEngineSurfaceTest
 
         // VARIABLE_METADATA_CHECK × Dataset (per-variable accessor broadcast — B4)
         assertRunsNative(loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Check\":{\"expression\":\"len(variable_label) > 40\"},"
+                + "\"Check\":{\"expression\":\"len(var_label()) > 40\"},"
                 + "\"Outcome\":{\"Message\":\"m\"}}"), ae);
 
         // VARIABLE_METADATA_CHECK × Record (variable_name-anchored — P4b; unshipped combination)
@@ -249,7 +249,7 @@ class NativeEngineSurfaceTest
 
         // DATASET_METADATA_CHECK × Dataset (ds_* accessor broadcast)
         assertRunsNative(loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Check\":{\"expression\":\"dataset_name =~ /^AE/\"},"
+                + "\"Check\":{\"expression\":\"ds_name() =~ /^AE/\"},"
                 + "\"Outcome\":{\"Message\":\"m\"}}"), ae);
 
         // VALUE_CHECK_WITH_VARIABLE_METADATA × Record (value()+guard per-(variable,row) — B4+)

@@ -32,8 +32,8 @@ class DefineTermsVsLibraryCodelistTest
         String json = "{\"Core\":{\"Id\":\"R1\"}," + "\"Variable_Universe\":\"Define\","
                 + "\"Sensitivity\":\"Dataset\",\"Check\":{\"all\":["
                 + "{\"expression\": \"var_codelist_extensible(\\\"LIBRARY\\\") == false\"},"
-                + "{\"expression\":\"not contains_all(library_variable_codelist_coded_values,"
-                + " define_variable_codelist_coded_values)\"}]},"
+                + "{\"expression\":\"not contains_all(var_codelist_coded_values(\\\"LIBRARY\\\"),"
+                + " var_codelist_coded_values(\\\"DEFINE\\\"))\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":"
                 + "[\"variable_name\",\"define_variable_codelist_coded_values\"]}}";
         RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"R1\":" + json + "}}");
@@ -44,14 +44,17 @@ class DefineTermsVsLibraryCodelistTest
     }
 
 
-    /** The raise must produce the accessor-call form on BOTH sides of contains_all. */
+    /**
+     * The accessor-call form on BOTH sides of contains_all (written since runbook W4 MA6 retired
+     * the bare operands in expressions; the one-argument level form is kept as written).
+     */
     @Test
     void raisesToAccessorCallForm() throws Exception
     {
         assertEquals(
                 "var_codelist_extensible(\"LIBRARY\") == false and "
-                        + "not contains_all(var_codelist_coded_values(variable_name, \"LIBRARY\"), "
-                        + "var_codelist_coded_values(variable_name, \"DEFINE\"))",
+                        + "not contains_all(var_codelist_coded_values(\"LIBRARY\"), "
+                        + "var_codelist_coded_values(\"DEFINE\"))",
                 ExpressionPrinter.print(rule().getCheckExpr()));
     }
 

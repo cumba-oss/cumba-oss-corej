@@ -4,8 +4,14 @@ import java.util.BitSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import net.cumba.corej.core.expr.ExpressionException;
+import net.cumba.corej.core.expr.ExpressionPrinter;
+import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.expr.eval.ArgumentBinder;
 import net.cumba.corej.core.expr.eval.EvalFunction;
 import net.cumba.corej.core.expr.eval.EvalRun;
+import net.cumba.corej.core.expr.eval.FunctionDescriptor;
+import net.cumba.corej.core.expr.eval.FunctionRegistry;
 import net.cumba.corej.core.expr.eval.UngatedProviderReachException;
 import net.cumba.corej.core.expr.eval.Vector;
 import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
@@ -86,7 +92,8 @@ public final class DictionaryFunctions
      * Runbook W2 DI1 ({@code PLAN-engine-gap-dict-unsupported} §4.1, §5.1 Q1/Q2): the MedDRA level
      * a column reads, by its name's suffix — longest suffix first, so {@code AEHLGTCD} is
      * {@code HLGTCD} and never {@code HLGT}. {@code --DECOD} is the PT. {@code --BODSYS} is
-     * deliberately absent: it may carry a secondary SOC, so it keeps the bare-name lookup.
+     * deliberately absent: it may carry a secondary SOC — a hierarchy call reading it is a load
+     * error since runbook W4 DI2 ({@link #checkLevels}).
      */
     private static final List<Map.Entry<String, String>> HIERARCHY_LEVEL_SUFFIXES = List.of(
             Map.entry("HLGTCD", "HLGTCD"), Map.entry("HLTCD", "HLTCD"), Map.entry("LLTCD", "LLTCD"),
@@ -108,7 +115,7 @@ public final class DictionaryFunctions
          * This function with the call's levels bound.
          *
          * @param childLevel
-         *            the level of the child column, or {@code null} (no level: the bare-name map)
+         *            the level of the child column, or {@code null} (no level: refused loudly)
          * @param parentLevel
          *            the level of the parent column, or {@code null}
          * @return the function the compiled call applies
@@ -119,7 +126,8 @@ public final class DictionaryFunctions
 
     /**
      * {@link #hierarchy(EvalRun, List, String, String)} with its levels bound — the registered
-     * implementation ({@link #HIERARCHY_FUNCTION}, levels {@code null}: the bare-name lookup).
+     * implementation ({@link #HIERARCHY_FUNCTION}, levels {@code null}: never applied as such, the
+     * compiler binds the call's levels; applied with a {@code null} level it fails loudly).
      *
      * @param childLevel
      *            the level of the child column, or {@code null}
@@ -156,7 +164,8 @@ public final class DictionaryFunctions
      * Runbook W2 DI1: the hierarchy level a column reads, derived at load from its name — the
      * authored spelling ({@code --HLT}), the resolved one ({@code AEHLT}) or a qualified one
      * ({@code AE.AEHLT}) all name the same level. {@code null} for a name that maps to no level
-     * (e.g. {@code --BODSYS}, a {@code $} binding): such a call keeps the bare-name lookup.
+     * (e.g. {@code --BODSYS}, a {@code $} binding): such a call is a load error since runbook W4
+     * DI2 ({@link #checkLevels}).
      *
      * @param aColumnName
      *            the column name as written in the call, or {@code null} when the argument is not a
@@ -179,6 +188,73 @@ public final class DictionaryFunctions
             }
         }
         return null;
+    }
+
+
+    /**
+     * {@link #hierarchyLevelOf} of a bound argument — the level a column-reference argument names,
+     * {@code null} for anything else (a computed operand, a literal). The one judgement the
+     * compiler ({@code ExprCompiler}'s level binding), the capability need ({@code ProviderNeeds})
+     * and the load-time seam ({@link #checkLevels}) share.
+     *
+     * @param anArgument
+     *            the bound argument, or {@code null}
+     * @return the level, or {@code null}
+     */
+    public static @Nullable String hierarchyLevelOfArgument(@Nullable Expr anArgument)
+    {
+        return hierarchyLevelOf(anArgument instanceof Expr.Ref ref ? ref.name() : null);
+    }
+
+
+    /**
+     * Runbook W4 DI2 F2 ({@code PLAN-engine-gap-dict-unsupported}, the W2 P-B candidate's form F2;
+     * coordinator W4-D11): the load-time seam of {@code valid_external_dictionary_hierarchy} — the
+     * child and the parent must each be a column whose name names a MedDRA level
+     * ({@link #hierarchyLevelOf}). Since the bare-name map is no lookup any more, a column that
+     * names none ({@code --BODSYS}, which may carry a secondary SOC), a {@code $} binding or a
+     * computed operand has no level to read the dictionary at; it is the rule's load error, never a
+     * silent all-rows answer. A call that does not bind, and a literal where a column belongs, are
+     * left to the generic seam and stage A, which name their own cause. ⚑ Not checked here
+     * (backlog, O11): a name level paired with a code level, and a parent not above its child —
+     * both are off-path on every row (forms F1 / F3, 0 carriers).
+     *
+     * @param aCall
+     *            the call, as written (name-form bindings inlined)
+     * @throws ExpressionException
+     *             if the child or the parent names no MedDRA level
+     */
+    public static void checkLevels(Expr.Call aCall)
+    {
+        FunctionDescriptor descriptor = FunctionRegistry.descriptor(aCall.name());
+        if (descriptor == null)
+        {
+            return;
+        }
+        List<@Nullable Expr> bound;
+        try
+        {
+            bound = ArgumentBinder.bind(descriptor, aCall);
+        }
+        catch (ExpressionException _)
+        {
+            return;
+        }
+        for (int i = 0; i < 2 && i < bound.size(); i++)
+        {
+            Expr argument = bound.get(i);
+            // a literal is the column-reference seam's (stage A / the generic seam): "a quoted name
+            // is a string, never a column" is the more precise refusal
+            if (argument != null && !(argument instanceof Expr.Lit)
+                    && hierarchyLevelOfArgument(argument) == null)
+            {
+                throw new ExpressionException(HIERARCHY
+                        + " reads the dictionary at the levels its two columns name \u2014 "
+                        + ExpressionPrinter.print(argument)
+                        + " names no MedDRA level (write a --DECOD/--PTCD, --HLT/--HLTCD,"
+                        + " --HLGT/--HLGTCD or --SOC/--SOCCD column)");
+            }
+        }
     }
 
 
@@ -237,9 +313,12 @@ public final class DictionaryFunctions
     /**
      * {@code valid_external_dictionary_hierarchy} with the levels the two columns read (runbook W2
      * DI1, {@link #hierarchyLevelOf}), which the compiler derives from the call's column names at
-     * load. A house file carrying the level-scoped section answers at those levels; a file without
-     * it, or a column that maps to no level, answers through the bare-name map as before
-     * ({@code ValueMapDictionary.onHierarchyPath}).
+     * load. The house file's level-scoped section answers at those levels. ⛔ Runbook W4 DI2: there
+     * is no bare-name fallback — a column that maps to no level is a load error
+     * ({@link #checkLevels}), and a file that cannot answer at the child's level (no section, or no
+     * such level) SKIPs the rule before any row is read ({@code RuleRunner}'s capability arm); if
+     * either is reached here anyway, the function fails loudly (the rule reports ERROR) instead of
+     * answering "off-path" on every row.
      *
      * @param run
      *            the evaluation run
@@ -257,6 +336,17 @@ public final class DictionaryFunctions
     {
         String type = typeOf(args.get(2), run.rowCount());
         RuntimeDictionaryProvider provider = availableProvider(run, HIERARCHY, type);
+        if (childLevel == null || parentLevel == null)
+        {
+            throw new UngatedProviderReachException(HIERARCHY,
+                    "with a column that names no MedDRA level (a load error since runbook W4 DI2)");
+        }
+        if (!provider.answersHierarchyAt(type, childLevel))
+        {
+            throw new UngatedProviderReachException(HIERARCHY,
+                    "with external dictionary " + type + " unable to answer at " + childLevel + ": "
+                            + provider.hierarchyGapDetail(type, childLevel));
+        }
         boolean caseSensitive = caseSensitive(args.get(3), run.rowCount());
         Vector child = args.get(0);
         Vector parent = args.get(1);

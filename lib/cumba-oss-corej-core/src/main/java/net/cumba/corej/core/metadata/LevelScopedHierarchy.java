@@ -46,9 +46,11 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * <b>A level the section lacks</b> (R5 PB-L1): the caller ({@code ValueMapDictionary}) asks
- * {@link #hasLevel} for the CHILD level and reads the bare-name map when the section does not carry
- * it — so a {@code --LLT} read on a file without the LLT level answers as before DI1.
+ * <b>A level the section lacks</b> (R5 PB-L1; runbook W4 DI2): {@link #hasLevel} for the CHILD
+ * level is the capability the rule runner reads
+ * ({@code RuntimeDictionaryProvider.answersHierarchyAt}) — a hierarchy rule whose child level the
+ * section lacks (a {@code --LLT} read; any read on a file without the section) SKIPs with the
+ * reason. The bare-name map is no fallback any more.
  * </p>
  *
  * <p>
@@ -62,7 +64,7 @@ import org.jspecify.annotations.Nullable;
 final class LevelScopedHierarchy
 {
 
-    /** The section of a file that carries none — the legacy arm answers instead. */
+    /** The section of a file that carries none — such a file answers no hierarchy (W4 DI2). */
     static final LevelScopedHierarchy EMPTY = new LevelScopedHierarchy(Map.of());
 
     /** The longest chain followed: LLT → PT → HLT → HLGT → SOC is four steps. */
@@ -158,7 +160,7 @@ final class LevelScopedHierarchy
     }
 
 
-    /** Whether the file carries the section at all — the discriminator of the legacy arm. */
+    /** Whether the file carries the section at all — the stale-file discriminator (W4 DI2). */
     boolean isEmpty()
     {
         return exact.isEmpty();
@@ -167,7 +169,7 @@ final class LevelScopedHierarchy
 
     /**
      * Whether the section carries {@code aLevel} as a child level (R5 PB-L1) — a lookup whose child
-     * level it lacks reads the bare-name map instead.
+     * level it lacks cannot be answered (runbook W4 DI2: the rule SKIPs with the reason).
      */
     boolean hasLevel(String aLevel)
     {

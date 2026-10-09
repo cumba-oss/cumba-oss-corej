@@ -63,6 +63,9 @@ public final class RuntimeDictionaryProvider
     private static final System.Logger LOGGER = System
             .getLogger(RuntimeDictionaryProvider.class.getName());
 
+    /** The one dictionary type whose house file carries a hierarchy (the MedDRA converter). */
+    private static final String MEDDRA = "meddra";
+
     private final Map<String, ValueMapDictionary> byType;
 
     private final Map<String, Unavailability> unavailable;
@@ -174,6 +177,17 @@ public final class RuntimeDictionaryProvider
                         continue;
                     }
                     loaded.put(key.toLowerCase(Locale.ROOT), dict);
+                    if (MEDDRA.equalsIgnoreCase(key) && !dict.hasHierarchyByLevel())
+                    {
+                        // runbook W4 DI2 (Q3): a stale file is REPORTED, never dropped — its
+                        // membership / pair rules still answer; its hierarchy rules SKIP with the
+                        // reason (answersHierarchyAt) and the run's Dictionary_Basis names it
+                        LOGGER.log(System.Logger.Level.WARNING,
+                                "Dictionary {0} has no level-scoped hierarchy (hierarchy_by_level)"
+                                        + " \u2014 it was converted before this release; its"
+                                        + " hierarchy rules will SKIP until it is re-installed ({1})",
+                                key, file);
+                    }
                 }
             }
         }
@@ -308,20 +322,69 @@ public final class RuntimeDictionaryProvider
 
 
     /**
-     * Hierarchy-path check — is {@code parent} a parent of {@code term} in {@code type}?
-     * {@code caseSensitive} selects the verbatim (D-TA-3 default) or case-folded comparison.
+     * Runbook W4 DI2 ({@code PLAN-engine-gap-dict-unsupported} Q3): whether the loaded {@code type}
+     * dictionary can answer a hierarchy lookup whose CHILD column reads {@code childLevel} — its
+     * house file carries {@code hierarchy_by_level} with that level
+     * ({@link ValueMapDictionary#answersHierarchyAt}). The capability the runner's eager arm reads
+     * for each {@code valid_external_dictionary_hierarchy} call ({@code ProviderNeeds}); a type
+     * that is not loaded answers {@code false} here, but its own unavailability arms answer first.
+     *
+     * @param type
+     *            the dictionary type
+     * @param childLevel
+     *            the level the child column reads
+     * @return whether the lookup can be answered
      */
-    public boolean onHierarchyPath(@Nullable String type, @Nullable String term,
-            @Nullable String parent, boolean caseSensitive)
+    public boolean answersHierarchyAt(@Nullable String type, @Nullable String childLevel)
     {
         ValueMapDictionary d = get(type);
-        return d != null && d.onHierarchyPath(term, parent, caseSensitive);
+        return d != null && childLevel != null && d.answersHierarchyAt(childLevel);
+    }
+
+
+    /**
+     * Whether the loaded {@code type} dictionary carries the level-scoped hierarchy at all —
+     * {@code false} for a file converted before DI1 (or a type that is not loaded).
+     *
+     * @param type
+     *            the dictionary type
+     * @return whether its house file has {@code hierarchy_by_level}
+     */
+    public boolean hasHierarchyByLevel(@Nullable String type)
+    {
+        ValueMapDictionary d = get(type);
+        return d != null && d.hasHierarchyByLevel();
+    }
+
+
+    /**
+     * The predicate, continuing "external dictionary {@code <type>} cannot answer the ...
+     * hierarchy: ...", that says why a loaded dictionary cannot answer at {@code childLevel}
+     * (runbook W4 DI2) — shared by the runner's SKIP reason and the loud arm, so the two never
+     * disagree.
+     *
+     * @param type
+     *            the dictionary type (loaded)
+     * @param childLevel
+     *            the level the child column reads
+     * @return the reason
+     */
+    public String hierarchyGapDetail(@Nullable String type, String childLevel)
+    {
+        if (!hasHierarchyByLevel(type))
+        {
+            return "its house file has no level-scoped hierarchy (hierarchy_by_level) \u2014 it was"
+                    + " converted before this release; re-install " + type + " to re-convert it";
+        }
+        return "its house file carries no " + childLevel + " level in hierarchy_by_level \u2014 the"
+                + " converter writes PT, HLT and HLGT and their codes";
     }
 
 
     /**
      * Hierarchy-path check keyed by the levels the two columns read (runbook W2 DI1) — see
-     * {@link ValueMapDictionary#onHierarchyPath(String, String, String, String, boolean)}.
+     * {@link ValueMapDictionary#onHierarchyPath(String, String, String, String, boolean)}; there is
+     * no level-less form since runbook W4 DI2 (no bare-name map is read).
      */
     public boolean onHierarchyPath(@Nullable String type, @Nullable String termLevel,
             @Nullable String term, @Nullable String parentLevel, @Nullable String parent,

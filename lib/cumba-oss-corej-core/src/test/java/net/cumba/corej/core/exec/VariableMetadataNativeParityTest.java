@@ -161,7 +161,7 @@ class VariableMetadataNativeParityTest
     @Test
     void variableLabelLongerThan_parity() throws Exception
     {
-        assertNativeMatchesLegacy("{\"all\":[{\"expression\": \"len(variable_label) > 40\"}]}");
+        assertNativeMatchesLegacy("{\"all\":[{\"expression\": \"len(var_label()) > 40\"}]}");
     }
 
 
@@ -209,7 +209,7 @@ class VariableMetadataNativeParityTest
     {
         // Sanity: a bare-operand rule that previously stayed on the legacy cascade (no metadata
         // function in the raised Expr) now retains a native checkExpr after canonicalization.
-        Rule rule = loadVmcRule("{\"all\":[{\"expression\": \"len(variable_label) > 40\"}]}",
+        Rule rule = loadVmcRule("{\"all\":[{\"expression\": \"len(var_label()) > 40\"}]}",
                 "variable_name", "variable_label");
         assertNotNull(rule.getCheckExpr());
         // And the two backends agree on the full finding set including the label projection.

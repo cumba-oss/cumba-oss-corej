@@ -54,17 +54,18 @@ class RuleRunnerGatesGroupedAndLevelsTest
 
 
     /**
-     * A {@code library_*} operand on the VALUE side of a leaf inside an {@code any} branch trips
-     * the not-available gate: without a library the rule reports SKIPPED naming the missing
-     * provider; with a DEGRADED library it reports the could-not-be-consulted sentence instead —
-     * two different facts the sponsor reads. A literal that merely looks like the operand
-     * ({@code value_is_literal: true}) must NOT trip the gate and evaluates as data.
+     * A {@code library_*} operand (since runbook W4 MA6 one of the kept, non-accessor ones — the
+     * accessor aliases are retired in expressions) on the VALUE side of a leaf inside an
+     * {@code any} branch trips the not-available gate: without a library the rule reports SKIPPED
+     * naming the missing provider; with a DEGRADED library it reports the could-not-be-consulted
+     * sentence instead — two different facts the sponsor reads. A literal that merely looks like
+     * the operand ({@code value_is_literal: true}) must NOT trip the gate and evaluates as data.
      */
     @Test
     void libraryOperandGateSkipsWithExactMessageAndSparesLiterals() throws Exception
     {
         Rule operand = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"any\":[{\"expression\": \"AESEV == library_variable_role\"}]},"
+                + "\"Check\":{\"any\":[{\"expression\": \"AESEV in library_variable_label_values\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEV\"]}}");
         IDataTable ae = MockTable.of().name("AE").col("AESEV", "library_variable_role", "OK")
                 .build();

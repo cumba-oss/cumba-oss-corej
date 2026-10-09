@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.MetadataAttribute;
@@ -80,8 +81,91 @@ public final class MetadataOperandMapping
             Map.entry("define_vlm_has_codelist", "vlm_has_codelist"),
             Map.entry("define_vlm_decode_matches", "vlm_decode_matches"));
 
+    /**
+     * Runbook W4 MA6 ({@code PLAN-metadata-accessor-default-level} §4.3, D4 / D6, V13; coordinator
+     * W4-D10): the metadata <b>aliases</b> retired in expressions — the 44 operands that are an
+     * accessor at a level baked into the name ({@code dataset_name} is {@code ds_name()},
+     * {@code define_variable_codelist_coded_codes} is {@code var_codelist_coded_codes("DEFINE")})
+     * and {@code library_variable_label_template} ({@code label_template("LIBRARY")}, the 45th,
+     * V13). A reference to one in a Check level, a binding or a {@code Match_Datasets} Filter is
+     * the rule's load error ({@code RulePackageLoader}'s seam pass) with
+     * {@link #retiredOperandHint} as the remedy; every one stays registered
+     * ({@link BuiltinRegistry}) and stays a legal {@code Output_Variables} report column, which
+     * {@link #forwardOperand} keeps resolving. The other 20 operands of {@link BuiltinRegistry}
+     * ({@code record_count}, {@code variable_size}, the {@code define_vlm_*} family, ...) have no
+     * accessor spelling at a level and stay. Written out, never derived: {@code variable_size} also
+     * lowers to an accessor ({@code var_length}) and is kept (§4.3).
+     */
+    private static final Set<String> RETIRED_OPERANDS = Set.of("dataset_class", "dataset_domain",
+            "dataset_label", "dataset_name", "define_dataset_class", "define_dataset_label",
+            "define_dataset_name", "library_dataset_class", "library_dataset_label",
+            "library_dataset_name", "variable_data_type", "variable_format", "variable_label",
+            "variable_length", "define_variable_ccode", "define_variable_codelist",
+            "define_variable_codelist_coded_codes", "define_variable_codelist_coded_values",
+            "define_variable_codelist_extended_values", "define_variable_core",
+            "define_variable_data_type", "define_variable_external_dictionary",
+            "define_variable_external_dictionary_version", "define_variable_has_codelist",
+            "define_variable_has_comment", "define_variable_has_method", "define_variable_label",
+            "define_variable_length", "define_variable_name", "define_variable_ordinal",
+            "define_variable_origin_type", "define_variable_role", "library_variable_ccode",
+            "library_variable_codelist", "library_variable_codelist_coded_codes",
+            "library_variable_codelist_coded_values", "library_variable_codelist_extensible",
+            "library_variable_core", "library_variable_data_type", "library_variable_label",
+            "library_variable_length", "library_variable_name", "library_variable_ordinal",
+            "library_variable_role", LIBRARY_LABEL_TEMPLATE);
+
     private MetadataOperandMapping()
     {
+    }
+
+
+    /**
+     * The metadata aliases retired in expressions ({@link #RETIRED_OPERANDS}, runbook W4 MA6),
+     * read-only — the loader's refusal and the language surface ({@code RuleLanguage}'s
+     * {@code retired-operands:} section) read the one roster.
+     *
+     * @return the 45 retired operand names (unmodifiable)
+     */
+    public static Set<String> retiredOperands()
+    {
+        return RETIRED_OPERANDS;
+    }
+
+
+    /**
+     * The accessor spelling that replaces a retired alias (runbook W4 MA6) — rendered from
+     * {@link #forwardOperand}, the one table the alias lowered through, with the current-variable
+     * anchor ({@code variable_name}) and the default level ({@code "DATA"}, P1) elided:
+     * {@code dataset_name} &rarr; {@code ds_name()}, {@code variable_label} &rarr;
+     * {@code var_label()}, {@code define_variable_codelist_coded_codes} &rarr;
+     * {@code var_codelist_coded_codes("DEFINE")} (the one-argument level form, O15 / V12),
+     * {@code library_variable_label_template} &rarr; {@code label_template("LIBRARY")}. The
+     * respelling W3 MA-r2 applied to the corpus is exactly this form.
+     *
+     * @param operand
+     *            an operand name
+     * @return the replacement expression text, or {@code null} when {@code operand} is not retired
+     */
+    public static @Nullable String retiredOperandHint(String operand)
+    {
+        if (!RETIRED_OPERANDS.contains(operand)
+                || !(forwardOperand(operand) instanceof Expr.Call call))
+        {
+            return null;
+        }
+        List<Expr> args = new ArrayList<>(call.args());
+        if (!args.isEmpty() && args.get(0) instanceof Expr.Ref anchor
+                && VARIABLE_NAME.equals(anchor.name()))
+        {
+            args.remove(0);
+        }
+        if (!args.isEmpty() && args.get(args.size() - 1) instanceof Expr.Lit level
+                && level.kind() == Expr.LitKind.STRING
+                && MetadataLevel.DATA.name().equals(level.value()))
+        {
+            args.remove(args.size() - 1);
+        }
+        return ExpressionPrinter.print(new Expr.Call(call.name(), args, call.kwargs()));
     }
 
 
@@ -169,7 +253,7 @@ public final class MetadataOperandMapping
         MetadataAttribute attr = MetadataAttribute.fromFunction(fn);
         if (attr == null || attr.scope() != match.scope() || !attr.supports(match.level()))
         {
-            return null; // e.g. dataset_metadata, define_variable_ccode — no accessor
+            return null; // e.g. dataset_metadata — no accessor
         }
         Expr levelLit = new Expr.Lit(Expr.LitKind.STRING, match.level().name());
         if (match.scope() == MetadataAttribute.Scope.VARIABLE)

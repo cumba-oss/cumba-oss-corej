@@ -23,9 +23,10 @@ import org.jspecify.annotations.Nullable;
  * <li><b>membership</b> — the term (upper-cased) is a key of {@code levels[termType]};</li>
  * <li><b>case</b> — {@code levels[termType][upper(term)]} equals the term verbatim (the value holds
  * the preferred case);</li>
- * <li><b>hierarchy-path</b> — the parent is in {@code hierarchy[term]}, or, keyed by the levels of
- * the two variables read, in {@code hierarchy_by_level[termLevel][term][parentLevel]} (runbook W2
- * DI1, {@link LevelScopedHierarchy});</li>
+ * <li><b>hierarchy-path</b> — keyed by the levels of the two variables read, the parent is in
+ * {@code hierarchy_by_level[termLevel][term][parentLevel]} (runbook W2 DI1,
+ * {@link LevelScopedHierarchy}); since runbook W4 DI2 the bare-name {@code hierarchy[term]} map is
+ * no lookup any more (a file without the level-scoped section answers no hierarchy);</li>
  * <li><b>code&harr;decode pair</b> — some registry / attribute map carries {@code map[code] ==
  * decode};</li>
  * <li><b>per-term attribute</b> — {@code attributes[attr][upper(term)]}.</li>
@@ -96,15 +97,18 @@ public final class ValueMapDictionary
 
     private final Map<String, Map<String, String>> levels;
 
-    /** Hierarchy exactly as authored in the dictionary file: term &rarr; ancestor terms. */
-    private final Map<String, List<String>> hierarchy;
-
-    /** Case-folded hierarchy index (keys and ancestor values upper-cased). */
-    private final Map<String, List<String>> hierarchyFolded;
+    /**
+     * Whether the bare-name {@code hierarchy} section carries an ancestor list — read for
+     * {@link #hasContent} only: since runbook W4 DI2 no lookup reads the bare-name map (the
+     * converter keeps writing it for older engine releases sharing a dictionary directory), so it
+     * is not held in memory.
+     */
+    private final boolean bareHierarchyContent;
 
     /**
      * The level-scoped hierarchy ({@code hierarchy_by_level}, runbook W2 DI1), or
-     * {@link LevelScopedHierarchy#EMPTY} for a file without it — the legacy arm.
+     * {@link LevelScopedHierarchy#EMPTY} for a file without it — a file converted before DI1, which
+     * answers no hierarchy since runbook W4 DI2.
      */
     private final LevelScopedHierarchy hierarchyByLevel;
 
@@ -128,8 +132,7 @@ public final class ValueMapDictionary
         this.type = type;
         this.provenance = provenance;
         this.levels = levels;
-        this.hierarchy = hierarchy;
-        this.hierarchyFolded = foldHierarchy(hierarchy);
+        this.bareHierarchyContent = hierarchy.values().stream().anyMatch(l -> !l.isEmpty());
         this.hierarchyByLevel = hierarchyByLevel;
         this.pairs = pairs;
         this.pairsFolded = foldKeys(pairs);
@@ -173,8 +176,8 @@ public final class ValueMapDictionary
         // The hierarchy check mirrors anyEntry: a key mapping to an empty ancestor list answers
         // no hierarchy probe, so {"hierarchy":{"X":[]}} is no more content than {"levels":{"X":{}}}
         // — counting it would register the dictionary as available and bypass the SKIP arm.
-        return anyEntry(levels) || hierarchy.values().stream().anyMatch(l -> !l.isEmpty())
-                || !hierarchyByLevel.isEmpty() || anyEntry(pairs) || anyEntry(attributes);
+        return anyEntry(levels) || bareHierarchyContent || !hierarchyByLevel.isEmpty()
+                || anyEntry(pairs) || anyEntry(attributes);
     }
 
 
@@ -361,19 +364,6 @@ public final class ValueMapDictionary
     }
 
 
-    /** The folded twin of the hierarchy: term keys and ancestor values upper-cased. */
-    private static Map<String, List<String>> foldHierarchy(Map<String, List<String>> exact)
-    {
-        Map<String, List<String>> out = new LinkedHashMap<>();
-        for (Map.Entry<String, List<String>> e : exact.entrySet())
-        {
-            out.put(upper(e.getKey()),
-                    e.getValue().stream().map(ValueMapDictionary::upper).toList());
-        }
-        return out;
-    }
-
-
     private static String upper(String s)
     {
         return s.toUpperCase(Locale.ROOT);
@@ -431,44 +421,48 @@ public final class ValueMapDictionary
 
 
     /**
-     * Hierarchy-path: {@code parent} is an ancestor of {@code term} on the dictionary's primary
-     * hierarchy path (the stored list holds all such ancestors). When {@code caseSensitive} (the
-     * D-TA-3 default) both operands are compared verbatim against the as-authored hierarchy;
-     * {@code case_sensitive: false} folds both sides.
+     * Whether this file carries the level-scoped hierarchy ({@code hierarchy_by_level}, runbook W2
+     * DI1) at all — {@code false} for a file converted before DI1, which answers no hierarchy since
+     * runbook W4 DI2 (the file stays loaded for every other lookup).
+     *
+     * @return whether the section is present and non-empty
      */
-    public boolean onHierarchyPath(@Nullable String term, @Nullable String parent,
-            boolean caseSensitive)
+    public boolean hasHierarchyByLevel()
     {
-        if (term == null || parent == null)
-        {
-            return false;
-        }
-        List<String> parents = caseSensitive ? hierarchy.get(term)
-                : hierarchyFolded.get(upper(term));
-        return parents != null && parents.contains(caseSensitive ? parent : upper(parent));
+        return !hierarchyByLevel.isEmpty();
+    }
+
+
+    /**
+     * Whether a hierarchy lookup whose CHILD column reads {@code childLevel} can be answered
+     * (runbook W4 DI2): the level-scoped section carries that level. A file without the section
+     * answers no level; a converted file answers PT, HLT, HLGT and their codes, never LLT / LLTCD
+     * (PB-M1). The rule runner SKIPs a hierarchy rule this answers {@code false} for, with the
+     * reason, before any row is read.
+     *
+     * @param childLevel
+     *            the house-format level the child column reads ({@code PT}, {@code HLTCD}, ...)
+     * @return whether {@link #onHierarchyPath} can answer at that level
+     */
+    public boolean answersHierarchyAt(String childLevel)
+    {
+        return hierarchyByLevel.hasLevel(childLevel);
     }
 
 
     /**
      * Hierarchy-path keyed by the <b>levels of the two variables read</b> (runbook W2 DI1,
-     * {@code PLAN-engine-gap-dict-unsupported} §4.1): a file carrying {@code hierarchy_by_level}
-     * answers at {@code termLevel} / {@code parentLevel} only ({@link LevelScopedHierarchy}) — a PT
-     * name that is also an HLT or LLT name reads its own level's entry. ⭐ <b>The legacy arm:</b> a
-     * file without that section (every file installed before DI1, the corpus dummy), a section
-     * without the child's level (no LLT level since R5 PB-M1 — PB-L1), or a call with a column that
-     * maps to no level ({@code null}), answers through the bare-name
-     * {@link #onHierarchyPath(String, String, boolean)} exactly as before.
+     * {@code PLAN-engine-gap-dict-unsupported} §4.1): answered at {@code termLevel} /
+     * {@code parentLevel} only ({@link LevelScopedHierarchy}) — a PT name that is also an HLT or
+     * LLT name reads its own level's entry. ⛔ <b>No bare-name fallback</b> (runbook W4 DI2, Q3): a
+     * file without the section, or a section without the child's level, is not on the path for any
+     * row — reaching here for one is a gate hole ({@link #answersHierarchyAt} is the gate the
+     * runner reads, and {@code DictionaryFunctions.hierarchy} refuses loudly before asking).
      */
     public boolean onHierarchyPath(@Nullable String termLevel, @Nullable String term,
             @Nullable String parentLevel, @Nullable String parent, boolean caseSensitive)
     {
-        if (termLevel == null || parentLevel == null || !hierarchyByLevel.hasLevel(termLevel))
-        {
-            // R5 PB-L1: a section without the CHILD level (no LLT level since PB-M1) answers as a
-            // file without the section — the bare-name map — never "off-path" for every row
-            return onHierarchyPath(term, parent, caseSensitive);
-        }
-        return term != null && parent != null
+        return termLevel != null && parentLevel != null && term != null && parent != null
                 && hierarchyByLevel.onPath(termLevel, term, parentLevel, parent, caseSensitive);
     }
 

@@ -864,6 +864,10 @@ public class RulePackageLoader
                 }
                 if (filter != null)
                 {
+                    // runbook W4 MA6: the cached Filter is canonicalised (an alias already lowered
+                    // to its accessor, V11), so the retired-alias walk reads the AUTHORED text
+                    validateRetiredOperands(net.cumba.corej.core.expr.CheckExpressionParser
+                            .parse(java.util.Objects.requireNonNull(match.getFilter())));
                     validateRegistryCallSeams(filter, false);
                     // runbook W4 KM: a Filter never meets validateInlineCallShapes
                     rejectKeepMissingsWithoutWithinAnywhere(filter);
@@ -1072,6 +1076,7 @@ public class RulePackageLoader
             boolean stageAJudged, Map<String, net.cumba.corej.core.expr.ast.Expr> bound)
     {
         validateRetiredFunctionNames(expr);
+        validateRetiredOperands(expr);
         validateInlineCallShapes(expr);
         rejectStringListSplices(expr, bound);
         validateSidedKeys(expr);
@@ -1118,6 +1123,36 @@ public class RulePackageLoader
                             + RETIRED_FUNCTION_NAMES.get(call.name()) + "(…)");
         }
         childrenOf(expr).forEach(RulePackageLoader::validateRetiredFunctionNames);
+    }
+
+
+    /**
+     * Runbook W4 MA6 ({@code PLAN-metadata-accessor-default-level} table 2 row 13, D4 / D6, V13;
+     * coordinator W4-D10) — the REFERENCE twin of {@link #validateRetiredFunctionNames}: a metadata
+     * alias ({@link net.cumba.corej.core.expr.MetadataOperandMapping#retiredOperands()}, e.g.
+     * {@code dataset_name}), at any depth, is the rule's load error naming its accessor spelling
+     * ({@link net.cumba.corej.core.expr.MetadataOperandMapping#retiredOperandHint}). Here, in the
+     * per-rule seam pass on the RAW expression, and never in the parser: a parse refusal aborts the
+     * whole package (Jackson), while this parks one rule, as {@code var_is_null} does. The alias
+     * stays a legal {@code Output_Variables} report column — no path parses those entries as an
+     * expression.
+     */
+    private static void validateRetiredOperands(net.cumba.corej.core.expr.ast.Expr expr)
+    {
+        if (expr instanceof net.cumba.corej.core.expr.ast.Expr.Ref ref
+                && ref.kind() == net.cumba.corej.core.expr.OperandKind.BUILTIN
+                && net.cumba.corej.core.expr.MetadataOperandMapping.retiredOperands()
+                        .contains(ref.name()))
+        {
+            throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                    "retired operand '" + ref.name()
+                            + "': the metadata aliases were retired in expressions \u2014 write "
+                            + net.cumba.corej.core.expr.MetadataOperandMapping
+                                    .retiredOperandHint(ref.name())
+                            + " (same value); '" + ref.name()
+                            + "' stays valid as an Output_Variables report column");
+        }
+        childrenOf(expr).forEach(RulePackageLoader::validateRetiredOperands);
     }
 
 
@@ -1357,6 +1392,18 @@ public class RulePackageLoader
                             net.cumba.corej.core.exec.ReferencedRecordCount::checkKeys));
 
     /**
+     * The registry-EVALUATED functions' own load-time shape readers, applied after the generic seam
+     * ({@code ExprCompiler.validateRegistryCall}) on every surface it covers — the twin of
+     * {@link #TAILORED_CALL_READERS}, which holds compiler-dispatched names only (its self-check).
+     * Runbook W4 DI2 F2: {@code valid_external_dictionary_hierarchy} reads its dictionary at the
+     * MedDRA levels its two columns name ({@code DictionaryFunctions.checkLevels}); a column that
+     * names none is the rule's load error — the compiler's own refusal would only degrade the rule.
+     */
+    private static final Map<String, java.util.function.Consumer<net.cumba.corej.core.expr.ast.Expr.Call>> REGISTRY_CALL_SHAPE_READERS = Map
+            .of(net.cumba.corej.core.exec.DictionaryFunctions.HIERARCHY,
+                    net.cumba.corej.core.exec.DictionaryFunctions::checkLevels);
+
+    /**
      * A compiler-dispatched call whose ONE parameter is an optional {@code name}
      * ({@code max_value_length}, the {@code vlm_*} accessors, the two decode-pair accessors) is
      * bound against its descriptor at load: the name given both positionally and as {@code name=}
@@ -1540,6 +1587,12 @@ public class RulePackageLoader
                 {
                     net.cumba.corej.core.expr.eval.ExprCompiler.validateRegistryCall(call,
                             stageAJudged);
+                    java.util.function.Consumer<net.cumba.corej.core.expr.ast.Expr.Call> shape = REGISTRY_CALL_SHAPE_READERS
+                            .get(call.name());
+                    if (shape != null)
+                    {
+                        shape.accept(call);
+                    }
                 }
                 else
                 {

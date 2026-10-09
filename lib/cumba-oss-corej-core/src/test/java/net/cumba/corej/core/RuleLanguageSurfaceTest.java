@@ -156,6 +156,14 @@ class RuleLanguageSurfaceTest
                 "every BuiltinRegistry operand is listed");
         assertTrue(surface.contains("\ndataset_name\n"), surface);
         assertTrue(surface.contains("\nretired:\nvar_is_null -> var_is_empty\n"), surface);
+        // runbook W4 MA6: the retired metadata aliases with their accessor spellings
+        assertTrue(surface.contains("\nretired-operands:\ndataset_class -> ds_class()\n"), surface);
+        assertTrue(surface.contains("\ndefine_variable_codelist_coded_codes"
+                + " -> var_codelist_coded_codes(\"DEFINE\")\n"), surface);
+        assertTrue(
+                surface.contains(
+                        "\nlibrary_variable_label_template -> label_template(\"LIBRARY\")\n"),
+                surface);
         assertTrue(surface.contains("\nstatic-parameters:\n"), surface);
         assertTrue(
                 surface.contains(

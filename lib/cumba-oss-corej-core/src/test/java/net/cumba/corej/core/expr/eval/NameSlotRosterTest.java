@@ -169,8 +169,10 @@ class NameSlotRosterTest
         BASE.put("valid_external_dictionary_code_term_pair",
                 "valid_external_dictionary_code_term_pair(X, Y,"
                         + " external_dictionary_type=\"meddra\")");
-        BASE.put("valid_external_dictionary_hierarchy",
-                "valid_external_dictionary_hierarchy(X, Y, external_dictionary_type=\"meddra\")");
+        // runbook W4 DI2: the hierarchy reads the dictionary at the MedDRA levels its two columns
+        // name, so the base call names two (X / Y name none: a load error, and loud at run time)
+        BASE.put("valid_external_dictionary_hierarchy", "valid_external_dictionary_hierarchy(AEHLT,"
+                + " AESOC, external_dictionary_type=\"meddra\")");
         BASE.put("distinct", "distinct(X)");
         // runbook W1b RO / SK: sequence on distinct's plan, the ordered-list functions over
         // lists, and by= on the three renamed single-key readers (O17)
@@ -1051,7 +1053,8 @@ class NameSlotRosterTest
                 .col("USUBJID", "S1", "S2").col("AESEQ", "1", "2").colLong("NUM", 1L, 2L)
                 .col("DT", "2020-01-01", "2020-02-01").col("SER2", "s", "s").col("SER3", "s", "s")
                 .col("CTREF", "CDISC CT", "CDISC CT").col("CTVER", "2020-03-27", "2020-03-27")
-                .col("RDOMAIN", "DM", "DM").build();
+                .col("RDOMAIN", "DM", "DM").col("AEHLT", "Headaches NEC", "Headaches NEC")
+                .col("AESOC", "Nervous system disorders", "Nervous system disorders").build();
         IDataTable dm = MockTable.of().name("DM").col("USUBJID", "S1", "S2").col("X", "a", "b")
                 .build();
         IDataTable named = MockTable.of().name(n).col("USUBJID", "S1", "S2").col("X", "a", "c")

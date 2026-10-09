@@ -218,7 +218,7 @@ class ListValueGuardTest
     {
         String json = "{\"Core\":{\"Id\":\"R1\"},\"Variable_Universe\":\"Define\","
                 + "\"Sensitivity\":\"Dataset\",\"Check\":{\"all\":["
-                + "{\"expression\":\"define_variable_codelist_coded_codes in [\\\"AE\\\"]\"}]},"
+                + "{\"expression\":\"var_codelist_coded_codes(\\\"DEFINE\\\") in [\\\"AE\\\"]\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}";
         net.cumba.corej.core.model.Rule rule = net.cumba.corej.core.RulePackageLoader
                 .loadFromString("{\"rules\":{\"R1\":" + json + "}}").getRules().get("R1");

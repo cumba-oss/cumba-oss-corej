@@ -94,6 +94,14 @@ public final class HouseFormatValidator
      */
     public static final Map<String, Requirement> CORPUS_REQUIREMENTS = corpusRequirements();
 
+    /**
+     * The child levels the MedDRA converter writes into {@code hierarchy_by_level} (runbook W2 DI1,
+     * PB-M1: no LLT / LLTCD) — required of an installed file whose type needs a hierarchy (runbook
+     * W4 DI2).
+     */
+    private static final List<String> LEVEL_SCOPED_HIERARCHY_LEVELS = List.of("PT", "PTCD", "HLT",
+            "HLTCD", "HLGT", "HLGTCD");
+
     private HouseFormatValidator()
     {
     }
@@ -195,6 +203,22 @@ public final class HouseFormatValidator
         {
             out.add(aDict + ": hierarchy is missing or empty — the hierarchy rules could never "
                     + "fire");
+        }
+        if (req.needsHierarchy())
+        {
+            // runbook W4 DI2 (Q3 (a)): the hierarchy rules read hierarchy_by_level only, at the
+            // level of the child column — a file without one of the converter's levels would
+            // install and then SKIP every hierarchy rule reading it
+            JsonNode scoped = aRoot.path(ValueMapDictionary.HIERARCHY_BY_LEVEL);
+            for (String level : LEVEL_SCOPED_HIERARCHY_LEVELS)
+            {
+                if (!hasEntries(scoped.path(level)))
+                {
+                    out.add(aDict + ": " + ValueMapDictionary.HIERARCHY_BY_LEVEL + "[" + level
+                            + "] is missing or empty \u2014 the hierarchy rules reading a " + level
+                            + " column would SKIP (re-convert the dictionary)");
+                }
+            }
         }
         return out;
     }

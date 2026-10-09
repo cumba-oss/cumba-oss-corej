@@ -30,7 +30,7 @@ class DefineCodedCodesListMembershipTest
         String membership = "is_not_contained_by".equals(operator) ? " not in " : " in ";
         String json = "{\"Core\":{\"Id\":\"R1\"}," + "\"Variable_Universe\":\"Define\","
                 + "\"Sensitivity\":\"Dataset\",\"Check\":{\"all\":["
-                + "{\"expression\":\"define_variable_codelist_coded_codes" + membership
+                + "{\"expression\":\"var_codelist_coded_codes(\\\"DEFINE\\\")" + membership
                 + "[\\\"AE\\\", \\\"CM\\\", \\\"EX\\\"]\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}";
         RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"R1\":" + json + "}}");

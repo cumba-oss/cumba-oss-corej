@@ -14,6 +14,7 @@ import net.cumba.corej.core.exec.GroupedAggregate;
 import net.cumba.corej.core.exec.ReadValue;
 import net.cumba.corej.core.expr.BuiltinRegistry;
 import net.cumba.corej.core.expr.ExpressionLexer;
+import net.cumba.corej.core.expr.MetadataOperandMapping;
 import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionRegistry;
@@ -77,12 +78,14 @@ public final class RuleLanguage
      * ({@code accessors:}), the operator spellings, keywords and literal forms the lexer reads
      * ({@code operators:}, {@code keywords:}, {@code literal-forms:}), the comparison markers
      * ({@code markers:}, since runbook W1b DO), the built-in operands ({@code operands:}), the
-     * retired call names ({@code retired:}), the static — literal-only — parameters with their
-     * vocabularies ({@code static-parameters:}), the enumerated parameter values read at plan build
-     * ({@code parameter-values:}), the keyed result types ({@code keyed-results:}), the bound JSON
-     * property rosters of the rule model ({@code keys:}) and the authored enum values
-     * ({@code enums:}). Deterministic: sorted, one entry per line, no measured figures. Every
-     * element a wave of the runbook changes has a line here, so the golden sees the change.
+     * retired call names ({@code retired:}), the metadata aliases retired in expressions with their
+     * accessor spellings ({@code retired-operands:}, runbook W4 MA6), the static — literal-only —
+     * parameters with their vocabularies ({@code static-parameters:}), the enumerated parameter
+     * values read at plan build ({@code parameter-values:}), the keyed result types
+     * ({@code keyed-results:}), the bound JSON property rosters of the rule model ({@code keys:})
+     * and the authored enum values ({@code enums:}). Deterministic: sorted, one entry per line, no
+     * measured figures. Every element a wave of the runbook changes has a line here, so the golden
+     * sees the change.
      *
      * @return the listing (without the {@code LEVEL=} header)
      */
@@ -122,6 +125,14 @@ public final class RuleLanguage
                 RulePackageLoader.retiredFunctionNames()).entrySet())
         {
             sb.append(e.getKey()).append(" -> ").append(e.getValue()).append('\n');
+        }
+        // runbook W4 MA6: the metadata aliases retired in expressions, each with its accessor
+        // spelling (they stay Output_Variables report columns, listed under operands:)
+        sb.append("retired-operands:\n");
+        for (String name : sorted(MetadataOperandMapping.retiredOperands()))
+        {
+            sb.append(name).append(" -> ").append(MetadataOperandMapping.retiredOperandHint(name))
+                    .append('\n');
         }
         sb.append("static-parameters:\n");
         for (String line : staticParameterLines())

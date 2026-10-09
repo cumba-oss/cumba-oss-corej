@@ -10,6 +10,11 @@ import net.cumba.corej.core.expr.eval.ArgumentBinder;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionRegistry;
 import net.cumba.corej.core.expr.eval.ProviderNeed;
+import net.cumba.corej.core.model.CheckCondition;
+import net.cumba.corej.core.model.CheckConditionAll;
+import net.cumba.corej.core.model.CheckConditionAny;
+import net.cumba.corej.core.model.CheckConditionExpression;
+import net.cumba.corej.core.model.CheckConditionNot;
 import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.Rule;
 import org.jspecify.annotations.Nullable;
@@ -51,20 +56,63 @@ import org.jspecify.annotations.Nullable;
  * @param dictionaryTypes
  *            the statically-named dictionary types, in first-seen order (a typeless dictionary call
  *            contributes {@link #dictionary} only)
+ * @param hierarchyReads
+ *            the hierarchy capability needs (runbook W4 DI2): one per
+ *            {@code valid_external_dictionary_hierarchy} call with a static type, the levels its
+ *            columns read, in first-seen order
  */
 public record ProviderNeeds(boolean library, boolean define, boolean dictionary,
-        SequencedSet<String> dictionaryTypes)
+        SequencedSet<String> dictionaryTypes, SequencedSet<HierarchyRead> hierarchyReads)
 {
+
+    /**
+     * Runbook W4 DI2 ({@code PLAN-engine-gap-dict-unsupported} Q3): a CAPABILITY need beyond the
+     * type — a {@code valid_external_dictionary_hierarchy} call reads its dictionary at the level
+     * its child column names, and a loaded dictionary may still be unable to answer there (a house
+     * file converted before DI1 has no {@code hierarchy_by_level}; no file carries LLT). The runner
+     * SKIPs such a rule with the reason ({@code RuntimeDictionaryProvider.answersHierarchyAt}).
+     *
+     * @param type
+     *            the dictionary type, as written
+     * @param childLevel
+     *            the level the child column reads
+     * @param parentLevel
+     *            the level the parent column reads, or {@code null} (a load error, F2)
+     */
+    public record HierarchyRead(String type, String childLevel, @Nullable String parentLevel)
+    {
+    }
 
     /** No provider needed. */
     public static final ProviderNeeds NONE = new ProviderNeeds(false, false, false,
             new LinkedHashSet<>());
 
-    /** Defensive copy of the type set. */
+    /** Defensive copies of the sets. */
     public ProviderNeeds
     {
         dictionaryTypes = java.util.Collections
                 .unmodifiableSequencedSet(new LinkedHashSet<>(dictionaryTypes));
+        hierarchyReads = java.util.Collections
+                .unmodifiableSequencedSet(new LinkedHashSet<>(hierarchyReads));
+    }
+
+
+    /**
+     * Needs without a hierarchy capability.
+     *
+     * @param library
+     *            whether the CDISC Library is needed
+     * @param define
+     *            whether the sponsor Define-XML is needed
+     * @param dictionary
+     *            whether any external dictionary is needed
+     * @param dictionaryTypes
+     *            the statically-named dictionary types
+     */
+    public ProviderNeeds(boolean library, boolean define, boolean dictionary,
+            SequencedSet<String> dictionaryTypes)
+    {
+        this(library, define, dictionary, dictionaryTypes, new LinkedHashSet<>());
     }
 
 
@@ -98,8 +146,10 @@ public record ProviderNeeds(boolean library, boolean define, boolean dictionary,
         }
         SequencedSet<String> types = new LinkedHashSet<>(dictionaryTypes);
         types.addAll(other.dictionaryTypes);
+        SequencedSet<HierarchyRead> reads = new LinkedHashSet<>(hierarchyReads);
+        reads.addAll(other.hierarchyReads);
         return new ProviderNeeds(library || other.library, define || other.define,
-                dictionary || other.dictionary, types);
+                dictionary || other.dictionary, types, reads);
     }
 
 
@@ -140,6 +190,45 @@ public record ProviderNeeds(boolean library, boolean define, boolean dictionary,
         for (ProviderNeeds n : found)
         {
             needs = needs.union(n);
+        }
+        return needs;
+    }
+
+
+    /**
+     * The needs of a Check level (or a Precondition) — every expression of an {@code all} /
+     * {@code any} / {@code not} tree (runbook W4 DI2: the hierarchy capability arm reads the Check
+     * levels too, so an inline call is gated like a bound one).
+     *
+     * @param condition
+     *            the condition, may be {@code null}
+     * @return the needs
+     */
+    public static ProviderNeeds ofCondition(@Nullable CheckCondition condition)
+    {
+        if (condition == null)
+        {
+            return NONE;
+        }
+        return switch (condition)
+        {
+        case CheckConditionExpression expression -> ofExpr(expression.expr());
+        case CheckConditionAll all -> ofConditions(all.getConditions());
+        case CheckConditionAny any -> ofConditions(any.getConditions());
+        case CheckConditionNot not -> ofCondition(not.getCondition());
+        };
+    }
+
+
+    private static ProviderNeeds ofConditions(@Nullable List<CheckCondition> conditions)
+    {
+        ProviderNeeds needs = NONE;
+        if (conditions != null)
+        {
+            for (CheckCondition c : conditions)
+            {
+                needs = needs.union(ofCondition(c));
+            }
         }
         return needs;
     }
@@ -306,32 +395,44 @@ public record ProviderNeeds(boolean library, boolean define, boolean dictionary,
             ProviderNeed need)
     {
         SequencedSet<String> types = new LinkedHashSet<>();
-        String literal = staticStringArgument(call, descriptor, need.typeParameter());
-        if (literal != null && !literal.isBlank())
-        {
-            types.add(literal);
-        }
-        return new ProviderNeeds(false, false, true, types);
-    }
-
-
-    /**
-     * The static string literal bound to {@code parameter} in {@code call}, or {@code null} when
-     * the call does not bind, the parameter is absent, or the argument is not a string literal.
-     */
-    private static @Nullable String staticStringArgument(Expr.Call call,
-            FunctionDescriptor descriptor, @Nullable String parameter)
-    {
-        if (parameter == null)
-        {
-            return null;
-        }
+        SequencedSet<HierarchyRead> reads = new LinkedHashSet<>();
         List<@Nullable Expr> bound;
         try
         {
             bound = ArgumentBinder.bind(descriptor, call);
         }
         catch (ExpressionException _)
+        {
+            return new ProviderNeeds(false, false, true, types);
+        }
+        String literal = staticStringArgument(bound, descriptor, need.typeParameter());
+        if (literal != null && !literal.isBlank())
+        {
+            types.add(literal);
+            // runbook W4 DI2: the hierarchy call's capability need — the level its child reads
+            String childLevel = DictionaryFunctions.HIERARCHY.equals(call.name())
+                    && !bound.isEmpty() ? DictionaryFunctions.hierarchyLevelOfArgument(bound.get(0))
+                            : null;
+            if (childLevel != null)
+            {
+                reads.add(new HierarchyRead(literal, childLevel,
+                        bound.size() > 1
+                                ? DictionaryFunctions.hierarchyLevelOfArgument(bound.get(1))
+                                : null));
+            }
+        }
+        return new ProviderNeeds(false, false, true, types, reads);
+    }
+
+
+    /**
+     * The static string literal bound to {@code parameter}, or {@code null} when the parameter is
+     * absent or the argument is not a string literal.
+     */
+    private static @Nullable String staticStringArgument(List<@Nullable Expr> bound,
+            FunctionDescriptor descriptor, @Nullable String parameter)
+    {
+        if (parameter == null)
         {
             return null;
         }

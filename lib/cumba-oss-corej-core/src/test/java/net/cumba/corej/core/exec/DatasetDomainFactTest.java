@@ -47,13 +47,13 @@ class DatasetDomainFactTest
     private static final DatasetResolver NO_RESOLVER = _ -> null;
 
     /**
-     * The {@code CDISC-CG0308} shape, carried by the BAREWORD: a Record-Data rule whose whole Check
-     * is a length test of the fact.
+     * The {@code CDISC-CG0308} shape: a Record-Data rule whose whole Check is a length test of the
+     * fact (written with the bareword until runbook W4 MA6 retired it in expressions).
      */
     private static final String BAREWORD_LENGTH_RULE = "{\"Core\":{\"Id\":\"R1\"},"
             + "\"Sensitivity\":\"Record\"," + "\"Check\":{\"any\":["
-            + "{\"expression\": \"len(dataset_domain) > 2\"},"
-            + "{\"expression\": \"len(dataset_domain) < 2\"}]},"
+            + "{\"expression\": \"len(ds_domain()) > 2\"},"
+            + "{\"expression\": \"len(ds_domain()) < 2\"}]},"
             + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"dataset_domain\"]}}";
 
     private static Rule loadRule(String ruleBody) throws Exception
@@ -90,7 +90,7 @@ class DatasetDomainFactTest
     {
         // An equality test of the fact against a literal — the probe for the four §3 value rows.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"all\":[{\"expression\":\"dataset_domain == \\\"" + expected
+                + "\"Check\":{\"all\":[{\"expression\":\"ds_domain() == \\\"" + expected
                 + "\\\"\"}]}," + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         assertNotNull(rule.getCheckExpr(), "the equality rule must compile natively");
         return !findings(rule, table, domainPrefix).isEmpty();
@@ -148,7 +148,17 @@ class DatasetDomainFactTest
         Rule rule = loadRule(BAREWORD_LENGTH_RULE);
         String printed = ExpressionPrinter.print(rule.getCheckExpr());
         assertTrue(printed.contains("ds_domain(\"DATA\")"),
-                "the bareword must lower to the DATA-level accessor, got: " + printed);
+                "the accessor must read the DATA level, got: " + printed);
+        // runbook W4 MA6: the bareword itself is retired in expressions — a load error naming the
+        // accessor spelling (it stays a legal Output_Variables column, as above)
+        Rule bare = RulePackageLoader
+                .loadFromString("{\"rules\":{\"R1\":"
+                        + BAREWORD_LENGTH_RULE.replace("ds_domain()", "dataset_domain") + "}}")
+                .getRules().get("R1");
+        assertTrue(
+                String.valueOf(bare.getLoadError()).contains("retired operand 'dataset_domain'")
+                        && bare.getLoadError().contains("write ds_domain()"),
+                String.valueOf(bare.getLoadError()));
     }
 
 

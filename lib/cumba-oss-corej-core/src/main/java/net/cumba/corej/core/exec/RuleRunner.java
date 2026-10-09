@@ -732,7 +732,9 @@ public final class RuleRunner
             // carry no library-backed call at all, so no registry function can see it. (30 corpus
             // rules did when Fix #369 landed; since runbook W3 MA-r2 respelled the bare aliases
             // as accessor calls — which skip through evaluateMetadataNative — one does,
-            // DRAFT-900044, re-measured at W4. The define_* gate above has none.)
+            // DRAFT-900044, re-measured at W4. The define_* gate above has none. Since W4 MA6 a
+            // retired alias cannot load at all: only the kept library_* operands — the two
+            // *_values lists — reach this gate.)
             if (!LibraryAnswerability.libraryAnswerable(libraryProvider)
                     && referencesOperandPrefix(operandCheck, "library_"))
             {
@@ -854,6 +856,12 @@ public final class RuleRunner
         // the bindings' calls' capabilities. (Until runbook W8 an operation binding sat beside it
         // as a memoised supplier over the executor; the operation kind is gone with the carrier.)
         Map<String, Object> variables = Map.of();
+        RuleExecutionResult unanswerable = hierarchyCapabilitySkip(rule, ruleId, message, evalTable,
+                dictionaryProvider);
+        if (unanswerable != null)
+        {
+            return unanswerable;
+        }
         List<net.cumba.corej.core.model.CompiledBinding> compiledBindings = rule.bindingOrder();
         if (!compiledBindings.isEmpty())
         {
@@ -1039,6 +1047,75 @@ public final class RuleRunner
         // clauses before it (review round 2, L-5).
         skipReason.append(unavailableDictionaryTypes.size() == 1
                 ? " (the rule needs this external dictionary)"
+                : " (the rule needs these external dictionaries)");
+        return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(List.of())
+                .totalRows(RealRows.count(evalTable)).status(RuleExecutionStatus.SKIPPED)
+                .statusMessage(skipReason.toString()).build();
+    }
+
+
+    /**
+     * Runbook W4 DI2 ({@code PLAN-engine-gap-dict-unsupported} Q3, coordinator W4-D11): the eager
+     * <b>capability</b> arm. A {@code valid_external_dictionary_hierarchy} call reads its
+     * dictionary at the level its child column names ({@code ProviderNeeds.HierarchyRead}); a
+     * LOADED dictionary whose house file cannot answer there — converted before DI1 (no
+     * {@code hierarchy_by_level}), or a child level no file carries (LLT / LLTCD) — SKIPs the rule
+     * with the reason before any row is read, in a binding or inline in a Check level alike (the
+     * inline gate {@code dictionary_available(type)} is per type only). The file stays loaded, so
+     * the other dictionary rules on it still answer. A dictionary that is NOT loaded is left to the
+     * unavailability arms ({@link #noProviderSkip}, the inline gate), which answer first and name
+     * that state; with no provider at all every dictionary rule SKIPs there, so nothing is walked.
+     *
+     * @return the SKIPPED result, or {@code null} when every hierarchy read can be answered
+     */
+    private static @Nullable RuleExecutionResult hierarchyCapabilitySkip(Rule rule,
+            @Nullable String ruleId, @Nullable String message, IDataTable evalTable,
+            @Nullable RuntimeDictionaryProvider dictionaryProvider)
+    {
+        if (dictionaryProvider == null)
+        {
+            return null;
+        }
+        ProviderNeeds needs = ProviderNeeds.ofBindings(rule);
+        for (CheckCondition level : rule.checkConditions())
+        {
+            needs = needs.union(ProviderNeeds.ofCondition(level));
+        }
+        if (needs.hierarchyReads().isEmpty())
+        {
+            return null;
+        }
+        for (String type : needs.dictionaryTypes())
+        {
+            if (!dictionaryProvider.isAvailable(type))
+            {
+                return null;
+            }
+        }
+        StringBuilder skipReason = new StringBuilder("Rule skipped \u2014 ");
+        Set<String> types = new LinkedHashSet<>();
+        for (ProviderNeeds.HierarchyRead read : needs.hierarchyReads())
+        {
+            if (dictionaryProvider.answersHierarchyAt(read.type(), read.childLevel()))
+            {
+                continue;
+            }
+            if (!types.isEmpty())
+            {
+                skipReason.append("; ");
+            }
+            types.add(read.type().toLowerCase(java.util.Locale.ROOT));
+            skipReason.append("external dictionary ").append(read.type())
+                    .append(" cannot answer the ").append(read.childLevel()).append(" \u2192 ")
+                    .append(read.parentLevel() == null ? "?" : read.parentLevel())
+                    .append(" hierarchy: ")
+                    .append(dictionaryProvider.hierarchyGapDetail(read.type(), read.childLevel()));
+        }
+        if (types.isEmpty())
+        {
+            return null;
+        }
+        skipReason.append(types.size() == 1 ? " (the rule needs this external dictionary)"
                 : " (the rule needs these external dictionaries)");
         return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(List.of())
                 .totalRows(RealRows.count(evalTable)).status(RuleExecutionStatus.SKIPPED)

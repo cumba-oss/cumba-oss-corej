@@ -2968,8 +2968,9 @@ public final class ExprCompiler
      * ({@code DictionaryFunctions.hierarchyLevelOf}: {@code --DECOD} is the PT, {@code --SOCCD} the
      * SOC code, …), child and parent alike, and bound into the function once — the function the
      * descriptor publishes ({@code DictionaryFunctions.LevelScoped#atLevels}, R5 PB-L3), never a
-     * hard-wired method beside it. A column whose name maps to no level keeps the bare-name lookup.
-     * Every other function is returned as is.
+     * hard-wired method beside it. A column whose name maps to no level is the rule's load error
+     * since runbook W4 DI2 ({@code DictionaryFunctions.checkLevels}, the loader's seam). Every
+     * other function is returned as is.
      */
     private static EvalFunction hierarchyLevelsBound(List<@Nullable Expr> bound, EvalFunction fn)
     {
@@ -2979,9 +2980,9 @@ public final class ExprCompiler
             return fn;
         }
         String childLevel = net.cumba.corej.core.exec.DictionaryFunctions
-                .hierarchyLevelOf(bound.get(0) instanceof Expr.Ref ref ? ref.name() : null);
+                .hierarchyLevelOfArgument(bound.get(0));
         String parentLevel = net.cumba.corej.core.exec.DictionaryFunctions
-                .hierarchyLevelOf(bound.get(1) instanceof Expr.Ref ref ? ref.name() : null);
+                .hierarchyLevelOfArgument(bound.get(1));
         return scoped.atLevels(childLevel, parentLevel);
     }
 

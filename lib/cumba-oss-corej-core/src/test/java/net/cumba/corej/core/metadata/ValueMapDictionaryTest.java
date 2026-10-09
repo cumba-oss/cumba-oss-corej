@@ -68,20 +68,27 @@ class ValueMapDictionaryTest
         RuntimeDictionaryProvider p = dicts();
         // The sensitive probes carry the levels' preferred case: since the C1 data repair the
         // hierarchy and attributes maps are authored in exactly that form.
-        assertTrue(p.onHierarchyPath("meddra", "Headache", "Nervous system disorders", true));
-        assertFalse(p.onHierarchyPath("meddra", "Headache", "Gastrointestinal disorders", true));
-        // Full-ancestor-list convention: every intermediate level (HLT/HLGT) as well as the SOC is
-        // reachable from the leaf term, and the intermediate terms carry their own ancestor lists.
-        assertTrue(p.onHierarchyPath("meddra", "Headache", "Headaches NEC", true),
-                "leaf->HLT ancestor");
-        assertTrue(p.onHierarchyPath("meddra", "Headache", "Headaches", true),
-                "leaf->HLGT ancestor");
-        assertTrue(p.onHierarchyPath("meddra", "Headaches NEC", "Nervous system disorders", true),
-                "HLT->SOC ancestor");
-        assertTrue(p.onHierarchyPath("meddra", "Nausea", "Gastrointestinal disorders", true),
-                "multi-hop leaf->SOC");
-        assertFalse(p.onHierarchyPath("meddra", "Nausea", "Nervous system disorders", true),
-                "wrong SOC ⇒ off-path");
+        // Runbook W4 DI2: the hierarchy is read by level only (the dummy carries hierarchy_by_level
+        // since the W3 FX re-key, mirrored here).
+        assertTrue(p.onHierarchyPath("meddra", "PT", "Headache", "SOC", "Nervous system disorders",
+                true));
+        assertFalse(p.onHierarchyPath("meddra", "PT", "Headache", "SOC",
+                "Gastrointestinal disorders", true));
+        // Every intermediate level (HLT/HLGT) as well as the SOC is reachable from the PT, and the
+        // intermediate terms carry their own entries.
+        assertTrue(p.onHierarchyPath("meddra", "PT", "Headache", "HLT", "Headaches NEC", true),
+                "PT->HLT ancestor");
+        assertTrue(p.onHierarchyPath("meddra", "PT", "Headache", "HLGT", "Headaches", true),
+                "PT->HLGT ancestor");
+        assertTrue(p.onHierarchyPath("meddra", "HLT", "Headaches NEC", "SOC",
+                "Nervous system disorders", true), "HLT->SOC ancestor");
+        assertTrue(p.onHierarchyPath("meddra", "PT", "Nausea", "SOC", "Gastrointestinal disorders",
+                true), "PT->SOC");
+        assertFalse(p.onHierarchyPath("meddra", "PT", "Nausea", "SOC", "Nervous system disorders",
+                true), "wrong SOC ⇒ off-path");
+        assertTrue(p.answersHierarchyAt("meddra", "HLT") && p.answersHierarchyAt("MEDDRA", "PT"));
+        assertFalse(p.answersHierarchyAt("meddra", "LLT"), "the dummy carries no LLT level");
+        assertFalse(p.answersHierarchyAt("unii", "PT"), "no hierarchy on another type");
         assertTrue(p.codeDecodePair("unii", "unii", "R16CO5Y76E", "ASPIRIN", true));
         assertFalse(p.codeDecodePair("unii", "unii", "R16CO5Y76E", "IBUPROFEN", true));
         // NEOPLASM attribute alignment resolves through codeDecodePair over the attributes map.
@@ -100,10 +107,10 @@ class ValueMapDictionaryTest
         RuntimeDictionaryProvider p = dicts();
         // Hierarchy: since the C1 repair dummy meddra stores the levels' preferred case, so an
         // upper-case probe misses sensitively but matches folded.
-        assertFalse(p.onHierarchyPath("meddra", "HEADACHE", "NERVOUS SYSTEM DISORDERS", true),
-                "sensitive: case-mismatched child is off-path");
-        assertTrue(p.onHierarchyPath("meddra", "HEADACHE", "NERVOUS SYSTEM DISORDERS", false),
-                "insensitive: both operands folded");
+        assertFalse(p.onHierarchyPath("meddra", "PT", "HEADACHE", "SOC", "NERVOUS SYSTEM DISORDERS",
+                true), "sensitive: case-mismatched child is off-path");
+        assertTrue(p.onHierarchyPath("meddra", "PT", "HEADACHE", "SOC", "NERVOUS SYSTEM DISORDERS",
+                false), "insensitive: both operands folded");
         // Pair: code and decode both fold under false, both compare verbatim under true.
         assertFalse(p.codeDecodePair("unii", "unii", "r16co5y76e", "ASPIRIN", true),
                 "sensitive: case-mismatched code is not paired");
@@ -191,11 +198,13 @@ class ValueMapDictionaryTest
     /**
      * Runbook W2 DI1 — the level-scoped section at the dictionary's own API: each lookup reads its
      * own level ({@code X} is a PT under {@code S1} and an HLT under {@code S2}), the parent level
-     * is scoped, an LLT is read through its PT, a {@code null} level or a file without the section
-     * takes the bare-name map, and a section alone is content.
+     * is scoped, an LLT is read through its PT, and a section alone is content. Runbook W4 DI2: a
+     * {@code null} level or a file without the section answers NO hierarchy (the bare-name map is
+     * no lookup), and {@link ValueMapDictionary#answersHierarchyAt} is the per-child-level
+     * capability.
      */
     @Test
-    void theLevelScopedSectionAnswersPerLevelAndTheLegacyArmOtherwise() throws Exception
+    void theLevelScopedSectionAnswersPerLevelAndNothingElseDoes() throws Exception
     {
         ValueMapDictionary d = ValueMapDictionary.parse(MAPPER.readTree("{\"type\":\"meddra\","
                 + "\"hierarchy\":{\"X\":[\"S1\",\"S2\"]},\"hierarchy_by_level\":{"
@@ -211,13 +220,18 @@ class ValueMapDictionaryTest
         assertFalse(d.onHierarchyPath("SOC", "S1", "SOC", "S1", true), "no SOC entries");
         assertTrue(d.onHierarchyPath("PT", "x", "SOC", "s1", false),
                 "case_sensitive=false folds key and term");
-        assertTrue(d.onHierarchyPath(null, "X", "SOC", "S2", true),
-                "an unmapped column: the bare-name map, which merges the levels");
+        assertFalse(d.onHierarchyPath(null, "X", "SOC", "S2", true),
+                "an unmapped column reads no bare-name map any more");
         assertFalse(d.onHierarchyPath("PT", null, "SOC", "S1", true));
+        assertTrue(d.hasHierarchyByLevel() && d.answersHierarchyAt("PT")
+                && d.answersHierarchyAt("LLT"));
+        assertFalse(d.answersHierarchyAt("HLGT"), "a level the section lacks");
         ValueMapDictionary legacy = ValueMapDictionary
                 .parse(MAPPER.readTree("{\"type\":\"meddra\",\"hierarchy\":{\"X\":[\"S2\"]}}"));
-        assertTrue(legacy.onHierarchyPath("PT", "X", "SOC", "S2", true),
-                "a file without the section answers as before");
+        assertFalse(legacy.onHierarchyPath("PT", "X", "SOC", "S2", true),
+                "a file without the section answers no hierarchy");
+        assertFalse(legacy.hasHierarchyByLevel() || legacy.answersHierarchyAt("PT"));
+        assertTrue(legacy.hasContent(), "but it stays content: the other lookups answer");
         assertTrue(ValueMapDictionary.parse(MAPPER.readTree(
                 "{\"type\":\"meddra\",\"hierarchy_by_level\":{\"HLT\":{\"H\":{\"SOC\":[\"S\"]}}}}"))
                 .hasContent(), "the section alone is content");
@@ -230,22 +244,23 @@ class ValueMapDictionaryTest
 
 
     /**
-     * Runbook W2 fold (R5 PB-L1): a section that lacks the CHILD level does not disable the legacy
-     * arm for it — the lookup falls back to the bare-name map, as a file without the section does.
-     * Since PB-M1 the converter writes no LLT level, so a {@code --LLT} read on a new file answers
-     * exactly as before DI1; a level the section carries still answers from it alone.
+     * Runbook W4 DI2 (was R5 PB-L1's fallback): a section that lacks the CHILD level cannot answer
+     * at it — no bare-name fallback; the runner SKIPs such a rule before asking
+     * ({@link ValueMapDictionary#answersHierarchyAt}). A level the section carries answers from it
+     * alone.
      */
     @Test
-    void aSectionWithoutTheChildLevelFallsBackToTheBareNameMap() throws Exception
+    void aSectionWithoutTheChildLevelCannotAnswerAtIt() throws Exception
     {
         ValueMapDictionary d = ValueMapDictionary.parse(MAPPER.readTree("{\"type\":\"meddra\","
                 + "\"hierarchy\":{\"X\":[\"S1\",\"S2\"]},\"hierarchy_by_level\":{"
                 + "\"PT\":{\"X\":{\"SOC\":[\"S1\"]}}}}"));
-        assertTrue(d.onHierarchyPath("LLT", "X", "SOC", "S2", true),
-                "no LLT level in the section: the bare-name map answers");
-        assertFalse(d.onHierarchyPath("LLT", "Y", "SOC", "S2", true), "and misses as it does");
+        assertFalse(d.answersHierarchyAt("LLT"));
+        assertFalse(d.onHierarchyPath("LLT", "X", "SOC", "S2", true),
+                "no LLT level in the section: nothing answers");
         assertFalse(d.onHierarchyPath("PT", "X", "SOC", "S2", true),
                 "a level the section carries answers from it alone");
+        assertTrue(d.onHierarchyPath("PT", "X", "SOC", "S1", true));
     }
 
 
@@ -289,17 +304,20 @@ class ValueMapDictionaryTest
         ValueMapDictionary empty = ValueMapDictionary.parse(MAPPER.readTree("{\"type\":\"x\"}"));
         assertFalse(empty.caseMatches(null, "X"), "no levels ⇒ anyLevel() null ⇒ false");
         assertFalse(empty.isValidTerm(null, null), "null term ⇒ false");
-        // Hierarchy null-argument and unknown-term guards.
-        ValueMapDictionary h = ValueMapDictionary
-                .parse(MAPPER.readTree("{\"type\":\"x\",\"hierarchy\":{\"child\":[\"parent\"]}}"));
-        assertTrue(h.onHierarchyPath("CHILD", "parent", false), "case-folded parent match");
-        assertTrue(h.onHierarchyPath("child", "parent", true), "as-authored sensitive match");
-        assertFalse(h.onHierarchyPath("CHILD", "parent", true),
+        // Hierarchy null-argument and unknown-term guards (level-scoped, runbook W4 DI2).
+        ValueMapDictionary h = ValueMapDictionary.parse(MAPPER.readTree(
+                "{\"type\":\"x\",\"hierarchy_by_level\":{\"PT\":{\"child\":{\"SOC\":[\"parent\"]}}}}"));
+        assertTrue(h.onHierarchyPath("PT", "CHILD", "SOC", "parent", false),
+                "case-folded parent match");
+        assertTrue(h.onHierarchyPath("PT", "child", "SOC", "parent", true),
+                "as-authored sensitive match");
+        assertFalse(h.onHierarchyPath("PT", "CHILD", "SOC", "parent", true),
                 "sensitive: folded probe misses the as-authored key");
-        assertFalse(h.onHierarchyPath(null, "parent", true), "null term ⇒ false");
-        assertFalse(h.onHierarchyPath("child", null, true), "null parent ⇒ false");
-        assertFalse(h.onHierarchyPath("unknown", "parent", true), "term with no parents ⇒ false");
-        assertFalse(h.onHierarchyPath("unknown", "parent", false),
+        assertFalse(h.onHierarchyPath("PT", null, "SOC", "parent", true), "null term ⇒ false");
+        assertFalse(h.onHierarchyPath("PT", "child", "SOC", null, true), "null parent ⇒ false");
+        assertFalse(h.onHierarchyPath("PT", "unknown", "SOC", "parent", true),
+                "term with no parents ⇒ false");
+        assertFalse(h.onHierarchyPath("PT", "unknown", "SOC", "parent", false),
                 "term with no parents ⇒ false (folded)");
     }
 

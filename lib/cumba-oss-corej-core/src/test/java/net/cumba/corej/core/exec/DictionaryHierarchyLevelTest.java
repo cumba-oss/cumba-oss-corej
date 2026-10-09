@@ -3,6 +3,7 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
@@ -28,9 +29,16 @@ import org.junit.jupiter.api.io.TempDir;
  * and parent alike, end to end through the loader and the runner over a house file the real
  * {@link MedDraConverter} wrote from a synthetic distribution (MedDRA is licensed). Owner facts
  * (2026-10-08): a PT name can also be an HLT and an LLT name, so a bare-name lookup would admit a
- * wrong SOC; codes are code-like identifiers, never words. A file without the level-scoped section
- * (every file installed before DI1, and the corpus dummy) answers exactly as before — the legacy
- * arm, pinned here on the same distribution with the section removed.
+ * wrong SOC; codes are code-like identifiers, never words.
+ *
+ * <p>
+ * Runbook W4 DI2 ({@code PLAN-engine-gap-dict-unsupported} Q3, coordinator W4-D11): the bare-name
+ * legacy arm is gone. A house file without the level-scoped section (every file converted before
+ * DI1), or whose section lacks the level the child column reads (LLT / LLTCD — never written since
+ * PB-M1), cannot answer: the hierarchy rule SKIPs with the reason, binding or inline, while the
+ * file stays loaded for the other MedDRA functions. A column whose name maps to no MedDRA level is
+ * the rule's load error (F2) — there is no bare map left to read it through.
+ * </p>
  */
 class DictionaryHierarchyLevelTest
 {
@@ -97,21 +105,24 @@ class DictionaryHierarchyLevelTest
 
 
     /**
-     * Runbook W2 fold (R5 PB-M1 / PB-L1): the converter writes no LLT level, so {@code AELLT} takes
-     * the bare-name map, exactly as before DI1 — it is keyed by HLT and HLGT names, so no LLT
-     * resolves and every row fires, as on a file installed before DI1 (no shipped rule reads
-     * {@code --LLT}).
+     * Runbook W4 DI2: the converter writes no LLT level (PB-M1), so an {@code AELLT} child cannot
+     * be answered — the rule SKIPs with the reason. Until DI2 it took the bare-name map, keyed by
+     * HLT and HLGT names, and fired on every row (PB-L1).
      */
     @Test
-    void anLltReadTakesTheBareNameMapAsBefore() throws IOException
+    void anLltReadSkipsWithTheReason() throws IOException
     {
         IDataTable ae = RealTables.of("AE").str("USUBJID", "1", "2", "3")
                 .str("AELLT", "Gamma", "Gamma", "Alpha")
                 .str("AESOC", "Soc One", "Soc Two", "Soc One").build();
-        ObjectNode legacy = converted.deepCopy();
-        legacy.remove("hierarchy_by_level");
-        assertEquals(fired(ae, "AELLT, AESOC", legacy), fired(ae, "AELLT, AESOC", converted));
-        assertEquals(List.of(1L, 2L, 3L), fired(ae, "AELLT, AESOC", converted));
+        RuleExecutionResult result = run(ae, "AELLT, AESOC", converted);
+        assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus(), result.getStatusMessage());
+        assertEquals(
+                "Rule skipped \u2014 external dictionary meddra cannot answer the LLT \u2192 SOC"
+                        + " hierarchy: its house file carries no LLT level in hierarchy_by_level \u2014 the"
+                        + " converter writes PT, HLT and HLGT and their codes (the rule needs this external"
+                        + " dictionary)",
+                result.getStatusMessage());
     }
 
 
@@ -127,8 +138,8 @@ class DictionaryHierarchyLevelTest
 
 
     /**
-     * Q2: the code variables read the code levels (PT code → primary SOC code); an LLT code takes
-     * the bare-name map since PB-M1 (no code is a key there, so both rows fire, as before DI1).
+     * Q2: the code variables read the code levels (PT code → primary SOC code); an LLT code child
+     * SKIPs since DI2 (no LLTCD level since PB-M1; before DI2 the bare-name map fired both rows).
      */
     @Test
     void theCodeVariablesReadTheCodeLevels() throws IOException
@@ -140,7 +151,11 @@ class DictionaryHierarchyLevelTest
         IDataTable llt = RealTables.of("AE").str("USUBJID", "1", "2")
                 .str("AELLTCD", "50000003", "50000003").str("AESOCCD", "40000001", "40000002")
                 .build();
-        assertEquals(List.of(1L, 2L), fired(llt, "AELLTCD, AESOCCD", converted));
+        RuleExecutionResult skipped = run(llt, "AELLTCD, AESOCCD", converted);
+        assertEquals(RuleExecutionStatus.SKIPPED, skipped.getStatus(), skipped.getStatusMessage());
+        assertTrue(skipped.getStatusMessage().contains("cannot answer the LLTCD \u2192 SOCCD"
+                + " hierarchy: its house file carries no LLTCD level in hierarchy_by_level"),
+                skipped.getStatusMessage());
     }
 
 
@@ -151,8 +166,8 @@ class DictionaryHierarchyLevelTest
      * level-scoped arm, over a name that is both an HLT and an HLGT: the HLT {@code Hlgt Two}
      * (primary under Hlgt One / Soc One, through the PT {@code Epsilon}) beside the HLGT
      * {@code Hlgt Two} (Soc Two). The bare-name map merges the two under one key and admits both
-     * SOCs; the HLT entry admits its own only (row 2 fires), and the legacy arm on the same file
-     * without the section still admits both (nothing fires).
+     * SOCs; the HLT entry admits its own only (row 2 fires). The same file without the section
+     * SKIPs since DI2 (until then the bare-name map admitted both and nothing fired).
      */
     @Test
     void theAuthoredCg0460ShapeReadsTheHltEntryOverAnHltHlgtNameCollision() throws IOException
@@ -178,8 +193,8 @@ class DictionaryHierarchyLevelTest
         assertEquals(List.of(2L), fired(ae, "AEHLT, AESOC", collided));
         ObjectNode legacy = collided.deepCopy();
         legacy.remove("hierarchy_by_level");
-        assertEquals(List.of(), fired(ae, "AEHLT, AESOC", legacy),
-                "the bare-name map merges the HLT and the HLGT Hlgt Two");
+        assertEquals(RuleExecutionStatus.SKIPPED, run(ae, "AEHLT, AESOC", legacy).getStatus(),
+                "no bare-name map answers any more");
     }
 
 
@@ -228,41 +243,88 @@ class DictionaryHierarchyLevelTest
 
 
     /**
-     * A column whose name maps to no MedDRA level ({@code --BODSYS} may carry a secondary SOC, so
-     * it is deliberately not mapped) keeps today's bare-name lookup over the legacy section.
+     * Runbook W4 DI2 F2: a column whose name maps to no MedDRA level ({@code --BODSYS} may carry a
+     * secondary SOC, so it is deliberately not mapped; a {@code $} binding; a computed operand) is
+     * the rule's load error — in a binding, inline in a Check, in a Check-less rule — naming the
+     * operand and the columns that do name a level. Until DI2 it read the bare-name map.
      */
     @Test
-    void anUnmappedColumnKeepsTheBareNameLookup() throws IOException
+    void aColumnThatNamesNoMedDraLevelIsALoadError() throws IOException
     {
-        IDataTable ae = RealTables.of("AE").str("USUBJID", "1", "2")
-                .str("AEHLT", "Hlt One", "Hlt One").str("AEBODSYS", "Soc One", "Soc Two").build();
-        assertEquals(List.of(2L), fired(ae, "AEHLT, AEBODSYS", converted));
+        String hint = " names no MedDRA level (write a --DECOD/--PTCD, --HLT/--HLTCD,"
+                + " --HLGT/--HLGTCD or --SOC/--SOCCD column)";
+        String head = "valid_external_dictionary_hierarchy reads the dictionary at the levels its two"
+                + " columns name \u2014 ";
+        assertEquals(head + "AEBODSYS" + hint, loadError(binding("AEHLT, AEBODSYS")));
+        assertEquals(head + "AEBODSYS" + hint, loadError(binding("AEBODSYS, AESOC")));
+        assertEquals(head + "upper(AEHLT)" + hint, loadError(binding("upper(AEHLT), AESOC")));
+        String dollar = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"DI2\"},\"Sensitivity\":\"Record\","
+                + "\"Bindings\":[{\"name\":\"$c\",\"expression\":\"upper(AEHLT)\"},"
+                + "{\"name\":\"$p\",\"expression\":\"valid_external_dictionary_hierarchy($c,"
+                + " AESOC, external_dictionary_type=\\\"meddra\\\")\"}],"
+                + "\"Check\":{\"expression\":\"$p == false\"},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}";
+        assertEquals(head + "$c" + hint, loadError(dollar));
+        String inline = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"DI2\"},\"Sensitivity\":\"Record\","
+                + "\"Check\":{\"expression\":\"not valid_external_dictionary_hierarchy(AEHLT,"
+                + " AEBODSYS, external_dictionary_type=\\\"meddra\\\")\"},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}";
+        assertEquals(head + "AEBODSYS" + hint, loadError(inline));
+        String checkless = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"DI2\"},"
+                + "\"Bindings\":[{\"name\":\"$p\",\"expression\":"
+                + "\"valid_external_dictionary_hierarchy(AEHLT, AEBODSYS,"
+                + " external_dictionary_type=\\\"meddra\\\")\"}],"
+                + "\"Outcome\":{\"Message\":\"m\"}}}}";
+        assertEquals(head + "AEBODSYS" + hint, loadError(checkless));
+        assertNull(RulePackageLoader.loadFromString(binding("--HLT, --SOC")).getRules().get("x")
+                .getLoadError(), "the CG0460 shape names two levels and loads");
     }
 
-    // ------------------------------------------------------------------ the legacy arm
+    // ------------------------------------------------------------------ the stale house file
 
 
     /**
-     * The same distribution WITHOUT {@code hierarchy_by_level} — the shape of every file installed
-     * before DI1: the bare-name map answers exactly as before, the HLT {@code Beta}'s SOC included
-     * (row 4 does not fire) and no PT key at all (rows 1, 3, 5 fire). This is the arm that keeps
-     * {@code CDISC-CG0460} / {@code CG0461} unmoved on an installed file and on the corpus dummy.
+     * Runbook W4 DI2 (Q3): the same distribution WITHOUT {@code hierarchy_by_level} — the shape of
+     * every file converted before DI1 — answers no hierarchy: the rule SKIPs with the reason, the
+     * {@code CDISC-CG0460} binding shape and the same call inline in the Check alike, while a
+     * sibling {@code valid_external_dictionary_value} rule on the same file still EXECUTES (the
+     * file stays loaded). Until DI2 the bare-name map answered (and admitted any SOC a same-named
+     * HLT carried).
      */
     @Test
-    void aFileWithoutTheLevelScopedSectionAnswersAsBefore() throws IOException
+    void aFileWithoutTheLevelScopedSectionSkipsTheHierarchyRuleWithTheReason() throws IOException
     {
         ObjectNode legacy = converted.deepCopy();
         legacy.remove("hierarchy_by_level");
-        IDataTable ae = RealTables.of("AE").str("USUBJID", "1", "2", "3", "4", "5", "6", "7")
-                .str("AEDECOD", "Alpha", "Alpha", "Beta", "Beta", "Gamma", "Gamma", "Alpha")
-                .str("AESOC", "Soc One", "Soc Two", "Soc One", "Soc Two", "Soc Two", "Soc One",
-                        "Hlt One")
-                .build();
-        assertEquals(List.of(1L, 2L, 3L, 5L, 6L, 7L), fired(ae, "AEDECOD, AESOC", legacy));
         IDataTable hlt = RealTables.of("AE").str("USUBJID", "1", "2", "3", "4")
                 .str("AEHLT", "Beta", "Beta", "Hlt One", "Hlt Two")
+                .str("AEDECOD", "Alpha", "Beta", "Gamma", "Nope")
                 .str("AESOC", "Soc Two", "Soc One", "Soc One", "Soc One").build();
-        assertEquals(List.of(2L, 4L), fired(hlt, "AEHLT, AESOC", legacy));
+        String reason = "Rule skipped \u2014 external dictionary meddra cannot answer the HLT \u2192 SOC"
+                + " hierarchy: its house file has no level-scoped hierarchy (hierarchy_by_level)"
+                + " \u2014 it was converted before this release; re-install meddra to re-convert it"
+                + " (the rule needs this external dictionary)";
+        RuleExecutionResult bound = run(hlt, "AEHLT, AESOC", legacy);
+        assertEquals(RuleExecutionStatus.SKIPPED, bound.getStatus(), bound.getStatusMessage());
+        assertEquals(reason, bound.getStatusMessage());
+        String inline = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"DI2\"},\"Sensitivity\":\"Record\","
+                + "\"Check\":{\"expression\":\"not valid_external_dictionary_hierarchy(AEHLT,"
+                + " AESOC, external_dictionary_type=\\\"meddra\\\")\"},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}";
+        RuleExecutionResult inlined = execute(inline, hlt, legacy);
+        assertEquals(RuleExecutionStatus.SKIPPED, inlined.getStatus(), inlined.getStatusMessage());
+        assertEquals(reason, inlined.getStatusMessage());
+        String value = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"DI2\"},\"Sensitivity\":\"Record\","
+                + "\"Bindings\":[{\"name\":\"$v\",\"expression\":"
+                + "\"valid_external_dictionary_value(AEDECOD, external_dictionary_type=\\\"meddra\\\","
+                + " dictionary_term_type=\\\"PT\\\")\"}],"
+                + "\"Check\":{\"expression\":\"$v == false\"},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}";
+        RuleExecutionResult member = execute(value, hlt, legacy);
+        assertEquals(RuleExecutionStatus.EXECUTED, member.getStatus(), member.getStatusMessage());
+        assertEquals(1, member.getViolations().size(), "Nope is no PT; the file still answers");
+        assertEquals(RuleExecutionStatus.EXECUTED, run(hlt, "AEHLT, AESOC", converted).getStatus(),
+                "the re-converted file answers (control)");
     }
 
     // ------------------------------------------------------------------ helpers
@@ -272,24 +334,54 @@ class DictionaryHierarchyLevelTest
     private static List<Long> fired(IDataTable aTable, String aArguments, ObjectNode aDictionary)
         throws IOException
     {
-        String pkg = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"DI1\"},\"Sensitivity\":\"Record\","
+        RuleExecutionResult result = run(aTable, aArguments, aDictionary);
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        List<Long> rows = new ArrayList<>();
+        result.getViolations().forEach(v -> rows.add(v.getRowNumber()));
+        return rows;
+    }
+
+
+    /** The {@code CDISC-CG0460}-shaped package: the call in a binding, {@code $p == false}. */
+    private static String binding(String aArguments)
+    {
+        return "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"DI1\"},\"Sensitivity\":\"Record\","
                 + "\"Bindings\":[{\"name\":\"$p\",\"expression\":"
                 + "\"valid_external_dictionary_hierarchy(" + aArguments
                 + ", external_dictionary_type=\\\"meddra\\\")\"}],"
                 + "\"Check\":{\"expression\":\"$p == false\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}";
-        Rule rule = RulePackageLoader.loadFromString(pkg).getRules().get("x");
+    }
+
+
+    private static RuleExecutionResult run(IDataTable aTable, String aArguments,
+            ObjectNode aDictionary)
+        throws IOException
+    {
+        return execute(binding(aArguments), aTable, aDictionary);
+    }
+
+
+    private static RuleExecutionResult execute(String aPackage, IDataTable aTable,
+            ObjectNode aDictionary)
+        throws IOException
+    {
+        Rule rule = RulePackageLoader.loadFromString(aPackage).getRules().get("x");
         assertNotNull(rule, "the rule loads");
         assertNull(rule.getLoadError(), rule.getLoadError());
         RuntimeDictionaryProvider dicts = new RuntimeDictionaryProvider(
                 Map.of("meddra", ValueMapDictionary.parse(aDictionary)));
-        RuleExecutionResult result = RuleRunnerCalls.execute(rule, aTable,
+        return RuleRunnerCalls.execute(rule, aTable,
                 name -> name.equals(aTable.getMetaData().getName()) ? aTable : null, null, null,
                 null, null, Integer.MAX_VALUE, null, dicts);
-        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
-        List<Long> rows = new ArrayList<>();
-        result.getViolations().forEach(v -> rows.add(v.getRowNumber()));
-        return rows;
+    }
+
+
+    private static String loadError(String aPackage) throws IOException
+    {
+        Rule rule = RulePackageLoader.loadFromString(aPackage).getRules().get("x");
+        assertNotNull(rule, "the rule binds");
+        return String.valueOf(rule.getLoadError());
     }
 
 

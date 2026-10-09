@@ -32,6 +32,15 @@ import java.util.Set;
  * <p>
  * {@code data_type} is the canonical alias of the provider's {@code simpleDatatype}.
  * </p>
+ *
+ * <p>
+ * ⚑ <b>45 of the names are report-column names only</b> (runbook W4 MA6,
+ * {@code PLAN-metadata-accessor-default-level} D6 / row 14): the metadata aliases
+ * ({@code MetadataOperandMapping.retiredOperands()} — {@code dataset_name}, {@code variable_label},
+ * {@code define_variable_codelist_coded_codes}, ..., {@code library_variable_label_template}) stay
+ * registered so an {@code Output_Variables} entry resolves, but written in an expression they are
+ * the rule's load error naming the accessor spelling ({@code RulePackageLoader}'s seam pass).
+ * </p>
  */
 public final class BuiltinRegistry
 {

@@ -62,7 +62,7 @@ an absent or mis-shaped key degrades to empty **silently**
 | Section      | Key                  | Value                       | Serves |
 |--------------|----------------------|-----------------------------|--------|
 | `levels`     | term **upper-cased** | the term in *preferred case* | `valid_external_dictionary_value`, `valid_external_dictionary_code` |
-| `hierarchy`  | term, verbatim       | list of ancestor terms, verbatim | `valid_external_dictionary_hierarchy` (legacy arm) |
+| `hierarchy`  | term, verbatim       | list of ancestor terms, verbatim | no lookup since runbook W4 DI2 (kept for older engine releases) |
 | `hierarchy_by_level` | level → term, verbatim | ancestor level → list of ancestor terms, verbatim | `valid_external_dictionary_hierarchy` (level-scoped) |
 | `pairs`      | registry → code, verbatim | decode, verbatim       | `valid_external_dictionary_code_term_pair`, `dictionary_has_decode` |
 | `attributes` | attribute → term, verbatim | value, verbatim        | reached only by the pair/decode fall-through scan |
@@ -85,11 +85,21 @@ columns it names, derived from their names at load (`--DECOD` → `PT`,
 `--PTCD` → `PTCD`, `--LLT`, `--HLT`, `--HLGT`, `--SOC` and their `CD` forms);
 `--BODSYS` is deliberately **not** mapped (it may carry a secondary SOC).
 
-⭐ **Legacy arm:** a file **without** `hierarchy_by_level` — every MedDRA file
-installed before this section existed, and the dummy fixture here — answers
-exactly as before through `hierarchy`; so does a call naming a column that
-maps to no level. Re-convert an installed MedDRA distribution to gain the
-level-scoped section (`MedDraConverter` writes both sections). The registry *name* is a
+⭐ **No legacy arm** (runbook W4 DI2): the hierarchy is read from
+`hierarchy_by_level` only. A MedDRA file **without** it — every file
+converted before this section existed — stays loaded (its membership and pair
+rules answer), is reported once at load (WARNING) and in the run's
+`Dictionary_Basis` (`meddra 27.0 (no hierarchy_by_level — re-convert it to
+answer the hierarchy rules)`), and its hierarchy rules report **SKIPPED** with
+the reason; so does a rule whose child level the section does not carry
+(`--LLT` / `--LLTCD`). A call naming a column that maps to no level
+(`--BODSYS`, a `$`-binding, a computed operand) fails to load. **Re-install
+(re-convert) an installed MedDRA distribution** after this release — the
+installer refuses a meddra file without the six levels PT, PTCD, HLT, HLTCD,
+HLGT, HLGTCD in `hierarchy_by_level` (`MedDraConverter` writes both
+sections; the bare-name `hierarchy` stays for older engine releases sharing
+the directory). The dummy fixture here carries the section (runbook W3 FX).
+The registry *name* is a
 preference, not a constraint — on a miss both pair operations scan every
 `pairs` registry and every `attributes` map of that dictionary.
 
@@ -144,7 +154,7 @@ and `rules-src/checks/**/*.yaml` — the two populations name the same
 
 | `type`     | required `levels` keys                                                   | other sections | rules |
 |------------|--------------------------------------------------------------------------|---|-------|
-| `meddra`   | `PT` `PTCD` `LLT` `LLTCD` `HLT` `HLTCD` `HLGT` `HLGTCD` `SOC` `SOCCD` | `hierarchy`, keyed at **HLT + HLGT only**, each carrying its SOC; `hierarchy_by_level` (PT / LLT / HLT / HLGT names and codes → primary path) — written by the converter, not yet required | 51 |
+| `meddra`   | `PT` `PTCD` `LLT` `LLTCD` `HLT` `HLTCD` `HLGT` `HLGTCD` `SOC` `SOCCD` | `hierarchy`, keyed at **HLT + HLGT only**, each carrying its SOC; `hierarchy_by_level` (PT / HLT / HLGT names and codes → primary path) — required since runbook W4 DI2 (`PT` `PTCD` `HLT` `HLTCD` `HLGT` `HLGTCD`) | 51 |
 | `unii`     | `UNII` `SRS`                                                             | `pairs.unii` | 24 |
 | `snomed`   | `SNOMED` `SNOMEDCD`                                                      | `pairs.snomed` | 8 |
 | `medrt`    | `MEDRT` `MEDRTCD`                                                        | `pairs.medrt` | 8 |

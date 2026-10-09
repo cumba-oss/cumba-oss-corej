@@ -185,6 +185,32 @@ class HouseFormatValidatorTest
     }
 
 
+    /**
+     * Runbook W4 DI2 (Q3 (a)): the hierarchy rules read {@code hierarchy_by_level} only, so an
+     * installed meddra file must carry it, with every level the converter writes (PT, HLT, HLGT and
+     * their codes) — a file without it would install and then SKIP its hierarchy rules.
+     */
+    @Test
+    void meddraWithoutTheLevelScopedHierarchyIsIncomplete() throws IOException
+    {
+        List<String> none = HouseFormatValidator.completenessViolations("meddra",
+                json("{\"type\":\"meddra\",\"levels\":{\"PT\":{\"A\":\"A\"}},"
+                        + "\"hierarchy\":{\"A\":[\"S\"]}}"));
+        assertTrue(none.stream().anyMatch(s -> s.contains("hierarchy_by_level[PT]")),
+                none.toString());
+        List<String> partial = HouseFormatValidator.completenessViolations("meddra",
+                json("{\"type\":\"meddra\",\"levels\":{\"PT\":{\"A\":\"A\"}},"
+                        + "\"hierarchy\":{\"A\":[\"S\"]},\"hierarchy_by_level\":{"
+                        + "\"PT\":{\"A\":{\"SOC\":[\"S\"]}},\"PTCD\":{\"1\":{\"SOCCD\":[\"9\"]}},"
+                        + "\"HLT\":{\"H\":{\"SOC\":[\"S\"]}},\"HLTCD\":{\"2\":{\"SOCCD\":[\"9\"]}},"
+                        + "\"HLGTCD\":{\"3\":{\"SOCCD\":[\"9\"]}}}}"));
+        assertTrue(partial.stream().anyMatch(s -> s.contains("hierarchy_by_level[HLGT]")),
+                partial.toString());
+        assertFalse(partial.stream().anyMatch(s -> s.contains("hierarchy_by_level[PT]")),
+                partial.toString());
+    }
+
+
     /** neoplasm requires no levels at all — only its attribute map. */
     @Test
     void neoplasmNeedsOnlyItsAttributeMap() throws IOException

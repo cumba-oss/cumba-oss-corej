@@ -1146,6 +1146,14 @@ public final class StudyValidationService
      * self-gating — its rule answers either way, like the gate itself.
      * </p>
      *
+     * <p>
+     * Runbook W4 DI2 ({@code PLAN-engine-gap-dict-unsupported} Q3): a hierarchy rule on a LOADED
+     * dictionary that cannot answer at its child's level — a meddra house file converted before DI1
+     * (no {@code hierarchy_by_level}), or a level no file carries (LLT) — SKIPs too, so it counts
+     * as not answerable, and the file is named in {@code Loaded:} with the remedy. Its hierarchy
+     * calls are read from the bindings and the Check levels alike (the capability arm gates both).
+     * </p>
+     *
      * @param dict
      *            the provider the run consulted, may be {@code null} (no directory configured)
      * @param rules
@@ -1158,15 +1166,17 @@ public final class StudyValidationService
         int dictionaryRules = 0;
         int answerable = 0;
         Set<String> unavailableNeeded = new java.util.TreeSet<>();
+        Map<String, Set<String>> hierarchyGaps = new java.util.TreeMap<>();
         for (Rule rule : rules)
         {
             Set<String> needed = requiredDictionaryTypes(rule);
-            if (needed.isEmpty())
+            boolean gap = hierarchyGaps(dict, rule, hierarchyGaps);
+            if (needed.isEmpty() && !gap)
             {
                 continue;
             }
             dictionaryRules++;
-            boolean ok = true;
+            boolean ok = !gap;
             for (String type : needed)
             {
                 if (dict == null || !dict.isAvailable(type))
@@ -1204,7 +1214,19 @@ public final class StudyValidationService
                 {
                     basis.append(' ').append(version);
                 }
+                Set<String> levels = hierarchyGaps.get(type);
+                if (levels != null)
+                {
+                    basis.append(dict.hasHierarchyByLevel(type)
+                            ? " (no " + String.join(",", levels) + " level in hierarchy_by_level)"
+                            : " (no hierarchy_by_level \u2014 re-convert it to answer the hierarchy"
+                                    + " rules)");
+                }
             }
+        }
+        if (unavailableNeeded.isEmpty())
+        {
+            return basis.append('.').toString();
         }
         basis.append(". Not loaded: ");
         boolean first = true;
@@ -1218,6 +1240,42 @@ public final class StudyValidationService
             first = false;
         }
         return basis.toString();
+    }
+
+
+    /**
+     * Runbook W4 DI2: records, per lower-cased type, the child levels of this rule's hierarchy
+     * calls (bindings and Check levels) that a LOADED dictionary cannot answer — a type that is not
+     * loaded is the unavailability count's, never a gap.
+     *
+     * @return whether the rule has such a gap
+     */
+    private static boolean hierarchyGaps(
+            net.cumba.corej.core.metadata.@Nullable RuntimeDictionaryProvider dict, Rule rule,
+            Map<String, Set<String>> gaps)
+    {
+        if (dict == null)
+        {
+            return false;
+        }
+        net.cumba.corej.core.exec.ProviderNeeds needs = net.cumba.corej.core.exec.ProviderNeeds
+                .ofBindings(rule);
+        for (net.cumba.corej.core.model.CheckCondition level : rule.checkConditions())
+        {
+            needs = needs.union(net.cumba.corej.core.exec.ProviderNeeds.ofCondition(level));
+        }
+        boolean gap = false;
+        for (net.cumba.corej.core.exec.ProviderNeeds.HierarchyRead read : needs.hierarchyReads())
+        {
+            if (dict.isAvailable(read.type())
+                    && !dict.answersHierarchyAt(read.type(), read.childLevel()))
+            {
+                gaps.computeIfAbsent(read.type().toLowerCase(Locale.ROOT),
+                        k -> new java.util.TreeSet<>()).add(read.childLevel());
+                gap = true;
+            }
+        }
+        return gap;
     }
 
 

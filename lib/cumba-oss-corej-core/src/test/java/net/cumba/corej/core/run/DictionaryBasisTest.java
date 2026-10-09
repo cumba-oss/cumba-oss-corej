@@ -1,6 +1,7 @@
 package net.cumba.corej.core.run;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -132,5 +133,65 @@ class DictionaryBasisTest
         assertTrue(
                 basis.contains("external dictionary unii is installed but carries no usable terms"),
                 basis);
+    }
+
+
+    private static Rule hierarchyRule(String id, String columns) throws IOException
+    {
+        return RulePackageLoader.loadFromString(
+                """
+                        {"rules": {"%s": {
+                          "Core": {"Id": "%s"},
+                          "Executability": "Fully Executable",
+                          "Bindings": [{"name": "$p", "expression":
+                              "valid_external_dictionary_hierarchy(%s, external_dictionary_type=\\"meddra\\")"}],
+                          "Check": {"all": [{"expression": "$p == false"}]}
+                        }}}
+                        """
+                        .formatted(id, id, columns))
+                .getRules().values().iterator().next();
+    }
+
+
+    /**
+     * Runbook W4 DI2 (Q3): a meddra house file converted before DI1 (no {@code hierarchy_by_level})
+     * stays loaded — its membership rule is answerable — but its hierarchy rule is not: the basis
+     * line counts it and names the file in {@code Loaded:} with the remedy. A file carrying the
+     * section answers both (no line). A section without the child level (LLT) is named by level.
+     */
+    @Test
+    void aStaleMeddraHouseFileIsNamedAndItsHierarchyRuleIsNotAnswerable(@TempDir Path dir)
+        throws IOException
+    {
+        Files.writeString(dir.resolve("meddra.json"), "{\"type\":\"meddra\",\"version\":\"27.0\","
+                + "\"levels\":{\"PT\":{\"HEADACHE\":\"Headache\"},\"HLT\":{\"HEADACHES NEC\":"
+                + "\"Headaches NEC\"},\"SOC\":{\"NERVOUS SYSTEM DISORDERS\":\"Nervous system"
+                + " disorders\"}},\"hierarchy\":{\"Headaches NEC\":[\"Nervous system disorders\"]}}");
+        RuntimeDictionaryProvider stale = RuntimeDictionaryProvider.loadDirectory(dir);
+        assertTrue(stale.isAvailable("meddra"), "a stale file is NOT dropped");
+        List<Rule> rules = List.of(dictRule("R1", "meddra"), hierarchyRule("R2", "AEHLT, AESOC"));
+
+        String basis = StudyValidationService.dictionaryBasis(stale, rules);
+
+        assertNotNull(basis);
+        assertTrue(basis.contains("1 of 2 dictionary rules in this run were answerable"), basis);
+        assertTrue(basis.contains("Loaded: meddra 27.0 (no hierarchy_by_level \u2014 re-convert it"
+                + " to answer the hierarchy rules)."), basis);
+        assertFalse(basis.contains("Not loaded"), basis);
+
+        Path fresh = Files.createDirectory(dir.resolve("fresh"));
+        Files.writeString(fresh.resolve("meddra.json"), "{\"type\":\"meddra\",\"version\":\"27.0\","
+                + "\"levels\":{\"PT\":{\"HEADACHE\":\"Headache\"},\"HLT\":{\"HEADACHES NEC\":"
+                + "\"Headaches NEC\"},\"SOC\":{\"NERVOUS SYSTEM DISORDERS\":\"Nervous system"
+                + " disorders\"}},\"hierarchy_by_level\":{\"HLT\":{\"Headaches NEC\":{\"SOC\":"
+                + "[\"Nervous system disorders\"]}}}}");
+        RuntimeDictionaryProvider converted = RuntimeDictionaryProvider.loadDirectory(fresh);
+        assertNull(StudyValidationService.dictionaryBasis(converted, rules),
+                "a re-converted file answers both rules");
+        String llt = StudyValidationService.dictionaryBasis(converted,
+                List.of(hierarchyRule("R3", "AELLT, AESOC")));
+        assertNotNull(llt);
+        assertTrue(llt.contains("0 of 1 dictionary rules"), llt);
+        assertTrue(llt.contains("Loaded: meddra 27.0 (no LLT level in hierarchy_by_level)."), llt);
     }
 }
