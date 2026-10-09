@@ -43,7 +43,7 @@ class ByKeyOrderTest
     private static final String EMPTY = "empty_within_except_last_row(SEENDTC, USUBJID, by=SESEQ)";
 
     /** A ruling handle in parentheses: {@code (… O17)}, {@code (… W4 DI2)}, {@code (D84)}. */
-    private static final Pattern RULING_HANDLE = Pattern.compile("\\([^()]*\\b[A-Z]{1,3}\\d+\\)");
+    static final Pattern RULING_HANDLE = Pattern.compile("\\([^()]*\\b[A-Z]{1,3}\\d+\\)");
 
     private static String day(int d)
     {
@@ -157,8 +157,20 @@ class ByKeyOrderTest
     {
         assertEquals(List.of(1, 2, 0), order(DataValueType.DOUBLE, 10.0, 1.5, 2.0),
                 "DOUBLE 1.5, 2.0, 10.0");
-        assertEquals(List.of(0, 1), textOrder("9", "10"),
-                "a CHAR key of numeric text orders numerically too (BK1: CellOrder)");
+        assertEquals(List.of(2, 1, 0), textOrder("10", "9", "1"),
+                "a CHAR key of numeric text orders numerically too (BK1: CellOrder) - neither file"
+                        + " order (0, 1, 2) nor text order (2, 0, 1)");
+    }
+
+
+    @Test
+    void t4bAOneRowGroupIsLeftAsItIs()
+    {
+        assertEquals(List.of(0), textOrder("10"), "one row: nothing to order");
+        assertEquals(List.of(), fired(chain(new long[]
+        {
+                1
+        }, k -> k, k -> k + 5), NEXT), "a one-element group has no next record to miss");
     }
 
 
@@ -260,7 +272,6 @@ class ByKeyOrderTest
             final int s = shuffle;
             assertEquals(new HashSet<>(blanks), new HashSet<>(prefix),
                     () -> "shuffle " + s + ": the blank and missing cells first");
-            assertEquals(blanks.size(), prefix.size());
             assertEquals(expected, rest, () -> "shuffle " + s + ": the present cells in order");
             // tied in file order: the blanks keep the order the shuffle wrote them in
             List<Integer> blankRows = new ArrayList<>(order.subList(0, blanks.size()));

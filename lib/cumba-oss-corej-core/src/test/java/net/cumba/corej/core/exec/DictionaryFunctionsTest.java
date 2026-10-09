@@ -1,6 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -73,6 +74,26 @@ class DictionaryFunctionsTest
         UngatedProviderReachException ex = assertThrows(UngatedProviderReachException.class,
                 () -> DictionaryFunctions.codeTermPair(run, pair));
         assertTrue(ex.getMessage().contains(UNII), "the type and its state are named: " + ex);
+    }
+
+
+    @Test
+    void reachedWithAMeddraTypeButNoLevelTheHierarchyThrowsNamingNoRulingHandle() throws Exception
+    {
+        // D3(b) (PLAN-by-key-numeric-order): the two-argument overload passes no levels, so a
+        // MedDRA hierarchy reached past its load gate throws; the message names no ruling handle
+        RuntimeDictionaryProvider meddraOnly = new RuntimeDictionaryProvider(
+                Map.of("meddra", ValueMapDictionary.load(Paths.get("dictionaries/meddra.json"))));
+        EvaluationContext ctx = EvaluationContext.builder().table(ts())
+                .dictionaryProvider(meddraOnly).build();
+        EvalRun run = EvalRun.fullRange(ctx);
+        List<Vector> hierarchy = Arrays.asList(ConstVector.of("Headaches NEC"),
+                ConstVector.of("Nervous system disorders"), ConstVector.of("meddra"), null);
+        UngatedProviderReachException ex = assertThrows(UngatedProviderReachException.class,
+                () -> DictionaryFunctions.hierarchy(run, hierarchy));
+        String message = ex.getMessage();
+        assertTrue(message.contains("names no MedDRA level (a load error)"), message);
+        assertFalse(ByKeyOrderTest.RULING_HANDLE.matcher(message).find(), message);
     }
 
 

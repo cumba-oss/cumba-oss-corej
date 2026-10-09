@@ -848,7 +848,8 @@ public final class GroupSemantics
      * other ISO part by part with the UTC offset applied first, then text; the blank ({@code ""},
      * whitespace only) and missing cells first, tied. The sort is stable, so rows with equal keys
      * keep their original relative order. ⚠ Before, the cells' text was compared whatever the
-     * column's type ({@code "10"} before {@code "9"}).
+     * column's type ({@code "10"} before {@code "9"}). A group of fewer than two rows is already in
+     * order and is left as it is, undecorated.
      *
      * @param rows
      *            the absolute row indices to sort in place
@@ -857,6 +858,10 @@ public final class GroupSemantics
      */
     public static void sortByOrderColumn(int[] rows, IDataTableColumn orderCol)
     {
+        if (rows.length < 2)
+        {
+            return;
+        }
         int[] ordered = SortKeys.sortRowsByColumn(orderCol, rows);
         System.arraycopy(ordered, 0, rows, 0, rows.length);
     }
