@@ -100,13 +100,13 @@ class WildcardExpanderTryExpandTest
         // collectWildcardNames but every lowercase run parses as "unknown marker → literal".
         // tryExpand walks each WildcardPattern.groupNames() and finds them empty → NotApplicable.
         Rule rule = newRule("R5");
-        rule.setCheck(expr("variable_data_type == \"Char\""));
+        rule.setCheck(expr("var_type() == \"Char\""));
 
         IDataTable table = MockTable.withColumns("X");
         WildcardExpander.ExpansionResult result = WildcardExpander.tryExpand(rule,
                 table.getMetaData());
-        // The leaf name starts with lowercase, so it is excluded from wildcard candidates,
-        // and the literal text value supplies no real wildcard tokens either way.
+        // The accessor call names no column, so it is no wildcard candidate, and the literal
+        // text value supplies no real wildcard tokens either way.
         assertInstanceOf(WildcardExpander.ExpansionResult.NotApplicable.class, result);
     }
 

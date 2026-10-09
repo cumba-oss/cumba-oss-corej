@@ -733,8 +733,8 @@ public final class RuleRunner
             // rules did when Fix #369 landed; since runbook W3 MA-r2 respelled the bare aliases
             // as accessor calls — which skip through evaluateMetadataNative — one does,
             // DRAFT-900044, re-measured at W4. The define_* gate above has none. Since W4 MA6 a
-            // retired alias cannot load at all: only the kept library_* operands — the two
-            // *_values lists — reach this gate.)
+            // retired alias cannot load at all: only the three kept library_* operands — the two
+            // *_values lists and library_variable_code_pair_matches — reach this gate.)
             if (!LibraryAnswerability.libraryAnswerable(libraryProvider)
                     && referencesOperandPrefix(operandCheck, "library_"))
             {

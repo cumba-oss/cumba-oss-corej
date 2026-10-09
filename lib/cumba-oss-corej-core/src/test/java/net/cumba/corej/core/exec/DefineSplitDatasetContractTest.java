@@ -270,22 +270,22 @@ class DefineSplitDatasetContractTest
     @Test
     void defineLookupIsKeyedByThePart_notByTheBaseDomain()
     {
-        Rule wantsA = equalsLiteral("define_dataset_label", LABEL_A);
+        Rule wantsA = equalsLiteral("ds_label(\"DEFINE\")", LABEL_A);
         assertTrue(run(wantsA, partA()).hasViolations(),
                 "QSPH must be evaluated against QSPH's own ItemGroupDef");
         assertFalse(run(wantsA, partB()).hasViolations(),
                 "QSSL must NOT see its sibling QSPH's ItemGroupDef");
 
-        Rule wantsB = equalsLiteral("define_dataset_label", LABEL_B);
+        Rule wantsB = equalsLiteral("ds_label(\"DEFINE\")", LABEL_B);
         assertFalse(run(wantsB, partA()).hasViolations(),
                 "QSPH must NOT see its sibling QSSL's ItemGroupDef");
         assertTrue(run(wantsB, partB()).hasViolations(),
                 "QSSL must be evaluated against QSSL's own ItemGroupDef");
 
         // The same statement made on the name rather than the label.
-        assertTrue(run(equalsLiteral("define_dataset_name", PART_A), partA()).hasViolations());
-        assertTrue(run(equalsLiteral("define_dataset_name", PART_B), partB()).hasViolations());
-        assertFalse(run(equalsLiteral("define_dataset_name", BASE), partA()).hasViolations(),
+        assertTrue(run(equalsLiteral("ds_name(\"DEFINE\")", PART_A), partA()).hasViolations());
+        assertTrue(run(equalsLiteral("ds_name(\"DEFINE\")", PART_B), partB()).hasViolations());
+        assertFalse(run(equalsLiteral("ds_name(\"DEFINE\")", BASE), partA()).hasViolations(),
                 "the injected define_dataset_name is never the logical domain");
     }
 
@@ -348,10 +348,10 @@ class DefineSplitDatasetContractTest
     @Test
     void theEvaluationUnitIdentityIsThePart_notTheLogicalDomain()
     {
-        assertTrue(run(equalsLiteral("dataset_name", PART_A), partA()).hasViolations(),
+        assertTrue(run(equalsLiteral("ds_name()", PART_A), partA()).hasViolations(),
                 "the evaluated dataset identity is QSPH even though the caller said QS");
-        assertTrue(run(equalsLiteral("dataset_name", PART_B), partB()).hasViolations());
-        assertFalse(run(equalsLiteral("dataset_name", BASE), partA()).hasViolations(),
+        assertTrue(run(equalsLiteral("ds_name()", PART_B), partB()).hasViolations());
+        assertFalse(run(equalsLiteral("ds_name()", BASE), partA()).hasViolations(),
                 "the logical name is never the evaluation unit");
     }
 

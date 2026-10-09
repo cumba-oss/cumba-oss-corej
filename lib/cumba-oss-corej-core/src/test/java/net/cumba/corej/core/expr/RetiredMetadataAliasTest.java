@@ -155,15 +155,22 @@ class RetiredMetadataAliasTest
     }
 
 
+    /**
+     * Every hint is a spelling that LOADS — read through a type-neutral probe
+     * ({@code not empty(<hint>)}), so a hint whose accessor returns a number, a boolean or a list
+     * is judged too, and ANY load error fails the row, not only the retired-operand one (W4 fold,
+     * R5 P3-L1: {@code len(<hint>) > 0} could fail on the probe's type, and the old assertion
+     * admitted every other error).
+     */
     @Test
     void theAccessorSpellingsLoad() throws IOException
     {
         for (String alias : ROSTER)
         {
             String hint = MetadataOperandMapping.retiredOperandHint(alias);
-            String error = loadPair(rule("len(" + hint + ") > 0", null, null)).getRules().get("x")
+            String error = loadPair(rule("not empty(" + hint + ")", null, null)).getRules().get("x")
                     .getLoadError();
-            assertFalse(error != null && error.contains("retired operand"), hint + " -> " + error);
+            assertNull(error, alias + ": " + hint + " -> " + error);
         }
     }
 

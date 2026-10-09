@@ -83,7 +83,7 @@ class RuleRunnerDatasetLevelTest
         assertTrue(
                 run(providerWithDatasetLabel("Subject Demographics"),
                         providerWithDatasetLabel("Demographics")).hasViolations(),
-                "define_dataset_label != library_dataset_label -> violation");
+                "ds_label(\"DEFINE\") != ds_label(\"LIBRARY\") -> violation");
     }
 
 
@@ -93,7 +93,7 @@ class RuleRunnerDatasetLevelTest
         assertFalse(
                 run(providerWithDatasetLabel("Demographics"),
                         providerWithDatasetLabel("Demographics")).hasViolations(),
-                "define_dataset_label == library_dataset_label -> no violation");
+                "ds_label(\"DEFINE\") == ds_label(\"LIBRARY\") -> no violation");
     }
 
 
@@ -101,6 +101,6 @@ class RuleRunnerDatasetLevelTest
     void noDefineProvider_skipped()
     {
         assertTrue(run(providerWithDatasetLabel("Demographics"), null).isSkipped(),
-                "no define provider -> SKIPPED (define_dataset_label required)");
+                "no define provider -> SKIPPED (ds_label(\"DEFINE\") required)");
     }
 }

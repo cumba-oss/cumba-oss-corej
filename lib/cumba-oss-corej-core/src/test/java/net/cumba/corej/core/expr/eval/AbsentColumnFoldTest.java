@@ -509,9 +509,11 @@ class AbsentColumnFoldTest
     @ParameterizedTest(name = "{0}")
     @CsvSource(quoteCharacter = '\'', value =
     {
-            "'variable_label != \"X\"'", "'library_variable_core != \"X\"'",
-            "'define_variable_label != \"X\"'", "'dataset_name != \"X\"'",
-            "'len(variable_label) > 40'",
+            // kept engine-meta barewords: the retired aliases (variable_label, dataset_name, ...)
+            // cannot load since runbook W4 MA6 (W4 fold, R5 P3-residue)
+            "'define_vlm_data_type != \"X\"'", "'library_variable_code_pair_matches != \"X\"'",
+            "'define_vlm_mandatory != \"X\"'", "'define_vlm_length != \"X\"'",
+            "'len(define_vlm_data_type) > 40'",
     })
     void engineMetaBarewordIsNotFolded(String expression)
     {
