@@ -186,28 +186,37 @@ class HouseFormatValidatorTest
 
 
     /**
-     * Runbook W4 DI2 (Q3 (a)): the hierarchy rules read {@code hierarchy_by_level} only, so an
-     * installed meddra file must carry it, with every level the converter writes (PT, HLT, HLGT and
-     * their codes) — a file without it would install and then SKIP its hierarchy rules.
+     * Runbook W4 DI2 (Q3 (a)) as the W4 fold corrected it (R5 P3-D2, Q3: a file without the section
+     * "is REPORTED", its hierarchy rules SKIP — it is not refused): the hierarchy rules read
+     * {@code hierarchy_by_level} only, at the converter's levels (PT, HLT, HLGT and their codes); a
+     * meddra file without it, or without one of those levels, is no completeness violation (it
+     * installs) — the gap is the advisory {@link HouseFormatValidator#levelScopedHierarchyGaps},
+     * which the installer turns into a warning.
      */
     @Test
-    void meddraWithoutTheLevelScopedHierarchyIsIncomplete() throws IOException
+    void meddraWithoutTheLevelScopedHierarchyIsReportedNotRefused() throws IOException
     {
-        List<String> none = HouseFormatValidator.completenessViolations("meddra",
-                json("{\"type\":\"meddra\",\"levels\":{\"PT\":{\"A\":\"A\"}},"
-                        + "\"hierarchy\":{\"A\":[\"S\"]}}"));
+        JsonNode bare = json("{\"type\":\"meddra\",\"levels\":{\"PT\":{\"A\":\"A\"}},"
+                + "\"hierarchy\":{\"A\":[\"S\"]}}");
+        assertFalse(
+                HouseFormatValidator.completenessViolations("meddra", bare).stream()
+                        .anyMatch(s -> s.contains("hierarchy_by_level")),
+                HouseFormatValidator.completenessViolations("meddra", bare).toString());
+        List<String> none = HouseFormatValidator.levelScopedHierarchyGaps("meddra", bare);
         assertTrue(none.stream().anyMatch(s -> s.contains("hierarchy_by_level[PT]")),
                 none.toString());
-        List<String> partial = HouseFormatValidator.completenessViolations("meddra",
-                json("{\"type\":\"meddra\",\"levels\":{\"PT\":{\"A\":\"A\"}},"
-                        + "\"hierarchy\":{\"A\":[\"S\"]},\"hierarchy_by_level\":{"
-                        + "\"PT\":{\"A\":{\"SOC\":[\"S\"]}},\"PTCD\":{\"1\":{\"SOCCD\":[\"9\"]}},"
-                        + "\"HLT\":{\"H\":{\"SOC\":[\"S\"]}},\"HLTCD\":{\"2\":{\"SOCCD\":[\"9\"]}},"
-                        + "\"HLGTCD\":{\"3\":{\"SOCCD\":[\"9\"]}}}}"));
+        JsonNode partialDoc = json("{\"type\":\"meddra\",\"levels\":{\"PT\":{\"A\":\"A\"}},"
+                + "\"hierarchy\":{\"A\":[\"S\"]},\"hierarchy_by_level\":{"
+                + "\"PT\":{\"A\":{\"SOC\":[\"S\"]}},\"PTCD\":{\"1\":{\"SOCCD\":[\"9\"]}},"
+                + "\"HLT\":{\"H\":{\"SOC\":[\"S\"]}},\"HLTCD\":{\"2\":{\"SOCCD\":[\"9\"]}},"
+                + "\"HLGTCD\":{\"3\":{\"SOCCD\":[\"9\"]}}}}");
+        List<String> partial = HouseFormatValidator.levelScopedHierarchyGaps("meddra", partialDoc);
         assertTrue(partial.stream().anyMatch(s -> s.contains("hierarchy_by_level[HLGT]")),
                 partial.toString());
         assertFalse(partial.stream().anyMatch(s -> s.contains("hierarchy_by_level[PT]")),
                 partial.toString());
+        // a type whose rules read no hierarchy has no such gap
+        assertEquals(List.of(), HouseFormatValidator.levelScopedHierarchyGaps("unii", bare));
     }
 
 

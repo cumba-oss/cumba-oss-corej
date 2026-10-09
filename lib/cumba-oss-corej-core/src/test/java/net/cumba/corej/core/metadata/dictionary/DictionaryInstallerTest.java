@@ -201,6 +201,45 @@ class DictionaryInstallerTest
         assertTrue(warning.contains("installed anyway"), warning);
     }
 
+
+    /**
+     * Runbook W4 DI2 as the W4 fold corrected it (R5 P3-D2, Q3: "is REPORTED", not refused): a
+     * meddra file without {@code hierarchy_by_level} installs — its membership and pair rules
+     * answer — with a warning naming the gap and the remedy; at run time its hierarchy rules SKIP
+     * with the reason.
+     */
+    @Test
+    void aMeddraFileWithoutTheLevelScopedHierarchyInstallsWithAWarning(@TempDir Path dir)
+        throws IOException
+    {
+        StringBuilder levels = new StringBuilder();
+        for (String level : new String[]
+        {
+                "PT", "PTCD", "LLT", "LLTCD", "HLT", "HLTCD", "HLGT", "HLGTCD", "SOC", "SOCCD"
+        })
+        {
+            levels.append(levels.length() == 0 ? "" : ",").append('"').append(level)
+                    .append("\":{\"A\":\"A\"}");
+        }
+        DictionaryInstaller installer = new DictionaryInstaller(dir);
+        String version = installer.install(source(dir),
+                converter("meddra", "27.0",
+                        "{\"levels\":{" + levels + "},\"hierarchy\":{\"A\":[\"A\"]}}"),
+                "licence", false);
+        assertEquals("27.0", version,
+                "the install is not blocked: " + installer.getReport().getSkipped());
+        assertTrue(
+                Files.isRegularFile(dir.resolve("meddra").resolve("27.0").resolve("meddra.json")),
+                "the document is written");
+        assertTrue(
+                installer.getReport().getWarnings().stream()
+                        .anyMatch(w -> w.contains("hierarchy_by_level[PT] is missing or empty")
+                                && w.contains("installed anyway")),
+                installer.getReport().getWarnings().toString());
+        assertTrue(installer.getReport().summary().contains("1 installed"),
+                installer.getReport().summary());
+    }
+
     // ------------------------------------------------------------------
     // A8: dropped term spellings are surfaced, exactly like replaced bytes
     // ------------------------------------------------------------------

@@ -209,15 +209,17 @@ public final class DictionaryFunctions
 
     /**
      * Runbook W4 DI2 F2 ({@code PLAN-engine-gap-dict-unsupported}, the W2 P-B candidate's form F2;
-     * coordinator W4-D11): the load-time seam of {@code valid_external_dictionary_hierarchy} — the
-     * child and the parent must each be a column whose name names a MedDRA level
-     * ({@link #hierarchyLevelOf}). Since the bare-name map is no lookup any more, a column that
-     * names none ({@code --BODSYS}, which may carry a secondary SOC), a {@code $} binding or a
-     * computed operand has no level to read the dictionary at; it is the rule's load error, never a
-     * silent all-rows answer. A call that does not bind, and a literal where a column belongs, are
-     * left to the generic seam and stage A, which name their own cause. ⚑ Not checked here
-     * (backlog, O11): a name level paired with a code level, and a parent not above its child —
-     * both are off-path on every row (forms F1 / F3, 0 carriers).
+     * coordinator W4-D11): the load-time seam of {@code valid_external_dictionary_hierarchy} on the
+     * MedDRA dictionary ({@code external_dictionary_type="meddra"}; every other type reads its
+     * bare-name map at any column, as before W4 — W4 fold, R5 P3-L3) — the child and the parent
+     * must each be a column whose name names a MedDRA level ({@link #hierarchyLevelOf}). Since the
+     * bare-name map is no lookup any more, a column that names none ({@code --BODSYS}, which may
+     * carry a secondary SOC), a {@code $} binding or a computed operand has no level to read the
+     * dictionary at; it is the rule's load error, never a silent all-rows answer. A call that does
+     * not bind, and a literal where a column belongs, are left to the generic seam and stage A,
+     * which name their own cause. ⚑ Not checked here (backlog, O11): a name level paired with a
+     * code level, and a parent not above its child — both are off-path on every row (forms F1 / F3,
+     * 0 carriers).
      *
      * @param aCall
      *            the call, as written (name-form bindings inlined)
@@ -237,6 +239,14 @@ public final class DictionaryFunctions
             bound = ArgumentBinder.bind(descriptor, aCall);
         }
         catch (ExpressionException _)
+        {
+            return;
+        }
+        // W4 fold (R5 P3-L3): MedDRA's levels only — a call on another dictionary type reads its
+        // bare-name map at any column, as before W4 (a non-literal type is not judged here)
+        Expr type = bound.size() > 2 ? bound.get(2) : null;
+        if (!(type instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.STRING
+                || !RuntimeDictionaryProvider.levelScopedHierarchy(String.valueOf(lit.value())))
         {
             return;
         }
@@ -336,7 +346,10 @@ public final class DictionaryFunctions
     {
         String type = typeOf(args.get(2), run.rowCount());
         RuntimeDictionaryProvider provider = availableProvider(run, HIERARCHY, type);
-        if (childLevel == null || parentLevel == null)
+        // W4 fold (R5 P3-L3): the level scoping is MedDRA's; every other type answers from its
+        // bare-name map as before W4 (answersHierarchyAt is true for it at any level)
+        if (RuntimeDictionaryProvider.levelScopedHierarchy(type)
+                && (childLevel == null || parentLevel == null))
         {
             throw new UngatedProviderReachException(HIERARCHY,
                     "with a column that names no MedDRA level (a load error since runbook W4 DI2)");
@@ -345,7 +358,7 @@ public final class DictionaryFunctions
         {
             throw new UngatedProviderReachException(HIERARCHY,
                     "with external dictionary " + type + " unable to answer at " + childLevel + ": "
-                            + provider.hierarchyGapDetail(type, childLevel));
+                            + provider.hierarchyGapDetail(type, String.valueOf(childLevel)));
         }
         boolean caseSensitive = caseSensitive(args.get(3), run.rowCount());
         Vector child = args.get(0);

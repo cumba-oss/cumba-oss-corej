@@ -244,6 +244,14 @@ public final class DictionaryInstaller
                 report.warning(suspicion + " — installed anyway; verify the raw files before "
                         + "trusting a validation run against this dictionary");
             }
+            // runbook W4 DI2, advisory since the W4 fold (R5 P3-D2, Q3: "is reported"): a file
+            // without a level of hierarchy_by_level installs — its membership and pair rules
+            // answer — and the hierarchy rules reading that level SKIP at run time
+            for (String gap : HouseFormatValidator.levelScopedHierarchyGaps(type, doc))
+            {
+                report.warning(gap + " \u2014 installed anyway; its membership and pair rules"
+                        + " answer");
+            }
             if (!dryRun)
             {
                 write(type, version, doc, aLicence, aExtraLicenceFiles);

@@ -26,7 +26,9 @@ import org.jspecify.annotations.Nullable;
  * <li><b>hierarchy-path</b> — keyed by the levels of the two variables read, the parent is in
  * {@code hierarchy_by_level[termLevel][term][parentLevel]} (runbook W2 DI1,
  * {@link LevelScopedHierarchy}); since runbook W4 DI2 the bare-name {@code hierarchy[term]} map is
- * no lookup any more (a file without the level-scoped section answers no hierarchy);</li>
+ * no MedDRA lookup any more (a MedDRA file without the level-scoped section answers no hierarchy);
+ * every other type answers from it as before W4 ({@link #onHierarchyPathAsBefore}, W4 fold R5
+ * P3-L3);</li>
  * <li><b>code&harr;decode pair</b> — some registry / attribute map carries {@code map[code] ==
  * decode};</li>
  * <li><b>per-term attribute</b> — {@code attributes[attr][upper(term)]}.</li>
@@ -99,11 +101,22 @@ public final class ValueMapDictionary
 
     /**
      * Whether the bare-name {@code hierarchy} section carries an ancestor list — read for
-     * {@link #hasContent} only: since runbook W4 DI2 no lookup reads the bare-name map (the
-     * converter keeps writing it for older engine releases sharing a dictionary directory), so it
-     * is not held in memory.
+     * {@link #hasContent}: since runbook W4 DI2 no MedDRA lookup reads the bare-name map (the
+     * converter keeps writing it for older engine releases sharing a dictionary directory), so a
+     * MedDRA file does not hold it in memory ({@link #hierarchy} is held for the other types).
      */
     private final boolean bareHierarchyContent;
+
+    /**
+     * The bare-name hierarchy exactly as authored (term &rarr; ancestor terms) — held for a
+     * NON-MedDRA file only (W4 fold, R5 P3-L3: those types answer from it as before W4); a MedDRA
+     * file keeps just {@link #bareHierarchyContent}, so its memory stays as runbook W4 DI2 built
+     * it.
+     */
+    private final Map<String, List<String>> hierarchy;
+
+    /** The case-folded twin of {@link #hierarchy} (keys and ancestor values upper-cased). */
+    private final Map<String, List<String>> hierarchyFolded;
 
     /**
      * The level-scoped hierarchy ({@code hierarchy_by_level}, runbook W2 DI1), or
@@ -133,6 +146,9 @@ public final class ValueMapDictionary
         this.provenance = provenance;
         this.levels = levels;
         this.bareHierarchyContent = hierarchy.values().stream().anyMatch(l -> !l.isEmpty());
+        boolean meddra = "meddra".equalsIgnoreCase(type);
+        this.hierarchy = meddra ? Map.of() : hierarchy;
+        this.hierarchyFolded = meddra ? Map.of() : foldHierarchy(hierarchy);
         this.hierarchyByLevel = hierarchyByLevel;
         this.pairs = pairs;
         this.pairsFolded = foldKeys(pairs);
@@ -364,6 +380,19 @@ public final class ValueMapDictionary
     }
 
 
+    /** The folded twin of the hierarchy: term keys and ancestor values upper-cased. */
+    private static Map<String, List<String>> foldHierarchy(Map<String, List<String>> exact)
+    {
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (Map.Entry<String, List<String>> e : exact.entrySet())
+        {
+            out.put(upper(e.getKey()),
+                    e.getValue().stream().map(ValueMapDictionary::upper).toList());
+        }
+        return out;
+    }
+
+
     private static String upper(String s)
     {
         return s.toUpperCase(Locale.ROOT);
@@ -447,6 +476,43 @@ public final class ValueMapDictionary
     public boolean answersHierarchyAt(String childLevel)
     {
         return hierarchyByLevel.hasLevel(childLevel);
+    }
+
+
+    /**
+     * Hierarchy-path of a NON-MedDRA type, exactly as before runbook W4 (W4 fold, R5 P3-L3): the
+     * level-scoped section where it carries the child's level (no converter but MedDRA's writes
+     * one), else the bare-name map — {@code parent} an ancestor of {@code term}, verbatim when
+     * {@code caseSensitive} (the D-TA-3 default), both sides folded otherwise. A MedDRA file holds
+     * no bare map ({@code RuntimeDictionaryProvider.levelScopedHierarchy} routes it to
+     * {@link #onHierarchyPath(String, String, String, String, boolean)}).
+     *
+     * @param termLevel
+     *            the child column's level, or {@code null}
+     * @param term
+     *            the child value
+     * @param parentLevel
+     *            the parent column's level, or {@code null}
+     * @param parent
+     *            the parent value
+     * @param caseSensitive
+     *            verbatim (default) or folded
+     * @return whether {@code parent} lies on {@code term}'s path
+     */
+    public boolean onHierarchyPathAsBefore(@Nullable String termLevel, @Nullable String term,
+            @Nullable String parentLevel, @Nullable String parent, boolean caseSensitive)
+    {
+        if (termLevel != null && parentLevel != null && hierarchyByLevel.hasLevel(termLevel))
+        {
+            return onHierarchyPath(termLevel, term, parentLevel, parent, caseSensitive);
+        }
+        if (term == null || parent == null)
+        {
+            return false;
+        }
+        List<String> parents = caseSensitive ? hierarchy.get(term)
+                : hierarchyFolded.get(upper(term));
+        return parents != null && parents.contains(caseSensitive ? parent : upper(parent));
     }
 
 

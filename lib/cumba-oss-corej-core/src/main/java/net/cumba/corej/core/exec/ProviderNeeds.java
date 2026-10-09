@@ -410,9 +410,13 @@ public record ProviderNeeds(boolean library, boolean define, boolean dictionary,
         {
             types.add(literal);
             // runbook W4 DI2: the hierarchy call's capability need — the level its child reads
+            // (MedDRA only — W4 fold, R5 P3-L3: every other type answers from its bare map)
             String childLevel = DictionaryFunctions.HIERARCHY.equals(call.name())
-                    && !bound.isEmpty() ? DictionaryFunctions.hierarchyLevelOfArgument(bound.get(0))
-                            : null;
+                    && !bound.isEmpty()
+                    && net.cumba.corej.core.metadata.RuntimeDictionaryProvider
+                            .levelScopedHierarchy(literal)
+                                    ? DictionaryFunctions.hierarchyLevelOfArgument(bound.get(0))
+                                    : null;
             if (childLevel != null)
             {
                 reads.add(new HierarchyRead(literal, childLevel,

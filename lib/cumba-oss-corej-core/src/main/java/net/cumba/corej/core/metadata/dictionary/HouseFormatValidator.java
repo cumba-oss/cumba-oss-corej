@@ -96,8 +96,9 @@ public final class HouseFormatValidator
 
     /**
      * The child levels the MedDRA converter writes into {@code hierarchy_by_level} (runbook W2 DI1,
-     * PB-M1: no LLT / LLTCD) — required of an installed file whose type needs a hierarchy (runbook
-     * W4 DI2).
+     * PB-M1: no LLT / LLTCD) — expected of an installed file whose type needs a hierarchy, a
+     * missing one a warning (runbook W4 DI2, advisory since the W4 fold:
+     * {@link #levelScopedHierarchyGaps}).
      */
     private static final List<String> LEVEL_SCOPED_HIERARCHY_LEVELS = List.of("PT", "PTCD", "HLT",
             "HLTCD", "HLGT", "HLGTCD");
@@ -204,20 +205,40 @@ public final class HouseFormatValidator
             out.add(aDict + ": hierarchy is missing or empty — the hierarchy rules could never "
                     + "fire");
         }
-        if (req.needsHierarchy())
+        return out;
+    }
+
+
+    /**
+     * Runbook W4 DI2 (Q3 (a)), <b>advisory</b> since the W4 fold (R5 P3-D2): the hierarchy rules
+     * read {@code hierarchy_by_level} only, at the level of the child column — a file of a type
+     * whose rules need a hierarchy that lacks the section, or one of the converter's levels, still
+     * installs (its membership and pair rules answer); at run time it is REPORTED and the hierarchy
+     * rules reading a missing level SKIP with the reason (Q3: "is reported", never refused). The
+     * installer turns each gap into an {@link InstallReport} warning.
+     *
+     * @param aDict
+     *            the caller's declared type
+     * @param aRoot
+     *            the document
+     * @return one line per missing or empty level, empty when the type needs no hierarchy
+     */
+    public static List<String> levelScopedHierarchyGaps(String aDict, JsonNode aRoot)
+    {
+        Requirement req = CORPUS_REQUIREMENTS.get(aDict.toLowerCase(Locale.ROOT));
+        if (req == null || !req.needsHierarchy())
         {
-            // runbook W4 DI2 (Q3 (a)): the hierarchy rules read hierarchy_by_level only, at the
-            // level of the child column — a file without one of the converter's levels would
-            // install and then SKIP every hierarchy rule reading it
-            JsonNode scoped = aRoot.path(ValueMapDictionary.HIERARCHY_BY_LEVEL);
-            for (String level : LEVEL_SCOPED_HIERARCHY_LEVELS)
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        JsonNode scoped = aRoot.path(ValueMapDictionary.HIERARCHY_BY_LEVEL);
+        for (String level : LEVEL_SCOPED_HIERARCHY_LEVELS)
+        {
+            if (!hasEntries(scoped.path(level)))
             {
-                if (!hasEntries(scoped.path(level)))
-                {
-                    out.add(aDict + ": " + ValueMapDictionary.HIERARCHY_BY_LEVEL + "[" + level
-                            + "] is missing or empty \u2014 the hierarchy rules reading a " + level
-                            + " column would SKIP (re-convert the dictionary)");
-                }
+                out.add(aDict + ": " + ValueMapDictionary.HIERARCHY_BY_LEVEL + "[" + level
+                        + "] is missing or empty \u2014 the hierarchy rules reading a " + level
+                        + " column will SKIP (re-convert the dictionary)");
             }
         }
         return out;

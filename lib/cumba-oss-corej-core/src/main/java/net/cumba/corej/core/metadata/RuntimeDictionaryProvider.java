@@ -338,7 +338,30 @@ public final class RuntimeDictionaryProvider
     public boolean answersHierarchyAt(@Nullable String type, @Nullable String childLevel)
     {
         ValueMapDictionary d = get(type);
+        if (!levelScopedHierarchy(type))
+        {
+            // W4 fold (R5 P3-L3): only MedDRA reads the level-scoped section; every other type
+            // answers from its bare-name map as before W4, at any level
+            return d != null;
+        }
         return d != null && childLevel != null && d.answersHierarchyAt(childLevel);
+    }
+
+
+    /**
+     * Whether {@code type}'s hierarchy is read LEVEL-SCOPED ({@code hierarchy_by_level}, runbook W2
+     * DI1 / W4 DI2) — MedDRA only, the one type whose converter writes that section. Every other
+     * type answers {@code valid_external_dictionary_hierarchy} from its bare-name {@code hierarchy}
+     * map exactly as before W4 (W4 fold, R5 P3-L3: the level scoping, the stale-file SKIP and F2's
+     * load error were only ever MedDRA's).
+     *
+     * @param type
+     *            the dictionary type, or {@code null}
+     * @return {@code true} for {@code meddra} (any case)
+     */
+    public static boolean levelScopedHierarchy(@Nullable String type)
+    {
+        return MEDDRA.equalsIgnoreCase(type);
     }
 
 
@@ -383,15 +406,26 @@ public final class RuntimeDictionaryProvider
 
     /**
      * Hierarchy-path check keyed by the levels the two columns read (runbook W2 DI1) — see
-     * {@link ValueMapDictionary#onHierarchyPath(String, String, String, String, boolean)}; there is
-     * no level-less form since runbook W4 DI2 (no bare-name map is read).
+     * {@link ValueMapDictionary#onHierarchyPath(String, String, String, String, boolean)}; for
+     * MedDRA there is no level-less form since runbook W4 DI2 (no bare-name map is read), every
+     * other type answers as before W4 ({@link #levelScopedHierarchy}).
      */
     public boolean onHierarchyPath(@Nullable String type, @Nullable String termLevel,
             @Nullable String term, @Nullable String parentLevel, @Nullable String parent,
             boolean caseSensitive)
     {
         ValueMapDictionary d = get(type);
-        return d != null && d.onHierarchyPath(termLevel, term, parentLevel, parent, caseSensitive);
+        if (d == null)
+        {
+            return false;
+        }
+        if (!levelScopedHierarchy(type))
+        {
+            // W4 fold (R5 P3-L3): a non-MedDRA type answers as before W4 — the level-scoped
+            // section where it carries the child's level, else the bare-name map
+            return d.onHierarchyPathAsBefore(termLevel, term, parentLevel, parent, caseSensitive);
+        }
+        return d.onHierarchyPath(termLevel, term, parentLevel, parent, caseSensitive);
     }
 
 

@@ -88,7 +88,11 @@ class ValueMapDictionaryTest
                 true), "wrong SOC ⇒ off-path");
         assertTrue(p.answersHierarchyAt("meddra", "HLT") && p.answersHierarchyAt("MEDDRA", "PT"));
         assertFalse(p.answersHierarchyAt("meddra", "LLT"), "the dummy carries no LLT level");
-        assertFalse(p.answersHierarchyAt("unii", "PT"), "no hierarchy on another type");
+        // W4 fold (R5 P3-L3): the level scoping is MedDRA's — another type answers from its
+        // bare-name map at any level, as before W4 (unii's is empty: on no row's path)
+        assertTrue(p.answersHierarchyAt("unii", "PT"), "another type reads its bare map");
+        assertFalse(p.onHierarchyPath("unii", "PT", "ASPIRIN", "SOC", "X", true),
+                "unii's bare map is empty");
         assertTrue(p.codeDecodePair("unii", "unii", "R16CO5Y76E", "ASPIRIN", true));
         assertFalse(p.codeDecodePair("unii", "unii", "R16CO5Y76E", "IBUPROFEN", true));
         // NEOPLASM attribute alignment resolves through codeDecodePair over the attributes map.

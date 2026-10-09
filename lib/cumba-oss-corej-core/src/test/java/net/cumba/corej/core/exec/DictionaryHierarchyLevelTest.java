@@ -327,6 +327,37 @@ class DictionaryHierarchyLevelTest
                 "the re-converted file answers (control)");
     }
 
+
+    /**
+     * W4 fold (R5 P3-L3, coordinator: the level scoping was only ever MedDRA's): a hierarchy call
+     * on any OTHER dictionary type answers from the bare-name {@code hierarchy} map exactly as
+     * before W4 — no F2 load error for a column that names no MedDRA level ({@code CMCLAS}), and no
+     * "re-install" SKIP for a file without {@code hierarchy_by_level} (no converter but MedDRA's
+     * writes one). Before the fold the first shape failed to load, the second SKIPPED.
+     */
+    @Test
+    void aNonMeddraHierarchyCallAnswersFromTheBareMapAsBefore() throws IOException
+    {
+        ObjectNode whodrug = (ObjectNode) new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree("{\"type\":\"whodrug\",\"levels\":{\"PT\":{\"ASPIRIN\":\"Aspirin\"},"
+                        + "\"ATC\":{\"ANALGESICS\":\"Analgesics\"}},"
+                        + "\"hierarchy\":{\"Aspirin\":[\"Analgesics\"]}}");
+        IDataTable cm = RealTables.of("CM").str("USUBJID", "1", "2")
+                .str("CMDECOD", "Aspirin", "Aspirin").str("CMCLAS", "Analgesics", "Other")
+                .str("CMSOC", "Analgesics", "Other").build();
+        for (String arguments : List.of("CMDECOD, CMCLAS", "CMDECOD, CMSOC"))
+        {
+            String pkg = binding(arguments).replace("\\\"meddra\\\"", "\\\"whodrug\\\"");
+            assertTrue(pkg.contains("whodrug"), pkg);
+            RuleExecutionResult result = execute(pkg, cm, "whodrug", whodrug);
+            assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
+                    arguments + ": " + result.getStatusMessage());
+            List<Long> rows = new ArrayList<>();
+            result.getViolations().forEach(v -> rows.add(v.getRowNumber()));
+            assertEquals(List.of(2L), rows, arguments + ": Other is no ancestor of Aspirin");
+        }
+    }
+
     // ------------------------------------------------------------------ helpers
 
 
@@ -366,11 +397,19 @@ class DictionaryHierarchyLevelTest
             ObjectNode aDictionary)
         throws IOException
     {
+        return execute(aPackage, aTable, "meddra", aDictionary);
+    }
+
+
+    private static RuleExecutionResult execute(String aPackage, IDataTable aTable, String aType,
+            ObjectNode aDictionary)
+        throws IOException
+    {
         Rule rule = RulePackageLoader.loadFromString(aPackage).getRules().get("x");
         assertNotNull(rule, "the rule loads");
         assertNull(rule.getLoadError(), rule.getLoadError());
         RuntimeDictionaryProvider dicts = new RuntimeDictionaryProvider(
-                Map.of("meddra", ValueMapDictionary.parse(aDictionary)));
+                Map.of(aType, ValueMapDictionary.parse(aDictionary)));
         return RuleRunnerCalls.execute(rule, aTable,
                 name -> name.equals(aTable.getMetaData().getName()) ? aTable : null, null, null,
                 null, null, Integer.MAX_VALUE, null, dicts);
