@@ -123,6 +123,40 @@ class ExprCompilerMembershipPlansTest
                 "not in over a $-list reference is the exact complement");
     }
 
+
+    /**
+     * Runbook W2 fold (R5 A-LOW-4): a dynamic probe — a lifted call over a {@code $} value, decided
+     * per row (BS4) — is evaluated ONCE per run, and the per-row decision and its element-wise half
+     * read that one vector. Before, the decision evaluated it and the half evaluated it again (a
+     * third time on a mixed scalar / list vector). A counting element-wise probe function shows it.
+     */
+    @Test
+    void aDynamicProbeIsEvaluatedOncePerRun()
+    {
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        FunctionRegistry.register(new FunctionDescriptor("__w2_fold_count__",
+                List.of(Parameter.required("x",
+                        net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)),
+                FunctionKind.VALUE, (_, args) ->
+                {
+                    calls.incrementAndGet();
+                    return args.get(0);
+                }).liftingElementwise());
+        try
+        {
+            IDataTable t = MockTable.of().name("DS").col("CD", "A", "B").build();
+            EvaluationContext c = EvaluationContext.builder().table(t)
+                    .variables(Map.of("$ref", List.of("A", "C"))).build();
+            assertEquals(bits(0, 1), eval("__w2_fold_count__($ref) in [\"A\"]", c),
+                    "the dataset-level list holds A: every row's probe has a member");
+            assertEquals(1, calls.get(), "one evaluation of the probe for the run");
+        }
+        finally
+        {
+            FunctionRegistry.unregister("__w2_fold_count__");
+        }
+    }
+
     // ---- T3 whole-tuple membership ---------------------------------------------------
 
 

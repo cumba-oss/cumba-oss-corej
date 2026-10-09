@@ -660,7 +660,7 @@ public final class Primitives
      * The per-pair verdict of a {@code time}-operator comparison — {@link #compareCells}' contract
      * mirrored onto the time type (same missing short-circuits, same mixed-shape fallthrough).
      */
-    private static boolean compareTimeCells(IDataValue aLhs, @Nullable Object aRhs, int aDirection,
+    static boolean compareTimeCells(IDataValue aLhs, @Nullable Object aRhs, int aDirection,
             boolean aOrEqual, boolean aNegate, boolean aMixedVerdict)
     {
         if (ScalarSemantics.isMissing(aLhs))
@@ -1980,8 +1980,10 @@ public final class Primitives
      * <p>
      * ⚠ <b>A linear scan by necessity</b>, exactly as D81c's numeric arm is: hull equality is not
      * an equivalence over a hashable key, so there is no {@code Set.contains} fast path to take
-     * first. The member sets this arm sees are list literals and {@code $}-bound date lists, not
-     * thousand-element {@code distinct()} results.
+     * first. Since runbook W2 TM1 the members may be any set a value yields — a {@code distinct()}
+     * result of thousands included — so each member is read ONCE per set ({@link TemporalMembers},
+     * runbook W2 fold, R5 A-LOW-2): a caller that compares many probes with one set builds it once
+     * and asks {@link TemporalMembers#contains}; this method is that for one probe.
      * </p>
      *
      * <p>
@@ -2000,14 +2002,7 @@ public final class Primitives
      */
     public static boolean isTemporalMember(IDataValue dv, Set<String> members)
     {
-        for (String member : members)
-        {
-            if (compareCells(dv, member, 0, false, false, false))
-            {
-                return true;
-            }
-        }
-        return false;
+        return TemporalMembers.of(members, false).contains(dv);
     }
 
 
@@ -2031,33 +2026,148 @@ public final class Primitives
      */
     public static boolean isTimeMember(IDataValue dv, Set<String> members)
     {
-        for (String member : members)
-        {
-            if (compareTimeCells(dv, member, 0, false, false, false))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-
-    /** Vectorised {@link #isTimeMember} — the time counterpart of {@link #temporalMembership}. */
-    public static BitSet timeMembership(Vector v, Set<String> members, int rowCount, boolean negate)
-    {
-        return scan(v, rowCount, (dv, _) -> negate != isTimeMember(dv, members));
+        return TemporalMembers.of(members, true).contains(dv);
     }
 
 
     /**
-     * Vectorised {@link #isTemporalMember} — the temporal counterpart of {@link #membership}.
+     * Vectorised {@link #isTimeMember} — the time counterpart of {@link #temporalMembership}; the
+     * members read once for the whole scan.
+     */
+    public static BitSet timeMembership(Vector v, Set<String> members, int rowCount, boolean negate)
+    {
+        TemporalMembers set = TemporalMembers.of(members, true);
+        return scan(v, rowCount, (dv, _) -> negate != set.contains(dv));
+    }
+
+
+    /**
+     * Vectorised {@link #isTemporalMember} — the temporal counterpart of {@link #membership}; the
+     * members read once for the whole scan.
      */
     public static BitSet temporalMembership(Vector v, Set<String> members, int rowCount,
             boolean negate)
     {
-        return scan(v, rowCount, (dv, _) -> negate != isTemporalMember(dv, members));
+        TemporalMembers set = TemporalMembers.of(members, false);
+        return scan(v, rowCount, (dv, _) -> negate != set.contains(dv));
     }
 
+    /**
+     * ⭐ A temporal member set read ONCE (runbook W2 fold, R5 A-LOW-2): each member's number, its
+     * ISO / time shape and its hull ({@link IsoDateComparison.Side} /
+     * {@link IsoTimeComparison.Side}) taken when the set is built, so a probe compared with
+     * {@code k} members parses itself once and no member at all — where the pairwise
+     * {@link #compareCells} / {@link #compareTimeCells} loop parsed both sides of every pair, an
+     * {@code n × k} parse over a {@code distinct()} set (TM1 widened the arm onto every set a value
+     * yields).
+     *
+     * <p>
+     * ⛔ {@link #contains} IS the pairwise comparator's decision tree at {@code direction == 0},
+     * {@code orEqual} / {@code negate} / {@code mixedVerdict} all {@code false} — the reading
+     * membership has always passed (D81: {@code in} is {@code ==}'s disjunction) — written over the
+     * pre-read halves: a missing probe is a member of nothing; numeric↔numeric compares the
+     * numbers; a non-numeric probe against a non-numeric or ISO-shaped member takes the hull rule;
+     * any other (mixed) pair is not a member. {@code TemporalMembershipTest}'s differential pins it
+     * to the pairwise comparators over a grid of probes and members. Immutable once built.
+     * </p>
+     */
+    public static final class TemporalMembers
+    {
+
+        private final boolean time;
+
+        private final @Nullable Double[] numbers;
+
+        private final boolean[] shaped;
+
+        private final Object[] hulls;
+
+        private TemporalMembers(boolean aTime, @Nullable Double[] aNumbers, boolean[] aShaped,
+                Object[] aHulls)
+        {
+            time = aTime;
+            numbers = aNumbers;
+            shaped = aShaped;
+            hulls = aHulls;
+        }
+
+
+        /**
+         * Reads {@code members} once.
+         *
+         * @param members
+         *            the present members, as text
+         * @param time
+         *            whether the probe is a {@code time()} value (the time comparator, never the
+         *            date one — review round 1 of {@code PLAN-membership-as-equality})
+         * @return the read set
+         */
+        public static TemporalMembers of(Collection<String> members, boolean time)
+        {
+            int k = members.size();
+            @Nullable
+            Double[] numbers = new Double[k];
+            boolean[] shaped = new boolean[k];
+            Object[] hulls = new Object[k];
+            int i = 0;
+            for (String member : members)
+            {
+                numbers[i] = ScalarSemantics.tryNumericRhs(member);
+                shaped[i] = time ? isTimeText(member) : isIsoText(member);
+                hulls[i] = time ? new IsoTimeComparison.Side(member, true)
+                        : new IsoDateComparison.Side(member, true);
+                i++;
+            }
+            return new TemporalMembers(time, numbers, shaped, hulls);
+        }
+
+
+        /**
+         * Whether {@code dv} equals some member under the temporal {@code ==} (the class javadoc's
+         * decision tree).
+         *
+         * @param dv
+         *            the probe cell
+         * @return {@code true} for a member
+         */
+        public boolean contains(IDataValue dv)
+        {
+            if (ScalarSemantics.isMissing(dv))
+            {
+                return false;
+            }
+            Double lhsD = ScalarSemantics.tryNumericLhs(dv);
+            Object probe = null;
+            for (int i = 0; i < numbers.length; i++)
+            {
+                Double rhsD = numbers[i];
+                if (lhsD != null && rhsD != null)
+                {
+                    if (ScalarSemantics.matchNumeric(lhsD, rhsD, 0, false))
+                    {
+                        return true;
+                    }
+                }
+                else if (lhsD == null && (rhsD == null || shaped[i]))
+                {
+                    if (probe == null)
+                    {
+                        String text = dv.getValueAsString();
+                        probe = time ? new IsoTimeComparison.Side(text, false)
+                                : new IsoDateComparison.Side(text, false);
+                    }
+                    if (time ? IsoTimeComparison.fires((IsoTimeComparison.Side) probe,
+                            (IsoTimeComparison.Side) hulls[i], 0, false, false)
+                            : IsoDateComparison.fires((IsoDateComparison.Side) probe,
+                                    (IsoDateComparison.Side) hulls[i], 0, false, false))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
 
     /**
      * Numeric-membership variant (Phase 9b, decision D2) for an <b>all-numeric list literal</b>:

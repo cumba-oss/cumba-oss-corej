@@ -39,6 +39,7 @@ import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.corej.core.run.DatasetExecutionSummary;
+import net.cumba.corej.core.run.StudyValidationParams;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.report.ValidationReport;
 import net.cumba.datatable.report.ValidationReportMember;
@@ -923,8 +924,10 @@ public final class LibraryValidator
      * Appends the single synthetic {@code STUDY} {@link DatasetExecutionSummary} carrying one
      * {@link DatasetExecutionSummary.RuleExecution} per collapsed study rule, so a
      * {@code Sensitivity=Study} rule — collapsed out of every dataset's {@code ruleResults} — is
-     * still accounted for exactly once in the execution log. No row is appended when there are no
-     * study rules.
+     * still accounted for exactly once in the execution log. A define.xml that did not parse (W2
+     * DP1b, {@code CUMBA-DEFINE-PARSE}) is accounted for on the same row, as a load error is on its
+     * dataset's row. No row is appended when there are no study rules <em>and</em> no define parse
+     * error.
      */
     private void appendStudySummary(List<DatasetExecutionSummary> out,
             List<StudyRuleResult> studyResults, int total, ValidationReport report)
@@ -1668,12 +1671,15 @@ public final class LibraryValidator
          * {@code Scope.Classes}. {@code null} or blank (the default) filters nothing.
          *
          * @param aUseCase
-         *            the use-case code, e.g. {@code "INDH"}; stripped, blank read as none
+         *            the use-case code, e.g. {@code "INDH"}; normalised as every client boundary
+         *            normalises it ({@link StudyValidationParams#normalizeUseCase}: stripped,
+         *            upper-cased, blank read as none — runbook W2 fold, R5 A-note), so a direct
+         *            caller's {@code "indh"} runs, skips and reports as {@code INDH}
          * @return this builder
          */
         public Builder useCase(@Nullable String aUseCase)
         {
-            useCase = aUseCase == null || aUseCase.isBlank() ? null : aUseCase.strip();
+            useCase = StudyValidationParams.normalizeUseCase(aUseCase);
             return this;
         }
 

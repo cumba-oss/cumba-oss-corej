@@ -1261,7 +1261,7 @@ public final class ExprCompiler
         Expr probe = isUpperCall(b.left()) ? ((Expr.Call) b.left()).args().get(0) : b.left();
         if (!isDynamicValue(probe))
         {
-            return compileMembershipAsWritten(b, false);
+            return compileMembershipAsWritten(b, false, null);
         }
         // ⭐ PLAN-dynamic-column-functions review round 2 (engine 2): `colref($x) in …` decides PER
         // ROW. A row whose value is a list (`$x: find_vars(…)`) compares element-wise; any other
@@ -1276,47 +1276,110 @@ public final class ExprCompiler
         // binding is the call's twin, so deciding the call per row and its binding by text would
         // re-open the asymmetry BS4 closes; census 0 carriers, the corpus's three bare `$` probes
         // are scalar bindings and no row of theirs holds a list).
-        ExprProgram.BoolPlan scalar = compileMembershipAsWritten(b, false);
-        ExprProgram.BoolPlan list = compileMembershipAsWritten(b, true);
-        ValuePlan probeP = operandPlan(probe, true);
+        // R5 A-LOW-4: the probe is evaluated ONCE per run and read by the decision and both halves
+        RunShared probeP = new RunShared(operandPlan(probe, true));
+        ExprProgram.BoolPlan scalar = compileMembershipAsWritten(b, false, probeP);
+        ExprProgram.BoolPlan list = compileMembershipAsWritten(b, true, probeP);
         return run ->
         {
-            Vector v = probeP.eval(run);
-            if (v == null)
+            try
             {
-                return new BitSet();
+                return decidePerRow(run, probeP.eval(run), scalar, list);
             }
-            if (v instanceof ConstVector constant)
+            finally
             {
-                // one value for every row: one decision, no per-row scan
-                return constant.value(0).resolved() instanceof Collection<?> ? list.eval(run)
-                        : scalar.eval(run);
+                probeP.release(run);
             }
-            BitSet listRows = new BitSet(run.rowCount());
-            for (int r = 0; r < run.rowCount(); r++)
-            {
-                if (v.value(r).resolved() instanceof Collection<?>)
-                {
-                    listRows.set(r);
-                }
-            }
-            if (listRows.isEmpty())
-            {
-                return scalar.eval(run);
-            }
-            if (listRows.cardinality() == run.rowCount())
-            {
-                return list.eval(run);
-            }
-            BitSet out = scalar.eval(run);
-            out.andNot(listRows);
-            BitSet elementWise = list.eval(run);
-            elementWise.and(listRows);
-            out.or(elementWise);
-            return out;
         };
     }
 
+
+    /** The per-row decision of a dynamic probe {@code v}: its list rows element-wise. */
+    private static BitSet decidePerRow(EvalRun run, @Nullable Vector v, ExprProgram.BoolPlan scalar,
+            ExprProgram.BoolPlan list)
+    {
+        if (v == null)
+        {
+            return new BitSet();
+        }
+        if (v instanceof ConstVector constant)
+        {
+            // one value for every row: one decision, no per-row scan
+            return constant.value(0).resolved() instanceof Collection<?> ? list.eval(run)
+                    : scalar.eval(run);
+        }
+        BitSet listRows = new BitSet(run.rowCount());
+        for (int r = 0; r < run.rowCount(); r++)
+        {
+            if (v.value(r).resolved() instanceof Collection<?>)
+            {
+                listRows.set(r);
+            }
+        }
+        if (listRows.isEmpty())
+        {
+            return scalar.eval(run);
+        }
+        if (listRows.cardinality() == run.rowCount())
+        {
+            return list.eval(run);
+        }
+        BitSet out = scalar.eval(run);
+        out.andNot(listRows);
+        BitSet elementWise = list.eval(run);
+        elementWise.and(listRows);
+        out.or(elementWise);
+        return out;
+    }
+
+    /**
+     * A value plan evaluated once per {@link EvalRun} (runbook W2 fold, R5 A-LOW-4): the dynamic
+     * membership probe is read by the per-row decision and by both compiled halves — before, up to
+     * three evaluations of one probe per run. One slot holds the run being evaluated and its vector
+     * (immutable, so a concurrent run on another thread only displaces it and is recomputed, never
+     * served another run's vector); {@link #release} empties it when the run's decision is taken,
+     * so no vector outlives its evaluation.
+     */
+    private static final class RunShared implements ValuePlan
+    {
+
+        private final ValuePlan plan;
+
+        private final java.util.concurrent.atomic.AtomicReference<@Nullable Held> held = new java.util.concurrent.atomic.AtomicReference<>();
+
+        RunShared(ValuePlan aPlan)
+        {
+            plan = aPlan;
+        }
+
+
+        @Override
+        public @Nullable Vector eval(EvalRun run)
+        {
+            Held h = held.get();
+            if (h != null && h.run() == run)
+            {
+                return h.vector();
+            }
+            Vector v = plan.eval(run);
+            held.set(new Held(run, v));
+            return v;
+        }
+
+
+        void release(EvalRun run)
+        {
+            Held h = held.get();
+            if (h != null && h.run() == run)
+            {
+                held.compareAndSet(h, null);
+            }
+        }
+
+        private record Held(EvalRun run, @Nullable Vector vector)
+        {
+        }
+    }
 
     /**
      * {@link #compileMembershipAsWritten(Expr.Binary)} for one reading of the probe.
@@ -1324,8 +1387,12 @@ public final class ExprCompiler
      * @param listProbe
      *            read a {@code colref($x)} probe as a LIST on every row (a scalar cell a
      *            one-element list of its text) — the element-wise half of the per-row decision
+     * @param sharedProbe
+     *            the probe's plan as the per-row decision evaluates it (once per run, R5 A-LOW-4),
+     *            or {@code null} to plan the probe here
      */
-    private static ExprProgram.BoolPlan compileMembershipAsWritten(Expr.Binary b, boolean listProbe)
+    private static ExprProgram.BoolPlan compileMembershipAsWritten(Expr.Binary b, boolean listProbe,
+            @Nullable ValuePlan sharedProbe)
     {
         boolean negate = b.op() == Expr.BinOp.NOT_IN;
         // T3 composite membership: `tuple(c1, c2, …) [not] in distinct([c1, c2, …], domain="D")`.
@@ -1357,8 +1424,8 @@ public final class ExprCompiler
         // exactly those probe shapes.
         boolean dynamicLhs = listProbe;
         // EC-43: fold the probe column. The list/accessor sources below keep their own guards.
-        ValuePlan nameP = dynamicLhs ? asMemberLists(operandPlan(nameExpr, true))
-                : operandPlan(nameExpr, true);
+        ValuePlan probeP = sharedProbe != null ? sharedProbe : operandPlan(nameExpr, true);
+        ValuePlan nameP = dynamicLhs ? asMemberLists(probeP) : probeP;
         // List-LHS membership (D4 of PLAN-define-item-metadata-parity-929-1081): a list-valued
         // metadata accessor (var_codelist_coded_codes) compares element-wise, mirroring Python's
         // is_column_of_iterables(target) branch. Detected statically from the accessor function.
@@ -1985,9 +2052,11 @@ public final class ExprCompiler
      * cache — and the probe is compared with every present member by the hull rule
      * ({@link Primitives#isTemporalMember} / {@link Primitives#isTimeMember}, the per-pair
      * comparators the list-literal arm runs), so membership is {@code ==}'s disjunction (D81).
-     * Members are compared pairwise — hull equality has no hash — {@code O(k)} per row. A missing
-     * member matches nothing, as a missing operand of the temporal {@code ==} does; a non-ISO
-     * member is "not a member" ({@code mixedVerdict = false}). Package-private for the unit tests.
+     * Members are compared pairwise — hull equality has no hash — {@code O(k)} per row, each member
+     * read once per set ({@link Primitives.TemporalMembers}, R5 A-LOW-2: per {@link ConstVector},
+     * per cached row list), never once per row. A missing member matches nothing, as a missing
+     * operand of the temporal {@code ==} does; a non-ISO member is "not a member"
+     * ({@code mixedVerdict = false}). Package-private for the unit tests.
      */
     static BitSet temporalBoundMembership(Vector v, Vector bound, int rowCount, boolean negate,
             boolean time)
@@ -1998,30 +2067,11 @@ public final class ExprCompiler
             return time ? Primitives.timeMembership(v, set, rowCount, negate)
                     : Primitives.temporalMembership(v, set, rowCount, negate);
         }
-        Object lastList = null;
-        Set<String> lastSet = null;
+        RowMembers perRow = new RowMembers(bound, time);
         BitSet out = new BitSet(rowCount);
         for (int r = 0; r < rowCount; r++)
         {
-            Object cell = bound.value(r).resolved();
-            Set<String> set;
-            if (cell instanceof Collection<?> && cell == lastList && lastSet != null)
-            {
-                set = lastSet;
-            }
-            else
-            {
-                set = toSet(cell, false).present();
-                if (cell instanceof Collection<?>)
-                {
-                    lastList = cell;
-                    lastSet = set;
-                }
-            }
-            IDataValue probe = v.value(r).cell();
-            boolean member = time ? Primitives.isTimeMember(probe, set)
-                    : Primitives.isTemporalMember(probe, set);
-            if (negate != member)
+            if (negate != perRow.at(r).contains(v.value(r).cell()))
             {
                 out.set(r);
             }
@@ -2042,7 +2092,9 @@ public final class ExprCompiler
     private static ExprProgram.BoolPlan temporalListMembership(ValuePlan nameP, Expr right,
             boolean literal, boolean negate, boolean time)
     {
-        Set<String> literalSet = literal ? literalMembers((Expr.Lit) right, false) : null;
+        Primitives.TemporalMembers literalSet = literal
+                ? Primitives.TemporalMembers.of(literalMembers((Expr.Lit) right, false), time)
+                : null;
         ValuePlan membersP = literal || right instanceof Expr.Ref ? null : valuePlan(right);
         return run ->
         {
@@ -2054,9 +2106,7 @@ public final class ExprCompiler
             int rows = run.rowCount();
             if (literalSet != null)
             {
-                return anyElementMembership(v, rows, negate,
-                        cell -> time ? Primitives.isTimeMember(cell, literalSet)
-                                : Primitives.isTemporalMember(cell, literalSet));
+                return anyElementMembership(v, rows, negate, literalSet::contains);
             }
             Vector members;
             if (membersP != null)
@@ -2069,10 +2119,9 @@ public final class ExprCompiler
                 members = boundVector(run, name);
                 if (members == null)
                 {
-                    Set<String> set = toSet(run.ctx().resolveVariable(name), false).present();
-                    return anyElementMembership(v, rows, negate,
-                            cell -> time ? Primitives.isTimeMember(cell, set)
-                                    : Primitives.isTemporalMember(cell, set));
+                    Primitives.TemporalMembers set = Primitives.TemporalMembers
+                            .of(toSet(run.ctx().resolveVariable(name), false).present(), time);
+                    return anyElementMembership(v, rows, negate, set::contains);
                 }
             }
             if (members == null)
@@ -2082,49 +2131,49 @@ public final class ExprCompiler
             Vector bound = members;
             if (bound instanceof ConstVector constant)
             {
-                Set<String> set = toSet(constant.memberValue(), false).present();
-                return anyElementMembership(v, rows, negate,
-                        cell -> time ? Primitives.isTimeMember(cell, set)
-                                : Primitives.isTemporalMember(cell, set));
+                Primitives.TemporalMembers set = Primitives.TemporalMembers
+                        .of(toSet(constant.memberValue(), false).present(), time);
+                return anyElementMembership(v, rows, negate, set::contains);
             }
-            RowMembers perRow = new RowMembers(bound);
-            return anyElementMembership(v, rows, negate, (row, cell) ->
-            {
-                Set<String> set = perRow.at(row);
-                return time ? Primitives.isTimeMember(cell, set)
-                        : Primitives.isTemporalMember(cell, set);
-            });
+            RowMembers perRow = new RowMembers(bound, time);
+            return anyElementMembership(v, rows, negate,
+                    (row, cell) -> perRow.at(row).contains(cell));
         };
     }
 
     /**
-     * A per-row member set with {@link #temporalBoundMembership}'s one-slot "same list instance"
-     * cache: consecutive rows holding the same list fold it once.
+     * A per-row temporal member set, read once per list ({@link Primitives.TemporalMembers}) with a
+     * one-slot "same list instance" cache: consecutive rows holding the same list (a grouped
+     * {@code distinct()} hands every row of a group one instance) fold and read it once.
      */
     private static final class RowMembers
     {
 
         private final Vector bound;
 
+        private final boolean time;
+
         private @Nullable Object lastList;
 
-        private @Nullable Set<String> lastSet;
+        private Primitives.@Nullable TemporalMembers lastSet;
 
-        RowMembers(Vector aBound)
+        RowMembers(Vector aBound, boolean aTime)
         {
             bound = aBound;
+            time = aTime;
         }
 
 
-        Set<String> at(int row)
+        Primitives.TemporalMembers at(int row)
         {
             Object cell = bound.value(row).resolved();
-            Set<String> cached = lastSet;
+            Primitives.TemporalMembers cached = lastSet;
             if (cell instanceof Collection<?> && cell == lastList && cached != null)
             {
                 return cached;
             }
-            Set<String> set = toSet(cell, false).present();
+            Primitives.TemporalMembers set = Primitives.TemporalMembers
+                    .of(toSet(cell, false).present(), time);
             if (cell instanceof Collection<?>)
             {
                 lastList = cell;

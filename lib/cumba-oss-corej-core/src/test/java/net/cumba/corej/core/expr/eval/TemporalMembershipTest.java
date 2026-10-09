@@ -528,4 +528,61 @@ class TemporalMembershipTest
         assertTrue(in.get(0), "09:15 is a member of {09:15}");
         assertFalse(notIn.get(0), "⛔ and `not in` must NOT fire on it — the HIGH's own shape");
     }
+
+
+    /**
+     * Runbook W2 fold (R5 A-LOW-2): a member set is read ONCE ({@link Primitives.TemporalMembers})
+     * instead of once per probe, and that read is the pairwise comparator's decision tree written
+     * over pre-read halves — so it must answer exactly what the pairwise
+     * {@link Primitives#compareCells} / {@code compareTimeCells} loop answers, for every probe and
+     * every set: singletons over a grid of ISO dates and datetimes, partials, intervals, numbers,
+     * blanks, junk and mixed shapes, and every two-member set of them.
+     */
+    @Test
+    void aSetReadOnceAnswersWhatThePairwiseComparatorAnswers()
+    {
+        List<String> dates = List.of("2020-01-15", "2020-01", "2020", "2020-01-15T09:15",
+                "2020-01-15T09:15:30", "2020-01-15T09:15:30.123", "2020-01-15Z", " 2020-01-15",
+                "2003-12/2003-12", "----06-15", "2020-02-30", "", "junk", "20200115", "5", "5.0",
+                "2020-01-15ZZ");
+        List<String> times = List.of("09:15", "09:15:00", "09:15:30", "10", "09", "23:59:59",
+                "09:15:30.5", "", "junk", "5", "540", "T09:15");
+        assertSetEqualsPairwise(dates, false);
+        assertSetEqualsPairwise(times, true);
+    }
+
+
+    private static void assertSetEqualsPairwise(List<String> values, boolean time)
+    {
+        for (String probe : values)
+        {
+            net.cumba.datatable.values.IDataValue cell = DataValues.of(probe);
+            for (String a : values)
+            {
+                for (String b : values)
+                {
+                    Set<String> members = new java.util.LinkedHashSet<>(List.of(a, b));
+                    boolean pairwise = false;
+                    for (String m : members)
+                    {
+                        pairwise |= time
+                                ? Primitives.compareTimeCells(cell, m, 0, false, false, false)
+                                : Primitives.compareCells(cell, m, 0, false, false, false);
+                    }
+                    assertEquals(pairwise,
+                            Primitives.TemporalMembers.of(members, time).contains(cell),
+                            (time ? "time " : "date ") + "'" + probe + "' in " + members);
+                }
+            }
+        }
+        // a numeric probe cell (a typed DOUBLE) against the same sets
+        net.cumba.datatable.values.IDataValue number = DataValues.of(5.0);
+        for (String a : values)
+        {
+            boolean pairwise = time ? Primitives.compareTimeCells(number, a, 0, false, false, false)
+                    : Primitives.compareCells(number, a, 0, false, false, false);
+            assertEquals(pairwise, Primitives.TemporalMembers.of(Set.of(a), time).contains(number),
+                    "5.0 in {" + a + "}");
+        }
+    }
 }

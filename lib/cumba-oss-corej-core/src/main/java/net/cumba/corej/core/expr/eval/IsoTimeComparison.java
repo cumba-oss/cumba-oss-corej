@@ -66,10 +66,19 @@ public final class IsoTimeComparison
      */
     public static boolean fires(String a, String b, int direction, boolean orEqual, boolean negate)
     {
-        String coreA = IsoTimeBounds.core(a);
-        String coreB = IsoTimeBounds.core(b);
-        if (coreA != null && coreA.length() >= IsoTimeBounds.MINUTE_PRECISION && coreB != null
-                && coreB.length() >= IsoTimeBounds.MINUTE_PRECISION)
+        return fires(new Side(a, false), new Side(b, false), direction, orEqual, negate);
+    }
+
+
+    /**
+     * {@link #fires(String, String, int, boolean, boolean)} over two operands already read
+     * ({@link Side}) — the one implementation; the string form reads both operands here.
+     */
+    static boolean fires(Side a, Side b, int direction, boolean orEqual, boolean negate)
+    {
+        String coreA = a.core;
+        String coreB = b.core;
+        if (coreA != null && coreB != null && a.complete && b.complete)
         {
             // Branch (2): two complete times are points at their own granularity, compared at
             // the coarser of the two core precisions — the exact analogue of the date operator's
@@ -82,11 +91,11 @@ public final class IsoTimeComparison
             int cmp = clipKnown(coreA, prec).compareTo(clipKnown(coreB, prec));
             return negate != ScalarSemantics.matchCmp(cmp, direction, orEqual);
         }
-        int prec = commonPrecision(coreA, coreB);
-        String loA = clip(IsoTimeBounds.lower(a), prec);
-        String hiA = clip(IsoTimeBounds.upper(a), prec);
-        String loB = clip(IsoTimeBounds.lower(b), prec);
-        String hiB = clip(IsoTimeBounds.upper(b), prec);
+        int prec = Math.max(a.precision(), b.precision());
+        String loA = clip(a.lower(), prec);
+        String hiA = clip(a.upper(), prec);
+        String loB = clip(b.lower(), prec);
+        String hiB = clip(b.upper(), prec);
         if (loA == null || hiA == null || loB == null || hiB == null)
         {
             // Branch (4): unbounded on at least one side — every one of the six PREDICATES is
@@ -105,17 +114,71 @@ public final class IsoTimeComparison
         return negate != verdict;
     }
 
-
     /**
-     * The width both hulls are clipped to: the finer of the two operands' own precisions, floored
+     * One operand of {@link #fires(Side, Side, int, boolean, boolean)}, read once (runbook W2 fold,
+     * R5 A-LOW-2) — {@link IsoDateComparison.Side}'s mirror: its core, whether that core is a
+     * complete time (minute precision or finer, the fast path's test), and its hull bounds and
+     * precision tier, read at construction when the operand is not complete or {@code preRead} asks
+     * (a membership set's member), else on demand. Immutable.
+     *
+     * <p>
+     * The precision both hulls are clipped to is the finer of the two operands' own tiers, floored
      * at a whole minute. Flooring is what makes a minute-precision operand a <b>point</b> — the
      * time analogue of {@link IsoDateComparison}'s day floor.
+     * </p>
      */
-    private static int commonPrecision(@Nullable String coreA, @Nullable String coreB)
+    static final class Side
     {
-        return Math.max(precisionOf(coreA), precisionOf(coreB));
-    }
 
+        private final String text;
+
+        private final @Nullable String core;
+
+        private final boolean complete;
+
+        private final boolean read;
+
+        private final @Nullable String lower;
+
+        private final @Nullable String upper;
+
+        private final int precision;
+
+        /**
+         * @param aText
+         *            the operand's string form
+         * @param aPreRead
+         *            read the bounds and the precision now, whatever the operand's shape
+         */
+        Side(String aText, boolean aPreRead)
+        {
+            text = aText;
+            core = IsoTimeBounds.core(aText);
+            complete = core != null && core.length() >= IsoTimeBounds.MINUTE_PRECISION;
+            read = aPreRead || !complete;
+            lower = read ? IsoTimeBounds.lower(aText) : null;
+            upper = read ? IsoTimeBounds.upper(aText) : null;
+            precision = read ? precisionOf(core) : 0;
+        }
+
+
+        private @Nullable String lower()
+        {
+            return read ? lower : IsoTimeBounds.lower(text);
+        }
+
+
+        private @Nullable String upper()
+        {
+            return read ? upper : IsoTimeBounds.upper(text);
+        }
+
+
+        private int precision()
+        {
+            return read ? precision : precisionOf(core);
+        }
+    }
 
     private static int precisionOf(@Nullable String core)
     {

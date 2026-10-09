@@ -10,9 +10,9 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * ⭐ <b>Phase 3b of {@code PLAN-typed-expression-engine}: this class IS the {@code date} type's
  * comparison operator</b> (SPEC §5.2 / D71a). Its three branches are re-homed, not retired — the
- * {@code commonPrecision} normalisation is §5.2(1), the complete-vs-complete point compare §5.2(2),
- * the ∀-over-clipped-hulls rule §5.2(3), and the unbounded-hull all-false verdict §5.2(4). The
- * compiler reaches it through the {@code date()} conversion's family routing
+ * {@link Side}'s common-precision normalisation is §5.2(1), the complete-vs-complete point compare
+ * §5.2(2), the ∀-over-clipped-hulls rule §5.2(3), and the unbounded-hull all-false verdict §5.2(4).
+ * The compiler reaches it through the {@code date()} conversion's family routing
  * ({@code ExprCompiler.compileDate} → {@link Primitives#dateComparison}), and {@code date_overlaps}
  * is defined as the negation of its {@code !=} ({@code TemporalPredicates}).
  * {@link IsoTimeComparison} is the {@code time} type's mirror.
@@ -122,8 +122,8 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * Otherwise — at least one operand is a truncated partial, a masked form, blank or junk — the hull
  * rule applies, with both hulls clipped to a common precision of at least {@link #DAY_PRECISION}
- * characters (see {@link #commonPrecision}), so a day-precision operand is a <b>point</b> and the
- * mixed lower/upper test is sound.
+ * characters (see {@link Side}), so a day-precision operand is a <b>point</b> and the mixed
+ * lower/upper test is sound.
  * </p>
  *
  * <h2>Saturating bounds — "every PREDICATE false" is emergent, and {@code negate} then flips
@@ -218,11 +218,19 @@ public final class IsoDateComparison
      */
     public static boolean fires(String a, String b, int direction, boolean orEqual, boolean negate)
     {
-        String coreA = IsoDateBounds.core(a);
-        String coreB = IsoDateBounds.core(b);
-        if (coreA != null && coreB != null && IsoDateBounds.isReadableCore(coreA)
-                && IsoDateBounds.isReadableCore(coreB) && CalendarDates.isCompleteDate(coreA)
-                && CalendarDates.isCompleteDate(coreB))
+        return fires(new Side(a, false), new Side(b, false), direction, orEqual, negate);
+    }
+
+
+    /**
+     * {@link #fires(String, String, int, boolean, boolean)} over two operands already read
+     * ({@link Side}) — the one implementation; the string form reads both operands here.
+     */
+    static boolean fires(Side a, Side b, int direction, boolean orEqual, boolean negate)
+    {
+        String coreA = a.core;
+        String coreB = b.core;
+        if (coreA != null && coreB != null && a.complete && b.complete)
         {
             // Fix #229 — the readability conjuncts are NOT redundant with isCompleteDate: core()
             // strips once and isCompleteDate strips again. Without them "2012-06-15ZZ" <
@@ -242,11 +250,11 @@ public final class IsoDateComparison
             return negate != ScalarSemantics.matchCmp(ScalarSemantics.compareIso(coreA, coreB),
                     direction, orEqual);
         }
-        int prec = commonPrecision(coreA, coreB);
-        String loA = clip(IsoDateBounds.lower(a), prec);
-        String hiA = clip(IsoDateBounds.upper(a), prec);
-        String loB = clip(IsoDateBounds.lower(b), prec);
-        String hiB = clip(IsoDateBounds.upper(b), prec);
+        int prec = Math.max(a.precision(), b.precision());
+        String loA = clip(a.lower(), prec);
+        String hiA = clip(a.upper(), prec);
+        String loB = clip(b.lower(), prec);
+        String hiB = clip(b.upper(), prec);
         if (loA == null || hiA == null || loB == null || hiB == null)
         {
             // H1b — unbounded on at least one side: every one of the six PREDICATES is false, and
@@ -278,18 +286,77 @@ public final class IsoDateComparison
                 precisionOf(core));
     }
 
-
     /**
-     * The width both hulls are clipped to: the finer of the two operands' own precisions, floored
+     * One operand of {@link #fires(Side, Side, int, boolean, boolean)}, read once (runbook W2 fold,
+     * R5 A-LOW-2): its core and whether that core is a readable complete date — the fast path's
+     * test, so the readability conjuncts of Fix #229 are taken here — and its hull bounds and
+     * precision tier. The bounds are read at construction when the operand is not a complete date
+     * (the hull branch needs them then) or when {@code preRead} asks for them (a membership set's
+     * member, compared with many probes: {@code Primitives.TemporalMembers}); a complete date read
+     * once for one comparison reads them only if the other side sends it down the hull branch,
+     * exactly as the string comparison always did. Immutable, so a set's pre-read members are
+     * shared across rows and threads.
+     *
+     * <p>
+     * The precision both hulls are clipped to is the finer of the two operands' own tiers, floored
      * at a whole day. Flooring is what makes a day-precision operand a <b>point</b> — without it
      * {@code 2026-01-17 >= 2026-01} would compare {@code …T00:00:00} against {@code …T23:59:59} and
      * answer for the wrong reason.
+     * </p>
      */
-    private static int commonPrecision(@Nullable String coreA, @Nullable String coreB)
+    static final class Side
     {
-        return Math.max(precisionOf(coreA), precisionOf(coreB));
-    }
 
+        private final String text;
+
+        private final @Nullable String core;
+
+        private final boolean complete;
+
+        private final boolean read;
+
+        private final @Nullable String lower;
+
+        private final @Nullable String upper;
+
+        private final int precision;
+
+        /**
+         * @param aText
+         *            the operand's string form
+         * @param aPreRead
+         *            read the bounds and the precision now, whatever the operand's shape
+         */
+        Side(String aText, boolean aPreRead)
+        {
+            text = aText;
+            core = IsoDateBounds.core(aText);
+            complete = core != null && IsoDateBounds.isReadableCore(core)
+                    && CalendarDates.isCompleteDate(core);
+            read = aPreRead || !complete;
+            lower = read ? IsoDateBounds.lower(aText) : null;
+            upper = read ? IsoDateBounds.upper(aText) : null;
+            precision = read ? precisionOf(core) : 0;
+        }
+
+
+        private @Nullable String lower()
+        {
+            return read ? lower : IsoDateBounds.lower(text);
+        }
+
+
+        private @Nullable String upper()
+        {
+            return read ? upper : IsoDateBounds.upper(text);
+        }
+
+
+        private int precision()
+        {
+            return read ? precision : precisionOf(core);
+        }
+    }
 
     /**
      * The operand's own precision tier, floored at a day and capped at a second.

@@ -116,6 +116,25 @@ class LibraryValidatorUseCaseAnchorTest
     }
 
 
+    /**
+     * Runbook W2 fold (R5 A-note): the builder normalises the use case as every client boundary
+     * does ({@code StudyValidationParams.normalizeUseCase}, W2 UC) — a direct caller's
+     * {@code " nonclin "} runs, skips and reports as {@code NONCLIN}, never as it was typed.
+     */
+    @Test
+    void theBuilderNormalisesTheUseCaseAsTheClientBoundariesDo() throws Exception
+    {
+        ValidationReport report = validate(" nonclin ");
+        List<SkippedRuleEntry> skipped = report.getSkippedRules().stream()
+                .filter(e -> ID.equals(e.getCoreId())).toList();
+        assertEquals(2, skipped.size(), () -> "one SKIPPED row per target dataset: " + skipped);
+        for (SkippedRuleEntry e : skipped)
+        {
+            assertEquals("use case NONCLIN not in Scope.Use_Case [INDH]", e.getReason());
+        }
+    }
+
+
     @Test
     void inTheUseCase_orWithNone_theAnchorRuleFiresOnce() throws Exception
     {
