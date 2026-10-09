@@ -1073,6 +1073,7 @@ public class RulePackageLoader
     {
         validateRetiredFunctionNames(expr);
         validateInlineCallShapes(expr);
+        rejectStringListSplices(expr, bound);
         validateSidedKeys(expr);
         // Wave 4 (PLAN-list-functions D-W4-3), inverted by the combined review of runbook W2–W8
         // (W4 M4): every REGISTRY call in the expression — inline in a Check level or the
@@ -1216,6 +1217,35 @@ public class RulePackageLoader
         {
             throw new net.cumba.corej.core.expr.RuleDefinitionException(refusal);
         }
+    }
+
+
+    /**
+     * Runbook W4 E3 (D1-B, coordinator W4-D6): a binding holding a written string list, read at a
+     * splice slot of any call of {@code expr} ({@code NameListBinding.stringListSpliceRefusal}), is
+     * the rule's load error with D1's hint. Here, in the seam pass that runs on every Check level
+     * (against every binding) and every binding (against the earlier ones) of every rule before
+     * stage A, so one message holds on every path — a Check-less rule's bindings included. The
+     * Precondition is judged as authored (no bindings — an authored one is refused anyway), and a
+     * Match_Datasets Filter cannot read a {@code $} at all.
+     */
+    private static void rejectStringListSplices(net.cumba.corej.core.expr.ast.Expr expr,
+            Map<String, net.cumba.corej.core.expr.ast.Expr> bound)
+    {
+        if (bound.isEmpty())
+        {
+            return;
+        }
+        if (expr instanceof net.cumba.corej.core.expr.ast.Expr.Call call)
+        {
+            String refusal = net.cumba.corej.core.expr.eval.NameListBinding
+                    .stringListSpliceRefusal(call, bound);
+            if (refusal != null)
+            {
+                throw new net.cumba.corej.core.expr.RuleDefinitionException(refusal);
+            }
+        }
+        childrenOf(expr).forEach(child -> rejectStringListSplices(child, bound));
     }
 
 

@@ -1356,6 +1356,11 @@ public final class Primitives
             // Non-null by TypedValue.resolved()'s contract: it answers null iff the carrier is
             // missing, and that row returned above.
             Object raw = java.util.Objects.requireNonNull(needleValue.resolved());
+            // runbook W4 E6b: the needle is ONE value — a list there (known only at run time;
+            // stage A refuses the typed one at load) is the rule's ERROR with stage A's sentence,
+            // never its rendering probed as text ("[a, b]": silently false before)
+            ListArgument.requireScalar(raw,
+                    () -> ListArgument.needle(needleFunction(mode, negate), "a list"));
             // D5: a numeric-literal needle resolves to a boxed Number; render it canonically so
             // contains(CODE, 100) probes "100" (not "100.0"). A String needle (column / quoted
             // literal) is unchanged — canonicalNeedle returns it verbatim.
@@ -1374,6 +1379,18 @@ public final class Primitives
             };
             return negate != hit;
         });
+    }
+
+
+    /** The registered name of a substring probe ({@link #substring}'s mode and negation). */
+    private static String needleFunction(SubstringMode mode, boolean negate)
+    {
+        return switch (mode)
+        {
+        case CONTAINS -> negate ? "does_not_contain" : "contains";
+        case STARTS_WITH -> "starts_with";
+        case ENDS_WITH -> "ends_with";
+        };
     }
 
 

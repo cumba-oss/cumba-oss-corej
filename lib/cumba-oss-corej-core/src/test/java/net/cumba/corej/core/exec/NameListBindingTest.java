@@ -214,9 +214,12 @@ class NameListBindingTest
                 "$keys", "[USUBJID, $b]")).getLoadError(), "a $ member stays refused");
         String mixed = loadError("not is_unique_set($keys)", "$keys", "[USUBJID, \"AESEQ\"]");
         assertTrue(mixed.contains("not both"), mixed);
-        // a string-literal list binding keeps naming the columns here (its retirement is W4, D1-B)
+        // a string-literal list binding is no list of names (runbook W4 E3, D1-B): the load error
+        // names the remedy, and the bare names answer as the string list did before
+        String strings = loadError("not is_unique_set($keys)", "$keys", "[\"USUBJID\", \"AESEQ\"]");
+        assertTrue(strings.contains("write the columns as names: [USUBJID, AESEQ]"), strings);
         assertEquals(List.of(1L, 2L),
-                fired("not is_unique_set($keys)", "$keys", "[\"USUBJID\", \"AESEQ\"]"));
+                fired("not is_unique_set($keys)", "$keys", "[USUBJID, AESEQ]"));
     }
 
     // ------------------------------------------------------------------ W1a fold (R5)

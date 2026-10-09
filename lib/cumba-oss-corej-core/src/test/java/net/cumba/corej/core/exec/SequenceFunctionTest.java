@@ -63,7 +63,7 @@ class SequenceFunctionTest
     }
 
 
-    private static String esc(String s)
+    static String esc(String s)
     {
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }

@@ -309,9 +309,13 @@ class ExprPrefixResolverTest
         assertEquals(
                 fired(duplicated(), "record_count(group=[USUBJID, --SEQ]) > 1", "$k", "\"--SEQ\""),
                 fired(duplicated(), "record_count(group=[USUBJID, $k]) > 1", "$k", "\"--SEQ\""));
-        // a list binding of written names splices element by element, each specialised
-        assertEquals(List.of(1L, 2L), fired(duplicated(), "record_count(group=[$k]) > 1", "$k",
-                "[\"USUBJID\", \"--SEQ\"]"));
+        // a list binding of bare names splices element by element, each specialised; a list of
+        // STRINGS is no list of names (runbook W4 E3, D1-B) - the load error names the remedy
+        assertEquals(List.of(1L, 2L),
+                fired(duplicated(), "record_count(group=[$k]) > 1", "$k", "[USUBJID, --SEQ]"));
+        String strings = SequenceFunctionTest.loadError("record_count(group=[$k]) > 1", "$k",
+                "[\"USUBJID\", \"--SEQ\"]");
+        assertTrue(strings.contains("write the columns as names: [USUBJID, --SEQ]"), strings);
         // R5 review BS2b LOW-1: the BARE operand at a splice slot is the one-member list (C5), so
         // it is inlined as the member is — group=$k / is_unique_set($k) answer as [$k] does
         for (String[] pair : new String[][]
@@ -324,7 +328,7 @@ class ExprPrefixResolverTest
                 }
         })
         {
-            for (String binding : List.of("\"--SEQ\"", "[\"USUBJID\", \"--SEQ\"]"))
+            for (String binding : List.of("\"--SEQ\"", "[USUBJID, --SEQ]"))
             {
                 assertEquals(fired(duplicated(), pair[1], "$k", binding),
                         fired(duplicated(), pair[0], "$k", binding), pair[0] + " " + binding);

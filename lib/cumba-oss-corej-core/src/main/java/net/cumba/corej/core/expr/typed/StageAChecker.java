@@ -26,6 +26,7 @@ import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionKind;
 import net.cumba.corej.core.expr.eval.FunctionRegistry;
+import net.cumba.corej.core.expr.eval.ListArgument;
 import net.cumba.corej.core.expr.eval.MetadataAttribute;
 import net.cumba.corej.core.expr.eval.MetadataLevel;
 import net.cumba.corej.core.expr.eval.MetadataNormalizer.Normalization;
@@ -2406,6 +2407,13 @@ public final class StageAChecker
                 find(StageAErrorKind.PARAMETER_TYPE, ExprCompiler.bareNameListHint(lit) + at(c));
                 continue;
             }
+            String listRefusal = listAtScalarSlot(c, descriptor, slot, param, arg,
+                    walkedByIdentity.get(arg));
+            if (listRefusal != null)
+            {
+                find(StageAErrorKind.PARAMETER_TYPE, listRefusal + at(c));
+                continue;
+            }
             if (declared == Unknown.UNKNOWN)
             {
                 if (net.cumba.corej.core.exec.ReferencedRecordCount.KEY_VARIABLE_PARAMETER
@@ -2534,6 +2542,50 @@ public final class StageAChecker
                                 + declared.describe() + ", not " + actual.describe() + at(c));
             }
         }
+    }
+
+
+    /**
+     * Runbook W4 pack P2 — a list where ONE value is read, judged before the {@code unknown} skip
+     * (so an {@code unknown}-declared parameter is judged too), with the sentence the run-time
+     * guard makes the rule's ERROR when only the run knows ({@link ListArgument}):
+     * <ul>
+     * <li>E7a (Q7): a list of lists at the lifted parameter 0 of a flagged descriptor;</li>
+     * <li>E6 (Q4): a list at any other parameter of a flagged descriptor — the typed ones refused
+     * since E5 by the generic check below, now in Q4's words, and the {@code unknown}-declared ones
+     * that check skips (none in the shipped roster);</li>
+     * <li>E6b: a list at the needle ({@code value}) of {@code contains} / {@code does_not_contain}
+     * / {@code starts_with} / {@code ends_with}, with the hint naming {@code contains_any} or
+     * saying there is no list form.</li>
+     * </ul>
+     * A name-list binding is left to decision 9's one hint (filed after the walk).
+     *
+     * @return the refusal, or {@code null}
+     */
+    private @Nullable String listAtScalarSlot(Expr.Call c, FunctionDescriptor descriptor, int slot,
+            Parameter param, Expr arg, @Nullable TypedExpr walked)
+    {
+        if (walked == null || isNameListRef(arg)
+                || !(walked.type().dereference() instanceof ListOf list))
+        {
+            return null;
+        }
+        if (descriptor.elementwise() && slot == 0)
+        {
+            return list.element().dereference() instanceof ListOf
+                    ? ListArgument.nested(c.name(), param.name(), walked.type().describe())
+                    : null;
+        }
+        if (descriptor.elementwise())
+        {
+            return ListArgument.atScalarParameter(c.name(), param.name(),
+                    descriptor.parameters().get(0).name(), walked.type().describe());
+        }
+        if (slot == 1 && ListArgument.isNeedleFunction(c.name()))
+        {
+            return ListArgument.needle(c.name(), walked.type().describe());
+        }
+        return null;
     }
 
 

@@ -111,6 +111,112 @@ public final class NameListBinding
 
 
     /**
+     * Whether {@code e} is a <b>string list</b>: a non-empty list literal whose every member is a
+     * string literal ({@code ["STUDYID", "USUBJID"]}) — the form D1-B retires as a list of column
+     * names (runbook W4 E3); as values it stays legal (D1 (a)).
+     *
+     * @param e
+     *            the expression
+     * @return {@code true} for a string list
+     */
+    public static boolean isStringList(@Nullable Expr e)
+    {
+        if (!(e instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.LIST
+                || !(lit.value() instanceof List<?> items) || items.isEmpty())
+        {
+            return false;
+        }
+        for (Object item : items)
+        {
+            if (!(item instanceof Expr.Lit member) || member.kind() != Expr.LitKind.STRING)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+
+    /**
+     * ⭐ Runbook W4 E3 ({@code PLAN-elementwise-list-functions} owner ruling D1-B, coordinator
+     * W4-D6): the first splice-slot read ({@link GroupSplice#spliceSlots} — the bare operand, a
+     * list member, a {@code within=} component, the member a sort-key descriptor wraps) of a
+     * binding whose expression, followed through bindings of bindings, is a written
+     * {@link #isStringList string list}. Its strings were turned into column names at bind time, so
+     * {@code group=$k} answered as the names — while the same strings written in place
+     * ({@code group=["STUDYID"]}) are refused (runbook W8 D-W8-6). Judged by PROVENANCE, never by
+     * type: a computed list of names ({@code minus([…], subtract=[…])}, {@code get_*_variables})
+     * still splices (D1 (b)); a single string binding ({@code $k: "--SEQ"}, PACK 5 S8) is not a
+     * list (coordinator E3-D1); {@code colref} and {@code key_variable} are no splice slots. One
+     * call, not the tree: the loader's seam pass walks every call of every Check level and binding
+     * of every rule, before stage A.
+     *
+     * @param call
+     *            the call
+     * @param bound
+     *            the rule's bindings visible here, name → expression
+     * @return the refusal, or {@code null}
+     */
+    public static @Nullable String stringListSpliceRefusal(Expr.Call call, Map<String, Expr> bound)
+    {
+        if (bound.isEmpty())
+        {
+            return null;
+        }
+        for (GroupSplice.Slot slot : GroupSplice.spliceSlots(call))
+        {
+            for (Expr member : slot.operands())
+            {
+                if (!(member instanceof Expr.Ref ref) || ref.kind() != OperandKind.OPERATION_REF)
+                {
+                    continue;
+                }
+                Expr held = net.cumba.corej.core.expr.convert.BindingInliner.boundExpression(member,
+                        bound);
+                if (held != member && isStringList(held))
+                {
+                    return stringListRefusal(call.name(), slot.parameter(), ref.name(),
+                            (Expr.Lit) held);
+                }
+            }
+        }
+        return null;
+    }
+
+
+    /**
+     * The E3 sentence, D1's hint verbatim with the authored names: <i>"write the columns as names:
+     * [STUDYID, USUBJID]"</i>.
+     *
+     * @param function
+     *            the splicing function
+     * @param parameter
+     *            its splice slot
+     * @param binding
+     *            the binding read there, {@code $} included
+     * @param strings
+     *            the string list it holds
+     * @return the sentence
+     */
+    public static String stringListRefusal(String function, String parameter, String binding,
+            Expr.Lit strings)
+    {
+        @SuppressWarnings("unchecked")
+        List<Expr> items = (List<Expr>) strings.value();
+        List<String> names = new ArrayList<>(items.size());
+        for (Expr item : items)
+        {
+            names.add(String.valueOf(((Expr.Lit) item).value()));
+        }
+        return "argument '" + parameter + "' of '" + function + "' reads the binding " + binding
+                + " as column names, but it holds the strings "
+                + net.cumba.corej.core.expr.ExpressionPrinter.print(strings)
+                + " - a quoted name is a string, never a column: write the columns as names: ["
+                + String.join(", ", names) + "]";
+    }
+
+
+    /**
      * The refusal of a name-list binding read anywhere but a splice slot (decision 9's hint).
      *
      * @param binding

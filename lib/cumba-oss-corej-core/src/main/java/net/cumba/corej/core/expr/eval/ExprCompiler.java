@@ -3005,7 +3005,7 @@ public final class ExprCompiler
         Expr value = Objects.requireNonNull(bound.get(0),
                 () -> "'" + name + "' reached the registry tail without a value operand");
         EvalFunction fn = hierarchyLevelsBound(bound,
-                isStaticallyScalar(value) ? ElementwiseLift.kernelOf(registered) : registered);
+                allStaticallyScalar(bound) ? ElementwiseLift.kernelOf(registered) : registered);
         ValuePlan compiledArg0 = operandPlan(value, true);
         // The availability gate reads an unusable provider answer as "not available" (§0.2 a).
         ValuePlan arg0 = AVAILABILITY_GATE.equals(name) ? unusableAsUnavailable(compiledArg0)
@@ -6881,8 +6881,10 @@ public final class ExprCompiler
                 // PLAN-elementwise-list-functions §3.3 (owner Q14 (c); runbook W1a E4): [X, Y] is a
                 // list of column NAMES everywhere — at a value parameter it is neither the names'
                 // text (what the same literal means as a $keys binding, D1-A) nor the cells. Stage
-                // A files the same hint for a Check; this is the seam for the paths it never walks.
-                throw unsupported(bareNameListHint(lit));
+                // A files the same hint for a Check, the loader's seam (validateRegistryCall) for
+                // the paths stage A never walks; here the rule is WRONG, never merely unsupported
+                // (runbook W4 E8 residue: an unsupported would only degrade it)
+                throw new RuleDefinitionException(bareNameListHint(lit));
             }
             ConstVector list = ConstVector.of(listLiteralValues(lit));
             return _ -> list;
@@ -6976,6 +6978,11 @@ public final class ExprCompiler
                 }
                 throw unsupported("wildcard/prefix operand '" + r.name()
                         + "' is resolved downstream; not native-supported");
+            }
+            if (r.kind() == OperandKind.OPERATION_REF)
+            {
+                yield boolListRefused(namePosition ? nameRefPlan(r.name()) : valueRefPlan(r.name()),
+                        r.name());
             }
             yield namePosition ? nameRefPlan(r.name()) : valueRefPlan(r.name());
         }
@@ -7963,6 +7970,30 @@ public final class ExprCompiler
 
 
     /**
+     * {@code PLAN-elementwise-boolean-predicates} Q3 at run time (runbook W4 EB4 residue): a
+     * {@code $} binding read as an operand — compared, a function argument, a membership operand
+     * (the comparison reads its left side in name position, so both positions) — that answers a
+     * {@link BoolListVector} (an element-wise predicate over a list stage A could not type,
+     * {@code $b: is_valid_date($u)}) is the rule's ERROR with stage A's
+     * {@link BoolListVector#bindingHint}: the comparison would read the diagnostic list form and
+     * answer silently. A quantifier reads the binding through its own arm ({@link #valueRefPlan}
+     * directly), so only the refused readers meet this guard.
+     */
+    private static ValuePlan boolListRefused(ValuePlan plan, String binding)
+    {
+        return run ->
+        {
+            Vector v = plan.eval(run);
+            if (v instanceof BoolListVector)
+            {
+                throw new RuleDefinitionException(BoolListVector.bindingHint(binding));
+            }
+            return v;
+        };
+    }
+
+
+    /**
      * Value-position reference, following the column/var/literal-fallback order; never returns
      * {@code null} (an unresolved operand broadcasts {@code null}).
      */
@@ -8135,8 +8166,7 @@ public final class ExprCompiler
         }
         rejectLiteralColumnArguments(descriptor, bound);
         EvalFunction registered = descriptor.fn();
-        if (registered != null && descriptor.elementwise() && !bound.isEmpty()
-                && bound.get(0) != null && isStaticallyScalar(bound.get(0)))
+        if (registered != null && descriptor.elementwise() && allStaticallyScalar(bound))
         {
             // PLAN-elementwise-list-functions §3.5 / §3.6 (runbook W1a E4): the descriptor's fn is
             // the element-wise lift (ElementwiseLift), which decides the shape on the vector at
@@ -8144,7 +8174,9 @@ public final class ExprCompiler
             // call, a scalar literal — has nothing to decide, so the kernel is called directly and
             // the hot scalar path pays nothing for the lift. A `$` reference, a list literal, a
             // list-valued call or an unknown-typed call keeps the lifted function. The decision is
-            // structural (the plan is memoised across rules, §3.5), never a rule's binding.
+            // structural (the plan is memoised across rules, §3.5), never a rule's binding. The
+            // OTHER arguments must be scalar by shape too (Q4, runbook W4 E6): a `$` there keeps
+            // the lifted function, whose guard makes a list the rule's ERROR (ListArgument).
             registered = ElementwiseLift.kernelOf(registered);
         }
         EvalFunction fn = registered;
@@ -8434,6 +8466,29 @@ public final class ExprCompiler
         {
             return false;
         }
+    }
+
+
+    /**
+     * Whether every bound argument of a lifted call is {@link #isStaticallyScalar scalar by shape}
+     * (an absent optional counts as scalar; an absent parameter 0 does not) — only then is the bare
+     * kernel called: the lift decides a list at parameter 0, and its Q4 guard refuses one at any
+     * other parameter (runbook W4 E6), so a call with a {@code $} anywhere keeps the lift.
+     */
+    private static boolean allStaticallyScalar(List<@Nullable Expr> bound)
+    {
+        if (bound.isEmpty() || bound.get(0) == null)
+        {
+            return false;
+        }
+        for (Expr arg : bound)
+        {
+            if (arg != null && !isStaticallyScalar(arg))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
 
@@ -10744,7 +10799,16 @@ public final class ExprCompiler
         {
             return;
         }
-        rejectLiteralColumnArguments(descriptor, ArgumentBinder.bind(descriptor, c), stageAJudged);
+        List<@Nullable Expr> bound = ArgumentBinder.bind(descriptor, c);
+        if (!stageAJudged && descriptor.elementwise() && !bound.isEmpty()
+                && bound.get(0) instanceof Expr.Lit lit && NameListBinding.isNameList(lit))
+        {
+            // §3.3 (owner Q14 (c)), runbook W4 E8 residue: stage A's hint for a bare-name list at
+            // the lifted parameter, on the paths it never walks (a Check-less rule's bindings, a
+            // Filter, the CHECKER_FAILURE re-run) — before, such a binding loaded
+            throw new RuleDefinitionException(bareNameListHint(lit));
+        }
+        rejectLiteralColumnArguments(descriptor, bound, stageAJudged);
     }
 
 

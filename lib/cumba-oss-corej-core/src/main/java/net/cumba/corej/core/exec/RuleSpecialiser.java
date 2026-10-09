@@ -498,6 +498,9 @@ public final class RuleSpecialiser
                 }
                 return written;
             }
+            // a list of string literals: unreachable at a splice slot since runbook W4 E3 (D1-B,
+            // the loader refuses it — NameListBinding.stringListSpliceRefusal); kept as the
+            // defensive reading of a binding the seam pass never judged
             texts = items;
         }
         else

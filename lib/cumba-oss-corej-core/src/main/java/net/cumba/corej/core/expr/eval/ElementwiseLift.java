@@ -50,11 +50,11 @@ import org.jspecify.annotations.Nullable;
  * kernel answers a missing (Q5: the function's own rule per element — for the string functions
  * identity, D36 / D85c); a present result is carried as its payload (the kernel's text), its typed
  * cell, or — a computed number — its canonical typed cell ({@link DataValues#number}, so every lift
- * case renders and keys a number alike, runbook W2 fold R5 B-MED-2). ⚠ An element that is itself a
- * list keeps <b>today's rendering</b> ({@code item.toString()} is what the kernel folds) until
- * runbook W4's E7a makes it the rule ERROR Q7 rules — a lift never recurses. A {@code null} element
- * is the {@link ListValueGuard}'s error, as it was in the fold it replaces (register
- * {@code NNL §1}).
+ * case renders and keys a number alike, runbook W2 fold R5 B-MED-2). ⭐ An element that is itself a
+ * list is the rule's ERROR (Q7, owner <i>"agree one level only"</i>; runbook W4 E7a,
+ * {@link ListArgument#nested}) — a lift never recurses, and before E7a it folded the element's
+ * rendering ({@code "[A, B]"}). A {@code null} element is the {@link ListValueGuard}'s error, as it
+ * was in the fold it replaces (register {@code NNL §1}).
  * </p>
  *
  * <p>
@@ -68,6 +68,15 @@ import org.jspecify.annotations.Nullable;
  * own answer on that value).
  * </p>
  *
+ * <p>
+ * <b>Other parameters</b> (Q4, owner <i>"agree to error"</i>; runbook W4 E6): every parameter but 0
+ * is scalar per row. A list there — visible only at run time, since stage A refuses the typed one
+ * at load — is the rule's ERROR ({@link ListArgument#atScalarParameter}), never a zip, a cartesian
+ * product or the kernel's reading of the list (before E6 {@code substring}'s {@code start} read it
+ * as a non-number and answered missing). The compiler hands the bare kernel only to a call whose
+ * every argument is scalar by shape ({@code ExprCompiler.isStaticallyScalar}), so the check runs
+ * exactly where an argument could hold a list.
+ * </p>
  * <p>
  * <b>Purity.</b> A flagged kernel reads {@code run.rowCount()} and its argument vectors only — the
  * lifted cases hand it a run over the element range with the caller's context, never a row of the
@@ -165,6 +174,7 @@ final class ElementwiseLift
         @Override
         public Object apply(EvalRun run, List<Vector> args, Map<String, Expr> kwargs)
         {
+            requireScalarOthers(run, args);
             Vector x = args.isEmpty() ? null : args.get(0);
             if (x instanceof ListVector list)
             {
@@ -191,6 +201,24 @@ final class ElementwiseLift
         }
 
 
+        /**
+         * Q4 (runbook W4 E6): every argument but parameter 0 holds one value per row — a list there
+         * is the rule's ERROR, named after the parameter.
+         */
+        private void requireScalarOthers(EvalRun run, List<Vector> args)
+        {
+            for (int a = 1; a < args.size(); a++)
+            {
+                if (ListArgument.holdsList(args.get(a), run.rowCount()))
+                {
+                    throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                            ListArgument.atScalarParameter(name, parameterName(name, a),
+                                    parameterName(name, 0), "a list"));
+                }
+            }
+        }
+
+
         /** Case 2 for a predicate: K kernel calls, the K bit sets as the columns form. */
         private BoolListVector bitsOverElementVectors(EvalRun run, ListVector list,
                 List<Vector> args, Map<String, Expr> kwargs)
@@ -212,7 +240,8 @@ final class ElementwiseLift
             List<Object> elements = new ArrayList<>(items);
             int k = elements.size();
             DataValueType type = constant.declaredType();
-            Vector view = ComputedVector.carried(k, type, i -> element(elements.get(i), type));
+            Vector view = ComputedVector.carried(k, type,
+                    i -> liftedElement(elements.get(i), type, name));
             BitSet folded = bits(
                     kernel.apply(new EvalRun(run.ctx(), 0, k), withFirst(args, view), kwargs));
             return BoolListVector.broadcast(run.rowCount(), k, folded);
@@ -233,7 +262,7 @@ final class ElementwiseLift
                 return kernel.apply(run, args, kwargs);
             }
             BitSet folded = bits(kernel.apply(new EvalRun(run.ctx(), 0, flat.total()),
-                    flattenedSlot(x, flat, args), kwargs));
+                    flattenedSlot(x, flat, args, name), kwargs));
             return BoolListVector.flattened(rows, flat.offsets, folded);
         }
 
@@ -263,7 +292,8 @@ final class ElementwiseLift
             }
             int k = elements.size();
             DataValueType type = constant.declaredType();
-            Vector view = ComputedVector.carried(k, type, i -> element(elements.get(i), type));
+            Vector view = ComputedVector.carried(k, type,
+                    i -> liftedElement(elements.get(i), type, name));
             Vector folded = result(
                     kernel.apply(new EvalRun(run.ctx(), 0, k), withFirst(args, view), kwargs));
             List<Object> out = new ArrayList<>(k);
@@ -288,7 +318,7 @@ final class ElementwiseLift
                 return result(kernel.apply(run, args, kwargs));
             }
             Vector folded = result(kernel.apply(new EvalRun(run.ctx(), 0, flat.total()),
-                    flattenedSlot(x, flat, args), kwargs));
+                    flattenedSlot(x, flat, args, name), kwargs));
             DataValueType resultType = folded.declaredType();
             return ComputedVector.carried(rows, resultType, row ->
             {
@@ -315,13 +345,14 @@ final class ElementwiseLift
      * at parameter 0 — a list row's element, a scalar row's own value — and every other per-row
      * argument row-expanded through the layout (a broadcast constant as it is).
      */
-    private static List<Vector> flattenedSlot(Vector x, Flat flat, List<Vector> args)
+    private static List<Vector> flattenedSlot(Vector x, Flat flat, List<Vector> args, String name)
     {
         DataValueType type = x.declaredType();
         Vector view = ComputedVector.carried(flat.total(), type, i ->
         {
             int row = flat.rowOf(i);
-            return flat.listRows.get(row) ? element(flat.item(x, row, i), type) : x.value(row);
+            return flat.listRows.get(row) ? liftedElement(flat.item(x, row, i), type, name)
+                    : x.value(row);
         });
         List<Vector> slot = new ArrayList<>(args.size());
         slot.add(view);
@@ -456,7 +487,34 @@ final class ElementwiseLift
         }
     }
 
-    /** The element adapter: a list element as the {@link TypedValue} the kernel reads. */
+    /**
+     * The name of parameter {@code slot} of the lifted function {@code name}, for a message — the
+     * registered descriptor's, else a positional label (a synthetic lift).
+     */
+    private static String parameterName(String name, int slot)
+    {
+        FunctionDescriptor d = FunctionRegistry.descriptor(name);
+        return d != null && slot < d.parameters().size() ? d.parameters().get(slot).name()
+                : slot == 0 ? "x" : "#" + (slot + 1);
+    }
+
+
+    /**
+     * The lift's element adapter: {@link #element}, except that an element which is itself a list
+     * is the rule's ERROR — a lift reaches one level only (Q7, runbook W4 E7a).
+     */
+    private static TypedValue liftedElement(Object item, DataValueType declaredType, String name)
+    {
+        ListArgument.requireScalar(item,
+                () -> ListArgument.nested(name, parameterName(name, 0), "a list holding a list"));
+        return element(item, declaredType);
+    }
+
+
+    /**
+     * The element adapter: a list element as the {@link TypedValue} the kernel reads (the lift —
+     * through {@link #liftedElement} — the list-probe membership and {@code contains_any}).
+     */
     static TypedValue element(Object item, DataValueType declaredType)
     {
         if (item instanceof IDataValue cell)
@@ -470,7 +528,8 @@ final class ElementwiseLift
         }
         if (item instanceof Collection<?>)
         {
-            // a nested list: today's rendering (E7a, runbook W4, makes it the Q7 rule ERROR)
+            // a nested list: its rendering — reached by the membership and contains_any readers
+            // only; the lift refuses it first (liftedElement, Q7 / E7a)
             return TypedValue.resolved(declaredType, item.toString());
         }
         return TypedValue.resolved(declaredType, item);

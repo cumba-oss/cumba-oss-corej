@@ -5,12 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
+import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.IDataValue;
 import net.cumba.datatable.values.MissingValue;
@@ -105,11 +107,53 @@ class ElementwiseLiftTest
         assertEquals(List.of(), ((ConstVector) apply(UPPER, 0, ConstVector.of(List.of()))).value());
         ConstVector none = ConstVector.of(null);
         assertSame(none, apply(UPPER, 0, none));
-        // a nested element keeps TODAY's rendering (E4): the fold applies to its text — E7a (W4)
-        // makes it the Q7 rule ERROR
-        assertEquals(List.of("[A, B]", "C"),
-                ((ConstVector) apply(UPPER, 0, ConstVector.of(List.of(List.of("a", "b"), "c"))))
-                        .value());
+        // a nested element is the rule's ERROR (Q7, runbook W4 E7a): a lift reaches one level
+        // only - before, the fold applied to its rendering ("[A, B]")
+        RuleDefinitionException nested = assertThrows(RuleDefinitionException.class,
+                () -> apply(UPPER, 0, ConstVector.of(List.of(List.of("a", "b"), "c"))));
+        assertTrue(nested.getMessage().contains("argument 'x' of 'upper'"), nested.getMessage());
+        assertTrue(nested.getMessage().contains("one list level only"), nested.getMessage());
+    }
+
+
+    @Test
+    void aNestedElementInAPerRowListIsTheRulesError()
+    {
+        // case 4 (and the predicate path share the adapter): a row's element that is itself a
+        // list - distinct([A, B])'s tuples - is the Q7 ERROR, never its rendering (E7a)
+        RuleDefinitionException nested = assertThrows(RuleDefinitionException.class,
+                () -> texts(apply(UPPER, 2, rows(List.of(List.of("a", "b")), "c")).value(0)));
+        assertTrue(nested.getMessage().contains("one list level only"), nested.getMessage());
+    }
+
+    // ------------------------------------------------------------------ Q4: other parameters
+
+
+    @Test
+    void aListAtAnotherParameterIsTheRulesErrorAtRunTime()
+    {
+        // Q4 (runbook W4 E6): every other parameter of a lifted function is scalar per row - a
+        // list there, known only at run time, is the rule's ERROR, never a zip or a rendering
+        EvalFunction join = ElementwiseLift.lift("join", JOIN);
+        RuleDefinitionException constant = assertThrows(RuleDefinitionException.class,
+                () -> apply(join, 1, rows("a"), ConstVector.of(List.of("1", "2"))));
+        assertTrue(constant.getMessage().contains("not a list"), constant.getMessage());
+        assertTrue(constant.getMessage().contains("lifted only at"), constant.getMessage());
+        RuleDefinitionException perRow = assertThrows(RuleDefinitionException.class,
+                () -> apply(join, 2, rows("a", "b"), rows("1", List.of("1", "2"))));
+        assertTrue(perRow.getMessage().contains("not a list"), perRow.getMessage());
+        // over a list at parameter 0 too
+        assertThrows(RuleDefinitionException.class, () -> apply(join, 1,
+                ConstVector.of(List.of("a", "b")), ConstVector.of(List.of("1", "2"))));
+        // a registered function names its parameter
+        EvalFunction substring = Objects.requireNonNull(
+                Objects.requireNonNull(FunctionRegistry.descriptor("substring")).fn());
+        RuleDefinitionException named = assertThrows(RuleDefinitionException.class,
+                () -> apply(substring, 1, rows("abc"), ConstVector.of(List.of(1, 2))));
+        assertTrue(named.getMessage().contains("argument 'start' of 'substring'"),
+                named.getMessage());
+        // scalars at the other parameters are the unchanged call
+        assertEquals("a/1", apply(join, 1, rows("a"), ConstVector.of("1")).asString(0));
     }
 
 

@@ -248,8 +248,11 @@ class ValuesFunctionTest
         assertEquals(written, fired("\"y\" in values([" + names + "])"));
         assertEquals(written, fired("\"y\" in values([A, $b])", "$b", "upper(\"b\")"));
         assertEquals(written, fired("\"y\" in values([A, upper(\"b\")])"));
-        // a string-literal list binding still names columns here (its retirement is W4, D1-B)
-        assertEquals(written, fired("\"y\" in values($k)", "$k", "[\"A\", \"B\"]"));
+        // a string-literal list binding is no list of names (runbook W4 E3, D1-B): the load
+        // error names the remedy, the bare names
+        String strings = loadError("\"y\" in values($k)", "$k", "[\"A\", \"B\"]");
+        assertTrue(strings.contains("write the columns as names: [A, B]"), strings);
+        assertEquals(written, fired("\"y\" in values($k)", "$k", "[A, B]"));
     }
 
 

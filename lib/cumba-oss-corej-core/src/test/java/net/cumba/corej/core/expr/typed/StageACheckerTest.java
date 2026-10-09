@@ -2580,6 +2580,91 @@ class StageACheckerTest
         }
     }
 
+
+    /**
+     * Q4 (runbook W4 E6): a list at a parameter other than 0 of a flagged descriptor is
+     * {@code PARAMETER_TYPE} whatever the parameter declares - including {@code unknown}, which the
+     * generic type check skips (inert for the shipped roster, whose non-zero parameters are all
+     * typed; pinned here by a synthetic descriptor).
+     */
+    @Test
+    void aListAtAnUnknownDeclaredOtherParameterOfAFlaggedDescriptorIsAFinding()
+    {
+        FunctionDescriptor two = new FunctionDescriptor("lift_probe2",
+                List.of(Parameter.required("x", Primitive.STRING),
+                        Parameter.required("y", ExprType.Unknown.UNKNOWN)),
+                FunctionKind.VALUE, (run, args) -> args.get(0)).liftingElementwise();
+        try (RegistryTestSeam.Registration _ = RegistryTestSeam.register(two))
+        {
+            Rule rule = withBindings("$n", "[1, 2]", "$s", "\"a\"");
+            StageAReport list = check(rule, "not empty(lift_probe2(AETERM, $n))");
+            assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(list));
+            assertTrue(
+                    list.findings().get(0).message()
+                            .contains("argument 'y' of 'lift_probe2' takes one value per row, not"
+                                    + " list<number> - a list is lifted only at 'x'"),
+                    list.findings().toString());
+            assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                    kinds(check("not empty(lift_probe2(AETERM, [\"a\", \"b\"]))")));
+            // a scalar and an unknown there are no finding
+            assertEquals(List.of(), kinds(check(rule, "not empty(lift_probe2(AETERM, $s))")));
+            assertEquals(List.of(), kinds(check("not empty(lift_probe2(AETERM, AESEQ))")));
+        }
+    }
+
+
+    /**
+     * Q7 (runbook W4 E7a): a list whose elements are lists at the lifted parameter is
+     * {@code PARAMETER_TYPE} - a lift reaches one level only - at an {@code unknown}-declared
+     * parameter 0 ({@code upper}) as at a typed one ({@code is_valid_date}).
+     */
+    @Test
+    void aNestedListAtTheLiftedParameterIsAFinding()
+    {
+        for (String check : List.of("not empty(upper([[\"a\", \"b\"], [\"c\"]]))",
+                "any(is_valid_date([[\"2020\"], [\"2021\"]]))"))
+        {
+            StageAReport report = check(check);
+            assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(report), check);
+            assertTrue(report.findings().get(0).message().contains("one list level only"),
+                    report.findings().toString());
+        }
+        // one level is the lift
+        assertEquals(List.of(), kinds(check("not empty(upper([\"a\", \"b\"]))")));
+    }
+
+
+    /**
+     * Runbook W4 E6b: a list at the needle of {@code contains} / {@code does_not_contain} /
+     * {@code starts_with} / {@code ends_with} is {@code PARAMETER_TYPE} with the hint; a list at
+     * {@code x} (the haystack, membership) is not.
+     */
+    @Test
+    void aListNeedleIsAFindingWithTheHint()
+    {
+        Map<String, String> hints = Map.of("contains", "use contains_any(x, list)",
+                "does_not_contain", "use not contains_any(x, list)", "starts_with",
+                "starts_with has no list form", "ends_with", "ends_with has no list form");
+        Rule rule = withBindings("$l", "[\"a\", \"b\"]");
+        for (Map.Entry<String, String> hint : hints.entrySet())
+        {
+            for (String needle : List.of("[\"a\", \"b\"]", "$l"))
+            {
+                StageAReport report = check(rule, hint.getKey() + "(AETERM, " + needle + ")");
+                assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(report),
+                        hint.getKey() + " " + needle);
+                String message = report.findings().get(0).message();
+                assertTrue(
+                        message.contains(
+                                "argument 'value' of '" + hint.getKey() + "' takes one value, not"),
+                        message);
+                assertTrue(message.contains(hint.getValue()), message);
+            }
+        }
+        assertEquals(List.of(), kinds(check(rule, "contains($l, \"a\")")));
+        assertEquals(List.of(), kinds(check(rule, "contains(AETERM, \"a\")")));
+    }
+
     // ------------------------------------------------------------------
     // PLAN-elementwise-list-functions §7.6 — the E5 roster in Stage A (runbook W2 E5)
     // ------------------------------------------------------------------
