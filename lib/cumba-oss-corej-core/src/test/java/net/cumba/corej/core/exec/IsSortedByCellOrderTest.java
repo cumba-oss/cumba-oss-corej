@@ -13,11 +13,12 @@ import org.junit.jupiter.api.Test;
  * Runbook W2 SB2 ({@code PLAN-is-sorted-by-direction} Q2, §5 hazard; owner O22): the sort keys of
  * {@code is_sorted_by} are ordered by {@link CellOrder} — the ONE total ordering {@code sequence}
  * and {@code is_increasing} read — instead of {@code String.compareTo}: a key whose every present
- * cell is a number orders numerically, any other key orders ISO cells by (lower bound, upper bound,
- * text) and then other text, each key classified over its cells in the group. SB1's placement
- * stands: a blank or missing key cell sorts first unless {@code nulls="last"}, whatever the
- * direction. ⚠ A comparator built on the engine's ISO relations is not a total order (TimSort
- * throws on 32+ rows); CellOrder is.
+ * cell is a number orders numerically, any other key orders ISO cells by (lower bound, text) —
+ * owner O23: a value and a finer value starting at the same instant keep text order — and then
+ * other text, each key classified over its cells in the group. SB1's placement stands: a blank or
+ * missing key cell sorts first unless {@code nulls="last"}, whatever the direction. ⚠ A comparator
+ * built on the engine's ISO relations is not a total order (TimSort throws on 32+ rows); CellOrder
+ * is.
  */
 class IsSortedByCellOrderTest
 {
@@ -56,27 +57,56 @@ class IsSortedByCellOrderTest
 
 
     @Test
-    void aPartialAgainstACompleteDateOrdersByItsBounds()
+    void aPartialAgainstACompleteDateOrdersByItsLowerBoundThenText()
     {
-        // (lower, upper, text): "2020-01" and "2020-01-01" share their lower bound, the complete
-        // date's upper bound is earlier — text order put the partial first
-        assertEquals(List.of(1L, 2L), sorted(pairs("2020-01", "2020-01-01"), "[SESTDTC]"),
-                "the complete first day precedes the month");
-        assertEquals(List.of(), sorted(pairs("2020-01-01", "2020-01"), "[SESTDTC]"),
-                "so this order is sorted");
+        // owner O23: (lower bound, text) — "2020-01" and "2020-01-01" share their lower bound, so
+        // text order decides and the month comes first (the dropped upper-bound tier put the day
+        // first)
+        assertEquals(List.of(), sorted(pairs("2020-01", "2020-01-01"), "[SESTDTC]"),
+                "the month precedes its first day");
+        assertEquals(List.of(1L, 2L), sorted(pairs("2020-01-01", "2020-01"), "[SESTDTC]"),
+                "so this order is unsorted");
         assertEquals(List.of(), sorted(pairs("2020-01", "2020-01-15"), "[SESTDTC]"),
                 "a partial precedes a complete value its lower bound precedes");
     }
 
 
     @Test
-    void aDateAgainstItsDatetimesOrdersByItsBounds()
+    void aDateAgainstItsDatetimesOrdersByItsLowerBoundThenText()
     {
         assertEquals(List.of(), sorted(pairs("2020-01-15", "2020-01-15T08:00"), "[SESTDTC]"),
                 "a date precedes a later datetime of its day");
-        // midnight's upper bound precedes the whole day's — text order put the date first
-        assertEquals(List.of(1L, 2L), sorted(pairs("2020-01-15", "2020-01-15T00:00"), "[SESTDTC]"),
-                "midnight precedes the whole day");
+        // owner O23: midnight starts with the day, so text order decides — the date first
+        assertEquals(List.of(), sorted(pairs("2020-01-15", "2020-01-15T00:00"), "[SESTDTC]"),
+                "the whole day precedes its midnight");
+    }
+
+
+    @Test
+    void aCoarserValueStartingAtTheSameInstantPrecedesTheFinerOne()
+    {
+        // owner O23 (2026-10-09): a value and a finer value starting at the same instant keep
+        // text order — the upper-bound tier ordered each of these pairs finer first
+        IDataTable se = RealTableFixture.of("SE").str("USUBJID", "S1", "S1", "S1")
+                .dbl("SESEQ", 1.0, 2.0, 3.0).str("SESTDTC", "2015", "2015-01", "2015-01-01")
+                .build();
+        assertEquals(List.of(), sorted(se, "[SESTDTC]"), "2015, 2015-01, 2015-01-01");
+        assertEquals(List.of(1L, 2L), sorted(pairs("2015-01-01", "2015"), "[SESTDTC]"),
+                "the finer value first is unsorted");
+        assertEquals(List.of(),
+                sorted(pairs("2020-01-15T08:00", "2020-01-15T08:00:00"), "[SESTDTC]"),
+                "the minute precedes its first second");
+    }
+
+
+    @Test
+    void anUnplaceableCellSortsAfterEveryDatedCell()
+    {
+        // unchanged by O23: a cell no bound places is text, after every dated cell of its key
+        IDataTable se = RealTableFixture.of("SE").str("USUBJID", "S1", "S1", "S1", "S1")
+                .dbl("SESEQ", 1.0, 2.0, 3.0, 4.0)
+                .str("SESTDTC", "2021", "2015-UN-UN", "2020-01-15 08:00", "2020-02-30").build();
+        assertEquals(List.of(), sorted(se, "[SESTDTC]"), "the year first, then the text");
     }
 
 

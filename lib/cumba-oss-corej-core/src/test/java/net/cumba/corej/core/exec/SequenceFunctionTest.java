@@ -224,6 +224,30 @@ class SequenceFunctionTest
 
 
     @Test
+    void aCoarserValueStartingAtTheSameInstantPrecedesTheFinerOne()
+    {
+        // owner O23 (2026-10-09): ISO cells by (lower bound, text) — a value and a finer value
+        // starting at the same instant keep text order (the dropped upper-bound tier put the
+        // finer first); a cell no bound places stays after every dated cell
+        IDataTable se = RealTableFixture.of("SE")
+                .str("USUBJID", "S1", "S1", "S1", "S2", "S2", "S3", "S3", "S3", "S3")
+                .str("ETCD", "DAY", "YEAR", "MONTH", "MIDNIGHT", "DATE", "FEB30", "UNUN", "SPACE",
+                        "DATED")
+                .str("SESTDTC", "2015-01-01", "2015", "2015-01", "2020-01-15T00:00", "2020-01-15",
+                        "2020-02-30", "2015-UN-UN", "2020-01-15 08:00", "2021-06-01")
+                .build();
+        List<List<?>> asc = rows("sequence(ETCD, group=[USUBJID], by=[asc(SESTDTC)])", se);
+        assertEquals(List.of("YEAR", "MONTH", "DAY"), asc.get(0), "2015, 2015-01, 2015-01-01");
+        assertEquals(List.of("DATE", "MIDNIGHT"), asc.get(3), "the day before its midnight");
+        assertEquals(List.of("DATED", "UNUN", "SPACE", "FEB30"), asc.get(5),
+                "the dated cell first, the unplaceable ones after it by text");
+        assertEquals(List.of("DAY", "MONTH", "YEAR"),
+                rows("sequence(ETCD, group=[USUBJID], by=[desc(SESTDTC)])", se).get(0),
+                "desc reverses it");
+    }
+
+
+    @Test
     void noKeysAndTiesKeepFileOrderDuplicatesKept()
     {
         assertEquals(List.of("SCRN", "FU", "TRT"),

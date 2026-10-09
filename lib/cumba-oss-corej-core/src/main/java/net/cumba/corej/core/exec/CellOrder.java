@@ -23,14 +23,21 @@ import org.jspecify.annotations.Nullable;
  * {@code "1.0"});</li>
  * <li>any other key — <b>ISO, then text</b>: a cell {@link IsoDateBounds} can position — a
  * four-digit cell read as a year ({@code "2021"} after {@code "2020-06-15"}) — by (lower bound,
- * upper bound, text), so a partial precedes the complete values it contains, a date precedes its
- * datetimes, an interval follows its start and an offset is applied instant-preserving; then every
- * other text ({@code UNK}, an invalid date, a number in a mixed key) by text;</li>
+ * text), so a partial precedes the complete values it contains, a date precedes its datetimes, an
+ * interval follows its start and an offset is applied instant-preserving. ⭐ A value and a finer
+ * value starting at the same instant keep text order (owner O23, 2026-10-09): {@code 2015} before
+ * {@code 2015-01} before {@code 2015-01-01}, {@code 2020-01-15} before {@code 2020-01-15T00:00} —
+ * the upper bound is no tier, so the coarser value is never reordered after its own first instant.
+ * Then every other text — a cell no bound places ({@code UNK}, an invalid date such as
+ * {@code 2020-02-30}, {@code 2015-UN-UN}, a number in a mixed key) — by text, after every dated
+ * cell;</li>
  * <li>then the blank {@code ""}, then a <b>missing</b> — the marker's own order
  * ({@link MissingValue}), so two missings of one kind are equal and two kinds are ordered.</li>
  * </ul>
  * <p>
- * Judged cell by cell, {@code "2021"} was a number and sorted before every date of its key.
+ * Judged cell by cell, {@code "2021"} was a number and sorted before every date of its key. Until
+ * O23 the ISO tuple was (lower bound, upper bound, text), which put {@code 2015-01-01} before
+ * {@code 2015} and midnight before its day.
  * </p>
  *
  * <p>
@@ -46,8 +53,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * ⭐ <b>Decorated once</b> (R5 A-M2; owner priority: performance first): {@link #key} reads each
- * cell's class, number or bounds ONCE into arrays, so a comparison during the sort is array reads —
- * never the half-dozen bound parses a per-comparison reading cost. {@code is_increasing}'s
+ * cell's class, number or lower bound ONCE into arrays, so a comparison during the sort is array
+ * reads — never the half-dozen bound parses a per-comparison reading cost. {@code is_increasing}'s
  * list-level rule (numeric iff every element is numeric, else text) is {@link #compareNumeric} /
  * {@link #compareText} over the whole list ({@link OrderedLists}).
  * </p>
@@ -135,8 +142,6 @@ public final class CellOrder
         double[] number = new double[n];
         @Nullable
         String[] lower = new String[n];
-        @Nullable
-        String[] upper = new String[n];
         String[] text = new String[n];
         @Nullable
         MissingValue[] marker = new MissingValue[n];
@@ -168,7 +173,6 @@ public final class CellOrder
                 {
                     rank[i] = ISO;
                     lower[i] = low;
-                    upper[i] = IsoDateBounds.upper(t);
                 }
                 else
                 {
@@ -176,12 +180,12 @@ public final class CellOrder
                 }
             }
         }
-        return new Key(numeric, rank, number, lower, upper, text, marker);
+        return new Key(numeric, rank, number, lower, text, marker);
     }
 
     /**
      * A sort key decorated once ({@link #key}): its classification and, per position, the class,
-     * the number or the ISO bounds, the text and the missing marker — compared by array reads.
+     * the number or the ISO lower bound, the text and the missing marker — compared by array reads.
      */
     public static final class Key
     {
@@ -194,20 +198,17 @@ public final class CellOrder
 
         private final @Nullable String[] lower;
 
-        private final @Nullable String[] upper;
-
         private final String[] text;
 
         private final @Nullable MissingValue[] marker;
 
         private Key(boolean aNumeric, byte[] aRank, double[] aNumber, @Nullable String[] aLower,
-                @Nullable String[] aUpper, String[] aText, @Nullable MissingValue[] aMarker)
+                String[] aText, @Nullable MissingValue[] aMarker)
         {
             numeric = aNumeric;
             rank = aRank;
             number = aNumber;
             lower = aLower;
-            upper = aUpper;
             text = aText;
             marker = aMarker;
         }
@@ -276,11 +277,9 @@ public final class CellOrder
             }
             else if (rank[i] == ISO)
             {
+                // O23: (lower bound, text) — a coarser value sharing its first instant with a
+                // finer one keeps text order ("2015" before "2015-01")
                 c = String.valueOf(lower[i]).compareTo(String.valueOf(lower[j]));
-                if (c == 0)
-                {
-                    c = String.valueOf(upper[i]).compareTo(String.valueOf(upper[j]));
-                }
             }
             return c != 0 ? c : text[i].compareTo(text[j]);
         }

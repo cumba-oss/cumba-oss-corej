@@ -40,13 +40,13 @@ import org.jspecify.annotations.Nullable;
  * The order is {@link SortKeys#sortRowsPlacingNulls}' — {@code is_sorted_by}'s order (runbook W2
  * fold, R5 PC-1; O16 "nulls= and direction honoured" in both readers): {@link CellOrder} per key,
  * each key classified over its cells (owner O22: a numeric key numerically, any other ISO cells by
- * (lower bound, upper bound, text) with a four-digit cell a year, then text; a total order),
- * {@code desc} reversing it; a blank or missing key cell placed by the key's {@code nulls=} — FIRST
- * unless {@code nulls="last"}, under {@code desc} too (W2-D3), two of them tied; a tie keeping file
- * order (stable), no {@code by=} file order. An element is a present cell's text (a numeric cell
- * its canonical text, as {@code distinct} lists it), a missing cell its
- * {@link net.cumba.corej.core.expr.eval.Primitives.MissingMember} (D81, as {@code colref(list)}
- * keeps it). The list is read by {@code is_prefix_of}, {@code is_increasing},
+ * (lower bound, text) with a four-digit cell a year — owner O23: {@code 2015} before
+ * {@code 2015-01} — then text; a total order), {@code desc} reversing it; a blank or missing key
+ * cell placed by the key's {@code nulls=} — FIRST unless {@code nulls="last"}, under {@code desc}
+ * too (W2-D3), two of them tied; a tie keeping file order (stable), no {@code by=} file order. An
+ * element is a present cell's text (a numeric cell its canonical text, as {@code distinct} lists
+ * it), a missing cell its {@link net.cumba.corej.core.expr.eval.Primitives.MissingMember} (D81, as
+ * {@code colref(list)} keeps it). The list is read by {@code is_prefix_of}, {@code is_increasing},
  * {@code collapse_runs}, {@code count} and the membership operators.
  * </p>
  */

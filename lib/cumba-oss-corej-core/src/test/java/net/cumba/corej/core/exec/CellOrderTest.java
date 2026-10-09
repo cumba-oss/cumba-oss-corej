@@ -20,9 +20,9 @@ import org.junit.jupiter.api.Test;
  * ({@code ScalarSemantics.compareIso} truncates to the shorter precision, so {@code 2020-01-15}
  * equals both {@code T08:00} and {@code T10:00} — not transitive — and the hull comparison leaves
  * partial vs complete unordered), and {@code TimSort} throws on a group of 32+ rows under such a
- * comparator. Here ISO cells are ordered by (lower bound, upper bound, text), the rest as text, a
- * blank and a missing last — one class after another, transitive and antisymmetric over every
- * triple.
+ * comparator. Here ISO cells are ordered by (lower bound, text) — owner O23: a value and a finer
+ * value starting at the same instant keep text order — the rest as text, a blank and a missing last
+ * — one class after another, transitive and antisymmetric over every triple.
  */
 class CellOrderTest
 {
@@ -126,7 +126,7 @@ class CellOrderTest
 
 
     @Test
-    void isoCellsOrderByLowerBoundThenUpperBoundThenText()
+    void isoCellsOrderByLowerBoundThenText()
     {
         assertTrue(compare("2020-01", "2020-01-15") < 0, "a partial before the complete");
         assertTrue(compare("2020-01-15", "2020-01-15T08:00") < 0,
@@ -134,16 +134,45 @@ class CellOrderTest
         assertTrue(compare("2020-01-15T08:00", "2020-01-15T10:00") < 0,
                 "two datetimes by instant — never equal through the date they share");
         assertTrue(compare("2020-01-15T08:00", "2020-01-15") > 0);
-        assertTrue(compare("2020-01-15", "2020-01-15/2020-01-20") < 0,
-                "same lower bound: the shorter upper bound first");
-        assertTrue(compare("2020-01-15T08:00", "2020-01-15T08:00:00") > 0,
-                "same lower bound at two precisions: the wider hull (upper 08:00:59) after the"
-                        + " point (08:00:00), never equal");
+        assertTrue(compare("2020-01-15", "2020-01-15/2020-01-20") < 0, "same lower bound: by text");
+        assertTrue(compare("2020-01-15T08:00", "2020-01-15T08:00:00") < 0,
+                "same lower bound at two precisions: by text, the coarser first (O23), never"
+                        + " equal");
         assertEquals(0, compare("2020-01-15", "2020-01-15"));
         assertTrue(compare("2020-01-15T08:00:00+02:00", "2020-01-15T08:00:00Z") < 0,
                 "an offset is applied instant-preserving");
         assertTrue(compare("UNK", "2020-01-15") > 0, "an unpositionable text after dates");
         assertTrue(compare("2020-13-45", "2020-01-15") > 0, "an invalid date is text");
+    }
+
+
+    @Test
+    void aCoarserValueStartingAtTheSameInstantKeepsTextOrder()
+    {
+        // owner O23 (2026-10-09): (lower bound, text) — the dropped upper-bound tier ordered each
+        // of these pairs finer first
+        assertTrue(compare("2015", "2015-01") < 0, "the year before its first month");
+        assertTrue(compare("2015-01", "2015-01-01") < 0, "the month before its first day");
+        assertTrue(compare("2015", "2015-01-01") < 0, "the year before its first day");
+        assertTrue(compare("2020-01-15", "2020-01-15T00:00") < 0, "the day before its midnight");
+        assertTrue(compare("2020-01-15T00:00", "2020-01-15T00:00:00") < 0);
+        assertTrue(compare("T08:00", "T08:00:00") < 0, "a time before its first second");
+        assertTrue(compare("2015-01", "2015") > 0);
+        // a later lower bound still decides first: the year starts before every later value
+        assertTrue(compare("2015", "2015-01-02") < 0);
+        assertTrue(compare("2015-12", "2015") > 0);
+        // unchanged: a cell no bound places sorts after every dated cell
+        for (String unplaceable : List.of("2020-02-30", "2020-01-15 08:00", "2015-UN-UN"))
+        {
+            assertTrue(compare(unplaceable, "2099") > 0, unplaceable + " after the year 2099");
+            assertTrue(compare(unplaceable, "2099-12-31T23:59:59") > 0,
+                    unplaceable + " after the latest datetime");
+        }
+        assertTotalOrder(new ArrayList<>(List.of("2015", "2015-01", "2015-01-01", "2015-01-01T00",
+                "2015-01-01T00:00", "2015-01-01T00:00:00", "2015-01--", "2015---01",
+                "2015-01-01/2015-01-02", "2015-01-01T00:00:00Z", "2014-12-31T23:00:00-01:00",
+                "2015-02", "2014", "2020-02-30", "2020-01-15 08:00", "2015-UN-UN", "T08:00",
+                "T08:00:00", "", "UNK")));
     }
 
 
