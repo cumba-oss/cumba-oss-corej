@@ -363,7 +363,7 @@ final class IsoParts
         int n = 0;
         for (int i = from; i < to; i++)
         {
-            n = n * 10 + (s.charAt(i) - '0');
+            n = n * 10 + s.charAt(i) - '0';
         }
         return n;
     }
