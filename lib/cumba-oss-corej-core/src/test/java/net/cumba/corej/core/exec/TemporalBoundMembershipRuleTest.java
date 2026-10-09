@@ -3,6 +3,7 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -96,6 +97,20 @@ class TemporalBoundMembershipRuleTest
                 "row 2 is no dose day; row 4's blank probe is a member of nothing");
         assertEquals(List.of(1L, 3L), fired("date(D) in distinct(E, group=[USUBJID])"),
                 "the inline call answers as its binding");
+    }
+
+
+    /**
+     * Runbook W4 TM2 (a pin): a {@code date()} probe against a {@code list<number>} binding is the
+     * rule's load error — stage A's armed {@code PARAMETER_TYPE} ({@code membership}), never a
+     * per-row comparison of a date with numbers.
+     */
+    @Test
+    void aDateProbeAgainstAListOfNumbersIsALoadError()
+    {
+        String error = SequenceFunctionTest.loadError("date(D) in $n", "$n", "[1, 2]");
+        assertTrue(error.contains("disagrees with list<number>"), error);
+        assertEquals("null", SequenceFunctionTest.loadError("date(D) in [date(\"2020-01-01\")]"));
     }
 
 

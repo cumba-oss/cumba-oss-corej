@@ -75,7 +75,8 @@ class MinusOperandLoadSeamTest
                 "split_by(QNAM, \",\")", "minus(%s, subtract=$s)"
         }, new String[]
         {
-                "upper(QNAM)", "minus($s, subtract=%s)"
+                // (a per-row LIST: a scalar-typed operand is also minus' PARAMETER_TYPE, W4 M1)
+                "split_by(QNAM, \";\")", "minus($s, subtract=%s)"
         }, new String[]
         {
                 "distinct(QNAM, group=[TSSEQ])", "union($s, %s)"

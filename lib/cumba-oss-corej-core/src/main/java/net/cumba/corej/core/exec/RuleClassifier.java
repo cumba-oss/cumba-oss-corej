@@ -774,7 +774,7 @@ public final class RuleClassifier
             else if (name == null && (value == null || valueIsLiteral))
             {
                 // A call whose positionals yield NO column operand — none at all
-                // (`is_last_in_group(ordering=SESEQ, group=[USUBJID])`), or only non-column ones
+                // (`is_last_in_group(by=SESEQ, group=[USUBJID])`), or only non-column ones
                 // (a numeric literal, a $-operation reference, a nested call reading nothing) —
                 // while its columns arrive through its declared column parameters. Read through
                 // the descriptor (see declaredColumnOperands) so the leaf names what the call
@@ -974,7 +974,7 @@ public final class RuleClassifier
                 // The first positional yields no operand — there is none, or it is a non-column
                 // (a numeric literal, a $-operation reference): the operand it reads may be bound
                 // to a declared column parameter (the same case as the predicate-position arm in
-                // atom — `is_last_in_group(ordering=…) == true`; review round 2, L-1).
+                // atom — `is_last_in_group(by=…) == true`; review round 2, L-1).
                 List<String> declared = declaredColumnOperands(call, usages);
                 if (!declared.isEmpty())
                 {
@@ -1048,7 +1048,7 @@ public final class RuleClassifier
      * <p>
      * ⚠ <b>Limit:</b> only parameters <em>declared</em> {@code COLUMN_REFERENCE} or
      * {@code list<column-reference>} are read. A parameter declared {@code Unknown} that carries a
-     * column in practice — the {@code ordering} of {@code empty_within_except_last_row} and
+     * column in practice — the {@code by} of {@code empty_within_except_last_row} and
      * {@code has_next_corresponding_record}, {@code within}, the {@code req("name")} subjects of
      * the older compiler-dispatched readers — contributes nothing here, so a call whose ONLY
      * columns arrive through such a parameter by keyword still classifies without an operand. A

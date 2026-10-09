@@ -243,7 +243,7 @@ class DurationFamilyTest
         IDataTable td = RealTables.of("TD").str("DOMAIN", "TD", "TD").str("TDANCVAR", "A", "A")
                 .dbl("TDORDER", 1d, 2d).str("TDSTOFF", "5", "P1D").build();
         assertEquals(List.of(1L), fired(td, "not has_next_corresponding_record(duration(TDSTOFF),"
-                + " duration(TDSTOFF), ordering=TDORDER, within=TDANCVAR, relation=\"<=\")"));
+                + " duration(TDSTOFF), by=TDORDER, within=TDANCVAR, relation=\"<=\")"));
     }
 
 
@@ -261,7 +261,7 @@ class DurationFamilyTest
     @Test
     void theRelationTakesTheDurationArmOnlyWhereBothOperandsAreMarked()
     {
-        String tail = ", ordering=TDORDER, within=TDANCVAR";
+        String tail = ", by=TDORDER, within=TDANCVAR";
         // row D of the plan (R-TD-012): TDSTOFF non-decreasing in TDORDER order. A conforms (the
         // IG's own P0D, P60W, P120W); B decreases; C's P1W / P7D are the same point; D's P1M is
         // not <= P30D

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.expr.ExpressionException;
@@ -137,6 +138,66 @@ class ArgumentBinderTest
         Expr.Call one = new Expr.Call("tuple", List.of(ref("A")), Map.of());
         assertThrows(ExpressionException.class, () -> ArgumentBinder.bind(TUPLE, one),
                 "the fixed leading parameters stay required");
+    }
+
+
+    /**
+     * Runbook W4 U2 ({@code PLAN-union-function} §3.2, owner Q3 #5 "Positional-only"): a collector
+     * call takes positional arguments only. Before U2 the binder checked the FIRST keyword
+     * argument's name only and, when it named a leading parameter, returned the positionals alone —
+     * so {@code printf("%s", format="x")}, {@code tuple(A, B, c1=C)} and
+     * {@code union($a, $b, first=$c)} bound and silently dropped the keyword argument, and a second
+     * keyword argument was never checked at all.
+     */
+    @Test
+    void aCollectorCallRefusesEveryKeywordArgument()
+    {
+        Expr str = new Expr.Lit(Expr.LitKind.STRING, "%s");
+        Expr x = new Expr.Lit(Expr.LitKind.STRING, "x");
+        Expr a = new Expr.Ref("$a", OperandKind.OPERATION_REF);
+        Expr b = new Expr.Ref("$b", OperandKind.OPERATION_REF);
+        Expr c = new Expr.Ref("$c", OperandKind.OPERATION_REF);
+        for (Expr.Call call : List.of(new Expr.Call("printf", List.of(str), Map.of("format", x)),
+                new Expr.Call("tuple", List.of(ref("A"), ref("B")), Map.of("c1", ref("C"))),
+                new Expr.Call("union", List.of(a, b), Map.of("first", c))))
+        {
+            FunctionDescriptor d = FunctionRegistry.descriptor(call.name());
+            ExpressionException refused = assertThrows(ExpressionException.class,
+                    () -> ArgumentBinder.bind(d, call), call.toString());
+            assertTrue(
+                    refused.getMessage()
+                            .startsWith("'" + call.name() + "' takes positional arguments only"),
+                    refused.getMessage());
+            assertTrue(refused.getMessage().contains("cannot address a collector's elements"),
+                    refused.getMessage());
+            assertTrue(refused.getMessage().contains("(parameters: "), refused.getMessage());
+        }
+        // two keyword arguments: the second one was never looked at
+        Map<String, Expr> two = new LinkedHashMap<>();
+        two.put("c1", ref("C"));
+        two.put("zz", ref("D"));
+        Expr.Call twoKwargs = new Expr.Call("tuple", List.of(ref("A"), ref("B")), two);
+        assertThrows(ExpressionException.class,
+                () -> ArgumentBinder.bind(FunctionRegistry.descriptor("tuple"), twoKwargs));
+    }
+
+
+    /** U2: the positional forms of the three collector calls bind exactly as before. */
+    @Test
+    void aCollectorCallStillBindsItsPositionals()
+    {
+        Expr a = new Expr.Ref("$a", OperandKind.OPERATION_REF);
+        Expr b = new Expr.Ref("$b", OperandKind.OPERATION_REF);
+        Expr c = new Expr.Ref("$c", OperandKind.OPERATION_REF);
+        assertEquals(List.of(a, b, c), ArgumentBinder.bind(FunctionRegistry.descriptor("union"),
+                new Expr.Call("union", List.of(a, b, c), Map.of())));
+        assertEquals(List.of(ref("A"), ref("B"), ref("C")),
+                ArgumentBinder.bind(FunctionRegistry.descriptor("tuple"),
+                        new Expr.Call("tuple", List.of(ref("A"), ref("B"), ref("C")), Map.of())));
+        Expr str = new Expr.Lit(Expr.LitKind.STRING, "%s-%s");
+        assertEquals(List.of(str, ref("A"), ref("B")),
+                ArgumentBinder.bind(FunctionRegistry.descriptor("printf"),
+                        new Expr.Call("printf", List.of(str, ref("A"), ref("B")), Map.of())));
     }
 
 }

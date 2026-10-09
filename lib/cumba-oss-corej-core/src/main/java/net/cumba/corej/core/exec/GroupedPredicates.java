@@ -32,8 +32,8 @@ public final class GroupedPredicates
 
 
     /**
-     * {@code is_last_in_group(ordering=, group=[…], keep_missings=)}: {@code true} on every row
-     * whose ordering value is <b>identical</b> to its group's maximum (D-W1-2). "Identical" has one
+     * {@code is_last_in_group(by=, group=[…], keep_missings=)}: {@code true} on every row whose
+     * ordering value is <b>identical</b> to its group's maximum (D-W1-2). "Identical" has one
      * meaning, the datatable's key identity: {@code -0.0} is {@code 0.0}, {@code 4.9999999999994}
      * is not {@code 5.0}, a CHAR {@code 5} is not a CHAR {@code 5.0}, and a missing is identical to
      * the same missing marker. Missings rank lowest ({@code D34 #5}), so a group whose ordering

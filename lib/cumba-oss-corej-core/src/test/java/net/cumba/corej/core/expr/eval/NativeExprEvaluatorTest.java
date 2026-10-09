@@ -710,7 +710,7 @@ class NativeExprEvaluatorTest
         // at row 0 -> {0}. The trailing empty (row 2, the ordered last) is allowed.
         IDataTable t = MockTable.of().col("USUBJID", "S1", "S1", "S1", "S2")
                 .col("SEQ", "1", "2", "3", "1").col("AVAL", "", "x", "", "").build();
-        String source = "empty_within_except_last_row(AVAL, USUBJID, ordering=SEQ)";
+        String source = "empty_within_except_last_row(AVAL, USUBJID, by=SEQ)";
         assertParity(source, t);
         assertEquals(bits(0), NativeExprEvaluator.evaluate(px(source), ctx(t)),
                 "empty_within_except_last_row");
@@ -726,7 +726,7 @@ class NativeExprEvaluatorTest
         IDataTable t = MockTable.of().col("USUBJID", "S1", "S1", "S1", "S2")
                 .col("SEQ", "1", "2", "3", "1").col("A", "10", "99", "30", "p")
                 .col("B", "x", "10", "20", "r").build();
-        String source = "not has_next_corresponding_record(A, B, ordering=SEQ, within=USUBJID)";
+        String source = "not has_next_corresponding_record(A, B, by=SEQ, within=USUBJID)";
         assertParity(source, t);
         assertEquals(bits(1), NativeExprEvaluator.evaluate(px(source), ctx(t)),
                 "does_not_have_next_corresponding_record (Q1 not has_next...(...) surface)");

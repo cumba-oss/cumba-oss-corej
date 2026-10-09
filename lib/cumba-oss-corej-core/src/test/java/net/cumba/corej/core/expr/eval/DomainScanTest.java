@@ -134,7 +134,7 @@ class DomainScanTest
                 + " get_model_filtered_variables(model_class=\"Findings\"))"));
         // relation= is a parameter on the row-level has_next_corresponding_record ⇒ {ROW}.
         assertEquals(Domain.ROW, infer(
-                "not has_next_corresponding_record(SEENDTC, SESTDTC, ordering=SESTDTC, within=USUBJID, relation=\"<=\")"));
+                "not has_next_corresponding_record(SEENDTC, SESTDTC, by=SESTDTC, within=USUBJID, relation=\"<=\")"));
     }
 
 
@@ -226,8 +226,7 @@ class DomainScanTest
         assertEquals(Domain.ROW, infer("not is_unique_set($keys)", BindingDomains.forRule(rule)));
         assertEquals(Domain.ROW,
                 infer("is_not_unique_member_set(members=$m, group=$g)", r -> Domain.DATASET));
-        assertEquals(Domain.ROW,
-                infer("is_last_in_group(ordering=$o, group=$g)", r -> Domain.DATASET));
+        assertEquals(Domain.ROW, infer("is_last_in_group(by=$o, group=$g)", r -> Domain.DATASET));
         // the whole-column verdicts and the ungrouped aggregates keep folding
         assertEquals(Domain.DATASET, infer("contains_all($a, $b)", r -> Domain.DATASET));
         assertEquals(Domain.DATASET, infer("contains(distinct(AESEQ), \"1\")"));

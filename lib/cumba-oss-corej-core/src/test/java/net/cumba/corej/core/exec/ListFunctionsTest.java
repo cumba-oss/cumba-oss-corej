@@ -21,6 +21,7 @@ import java.util.Optional;
 import java.util.Set;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.expr.CheckExpressionParser;
+import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.BindingDomains;
 import net.cumba.corej.core.expr.eval.ComputedVector;
@@ -751,8 +752,9 @@ class ListFunctionsTest
         assertEquals(List.of("A", "B"), minus(List.of("A", "B"), List.of()));
         assertEquals(List.of("A", "B", "A"), minus(List.of("A", "B", "A", "C"), List.of("C")),
                 "duplicates in the minuend are preserved");
-        assertEquals(List.of("SOLO"), minus("SOLO", "OTHER"), "a scalar is its singleton");
-        assertEquals(List.of(), minus("X", List.of("X")));
+        // runbook W4 M2: a scalar operand is a rule ERROR, no longer its own singleton
+        assertThrows(RuleDefinitionException.class, () -> minus("SOLO", "OTHER"));
+        assertThrows(RuleDefinitionException.class, () -> minus("X", List.of("X")));
         assertEquals(List.of("A", "B"), minus(List.of("A", "B"), null),
                 "a subtrahend binding that evaluates to nothing removes nothing");
         assertEquals(List.of("SDESIGN"),

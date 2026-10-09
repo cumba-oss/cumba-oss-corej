@@ -2,8 +2,12 @@ package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Arrays;
 import java.util.List;
+import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.corej.core.expr.eval.ComputedVector;
 import net.cumba.corej.core.expr.eval.ConstVector;
 import net.cumba.corej.core.expr.eval.EvalRun;
@@ -60,6 +64,51 @@ class MinusTest
         Vector answer = Minus.evaluate(run, List.of(perRow, ConstVector.of(List.of("B"))));
 
         assertEquals(List.of(), assertInstanceOf(ConstVector.class, answer).value());
+    }
+
+
+    private static Object minus(Object minuend, Object subtrahend)
+    {
+        IDataTable dm = MockTable.of().col("STUDYID", "S1").name("DM").build();
+        EvalRun run = EvalRun.fullRange(EvaluationContext.builder().table(dm).build());
+        return assertInstanceOf(ConstVector.class,
+                Minus.evaluate(run,
+                        Arrays.asList(ConstVector.of(minuend), ConstVector.of(subtrahend))))
+                                .value();
+    }
+
+
+    /**
+     * Runbook W4 M2 ({@code PLAN-minus-lists-only} §1, R3): an operand untyped at load that is a
+     * SCALAR at run time is a rule ERROR naming the operand — never its own singleton (before M2
+     * {@code minus("SOLO", subtract="OTHER")} answered {@code ["SOLO"]}). The message mirrors
+     * {@code union}'s: a single value is written as its singleton list literal.
+     */
+    @Test
+    void aScalarOperandIsARuleErrorAtEitherOperand()
+    {
+        RuleDefinitionException value = assertThrows(RuleDefinitionException.class,
+                () -> minus("SOLO", List.of("OTHER")));
+        assertEquals("minus(\u2026) operand `value` is not a list (SOLO): a set difference reads"
+                + " lists only \u2014 a single value is written as its singleton list literal"
+                + " [\"SOLO\"]", value.getMessage());
+        RuleDefinitionException subtract = assertThrows(RuleDefinitionException.class,
+                () -> minus(List.of("A"), "OTHER"));
+        assertTrue(
+                subtract.getMessage().startsWith("minus(\u2026) operand `subtract` is not a list"),
+                subtract.getMessage());
+        assertThrows(RuleDefinitionException.class, () -> minus(List.of(), "OTHER"),
+                "an empty minuend still reads its subtrahend: the refusal never depends on data");
+    }
+
+
+    /** M2 keeps the absent and empty answers: a {@code null} operand is the empty list. */
+    @Test
+    void anAbsentOperandIsStillTheEmptyList()
+    {
+        assertEquals(List.of("A", "B"), minus(List.of("A", "B"), null));
+        assertEquals(List.of(), minus(null, List.of("A")));
+        assertEquals(List.of("A"), minus(List.of("A", "B"), List.of("B")));
     }
 
 }

@@ -72,7 +72,7 @@ class GroupedAggregateSidedGroupTest
         assertTrue(loadError("$m == 3", "$m",
                 "max(TAETORD, domain=\"TA\", group=[{left: $x, right: ARMCD}])").contains("$x"),
                 "a bound side is never spliced");
-        assertTrue(loadError("is_last_in_group(ordering=AESEQ, group=[{left: A, right: B}])")
+        assertTrue(loadError("is_last_in_group(by=AESEQ, group=[{left: A, right: B}])")
                 .contains("left"), "a splice slot without domain= refuses it");
     }
 

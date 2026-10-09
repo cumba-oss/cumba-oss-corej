@@ -67,7 +67,7 @@ class ExprCompilerBoolDispatchTest
             "does_not_equal_string_part(NAME, VALUE, regex=\"^AB\")", "has_not_equal_length(X, 5)",
             "has_equal_length(X, 5)", "has_multiple_values_for(AEREL, AERELN)",
             "present_on_multiple_rows_within(AESEQ, min_count=2, within=USUBJID)",
-            "empty_within_except_last_row(TSVAL, TSPARMCD, ordering=TSPARMCD)",
+            "empty_within_except_last_row(TSVAL, TSPARMCD, by=TSPARMCD)",
             "is_not_unique_relationship(AEDECOD, USUBJID)", "is_not_unique_set([USUBJID, DOMAIN])",
             "is_unique_set([USUBJID, DOMAIN])",
             "is_inconsistent_across_dataset(STRESU, keys=[TESTCD])",

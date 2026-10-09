@@ -20,10 +20,11 @@ import org.junit.jupiter.api.Test;
  * (#2) {@code asc($c)} / {@code desc($c)} with a dataset-level name, the descriptor's column a
  * splice member judged at load (a per-row one refused); and O17's pure rename: {@code by=} is the
  * sort-key parameter everywhere — {@code is_last_in_group}, {@code has_next_corresponding_record}
- * and {@code empty_within_except_last_row} accept {@code by=} beside {@code ordering=}, exactly one
- * ascending key as today, more keys or {@code desc} a load error <i>"not supported for
- * &lt;f&gt;"</i>. Every written form of a key answers alike; since W2 SB1 {@code is_sorted_by}
- * honours the direction and {@code nulls=} ({@link IsSortedByDirectionTest}).
+ * and {@code empty_within_except_last_row} take {@code by=} (their {@code ordering=} renamed in
+ * place; retired with the hint "write by=" since W4 OR2), exactly one ascending key as before, more
+ * keys, {@code desc} or {@code nulls=} a load error <i>"not supported for &lt;f&gt;"</i>. Every
+ * written form of a key answers alike; since W2 SB1 {@code is_sorted_by} honours the direction and
+ * {@code nulls=} ({@link IsSortedByDirectionTest}).
  */
 class SortKeysTest
 {
@@ -131,7 +132,7 @@ class SortKeysTest
     @Test
     void aSortKeyDescriptorOutsideASortKeySlotIsRefusedAtLoad()
     {
-        // R5 A-L4: asc()/desc() order a by= (or ordering=) list only; in any other splice slot the
+        // R5 A-L4: asc()/desc() order a by= list only; in any other splice slot the
         // seams unwrapped it (stage A) or kept it as a computed member (the loader), so it loaded
         // and ERRORed at run time
         String within = loadError("not is_sorted_by(SESEQ, by=[SESTDTC], within=asc($c))", KEYS);
@@ -177,43 +178,158 @@ class SortKeysTest
 
 
     @Test
-    void byIsAcceptedOnTheThreeSingleKeyReadersAsAPureRename()
+    void byIsTheSortKeyOfTheThreeSingleKeyReadersAsAPureRename()
     {
         IDataTable ae = WithinOrderingSpliceTest.ae();
         for (String[] pair : List.of(new String[]
         {
-                "is_last_in_group(ordering=AESEQ, group=[USUBJID])",
                 "is_last_in_group(by=AESEQ, group=[USUBJID])", "is_last_in_group"
         }, new String[]
         {
-                "empty_within_except_last_row(AEENDTC, USUBJID, ordering=AESEQ)",
                 "empty_within_except_last_row(AEENDTC, USUBJID, by=AESEQ)",
                 "empty_within_except_last_row"
         }, new String[]
         {
-                "not has_next_corresponding_record(AEENDTC, AESTDTC, within=USUBJID, ordering=AESEQ)",
                 "not has_next_corresponding_record(AEENDTC, AESTDTC, within=USUBJID, by=AESEQ)",
                 "has_next_corresponding_record"
         }))
         {
             List<Long> written = SequenceFunctionTest.fired(ae, pair[0]);
             assertTrue(!written.isEmpty(), pair[0]);
-            assertEquals(written, SequenceFunctionTest.fired(ae, pair[1]), pair[1]);
             assertEquals(written,
-                    SequenceFunctionTest.fired(ae, pair[1].replace("by=AESEQ", "by=[asc(AESEQ)]")));
+                    SequenceFunctionTest.fired(ae, pair[0].replace("by=AESEQ", "by=[asc(AESEQ)]")));
             assertEquals(written,
-                    SequenceFunctionTest.fired(ae, pair[1].replace("by=AESEQ", "by=[AESEQ]")));
+                    SequenceFunctionTest.fired(ae, pair[0].replace("by=AESEQ", "by=[AESEQ]")));
             assertEquals(written, SequenceFunctionTest.fired(ae,
-                    pair[1].replace("by=AESEQ", "by=$o"), "$o", "[AESEQ]"));
-            String f = pair[2];
-            String desc = loadError(pair[1].replace("by=AESEQ", "by=[desc(AESEQ)]"));
+                    pair[0].replace("by=AESEQ", "by=$o"), "$o", "[AESEQ]"));
+            String f = pair[1];
+            String desc = loadError(pair[0].replace("by=AESEQ", "by=[desc(AESEQ)]"));
             assertTrue(desc.contains("not supported for " + f), f + " desc: " + desc);
-            String two = loadError(pair[1].replace("by=AESEQ", "by=[AESEQ, AESTDTC]"));
+            String two = loadError(pair[0].replace("by=AESEQ", "by=[AESEQ, AESTDTC]"));
             assertTrue(two.contains("not supported for " + f), f + " two: " + two);
-            String both = loadError(pair[1].replace("by=AESEQ", "by=AESEQ, ordering=AESEQ"));
-            assertTrue(both.contains("by=") && both.contains("ordering="), both);
-            String neither = loadError(pair[1].replace("by=AESEQ, ", "").replace(", by=AESEQ", ""));
+            // W4 OR2: ordering= beside by= is the retired keyword's hint, no longer "not both"
+            String both = loadError(pair[0].replace("by=AESEQ", "by=AESEQ, ordering=AESEQ"));
+            assertTrue(both.contains("ordering= is retired"), both);
+            String neither = loadError(pair[0].replace("by=AESEQ, ", "").replace(", by=AESEQ", ""));
             assertTrue(neither.contains("by="), f + ": " + neither);
+        }
+    }
+
+
+    /**
+     * Runbook W4 OR2 (owner O17, coordinator W4-D2): {@code ordering=} is retired on the three
+     * single-key readers — a load error with the hint "write by=" on every path (an inline Check, a
+     * binding, a Check-less rule), never ARITY's bare "has no parameter". The parameter is renamed
+     * in place, so a positional key keeps its meaning.
+     */
+    @Test
+    void orderingIsRetiredWithTheHintWriteBy()
+    {
+        for (String[] pair : List.of(new String[]
+        {
+                "is_last_in_group(ordering=AESEQ, group=[USUBJID])", "is_last_in_group"
+        }, new String[]
+        {
+                "empty_within_except_last_row(AEENDTC, USUBJID, ordering=AESEQ)",
+                "empty_within_except_last_row"
+        }, new String[]
+        {
+                "not has_next_corresponding_record(AEENDTC, AESTDTC, within=USUBJID, ordering=AESEQ)",
+                "has_next_corresponding_record"
+        }))
+        {
+            String inline = loadError(pair[0]);
+            assertTrue(inline.contains(pair[1] + ": ordering= is retired"), inline);
+            assertTrue(inline.contains("write by=AESEQ"), inline);
+            String bound = loadError("$b", "$b", pair[0].replace("not ", ""));
+            assertTrue(bound.contains("ordering= is retired"), bound);
+            Rule checkless = SequenceFunctionTest.loadCheckless("$b", pair[0].replace("not ", ""));
+            assertTrue(String.valueOf(checkless.getLoadError()).contains("ordering= is retired"),
+                    String.valueOf(checkless.getLoadError()));
+        }
+    }
+
+
+    /** OR2 renames in place: the positional key of is_last_in_group reads as by=. */
+    @Test
+    void aPositionalKeyKeepsItsMeaningAfterTheRename()
+    {
+        IDataTable ae = WithinOrderingSpliceTest.ae();
+        List<Long> by = SequenceFunctionTest.fired(ae,
+                "is_last_in_group(by=AESEQ, group=[USUBJID])");
+        assertTrue(!by.isEmpty(), "premise");
+        assertEquals(by, SequenceFunctionTest.fired(ae, "is_last_in_group(AESEQ, [USUBJID])"));
+        assertEquals("null", loadError("empty_within_except_last_row(AEENDTC, USUBJID, AESEQ)"));
+    }
+
+
+    /**
+     * Runbook W4 SB3 ({@code PLAN-is-sorted-by-direction} N2, coordinator W4-D12): a sort-key
+     * descriptor's {@code nulls=} takes the string literal {@code "first"} or {@code "last"} only —
+     * a case variant, another string or a non-literal is a load error (before SB3 it loaded and
+     * silently kept the default) — and a descriptor keyword other than {@code nulls=} is refused.
+     * Read through {@code sequence} here, whose seam is its own reader.
+     */
+    @Test
+    void anUnknownNullsValueOrDescriptorKeywordIsALoadError()
+    {
+        String last = loadError(
+                "count(sequence(ETCD, group=[USUBJID], by=[asc(SESTDTC, nulls=\"Last\")])) > 0");
+        assertTrue(last.contains("sequence sort key asc(SESTDTC, nulls=\"Last\"): nulls= takes"
+                + " \"first\" or \"last\" (lower case), not \"Last\""), last);
+        for (String value : List.of("\"bogus\"", "true", "$n"))
+        {
+            String error = loadError(
+                    "count(sequence(ETCD, group=[USUBJID], by=[desc(SESTDTC, nulls=" + value
+                            + ")])) > 0",
+                    "$n", "\"last\"");
+            assertTrue(error.contains("nulls= takes \"first\" or \"last\""), value + ": " + error);
+        }
+        String keyword = loadError(
+                "count(sequence(ETCD, group=[USUBJID], by=[asc(SESTDTC, null=\"last\")])) > 0");
+        assertTrue(keyword.contains("a sort-key descriptor takes only nulls=, not null="), keyword);
+        Rule checkless = SequenceFunctionTest.loadCheckless("$s",
+                "sequence(ETCD, group=[USUBJID], by=[asc(SESTDTC, nulls=\"bogus\")])");
+        assertTrue(String.valueOf(checkless.getLoadError()).contains("nulls= takes"),
+                String.valueOf(checkless.getLoadError()));
+        assertEquals("null", loadError(
+                "not is_sorted_by(SESEQ, by=[asc(SESTDTC, nulls=\"last\")], within=USUBJID)"));
+    }
+
+
+    /**
+     * SB3: {@code is_sorted_by} meets the one sort-key reader in the loader's seam pass — its own
+     * tailored reader — so an inline Check's refusal is a load error, not the compiler's degrade; a
+     * dotted wildcard key (R5 A-L1) is refused there as for {@code sequence}.
+     */
+    @Test
+    void isSortedByMeetsTheSortKeyReaderAtLoad()
+    {
+        String wildcard = loadError("not is_sorted_by(SESEQ, by=[asc(DM.--SEQ)], within=USUBJID)");
+        assertTrue(wildcard.contains("must be a column"), wildcard);
+        String nulls = loadError(
+                "not is_sorted_by(SESEQ, by=[asc(SESTDTC, nulls=\"Last\")], within=USUBJID)");
+        assertTrue(nulls.contains("is_sorted_by sort key asc(SESTDTC, nulls=\"Last\"): nulls= takes"
+                + " \"first\" or \"last\" (lower case), not \"Last\""), nulls);
+        Rule checkless = SequenceFunctionTest.loadCheckless("$b",
+                "is_sorted_by(SESEQ, by=[asc(SESTDTC, nulls=\"bogus\")], within=USUBJID)");
+        assertTrue(String.valueOf(checkless.getLoadError()).contains("nulls= takes"),
+                String.valueOf(checkless.getLoadError()));
+    }
+
+
+    /**
+     * SB3 / O17: {@code nulls=} on a single-key reader's key is "not supported" (no new features).
+     */
+    @Test
+    void nullsIsNotSupportedOnASingleKeyReader()
+    {
+        for (String call : List.of(
+                "is_last_in_group(by=[asc(AESEQ, nulls=\"last\")], group=[USUBJID])",
+                "empty_within_except_last_row(AEENDTC, USUBJID, by=[asc(AESEQ, nulls=\"first\")])"))
+        {
+            String single = loadError(call);
+            assertTrue(single.contains("is not supported for"), call + ": " + single);
         }
     }
 
@@ -236,6 +352,7 @@ class SortKeysTest
         for (String line : lines)
         {
             assertTrue(line.contains("by:"), line);
+            assertTrue(!line.contains("ordering:"), "W4 OR2: ordering= is retired - " + line);
         }
         Rule loads = SequenceFunctionTest.load(
                 "count(sequence(ETCD, group=[USUBJID], by=[asc(SESTDTC)], keep_missings=false)) > 0");

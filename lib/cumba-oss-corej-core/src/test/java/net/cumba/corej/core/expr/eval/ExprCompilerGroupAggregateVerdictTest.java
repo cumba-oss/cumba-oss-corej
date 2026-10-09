@@ -306,7 +306,7 @@ class ExprCompilerGroupAggregateVerdictTest
         IDataTable t = MockTable.of().name("DS").col("V", "", "x", "").col("G", "g", "g", "g")
                 .col("O", "1", "2", "3").build();
         EvaluationContext c = ctxOf(t);
-        assertEquals(bits(0), eval("empty_within_except_last_row(V, G, ordering=O)", c),
+        assertEquals(bits(0), eval("empty_within_except_last_row(V, G, by=O)", c),
                 "a blank V fires except on the group's LAST ordered row");
     }
 
@@ -341,8 +341,8 @@ class ExprCompilerGroupAggregateVerdictTest
         // Row 0's END "A" matches row 1's START "A" (corresponds); row 1's END "B" does not match
         // row 2's START "X" (fires); row 2 is last (never fires).
         assertEquals(bits(1),
-                eval("not has_next_corresponding_record(SEENDTC, SESTDTC, within=U,"
-                        + " ordering=SEQ)", c),
+                eval("not has_next_corresponding_record(SEENDTC, SESTDTC, within=U," + " by=SEQ)",
+                        c),
                 "only the row whose next ordered record does not correspond may fire");
     }
 
@@ -355,7 +355,7 @@ class ExprCompilerGroupAggregateVerdictTest
         EvaluationContext c = ctxOf(t);
         assertThrows(ExpressionException.class,
                 () -> eval("not has_next_corresponding_record(SEENDTC, SESTDTC, within=U,"
-                        + " ordering=SEQ, relation=\"~=\")", c),
+                        + " by=SEQ, relation=\"~=\")", c),
                 "an unknown relation= spelling must be rejected, never silently identity");
     }
 

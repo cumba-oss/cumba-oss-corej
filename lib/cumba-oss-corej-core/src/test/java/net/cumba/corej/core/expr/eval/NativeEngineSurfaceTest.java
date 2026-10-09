@@ -139,9 +139,9 @@ class NativeEngineSurfaceTest
         m.put("present_on_multiple_rows_within", "present_on_multiple_rows_within(X, within=W)");
         m.put("not_present_on_multiple_rows_within",
                 "not present_on_multiple_rows_within(X, within=W)");
-        m.put("empty_within_except_last_row", "empty_within_except_last_row(X, G, ordering=O)");
+        m.put("empty_within_except_last_row", "empty_within_except_last_row(X, G, by=O)");
         m.put("does_not_have_next_corresponding_record",
-                "not has_next_corresponding_record(X, Y, ordering=O, within=W)");
+                "not has_next_corresponding_record(X, Y, by=O, within=W)");
         m.put("target_is_not_sorted_by", "not is_sorted_by(X, by=[asc(O)], within=W)");
         m.put("is_not_unique_relationship", "not is_unique_relationship(X, Y)");
         m.put("is_not_unique_set", "not is_unique_set([X, K])");

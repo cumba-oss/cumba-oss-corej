@@ -75,7 +75,7 @@ class PositionalKeepMissingsTest
         for (String check : List.of("has_multiple_values_for(A, K, within=W, keep_missings=true)",
                 "is_unique_set([A, B], keep_missings=true)",
                 "is_inconsistent_across_dataset(A, K, keep_missings=true)",
-                "empty_within_except_last_row(A, G, ordering=O, keep_missings=true)",
+                "empty_within_except_last_row(A, G, by=O, keep_missings=true)",
                 "present_on_multiple_rows_within(A, within=W, keep_missings=true)"))
         {
             Rule rule = load(check);

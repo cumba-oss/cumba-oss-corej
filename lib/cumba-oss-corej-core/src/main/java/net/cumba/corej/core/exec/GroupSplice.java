@@ -110,7 +110,7 @@ public final class GroupSplice
      * the member the seams judge ({@link SortKeys#column}), and a bare column meaning {@code asc}.
      */
     private static final java.util.Set<String> SORT_KEY_PARAMETERS = java.util.Set
-            .of(SortKeys.PARAMETER, SortKeys.LEGACY_PARAMETER);
+            .of(SortKeys.PARAMETER);
 
     /**
      * The splice slots — function name to the names of its parameters whose list of column names
@@ -143,21 +143,20 @@ public final class GroupSplice
             // BS2b (keys=): the compiler-dispatched readers' name lists
             // (ExprCompiler.strictColumnMembers / keyMembers)
             java.util.Map.entry("is_last_in_group",
-                    List.of(GroupedAggregate.GROUP_PARAMETER, SortKeys.LEGACY_PARAMETER,
-                            SortKeys.PARAMETER)),
+                    List.of(GroupedAggregate.GROUP_PARAMETER, SortKeys.PARAMETER)),
             java.util.Map.entry("has_mixed_emptiness_within_group",
                     List.of(GroupedAggregate.GROUP_PARAMETER, "qualifying_any_populated")),
             java.util.Map.entry("is_unique_relationship", List.of(KEYS_PARAMETER)),
             java.util.Map.entry("is_not_unique_relationship", List.of(KEYS_PARAMETER)),
             java.util.Map.entry("is_inconsistent_across_dataset", List.of(KEYS_PARAMETER)),
-            // W1b BS2c (D4): the within= / ordering= / single group slots, unknown-typed
+            // W1b BS2c (D4): the within= / by= (ordering= until W4 OR2) / single group slots,
+            // unknown-typed
             java.util.Map.entry("has_multiple_values_for", List.of(WITHIN_PARAMETER)),
             java.util.Map.entry("present_on_multiple_rows_within", List.of(WITHIN_PARAMETER)),
             java.util.Map.entry("has_next_corresponding_record",
-                    List.of(WITHIN_PARAMETER, SortKeys.LEGACY_PARAMETER, SortKeys.PARAMETER)),
+                    List.of(WITHIN_PARAMETER, SortKeys.PARAMETER)),
             java.util.Map.entry("empty_within_except_last_row",
-                    List.of(GroupedAggregate.GROUP_PARAMETER, SortKeys.LEGACY_PARAMETER,
-                            SortKeys.PARAMETER)),
+                    List.of(GroupedAggregate.GROUP_PARAMETER, SortKeys.PARAMETER)),
             // W1b SK (O16 / O17): the sort-key slots, and is_last_in_group's by=
             java.util.Map.entry("is_sorted_by", List.of(SortKeys.PARAMETER, WITHIN_PARAMETER)),
             java.util.Map.entry(Sequence.NAME,
@@ -178,7 +177,7 @@ public final class GroupSplice
             + " is_inconsistent_across_dataset, referenced_record_count and"
             + " referenced_key_is_unique; is_(not_)unique_set's members;"
             + " is_not_unique_member_set's members and group; values' columns),"
-            + " every within= / ordering= / by= slot and empty_within_except_last_row's group"
+            + " every within= / by= slot and empty_within_except_last_row's group"
             + " — not tuple's columns";
 
     /**

@@ -45,7 +45,7 @@ class GroupOperatorQualifiedSourceTest
             "present_on_multiple_rows_within(name=J.S, within=[K])",
             "is_inconsistent_across_dataset(name=J.S, keys=[K])", "has_same_values(J.S)",
             "max(J.N, group=[K]) == N", "record_count(group=[J.S]) > 1",
-            "empty_within_except_last_row(J.S, group=[K], ordering=K)",
+            "empty_within_except_last_row(J.S, group=[K], by=K)",
             "contains_all(source=J.S, required=[\"a\"])");
 
     @Test

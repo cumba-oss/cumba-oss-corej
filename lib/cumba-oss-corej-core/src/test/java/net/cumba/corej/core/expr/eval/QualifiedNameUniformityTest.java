@@ -180,11 +180,10 @@ class QualifiedNameUniformityTest
             earliest_date | b | N | V:earliest_date(date("2020-01-10"), date(@D))
             earliest_possible | x | N | V:earliest_possible(@D)
             empty | x | N | B:empty(@S)
-            empty_within_except_last_row | name | N | B:empty_within_except_last_row(@S, #G, ordering=#L)
-            empty_within_except_last_row | group | N | B:empty_within_except_last_row(#S, @G, ordering=#L)
-            empty_within_except_last_row | ordering | N | B:empty_within_except_last_row(#S, #G, ordering=@L)
-            empty_within_except_last_row | keep_missings | - | static boolean
+            empty_within_except_last_row | name | N | B:empty_within_except_last_row(@S, #G, by=#L)
+            empty_within_except_last_row | group | N | B:empty_within_except_last_row(#S, @G, by=#L)
             empty_within_except_last_row | by | N | B:empty_within_except_last_row(#S, #G, by=@L)
+            empty_within_except_last_row | keep_missings | - | static boolean
             ends_with | x | N | B:ends_with(@S, "a")
             ends_with | value | N | B:ends_with("zz", @S)
             equalsIgnoreCase | a | N | B:equalsIgnoreCase(@S, #S)
@@ -219,13 +218,12 @@ class QualifiedNameUniformityTest
             has_multiple_values_for | within | N | B:has_multiple_values_for(#S, #K, within=@G)
             has_multiple_values_for | keep_missings | - | static boolean
             has_multiple_values_for | include_empty | - | static boolean
-            has_next_corresponding_record | name | N | B:not has_next_corresponding_record(@S, #S, within=#G, ordering=#L)
-            has_next_corresponding_record | value | N | B:not has_next_corresponding_record(#S, @S, within=#G, ordering=#L)
-            has_next_corresponding_record | within | N | B:not has_next_corresponding_record(#S, #S, within=@G, ordering=#L)
-            has_next_corresponding_record | ordering | N | B:not has_next_corresponding_record(#S, #S, within=#G, ordering=@L)
+            has_next_corresponding_record | name | N | B:not has_next_corresponding_record(@S, #S, within=#G, by=#L)
+            has_next_corresponding_record | value | N | B:not has_next_corresponding_record(#S, @S, within=#G, by=#L)
+            has_next_corresponding_record | within | N | B:not has_next_corresponding_record(#S, #S, within=@G, by=#L)
+            has_next_corresponding_record | by | N | B:not has_next_corresponding_record(#S, #S, within=#G, by=@L)
             has_next_corresponding_record | relation | - | static string
             has_next_corresponding_record | keep_missings | - | static boolean
-            has_next_corresponding_record | by | N | B:not has_next_corresponding_record(#S, #S, within=#G, by=@L)
             has_not_equal_length | name | N | B:has_not_equal_length(@S, 1)
             has_not_equal_length | length | N | B:has_not_equal_length(#S, @L)
             has_same_values | name | N | B:has_same_values(@S)
@@ -246,10 +244,9 @@ class QualifiedNameUniformityTest
             is_inconsistent_across_dataset | include_empty | - | static boolean
             is_inconsistent_across_dataset | keep_missings | - | static boolean
             is_integer | x | N | B:is_integer(@N)
-            is_last_in_group | ordering | N | B:is_last_in_group(ordering=@L, group=[#G])
-            is_last_in_group | group | N | B:is_last_in_group(ordering=#L, group=[@G])
-            is_last_in_group | keep_missings | - | static boolean
             is_last_in_group | by | N | B:is_last_in_group(by=@L, group=[#G])
+            is_last_in_group | group | N | B:is_last_in_group(by=#L, group=[@G])
+            is_last_in_group | keep_missings | - | static boolean
             is_missing | x | N | B:is_missing(@S)
             is_not_complete_date_part | x | N | B:is_not_complete_date_part(@D)
             is_not_integer | x | N | B:is_not_integer(@N)
@@ -889,7 +886,7 @@ class QualifiedNameUniformityTest
                         + " runbook W1b RO; + duration / duration_between, runbook W1b DO;"
                         + " + is_not_unique_member_set, runbook W1b SS1; + referenced_record_count /"
                         + " referenced_key_is_unique, runbook W1b VA)");
-        assertEquals(334,
+        assertEquals(331,
                 FunctionRegistry.all().stream().mapToInt(d -> d.parameters().size()).sum(),
                 "declared parameters (283 + one each for any / all / none / joined + one each"
                         + " for var_is_single_value / var_is_all_missing + three for union + one for"
@@ -901,7 +898,8 @@ class QualifiedNameUniformityTest
                         + " RO / SK; + one for duration and two for duration_between, W1b DO;"
                         + " + three for is_not_unique_member_set, W1b SS1; + one qualifiers= for"
                         + " referenced_dataset_variables, four for referenced_record_count and"
-                        + " three for referenced_key_is_unique, W1b VA)");
+                        + " three for referenced_key_is_unique, W1b VA; - three ordering=,"
+                        + " renamed in place to by=, runbook W4 OR2)");
         assertEquals(28, MetadataAttribute.values().length, "metadata accessors");
         assertEquals(Set.of("date", "date_part", "duration", "num", "time", "time_part"),
                 new TreeSet<>(ExprCompiler.comparisonMarkers()),
@@ -910,16 +908,16 @@ class QualifiedNameUniformityTest
         List<Row> rows = rows();
         long probed = rows.stream().filter(Row::probed).count();
         long nameClass = rows.stream().filter(Row::name).count();
-        assertEquals(285, nameClass,
+        assertEquals(282, nameClass,
                 "name-bearing parameters in the hand table (265 + ~ left, W1b SX; + sequence's"
                         + " name / filter / group / by and the three by=, W1b RO / SK;"
                         + " + is_not_unique_member_set's members / group, W1b SS1; + the seven"
                         + " value-addressed parameters of referenced_record_count /"
-                        + " referenced_key_is_unique, W1b VA)");
-        assertEquals(232, probed, "probed parameters in the hand table (212 + ~ left, W1b SX;"
+                        + " referenced_key_is_unique, W1b VA; - the three ordering= rows, W4 OR2)");
+        assertEquals(229, probed, "probed parameters in the hand table (212 + ~ left, W1b SX;"
                 + " + sequence's four and the three by=, W1b RO / SK; + duration and duration_between's two, W1b DO;"
                 + " + is_not_unique_member_set's members / group, W1b SS1; + the seven"
-                + " value-addressed parameters, W1b VA)");
+                + " value-addressed parameters, W1b VA; - the three ordering= rows, W4 OR2)");
         // T2 r1 L2: every unprobed name-bearing row states one of the three admitted reasons.
         List<String> unprobed = new ArrayList<>();
         for (Row r : rows)
@@ -1986,7 +1984,7 @@ class QualifiedNameUniformityTest
             }
         }
         assertEquals(List.of(), invalid);
-        assertEquals(232, probed, "+2 is_not_unique_member_set's members / group (W1b SS1);"
-                + " +7 the value-addressed parameters (W1b VA)");
+        assertEquals(229, probed, "+2 is_not_unique_member_set's members / group (W1b SS1);"
+                + " +7 the value-addressed parameters (W1b VA); -3 ordering= (W4 OR2)");
     }
 }

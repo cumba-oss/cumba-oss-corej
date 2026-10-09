@@ -75,21 +75,21 @@ class GroupedPredicatesTest
     @Test
     void isLast_arityIsALoadError() throws Exception
     {
-        // W1b SK (O17): by= is a fourth declared parameter (last, so the positional spellings
-        // bind as before) — a fourth positional is the one sort key written twice
-        assertLoadError("is_last_in_group(ORD, [G], true, G)", "not both");
-        assertLoadError("is_last_in_group(ordering=ORD)", "group");
-        assertLoadError("is_last_in_group(group=[G])", "ordering");
+        // W4 OR2 (O17): by= is parameter 0, renamed in place from ordering= — three declared
+        // parameters, so a fourth positional is the binder's arity error
+        assertLoadError("is_last_in_group(ORD, [G], true, G)", "accepts at most 3 argument(s)");
+        assertLoadError("is_last_in_group(by=ORD)", "group");
+        assertLoadError("is_last_in_group(group=[G])", "requires by=");
     }
 
 
     @Test
     void isLast_domainPrefixOperandsResolve() throws Exception
     {
-        // ordering=--SEQ / group=[--GRP] resolve against the evaluated domain (AE) before the plan
+        // by=--SEQ / group=[--GRP] resolve against the evaluated domain (AE) before the plan
         // runs, exactly as the plain names do.
         IDataTable ae = RealTables.of("AE").str("AEGRP", "S", "S").lng("AESEQ", 1L, 2L).build();
-        Rule rule = load("is_last_in_group(ordering=--SEQ, group=[--GRP])");
+        Rule rule = load("is_last_in_group(by=--SEQ, group=[--GRP])");
         assertNull(rule.getLoadError(), rule.getLoadError());
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae, _ -> null, "AE");
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
@@ -102,10 +102,10 @@ class GroupedPredicatesTest
     {
         // Review round 1 M3: a rule whose Check reads ONLY the binding — `$p == true` over an
         // is_last_in_group call with no positional argument — used to derive no Sensitivity (the
-        // classifier walk read no operand from ordering= / group=), so RuleRunner treated it as
+        // classifier walk read no operand from by= / group=), so RuleRunner treated it as
         // non-row-based and collapsed the per-row BitSet to ONE finding. The classifier now reads
         // the column references bound to the call's COLUMN_REFERENCE parameters.
-        Rule rule = load("is_last_in_group(ordering=ORD, group=[G])");
+        Rule rule = load("is_last_in_group(by=ORD, group=[G])");
         assertEquals(Sensitivity.RECORD, rule.getSensitivity(),
                 "derived from the binding's column parameters, not authored");
         IDataTable t = RealTables.of("T").str("G", "S", "S", "S").lng("ORD", 1L, 2L, 2L).build();
@@ -123,8 +123,7 @@ class GroupedPredicatesTest
         // inline, which no binding fold rewrites) reaches RuleClassifier.operandText's arm, not
         // atom's; it must derive Record from the keyword columns alone and report every tied row.
         String pkg = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"W1-GROUPED-OPERAND\"},"
-                + "\"Check\":{\"expression\":"
-                + "\"is_last_in_group(ordering=ORD, group=[G]) == true\"},"
+                + "\"Check\":{\"expression\":" + "\"is_last_in_group(by=ORD, group=[G]) == true\"},"
                 + "\"Outcome\":{\"Message\":\"m\"}}}}";
         Rule rule = RulePackageLoader.loadFromString(pkg).getRules().get("x");
         assertNotNull(rule, "the rule loads");
@@ -327,11 +326,10 @@ class GroupedPredicatesTest
     @Test
     void isLast_quotedColumnsAndKeepMissingsWithoutAGroupAreLoadErrors() throws Exception
     {
-        assertLoadError("is_last_in_group(ordering=\\\"ORD\\\", group=[G])", "column reference");
-        assertLoadError("is_last_in_group(ordering=ORD, group=[\\\"G\\\"])", "column reference");
-        assertLoadError("is_last_in_group(ordering=ORD, keep_missings=true)", "group");
-        assertLoadError("is_last_in_group(ordering=ORD, group=[], keep_missings=true)",
-                "keep_missings");
+        assertLoadError("is_last_in_group(by=\\\"ORD\\\", group=[G])", "column reference");
+        assertLoadError("is_last_in_group(by=ORD, group=[\\\"G\\\"])", "column reference");
+        assertLoadError("is_last_in_group(by=ORD, keep_missings=true)", "group");
+        assertLoadError("is_last_in_group(by=ORD, group=[], keep_missings=true)", "keep_missings");
     }
 
     // ==================================================================
@@ -451,7 +449,7 @@ class GroupedPredicatesTest
 
     private static String last(String arguments)
     {
-        return "is_last_in_group(ordering=ORD, " + arguments + ")";
+        return "is_last_in_group(by=ORD, " + arguments + ")";
     }
 
 

@@ -293,12 +293,15 @@ public final class MetadataExprScan
             // and a run without one must SKIP rather than read nothing: an absent operand looks
             // exactly like conformant data. Same shape as Fix #369.
             //
-            // ⚑ Measured before generalising (Plan 2 Phase 6): the shipped corpus contains exactly
+            // ⚑ Measured before generalising (Plan 2 Phase 6): the shipped corpus then had exactly
             // TWO rules with a genuinely bare `library_*` operand — DRAFT-900021 and DRAFT-900024 —
-            // and BOTH already derive Requirements.Library=true from a sibling accessor
-            // (`var_codelist_extensible("LIBRARY")`). `library_variables` / `library_order` are
-            // `$`-refs (declared operations, surface 1) and `library_variable_code_pair_matches` is
-            // a call handled above. So this prefix rule changes no existing rule's routing.
+            // both already deriving Requirements.Library=true from a sibling accessor
+            // (`var_codelist_extensible("LIBRARY")`), so this prefix rule changed no rule's
+            // routing. Re-measured at runbook W4 (after W3 MA-r2 respelled the bare aliases as
+            // accessor calls): ONE corpus rule still reads a bare `library_*` operand,
+            // DRAFT-900044 (`library_variable_label_values`), and none a bare `define_*` one.
+            // `library_variables` / `library_order` are `$`-refs and
+            // `library_variable_code_pair_matches` is a call handled above.
             if (e instanceof Expr.Ref r)
             {
                 if (r.name().startsWith("library_"))

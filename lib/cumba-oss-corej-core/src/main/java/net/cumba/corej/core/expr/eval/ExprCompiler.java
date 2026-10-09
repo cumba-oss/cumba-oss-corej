@@ -3568,6 +3568,14 @@ public final class ExprCompiler
         }
         String rawName = groupOperandName(c.args().get(0));
         String rawKey = groupOperandName(c.args().get(1));
+        try
+        {
+            rejectKeepMissingsWithoutWithin(c);
+        }
+        catch (ExpressionException ex)
+        {
+            throw unsupported(messageOf(ex));
+        }
         List<List<net.cumba.corej.core.exec.GroupSplice.Member>> withinMembers = withinComponents(
                 c.kwargs().get("within"));
         boolean includeEmpty = includeEmptyKwarg(c);
@@ -3660,7 +3668,7 @@ public final class ExprCompiler
 
 
     /**
-     * Wave 1 (D-W1-4) — {@code is_last_in_group(ordering=, group=[…], keep_missings=)}: a
+     * Wave 1 (D-W1-4) — {@code is_last_in_group(by=, group=[…], keep_missings=)}: a
      * compiler-dispatched plan over column NAMES (EC-44 is defined over names) that groups through
      * {@code GroupSemantics.group} and marks every row whose ordering value is identical to its
      * group's maximum ({@link net.cumba.corej.core.exec.GroupedPredicates#isLastInGroup}). Bound
@@ -3670,11 +3678,12 @@ public final class ExprCompiler
      */
     private static ExprProgram.BoolPlan compileIsLastInGroup(Expr.Call c)
     {
+        rejectRetiredOrdering(c);
         List<@Nullable Expr> bound = bindStrict(c);
-        // W1b SK (O17): by= beside ordering=, one ascending key — the one sort-key reader; a
-        // written key is read strictly (R1), a $ / computed one spliced at evaluation (BS2c)
+        // W1b SK / W4 OR2 (O17): by=, one ascending key — the one sort-key reader; a written key
+        // is read strictly (R1), a $ / computed one spliced at evaluation (BS2c)
         net.cumba.corej.core.exec.GroupSplice.Member orderMember = sortKeyMember(c.name(),
-                bound.get(3), bound.get(0));
+                bound.get(0));
         List<net.cumba.corej.core.exec.GroupSplice.Member> groupMembers = strictColumnMembers(
                 bound.get(1), c.name(), "group");
         GroupKeyPolicy policy = groupKeyPolicyRequiringGroup(c.name(), bound.get(2),
@@ -3892,16 +3901,34 @@ public final class ExprCompiler
 
 
     /**
-     * O17 (W1b SK): the one ascending sort key of {@code is_last_in_group},
-     * {@code has_next_corresponding_record} and {@code empty_within_except_last_row} — {@code by=}
-     * or {@code ordering=}, read by the one sort-key reader ({@code SortKeys.single}).
+     * O17 (W1b SK, W4 OR2): the one ascending sort key of {@code is_last_in_group},
+     * {@code has_next_corresponding_record} and {@code empty_within_except_last_row} — {@code by=},
+     * read by the one sort-key reader ({@code SortKeys.single}).
      */
     private static net.cumba.corej.core.exec.GroupSplice.Member sortKeyMember(String function,
-            @Nullable Expr by, @Nullable Expr ordering)
+            @Nullable Expr by)
     {
         try
         {
-            return net.cumba.corej.core.exec.SortKeys.single(function, by, ordering);
+            return net.cumba.corej.core.exec.SortKeys.single(function, by);
+        }
+        catch (ExpressionException ex)
+        {
+            throw unsupported(messageOf(ex));
+        }
+    }
+
+
+    /**
+     * Runbook W4 OR2: the retired {@code ordering=} of the three single-key readers, refused with
+     * the loader's hint ({@code SortKeys.rejectRetiredOrdering}) for a call compiled outside the
+     * loader's seam pass.
+     */
+    private static void rejectRetiredOrdering(Expr.Call c)
+    {
+        try
+        {
+            net.cumba.corej.core.exec.SortKeys.rejectRetiredOrdering(c);
         }
         catch (ExpressionException ex)
         {
@@ -3973,9 +4000,9 @@ public final class ExprCompiler
 
 
     /**
-     * Native plan for {@code empty_within_except_last_row(NAME, GROUP, ordering=ORDER)}: partitions
-     * by the {@code GROUP} column, orders each group by {@code ORDER}, and fires every row except
-     * the last whose {@code NAME} is missing/empty — via the shared {@link GroupSemantics}.
+     * Native plan for {@code empty_within_except_last_row(NAME, GROUP, by=ORDER)}: partitions by
+     * the {@code GROUP} column, orders each group by {@code ORDER}, and fires every row except the
+     * last whose {@code NAME} is missing/empty — via the shared {@link GroupSemantics}.
      */
     private static ExprProgram.BoolPlan compileEmptyWithinExceptLastRow(Expr.Call c)
     {
@@ -4021,7 +4048,7 @@ public final class ExprCompiler
 
     /**
      * Native plan for
-     * {@code has_next_corresponding_record(NAME, VALUE, within=COL, ordering=ORDER[, relation=])} —
+     * {@code has_next_corresponding_record(NAME, VALUE, within=COL, by=ORDER[, relation=])} —
      * emitted only under {@code not} (the {@code does_not_have_next_corresponding_record} surface,
      * Q1). Partitions by {@code within}, orders each group by {@code ORDER}, and fires every row
      * (except the last) whose {@code NAME} does not <em>correspond</em> to the next ordered row's
@@ -4253,13 +4280,15 @@ public final class ExprCompiler
 
     /**
      * The one ascending sort key of a keyword-bound single-key reader
-     * ({@code empty_within_except_last_row}, {@code has_next_corresponding_record}): {@code by=} or
-     * the older {@code ordering=} (O17, W1b SK), through {@link #sortKeyMember}.
+     * ({@code empty_within_except_last_row}, {@code has_next_corresponding_record}): {@code by=}
+     * (O17, W1b SK), through {@link #sortKeyMember}; the retired {@code ordering=} refused with its
+     * hint (W4 OR2).
      */
     private static net.cumba.corej.core.exec.GroupSplice.Member orderingMember(Expr.Call c)
     {
-        return sortKeyMember(c.name(), c.kwargs().get(net.cumba.corej.core.exec.SortKeys.PARAMETER),
-                c.kwargs().get(net.cumba.corej.core.exec.SortKeys.LEGACY_PARAMETER));
+        rejectRetiredOrdering(c);
+        return sortKeyMember(c.name(),
+                c.kwargs().get(net.cumba.corej.core.exec.SortKeys.PARAMETER));
     }
 
 
@@ -4954,26 +4983,98 @@ public final class ExprCompiler
         return out;
     }
 
+    /**
+     * The relationship / consistency readers whose positional key members {@link #keyMembers}
+     * reads.
+     */
+    private static final Set<String> POSITIONAL_KEY_READERS = Set.of("is_unique_relationship",
+            "is_not_unique_relationship", "is_inconsistent_across_dataset");
+
+    /**
+     * Runbook W4 KP ({@code PLAN-binding-substitutability} C6 note, coordinator W4-D3): the refusal
+     * of a positional {@code $} key of {@code is_(not_)unique_relationship} /
+     * {@code is_inconsistent_across_dataset} — the loader's seam pass raises it as the rule's load
+     * error ({@code RulePackageLoader}); {@link #keyMembers} refuses the same call (defence in
+     * depth). Before KP the {@code $} name was passed RAW as a column name, which the lookup
+     * missed, so the key was dropped like an absent column; a binding of column names is spliced
+     * through {@code keys=[$k]}.
+     *
+     * @param c
+     *            a call
+     * @return the message, or {@code null} when {@code c} is no such reader or writes no positional
+     *         {@code $} key
+     */
+    public static @Nullable String positionalBindingKey(Expr.Call c)
+    {
+        if (!POSITIONAL_KEY_READERS.contains(c.name()))
+        {
+            return null;
+        }
+        for (int i = 1; i < c.args().size(); i++)
+        {
+            if (c.args().get(i) instanceof Expr.Ref r && r.kind() == OperandKind.OPERATION_REF)
+            {
+                // every positional after the name is read as a key column (keyMembers), the
+                // declared value / key slot and any later positional alike
+                FunctionDescriptor d = FunctionRegistry.descriptor(c.name());
+                String argument = i == 1 && d != null && d.parameters().size() > 1
+                        ? "argument '" + d.parameters().get(1).name() + "'"
+                        : "positional argument " + (i + 1);
+                return argument + " of '" + c.name() + "' takes a column, not the binding "
+                        + r.name() + " \u2014 a binding of column names is spliced through keys=["
+                        + r.name() + "]";
+            }
+        }
+        return null;
+    }
+
+
+    /**
+     * Runbook W4 KM (§3 table B, coordinator W4-D4): {@code keep_missings=} on
+     * {@code has_multiple_values_for} without {@code within=} — the ungrouped arm never reads the
+     * disposition, so it would have no effect; the loader raises it as the rule's load error
+     * ({@code RulePackageLoader}), {@link #compileHasMultipleValuesFor} refuses the same call.
+     *
+     * @param c
+     *            a call
+     * @throws ExpressionException
+     *             for {@code has_multiple_values_for(…, keep_missings=…)} without {@code within=}
+     */
+    public static void rejectKeepMissingsWithoutWithin(Expr.Call c)
+    {
+        // (a positional within — a third positional — is refused on its own, naming the keyword:
+        // rejectPositionalKeywordOnly)
+        if ("has_multiple_values_for".equals(c.name()) && c.kwargs().containsKey("keep_missings")
+                && !c.kwargs().containsKey("within") && c.args().size() < 3)
+        {
+            throw new ExpressionException("`keep_missings` on " + c.name()
+                    + " requires `within=`; with no grouping key it would have no effect");
+        }
+    }
+
 
     /**
      * The key members of a relationship / consistency call: any positional operands beyond the
-     * first (each a plain column or {@code --}-prefix reference — or a {@code $}-operation
-     * reference passed through RAW, which the downstream column lookup misses and
-     * {@code GroupSemantics} drops exactly like an absent column: the pre-existing reading of a
-     * positional {@code $}, outside the {@code list<column-reference>} roster and left as it is),
-     * followed by the {@code keys=} list, whose members splice since W1a BS2b
-     * ({@code PLAN-binding-substitutability} C6, ruled Q2): a {@code $} reference or a computed
-     * expression ({@code GroupSplice.spliced}) is spliced at evaluation ({@link #spliceMembers})
-     * into the column names it holds, and the bare {@code keys=$names} / {@code keys=<expression>}
-     * is the one-member list (C5); a bare column keeps the load error.
+     * first (each a plain column or {@code --}-prefix reference; a positional {@code $} is refused
+     * since runbook W4 KP, {@link #positionalBindingKey} — it was passed through RAW and dropped
+     * like an absent column), followed by the {@code keys=} list, whose members splice since W1a
+     * BS2b ({@code PLAN-binding-substitutability} C6, ruled Q2): a {@code $} reference or a
+     * computed expression ({@code GroupSplice.spliced}) is spliced at evaluation
+     * ({@link #spliceMembers}) into the column names it holds, and the bare {@code keys=$names} /
+     * {@code keys=<expression>} is the one-member list (C5); a bare column keeps the load error.
      */
     private static List<net.cumba.corej.core.exec.GroupSplice.Member> keyMembers(Expr.Call c)
     {
+        String positionalBinding = positionalBindingKey(c);
+        if (positionalBinding != null)
+        {
+            throw unsupported(positionalBinding);
+        }
         List<net.cumba.corej.core.exec.GroupSplice.Member> members = new ArrayList<>();
         for (int i = 1; i < c.args().size(); i++)
         {
-            members.add(
-                    new net.cumba.corej.core.exec.GroupSplice.Name(keyMemberName(c.args().get(i))));
+            members.add(new net.cumba.corej.core.exec.GroupSplice.Name(
+                    groupOperandName(c.args().get(i))));
         }
         Expr keys = c.kwargs().get(net.cumba.corej.core.exec.GroupSplice.KEYS_PARAMETER);
         if (keys instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
@@ -4999,17 +5100,6 @@ public final class ExprCompiler
             members.add(spliced);
         }
         return members;
-    }
-
-
-    /** A keys-list member: a group operand, or a {@code $}-reference passed through raw. */
-    private static String keyMemberName(Expr e)
-    {
-        if (e instanceof Expr.Ref r && r.kind() == OperandKind.OPERATION_REF)
-        {
-            return r.name();
-        }
-        return groupOperandName(e);
     }
 
 

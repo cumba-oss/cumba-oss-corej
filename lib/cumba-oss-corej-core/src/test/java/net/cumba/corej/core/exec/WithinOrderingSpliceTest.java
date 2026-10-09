@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
  * D4): the single-reference and {@code within=} slots the W1a BS2b round left — {@code within=} of
  * {@code has_multiple_values_for} (EC-24 nested components included),
  * {@code present_on_multiple_rows_within}, {@code has_next_corresponding_record} and
- * {@code is_sorted_by}; {@code ordering=} of {@code empty_within_except_last_row},
+ * {@code is_sorted_by}; {@code by=} of {@code empty_within_except_last_row},
  * {@code has_next_corresponding_record} and {@code is_last_in_group}; and
  * {@code empty_within_except_last_row}'s single {@code group} operand — take a dataset-level
  * {@code $} binding of names (or a string) and the expression such a binding holds, written in
@@ -141,10 +141,10 @@ class WithinOrderingSpliceTest
         alike("present_on_multiple_rows_within(AETERM, within=USUBJID)",
                 "present_on_multiple_rows_within(AETERM, within=$w)",
                 "present_on_multiple_rows_within(AETERM, within=" + INLINE_W + ")", W);
-        alike("not has_next_corresponding_record(AEENDTC, AESTDTC, within=USUBJID, ordering=AESEQ)",
-                "not has_next_corresponding_record(AEENDTC, AESTDTC, within=$w, ordering=AESEQ)",
+        alike("not has_next_corresponding_record(AEENDTC, AESTDTC, within=USUBJID, by=AESEQ)",
+                "not has_next_corresponding_record(AEENDTC, AESTDTC, within=$w, by=AESEQ)",
                 "not has_next_corresponding_record(AEENDTC, AESTDTC, within=" + INLINE_W
-                        + ", ordering=AESEQ)",
+                        + ", by=AESEQ)",
                 W);
         alike("not is_sorted_by(AESEQ, by=[asc(AESTDTC)], within=USUBJID)",
                 "not is_sorted_by(AESEQ, by=[asc(AESTDTC)], within=$w)",
@@ -169,22 +169,20 @@ class WithinOrderingSpliceTest
     @Test
     void orderingAndTheSingleGroupOperandSpliceABoundNameAndTheExpressionItHolds()
     {
-        alike("empty_within_except_last_row(AEENDTC, USUBJID, ordering=AESEQ)",
-                "empty_within_except_last_row(AEENDTC, $w, ordering=$o)",
-                "empty_within_except_last_row(AEENDTC, " + INLINE_W + ", ordering=" + INLINE_O
+        alike("empty_within_except_last_row(AEENDTC, USUBJID, by=AESEQ)",
+                "empty_within_except_last_row(AEENDTC, $w, by=$o)",
+                "empty_within_except_last_row(AEENDTC, " + INLINE_W + ", by=" + INLINE_O + ")", W);
+        alike("not has_next_corresponding_record(AEENDTC, AESTDTC, within=USUBJID, by=AESEQ)",
+                "not has_next_corresponding_record(AEENDTC, AESTDTC, within=USUBJID, by=$o)",
+                "not has_next_corresponding_record(AEENDTC, AESTDTC, within=USUBJID, by=" + INLINE_O
                         + ")",
                 W);
-        alike("not has_next_corresponding_record(AEENDTC, AESTDTC, within=USUBJID, ordering=AESEQ)",
-                "not has_next_corresponding_record(AEENDTC, AESTDTC, within=USUBJID, ordering=$o)",
-                "not has_next_corresponding_record(AEENDTC, AESTDTC, within=USUBJID, ordering="
-                        + INLINE_O + ")",
-                W);
-        alike("is_last_in_group(ordering=AESEQ, group=[USUBJID])",
-                "is_last_in_group(ordering=$o, group=[USUBJID])",
-                "is_last_in_group(ordering=" + INLINE_O + ", group=[USUBJID])", W);
+        alike("is_last_in_group(by=AESEQ, group=[USUBJID])",
+                "is_last_in_group(by=$o, group=[USUBJID])",
+                "is_last_in_group(by=" + INLINE_O + ", group=[USUBJID])", W);
         // a dataset-level STRING is one name (N29)
-        assertEquals(fired("is_last_in_group(ordering=AESEQ, group=[USUBJID])"),
-                fired("is_last_in_group(ordering=$s, group=[USUBJID])", "$s", "upper(\"aeseq\")"));
+        assertEquals(fired("is_last_in_group(by=AESEQ, group=[USUBJID])"),
+                fired("is_last_in_group(by=$s, group=[USUBJID])", "$s", "upper(\"aeseq\")"));
     }
 
 
@@ -201,16 +199,16 @@ class WithinOrderingSpliceTest
                 "present_on_multiple_rows_within(AETERM, within=upper(AETERM))"
         }, new String[]
         {
-                "empty_within_except_last_row(AEENDTC, USUBJID, ordering=$p)",
-                "empty_within_except_last_row(AEENDTC, USUBJID, ordering=upper(AETERM))"
+                "empty_within_except_last_row(AEENDTC, USUBJID, by=$p)",
+                "empty_within_except_last_row(AEENDTC, USUBJID, by=upper(AETERM))"
         }, new String[]
         {
-                "empty_within_except_last_row(AEENDTC, $p, ordering=AESEQ)",
-                "empty_within_except_last_row(AEENDTC, upper(AETERM), ordering=AESEQ)"
+                "empty_within_except_last_row(AEENDTC, $p, by=AESEQ)",
+                "empty_within_except_last_row(AEENDTC, upper(AETERM), by=AESEQ)"
         }, new String[]
         {
-                "is_last_in_group(ordering=$p, group=[USUBJID])",
-                "is_last_in_group(ordering=upper(AETERM), group=[USUBJID])"
+                "is_last_in_group(by=$p, group=[USUBJID])",
+                "is_last_in_group(by=upper(AETERM), group=[USUBJID])"
         }, new String[]
         {
                 "not is_sorted_by(AESEQ, by=[asc(AESTDTC)], within=[$p])",
@@ -232,11 +230,11 @@ class WithinOrderingSpliceTest
         // strict reader refuses it as it refuses the written two-column list)
         String two = "minus([\"USUBJID\", \"AESEQ\", \"X\"], subtract=[\"X\"])";
         for (String check : List.of(
-                "not has_next_corresponding_record(AEENDTC, AESTDTC, within=$t, ordering=AESEQ)",
-                "not has_next_corresponding_record(AEENDTC, AESTDTC, within=USUBJID, ordering=$t)",
-                "empty_within_except_last_row(AEENDTC, $t, ordering=AESEQ)",
-                "empty_within_except_last_row(AEENDTC, USUBJID, ordering=$t)",
-                "is_last_in_group(ordering=$t, group=[USUBJID])",
+                "not has_next_corresponding_record(AEENDTC, AESTDTC, within=$t, by=AESEQ)",
+                "not has_next_corresponding_record(AEENDTC, AESTDTC, within=USUBJID, by=$t)",
+                "empty_within_except_last_row(AEENDTC, $t, by=AESEQ)",
+                "empty_within_except_last_row(AEENDTC, USUBJID, by=$t)",
+                "is_last_in_group(by=$t, group=[USUBJID])",
                 "not is_sorted_by(AESEQ, by=[asc(AESTDTC)], within=$t)"))
         {
             RuleExecutionResult result = run(check, "$t", two);
@@ -262,7 +260,7 @@ class WithinOrderingSpliceTest
                 "has_next_corresponding_record", "within"
         }, new String[]
         {
-                "has_next_corresponding_record", "ordering"
+                "has_next_corresponding_record", "by"
         }, new String[]
         {
                 "is_sorted_by", "within"
@@ -271,10 +269,10 @@ class WithinOrderingSpliceTest
                 "empty_within_except_last_row", "group"
         }, new String[]
         {
-                "empty_within_except_last_row", "ordering"
+                "empty_within_except_last_row", "by"
         }, new String[]
         {
-                "is_last_in_group", "ordering"
+                "is_last_in_group", "by"
         }))
         {
             assertTrue(GroupSplice.splices(slot[0], slot[1]), slot[0] + "." + slot[1]);

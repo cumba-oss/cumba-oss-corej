@@ -1,6 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -98,8 +99,11 @@ class IsSortedByDirectionTest
                 "desc keeps nulls FIRST: S2 1,2,3 is sorted, S1 3,2,1 is not");
         assertEquals(all, sorted(se, "[desc(SESTDTC, nulls=\"last\")]"),
                 "desc, nulls last: S1 2,1,3 and S2 2,3,1 are unsorted");
-        assertEquals(sorted(se, "[asc(SESTDTC)]"), sorted(se, "[asc(SESTDTC, nulls=\"bogus\")]"),
-                "an unknown nulls= value keeps the default (it loads today; W4 SB3 refuses it)");
+        String bogus = SequenceFunctionTest.loadError(
+                "not is_sorted_by(SESEQ, by=[asc(SESTDTC, nulls=\"bogus\")], within=USUBJID)");
+        assertTrue(bogus.contains("nulls= takes \"first\" or \"last\" (lower case), not \"bogus\""),
+                "W4 SB3: an unknown nulls= value is a load error, no longer the silent default - "
+                        + bogus);
     }
 
 

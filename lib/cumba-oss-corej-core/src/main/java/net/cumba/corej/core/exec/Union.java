@@ -1,7 +1,6 @@
 package net.cumba.corej.core.exec;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -9,7 +8,6 @@ import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.Vector;
 import net.cumba.datatable.values.MissingValue;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The registry function {@code union(a, b, more…)} ({@code PLAN-union-function}, runbook W1a U1):
@@ -21,8 +19,8 @@ import org.jspecify.annotations.Nullable;
  * <ul>
  * <li><b>Operands are lists only</b> (owner Q7): a scalar operand is a
  * {@link RuleDefinitionException} at evaluation — the authored form for a single value is its
- * singleton literal {@code ["X"]}. {@code minus} keeps its singleton coercion until
- * {@code PLAN-minus-lists-only} (W3).</li>
+ * singleton literal {@code ["X"]}. {@code minus} shares the reader since
+ * {@code PLAN-minus-lists-only} (runbook W4 M2, {@link Minus#listOnly}).</li>
  * <li><b>Duplicates</b> (Q4): a member occurs once, its first occurrence kept with its original
  * element — within one operand as across operands.</li>
  * <li><b>Elements compare as set elements</b> — the same identity {@code minus} uses
@@ -68,7 +66,8 @@ public final class Union
         Map<Object, Object> members = new LinkedHashMap<>();
         for (int i = 0; i < args.size(); i++)
         {
-            for (Object element : listOnly(args.get(i), run.rowCount(), i))
+            for (Object element : Minus.listOnly(args.get(i), run.rowCount(), NAME,
+                    String.valueOf(i + 1), "set union"))
             {
                 members.putIfAbsent(element, element);
             }
@@ -76,38 +75,6 @@ public final class Union
         List<Object> union = new ArrayList<>(members.values());
         requireOneShape(union);
         return ListFunctionSupport.broadcast(NAME, union);
-    }
-
-
-    /**
-     * The list-only operand reader: {@link Minus#rawOperand}'s value, which must be a
-     * {@link Collection} (an array is refused as in {@code normalizeToList}, NNL §1), each element
-     * keyed by {@link Minus#setElement}.
-     */
-    private static List<Object> listOnly(@Nullable Vector operand, int rowCount, int position)
-    {
-        Object value = Minus.rawOperand(operand, rowCount);
-        if (value == null)
-        {
-            return List.of();
-        }
-        if (value.getClass().isArray())
-        {
-            throw new IllegalStateException("an array is not a list value (NNL §1)");
-        }
-        if (!(value instanceof Collection<?> c))
-        {
-            throw new RuleDefinitionException(
-                    NAME + "(…) operand " + (position + 1) + " is not a list (" + value
-                            + "): a set union reads lists only — a single value"
-                            + " is written as its singleton list literal [\"" + value + "\"]");
-        }
-        List<Object> out = new ArrayList<>(c.size());
-        for (Object item : ListValueGuard.elements(c))
-        {
-            out.add(Minus.setElement(item));
-        }
-        return out;
     }
 
 

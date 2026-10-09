@@ -46,7 +46,7 @@ dy(name:column-reference, reference:column-reference) kind=value
 earliest_date(a:date, b:date) kind=value
 earliest_possible(x:unknown) kind=value elementwise
 empty(x:unknown) kind=boolean
-empty_within_except_last_row(name:unknown, group:unknown, ordering:unknown?, keep_missings:boolean?, by:unknown?) kind=boolean
+empty_within_except_last_row(name:unknown, group:unknown, by:unknown?, keep_missings:boolean?) kind=boolean
 ends_with(x:unknown, value:unknown) kind=boolean
 equalsIgnoreCase(a:unknown, b:unknown) kind=boolean
 expected_variables() kind=value aggregate provider=library
@@ -66,7 +66,7 @@ has_digit(x:unknown) kind=boolean elementwise
 has_equal_length(name:unknown, length:unknown) kind=boolean
 has_mixed_emptiness_within_group(name:column-reference, group:list<column-reference>?, qualifying_any_populated:list<column-reference>?, keep_missings:boolean?) kind=boolean
 has_multiple_values_for(name:unknown, key:unknown, within:unknown?, keep_missings:boolean?, include_empty:boolean?) kind=boolean
-has_next_corresponding_record(name:unknown, value:unknown, within:unknown, ordering:unknown?, relation:string?, keep_missings:boolean?, by:unknown?) kind=boolean
+has_next_corresponding_record(name:unknown, value:unknown, within:unknown, by:unknown?, relation:string?, keep_missings:boolean?) kind=boolean
 has_not_equal_length(name:unknown, length:unknown) kind=boolean
 has_same_values(name:unknown) kind=boolean
 imatches(x:unknown, pattern:regex) kind=boolean
@@ -80,7 +80,7 @@ is_incomplete_date(x:string) kind=boolean elementwise
 is_inconsistent_across_dataset(name:unknown, key:unknown?, keys:list<column-reference>?, include_empty:boolean?, keep_missings:boolean?) kind=boolean
 is_increasing(list:list<unknown>) kind=boolean
 is_integer(x:unknown) kind=boolean elementwise
-is_last_in_group(ordering:column-reference?, group:list<column-reference>, keep_missings:boolean?, by:unknown?) kind=boolean
+is_last_in_group(by:list<column-reference>?, group:list<column-reference>, keep_missings:boolean?) kind=boolean
 is_missing(x:unknown) kind=boolean
 is_not_complete_date_part(x:string) kind=boolean elementwise
 is_not_integer(x:unknown) kind=boolean elementwise
@@ -118,7 +118,7 @@ max(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-
 max_date(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?, missing_values:string?) kind=value
 max_value_length(name:unknown@name?, unit:string?, encoding:string?) kind=value
 min_date(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?, missing_values:string?) kind=value
-minus(value:unknown, subtract:unknown) kind=value aggregate
+minus(value:list<unknown>, subtract:list<unknown>) kind=value aggregate
 month(x:unknown) kind=value elementwise
 natural_key_variables() kind=value aggregate provider=library
 non_empty(x:unknown) kind=boolean

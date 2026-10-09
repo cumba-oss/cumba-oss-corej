@@ -185,13 +185,13 @@ class RealRowAggregatesTest
         IDataTable ds = RealTables.of("DS").str("USUBJID", "S1", "S1")
                 .str("DSSTDTC", "2020-01-01", "2020-02-01").build();
         RuleExecutionResult last = run(match("DS", "USUBJID", "left"),
-                "is_last_in_group(ordering=SESEQ, group=[USUBJID])", se, ds, "SESEQ", "DS.DSSTDTC");
+                "is_last_in_group(by=SESEQ, group=[USUBJID])", se, ds, "SESEQ", "DS.DSSTDTC");
         assertEquals(
                 List.of(Map.of("SESEQ", "2", "DS.DSSTDTC", "2020-01-01"),
                         Map.of("SESEQ", "2", "DS.DSSTDTC", "2020-02-01")),
                 QualifiedNameFixture.values(last));
         RuleExecutionResult notLast = run(match("DS", "USUBJID", "left"),
-                "not is_last_in_group(ordering=SESEQ, group=[USUBJID])", se, ds, "SESEQ");
+                "not is_last_in_group(by=SESEQ, group=[USUBJID])", se, ds, "SESEQ");
         assertEquals(List.of(Map.of("SESEQ", "1")), QualifiedNameFixture.values(notLast));
     }
 }

@@ -61,7 +61,7 @@ class NextRecordRelationTest
     private static Rule rule(String relationKwarg)
     {
         String text = "not has_next_corresponding_record(SJENDTC, SJSTDTC, keep_missings=false, "
-                + "ordering=SJSEQ" + relationKwarg + ", within=USUBJID)";
+                + "by=SJSEQ" + relationKwarg + ", within=USUBJID)";
         CheckCondition check = new CheckConditionExpression(CheckExpressionParser.parse(text),
                 text);
         Rule rule = new Rule();

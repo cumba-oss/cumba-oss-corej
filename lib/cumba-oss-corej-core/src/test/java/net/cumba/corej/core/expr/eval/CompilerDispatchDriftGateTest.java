@@ -54,7 +54,7 @@ class CompilerDispatchDriftGateTest
     /** The two Q1 group operators are dispatched only under {@code not} (compileNot's arms). */
     private static final Map<String, String> NEGATION_PROBES = Map.of(
             "has_next_corresponding_record",
-            "not has_next_corresponding_record(AESEQ, AEDECOD, within=USUBJID, ordering=AESEQ)",
+            "not has_next_corresponding_record(AESEQ, AEDECOD, within=USUBJID, by=AESEQ)",
             "is_sorted_by", "not is_sorted_by(TSSEQ, by=[asc(TSGRPID)], within=USUBJID)");
 
     private static Map<String, String> boolCallProbes()
@@ -75,9 +75,9 @@ class CompilerDispatchDriftGateTest
         probes.put("present_on_multiple_rows_within",
                 "present_on_multiple_rows_within(AESEQ, within=USUBJID)");
         probes.put("empty_within_except_last_row",
-                "empty_within_except_last_row(TSVAL, TSPARMCD, ordering=TSSEQ)");
+                "empty_within_except_last_row(TSVAL, TSPARMCD, by=TSSEQ)");
         // Wave 1 (D-W1-4): the two grouped callables ported from the Operation surface.
-        probes.put("is_last_in_group", "is_last_in_group(ordering=TSSEQ, group=[TSPARMCD])");
+        probes.put("is_last_in_group", "is_last_in_group(by=TSSEQ, group=[TSPARMCD])");
         probes.put("has_mixed_emptiness_within_group",
                 "has_mixed_emptiness_within_group(TSVAL, group=[TSPARMCD])");
         probes.put("is_not_unique_relationship", "is_not_unique_relationship(AEDECOD, USUBJID)");
@@ -133,13 +133,14 @@ class CompilerDispatchDriftGateTest
                         + " referenced_key_is_unique of runbook W1b VA)");
         int parameters = new CompilerDispatchedCalls().functions().stream()
                 .mapToInt(d -> d.parameters().size()).sum();
-        assertEquals(155, parameters, "declared parameter surfaces across the 63 descriptors (+2"
+        assertEquals(152, parameters, "declared parameter surfaces across the 63 descriptors (+2"
                 + " column-status predicates, PLAN-present-empty-column-fold) —"
                 + " update deliberately when a signature legitimately changes (W2a: read_value's"
                 + " four; W5: read_value's group / keep_missings, max's five, the two date"
                 + " extremes' six each; W6: record_count's five; W7: distinct's five;"
                 + " PLAN-cg0218: one each for any / all / none / joined; W1b SS1:"
-                + " is_not_unique_member_set's three)");
+                + " is_not_unique_member_set's three; runbook W4 OR2: -3, ordering= renamed in"
+                + " place to by= on the three single-key readers)");
     }
 
 

@@ -28,13 +28,12 @@ import net.cumba.corej.core.expr.typed.ExprType.Unknown;
  * and an if-cascade can no longer drift apart about what is boolean); the stage-A checker binds
  * these calls against a declared arity/keyword contract ({@code StageAErrorKind.ARITY}, armed)
  * instead of waving every spelling through; and the kwarg surfaces ({@code within=}, {@code keys=},
- * {@code by=}, {@code ordering=}, {@code relation=}, {@code regex=}, {@code keep_missings=},
- * {@code include_empty=}, {@code negative=}) are finally <em>declared</em> rather than
- * compiler-consumed folklore. The dispatch itself deliberately stays the {@code compileBoolCall}
- * if-cascade — plan §5 keeps the bespoke plans — and {@code CompilerDispatchDriftGateTest} holds
- * the two authorities together: every descriptor here must be dispatchable, and a cascade arm for
- * an undeclared name is unreachable by construction (the pre-cascade registry guard in
- * {@code compileBoolCall}).
+ * {@code by=}, {@code relation=}, {@code regex=}, {@code keep_missings=}, {@code include_empty=},
+ * {@code negative=}) are finally <em>declared</em> rather than compiler-consumed folklore. The
+ * dispatch itself deliberately stays the {@code compileBoolCall} if-cascade — plan §5 keeps the
+ * bespoke plans — and {@code CompilerDispatchDriftGateTest} holds the two authorities together:
+ * every descriptor here must be dispatchable, and a cascade arm for an undeclared name is
+ * unreachable by construction (the pre-cascade registry guard in {@code compileBoolCall}).
  * </p>
  *
  * <p>
@@ -206,20 +205,27 @@ public final class CompilerDispatchedCalls implements FunctionProvider
         bool(fns, "has_multiple_values_for", req("name"), req("key"), within(), keepMissings(),
                 includeEmpty());
         bool(fns, "present_on_multiple_rows_within", req("name"), reqWithin(), keepMissings());
-        // runbook W1b SK (owner O17): by= is the sort-key parameter everywhere — ordering= stays
-        // accepted beside it until W4 (OR2); exactly one of the two, one ascending key
-        // (ExprCompiler reads both through SortKeys.single)
-        bool(fns, "empty_within_except_last_row", req("name"), req("group"), ordering(),
-                keepMissings(), by());
+        // runbook W1b SK / W4 OR2 (owner O17): by= is the sort-key parameter everywhere — renamed
+        // in place from ordering= (retired: a load error with the hint "write by=",
+        // SortKeys.rejectRetiredOrdering), one ascending key (ExprCompiler reads it through
+        // SortKeys.single); at ordering's position, so a positional spelling keeps its meaning
+        bool(fns, "empty_within_except_last_row", req("name"), req("group"), by(), keepMissings());
         // Wave 1 (PLAN-function-surface-wave1 D-W1-4): the two grouped callables ported from the
         // Operation surface. Column parameters are declared COLUMN references (a quoted name is a
         // literal and fails to load — R1) and read by a STRICT reader in ExprCompiler; the
         // groupers are the retired evaluators' own, so plan 16's key identity and both missing-key
-        // defaults survive. is_last_in_group has NO target (R6, RETIRE-both): it reads only
-        // ordering and group. has_mixed_emptiness_within_group keeps its subject column as `name`.
-        bool(fns, "is_last_in_group", Parameter.optional("ordering", Primitive.COLUMN_REFERENCE),
-                Parameter.required("group", new ListOf(Primitive.COLUMN_REFERENCE)), keepMissings(),
-                by());
+        // defaults survive. is_last_in_group has NO target (R6, RETIRE-both): it reads only its
+        // sort key and group. Its sort key is `by` since runbook W4 OR2 (O17: ordering= renamed in
+        // place, parameter 0 — a positional key keeps its meaning), typed as the sort-key slot of
+        // is_sorted_by / sequence: list<column-reference> holds the column ordering= declared
+        // (RuleClassifier names it, W3-F2) and the one-key list by=[asc(AESEQ)] O17 spells beside
+        // the bare by=AESEQ (SortKeys.single enforces the one ascending key).
+        // has_mixed_emptiness_within_group keeps its subject column as `name`.
+        bool(fns, "is_last_in_group",
+                Parameter.optional(net.cumba.corej.core.exec.SortKeys.PARAMETER,
+                        new ListOf(Primitive.COLUMN_REFERENCE)),
+                Parameter.required("group", new ListOf(Primitive.COLUMN_REFERENCE)),
+                keepMissings());
         bool(fns, "has_mixed_emptiness_within_group",
                 Parameter.required("name", Primitive.COLUMN_REFERENCE),
                 Parameter.optional("group", new ListOf(Primitive.COLUMN_REFERENCE)),
@@ -270,8 +276,8 @@ public final class CompilerDispatchedCalls implements FunctionProvider
     private static List<FunctionDescriptor> buildNegationDispatched()
     {
         List<FunctionDescriptor> fns = new ArrayList<>();
-        bool(fns, "has_next_corresponding_record", req("name"), req("value"), reqWithin(),
-                ordering(), Parameter.optional("relation", Primitive.STRING), keepMissings(), by());
+        bool(fns, "has_next_corresponding_record", req("name"), req("value"), reqWithin(), by(),
+                Parameter.optional("relation", Primitive.STRING), keepMissings());
         bool(fns, "is_sorted_by", req("target"),
                 Parameter.required("by", new ListOf(Primitive.COLUMN_REFERENCE)), within(),
                 keepMissings());
@@ -462,20 +468,13 @@ public final class CompilerDispatchedCalls implements FunctionProvider
 
 
     /**
-     * {@code by=} on the three single-key readers (O17): one column, or {@code [asc(COL)]} —
-     * declared LAST so every positional spelling binds as before the rename.
+     * {@code by=} on {@code empty_within_except_last_row} and {@code has_next_corresponding_record}
+     * (O17): one column, or {@code [asc(COL)]} — declared where the retired {@code ordering=} stood
+     * (runbook W4 OR2, a rename in place), so every positional spelling binds as before.
      */
     private static Parameter by()
     {
         return Parameter.optional(net.cumba.corej.core.exec.SortKeys.PARAMETER, Unknown.UNKNOWN);
-    }
-
-
-    /** {@code ordering=} — the pre-O17 spelling of {@code by=}, accepted until W4. */
-    private static Parameter ordering()
-    {
-        return Parameter.optional(net.cumba.corej.core.exec.SortKeys.LEGACY_PARAMETER,
-                Unknown.UNKNOWN);
     }
 
 

@@ -16,7 +16,8 @@ import org.jspecify.annotations.Nullable;
  * Runbook W1b RO / SK (owner O16 / O17, 2026-10-08) — the ONE sort-key reader behind every
  * {@code by=}: {@code is_sorted_by(by=)}, {@code sequence(by=)} and, as a single ascending key,
  * {@code is_last_in_group}, {@code has_next_corresponding_record} and
- * {@code empty_within_except_last_row} (their {@code ordering=} renamed, O17).
+ * {@code empty_within_except_last_row} (their {@code ordering=} renamed in place, O17; the old
+ * spelling a load error with the hint "write by=" since runbook W4 OR2).
  *
  * <p>
  * A sort-key list is {@code [asc(COL), desc(COL), COL, ...]} — or the one bare operand, read as the
@@ -27,8 +28,9 @@ import org.jspecify.annotations.Nullable;
  * name, {@code by=$keys} with a name list, each key ascending — O16 #2 / #3), judged at load for
  * its level by the splice roster ({@code GroupSplice.SPLICE_SLOTS}: stage A's G3 arm and the
  * loader's {@code ListOperandLevel.spliceRefusals} unwrap the descriptor). A descriptor's
- * {@code nulls="first"} / {@code nulls="last"} is read into the key ({@link Nulls}); any other
- * keyword or value parses and is ignored (W4 SB3 refuses an unknown {@code nulls=} value). A quoted
+ * {@code nulls="first"} / {@code nulls="last"} is read into the key ({@link Nulls}); since runbook
+ * W4 SB3 any other {@code nulls=} value (a case variant, another string, a non-literal) and any
+ * other descriptor keyword is a load error — before it parsed and was silently ignored. A quoted
  * name is a string, never a column (R1).
  * </p>
  *
@@ -45,8 +47,11 @@ public final class SortKeys
     /** The parameter name, as every reader declares it (O17). */
     public static final String PARAMETER = "by";
 
-    /** The pre-O17 spelling the three single-key readers still accept until W4 (OR2). */
-    public static final String LEGACY_PARAMETER = "ordering";
+    /**
+     * The pre-O17 spelling of the three single-key readers, retired in runbook W4 OR2: written, it
+     * is the load error {@link #rejectRetiredOrdering} with the hint "write by=".
+     */
+    public static final String RETIRED_PARAMETER = "ordering";
 
     /** The two sort-key descriptors. */
     private static final List<String> DESCRIPTORS = List.of("asc", "desc");
@@ -82,8 +87,7 @@ public final class SortKeys
      * @param descending
      *            {@code true} for {@code desc(...)}
      * @param nulls
-     *            the written {@code nulls=} placement; absent when omitted (or not {@code "first"}
-     *            / {@code "last"})
+     *            the written {@code nulls=} placement; absent when omitted
      */
     public record Key(GroupSplice.Member member, boolean descending, @Nullable Nulls nulls)
     {
@@ -160,8 +164,8 @@ public final class SortKeys
 
 
     /**
-     * Whether {@code parameter} is a sort-key slot — {@code by=}, or its older spelling
-     * {@code ordering=} — the only slots a descriptor may stand in.
+     * Whether {@code parameter} is a sort-key slot — {@code by=} — the only slot a descriptor may
+     * stand in.
      *
      * @param parameter
      *            the parameter name
@@ -169,7 +173,7 @@ public final class SortKeys
      */
     public static boolean isSortKeyParameter(String parameter)
     {
-        return PARAMETER.equals(parameter) || LEGACY_PARAMETER.equals(parameter);
+        return PARAMETER.equals(parameter);
     }
 
 
@@ -241,7 +245,7 @@ public final class SortKeys
         {
             boolean descending = member instanceof Expr.Call c && isDescriptor(c)
                     && "desc".equals(c.name());
-            Nulls nulls = nullsOf(member);
+            Nulls nulls = nullsOf(fn, member);
             Expr column = column(member);
             GroupSplice.Member spliced = GroupSplice.spliced(column);
             if (spliced != null)
@@ -279,76 +283,116 @@ public final class SortKeys
 
 
     /**
-     * The {@code nulls=} placement a descriptor writes: {@code "first"} / {@code "last"}, else
-     * {@code null} — omitted, or a value W4 SB3 will refuse (it loads today and keeps the default).
+     * The {@code nulls=} placement a descriptor writes: {@code "first"} / {@code "last"}, or
+     * {@code null} when omitted (or {@code member} is no descriptor). Runbook W4 SB3
+     * ({@code PLAN-is-sorted-by-direction} N2, coordinator W4-D12): only the two lower-case string
+     * literals are a placement — a case variant ({@code "Last"} is refused, not folded), another
+     * string or a non-literal is a load error, and so is a descriptor keyword other than
+     * {@code nulls=} ({@code asc(X, null="last")}); before SB3 each parsed and silently kept the
+     * default placement.
+     *
+     * @throws ExpressionException
+     *             for an unknown descriptor keyword or {@code nulls=} value
      */
-    private static @Nullable Nulls nullsOf(Expr member)
+    private static @Nullable Nulls nullsOf(String fn, Expr member)
     {
-        if (member instanceof Expr.Call c && isDescriptor(c)
-                && c.kwargs().get(NULLS_PARAMETER) instanceof Expr.Lit lit
-                && lit.kind() == Expr.LitKind.STRING)
+        if (!(member instanceof Expr.Call c) || !isDescriptor(c))
         {
-            Object value = lit.value();
-            if ("first".equals(value))
+            return null;
+        }
+        for (String keyword : c.kwargs().keySet())
+        {
+            if (!NULLS_PARAMETER.equals(keyword))
             {
-                return Nulls.FIRST;
-            }
-            if ("last".equals(value))
-            {
-                return Nulls.LAST;
+                throw new ExpressionException(fn + " sort key " + ExpressionPrinter.print(member)
+                        + ": a sort-key descriptor takes only " + NULLS_PARAMETER + "=, not "
+                        + keyword + "=");
             }
         }
-        return null;
+        Expr written = c.kwargs().get(NULLS_PARAMETER);
+        if (written == null)
+        {
+            return null;
+        }
+        Object value = written instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
+                ? lit.value()
+                : null;
+        if ("first".equals(value))
+        {
+            return Nulls.FIRST;
+        }
+        if ("last".equals(value))
+        {
+            return Nulls.LAST;
+        }
+        throw new ExpressionException(fn + " sort key " + ExpressionPrinter.print(member) + ": "
+                + NULLS_PARAMETER + "= takes \"first\" or \"last\" (lower case), not "
+                + ExpressionPrinter.print(written));
     }
 
 
     /**
-     * O17's pure rename for the three single-key readers: {@code by=} beside {@code ordering=},
-     * exactly one of them, holding exactly one ascending key ({@code by=AESEQ},
-     * {@code by=[asc(AESEQ)]}, {@code by=$one}); more keys or {@code desc} is the load error
-     * <i>"not supported for &lt;f&gt;"</i> — no new behaviour.
+     * O17's pure rename for the three single-key readers: {@code by=} holding exactly one ascending
+     * key ({@code by=AESEQ}, {@code by=[asc(AESEQ)]}, {@code by=$one}); more keys, {@code desc} or
+     * a {@code nulls=} placement is the load error <i>"not supported for &lt;f&gt;"</i> — no new
+     * behaviour (W4 SB3 / O17).
      *
      * @param fn
      *            the function
      * @param by
      *            the {@code by=} argument, or {@code null}
-     * @param ordering
-     *            the {@code ordering=} argument, or {@code null}
      * @return the one key's member
      * @throws ExpressionException
-     *             when both or neither are written, or the key is not one ascending column
+     *             when it is absent, or the key is not one ascending column
      */
-    public static GroupSplice.Member single(String fn, @Nullable Expr by, @Nullable Expr ordering)
+    public static GroupSplice.Member single(String fn, @Nullable Expr by)
     {
-        if (by != null && ordering != null)
+        if (by == null)
         {
             throw new ExpressionException(
-                    fn + " takes " + PARAMETER + "= or " + LEGACY_PARAMETER + "=, not both ("
-                            + LEGACY_PARAMETER + "= is the older spelling of " + PARAMETER + "=)");
+                    fn + " requires " + PARAMETER + "=, the column that orders the group");
         }
-        Expr key = by != null ? by : ordering;
-        if (key == null)
+        List<Key> keys = read(fn, by);
+        if (keys.size() != 1 || keys.get(0).descending() || keys.get(0).nulls() != null)
         {
-            throw new ExpressionException(
-                    fn + " requires " + PARAMETER + "=, the column that orders" + " the group ("
-                            + LEGACY_PARAMETER + "= is the older spelling)");
-        }
-        List<Key> keys = read(fn, key);
-        if (keys.size() != 1 || keys.get(0).descending())
-        {
-            throw new ExpressionException("more than one sort key, or desc, is not supported for "
-                    + fn + ": write " + PARAMETER + "=COL or " + PARAMETER + "=[asc(COL)] ("
-                    + ExpressionPrinter.print(key) + ")");
+            throw new ExpressionException("more than one sort key, desc or " + NULLS_PARAMETER
+                    + "= is not supported for " + fn + ": write " + PARAMETER + "=COL or "
+                    + PARAMETER + "=[asc(COL)] (" + ExpressionPrinter.print(by) + ")");
         }
         return keys.get(0).member();
     }
 
 
     /**
+     * Runbook W4 OR2 (owner O17, coordinator W4-D2): the retired {@code ordering=} keyword of the
+     * three single-key readers, read from the WRITTEN keywords — the load error names the rename
+     * ("write by="), where the binder would only say the parameter does not exist. The loader's
+     * seam pass ({@link #checkSingleKeyCall}) runs it before stage A on every path; the compiler's
+     * arms run it too, for a call compiled outside the seam.
+     *
+     * @param call
+     *            the authored call
+     * @throws ExpressionException
+     *             when {@code call} writes {@code ordering=}
+     */
+    public static void rejectRetiredOrdering(Expr.Call call)
+    {
+        Expr ordering = call.kwargs().get(RETIRED_PARAMETER);
+        if (ordering != null)
+        {
+            throw new ExpressionException(call.name() + ": " + RETIRED_PARAMETER
+                    + "= is retired \u2014 write " + PARAMETER + "="
+                    + ExpressionPrinter.print(ordering) + " (the same one ascending key, O17)");
+        }
+    }
+
+
+    /**
      * The load-time seam of the three single-key readers ({@code RulePackageLoader}'s tailored
-     * readers, O17): the call bound against its descriptor, its {@code by=} / {@code ordering=}
-     * judged by {@link #single} — so {@code desc}, two keys, both or neither are load errors on the
-     * inline Check surface as on a binding.
+     * readers, O17): a retired {@code ordering=} refused first ({@link #rejectRetiredOrdering}),
+     * then the call bound against its descriptor and its {@code by=} judged by {@link #single} — so
+     * {@code desc}, two keys, {@code nulls=} or no key are load errors on the inline Check surface
+     * as on a binding.
      *
      * @param call
      *            the authored call
@@ -357,29 +401,48 @@ public final class SortKeys
      */
     public static void checkSingleKeyCall(Expr.Call call)
     {
+        rejectRetiredOrdering(call);
+        single(call.name(), boundBy(call));
+    }
+
+
+    /**
+     * Runbook W4 SB3: the load-time seam of {@code is_sorted_by} ({@code RulePackageLoader}'s
+     * tailored readers) — its {@code by=} read by {@link #read}, so an unknown {@code nulls=} value
+     * or descriptor keyword is the rule's load error on every path. (The compiler's own refusal
+     * only degrades an inline Check, and stage A never walks a Check-less rule.)
+     *
+     * @param call
+     *            the authored call
+     * @throws ExpressionException
+     *             the reader's refusal
+     */
+    public static void checkSortKeyCall(Expr.Call call)
+    {
+        read(call.name(), boundBy(call));
+    }
+
+
+    /** The {@code by=} slot of {@code call} bound against its descriptor, or {@code null}. */
+    private static @Nullable Expr boundBy(Expr.Call call)
+    {
         net.cumba.corej.core.expr.eval.FunctionDescriptor descriptor = net.cumba.corej.core.expr.eval.FunctionRegistry
                 .descriptor(call.name());
         if (descriptor == null)
         {
-            return;
+            return null;
         }
         List<@Nullable Expr> bound = net.cumba.corej.core.expr.eval.ArgumentBinder.bind(descriptor,
                 call);
-        Expr by = null;
-        Expr ordering = null;
         List<net.cumba.corej.core.expr.eval.Parameter> params = descriptor.parameters();
         for (int i = 0; i < params.size() && i < bound.size(); i++)
         {
             if (PARAMETER.equals(params.get(i).name()))
             {
-                by = bound.get(i);
-            }
-            else if (LEGACY_PARAMETER.equals(params.get(i).name()))
-            {
-                ordering = bound.get(i);
+                return bound.get(i);
             }
         }
-        single(call.name(), by, ordering);
+        return null;
     }
 
 

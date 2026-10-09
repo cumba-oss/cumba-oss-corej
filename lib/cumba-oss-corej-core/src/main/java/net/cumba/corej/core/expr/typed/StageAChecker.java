@@ -2427,9 +2427,9 @@ public final class StageAChecker
                 }
                 if (splices(c, param))
                 {
-                    // W1b BS2c (coordinator D4) / SK (O17): the unknown-typed within= /
-                    // ordering= / by= / single group slots splice — judged by the roster, never
-                    // by the declared type, which stays unknown
+                    // W1b BS2c (coordinator D4) / SK (O17): the unknown-typed within= / by= /
+                    // single group slots splice — judged by the roster, never by the declared
+                    // type, which stays unknown
                     TypedExpr walkedUnknown = walkedByIdentity.get(arg);
                     if (walkedUnknown != null)
                     {
@@ -2498,8 +2498,9 @@ public final class StageAChecker
             if (declared == Primitive.COLUMN_REFERENCE && splices(c, param)
                     && !(arg instanceof Expr.Lit))
             {
-                // W1b BS2c (D4): a single-reference slot that splices (is_last_in_group's
-                // ordering=) takes a dataset-level $ / computed name beside a written one
+                // W1b BS2c (D4): a single-reference slot that splices takes a dataset-level $ /
+                // computed name beside a written one (is_last_in_group's ordering= was the one
+                // such slot; since W4 OR2 its by= is a list<column-reference> sort-key slot)
                 judgeSpliceSlot(c, param, walked);
                 continue;
             }

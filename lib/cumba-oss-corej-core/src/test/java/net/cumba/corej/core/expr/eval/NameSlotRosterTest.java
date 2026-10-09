@@ -193,7 +193,7 @@ class NameSlotRosterTest
         BASE.put("record_count", "record_count()");
         BASE.put("does_not_equal_string_part", "does_not_equal_string_part(X, Y, regex=\"(a)\")");
         BASE.put("empty_within_except_last_row",
-                "empty_within_except_last_row(X, USUBJID, ordering=AESEQ)");
+                "empty_within_except_last_row(X, USUBJID, by=AESEQ)");
         BASE.put("get_codelist_attributes",
                 "get_codelist_attributes(CTREF, CTVER, ct_attribute=\"Term CCODE\")");
         BASE.put("get_dataset_filtered_variables",
@@ -205,7 +205,7 @@ class NameSlotRosterTest
         BASE.put("has_not_equal_length", "has_not_equal_length(X, 1)");
         BASE.put("has_multiple_values_for", "has_multiple_values_for(X, Y)");
         BASE.put("has_next_corresponding_record",
-                "has_next_corresponding_record(X, Y, within=USUBJID, ordering=AESEQ)");
+                "has_next_corresponding_record(X, Y, within=USUBJID, by=AESEQ)");
         BASE.put("is_inconsistent_across_dataset",
                 "is_inconsistent_across_dataset(X, keys=[USUBJID])");
         BASE.put("is_not_unique_relationship", "is_not_unique_relationship(X, Y)");

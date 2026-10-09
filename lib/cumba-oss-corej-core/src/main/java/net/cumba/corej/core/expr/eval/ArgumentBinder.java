@@ -97,9 +97,11 @@ public final class ArgumentBinder
     /**
      * The §1.5 collector sugar: every positional beyond the fixed leading parameters is an element
      * of the trailing list-typed parameter ({@code tuple(A, B, C)} ≡ one
-     * {@code list<column-reference>} of three elements). Named arguments cannot address a
-     * collector's elements, so any named argument here must name a leading parameter — with none
-     * declared before the collector today, a named argument is simply unknown.
+     * {@code list<column-reference>} of three elements). A collector call takes <b>positional
+     * arguments only</b> ({@code PLAN-union-function} §3.2, owner Q3 #5 2026-10-01; runbook W4 U2):
+     * a named argument cannot address a collector's elements, so EVERY keyword argument is refused
+     * — one naming a leading parameter included, which was accepted and then dropped before U2
+     * ({@code union($a, $b, first=$c)} lost {@code $c}; only the first keyword was even looked at).
      */
     private static List<@Nullable Expr> bindCollector(FunctionDescriptor d, Expr.Call c)
     {
@@ -107,13 +109,10 @@ public final class ArgumentBinder
         int fixed = params.size() - 1;
         if (!c.kwargs().isEmpty())
         {
-            String name = c.kwargs().keySet().iterator().next();
-            int idx = indexOf(params, name);
-            if (idx < 0 || idx >= fixed)
-            {
-                throw new ExpressionException(
-                        "'" + d.name() + "' has no parameter '" + name + "'" + signature(d));
-            }
+            throw new ExpressionException(
+                    "'" + d.name() + "' takes positional arguments only \u2014 a named argument ("
+                            + String.join("=, ", c.kwargs().keySet())
+                            + "=) cannot address a collector's elements" + signature(d));
         }
         if (c.args().size() < fixed)
         {

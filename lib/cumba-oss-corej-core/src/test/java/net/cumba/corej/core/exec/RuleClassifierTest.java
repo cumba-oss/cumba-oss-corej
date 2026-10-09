@@ -636,7 +636,7 @@ class RuleClassifierTest
             // test reached only in predicate position).
             RuleClassifier.Derived<Sensitivity> s = RuleClassifier
                     .deriveSensitivity(rule("{\"Check\":{\"expression\":"
-                            + "\"is_last_in_group(ordering=ORD, group=[G]) == true\"}}"));
+                            + "\"is_last_in_group(by=ORD, group=[G]) == true\"}}"));
             assertEquals(Sensitivity.RECORD, s.value(), s.rationale());
             assertTrue(s.rationale().contains("ORD is a per-record column"), s.rationale());
         }
@@ -648,9 +648,8 @@ class RuleClassifierTest
             // Aligned with operandText: a $-reference is an operation usage, never an operand
             // name, whichever slot it is bound to. Before round 2 the descriptor walk named
             // "$x" as the leaf's first column.
-            RuleClassifier.Derived<Sensitivity> s = RuleClassifier
-                    .deriveSensitivity(rule("{\"Check\":{\"expression\":"
-                            + "\"is_last_in_group(ordering=$x, group=[G])\"}}"));
+            RuleClassifier.Derived<Sensitivity> s = RuleClassifier.deriveSensitivity(rule(
+                    "{\"Check\":{\"expression\":" + "\"is_last_in_group(by=$x, group=[G])\"}}"));
             assertEquals(Sensitivity.RECORD, s.value(), s.rationale());
             assertTrue(s.rationale().contains("G is a per-record column"), s.rationale());
             assertFalse(s.rationale().contains("$x (unresolved)"), s.rationale());

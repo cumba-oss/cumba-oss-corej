@@ -93,7 +93,7 @@ class AbsentColumnContractTest
             "inconsistent_enumerated_columns(TSVAL)",
             "is_inconsistent_across_dataset(TSVAL, keys=[TSPARMCD])",
             "present_on_multiple_rows_within(TSVAL, within=TSPARMCD)",
-            "empty_within_except_last_row(TSVAL, TSPARMCD, ordering=TSPARMCD)");
+            "empty_within_except_last_row(TSVAL, TSPARMCD, by=TSPARMCD)");
 
     /**
      * Surfaces that own their absent-column contract — the derived result, and every one of them is
@@ -152,7 +152,7 @@ class AbsentColumnContractTest
      */
     private static final Set<String> EXPECTED_AWARE = Set.of("var_exists(\"TSVAL\")",
             "not var_exists(\"TSVAL\")", "var_not_exists(\"TSVAL\")", "has_same_values(TSVAL)",
-            "empty_within_except_last_row(TSVAL, TSPARMCD, ordering=TSPARMCD)");
+            "empty_within_except_last_row(TSVAL, TSPARMCD, by=TSPARMCD)");
 
     @AfterEach
     void restoreFold()

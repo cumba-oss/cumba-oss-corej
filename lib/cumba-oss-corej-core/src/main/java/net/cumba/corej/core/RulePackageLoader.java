@@ -865,6 +865,8 @@ public class RulePackageLoader
                 if (filter != null)
                 {
                     validateRegistryCallSeams(filter, false);
+                    // runbook W4 KM: a Filter never meets validateInlineCallShapes
+                    rejectKeepMissingsWithoutWithinAnywhere(filter);
                     rejectPerRowPerCallOperands(filter, rule,
                             "the Match_Datasets Filter of '" + match.getName() + "'");
                     if (!stageAJudged)
@@ -1142,6 +1144,7 @@ public class RulePackageLoader
                 // bogus
                 // "unknown operation function" load error on a perfectly valid rule.
                 validateInlineCheckKeepMissings(call);
+                rejectKeepMissingsWithoutWithin(call);
             }
             if (call.kwargs().containsKey("relation"))
             {
@@ -1155,8 +1158,64 @@ public class RulePackageLoader
                 validateInlineDurationMarkers(call);
             }
             validateInlineUniqueSetShape(call);
+            rejectPositionalBindingKey(call);
         }
         childrenOf(expr).forEach(RulePackageLoader::validateInlineCallShapes);
+    }
+
+
+    /**
+     * Runbook W4 KM (§3 table B, coordinator W4-D4): {@code keep_missings=} on
+     * {@code has_multiple_values_for} without {@code within=} is a load error — the ungrouped arm
+     * never reads the disposition, so it would have no effect (PACK 6: a silently ignored argument
+     * is refused). The compiler's arm refuses the same call ({@code ExprCompiler}, defence in
+     * depth), which alone would only degrade an inline Check.
+     */
+    private static void rejectKeepMissingsWithoutWithin(
+            net.cumba.corej.core.expr.ast.Expr.Call call)
+    {
+        try
+        {
+            net.cumba.corej.core.expr.eval.ExprCompiler.rejectKeepMissingsWithoutWithin(call);
+        }
+        catch (net.cumba.corej.core.expr.ExpressionException ex)
+        {
+            throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                    String.valueOf(ex.getMessage()), ex);
+        }
+    }
+
+
+    /** {@link #rejectKeepMissingsWithoutWithin} on every call of {@code expr}, at any depth. */
+    private static void rejectKeepMissingsWithoutWithinAnywhere(
+            net.cumba.corej.core.expr.ast.Expr expr)
+    {
+        if (expr instanceof net.cumba.corej.core.expr.ast.Expr.Call call)
+        {
+            rejectKeepMissingsWithoutWithin(call);
+        }
+        childrenOf(expr).forEach(RulePackageLoader::rejectKeepMissingsWithoutWithinAnywhere);
+    }
+
+
+    /**
+     * Runbook W4 KP ({@code PLAN-binding-substitutability} C6 note, coordinator W4-D3): a
+     * positional {@code $} key of {@code is_(not_)unique_relationship} ({@code value}) or
+     * {@code is_inconsistent_across_dataset} ({@code key}) is a load error with the hint that a
+     * binding of column names is spliced through {@code keys=[$k]}. The compiler passed it RAW as a
+     * column name, which the lookup missed, so the key was silently dropped like an absent column.
+     * Here, in the seam pass that runs on every Check level, the Precondition and every binding of
+     * every rule before stage A, so one message holds on every path (a name-list {@code $k} too —
+     * stage A's value-position hint never runs once the rule is refused). A {@code Match_Datasets}
+     * Filter cannot read a {@code $} at all ({@code rejectFilterBindingReference} / stage A).
+     */
+    private static void rejectPositionalBindingKey(net.cumba.corej.core.expr.ast.Expr.Call call)
+    {
+        String refusal = net.cumba.corej.core.expr.eval.ExprCompiler.positionalBindingKey(call);
+        if (refusal != null)
+        {
+            throw new net.cumba.corej.core.expr.RuleDefinitionException(refusal);
+        }
     }
 
 
@@ -1228,9 +1287,10 @@ public class RulePackageLoader
     /**
      * The compiler-dispatched calls whose load-time seam is a <b>tailored strict reader</b> —
      * {@code max} / {@code max_date} / {@code min_date}, {@code read_value}, {@code record_count},
-     * {@code distinct}: an inline call meets the same reader a binding meets when it is compiled at
-     * load (the missing_values vocabulary, the filter spelling, the required {@code group=}, the
-     * target shapes), so the inline surface is loud at load, not at the first evaluation.
+     * {@code distinct}, {@code sequence}, the sort-key readers: an inline call meets the same
+     * reader a binding meets when it is compiled at load (the missing_values vocabulary, the filter
+     * spelling, the required {@code group=}, the target shapes, the sort keys), so the inline
+     * surface is loud at load, not at the first evaluation.
      */
     private static final Map<String, java.util.function.Consumer<net.cumba.corej.core.expr.ast.Expr.Call>> TAILORED_CALL_READERS = Map
             .ofEntries(
@@ -1256,6 +1316,10 @@ public class RulePackageLoader
                             net.cumba.corej.core.exec.SortKeys::checkSingleKeyCall),
                     Map.entry("has_next_corresponding_record",
                             net.cumba.corej.core.exec.SortKeys::checkSingleKeyCall),
+                    // runbook W4 SB3: is_sorted_by's by= meets the one sort-key reader at load (an
+                    // unknown nulls= value or descriptor keyword); the compiler's refusal would
+                    // only degrade an inline Check
+                    Map.entry("is_sorted_by", net.cumba.corej.core.exec.SortKeys::checkSortKeyCall),
                     // runbook W1b fold, R5 P6-L1: a qualified key of the value-addressed readers
                     Map.entry(net.cumba.corej.core.exec.ReferencedRecordCount.NAME,
                             net.cumba.corej.core.exec.ReferencedRecordCount::checkKeys),

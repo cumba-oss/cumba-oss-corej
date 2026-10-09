@@ -243,8 +243,8 @@ class BindingSubstitutabilityTest
             // BS2b (keys=): the compiler-dispatched readers' name lists — is_last_in_group's
             // group=, has_mixed_emptiness_within_group's group= / qualifying_any_populated=, the
             // keys= of is_(not_)unique_relationship and is_inconsistent_across_dataset
-            "is_last_in_group(ordering=AESEQ, group=[USUBJID, ‹arg›])",
-            "is_last_in_group(ordering=AESEQ, group=‹arg›)",
+            "is_last_in_group(by=AESEQ, group=[USUBJID, ‹arg›])",
+            "is_last_in_group(by=AESEQ, group=‹arg›)",
             "has_mixed_emptiness_within_group(AETERM, group=[USUBJID, ‹arg›])",
             "has_mixed_emptiness_within_group(AETERM, group=[USUBJID], qualifying_any_populated=‹arg›)",
             "is_unique_relationship(AETERM, keys=[USUBJID, ‹arg›])",
@@ -406,7 +406,7 @@ class BindingSubstitutabilityTest
                 // BS2b (keys=): AESEQ is 1:1 with the (USUBJID, AETERM) tuple on UNIQUE and every
                 // row is the last of its own group; on DUP the shared tuple breaks both
                 "not is_unique_relationship(AESEQ, keys=‹g›)",
-                "not is_last_in_group(ordering=AESEQ, group=‹g›)"))
+                "not is_last_in_group(by=AESEQ, group=‹g›)"))
         {
             List<Rule> mixed = List.of(load(check.replace("‹g›", "[USUBJID, AETERM]")),
                     load(check.replace("‹g›", "[USUBJID, $k]"), "$k", "upper(\"aeterm\")"),

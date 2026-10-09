@@ -1808,12 +1808,14 @@ public final class BuiltinFunctions implements FunctionProvider
                 null);
         listFn(fns, net.cumba.corej.core.exec.InventoryLists.DUPLICATE_LABEL_VARIABLES, List.of(),
                 net.cumba.corej.core.exec.InventoryLists::duplicateLabelVariables, null);
-        // minus(value, subtract=) — two list operands ($-bindings or static list literals),
-        // untyped so that a list-shaped binding typed STRING by ElementTable (upper($list)) binds
-        // without a stage-A parameter conflict; subtract is REQUIRED (D-W4-4).
-        listFn(fns, net.cumba.corej.core.exec.Minus.NAME,
-                List.of(p(net.cumba.corej.core.exec.Minus.VALUE_PARAMETER),
-                        p(net.cumba.corej.core.exec.Minus.SUBTRACT_PARAMETER)),
+        // minus(value, subtract=) — two list operands ($-bindings or static list literals);
+        // subtract is REQUIRED (D-W4-4). Typed list<unknown> since PLAN-minus-lists-only (runbook
+        // W4 M1, owner #3 "lists only", union's contract): stage A refuses a scalar-typed operand
+        // (PARAMETER_TYPE), the run time a single value (Minus.listOnly). They were untyped while
+        // ElementTable typed upper($list) STRING — retired by stage-A arming G2 (a list now).
+        listFn(fns, net.cumba.corej.core.exec.Minus.NAME, List.of(
+                p(net.cumba.corej.core.exec.Minus.VALUE_PARAMETER, new ListOf(Unknown.UNKNOWN)),
+                p(net.cumba.corej.core.exec.Minus.SUBTRACT_PARAMETER, new ListOf(Unknown.UNKNOWN))),
                 net.cumba.corej.core.exec.Minus::evaluate, null);
         // union(a, b, more...) — PLAN-union-function (runbook W1a U1): two or more dataset-level
         // list operands, typed list<unknown> so stage A refuses a scalar-typed operand

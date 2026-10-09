@@ -292,6 +292,76 @@ class StageACheckerTest
     }
 
 
+    /**
+     * Runbook W4 M1 ({@code PLAN-minus-lists-only} §3): {@code minus}'s two operands are typed
+     * {@code list<unknown>}, so a scalar-typed operand — bound or inline, at either operand — is an
+     * armed {@code PARAMETER_TYPE}, as for {@code union}. The reason they were untyped
+     * ({@code upper($list)} typed STRING) was retired by stage-A arming G2: {@code upper} over a
+     * list is a list now, and binds clean.
+     */
+    @Test
+    void minusTakesListOperandsOnly()
+    {
+        Rule lists = withBindings("$a", "[\"A\", \"B\"]", "$s",
+                "extract_metadata(\"dataset_name\")", "$u", "upper(\"x\")");
+        for (String expression : List.of("empty(minus($s, subtract=$a))",
+                "empty(minus($a, subtract=$s))", "empty(minus($u, subtract=$a))",
+                "empty(minus(\"A\", subtract=$a))", "empty(minus($a, subtract=upper(\"x\")))"))
+        {
+            StageAReport report = check(lists, expression);
+            assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(report), expression);
+            assertTrue(
+                    report.findings().get(0).message().contains("of 'minus' takes list<unknown>"),
+                    report.findings().toString());
+        }
+        assertEquals(List.of(), kinds(check(lists, "empty(minus(upper($a), subtract=$a))")),
+                "the retired reason: upper over a list is a list and binds clean");
+        assertEquals(List.of(), kinds(check(lists, "AETERM in minus($a, subtract=[\"B\"])")));
+    }
+
+
+    /**
+     * Runbook W4 U2 ({@code PLAN-union-function} §3.2): stage A binds a collector call through the
+     * same binder, so a keyword argument there is {@code ARITY} — positional only.
+     */
+    @Test
+    void aKeywordArgumentOnACollectorCallIsArity()
+    {
+        assertEquals(List.of(StageAErrorKind.ARITY),
+                kinds(check("printf(\"%s\", format=\"x\") == \"x\"")));
+        Rule lists = withBindings("$a", "[\"A\"]", "$b", "[\"B\"]", "$c", "[\"C\"]");
+        assertEquals(List.of(StageAErrorKind.ARITY),
+                kinds(check(lists, "empty(union($a, $b, first=$c))")));
+        assertEquals(List.of(), kinds(check(lists, "empty(union($a, $b, $c))")));
+    }
+
+
+    /**
+     * Runbook W4 TM2 ({@code PLAN-engine-gap-temporal-membership}, W4 re-check): a {@code date()} /
+     * {@code time()} probe against a {@code list<number>} — bound or inline, {@code in} or
+     * {@code not in} — is an armed {@code PARAMETER_TYPE} ({@code membership}); a
+     * {@code list<string>} stays the observe-only {@code MIXED_DATE_STRING_COMPARISON} (W2-D9). A
+     * pin: the refusal was already armed, no test held it.
+     */
+    @Test
+    void aTemporalProbeAgainstAListOfNumbersIsAParameterTypeFinding()
+    {
+        Rule numbers = withBindings("$n", "[1, 2]", "$s", "[\"2020-01-01\"]");
+        for (String expression : List.of("date(AESTDTC) in $n", "date(AESTDTC) not in $n",
+                "date(AESTDTC) in [1, 2]", "time(AESTTM) in $n", "time(AESTTM) not in [9, 10]"))
+        {
+            StageAReport report = check(numbers, expression);
+            assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(report), expression);
+            assertTrue(report.findings().get(0).message().contains("disagrees with list<number>"),
+                    report.findings().toString());
+        }
+        assertEquals(List.of(StageAErrorKind.MIXED_DATE_STRING_COMPARISON),
+                kinds(check(numbers, "date(AESTDTC) in $s")),
+                "the list<string> boundary stays observe-only");
+        assertEquals(List.of(), kinds(check(numbers, "date(AESTDTC) in [date(\"2020-01-01\")]")));
+    }
+
+
     @Test
     void anIllegalAttributeLevelPairIsAStageAError()
     {
@@ -1077,7 +1147,7 @@ class StageACheckerTest
         // unknown elements (12 corpus rules use them).
         assertEquals(List.of(),
                 check("not has_next_corresponding_record(SJENDTC, SJSTDTC, "
-                        + "keep_missings=false, ordering=SJSEQ, relation=\"<=\", within=USUBJID)")
+                        + "by=SJSEQ, keep_missings=false, relation=\"<=\", within=USUBJID)")
                                 .findings());
         assertEquals(List.of(),
                 check("is_sorted_by(AESEQ, by=[asc(AESTDTC)], within=USUBJID)").findings());
@@ -1671,7 +1741,7 @@ class StageACheckerTest
                 "is_unique_relationship(AETERM, keys=[USUBJID, $nk])",
                 "is_unique_relationship(AETERM, keys=[USUBJID, natural_key_variables()])",
                 "is_inconsistent_across_dataset(AETERM, keys=$nk)",
-                "is_last_in_group(ordering=AESEQ, group=[USUBJID, $nk])",
+                "is_last_in_group(by=AESEQ, group=[USUBJID, $nk])",
                 "has_mixed_emptiness_within_group(AETERM, group=$nk, qualifying_any_populated=[$one])"))
         {
             assertEquals(List.of(), check(rule, expression).findings(), expression);
@@ -1701,7 +1771,7 @@ class StageACheckerTest
                 "record_count(group=upper(AETERM)) > 1",
                 "record_count(group=[USUBJID, colref([\"A\", \"B\"])]) > 1",
                 "is_unique_relationship(AETERM, keys=[USUBJID, $scalar])",
-                "is_last_in_group(ordering=AESEQ, group=[USUBJID, upper(AETERM)])",
+                "is_last_in_group(by=AESEQ, group=[USUBJID, upper(AETERM)])",
                 // W1b UC1 (PLAN-engine-gap-unique-computed Q2): is_(not_)unique_set's members
                 // admit a per-row VALUE member — but never a per-row LIST (a list is not a key
                 // component), bound or inline
@@ -1941,11 +2011,11 @@ class StageACheckerTest
         // vectors, keep accepting a computed scalar: tuple(upper(ARMCD), ARM)).
         for (String expression : List.of(
                 "has_mixed_emptiness_within_group(upper(AETERM), group=[USUBJID])",
-                "is_last_in_group(ordering=upper(AESEQ), group=[USUBJID])"))
+                "is_last_in_group(by=upper(AESEQ), group=[USUBJID])"))
         {
             StageAReport report = check(expression);
             assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE), kinds(report), expression);
-            // W1b BS2c: is_last_in_group's ordering= splices now, so a per-row computed member
+            // W1b BS2c: is_last_in_group's by= splices now, so a per-row computed member
             // is the splice refusal there; has_mixed_emptiness' name keeps the strict wording
             String message = report.findings().get(0).message();
             assertTrue(message.contains("takes a column reference, not string")
@@ -1974,7 +2044,8 @@ class StageACheckerTest
         assertTrue(inBinding.startsWith("binding $b: "), inBinding);
         assertTrue(inBinding.contains("must be a number, not string"), inBinding);
         // and the list-function read of a Precondition is labelled as such (sem L3)
-        Rule cursor = withBindings("$p", "upper(AETERM)");
+        // (a per-row LIST operand: a scalar one is also minus' PARAMETER_TYPE since W4 M1)
+        Rule cursor = withBindings("$p", "split_by(AETERM, \",\")");
         StageAReport reads = StageAChecker.check(cursor, levels(pre("empty(AETERM)")),
                 pre("not empty(minus($p, subtract=$p))"));
         assertEquals(List.of(StageAErrorKind.OPERATION_READS_CURSOR_BINDING), kinds(reads));

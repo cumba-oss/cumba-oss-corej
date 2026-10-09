@@ -32,7 +32,7 @@ class NextRecordRelationDeclarationTest
 {
 
     private static final String SHIPPED = "not has_next_corresponding_record(SJENDTC, SJSTDTC, "
-            + "keep_missings=false, ordering=SJSEQ, relation=\"<=\", within=USUBJID)";
+            + "by=SJSEQ, keep_missings=false, relation=\"<=\", within=USUBJID)";
 
     /** Loads a one-rule package through the production loader and returns the rule. */
     private static Rule load(String ruleJson)

@@ -728,8 +728,11 @@ public final class RuleRunner
             // bare null-check let every library_* operand rule fall through and read the STUDY
             // library instead: `var_role("DEFINE") != var_role("LIBRARY")` then compares the define
             // against itself and reports SUCCESS. ⚠⚠ This surface is DISJOINT from the operation
-            // surface the rest of Fix #369 gates — 30 corpus rules read library_* operands and
-            // carry no library-backed call at all, so no registry function can see them.
+            // surface the rest of Fix #369 gates: a rule reading a bare library_* operand need
+            // carry no library-backed call at all, so no registry function can see it. (30 corpus
+            // rules did when Fix #369 landed; since runbook W3 MA-r2 respelled the bare aliases
+            // as accessor calls — which skip through evaluateMetadataNative — one does,
+            // DRAFT-900044, re-measured at W4. The define_* gate above has none.)
             if (!LibraryAnswerability.libraryAnswerable(libraryProvider)
                     && referencesOperandPrefix(operandCheck, "library_"))
             {
