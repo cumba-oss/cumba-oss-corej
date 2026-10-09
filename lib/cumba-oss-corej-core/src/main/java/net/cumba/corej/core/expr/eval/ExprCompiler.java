@@ -353,6 +353,13 @@ public final class ExprCompiler
             ConstVector list = ConstVector.of(listLiteralValues(lit));
             return BindingProgram.value(_ -> list);
         }
+        if (e instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF)
+        {
+            // W4 fold (R5 P2-L1): an alias ($c: $b) holds what $b holds — a predicate's
+            // BoolListVector included — so it is read unguarded; the EB4 guard judges the alias
+            // where IT is read (boolListRefused), and a quantifier reads it as it reads $b
+            return BindingProgram.value(valueRefPlan(ref.name()));
+        }
         return BindingProgram.value(valuePlan(e));
     }
 
@@ -4282,8 +4289,9 @@ public final class ExprCompiler
     /**
      * The one ascending sort key of a keyword-bound single-key reader
      * ({@code empty_within_except_last_row}, {@code has_next_corresponding_record}): {@code by=}
-     * (O17, W1b SK), through {@link #sortKeyMember}; the retired {@code ordering=} refused with its
-     * hint (W4 OR2).
+     * (O17, W1b SK), read from the KEYWORDS (a positional key is the loader's refusal,
+     * {@code SortKeys.checkSingleKeyCall}, W4 fold R5 P1-M1), through {@link #sortKeyMember}; the
+     * retired {@code ordering=} refused with its hint (W4 OR2).
      */
     private static net.cumba.corej.core.exec.GroupSplice.Member orderingMember(Expr.Call c)
     {
@@ -5016,14 +5024,23 @@ public final class ExprCompiler
             if (c.args().get(i) instanceof Expr.Ref r && r.kind() == OperandKind.OPERATION_REF)
             {
                 // every positional after the name is read as a key column (keyMembers), the
-                // declared value / key slot and any later positional alike
+                // declared value / key slot and any later positional alike; past the declared key
+                // slot the message names the parameter the position binds (W4 fold, R5 P1-L1)
                 FunctionDescriptor d = FunctionRegistry.descriptor(c.name());
+                String splice = "a binding of column names is spliced through keys=[" + r.name()
+                        + "]";
+                if (i >= 2 && d != null && i < d.parameters().size())
+                {
+                    String parameter = d.parameters().get(i).name();
+                    return "positional argument " + (i + 1) + " of '" + c.name() + "' is "
+                            + parameter + " \u2014 " + ("keys".equals(parameter) ? splice
+                                    : "write " + parameter + "=\u2026");
+                }
                 String argument = i == 1 && d != null && d.parameters().size() > 1
                         ? "argument '" + d.parameters().get(1).name() + "'"
                         : "positional argument " + (i + 1);
                 return argument + " of '" + c.name() + "' takes a column, not the binding "
-                        + r.name() + " \u2014 a binding of column names is spliced through keys=["
-                        + r.name() + "]";
+                        + r.name() + " \u2014 " + splice;
             }
         }
         return null;
@@ -5039,14 +5056,20 @@ public final class ExprCompiler
      * @param c
      *            a call
      * @throws ExpressionException
-     *             for {@code has_multiple_values_for(…, keep_missings=…)} without {@code within=}
+     *             for {@code has_multiple_values_for(…, keep_missings=…)} without {@code within=},
+     *             or with the empty {@code within=[]} (W4 fold, R5 P1-L2)
      */
     public static void rejectKeepMissingsWithoutWithin(Expr.Call c)
     {
         // (a positional within — a third positional — is refused on its own, naming the keyword:
         // rejectPositionalKeywordOnly)
+        // W4 fold (R5 P1-L2): an empty within=[] groups by nothing (the ungrouped arm), so it is
+        // no within= — the non-empty check is_last_in_group's group= has
+        Expr within = c.kwargs().get("within");
+        boolean noWithin = within == null || (within instanceof Expr.Lit lit
+                && lit.kind() == Expr.LitKind.LIST && ((List<?>) lit.value()).isEmpty());
         if ("has_multiple_values_for".equals(c.name()) && c.kwargs().containsKey("keep_missings")
-                && !c.kwargs().containsKey("within") && c.args().size() < 3)
+                && noWithin && c.args().size() < 3)
         {
             throw new ExpressionException("`keep_missings` on " + c.name()
                     + " requires `within=`; with no grouping key it would have no effect");
@@ -7978,7 +8001,8 @@ public final class ExprCompiler
      * {@code $b: is_valid_date($u)}) is the rule's ERROR with stage A's
      * {@link BoolListVector#bindingHint}: the comparison would read the diagnostic list form and
      * answer silently. A quantifier reads the binding through its own arm ({@link #valueRefPlan}
-     * directly), so only the refused readers meet this guard.
+     * directly), and so does an alias binding ({@code $c: $b}, {@link #compileBinding} — the guard
+     * then judges {@code $c} where it is read), so only the refused readers meet this guard.
      */
     private static ValuePlan boolListRefused(ValuePlan plan, String binding)
     {

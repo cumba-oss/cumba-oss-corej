@@ -2912,4 +2912,28 @@ class StageACheckerTest
                 check(ruleJoiningSe(), "EPOCH != SE.EPOCH and none(joined(EPOCH == SE.EPOCH))")
                         .findings());
     }
+
+
+    /**
+     * W4 fold (R5 P1-L3): stage A's single-column-reference splice arm was removed as dead — no
+     * splice slot ({@code GroupSplice.SPLICE_SLOTS}) is a single {@code column-reference} parameter
+     * (is_last_in_group's ordering= was the last; its by= is a list since W4 OR2). A future one
+     * would need that arm back, so the roster pins it.
+     */
+    @Test
+    void noSpliceSlotIsASingleColumnReferenceParameter()
+    {
+        int visited = 0;
+        for (FunctionDescriptor d : net.cumba.corej.core.expr.eval.FunctionRegistry.all())
+        {
+            for (Parameter p : d.parameters())
+            {
+                visited++;
+                assertFalse(p.type() == Primitive.COLUMN_REFERENCE
+                        && net.cumba.corej.core.exec.GroupSplice.splices(d.name(), p.name()),
+                        d.name() + "." + p.name());
+            }
+        }
+        assertTrue(visited > 150, "the registry was walked: " + visited);
+    }
 }

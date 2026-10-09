@@ -2,14 +2,12 @@ package net.cumba.corej.core.expr.eval;
 
 import java.util.Collection;
 import java.util.Map;
-import java.util.function.Supplier;
-import net.cumba.corej.core.expr.RuleDefinitionException;
 import org.jspecify.annotations.Nullable;
 
 /**
  * ⭐ The one refusal of a <b>list where one value is read</b> (runbook W4 pack P2): the sentences
  * stage A files as {@code PARAMETER_TYPE} when the list is visible at load, and the run-time guard
- * that makes the same sentence the rule's ERROR ({@link RuleDefinitionException}, D35 "written
+ * that makes the same sentence the rule's ERROR ({@code RuleDefinitionException}, D35 "written
  * wrong") when only the run knows the value is a list — so the two channels can never disagree.
  * <ul>
  * <li><b>E6</b> ({@code PLAN-elementwise-list-functions} Q4, owner 2026-10-05 <i>"agree to
@@ -17,16 +15,20 @@ import org.jspecify.annotations.Nullable;
  * parameter 0 is scalar per row — a list there is never a zip or a cartesian product
  * ({@link #atScalarParameter}; the guard runs in {@code ElementwiseLift.Lifted}).</li>
  * <li><b>E7a</b> (Q7, <i>"agree one level only"</i>): a list element that is itself a list at the
- * lifted parameter ({@link #nested}; the guard is {@code ElementwiseLift.element}).</li>
+ * lifted parameter ({@link #nested}; the guard is {@code ElementwiseLift.liftedElement} — the
+ * membership and {@code contains_any} readers share {@code ElementwiseLift.element}, which renders
+ * a nested list instead).</li>
  * <li><b>E6b</b> ({@code PLAN-engine-gap-list-elementwise} §6.1 Q1): the needle of {@code contains}
  * / {@code does_not_contain} / {@code starts_with} / {@code ends_with} is one value
  * ({@link #needle}; the guard runs in {@code Primitives.substring}) — the hint names
  * {@code contains_any} where a list form exists, and says there is none for the affix tests.</li>
  * </ul>
  * <p>
- * The guard is {@link #requireScalar}: one {@code instanceof} per value read, so the hot path pays
- * nothing measurable; the per-row scan of a vector ({@link #holdsList}) is only reached where the
- * compiler could not prove the argument scalar by shape.
+ * The guard is an inline {@code instanceof Collection} at each reader (the needle in
+ * {@code Primitives.substring}, the element in {@code ElementwiseLift.liftedElement}) — no
+ * capturing lambda per row (W4 fold, R5 P2-L3), so the hot path pays nothing measurable; the
+ * per-row scan of a vector ({@link #holdsList}) is only reached where the compiler could not prove
+ * the argument scalar by shape.
  * </p>
  */
 public final class ListArgument
@@ -113,25 +115,6 @@ public final class ListArgument
     {
         return "argument '" + parameter + "' of '" + function + "' lifts over one list level only,"
                 + " not " + described + " - read one component of the nested list";
-    }
-
-
-    /**
-     * The run-time guard: {@code value} is one value, never a list.
-     *
-     * @param value
-     *            the value read (a row's resolved payload, a constant's value)
-     * @param message
-     *            the refusal, evaluated only on a hit
-     * @throws RuleDefinitionException
-     *             when {@code value} is a {@link Collection} — the rule's ERROR
-     */
-    public static void requireScalar(@Nullable Object value, Supplier<String> message)
-    {
-        if (value instanceof Collection<?>)
-        {
-            throw new RuleDefinitionException(message.get());
-        }
     }
 
 

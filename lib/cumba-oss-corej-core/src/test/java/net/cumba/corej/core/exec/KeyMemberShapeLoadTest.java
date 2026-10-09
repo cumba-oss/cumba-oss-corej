@@ -60,6 +60,25 @@ class KeyMemberShapeLoadTest
     }
 
 
+    /**
+     * W4 fold (R5 P1-L1): a positional {@code $} past the declared key slot names the parameter it
+     * binds — the {@code keys=[$k]} hint where that is {@code keys}, the keyword itself otherwise
+     * ({@code include_empty} is a flag, never a key column).
+     */
+    @Test
+    void aLaterPositionalBindingNamesTheParameterItBinds()
+    {
+        String keys = loadError("is_unique_relationship(AETERM, AEDECOD, $k)", "$k", "\"AEDECOD\"");
+        assertTrue(keys.contains("positional argument 3 of 'is_unique_relationship' is keys"
+                + " \u2014 a binding of column names is spliced through keys=[$k]"), keys);
+        String flag = loadError("is_inconsistent_across_dataset(AETERM, AEDECOD, [AESEQ], $k)",
+                "$k", "true");
+        assertTrue(flag.contains("positional argument 4 of 'is_inconsistent_across_dataset' is"
+                + " include_empty \u2014 write include_empty=\u2026"), flag);
+        assertTrue(!flag.contains("keys=[$k]"), flag);
+    }
+
+
     @Test
     void keysSplicesTheBindingAndAWrittenPositionalColumnIsUnchanged()
     {

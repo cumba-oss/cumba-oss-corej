@@ -1359,8 +1359,12 @@ public final class Primitives
             // runbook W4 E6b: the needle is ONE value — a list there (known only at run time;
             // stage A refuses the typed one at load) is the rule's ERROR with stage A's sentence,
             // never its rendering probed as text ("[a, b]": silently false before)
-            ListArgument.requireScalar(raw,
-                    () -> ListArgument.needle(needleFunction(mode, negate), "a list"));
+            // (an inline instanceof, no capturing lambda per row - W4 fold R5 P2-L3)
+            if (raw instanceof Collection<?>)
+            {
+                throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                        ListArgument.needle(needleFunction(mode, negate), "a list"));
+            }
             // D5: a numeric-literal needle resolves to a boxed Number; render it canonically so
             // contains(CODE, 100) probes "100" (not "100.0"). A String needle (column / quoted
             // literal) is unchanged — canonicalNeedle returns it verbatim.

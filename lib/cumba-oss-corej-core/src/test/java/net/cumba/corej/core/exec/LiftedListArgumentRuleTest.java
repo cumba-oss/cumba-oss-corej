@@ -161,4 +161,32 @@ class LiftedListArgumentRuleTest
             assertTrue(message.contains("any($b)"), message);
         }
     }
+
+
+    /**
+     * W4 fold (R5 P2-L1): an ALIAS of a predicate binding ({@code $c: $b}) holds what {@code $b}
+     * holds, so a quantifier reads it as it reads {@code $b} — before, the alias was compiled as a
+     * value read and the EB4 guard refused the list the quantifier asked for. Read as a value, the
+     * alias stays the rule's ERROR, named after itself.
+     */
+    @Test
+    void anAliasOfAPredicateBindingIsReadByAQuantifier()
+    {
+        try (RegistryTestSeam.Registration _ = RegistryTestSeam
+                .register(probe(DATES, List.of("2020-01-01", "bogus"))))
+        {
+            Rule direct = load("any($b)", "$u", DATES + "()", "$b", "is_valid_date($u)");
+            Rule alias = load("any($c)", "$u", DATES + "()", "$b", "is_valid_date($u)", "$c", "$b");
+            assertNull(alias.getLoadError(), alias.getLoadError());
+            RuleExecutionResult expected = RuleRunnerCalls.execute(direct, ae());
+            RuleExecutionResult actual = RuleRunnerCalls.execute(alias, ae());
+            assertTrue(!expected.isError() && expected.hasViolations(), "premise: any($b) fires");
+            assertTrue(!actual.isError(), "the alias is read by the quantifier");
+            org.junit.jupiter.api.Assertions.assertEquals(expected.getViolationCount(),
+                    actual.getViolationCount());
+            String message = error("$c == true", "$u", DATES + "()", "$b", "is_valid_date($u)",
+                    "$c", "$b");
+            assertTrue(message.contains("$c holds a list<boolean>"), message);
+        }
+    }
 }

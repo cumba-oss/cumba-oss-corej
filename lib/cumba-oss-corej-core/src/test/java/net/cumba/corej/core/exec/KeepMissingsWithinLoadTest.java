@@ -74,6 +74,24 @@ class KeepMissingsWithinLoadTest
     }
 
 
+    /**
+     * W4 fold (R5 P1-L2): an empty {@code within=[]} groups by nothing — the ungrouped arm runs and
+     * never reads the disposition — so it meets the same refusal as no {@code within=} (the
+     * non-empty check {@code is_last_in_group}'s {@code group=} has). Without
+     * {@code keep_missings=} it loads as before.
+     */
+    @Test
+    void keepMissingsWithAnEmptyWithinIsTheSameLoadError()
+    {
+        assertKm(loadError(
+                "has_multiple_values_for(AEDECOD, AETERM, within=[], keep_missings=true)"));
+        Rule checkless = SequenceFunctionTest.loadCheckless("$b",
+                "has_multiple_values_for(AEDECOD, AETERM, within=[], keep_missings=false)");
+        assertKm(String.valueOf(checkless.getLoadError()));
+        assertEquals("null", loadError("has_multiple_values_for(AEDECOD, AETERM, within=[])"));
+    }
+
+
     @Test
     void keepMissingsWithWithinLoadsAsBefore()
     {

@@ -73,6 +73,20 @@ class StringListNameBindingLoadTest
     }
 
 
+    /**
+     * W4 fold (R5 P2-L2): the E3 seam judges a binding against the rule's FULL binding map, so a
+     * binding authored before the string list it reads (a forward reference, in a Check-less rule
+     * where stage A never walks) meets the same refusal.
+     */
+    @Test
+    void aForwardReferenceToAStringListBindingIsTheSameLoadError()
+    {
+        Rule checkless = SequenceFunctionTest.loadCheckless("$n", "record_count(group=[$k])", "$k",
+                STRINGS);
+        assertE3(String.valueOf(checkless.getLoadError()), "$k");
+    }
+
+
     @Test
     void theFormsE3DoesNotRetireStillLoad()
     {

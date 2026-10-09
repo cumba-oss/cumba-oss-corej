@@ -132,17 +132,19 @@ class BindingSubstitutabilityCensusTest
             // consistency readers is refused BY DESIGN (a load error, not a single-reference
             // splice): keyMembers read every positional after the name RAW as a column name and
             // dropped it; a binding of names goes in keys=[$k]. The inline filler ("a") is the
-            // written key the readers always took. (The W1b BS2c row of is_last_in_group's
+            // written key the readers always took; past the declared key slot the message names
+            // the parameter the position binds (W4 fold, R5 P1-L1). (The W1b BS2c row of
+            // is_last_in_group's
             // ordering= left with W4 OR2: by= is a list<column-reference> sort-key slot, its
             // filler a list, and both spellings are judged alike.)
             "is_inconsistent_across_dataset[1] key: bound=argument 'key' of 'is_inconsistent_across_dataset' takes a column, not the binding \u2039arg\u203a \u2014 a binding of column names is  | inline=clean",
-            "is_inconsistent_across_dataset[2] keys: bound=positional argument 3 of 'is_inconsistent_across_dataset' takes a column, not the binding \u2039arg\u203a \u2014 a binding of column na | inline=clean",
-            "is_inconsistent_across_dataset[3] include_empty: bound=positional argument 4 of 'is_inconsistent_across_dataset' takes a column, not the binding \u2039arg\u203a \u2014 a binding of column na | inline=stage A: PARAMETER_TYPE: Check (ERROR): argument 'keys' of 'is_inconsistent_across_dataset' takes list<column-reference>",
-            "is_inconsistent_across_dataset[4] keep_missings: bound=positional argument 5 of 'is_inconsistent_across_dataset' takes a column, not the binding \u2039arg\u203a \u2014 a binding of column na | inline=stage A: PARAMETER_TYPE: Check (ERROR): argument 'keys' of 'is_inconsistent_across_dataset' takes list<column-reference>",
+            "is_inconsistent_across_dataset[2] keys: bound=positional argument 3 of 'is_inconsistent_across_dataset' is keys \u2014 a binding of column names is spliced through keys=[\u2039 | inline=clean",
+            "is_inconsistent_across_dataset[3] include_empty: bound=positional argument 4 of 'is_inconsistent_across_dataset' is include_empty \u2014 write include_empty=\u2026 | inline=stage A: PARAMETER_TYPE: Check (ERROR): argument 'keys' of 'is_inconsistent_across_dataset' takes list<column-reference>",
+            "is_inconsistent_across_dataset[4] keep_missings: bound=positional argument 5 of 'is_inconsistent_across_dataset' is keep_missings \u2014 write keep_missings=\u2026 | inline=stage A: PARAMETER_TYPE: Check (ERROR): argument 'keys' of 'is_inconsistent_across_dataset' takes list<column-reference>",
             "is_not_unique_relationship[1] value: bound=argument 'value' of 'is_not_unique_relationship' takes a column, not the binding \u2039arg\u203a \u2014 a binding of column names is sp | inline=clean",
-            "is_not_unique_relationship[2] keys: bound=positional argument 3 of 'is_not_unique_relationship' takes a column, not the binding \u2039arg\u203a \u2014 a binding of column names  | inline=clean",
+            "is_not_unique_relationship[2] keys: bound=positional argument 3 of 'is_not_unique_relationship' is keys \u2014 a binding of column names is spliced through keys=[\u2039arg\u203a | inline=clean",
             "is_unique_relationship[1] value: bound=argument 'value' of 'is_unique_relationship' takes a column, not the binding \u2039arg\u203a \u2014 a binding of column names is splice | inline=clean",
-            "is_unique_relationship[2] keys: bound=positional argument 3 of 'is_unique_relationship' takes a column, not the binding \u2039arg\u203a \u2014 a binding of column names is s | inline=clean"));
+            "is_unique_relationship[2] keys: bound=positional argument 3 of 'is_unique_relationship' is keys \u2014 a binding of column names is spliced through keys=[\u2039arg\u203a] | inline=clean"));
 
     /** Floor of (descriptor, parameter) pairs the census must visit — the registry was walked. */
     private static final int VISITED_FLOOR = 150;

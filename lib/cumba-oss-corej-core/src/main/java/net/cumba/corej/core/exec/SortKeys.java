@@ -386,13 +386,23 @@ public final class SortKeys
         }
     }
 
+    /**
+     * The single-key readers whose compiler arm reads {@code by=} from the KEYWORDS only
+     * ({@code ExprCompiler.orderingMember}); {@code is_last_in_group} reads its bound slot, so its
+     * positional key keeps its meaning (O17's rename in place).
+     */
+    private static final java.util.Set<String> KEYWORD_ONLY_READERS = java.util.Set
+            .of("empty_within_except_last_row", "has_next_corresponding_record");
 
     /**
      * The load-time seam of the three single-key readers ({@code RulePackageLoader}'s tailored
      * readers, O17): a retired {@code ordering=} refused first ({@link #rejectRetiredOrdering}),
      * then the call bound against its descriptor and its {@code by=} judged by {@link #single} — so
      * {@code desc}, two keys, {@code nulls=} or no key are load errors on the inline Check surface
-     * as on a binding.
+     * as on a binding. A POSITIONAL key of {@code empty_within_except_last_row} /
+     * {@code has_next_corresponding_record} is refused naming the keyword (W4 fold, R5 P1-M1):
+     * their arms read {@code by=} by keyword, so it bound here and was then lost there — the rule
+     * degraded; reading it would be a new feature, and O17 is "only a rename".
      *
      * @param call
      *            the authored call
@@ -402,7 +412,15 @@ public final class SortKeys
     public static void checkSingleKeyCall(Expr.Call call)
     {
         rejectRetiredOrdering(call);
-        single(call.name(), boundBy(call));
+        Expr by = boundBy(call);
+        if (by != null && KEYWORD_ONLY_READERS.contains(call.name())
+                && !call.kwargs().containsKey(PARAMETER))
+        {
+            throw new ExpressionException(
+                    call.name() + " takes its sort key by keyword \u2014 write " + PARAMETER + "="
+                            + ExpressionPrinter.print(by));
+        }
+        single(call.name(), by);
     }
 
 

@@ -208,7 +208,8 @@ public final class CompilerDispatchedCalls implements FunctionProvider
         // runbook W1b SK / W4 OR2 (owner O17): by= is the sort-key parameter everywhere — renamed
         // in place from ordering= (retired: a load error with the hint "write by=",
         // SortKeys.rejectRetiredOrdering), one ascending key (ExprCompiler reads it through
-        // SortKeys.single); at ordering's position, so a positional spelling keeps its meaning
+        // SortKeys.single); at ordering's position, but read BY KEYWORD only — a positional key is
+        // a load error naming by= (SortKeys.checkSingleKeyCall, W4 fold R5 P1-M1)
         bool(fns, "empty_within_except_last_row", req("name"), req("group"), by(), keepMissings());
         // Wave 1 (PLAN-function-surface-wave1 D-W1-4): the two grouped callables ported from the
         // Operation surface. Column parameters are declared COLUMN references (a quoted name is a
@@ -470,7 +471,9 @@ public final class CompilerDispatchedCalls implements FunctionProvider
     /**
      * {@code by=} on {@code empty_within_except_last_row} and {@code has_next_corresponding_record}
      * (O17): one column, or {@code [asc(COL)]} — declared where the retired {@code ordering=} stood
-     * (runbook W4 OR2, a rename in place), so every positional spelling binds as before.
+     * (runbook W4 OR2, a rename in place). Their compiler arms read it BY KEYWORD only, so a
+     * positional key is refused at load naming {@code by=} ({@code SortKeys.checkSingleKeyCall}, W4
+     * fold R5 P1-M1) — it bound here and was lost there, degrading the rule.
      */
     private static Parameter by()
     {

@@ -250,16 +250,41 @@ class SortKeysTest
     }
 
 
-    /** OR2 renames in place: the positional key of is_last_in_group reads as by=. */
+    /**
+     * OR2 renames in place: the positional key of is_last_in_group reads as by= (its compiler arm
+     * reads the bound slot). The other two readers take their sort key by keyword only — their arms
+     * read by= from the keywords — so a positional key there is a load error naming the keyword (W4
+     * fold, R5 P1-M1: making it work would be a new feature, O17 "only as a rename"); before, it
+     * passed the loader and the compiler's refusal only degraded the rule.
+     */
     @Test
-    void aPositionalKeyKeepsItsMeaningAfterTheRename()
+    void aPositionalKeyKeepsItsMeaningOnlyWhereTheReaderBindsIt()
     {
         IDataTable ae = WithinOrderingSpliceTest.ae();
         List<Long> by = SequenceFunctionTest.fired(ae,
                 "is_last_in_group(by=AESEQ, group=[USUBJID])");
         assertTrue(!by.isEmpty(), "premise");
         assertEquals(by, SequenceFunctionTest.fired(ae, "is_last_in_group(AESEQ, [USUBJID])"));
-        assertEquals("null", loadError("empty_within_except_last_row(AEENDTC, USUBJID, AESEQ)"));
+        for (String[] pair : List.of(new String[]
+        {
+                "empty_within_except_last_row(AEENDTC, USUBJID, AESEQ)",
+                "empty_within_except_last_row"
+        }, new String[]
+        {
+                "not has_next_corresponding_record(AEENDTC, AESTDTC, USUBJID, AESEQ)",
+                "has_next_corresponding_record"
+        }))
+        {
+            String hint = pair[1] + " takes its sort key by keyword — write by=AESEQ";
+            String inline = loadError(pair[0]);
+            assertTrue(inline.contains(hint), inline);
+            String bound = loadError("$b", "$b", pair[0].replace("not ", ""));
+            assertTrue(bound.contains(hint), bound);
+            Rule checkless = SequenceFunctionTest.loadCheckless("$b", pair[0].replace("not ", ""));
+            assertTrue(String.valueOf(checkless.getLoadError()).contains(hint),
+                    String.valueOf(checkless.getLoadError()));
+        }
+        assertEquals("null", loadError("empty_within_except_last_row(AEENDTC, USUBJID, by=AESEQ)"));
     }
 
 

@@ -74,8 +74,8 @@ import org.jspecify.annotations.Nullable;
  * at load — is the rule's ERROR ({@link ListArgument#atScalarParameter}), never a zip, a cartesian
  * product or the kernel's reading of the list (before E6 {@code substring}'s {@code start} read it
  * as a non-number and answered missing). The compiler hands the bare kernel only to a call whose
- * every argument is scalar by shape ({@code ExprCompiler.isStaticallyScalar}), so the check runs
- * exactly where an argument could hold a list.
+ * every argument is scalar by shape ({@code ExprCompiler.allStaticallyScalar} decides), so the
+ * check runs exactly where an argument could hold a list.
  * </p>
  * <p>
  * <b>Purity.</b> A flagged kernel reads {@code run.rowCount()} and its argument vectors only — the
@@ -505,8 +505,12 @@ final class ElementwiseLift
      */
     private static TypedValue liftedElement(Object item, DataValueType declaredType, String name)
     {
-        ListArgument.requireScalar(item,
-                () -> ListArgument.nested(name, parameterName(name, 0), "a list holding a list"));
+        // (an inline instanceof, no capturing lambda per element - W4 fold R5 P2-L3)
+        if (item instanceof Collection<?>)
+        {
+            throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                    ListArgument.nested(name, parameterName(name, 0), "a list holding a list"));
+        }
         return element(item, declaredType);
     }
 

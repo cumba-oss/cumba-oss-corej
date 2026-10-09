@@ -820,6 +820,10 @@ public class RulePackageLoader
             for (net.cumba.corej.core.model.CompiledBinding binding : compiled)
             {
                 validateInlineMissingValues(binding.expression(), stageAJudged, earlier);
+                // W4 fold (R5 P2-L2): E3 judges a binding against EVERY binding — a forward
+                // reference to a string list (a Check-less rule, where stage A never walks) meets
+                // the same refusal; the seams above keep the earlier-only view inlineBoundNames has
+                rejectStringListSplices(binding.expression(), bound);
                 earlier.put(binding.name(), binding.expression());
             }
             // PLAN-union-function §3.3 (runbook W1a U3) and PLAN-binding-substitutability C9–C11
@@ -1259,10 +1263,10 @@ public class RulePackageLoader
      * Runbook W4 E3 (D1-B, coordinator W4-D6): a binding holding a written string list, read at a
      * splice slot of any call of {@code expr} ({@code NameListBinding.stringListSpliceRefusal}), is
      * the rule's load error with D1's hint. Here, in the seam pass that runs on every Check level
-     * (against every binding) and every binding (against the earlier ones) of every rule before
-     * stage A, so one message holds on every path — a Check-less rule's bindings included. The
-     * Precondition is judged as authored (no bindings — an authored one is refused anyway), and a
-     * Match_Datasets Filter cannot read a {@code $} at all.
+     * and every binding (each against every binding — a forward reference included, W4 fold R5
+     * P2-L2) of every rule before stage A, so one message holds on every path — a Check-less rule's
+     * bindings included. The Precondition is judged as authored (no bindings — an authored one is
+     * refused anyway), and a Match_Datasets Filter cannot read a {@code $} at all.
      */
     private static void rejectStringListSplices(net.cumba.corej.core.expr.ast.Expr expr,
             Map<String, net.cumba.corej.core.expr.ast.Expr> bound)

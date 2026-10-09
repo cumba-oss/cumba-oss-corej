@@ -2503,15 +2503,6 @@ public final class StageAChecker
                 checkColumnReferenceList(c, param, walked);
                 continue;
             }
-            if (declared == Primitive.COLUMN_REFERENCE && splices(c, param)
-                    && !(arg instanceof Expr.Lit))
-            {
-                // W1b BS2c (D4): a single-reference slot that splices takes a dataset-level $ /
-                // computed name beside a written one (is_last_in_group's ordering= was the one
-                // such slot; since W4 OR2 its by= is a list<column-reference> sort-key slot)
-                judgeSpliceSlot(c, param, walked);
-                continue;
-            }
             if (declared == Primitive.COLUMN_REFERENCE)
             {
                 checkColumnReferenceArgument(c, descriptor, param, arg, walked.type());
