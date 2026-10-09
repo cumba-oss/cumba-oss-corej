@@ -2247,6 +2247,14 @@ public final class StageAChecker
             // flag DomainScan reads, so the two calculi cannot drift (combined review XCUT H1).
             level = join(joinChildren(children), Level.RECORD);
         }
+        else if (net.cumba.corej.core.exec.ReferencedKeyUniqueness.NAME.equals(c.name()))
+        {
+            // T2 fold (review L1-M2): its keys= name columns of the TARGET - the verdict is per
+            // (dataset, column) - so a written key is no read of the evaluated row; the same
+            // operands DomainScan joins, so bound and inline keys cannot differ in level
+            level = joinChildren(
+                    net.cumba.corej.core.exec.ReferencedKeyUniqueness.withoutKeys(c, children));
+        }
         else
         {
             level = joinChildren(children);
@@ -2741,7 +2749,8 @@ public final class StageAChecker
      * The judgement of a per-row member at a value-admitting slot (W1b UC1,
      * {@code GroupSplice.admitsValueMember}): a list is not a key component, {@code regex=} cannot
      * normalise a value member (Q4) — both {@code PARAMETER_TYPE}, the same sentences the loader's
-     * seam pass files ({@code ListOperandLevel}); any other per-row value is admitted.
+     * seam pass files ({@code ListOperandLevel.spliceRefusals} — the list arm since the T2 fold,
+     * review L1-L2, judged there by the member's shape); any other per-row value is admitted.
      */
     private void judgeValueMember(Expr.Call c, Parameter param, TypedExpr member)
     {

@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.ArrayList;
 import java.util.List;
 import net.cumba.corej.core.RulePackageLoader;
+import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.RealTables;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
@@ -211,6 +212,75 @@ class UniqueSetComputedMemberTest
                 inline);
         assertTrue(bound.contains("PARAMETER_TYPE") && bound.contains("not a key component"),
                 bound);
+    }
+
+
+    /**
+     * T2 fold (review L1-L2): the loader's seam - a Check-less rule's binding, which stage A never
+     * walks - refuses a per-row LIST member with stage A's sentence (it used to load and key on the
+     * list's text); a dataset-level name list there still splices.
+     */
+    @Test
+    void aPerRowListMemberIsTheSeamsRefusalWhereStageADoesNotWalk()
+    {
+        for (String[] bindings : List.of(new String[]
+        {
+                "$r", "is_unique_set([USUBJID, colref([\"A\", \"B\"])])"
+        }, new String[]
+        {
+                "$cl", "colref([\"A\", \"B\"])", "$r", "is_unique_set([USUBJID, $cl])"
+        }))
+        {
+            String error = checklessError(bindings);
+            assertTrue(error.contains("not a key component"), error);
+        }
+        assertEquals("null", checklessError("$k", "[A, B]", "$r", "is_unique_set([USUBJID, $k])"));
+    }
+
+
+    /**
+     * T2 fold (review L1-L2): the run-time backstop - a program evaluated outside a loaded rule,
+     * where neither stage A nor the seam judged it - makes a per-row list member the rule's ERROR,
+     * never a key built from the list's text.
+     */
+    @Test
+    void aListAtRunTimeIsTheRulesErrorNotAKey()
+    {
+        IDataTable t = RealTables.of("PC").str("USUBJID", "S1", "S1").str("A", "x", "x")
+                .str("B", "y", "y").build();
+        EvaluationContext ctx = EvaluationContext.builder().table(t).build();
+        RuntimeException error = org.junit.jupiter.api.Assertions
+                .assertThrows(RuntimeException.class,
+                        () -> NativeExprEvaluator.evaluate(
+                                net.cumba.corej.core.expr.CheckExpressionParser.parse(
+                                        "not is_unique_set([USUBJID, colref([\"A\", \"B\"])])"),
+                                ctx));
+        assertTrue(String.valueOf(error.getMessage()).contains("not a key component"),
+                String.valueOf(error.getMessage()));
+    }
+
+
+    private static String checklessError(String... bindings)
+    {
+        StringBuilder b = new StringBuilder(
+                "{\"rules\":{\"R\":{\"Core\":{\"Id\":\"R\"},\"Bindings\":[");
+        for (int i = 0; i < bindings.length; i += 2)
+        {
+            b.append(i == 0 ? "" : ",").append("{\"name\":\"").append(bindings[i])
+                    .append("\",\"expression\":\"").append(esc(bindings[i + 1])).append("\"}");
+        }
+        b.append("],\"Match_Datasets\":[{\"Name\":\"PC\"}],\"Outcome\":{\"Message\":\"m\","
+                + "\"Output_Variables\":[\"$r\"]}}}}");
+        try
+        {
+            Rule r = RulePackageLoader.loadFromString(b.toString()).getRules().get("R");
+            assertNotNull(r);
+            return String.valueOf(r.getLoadError());
+        }
+        catch (java.io.IOException e)
+        {
+            throw new java.io.UncheckedIOException(e);
+        }
     }
 
 

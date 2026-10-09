@@ -300,6 +300,18 @@ public final class DomainScan
             // read as primary references and CDISC-SEND-0105's Domain moved {} → {ROW}.
             return Domain.DATASET;
         }
+        if (net.cumba.corej.core.exec.ReferencedKeyUniqueness.NAME.equals(name))
+        {
+            // T2 fold (review L1-M2, coordinator "taken + why"): referenced_key_is_unique's keys=
+            // name columns of the TARGET - its verdict is per (dataset, column), DATASET when
+            // those operands are - so its keys are no read of the primary: `keys=$k` and
+            // `keys=[USUBJID]` answer at one level (stage A joins the same operands).
+            // referenced_record_count is a declared row reader instead (its keys are THIS row's).
+            List<Expr> all = new ArrayList<>(c.args());
+            all.addAll(c.kwargs().values());
+            return joinAll(net.cumba.corej.core.exec.ReferencedKeyUniqueness.withoutKeys(c, all),
+                    kinds);
+        }
         Domain operands = joinAll(c.args(), kinds).join(joinAll(c.kwargs().values(), kinds));
         if (operands.isBroadcast()
                 && net.cumba.corej.core.exec.GroupReadTable.GROUP_OPERATORS.contains(name))

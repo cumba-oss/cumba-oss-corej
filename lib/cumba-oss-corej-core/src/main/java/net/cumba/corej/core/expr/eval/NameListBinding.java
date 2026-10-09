@@ -254,8 +254,10 @@ public final class NameListBinding
      * {@code --} member. Under {@code domain=} a {@code --} name resolves against the EVALUATED
      * dataset's prefix, not the domain's, so it would be looked up in the other table and partition
      * nothing; the written member is refused at load ({@code GroupedAggregate.columnName} — this
-     * sentence mirrors it), and so is the written list bound to a name. One sentence for stage A
-     * and the loader's seam pass.
+     * sentence mirrors it), and so is the written list bound to a name. Since the T2 fold (review
+     * L1-L1) so is a QUALIFIED member: the run time refuses every spliced qualified name under
+     * {@code domain=} ({@code GroupSplice.splicedName}), so the load refuses it first. One sentence
+     * for stage A and the loader's seam pass.
      *
      * @param call
      *            the splicing call
@@ -266,7 +268,7 @@ public final class NameListBinding
      * @param where
      *            where the call is written, or {@code null} when the caller says so itself
      * @return the refusal, or {@code null} when the call is not foreign, the binding is not a name
-     *         list, or it holds no {@code --} member
+     *         list, or it holds no {@code --} and no qualified member
      */
     public static @Nullable String domainPrefixRefusal(Expr.Call call, String binding,
             @Nullable Expr nameList, @Nullable String where)
@@ -282,6 +284,16 @@ public final class NameListBinding
                 return (where == null ? "" : where + ": ") + call.name()
                         + " does not resolve `--` (" + name + ", spliced from " + binding
                         + ") under domain=: name the column of the dataset explicitly";
+            }
+            if (net.cumba.corej.core.model.MatchDataset.qualifierOf(name) != null)
+            {
+                // T2 fold (review L1-L1): the run time refuses every spliced qualified name under
+                // domain= (GroupSplice.splicedName - a qualified group= member is judged at load,
+                // D-DOMAIN / D-SRC, which a spliced one never reaches); the load says so first
+                return (where == null ? "" : where + ": ") + call.name() + " splices the qualified"
+                        + " name " + name + " (from " + binding + ") under domain= — a qualified"
+                        + " group= member is judged at load, so author it in the group= list"
+                        + " itself";
             }
         }
         return null;

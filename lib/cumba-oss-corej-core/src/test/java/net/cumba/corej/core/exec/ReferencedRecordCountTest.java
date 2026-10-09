@@ -296,6 +296,109 @@ class ReferencedRecordCountTest
     }
 
 
+    private static List<String> firedSuppseq(Rule rule)
+    {
+        assertNull(rule.getLoadError(), rule.getLoadError());
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, suppdv(),
+                new Inventory(suppdv(), dv()));
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        return result.getViolations().stream().map(f -> f.getValues().get("SUPPSEQ")).toList();
+    }
+
+
+    /**
+     * T2 fold (review L1-M2, coordinator "taken + why"): referenced_record_count counts the
+     * referenced records PER POINTER ROW - its keys= are this row's values - so it is per-row
+     * whatever its operands' level (a declared row reader). With dataset-level operands and a
+     * {@code $} name list at keys= it used to read DATASET and a binding folded to row 0's count;
+     * bound and inline now answer alike.
+     */
+    @Test
+    void theCountIsPerPointerRowWhateverItsOperandsLevel()
+    {
+        String k = "{\"name\":\"$k\",\"expression\":\"[USUBJID]\"}";
+        String call = "referenced_record_count(\\\"DV\\\", \\\"1\\\","
+                + " key_variable=\\\"DVSPID\\\", keys=";
+        Rule inlineBinding = load("{\"name\":\"$n\",\"expression\":\"" + call + "[USUBJID])\"}",
+                "$n == 2", "SUPPSEQ");
+        Rule boundBinding = load(k + ",{\"name\":\"$n\",\"expression\":\"" + call + "$k)\"}",
+                "$n == 2", "SUPPSEQ");
+        Rule boundCheck = load(k, call + "$k) == 2", "SUPPSEQ");
+        List<String> expected = List.of("1", "4", "6", "7", "8");
+        assertEquals(expected, firedSuppseq(inlineBinding), "subject A has two DVSPID 1 records");
+        assertEquals(expected, firedSuppseq(boundBinding), "bound keys= reads this row too");
+        assertEquals(expected, firedSuppseq(boundCheck));
+    }
+
+
+    /**
+     * T2 fold (review L1-M2): referenced_key_is_unique's keys= name columns of the TARGET - its
+     * verdict is per (dataset, column) - so a written key is no read of the evaluated row: with
+     * dataset-level operands the verdict is one dataset-level fact, written keys and a bound name
+     * list alike (it used to be per row inline and dataset-level bound).
+     */
+    @Test
+    void theUniquenessKeysAreTargetColumnsNotReadsOfTheRow()
+    {
+        String call = "referenced_key_is_unique(\\\"DV\\\", key_variable=\\\"DVSPID\\\","
+                + " keys=";
+        List<String> inline = firedSuppseq(load("", call + "[USUBJID]) == false", "SUPPSEQ"));
+        List<String> bound = firedSuppseq(load("{\"name\":\"$k\",\"expression\":\"[USUBJID]\"}",
+                call + "$k) == false", "SUPPSEQ"));
+        assertEquals(bound, inline, "bound = inline");
+        assertEquals(1, inline.size(), "one dataset-level finding: " + inline);
+    }
+
+
+    /**
+     * T2 fold (review L2-L5b, memory first): the index keys on a hash of the key text, not the text
+     * - so each candidate row of a hit is verified. With 1 or 2 hash bits nearly every key
+     * collides; the counts must equal the full-width index's, never count a foreign record.
+     */
+    @Test
+    void aHashCollisionNeverCountsAForeignRecord()
+    {
+        IDataTable target = dv();
+        IDataTable primary = suppdv();
+        int pointer = target.getMetaData().getColumnIndex("DVSPID");
+        int[] targetKeys =
+        {
+                target.getMetaData().getColumnIndex("USUBJID")
+        };
+        int[] primaryKeys =
+        {
+                primary.getMetaData().getColumnIndex("USUBJID")
+        };
+        int value = primary.getMetaData().getColumnIndex("IDVARVAL");
+        List<List<Long>> byBits = new ArrayList<>();
+        for (int bits : new int[]
+        {
+                1, 2, ReferencedRecordCount.HASH_BITS
+        })
+        {
+            net.cumba.datatable.impl.merge.KeyMatchIndex index = ReferencedRecordCount.index(target,
+                    pointer, false, targetKeys, bits);
+            if (bits == 1)
+            {
+                assertTrue(index.keyCount() <= 2, "premise: the keys collide");
+            }
+            ReferencedRecordCount.Probe probe = new ReferencedRecordCount.Probe(index, target,
+                    primaryKeys, targetKeys, pointer, false, bits);
+            List<Long> counts = new ArrayList<>();
+            for (int row = 0; row < primary.getRowCount(); row++)
+            {
+                String text = primary.getColumn(value).getDataValue(row).getValueAsString();
+                counts.add(text == null ? -1L : probe.count(primary, row, text));
+            }
+            byBits.add(counts);
+        }
+        assertEquals(List.of(2L, 1L, 0L, 0L, 0L, 2L, 2L, 0L), byBits.get(2),
+                "A/1 twice, B/2 once, the rest none");
+        assertEquals(byBits.get(2), byBits.get(0), "1 bit: every key collides");
+        assertEquals(byBits.get(2), byBits.get(1), "2 bits");
+    }
+
+
     @Test
     void theRefusedShapesAreLoadErrors()
     {

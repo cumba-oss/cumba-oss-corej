@@ -70,6 +70,12 @@ public final class ListOperandLevel
             "shares_elements_with");
 
     /**
+     * The literal-names list of the {@link #BROADCAST_SET_FUNCTIONS} ({@code keys=[DM]}), which is
+     * no operand of theirs and is not judged.
+     */
+    private static final String KEYS_PARAMETER = "keys";
+
+    /**
      * The grouped readers whose target ({@code name}, positional 0) is read through
      * {@code GroupedAggregate.readTarget} and admits a dataset-level {@code $}-binding since
      * runbook W1b DT (coordinator D21): a {@code $} inside the target is judged per reference as
@@ -280,7 +286,11 @@ public final class ListOperandLevel
 
     /**
      * The refusal's text for a per-row LIST member of {@code is_(not_)unique_set} (W1b UC1): a
-     * per-row value is a key component, a list is not.
+     * per-row value is a key component, a list is not. One sentence for both channels: stage A
+     * files it as {@code PARAMETER_TYPE} from the member's type ({@code StageAChecker}'s
+     * {@code judgeValueMember}); the loader's seam pass ({@link #spliceRefusals}) files it on the
+     * paths stage A never walks, from the member's shape (T2 fold, review L1-L2 - before, only
+     * stage A filed it, and a Check-less binding keyed on the list's text).
      *
      * @param function
      *            the uniqueness function
@@ -373,10 +383,20 @@ public final class ListOperandLevel
                     // component, admitted — unless regex= is to normalise it (Q4)
                     boolean value = net.cumba.corej.core.exec.GroupSplice
                             .admitsValueMember(c.name(), slot.parameter());
-                    refusal = !value ? spliceRefusal(c.name(), slot.parameter(), where, member)
-                            : c.kwargs().containsKey("regex")
-                                    ? valueMemberRegexRefusal(c.name(), where, member)
-                                    : null;
+                    if (!value)
+                    {
+                        refusal = spliceRefusal(c.name(), slot.parameter(), where, member);
+                    }
+                    else if (staticallyList(member, rule, 0))
+                    {
+                        // T2 fold (review L1-L2): stage A's list arm (judgeValueMember) on the
+                        // paths it never walks - a list is not a key component
+                        refusal = valueMemberListRefusal(c.name(), slot.parameter(), where, member);
+                    }
+                    else if (c.kwargs().containsKey("regex"))
+                    {
+                        refusal = valueMemberRegexRefusal(c.name(), where, member);
+                    }
                 }
                 else if (member instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF)
                 {
@@ -396,6 +416,43 @@ public final class ListOperandLevel
             }
         }
         return out;
+    }
+
+
+    /**
+     * Whether {@code e} is a list by SHAPE, as far as the load can see without stage A's types (T2
+     * fold, review L1-L2): a list literal, a call whose declared result is a list
+     * ({@code ElementTable}), {@code colref}'s list form, an element-wise lift over such a value,
+     * or a {@code $} binding holding one. Anything the shape cannot tell stays unjudged here; the
+     * run time refuses a list cell ({@code GroupReadTable}'s value column).
+     */
+    private static boolean staticallyList(Expr e, Rule rule, int depth)
+    {
+        if (depth > 8)
+        {
+            return false;
+        }
+        return switch (e)
+        {
+        case Expr.Lit lit -> lit.kind() == Expr.LitKind.LIST;
+        case Expr.Ref ref when ref.kind() == OperandKind.OPERATION_REF ->
+        {
+            CompiledBinding bound = rule.compiledBinding(ref.name());
+            yield bound != null && staticallyList(bound.expression(), rule, depth + 1);
+        }
+        case Expr.Call call ->
+        {
+            FunctionDescriptor d = FunctionRegistry.descriptor(call.name());
+            if (("colref".equals(call.name()) || (d != null && d.elementwise()))
+                    && !call.args().isEmpty())
+            {
+                yield staticallyList(call.args().get(0), rule, depth + 1);
+            }
+            yield d != null && net.cumba.corej.core.expr.typed.ElementTable.resultType(
+                    call.name()) instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf;
+        }
+        default -> false;
+        };
     }
 
 
@@ -422,7 +479,16 @@ public final class ListOperandLevel
         if (LIST_SET_FUNCTIONS.contains(c.name()) || BROADCAST_SET_FUNCTIONS.contains(c.name()))
         {
             List<Expr> operands = new ArrayList<>(c.args());
-            operands.addAll(c.kwargs().values());
+            for (Map.Entry<String, Expr> kw : c.kwargs().entrySet())
+            {
+                // T2 fold (review L1-M1): the keys= list of the set predicates holds literal
+                // names (ExprCompiler.keyLiterals: a bare name contributes its text), never an
+                // operand - keys=[DM] reads no row
+                if (!KEYS_PARAMETER.equals(kw.getKey()))
+                {
+                    operands.add(kw.getValue());
+                }
+            }
             for (Expr operand : operands)
             {
                 if (needsCursor(operand, rule))

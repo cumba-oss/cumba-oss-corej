@@ -271,6 +271,42 @@ class NameListBindingTest
     }
 
 
+    /**
+     * T2 fold (review L1-L1): a QUALIFIED member of a name list spliced under domain= - the run
+     * time refuses every spliced qualified name there (GroupSplice.splicedName: a qualified group=
+     * member is judged at load, D-DOMAIN / D-SRC, which a spliced one never reaches) - is refused
+     * at LOAD now, in the sentence's place of the run's ERROR, on stage A's path and on the
+     * loader's seam alike. Without domain= a qualified member stays a column of the one evaluation
+     * table.
+     */
+    @Test
+    void aQualifiedMemberSplicedUnderDomainIsALoadError()
+    {
+        for (String member : List.of("DM.USUBJID", "AE.USUBJID", "DM.--SEQ"))
+        {
+            String[] keys =
+            {
+                    "$keys", "[USUBJID, " + member + "]"
+            };
+            for (String check : List.of("record_count(domain=DM, group=$keys) > 0",
+                    "read_value(AESEQ, domain=DM, group=$keys, mode=\"FIRST\") > 0"))
+            {
+                String error = loadError(check, keys);
+                assertTrue(
+                        error.contains("splices the qualified name " + member)
+                                && error.contains("$keys") && error.contains("under domain="),
+                        () -> check + " / " + member + " -> " + error);
+            }
+            Rule checkLess = load(json(null, List.of("USUBJID"), "$keys",
+                    "[USUBJID, " + member + "]", "$v", "record_count(domain=DM, group=$keys)"));
+            String error = String.valueOf(checkLess.getLoadError());
+            assertTrue(error.contains("splices the qualified name " + member), error);
+        }
+        // control: without domain= a qualified member is a column of the evaluation table
+        assertEquals("null", loadError("max(AESEQ, group=$keys) > 0", "$keys", "[DM.USUBJID]"));
+    }
+
+
     @Test
     void aPositionalSpliceSlotReadsTheNameListAsItsKeywordDoes()
     {

@@ -97,6 +97,72 @@ class SharesElementsOperandFormsTest
                 checkless);
     }
 
+
+    /**
+     * T2 fold (review L1-M1): the {@code keys=} list of the set predicates holds literal names
+     * ({@code ExprCompiler.keyLiterals}: a bare name contributes its text), never an operand, so
+     * the SH level judgement reads the positional operands only - {@code keys=[DM]}
+     * (rule-step-by-step 7.3.13) loads and answers again; a per-row positional operand stays
+     * refused.
+     */
+    @Test
+    void theKeysListIsLiteralNamesNotAnOperand()
+    {
+        Rule doc = load("not shares_no_elements_with($datasets, keys=[DM]) and empty(DM.USUBJID)",
+                "$datasets", "dataset_names()");
+        assertNull(doc.getLoadError(), () -> String.valueOf(doc.getLoadError()));
+        String check = "not shares_no_elements_with($datasets, keys=[DM]) and empty(USUBJID)";
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "S1", "", "S3").build();
+        assertEquals(List.of(2L),
+                firedWith(check, ae, inventory(ae, "AE", "DM"), "$datasets", "dataset_names()"),
+                "DM is in the study: the blank USUBJID row fires");
+        assertEquals(List.of(),
+                firedWith(check, ae, inventory(ae, "AE"), "$datasets", "dataset_names()"),
+                "DM is not in the study: nothing fires");
+        assertNull(load("shares_elements_with($d, keys=[DM, AE])", "$d", "dataset_names()")
+                .getLoadError(), "the positive twin");
+        String perRow = loadError("shares_no_elements_with(upper(FLAG), keys=[DM])");
+        assertTrue(perRow.contains("cannot read the per-row or per-variable operand `upper(FLAG)`"),
+                perRow);
+    }
+
+
+    private static net.cumba.corej.core.exec.DatasetResolver.WithInventory inventory(
+            IDataTable primary, String... names)
+    {
+        java.util.Set<String> all = new java.util.LinkedHashSet<>(List.of(names));
+        return new net.cumba.corej.core.exec.DatasetResolver.WithInventory()
+        {
+
+            @Override
+            public @org.jspecify.annotations.Nullable IDataTable resolve(String name)
+            {
+                return primary.getMetaData().getName().equals(name) ? primary : null;
+            }
+
+
+            @Override
+            public java.util.Set<String> availableDatasets()
+            {
+                return all;
+            }
+        };
+    }
+
+
+    private static List<Long> firedWith(String check, IDataTable table,
+            net.cumba.corej.core.exec.DatasetResolver resolver, String... bindings)
+    {
+        Rule rule = load(check, bindings);
+        assertNull(rule.getLoadError(), () -> check + " -> " + rule.getLoadError());
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, resolver);
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
+                () -> check + " -> " + result.getStatusMessage());
+        List<Long> rows = new ArrayList<>();
+        result.getViolations().forEach(v -> rows.add(v.getRowNumber()));
+        return rows;
+    }
+
     // ---------------------------------------------------------------- plumbing
 
 

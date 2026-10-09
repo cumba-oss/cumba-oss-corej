@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.ComputedVector;
 import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.Vector;
@@ -35,8 +36,48 @@ public final class ReferencedKeyUniqueness
     /** The function name as authored. */
     public static final String NAME = "referenced_key_is_unique";
 
+    /** The position of {@code keys} in the descriptor (dataset, key_variable, keys). */
+    private static final int KEYS_POSITION = 2;
+
     private ReferencedKeyUniqueness()
     {
+    }
+
+
+    /**
+     * The parts of a call that are reads of the evaluated row - every argument but the
+     * {@code keys=} slot (positional 2 or the keyword), whose members name columns of the TARGET
+     * (T2 fold, review L1-M2). {@code parts} are aligned with the call's arguments then its keyword
+     * values, as the level calculi walk them ({@code DomainScan}, {@code StageAChecker}).
+     *
+     * @param <T>
+     *            the part type
+     * @param call
+     *            the call
+     * @param parts
+     *            one part per argument, then one per keyword value
+     * @return the parts without the keys slot
+     */
+    public static <T> List<T> withoutKeys(Expr.Call call, List<T> parts)
+    {
+        List<T> out = new ArrayList<>(parts.size());
+        int i = 0;
+        for (int a = 0; a < call.args().size() && i < parts.size(); a++, i++)
+        {
+            if (a != KEYS_POSITION)
+            {
+                out.add(parts.get(i));
+            }
+        }
+        for (String keyword : call.kwargs().keySet())
+        {
+            if (i < parts.size() && !ReferencedRecordCount.KEYS_PARAMETER.equals(keyword))
+            {
+                out.add(parts.get(i));
+            }
+            i++;
+        }
+        return out;
     }
 
 

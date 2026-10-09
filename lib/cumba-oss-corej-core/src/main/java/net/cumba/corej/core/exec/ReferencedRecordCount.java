@@ -49,10 +49,11 @@ import org.jspecify.annotations.Nullable;
  * ({@link GroupKeyPolicy#textKeyIdentity}), the RELREC / SUPP convention (ruling D2 (c)). The
  * target is indexed once per (dataset member, pointer column, key shape) through the datatable's
  * {@link KeyMatchIndex} (Q9) — memoised for the run in {@link JoinCache.SharedIndexCache}, shared
- * across rules and threads — and probed once per row with no allocation beyond the probe key. The
- * composite key is the components' text joined with {@code NUL}: the index's own
- * {@code CompositeKey} is package-private to the datatable, and the text join is exactly the
- * identity the text-carried joins use.
+ * across rules and threads — and probed once per row. The index keys on a 52-bit hash of the
+ * components' text-join identities (the index's own {@code CompositeKey} is package-private to the
+ * datatable), held as one number part per distinct key — about 24 B where the joined text was about
+ * 88 B (T2 fold, review L2-L5b, memory first) — and every candidate row of a hit is verified
+ * component by component, so a collision never counts a foreign record.
  * </p>
  */
 public final class ReferencedRecordCount
@@ -283,47 +284,139 @@ public final class ReferencedRecordCount
 
     /**
      * One member's index and the key column pairs the probe reads: {@code primaryKeys[i]} on the
-     * evaluated table against the same-named column on the member (folded into the index).
+     * evaluated table against {@code targetKeys[i]}, the same-named column on the member, and the
+     * member's pointer column. The index keys on a HASH of the key text (T2 fold, review L2-L5b),
+     * so every candidate row of a hit is verified against the probe's own components - a hash
+     * collision never counts a foreign record.
      */
-    private static final class Probe
+    static final class Probe
     {
 
         private final KeyMatchIndex index;
 
+        private final IDataTable target;
+
         private final int[] primaryKeys;
+
+        private final int[] targetKeys;
+
+        private final int pointerColumn;
 
         private final boolean numeric;
 
-        Probe(KeyMatchIndex aIndex, int[] aPrimaryKeys, boolean aNumeric)
+        private final int bits;
+
+        /** The probe row's key components, reused across rows (one evaluation, one thread). */
+        private final String[] scratch;
+
+        Probe(KeyMatchIndex aIndex, IDataTable aTarget, int[] aPrimaryKeys, int[] aTargetKeys,
+                int aPointerColumn, boolean aNumeric, int aBits)
         {
             index = aIndex;
+            target = aTarget;
             primaryKeys = aPrimaryKeys;
+            targetKeys = aTargetKeys;
+            pointerColumn = aPointerColumn;
             numeric = aNumeric;
+            bits = aBits;
+            scratch = new String[aPrimaryKeys.length];
         }
 
 
         long count(IDataTable primary, int row, String valueText)
         {
-            StringBuilder key = new StringBuilder();
-            for (int col : primaryKeys)
+            long hash = HASH_SEED;
+            for (int k = 0; k < primaryKeys.length; k++)
             {
-                IDataValue cell = primary.getColumn(col).getDataValue(row);
+                IDataValue cell = primary.getColumn(primaryKeys[k]).getDataValue(row);
                 if (GroupKeyPolicy.FOLD_BLANK_KEYS.isBlankKeyComponent(cell))
                 {
                     return 0; // a blank key component matches nothing
                 }
-                key.append(GroupKeyPolicy.FOLD_BLANK_KEYS.textKeyIdentity(cell)).append(SEPARATOR);
+                scratch[k] = String.valueOf(GroupKeyPolicy.FOLD_BLANK_KEYS.textKeyIdentity(cell));
+                hash = mix(hash, scratch[k]);
             }
             String token = JoinToken.normalize(valueText, numeric);
             if (token == null || token.isEmpty())
             {
                 return 0;
             }
-            key.append(token);
-            int id = index.find(KeyPart.ofIdentity(key.toString()));
-            return id == KeyMatchIndex.NOT_FOUND ? 0 : index.end(id) - index.start(id);
+            int id = index.find(hashPart(mix(hash, token), bits));
+            if (id == KeyMatchIndex.NOT_FOUND)
+            {
+                return 0;
+            }
+            long count = 0;
+            for (int pos = index.start(id); pos < index.end(id); pos++)
+            {
+                if (matches(index.row(pos), token))
+                {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+
+        /** Whether target row {@code r} carries exactly the probe's components and token. */
+        private boolean matches(int r, String token)
+        {
+            for (int k = 0; k < targetKeys.length; k++)
+            {
+                Object identity = GroupKeyPolicy.FOLD_BLANK_KEYS
+                        .textKeyIdentity(target.getColumn(targetKeys[k]).getDataValue(r));
+                if (!scratch[k].equals(String.valueOf(identity)))
+                {
+                    return false;
+                }
+            }
+            return token.equals(JoinToken
+                    .normalize(text(target.getColumn(pointerColumn).getDataValue(r)), numeric));
         }
     }
+
+    /** The seed of the key hash (FNV-1a's offset basis). */
+    private static final long HASH_SEED = 0xcbf29ce484222325L;
+
+    /** FNV-1a's prime. */
+    private static final long HASH_PRIME = 0x100000001b3L;
+
+    /** Mixed in after each component, outside the {@code char} range: (ab, c) is not (a, bc). */
+    private static final long COMPONENT_END = 0x10000L;
+
+    /**
+     * The bits of the key hash an index keys on: 52, so the hash is held exactly by a
+     * {@code double} - the one compact {@link KeyPart} identity the datatable offers
+     * ({@link KeyPart#ofIdentity}: a {@code Double} is a {@code PresentNumber}).
+     */
+    static final int HASH_BITS = 52;
+
+    /** {@code hash} folded with one component's text and its end marker. */
+    private static long mix(long hash, String component)
+    {
+        long h = hash;
+        for (int i = 0; i < component.length(); i++)
+        {
+            h ^= component.charAt(i);
+            h *= HASH_PRIME;
+        }
+        h ^= COMPONENT_END;
+        return h * HASH_PRIME;
+    }
+
+
+    /** The index key of a hash: its top {@code bits} after a final avalanche, as a number part. */
+    private static KeyPart hashPart(long hash, int bits)
+    {
+        long h = hash;
+        h ^= h >>> 33;
+        h *= 0xff51afd7ed558ccdL;
+        h ^= h >>> 33;
+        h *= 0xc4ceb9fe1a85ec53L;
+        h ^= h >>> 33;
+        return KeyPart.ofIdentity((double) (h >>> (Long.SIZE - bits)));
+    }
+
 
     /**
      * The probes of one (dataset, pointer column) pair, one per member that carries the pointer
@@ -359,8 +452,8 @@ public final class ReferencedRecordCount
             }
             int[] primaryKeys = new int[pairs.size()];
             int[] targetKeys = new int[pairs.size()];
-            StringBuilder shape = new StringBuilder(NAME).append(':').append(member.pointerColumn())
-                    .append(':').append(member.numeric());
+            StringBuilder shape = new StringBuilder(NAME).append(":h").append(HASH_BITS).append(':')
+                    .append(member.pointerColumn()).append(':').append(member.numeric());
             for (int i = 0; i < pairs.size(); i++)
             {
                 primaryKeys[i] = pairs.get(i)[0];
@@ -370,22 +463,30 @@ public final class ReferencedRecordCount
             JoinCache.SharedIndexCache cache = ctx.getSharedIndexCache();
             KeyMatchIndex index = cache != null
                     ? cache.getOrBuildPointerIndex(table, shape.toString(),
-                            t -> index(t, member.pointerColumn(), member.numeric(), targetKeys))
-                    : index(table, member.pointerColumn(), member.numeric(), targetKeys);
-            out.add(new Probe(index, primaryKeys, member.numeric()));
+                            t -> index(t, member.pointerColumn(), member.numeric(), targetKeys,
+                                    HASH_BITS))
+                    : index(table, member.pointerColumn(), member.numeric(), targetKeys, HASH_BITS);
+            out.add(new Probe(index, table, primaryKeys, targetKeys, member.pointerColumn(),
+                    member.numeric(), HASH_BITS));
         }
         return out;
     }
 
 
-    /** The index of {@code table} on ({@code keys}, the pointer column), the text-join identity. */
-    private static KeyMatchIndex index(IDataTable table, int pointerColumn, boolean numeric,
-            int[] keys)
+    /**
+     * The index of {@code table} on ({@code keys}, the pointer column), the text-join identity -
+     * keyed on the {@code bits}-bit hash of the key text (T2 fold, review L2-L5b: the text itself,
+     * a {@code String} of every component per distinct key, was ~88 B retained per key against ~24
+     * B for the number part; the probe verifies each candidate row, {@link Probe#matches}).
+     * Package-private with {@code bits} for the collision test.
+     */
+    static KeyMatchIndex index(IDataTable table, int pointerColumn, boolean numeric, int[] keys,
+            int bits)
     {
         int rows = Math.toIntExact(table.getRowCount());
         return KeyMatchIndex.build(rows, row ->
         {
-            StringBuilder key = new StringBuilder();
+            long hash = HASH_SEED;
             for (int col : keys)
             {
                 IDataValue cell = table.getColumn(col).getDataValue(row);
@@ -393,7 +494,8 @@ public final class ReferencedRecordCount
                 {
                     return null;
                 }
-                key.append(GroupKeyPolicy.FOLD_BLANK_KEYS.textKeyIdentity(cell)).append(SEPARATOR);
+                hash = mix(hash,
+                        String.valueOf(GroupKeyPolicy.FOLD_BLANK_KEYS.textKeyIdentity(cell)));
             }
             String token = JoinToken
                     .normalize(text(table.getColumn(pointerColumn).getDataValue(row)), numeric);
@@ -401,7 +503,7 @@ public final class ReferencedRecordCount
             {
                 return null;
             }
-            return KeyPart.ofIdentity(key.append(token).toString());
+            return hashPart(mix(hash, token), bits);
         });
     }
 
