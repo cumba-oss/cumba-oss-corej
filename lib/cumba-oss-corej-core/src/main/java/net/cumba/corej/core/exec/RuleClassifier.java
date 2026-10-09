@@ -992,8 +992,28 @@ public final class RuleClassifier
         // runner collapsed its per-row findings to one
         case Expr.Binary binary when binary.op() == Expr.BinOp.SUBST -> operandText(binary.left(),
                 usages);
+        // Runbook W2 fold (R5 PC-2): arithmetic (`A + B > 3`) reads its operands — the left one's
+        // text, else the right one's (both walked, so a $ or a call inside either contributes its
+        // usage); without this arm a Check whose only operand is arithmetic read signal-free and
+        // the runner collapsed its per-row findings to one. Corpus: 0 carriers (every arithmetic
+        // operand sits beside a column-reading conjunct, the ADaM change rules' CHG != (AVAL -
+        // BASE))
+        case Expr.Binary binary when isArithmetic(binary.op()) ->
+        {
+            String left = operandText(binary.left(), usages);
+            String right = operandText(binary.right(), usages);
+            yield left != null ? left : right;
+        }
         default -> null;
         };
+    }
+
+
+    /** Whether {@code op} is one of the four arithmetic operators. */
+    private static boolean isArithmetic(Expr.BinOp op)
+    {
+        return op == Expr.BinOp.ADD || op == Expr.BinOp.SUB || op == Expr.BinOp.MUL
+                || op == Expr.BinOp.DIV;
     }
 
 
