@@ -81,11 +81,11 @@ import org.jspecify.annotations.Nullable;
  * ⚑ <b>No LLT level</b> (runbook W2 fold, R5 PB-M1 — O11 "build only what is needed now", the
  * owner's memory-first priority): an LLT &rarr; PT level was about three quarters of the section's
  * entries (tens of MB on a release) and no shipped rule reads {@code --LLT}, so it is not written;
- * a {@code --LLT} read takes the bare-name map, exactly as before the section existed
- * ({@code ValueMapDictionary.onHierarchyPath}). ⚠ When a rule comes to read {@code --LLT} the level
- * must be added back, keyed by LLT name and LLT code ({@code llt.asc} field 2 names the PT),
- * because a PT name can also be an LLT name (owner fact) — the bare-name map cannot tell them
- * apart.
+ * a hierarchy rule reading {@code --LLT} reports SKIPPED with the reason (there is no bare-name
+ * fallback for MedDRA, {@code ValueMapDictionary.onHierarchyPath}). ⚠ When a rule comes to read
+ * {@code --LLT} the level must be added back, keyed by LLT name and LLT code ({@code llt.asc} field
+ * 2 names the PT), because a PT name can also be an LLT name (owner fact) — the bare-name map
+ * cannot tell them apart.
  * </p>
  *
  * <p>

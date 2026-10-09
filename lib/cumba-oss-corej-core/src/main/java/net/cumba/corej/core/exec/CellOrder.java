@@ -49,10 +49,10 @@ import org.jspecify.annotations.Nullable;
  * {@code ScalarSemantics.compareIso} truncates to the shorter precision ({@code 2020-01-15} equals
  * both {@code 2020-01-15T08:00} and {@code T10:00}, not transitive), and the hull comparison of
  * {@code IsoDateComparison} leaves a partial against a complete value unordered. Under such a
- * comparator {@code TimSort} throws <i>"Comparison method violates its general contract"</i> on a
- * group of 32 rows or more. Here every cell of a key falls in exactly one class, the classes are
- * ordered, and inside a class the order is lexicographic over a tuple that ends in the cell's own
- * text — so two cells compare equal only when they are the same text.
+ * comparator the JDK's stable sort throws <i>"Comparison method violates its general contract"</i>
+ * on a group of 32 rows or more. Here every cell of a key falls in exactly one class, the classes
+ * are ordered, and inside a class the order is lexicographic over a tuple that ends in the cell's
+ * own text — so two cells compare equal only when they are the same text.
  * </p>
  *
  * <p>
