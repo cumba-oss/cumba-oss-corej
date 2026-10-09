@@ -37,13 +37,16 @@ import org.jspecify.annotations.Nullable;
  * behave as there. Without {@code group=} it is one dataset-level list in that order.
  *
  * <p>
- * The order is {@link SortKeys#sortRows}' — {@link CellOrder} per key, each key classified over its
- * cells (owner O22: a numeric key numerically, any other ISO cells by (lower bound, upper bound,
- * text) with a four-digit cell a year, then text; the blank, a missing last; a total order),
- * {@code desc} reversing it, a tie keeping file order (stable), no {@code by=} file order. An
- * element is a present cell's text (a numeric cell its canonical text, as {@code distinct} lists
- * it), a missing cell its {@link net.cumba.corej.core.expr.eval.Primitives.MissingMember} (D81, as
- * {@code colref(list)} keeps it). The list is read by {@code is_prefix_of}, {@code is_increasing},
+ * The order is {@link SortKeys#sortRowsPlacingNulls}' — {@code is_sorted_by}'s order (runbook W2
+ * fold, R5 PC-1; O16 "nulls= and direction honoured" in both readers): {@link CellOrder} per key,
+ * each key classified over its cells (owner O22: a numeric key numerically, any other ISO cells by
+ * (lower bound, upper bound, text) with a four-digit cell a year, then text; a total order),
+ * {@code desc} reversing it; a blank or missing key cell placed by the key's {@code nulls=} — FIRST
+ * unless {@code nulls="last"}, under {@code desc} too (W2-D3), two of them tied; a tie keeping file
+ * order (stable), no {@code by=} file order. An element is a present cell's text (a numeric cell
+ * its canonical text, as {@code distinct} lists it), a missing cell its
+ * {@link net.cumba.corej.core.expr.eval.Primitives.MissingMember} (D81, as {@code colref(list)}
+ * keeps it). The list is read by {@code is_prefix_of}, {@code is_increasing},
  * {@code collapse_runs}, {@code count} and the membership operators.
  * </p>
  */
@@ -253,8 +256,9 @@ public final class Sequence
         List<SortKeys.ResolvedKey> out = new ArrayList<>(resolved.size());
         for (SortKeys.ResolvedKey key : resolved)
         {
+            // R5 PC-1: the key's nulls= rides along (it used to be dropped here)
             out.add(new SortKeys.ResolvedKey(GroupedAggregate.resolvePrefix(key.column(), ctx),
-                    key.descending()));
+                    key.descending(), key.nulls()));
         }
         return out;
     }
@@ -351,7 +355,7 @@ public final class Sequence
         }
         if (!keys.isEmpty())
         {
-            kept = SortKeys.sortRows(table, keys, kept);
+            kept = SortKeys.sortRowsPlacingNulls(table, keys, kept);
         }
         List<Object> out = new ArrayList<>(kept.length);
         for (int r : kept)

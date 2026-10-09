@@ -619,7 +619,13 @@ class QualifiedNameUniformityTest
             "has_multiple_values_for/within", "has_same_values/name",
             "inconsistent_enumerated_columns/name", "is_inconsistent_across_dataset/name",
             "is_not_unique_set/members", "is_unique_set/members", "is_sorted_by/by",
-            "is_sorted_by/target", "is_sorted_by/within", "present_on_multiple_rows_within/name");
+            "is_sorted_by/target", "is_sorted_by/within", "present_on_multiple_rows_within/name",
+            // sequence's sort key places a blank / missing cell FIRST since the W2 fold (R5 PC-1,
+            // is_sorted_by's placement): the unmatched row's missing J.L now sorts where the
+            // absent default's all-blank tie keeps it, so this fixture's by= answers alike with
+            // and without the join — as is_sorted_by/by above. The placement itself is
+            // SequenceFunctionTest's.
+            "sequence/by");
 
     /**
      * The rows red on C5q. EMPTY since T1 of {@code PLAN-merged-evaluation-table}: the channels

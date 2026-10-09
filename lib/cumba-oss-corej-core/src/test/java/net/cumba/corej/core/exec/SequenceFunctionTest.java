@@ -238,8 +238,35 @@ class SequenceFunctionTest
     }
 
 
+    /**
+     * Runbook W2 fold (R5 PC-1, coordinator — O16 "nulls= and direction honoured" in both readers):
+     * {@code sequence(by=)} places a blank or missing key cell by the key's {@code nulls=} with
+     * {@code is_sorted_by}'s default — FIRST, under {@code asc} and {@code desc} alike (W2-D3), a
+     * blank and a missing tied in file order — instead of after every value reversed by
+     * {@code desc}. S3's SESTDTC is blank; SEDY is missing on rows 5 and 7.
+     */
     @Test
-    void aMissingCellIsKeptAtItsPositionAndSortsLast()
+    void aBlankOrMissingKeyIsPlacedByNullsFirstByDefaultUnderDescToo()
+    {
+        assertEquals(List.of("SCRN", "SCRN", "TRT", "FU", "SCRN", "TRT", "FU"),
+                rows("sequence(ETCD, by=[asc(SESTDTC)])", se()).get(0), "first by default");
+        assertEquals(List.of("SCRN", "FU", "TRT", "SCRN", "FU", "TRT", "SCRN"),
+                rows("sequence(ETCD, by=[desc(SESTDTC)])", se()).get(0), "first under desc");
+        assertEquals(List.of("SCRN", "TRT", "FU", "SCRN", "TRT", "FU", "SCRN"),
+                rows("sequence(ETCD, by=[asc(SESTDTC, nulls=\"last\")])", se()).get(0));
+        assertEquals(List.of("FU", "TRT", "SCRN", "FU", "TRT", "SCRN", "SCRN"),
+                rows("sequence(ETCD, by=[desc(SESTDTC, nulls=\"last\")])", se()).get(0),
+                "last under desc too: the placement is the key's, never the direction's");
+        assertEquals(List.of("FU", "SCRN", "SCRN", "SCRN", "TRT", "TRT", "FU"),
+                rows("sequence(ETCD, by=[asc(SEDY)])", se()).get(0),
+                "two missing cells first, tied in file order");
+        assertEquals(List.of("FU", "SCRN", "SCRN", "SCRN", "TRT", "TRT", "FU"),
+                rows("sequence(ETCD, by=[asc(SEDY, nulls=\"first\")])", se()).get(0));
+    }
+
+
+    @Test
+    void aMissingCellIsKeptAtItsPosition()
     {
         List<List<?>> seq = rows("sequence(SEDY, group=[USUBJID], by=[asc(SESEQ)])", se());
         assertEquals(List.of("1", "10", "32"), seq.get(0), "numeric cells as their canonical text");
@@ -248,7 +275,7 @@ class SequenceFunctionTest
                 "the missing cell keeps its position (D81)");
         assertEquals(List.of("SCRN", "TRT", "FU", "SCRN", "TRT", "FU", "SCRN"),
                 rows("sequence(ETCD, by=[asc(USUBJID), asc(SESTDTC)])", se()).get(0),
-                "a missing / blank key sorts last; a second key breaks ties");
+                "a second key breaks ties");
         Vector ungrouped = ExprCompiler.evaluateValueExpression(
                 CheckExpressionParser.parse("sequence(ETCD, by=[asc(SESTDTC)])"),
                 EvaluationContext.builder().table(se()).build());

@@ -33,12 +33,10 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * Both order by {@link CellOrder}, {@code desc} reversing a key's cell order. {@code is_sorted_by}
- * places a blank or missing key cell by the key's {@code nulls=} — first unless
- * {@code nulls="last"}, under {@code desc} too (runbook W2 SB1, W2-D3; on CellOrder since SB2,
- * {@link #sortRowsPlacingNulls}); {@code sequence} keeps CellOrder's own placement — blank, then
- * missing, after every value, reversed by {@code desc} ({@link #sortRows}) — and does not read
- * {@code nulls=}.
+ * Both order by {@link CellOrder}, {@code desc} reversing a key's cell order, and both place a
+ * blank or missing key cell by the key's {@code nulls=} — first unless {@code nulls="last"}, under
+ * {@code desc} too ({@link #sortRowsPlacingNulls}; runbook W2 SB1, W2-D3 for {@code is_sorted_by},
+ * the W2 fold's R5 PC-1 for {@code sequence}, O16: "nulls= and direction honoured" in both).
  * </p>
  */
 public final class SortKeys
@@ -443,29 +441,12 @@ public final class SortKeys
     /**
      * The rows of {@code table} in the order of {@code keys} — {@link CellOrder} per key, each key
      * classified over its cells in these rows (owner O22), {@code desc} reversing it, an absent key
-     * column ordering nothing (EC-44), ties kept in the order given (a stable sort: file order). ⭐
-     * Each key is decorated ONCE ({@link CellOrder#key}) and an {@code int[]} of positions is
-     * merge-sorted over the decorated arrays, so no comparison re-reads a cell (R5 A-M2).
-     *
-     * @param table
-     *            the table whose rows are ordered
-     * @param keys
-     *            the resolved keys
-     * @param rows
-     *            the row indices to order (not modified)
-     * @return the row indices in key order
-     */
-    public static int[] sortRows(IDataTable table, List<ResolvedKey> keys, int[] rows)
-    {
-        return sort(table, keys, rows, false);
-    }
-
-
-    /**
-     * {@link #sortRows} with the blank and missing cells of each key placed by its {@code nulls=}
-     * (runbook W2 SB2, the order of {@code is_sorted_by}): first unless {@code nulls="last"},
-     * whatever the key's direction, two of them tied (file order); every other cell by
-     * {@link CellOrder}, {@code desc} reversing it.
+     * column ordering nothing (EC-44), ties kept in the order given (a stable sort: file order) —
+     * with the blank and missing cells of each key placed by its {@code nulls=}: first unless
+     * {@code nulls="last"}, whatever the key's direction (W2-D3), two of them tied (file order).
+     * The order of {@code is_sorted_by} (runbook W2 SB1 / SB2) and of {@code sequence} (W2 fold, R5
+     * PC-1). ⭐ Each key is decorated ONCE ({@link CellOrder#key}) and an {@code int[]} of positions
+     * is merge-sorted over the decorated arrays, so no comparison re-reads a cell (R5 A-M2).
      *
      * @param table
      *            the table whose rows are ordered
@@ -477,12 +458,11 @@ public final class SortKeys
      */
     public static int[] sortRowsPlacingNulls(IDataTable table, List<ResolvedKey> keys, int[] rows)
     {
-        return sort(table, keys, rows, true);
+        return sort(table, keys, rows);
     }
 
 
-    private static int[] sort(IDataTable table, List<ResolvedKey> keys, int[] rows,
-            boolean placeNulls)
+    private static int[] sort(IDataTable table, List<ResolvedKey> keys, int[] rows)
     {
         DataTableMeta meta = table.getMetaData();
         List<CellOrder.Key> decorated = new ArrayList<>(keys.size());
@@ -523,19 +503,16 @@ public final class SortKeys
             {
                 for (int k = 0; k < width; k++)
                 {
-                    if (placeNulls)
+                    boolean na = byKey[k].blankOrMissing(a);
+                    boolean nb = byKey[k].blankOrMissing(b);
+                    if (na || nb)
                     {
-                        boolean na = byKey[k].blankOrMissing(a);
-                        boolean nb = byKey[k].blankOrMissing(b);
-                        if (na || nb)
+                        if (na && nb)
                         {
-                            if (na && nb)
-                            {
-                                continue;
-                            }
-                            // the placement is the key's, never the direction's (W2-D3)
-                            return na == nullsLast[k] ? 1 : -1;
+                            continue;
                         }
+                        // the placement is the key's, never the direction's (W2-D3)
+                        return na == nullsLast[k] ? 1 : -1;
                     }
                     // desc reverses the cell order by swapping the operands (never by negation)
                     int c = reversed[k] ? byKey[k].compare(b, a) : byKey[k].compare(a, b);
