@@ -1160,9 +1160,23 @@ public final class RuleClassifier
      * {@code reverseToOperand} first, so the authoritative table stays in charge wherever it
      * applies.
      * </p>
+     *
+     * <p>
+     * ⚑ <b>A level-less call is named at {@code DATA}</b> (runbook W3 MA-r2,
+     * {@code PLAN-metadata-accessor-default-level} P1 and its §8 fallback). The classifier reads
+     * the rule's raw Check ({@code rule.checkConditions()}), not the load-time canonicalised tree,
+     * so the default the loader fills in ({@code ds_name()} → {@code ds_name("DATA")},
+     * {@code var_label("AETERM")} → {@code var_label("AETERM", "DATA")}) is filled here too, by the
+     * same {@link MetadataOperandMapping#canonicalizeMetadataOperands}, before the level is read.
+     * Without it {@code ds_name()} named no level, read as an unknown per-record column, and 31
+     * dataset-level corpus rules derived {@code Record} once the corpus stopped writing
+     * {@code "DATA"}.
+     * </p>
      */
-    private static @Nullable String accessorOperand(Expr.Call call)
+    private static @Nullable String accessorOperand(Expr.Call raw)
     {
+        Expr.Call call = MetadataAttribute.fromFunction(raw.name()) == null ? raw
+                : (Expr.Call) MetadataOperandMapping.canonicalizeMetadataOperands(raw);
         // The two per-record built-ins render as bare zero-arg calls rather than var_* accessors:
         // `variable_name` -> varname() and `variable_value` -> value(). MetadataOperandMapping
         // special-cases both on the way out, so they need naming on the way back.

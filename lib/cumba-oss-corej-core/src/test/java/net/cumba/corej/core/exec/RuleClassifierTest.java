@@ -723,4 +723,55 @@ class RuleClassifierTest
                         + " \\\"X\\\"], subtract=[\\\"X\\\"]))\"}}"));
         assertEquals(Sensitivity.RECORD, spliced.value(), spliced.rationale());
     }
+
+    /**
+     * Runbook W3 MA-r2 ({@code PLAN-metadata-accessor-default-level} P1 and its §8 fallback): the
+     * classifier reads the rule's <b>raw</b> Check ({@code rule.checkConditions()}), not the
+     * load-time canonicalised tree, so a level-less accessor call must be named at the {@code DATA}
+     * level exactly as the loader fills it — else {@code ds_name()} reads as an unknown per-record
+     * column and a dataset-level rule derives {@code Record} (31 corpus rules moved when the corpus
+     * dropped its written {@code "DATA"}). Each short form must derive what its written twin
+     * derives, value and rationale alike.
+     */
+    @Nested
+    class DefaultLevelAccessors
+    {
+
+        private RuleClassifier.Derived<Sensitivity> derive(String expression)
+        {
+            return RuleClassifier
+                    .deriveSensitivity(rule("{\"Check\":{\"expression\":\"" + expression + "\"}}"));
+        }
+
+
+        private void assertSameAsWritten(String shortForm, String written)
+        {
+            RuleClassifier.Derived<Sensitivity> s = derive(shortForm);
+            RuleClassifier.Derived<Sensitivity> w = derive(written);
+            assertEquals(w.value(), s.value(), shortForm + " vs " + written);
+            assertEquals(w.rationale(), s.rationale(), shortForm + " vs " + written);
+        }
+
+
+        @Test
+        void aLevelLessDatasetAccessorIsADatasetFact()
+        {
+            assertEquals(Sensitivity.DATASET, derive("prefix(ds_name(), 2) != DOMAIN").value(),
+                    "ds_name() is the dataset name at DATA — one verdict per dataset");
+            assertSameAsWritten("prefix(ds_name(), 2) != DOMAIN",
+                    "prefix(ds_name(\\\"DATA\\\"), 2) != DOMAIN");
+            assertSameAsWritten("ds_label() != \\\"x\\\"", "ds_label(\\\"DATA\\\") != \\\"x\\\"");
+        }
+
+
+        @Test
+        void aLevelLessVariableAccessorIsVariableMetadata()
+        {
+            assertSameAsWritten("len(var_label()) > 40", "len(var_label(\\\"DATA\\\")) > 40");
+            assertSameAsWritten("var_type() != \\\"Char\\\"",
+                    "var_type(\\\"DATA\\\") != \\\"Char\\\"");
+            assertSameAsWritten("len(var_label(\\\"AETERM\\\")) > 40",
+                    "len(var_label(\\\"AETERM\\\", \\\"DATA\\\")) > 40");
+        }
+    }
 }
