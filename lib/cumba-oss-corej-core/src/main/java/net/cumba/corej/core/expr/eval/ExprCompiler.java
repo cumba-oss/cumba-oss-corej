@@ -7061,7 +7061,25 @@ public final class ExprCompiler
                     // duration(X) (runbook W1b DO): interpretive like date()/time() — the carrier
                     // is the ISO text verbatim; the D55 observe is a date's (a SAS numeric day
                     // count), not a duration's, so the plan is the plain identity
-                    yield inner;
+                    Expr operand = c.args().get(0);
+                    if (operand instanceof Expr.Lit || (operand instanceof Expr.Ref ref
+                            && ref.kind() == OperandKind.COLUMN))
+                    {
+                        yield inner; // one value per row by shape: nothing to guard
+                    }
+                    // T2 fold (review L2-L5a, coordinator O11): duration is NOT element-wise - a
+                    // list whose type the load could not see is the rule's ERROR, never its text
+                    // compared per row (which made != fire on every row)
+                    yield run ->
+                    {
+                        Vector v = inner.eval(run);
+                        if (ListArgument.holdsList(v, run.rowCount()))
+                        {
+                            throw new RuleDefinitionException(
+                                    ListArgument.notElementwise(DURATION, "x"));
+                        }
+                        return v;
+                    };
                 }
                 String context = conversion + "()";
                 yield run ->

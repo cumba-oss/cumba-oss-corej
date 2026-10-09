@@ -394,6 +394,45 @@ public final class SortKeys
     private static final java.util.Set<String> KEYWORD_ONLY_READERS = java.util.Set
             .of("empty_within_except_last_row", "has_next_corresponding_record");
 
+    /** The three single-key readers (O17: exactly one ascending key, a pure rename). */
+    private static final List<String> SINGLE_KEY_READERS = List.of("empty_within_except_last_row",
+            "has_next_corresponding_record", "is_last_in_group");
+
+    /** The reader whose several keys are refused positionally (T2 fold, review L2-L3). */
+    private static final String IS_SORTED_BY = "is_sorted_by";
+
+    /**
+     * The sort-key descriptor surface for the language listing ({@code RuleLanguage}'s
+     * {@code sort-keys:} section, T2 fold review L4-LOW-1): the descriptors and their keyword, a
+     * bare column's direction, the {@code nulls=} vocabulary, the readers that take {@code by=} by
+     * keyword only and the single-key readers - derived from this class's own rosters.
+     *
+     * @return the lines, in a fixed order
+     */
+    public static List<String> surfaceLines()
+    {
+        List<String> descriptors = new ArrayList<>();
+        for (String d : DESCRIPTORS)
+        {
+            descriptors.add(d + "(column, " + NULLS_PARAMETER + "=?)");
+        }
+        List<String> nulls = new ArrayList<>();
+        for (Nulls n : Nulls.values())
+        {
+            nulls.add(n.name().toLowerCase(java.util.Locale.ROOT));
+        }
+        java.util.Set<String> keywordOnly = new java.util.TreeSet<>(KEYWORD_ONLY_READERS);
+        keywordOnly.add(IS_SORTED_BY);
+        return List.of("descriptors: " + String.join(",", descriptors),
+                "bare-column: " + DESCRIPTORS.get(0),
+                NULLS_PARAMETER + ": " + String.join(",", nulls)
+                        + " (static string literal; default "
+                        + Nulls.FIRST.name().toLowerCase(java.util.Locale.ROOT) + ")",
+                "keyword-only: " + String.join(",", keywordOnly),
+                "single-key: " + String.join(",", SINGLE_KEY_READERS) + " (one ascending key)");
+    }
+
+
     /**
      * The load-time seam of the three single-key readers ({@code RulePackageLoader}'s tailored
      * readers, O17): a retired {@code ordering=} refused first ({@link #rejectRetiredOrdering}),
@@ -427,8 +466,10 @@ public final class SortKeys
     /**
      * Runbook W4 SB3: the load-time seam of {@code is_sorted_by} ({@code RulePackageLoader}'s
      * tailored readers) — its {@code by=} read by {@link #read}, so an unknown {@code nulls=} value
-     * or descriptor keyword is the rule's load error on every path. (The compiler's own refusal
-     * only degrades an inline Check, and stage A never walks a Check-less rule.)
+     * or descriptor keyword is the rule's load error on every path; a POSITIONAL key is refused
+     * naming the keyword (T2 fold, review L2-L3: the compiler reads {@code by=} by keyword only).
+     * (The compiler's own refusal only degrades an inline Check, and stage A never walks a
+     * Check-less rule.)
      *
      * @param call
      *            the authored call
@@ -437,7 +478,17 @@ public final class SortKeys
      */
     public static void checkSortKeyCall(Expr.Call call)
     {
-        read(call.name(), boundBy(call));
+        Expr by = boundBy(call);
+        if (by != null && !call.kwargs().containsKey(PARAMETER))
+        {
+            // T2 fold (review L2-L3, like the W4 fold's P1-M1): the compiler arm reads by= from
+            // the keywords only (ExprCompiler.compileTargetIsNotSortedBy), so a positional key
+            // bound here and was lost there - the rule degraded
+            throw new ExpressionException(
+                    call.name() + " takes its sort keys by keyword \u2014 write " + PARAMETER + "="
+                            + ExpressionPrinter.print(by));
+        }
+        read(call.name(), by);
     }
 
 
@@ -553,13 +604,10 @@ public final class SortKeys
             int idx = meta.getColumnIndex(key.column());
             if (idx >= 0)
             {
+                // O24: one packed long per row, read straight from the column (a tie re-reads
+                // the cell's text) - no list of values, no retained string copy
                 IDataTableColumn column = table.getColumn(idx);
-                List<Object> values = new ArrayList<>(rows.length);
-                for (int row : rows)
-                {
-                    values.add(CellOrder.valueOf(column.getDataValue(row)));
-                }
-                decorated.add(CellOrder.key(values));
+                decorated.add(CellOrder.key(column, rows));
                 present.add(key);
             }
         }

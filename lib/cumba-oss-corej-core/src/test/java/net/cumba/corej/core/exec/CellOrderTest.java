@@ -176,6 +176,100 @@ class CellOrderTest
     }
 
 
+    /**
+     * Owner O24 (2026-10-09, supersedes O23's (lower bound, text)): ISO values compare PART BY PART
+     * - year, month, day, hour, minute, second, millisecond - a MISSING part below every present
+     * value of that part; a UTC offset normalises first (where there is a time to shift); ties fall
+     * back to the text.
+     */
+    @Test
+    void isoValuesCompareByPartsAMissingPartLowest()
+    {
+        assertTrue(compare("2012---15", "2012-01-01") < 0, "a masked month is lowest");
+        assertTrue(compare("2012-01-01", "2012-12-31") < 0);
+        assertTrue(compare("2012", "2012---15") < 0, "a missing month and day before a day");
+        assertTrue(compare("2012-06--", "2012-06-01") < 0, "a masked day is lowest");
+        String[] chain =
+        {
+                "2015", "2015-01", "2015-01-01", "2015-01-01T08", "2015-01-01T08:30",
+                "2015-01-01T08:30:00", "2015-01-01T08:30:00.5"
+        };
+        for (int i = 1; i < chain.length; i++)
+        {
+            assertTrue(compare(chain[i - 1], chain[i]) < 0, chain[i - 1] + " < " + chain[i]);
+        }
+        for (String dated : List.of("0001-01-01", "2012", "2012---15", "2099-12-31T23:59:59"))
+        {
+            assertTrue(compare("----06-15", dated) < 0, "a masked year before " + dated);
+        }
+        assertTrue(compare("--06-15", "----06-16") < 0, "two masked years by month and day");
+        assertTrue(compare("2020-01-15T10:00+02:00", "2020-01-15T09:00Z") < 0,
+                "UTC first: 08:00Z before 09:00Z");
+        assertTrue(compare("2020-01-15T00:30+01:00", "2020-01-14T23:45") < 0,
+                "the shift crosses the day: 23:30Z on the 14th, before 23:45");
+        assertTrue(compare("2020-01-15+05:00", "2020-01-15") > 0,
+                "a date without a time ignores the offset; equal parts fall back to text");
+        assertTrue(compare("2020-01-15T08:00:00.250", "2020-01-15T08:00:00.3") < 0,
+                "milliseconds compare by value");
+        // the invalid and non-ISO cells stay after every dated cell (O23 #2)
+        for (String unplaceable : List.of("2020-02-30", "2015-UN-UN", "2020-01-15 08:00",
+                "----13-01"))
+        {
+            assertTrue(compare(unplaceable, "2099-12-31T23:59:59") > 0, unplaceable);
+            assertTrue(compare(unplaceable, "----06-15") > 0, unplaceable);
+        }
+    }
+
+
+    /** Owner O24 #2: a whitespace-only cell is blank, placed by nulls= like "". */
+    @Test
+    void aWhitespaceOnlyCellIsBlank()
+    {
+        CellOrder.Key blanks = CellOrder.key(List.of("2020-01-01", "   ", ""));
+        assertTrue(blanks.blankOrMissing(1), "whitespace is blank");
+        assertTrue(blanks.compare(0, 1) < 0);
+    }
+
+
+    /** O24: the 40-cell group plus masked dates stays a total order and TimSort-safe. */
+    @Test
+    void aMaskedDateGroupIsATotalOrder()
+    {
+        List<Object> cells = mixedPrecision();
+        cells.addAll(List.of("----06-15", "--06-15", "2020---01", "2020-01-", "2019-12--",
+                "----01-01", "2020-01-15T08:00:00.123", "2020-01-15T08:00:00.123+00:00", "  ",
+                "2020-01-15T09:00+01:00", "2020-01-15T07:00-01:00", "2020-02-29", "2021-02-29"));
+        assertTotalOrder(cells);
+        Random random = new Random(24L);
+        for (int round = 0; round < 25; round++)
+        {
+            List<Object> shuffled = new ArrayList<>(cells);
+            Collections.shuffle(shuffled, random);
+            CellOrder.Key key = CellOrder.key(shuffled);
+            int[] positions = new int[shuffled.size()];
+            for (int i = 0; i < positions.length; i++)
+            {
+                positions[i] = i;
+            }
+            SortKeys.stableSort(positions, key::compare);
+            for (int i = 1; i < positions.length; i++)
+            {
+                assertTrue(key.compare(positions[i - 1], positions[i]) <= 0);
+            }
+            List<Integer> boxed = new ArrayList<>();
+            for (int i = 0; i < shuffled.size(); i++)
+            {
+                boxed.add(i);
+            }
+            boxed.sort(key::compare); // TimSort: throws on a non-total order
+            for (int i = 0; i < positions.length; i++)
+            {
+                assertEquals(0, key.compare(boxed.get(i), positions[i]), "the two sorts agree");
+            }
+        }
+    }
+
+
     @Test
     void aYearAmongDatesIsAYearAndAnAllNumberKeyIsNumeric()
     {

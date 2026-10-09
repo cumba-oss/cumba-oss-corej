@@ -22,6 +22,9 @@ import org.jspecify.annotations.Nullable;
  * / {@code does_not_contain} / {@code starts_with} / {@code ends_with} is one value
  * ({@link #needle}; the guard runs in {@code Primitives.substring}) — the hint names
  * {@code contains_any} where a list form exists, and says there is none for the affix tests.</li>
+ * <li><b>L2-L5a</b> (T2 fold, coordinator O11): {@code duration} is not element-wise - a list at
+ * its operand is refused ({@link #notElementwise}; stage A types a visible list, the guard in
+ * {@code ExprCompiler}'s conversion arm covers the rest).</li>
  * </ul>
  * <p>
  * The guard is an inline {@code instanceof Collection} at each reader (the needle in
@@ -97,6 +100,23 @@ public final class ListArgument
         return "argument '" + parameter + "' of '" + function + "' takes one value per row, not "
                 + described + " - a list is lifted only at '" + lifted
                 + "' (parameter 0, element by element)";
+    }
+
+
+    /**
+     * A list at the one parameter of a function that is NOT element-wise (T2 fold, review L2-L5a:
+     * {@code duration}, coordinator O11 - D6's "joins E5" was never built).
+     *
+     * @param function
+     *            the function
+     * @param parameter
+     *            its parameter
+     * @return the sentence
+     */
+    public static String notElementwise(String function, String parameter)
+    {
+        return "argument '" + parameter + "' of '" + function + "' takes one value per row, not a"
+                + " list - " + function + " is not element-wise: read one element of the list";
     }
 
 

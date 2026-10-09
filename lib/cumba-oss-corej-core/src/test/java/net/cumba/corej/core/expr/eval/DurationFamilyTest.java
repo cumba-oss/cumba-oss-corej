@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.RuleLanguage;
 import net.cumba.corej.core.RulePackageLoader;
+import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.RealTables;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
@@ -303,6 +304,45 @@ class DurationFamilyTest
         assertTrue(surface.contains("\nduration(x:unknown) kind=value\n"), surface);
         assertTrue(surface.contains("\nduration_between(start:unknown, end:unknown) kind=value\n"),
                 surface);
+    }
+
+
+    /**
+     * T2 fold (review L2-L5a, coordinator O11): duration stays NOT element-wise (D6's "joins E5"
+     * was never built; 0 carriers). A list typed at load is stage A's refusal; one the load cannot
+     * type - a program evaluated outside a loaded rule, an operand whose type is unknown - reaching
+     * duration(...) is the rule's ERROR (ListArgument), never the list's text compared per row
+     * (which made != fire on every row).
+     */
+    @Test
+    void aListReachingDurationIsTheRulesErrorNotItsText()
+    {
+        for (String[] form : List.of(new String[]
+        {
+                "STINT != duration($l)", "$l", "colref([\"STINT\", \"ENINT\"])"
+        }, new String[]
+        {
+                "STINT != $d", "$d", "duration(colref([\"STINT\", \"ENINT\"]))"
+        }))
+        {
+            String error = String.valueOf(load(form[0], form[1], form[2]).getLoadError());
+            assertTrue(error.contains("duration() converts a string, not list"), error);
+        }
+        EvaluationContext ctx = EvaluationContext.builder().table(intervals()).build();
+        for (String check : List.of("STINT != duration(colref([\"STINT\", \"ENINT\"]))",
+                "duration(colref([\"STINT\", \"ENINT\"])) != STINT"))
+        {
+            RuntimeException thrown = org.junit.jupiter.api.Assertions.assertThrows(
+                    RuntimeException.class,
+                    () -> NativeExprEvaluator.evaluate(
+                            net.cumba.corej.core.expr.CheckExpressionParser.parse(check), ctx),
+                    check);
+            assertTrue(String.valueOf(thrown.getMessage()).contains("'duration'"),
+                    String.valueOf(thrown.getMessage()));
+        }
+        // control: a one-value operand still compares by its hull
+        assertEquals(List.of(), firedWith(intervals(), "not empty(STINT) and STINT != duration($s)",
+                "$s", "STINT"));
     }
 
     // ---------------------------------------------------------------- plumbing

@@ -211,7 +211,8 @@ class SortKeysTest
             String both = loadError(pair[0].replace("by=AESEQ", "by=AESEQ, ordering=AESEQ"));
             assertTrue(both.contains("ordering= is retired"), both);
             String neither = loadError(pair[0].replace("by=AESEQ, ", "").replace(", by=AESEQ", ""));
-            assertTrue(neither.contains("by="), f + ": " + neither);
+            // T2 fold (review L4-MED-1): by is declared required, as ordering= was
+            assertTrue(neither.contains("requires argument 'by'"), f + ": " + neither);
         }
     }
 
@@ -285,6 +286,27 @@ class SortKeysTest
                     String.valueOf(checkless.getLoadError()));
         }
         assertEquals("null", loadError("empty_within_except_last_row(AEENDTC, USUBJID, by=AESEQ)"));
+    }
+
+
+    /**
+     * T2 fold (review L2-L3, like the W4 fold's P1-M1): a POSITIONAL by on is_sorted_by bound at
+     * the loader's seam while its compiler arm reads by= from the keywords only, so the rule
+     * degraded - now the load error naming the keyword on every path. 0 corpus carriers.
+     */
+    @Test
+    void aPositionalKeyOfIsSortedByIsALoadErrorNamingTheKeyword()
+    {
+        String hint = "is_sorted_by takes its sort keys by keyword \u2014 write by=[SESTDTC]";
+        String inline = loadError("not is_sorted_by(SESEQ, [SESTDTC], within=USUBJID)");
+        assertTrue(inline.contains(hint), inline);
+        String bound = loadError("$b", "$b", "is_sorted_by(SESEQ, [SESTDTC], within=USUBJID)");
+        assertTrue(bound.contains(hint), bound);
+        Rule checkless = SequenceFunctionTest.loadCheckless("$b",
+                "is_sorted_by(SESEQ, [SESTDTC], within=USUBJID)");
+        assertTrue(String.valueOf(checkless.getLoadError()).contains(hint),
+                String.valueOf(checkless.getLoadError()));
+        assertEquals("null", loadError("not is_sorted_by(SESEQ, by=[SESTDTC], within=USUBJID)"));
     }
 
 
@@ -378,6 +400,12 @@ class SortKeysTest
         {
             assertTrue(line.contains("by:"), line);
             assertTrue(!line.contains("ordering:"), "W4 OR2: ordering= is retired - " + line);
+            if (!line.startsWith("sequence("))
+            {
+                // T2 fold (review L4-MED-1, O17 "pure rename"): the key was required before
+                assertTrue(line.matches(".*[(, ]by:[a-z<>-]+[,)].*"),
+                        "by is REQUIRED on the single-key readers - " + line);
+            }
         }
         Rule loads = SequenceFunctionTest.load(
                 "count(sequence(ETCD, group=[USUBJID], by=[asc(SESTDTC)], keep_missings=false)) > 0");

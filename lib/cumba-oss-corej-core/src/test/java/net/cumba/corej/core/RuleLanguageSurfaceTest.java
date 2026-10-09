@@ -138,9 +138,10 @@ class RuleLanguageSurfaceTest
         assertTrue(surface.contains("\nkeywords: and,false,in,not,or,true (any letter case)\n"),
                 surface);
         // runbook W1b VA: the value-addressed readers and the qualifiers flag
+        // T2 fold (review L1-M2): a declared row reader - its count is per pointer row
         assertTrue(surface.contains("\nreferenced_record_count(dataset:unknown@name,"
                 + " value:unknown, key_variable:unknown, keys:list<column-reference>?)"
-                + " kind=value\n"), surface);
+                + " kind=value perRow\n"), surface);
         assertTrue(surface.contains("\nreferenced_dataset_variables(name:column-reference,"
                 + " qualifiers:boolean?) kind=value\n"), surface);
         // W1a fold (R5 review A-L1): the plan-build parameters, literal by construction
@@ -192,6 +193,26 @@ class RuleLanguageSurfaceTest
         // functions stay first: the authoring tools read the listing from the top
         assertTrue(surface.indexOf("\naccessors:\n") > surface.indexOf("functions:\n"));
         assertTrue(surface.indexOf("\nkeys:\n") > surface.indexOf("\nkeyed-results:\n"));
+    }
+
+
+    /** T2 fold (review L4-LOW-1): the sort-key descriptor surface has its own section. */
+    @Test
+    void theSurfaceListsTheSortKeyDescriptors()
+    {
+        String surface = RuleLanguage.surface();
+        assertTrue(surface.contains("\nsort-keys:\n"), surface);
+        assertTrue(surface.contains("\ndescriptors: asc(column, nulls=?),desc(column, nulls=?)\n"),
+                surface);
+        assertTrue(surface.contains("\nbare-column: asc\n"), surface);
+        assertTrue(surface.contains("\nnulls: first,last (static string literal; default first)\n"),
+                surface);
+        assertTrue(surface.contains("\nkeyword-only: empty_within_except_last_row,"
+                + "has_next_corresponding_record,is_sorted_by\n"), surface);
+        assertTrue(
+                surface.contains("\nsingle-key: empty_within_except_last_row,"
+                        + "has_next_corresponding_record,is_last_in_group (one ascending key)\n"),
+                surface);
     }
 
 

@@ -223,7 +223,7 @@ public final class CompilerDispatchedCalls implements FunctionProvider
         // the bare by=AESEQ (SortKeys.single enforces the one ascending key).
         // has_mixed_emptiness_within_group keeps its subject column as `name`.
         bool(fns, "is_last_in_group",
-                Parameter.optional(net.cumba.corej.core.exec.SortKeys.PARAMETER,
+                Parameter.required(net.cumba.corej.core.exec.SortKeys.PARAMETER,
                         new ListOf(Primitive.COLUMN_REFERENCE)),
                 Parameter.required("group", new ListOf(Primitive.COLUMN_REFERENCE)),
                 keepMissings());
@@ -406,12 +406,19 @@ public final class CompilerDispatchedCalls implements FunctionProvider
         // splice slot, GroupSplice.SPLICE_SLOTS; `dataset` a name slot — a string names the
         // dataset; `key_variable` a value whose templates the bind-time resolver keeps,
         // ExprPrefixResolver.keepsTemplate — Q3)
-        value(fns, net.cumba.corej.core.exec.ReferencedRecordCount.NAME,
-                req(net.cumba.corej.core.exec.ReferencedRecordCount.DATASET_PARAMETER).asNameSlot(),
-                req(net.cumba.corej.core.exec.ReferencedRecordCount.VALUE_PARAMETER),
-                req(net.cumba.corej.core.exec.ReferencedRecordCount.KEY_VARIABLE_PARAMETER),
-                Parameter.optional(net.cumba.corej.core.exec.ReferencedRecordCount.KEYS_PARAMETER,
-                        new ListOf(Primitive.COLUMN_REFERENCE)));
+        // T2 fold (review L1-M2, coordinator "taken + why"): the count is PER POINTER ROW - its
+        // keys= are this row's values - so it is a declared row reader whatever its operands'
+        // level (`keys=$k` beside dataset-level operands used to read DATASET, and a binding
+        // folded to row 0's count); referenced_key_is_unique is not (DomainScan's arm)
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.ReferencedRecordCount.NAME,
+                List.of(req(net.cumba.corej.core.exec.ReferencedRecordCount.DATASET_PARAMETER)
+                        .asNameSlot(),
+                        req(net.cumba.corej.core.exec.ReferencedRecordCount.VALUE_PARAMETER),
+                        req(net.cumba.corej.core.exec.ReferencedRecordCount.KEY_VARIABLE_PARAMETER),
+                        Parameter.optional(
+                                net.cumba.corej.core.exec.ReferencedRecordCount.KEYS_PARAMETER,
+                                new ListOf(Primitive.COLUMN_REFERENCE))),
+                FunctionKind.VALUE, null).readingRows());
         value(fns, net.cumba.corej.core.exec.ReferencedKeyUniqueness.NAME,
                 req(net.cumba.corej.core.exec.ReferencedRecordCount.DATASET_PARAMETER).asNameSlot(),
                 req(net.cumba.corej.core.exec.ReferencedRecordCount.KEY_VARIABLE_PARAMETER),
@@ -471,13 +478,16 @@ public final class CompilerDispatchedCalls implements FunctionProvider
     /**
      * {@code by=} on {@code empty_within_except_last_row} and {@code has_next_corresponding_record}
      * (O17): one column, or {@code [asc(COL)]} — declared where the retired {@code ordering=} stood
-     * (runbook W4 OR2, a rename in place). Their compiler arms read it BY KEYWORD only, so a
-     * positional key is refused at load naming {@code by=} ({@code SortKeys.checkSingleKeyCall}, W4
-     * fold R5 P1-M1) — it bound here and was lost there, degrading the rule.
+     * (runbook W4 OR2, a rename in place), required as it was (T2 fold, review L4-MED-1). Their
+     * compiler arms read it BY KEYWORD only, so a positional key is refused at load naming
+     * {@code by=} ({@code SortKeys.checkSingleKeyCall}, W4 fold R5 P1-M1) — it bound here and was
+     * lost there, degrading the rule.
      */
     private static Parameter by()
     {
-        return Parameter.optional(net.cumba.corej.core.exec.SortKeys.PARAMETER, Unknown.UNKNOWN);
+        // T2 fold (review L4-MED-1, O17 "pure rename"): the retired ordering= was REQUIRED, so is
+        // by= - declared so, the binder refuses a call without it on every path
+        return Parameter.required(net.cumba.corej.core.exec.SortKeys.PARAMETER, Unknown.UNKNOWN);
     }
 
 

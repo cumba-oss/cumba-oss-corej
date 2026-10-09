@@ -120,6 +120,38 @@ class IsSortedByCellOrderTest
     }
 
 
+    /**
+     * Owner O24: part by part, a missing part lowest - under desc the whole order reverses, so a
+     * missing part sorts last; a whitespace-only cell is blank and placed by nulls=.
+     */
+    @Test
+    void maskedDatesSortPartByPartAndDescReversesTheWholeOrder()
+    {
+        IDataTable se = RealTableFixture.of("SE").str("USUBJID", "S1", "S1", "S1", "S1", "S1")
+                .dbl("SESEQ", 1.0, 2.0, 3.0, 4.0, 5.0)
+                .str("SESTDTC", "----06-15", "2012", "2012---15", "2012-01-01", "2012-12-31")
+                .build();
+        assertEquals(List.of(), sorted(se, "[SESTDTC]"), "ascending by parts");
+        IDataTable reversed = RealTableFixture.of("SE").str("USUBJID", "S1", "S1", "S1", "S1", "S1")
+                .dbl("SESEQ", 1.0, 2.0, 3.0, 4.0, 5.0)
+                .str("SESTDTC", "2012-12-31", "2012-01-01", "2012---15", "2012", "----06-15")
+                .build();
+        assertEquals(List.of(), sorted(reversed, "[desc(SESTDTC)]"), "desc reverses the order");
+    }
+
+
+    /** Owner O24 #2: a whitespace-only cell is blank, placed by nulls= (first by default). */
+    @Test
+    void aWhitespaceOnlyCellIsBlankPlacedByNulls()
+    {
+        IDataTable blank = RealTableFixture.of("SE").str("USUBJID", "S1", "S1", "S1")
+                .dbl("SESEQ", 1.0, 2.0, 3.0).str("SESTDTC", "  ", "2020-01-01", "2020-01-02")
+                .build();
+        assertEquals(List.of(), sorted(blank, "[SESTDTC]"),
+                "a whitespace-only cell is blank, first by default");
+    }
+
+
     @Test
     void aYearCellSortsAmongDatesAsAYear()
     {

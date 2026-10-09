@@ -1,7 +1,6 @@
 package net.cumba.corej.core.exec;
 
 import java.util.List;
-import net.cumba.corej.core.expr.eval.IsoDateBounds;
 import net.cumba.corej.core.expr.eval.Primitives;
 import net.cumba.corej.core.expr.eval.TypedValue;
 import net.cumba.datatable.values.IDataValue;
@@ -21,23 +20,28 @@ import org.jspecify.annotations.Nullable;
  * <li>a <b>numeric key</b> — every present cell a number (a numeric cell, or a text that parses as
  * a finite number: {@code "10"}, {@code "-0.5"}): by value, then by text ({@code "1"} before
  * {@code "1.0"});</li>
- * <li>any other key — <b>ISO, then text</b>: a cell {@link IsoDateBounds} can position — a
- * four-digit cell read as a year ({@code "2021"} after {@code "2020-06-15"}) — by (lower bound,
- * text), so a partial precedes the complete values it contains, a date precedes its datetimes, an
- * interval follows its start and an offset is applied instant-preserving. ⭐ A value and a finer
- * value starting at the same instant keep text order (owner O23, 2026-10-09): {@code 2015} before
- * {@code 2015-01} before {@code 2015-01-01}, {@code 2020-01-15} before {@code 2020-01-15T00:00} —
- * the upper bound is no tier, so the coarser value is never reordered after its own first instant.
- * Then every other text — a cell no bound places ({@code UNK}, an invalid date such as
- * {@code 2020-02-30}, {@code 2015-UN-UN}, a number in a mixed key) — by text, after every dated
- * cell;</li>
- * <li>then the blank {@code ""}, then a <b>missing</b> — the marker's own order
- * ({@link MissingValue}), so two missings of one kind are equal and two kinds are ordered.</li>
+ * <li>any other key — <b>ISO, then text</b>: a cell this order can place on the calendar — a
+ * complete, partial or masked ISO 8601 date / datetime ({@code 2012---15}, {@code 2012-06--},
+ * {@code ----06-15}), an interval by its start, a four-digit cell read as a year ({@code "2021"}
+ * after {@code "2020-06-15"}) — ⭐ <b>part by part</b> (owner O24, 2026-10-09, superseding O23's
+ * (lower bound, text)): year, month, day, hour, minute, second, millisecond, a <b>missing part
+ * below every present value of that part</b> — {@code 2012} &lt; {@code 2012---15} &lt;
+ * {@code 2012-01-01}; {@code 2015} &lt; {@code 2015-01} &lt; {@code 2015-01-01} &lt;
+ * {@code 2015-01-01T08}; {@code ----06-15} before every dated value. A UTC offset is applied FIRST,
+ * where the value has a time to shift ({@code T10:00+02:00} before {@code T09:00Z}); a date without
+ * a time ignores it. Equal parts fall back to the cell's text. Then every other text — an invalid
+ * date ({@code 2020-02-30}), {@code 2015-UN-UN}, {@code "2020-01-15 08:00"}, {@code UNK}, a number
+ * in a mixed key — by text, after every dated cell (O23 #2);</li>
+ * <li>then the blank — {@code ""} and a whitespace-only cell (O24 #2), placed by {@code nulls=}
+ * where a sort key is read ({@link SortKeys#sortRowsPlacingNulls}) — then a <b>missing</b> — the
+ * marker's own order ({@link MissingValue}), so two missings of one kind are equal and two kinds
+ * are ordered.</li>
  * </ul>
  * <p>
  * Judged cell by cell, {@code "2021"} was a number and sorted before every date of its key. Until
  * O23 the ISO tuple was (lower bound, upper bound, text), which put {@code 2015-01-01} before
- * {@code 2015} and midnight before its day.
+ * {@code 2015}; under O23 it was (lower bound, text), which put {@code 2012---15} after
+ * {@code 2012-01-01} and left a year-masked value unplaced.
  * </p>
  *
  * <p>
@@ -52,30 +56,38 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * ⭐ <b>Decorated once</b> (R5 A-M2; owner priority: performance first): {@link #key} reads each
- * cell's class, number or lower bound ONCE into arrays, so a comparison during the sort is array
- * reads — never the half-dozen bound parses a per-comparison reading cost. {@code is_increasing}'s
- * list-level rule (numeric iff every element is numeric, else text) is {@link #compareNumeric} /
- * {@link #compareText} over the whole list ({@link OrderedLists}).
+ * ⭐ <b>Decorated once, one packed {@code long} per cell</b> (R5 A-M2; owner priority: performance
+ * and memory first — a 10 M-row datetime column with offsets): {@link #key} reads each cell ONCE
+ * into {@code packed[i]} — the class in the top bits, then for an ISO cell its UTC-normalised parts
+ * as (value + 1, 0 = missing): year 15 bits, month 4, day 5, hour 5, minute 6, second 6,
+ * millisecond 10 — so a plain {@code long} comparison is the part-by-part order; a numeric key
+ * keeps one {@code double} per cell beside it. A comparison is array reads; only a tie re-reads the
+ * cell's text from its source (no retained string copy). Memory: 8 B per row (16 B for a numeric
+ * key), plus the caller's 4 B row index. {@code is_increasing}'s list-level rule (numeric iff every
+ * element is numeric, else text) is {@link #compareNumeric} / {@link #compareText} over the whole
+ * list ({@link OrderedLists}).
  * </p>
  */
 public final class CellOrder
 {
 
     /** The class of a number in a numeric key. */
-    private static final byte NUMBER = 0;
+    private static final long NUMBER = 0;
 
-    /** The class of an ISO-positionable cell in a non-numeric key. */
-    private static final byte ISO = 1;
+    /** The class of an ISO-placeable cell in a non-numeric key. */
+    private static final long ISO = 1;
 
     /** The class of any other present text. */
-    private static final byte TEXT = 2;
+    private static final long TEXT = 2;
 
-    /** The class of the blank {@code ""}. */
-    private static final byte BLANK = 3;
+    /** The class of a blank cell: {@code ""} or whitespace only. */
+    private static final long BLANK = 3;
 
     /** The class of a missing. */
-    private static final byte MISSING = 4;
+    private static final long MISSING = 4;
+
+    /** Where the class sits in a packed key: above the 51 bits of ISO parts. */
+    private static final int CLASS_SHIFT = 56;
 
     private CellOrder()
     {
@@ -127,90 +139,91 @@ public final class CellOrder
      */
     public static Key key(List<?> values)
     {
-        int n = values.size();
-        boolean numeric = true;
-        for (int i = 0; i < n && numeric; i++)
-        {
-            Object value = values.get(i);
-            if (!isMissing(value) && !text(value).isEmpty())
-            {
-                numeric = value instanceof Number num ? Double.isFinite(num.doubleValue())
-                        : !Double.isNaN(parse(text(value)));
-            }
-        }
-        byte[] rank = new byte[n];
+        return decorate(values.size(), values::get);
+    }
+
+
+    /**
+     * One sort key read straight from a table column at {@code rows} — each cell read once to
+     * decorate it, and again only to break a tie on its text (no list of values, no string copy
+     * retained).
+     *
+     * @param column
+     *            the key's column
+     * @param rows
+     *            the rows, position {@code i} is row {@code rows[i]} (not copied, not modified)
+     * @return the decorated key
+     */
+    public static Key key(net.cumba.datatable.IDataTableColumn column, int[] rows)
+    {
+        return decorate(rows.length, i -> valueOf(column.getDataValue(rows[i])));
+    }
+
+
+    private static Key decorate(int n, java.util.function.IntFunction<@Nullable Object> valueAt)
+    {
+        long[] packed = new long[n];
         double[] number = new double[n];
-        @Nullable
-        String[] lower = new String[n];
-        String[] text = new String[n];
-        @Nullable
-        MissingValue[] marker = new MissingValue[n];
+        boolean numeric = true;
         for (int i = 0; i < n; i++)
         {
-            Object value = values.get(i);
+            Object value = valueAt.apply(i);
             if (isMissing(value))
             {
-                rank[i] = MISSING;
-                marker[i] = markerOf(value);
-                text[i] = "";
+                packed[i] = MISSING << CLASS_SHIFT; // the marker is read on a tie
                 continue;
             }
             String t = text(value);
-            text[i] = t;
-            if (t.isEmpty())
+            if (t.isBlank())
             {
-                rank[i] = BLANK;
+                packed[i] = BLANK << CLASS_SHIFT;
+                continue;
             }
-            else if (numeric)
+            double d = value instanceof Number num
+                    ? Double.isFinite(num.doubleValue()) ? num.doubleValue() : Double.NaN
+                    : parse(t);
+            number[i] = d;
+            numeric &= !Double.isNaN(d);
+            long parts = IsoParts.pack(t);
+            packed[i] = parts >= 0 ? (ISO << CLASS_SHIFT) | parts : TEXT << CLASS_SHIFT;
+        }
+        if (!numeric)
+        {
+            return new Key(false, packed, null, valueAt);
+        }
+        for (int i = 0; i < n; i++)
+        {
+            if (packed[i] >>> CLASS_SHIFT < BLANK)
             {
-                rank[i] = NUMBER;
-                number[i] = value instanceof Number num ? num.doubleValue() : parse(t);
-            }
-            else
-            {
-                String low = IsoDateBounds.lower(t);
-                if (low != null)
-                {
-                    rank[i] = ISO;
-                    lower[i] = low;
-                }
-                else
-                {
-                    rank[i] = TEXT;
-                }
+                packed[i] = NUMBER << CLASS_SHIFT;
             }
         }
-        return new Key(numeric, rank, number, lower, text, marker);
+        return new Key(true, packed, number, valueAt);
     }
 
     /**
-     * A sort key decorated once ({@link #key}): its classification and, per position, the class,
-     * the number or the ISO lower bound, the text and the missing marker — compared by array reads.
+     * A sort key decorated once ({@link #key}): its classification and, per position, the packed
+     * class and ISO parts, the number of a numeric key — compared by array reads; a tie reads the
+     * two cells' text from the key's source.
      */
     public static final class Key
     {
 
         private final boolean numeric;
 
-        private final byte[] rank;
+        private final long[] packed;
 
-        private final double[] number;
+        private final double @Nullable [] number;
 
-        private final @Nullable String[] lower;
+        private final java.util.function.IntFunction<@Nullable Object> valueAt;
 
-        private final String[] text;
-
-        private final @Nullable MissingValue[] marker;
-
-        private Key(boolean aNumeric, byte[] aRank, double[] aNumber, @Nullable String[] aLower,
-                String[] aText, @Nullable MissingValue[] aMarker)
+        private Key(boolean aNumeric, long[] aPacked, double @Nullable [] aNumber,
+                java.util.function.IntFunction<@Nullable Object> aValueAt)
         {
             numeric = aNumeric;
-            rank = aRank;
+            packed = aPacked;
             number = aNumber;
-            lower = aLower;
-            text = aText;
-            marker = aMarker;
+            valueAt = aValueAt;
         }
 
 
@@ -232,13 +245,13 @@ public final class CellOrder
          */
         public int size()
         {
-            return rank.length;
+            return packed.length;
         }
 
 
         /**
-         * Whether the cell at position {@code i} is blank ({@code ""}) or missing — what a
-         * {@code nulls=} placement places ({@link SortKeys#sortRowsPlacingNulls}).
+         * Whether the cell at position {@code i} is blank ({@code ""}, whitespace only) or missing
+         * — what a {@code nulls=} placement places ({@link SortKeys#sortRowsPlacingNulls}).
          *
          * @param i
          *            a position
@@ -246,7 +259,7 @@ public final class CellOrder
          */
         public boolean blankOrMissing(int i)
         {
-            return rank[i] >= BLANK;
+            return packed[i] >>> CLASS_SHIFT >= BLANK;
         }
 
 
@@ -262,26 +275,27 @@ public final class CellOrder
          */
         public int compare(int i, int j)
         {
-            int c = Byte.compare(rank[i], rank[j]);
+            int c = Long.compare(packed[i], packed[j]);
             if (c != 0)
             {
                 return c;
             }
-            if (rank[i] == MISSING)
+            long rank = packed[i] >>> CLASS_SHIFT;
+            if (rank == MISSING)
             {
-                return compareMarkers(marker[i], marker[j]);
+                // two missings: by their marker's declared order, re-read from the source
+                return compareMarkers(markerOf(valueAt.apply(i)), markerOf(valueAt.apply(j)));
             }
-            if (rank[i] == NUMBER)
+            if (rank == NUMBER && number != null)
             {
                 c = Double.compare(number[i], number[j]);
+                if (c != 0)
+                {
+                    return c;
+                }
             }
-            else if (rank[i] == ISO)
-            {
-                // O23: (lower bound, text) — a coarser value sharing its first instant with a
-                // finer one keeps text order ("2015" before "2015-01")
-                c = String.valueOf(lower[i]).compareTo(String.valueOf(lower[j]));
-            }
-            return c != 0 ? c : text[i].compareTo(text[j]);
+            // O24: equal parts (or class) fall back to the text, so the order stays total
+            return text(valueAt.apply(i)).compareTo(text(valueAt.apply(j)));
         }
     }
 

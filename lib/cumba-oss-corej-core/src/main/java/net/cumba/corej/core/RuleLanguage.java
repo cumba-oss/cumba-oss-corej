@@ -81,11 +81,11 @@ public final class RuleLanguage
      * retired call names ({@code retired:}), the metadata aliases retired in expressions with their
      * accessor spellings ({@code retired-operands:}, runbook W4 MA6), the static — literal-only —
      * parameters with their vocabularies ({@code static-parameters:}), the enumerated parameter
-     * values read at plan build ({@code parameter-values:}), the keyed result types
-     * ({@code keyed-results:}), the bound JSON property rosters of the rule model ({@code keys:})
-     * and the authored enum values ({@code enums:}). Deterministic: sorted, one entry per line, no
-     * measured figures. Every element a wave of the runbook changes has a line here, so the golden
-     * sees the change.
+     * values read at plan build ({@code parameter-values:}), the sort-key descriptors and their
+     * readers ({@code sort-keys:}, T2 fold), the keyed result types ({@code keyed-results:}), the
+     * bound JSON property rosters of the rule model ({@code keys:}) and the authored enum values
+     * ({@code enums:}). Deterministic: sorted, one entry per line, no measured figures. Every
+     * element a wave of the runbook changes has a line here, so the golden sees the change.
      *
      * @return the listing (without the {@code LEVEL=} header)
      */
@@ -141,6 +141,13 @@ public final class RuleLanguage
         }
         sb.append("parameter-values:\n");
         for (String line : parameterValueLines())
+        {
+            sb.append(line).append('\n');
+        }
+        // T2 fold (review L4-LOW-1): the sort-key descriptor surface (asc / desc, a bare column's
+        // direction, nulls=, the keyword-only by= readers, the single-key readers)
+        sb.append("sort-keys:\n");
+        for (String line : net.cumba.corej.core.exec.SortKeys.surfaceLines())
         {
             sb.append(line).append('\n');
         }

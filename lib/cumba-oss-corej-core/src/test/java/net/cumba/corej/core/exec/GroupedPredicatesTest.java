@@ -79,7 +79,8 @@ class GroupedPredicatesTest
         // parameters, so a fourth positional is the binder's arity error
         assertLoadError("is_last_in_group(ORD, [G], true, G)", "accepts at most 3 argument(s)");
         assertLoadError("is_last_in_group(by=ORD)", "group");
-        assertLoadError("is_last_in_group(group=[G])", "requires by=");
+        // T2 fold (review L4-MED-1): by is declared required, as ordering= was - the binder says so
+        assertLoadError("is_last_in_group(group=[G])", "requires argument 'by'");
     }
 
 

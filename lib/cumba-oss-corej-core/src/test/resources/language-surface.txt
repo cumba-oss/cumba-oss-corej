@@ -46,7 +46,7 @@ dy(name:column-reference, reference:column-reference) kind=value
 earliest_date(a:date, b:date) kind=value
 earliest_possible(x:unknown) kind=value elementwise
 empty(x:unknown) kind=boolean
-empty_within_except_last_row(name:unknown, group:unknown, by:unknown?, keep_missings:boolean?) kind=boolean
+empty_within_except_last_row(name:unknown, group:unknown, by:unknown, keep_missings:boolean?) kind=boolean
 ends_with(x:unknown, value:unknown) kind=boolean
 equalsIgnoreCase(a:unknown, b:unknown) kind=boolean
 expected_variables() kind=value aggregate provider=library
@@ -66,7 +66,7 @@ has_digit(x:unknown) kind=boolean elementwise
 has_equal_length(name:unknown, length:unknown) kind=boolean
 has_mixed_emptiness_within_group(name:column-reference, group:list<column-reference>?, qualifying_any_populated:list<column-reference>?, keep_missings:boolean?) kind=boolean
 has_multiple_values_for(name:unknown, key:unknown, within:unknown?, keep_missings:boolean?, include_empty:boolean?) kind=boolean
-has_next_corresponding_record(name:unknown, value:unknown, within:unknown, by:unknown?, relation:string?, keep_missings:boolean?) kind=boolean
+has_next_corresponding_record(name:unknown, value:unknown, within:unknown, by:unknown, relation:string?, keep_missings:boolean?) kind=boolean
 has_not_equal_length(name:unknown, length:unknown) kind=boolean
 has_same_values(name:unknown) kind=boolean
 imatches(x:unknown, pattern:regex) kind=boolean
@@ -80,7 +80,7 @@ is_incomplete_date(x:string) kind=boolean elementwise
 is_inconsistent_across_dataset(name:unknown, key:unknown?, keys:list<column-reference>?, include_empty:boolean?, keep_missings:boolean?) kind=boolean
 is_increasing(list:list<unknown>) kind=boolean
 is_integer(x:unknown) kind=boolean elementwise
-is_last_in_group(by:list<column-reference>?, group:list<column-reference>, keep_missings:boolean?) kind=boolean
+is_last_in_group(by:list<column-reference>, group:list<column-reference>, keep_missings:boolean?) kind=boolean
 is_missing(x:unknown) kind=boolean
 is_not_complete_date_part(x:string) kind=boolean elementwise
 is_not_integer(x:unknown) kind=boolean elementwise
@@ -136,7 +136,7 @@ record_count(domain:dataset-reference?, filter:unknown?, group:list<column-refer
 referenced_dataset_variables(name:column-reference, qualifiers:boolean?) kind=value
 referenced_domain_class(name:column-reference) kind=value provider=library
 referenced_key_is_unique(dataset:unknown@name, key_variable:unknown, keys:list<column-reference>?) kind=value
-referenced_record_count(dataset:unknown@name, value:unknown, key_variable:unknown, keys:list<column-reference>?) kind=value
+referenced_record_count(dataset:unknown@name, value:unknown, key_variable:unknown, keys:list<column-reference>?) kind=value perRow
 required_variables() kind=value aggregate provider=library
 round(x:unknown) kind=value elementwise
 row_max(name_pattern:string) kind=value perRow
@@ -382,6 +382,12 @@ max_date.missing_values: indeterminate,skip
 metadata-level: DATA,DEFINE,LIBRARY
 min_date.missing_values: indeterminate,skip
 read_value.mode: FIRST,MAX,MIN,ONLY
+sort-keys:
+descriptors: asc(column, nulls=?),desc(column, nulls=?)
+bare-column: asc
+nulls: first,last (static string literal; default first)
+keyword-only: empty_within_except_last_row,has_next_corresponding_record,is_sorted_by
+single-key: empty_within_except_last_row,has_next_corresponding_record,is_last_in_group (one ascending key)
 keyed-results:
 cross_dataset_variable_metadata: data_type:string,format:string,label:string,length:number
 extract_metadata: dataset_label:string,dataset_location:string,dataset_name:string,dataset_size:number,encoding:string,encoding_source:string,file_format:string,filename:string
