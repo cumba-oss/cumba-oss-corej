@@ -1,7 +1,9 @@
 package net.cumba.corej.core.report.xlsx;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -484,11 +486,14 @@ class XlsxReportWriterTest
             assertEquals("SD0058, SD1002", string(rr, 1, 10));
             assertEquals("Warning", string(rr, 1, 11), "the declared severity");
             assertEquals("CORE-002", string(rr, 2, 0));
-            assertNull(string(rr, 2, 10), "no PMDA ids: blank");
+            Cell noPmda = rr.getRow(2).getCell(10);
+            assertNotNull(noPmda, "a rule without PMDA ids writes the cell");
+            assertEquals(CellType.STRING, noPmda.getCellType(), "no PMDA ids: a STRING cell");
+            assertEquals("", noPmda.getStringCellValue(), "no PMDA ids: the empty string");
             assertEquals("Error", string(rr, 2, 11), "an absent Severity is Error");
             assertEquals("CORE-999", string(rr, 3, 0));
-            assertNull(string(rr, 3, 10), "an orphan row has no PMDA ids");
-            assertNull(string(rr, 3, 11), "an orphan row has no declared severity");
+            assertNoValue(rr, 3, 10, "an orphan row has no PMDA ids (not even \"\")");
+            assertNoValue(rr, 3, 11, "an orphan row has no declared severity (not even \"\")");
         }
     }
 
@@ -736,6 +741,20 @@ class XlsxReportWriterTest
         core.setId(coreId);
         r.setCore(core);
         return r;
+    }
+
+
+    /**
+     * Asserts the cell carries no value at all — missing or {@link CellType#BLANK}. Unlike
+     * {@link #string}, a STRING cell holding {@code ""} fails: an orphan row omits the key, it does
+     * not write it empty.
+     */
+    private static void assertNoValue(Sheet sheet, int rowIdx, int colIdx, String message)
+    {
+        Row row = sheet.getRow(rowIdx);
+        Cell cell = row == null ? null : row.getCell(colIdx);
+        assertTrue(cell == null || cell.getCellType() == CellType.BLANK,
+                message + ": found " + (cell == null ? "" : cell.getCellType() + " cell"));
     }
 
 
