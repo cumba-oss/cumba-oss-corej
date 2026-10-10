@@ -10,12 +10,18 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Type;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import net.cumba.corej.core.metadata.store.StoredDataset;
 import net.cumba.corej.core.metadata.store.StoredProduct;
 import net.cumba.corej.core.metadata.store.StoredVariable;
@@ -64,6 +70,14 @@ class StoreSupplementsTest
     private static ObjectNode firstEntry(ObjectNode aDocument)
     {
         return (ObjectNode) aDocument.get("supplements").get(0);
+    }
+
+
+    /** The planted document's one variable row ({@code FX.FXRESCAT}). */
+    private static ObjectNode row(ObjectNode aDocument)
+    {
+        return (ObjectNode) firstEntry(aDocument).get("product").get("classes").get(0)
+                .get("datasets").get(0).get("datasetVariables").get(0);
     }
 
 
@@ -209,50 +223,154 @@ class StoreSupplementsTest
 
 
     /**
-     * The guard of L1's "every path by construction": the record types that hold
-     * {@link StoredVariable} lists, walked from {@link StoredProduct} over every record component.
-     * A new holder added to the store records without extending the refusal reds here.
+     * Confirmation look L-b: the raw scan backs the projected check. A free-text member the
+     * projection does not keep — a container value, a member nested inside a variable row, a
+     * variable row under an array the projection does not read — would still ship verbatim in the
+     * resource, so the raw document is refused too, whatever the value type. Each planted document
+     * here passes the projected check and is caught only by the raw scan.
+     */
+    @Test
+    void aFreeTextMemberTheProjectionDoesNotKeepIsRefusedByTheRawScan()
+    {
+        ObjectNode listValued = document(DART_12);
+        row(listValued).putArray("description").add("CDISC Notes text");
+        String message = refusal(listValued);
+        assertTrue(message
+                .contains("free-text member 'description' at"
+                        + " /classes/0/datasets/0/datasetVariables/0/description")
+                && message.contains("Q1 (c)"), message);
+
+        ObjectNode objectValued = document(DART_12);
+        ((ObjectNode) firstEntry(objectValued).get("product").get("classes").get(0))
+                .putArray("classVariables").addObject().put("name", "--TESTCD").putObject("notes")
+                .put("text", "CDISC Notes text");
+        message = refusal(objectValued);
+        assertTrue(message.contains("'notes' at /classes/0/classVariables/0/notes"), message);
+
+        ObjectNode jsonNull = document(DART_12);
+        row(jsonNull).putNull("roleDescription");
+        message = refusal(jsonNull);
+        assertTrue(message.contains("'roleDescription' at"), message);
+
+        ObjectNode nested = document(DART_12);
+        row(nested).putObject("_links").putArray("codelist").addObject()
+                .put("href", "/mdr/root/ct/sendct/codelists/C66742")
+                .put("definition", "CDISC Notes text");
+        message = refusal(nested);
+        assertTrue(message.contains(
+                "'definition' at /classes/0/datasets/0/datasetVariables/0/_links/codelist/0/definition"),
+                message);
+
+        ObjectNode unread = document(DART_12);
+        ((ObjectNode) firstEntry(unread).get("product").get("classes").get(0).get("datasets")
+                .get(0)).putArray("variables").addObject().put("name", "DPDTC")
+                        .put("usageRestrictions", "CDISC Notes text");
+        message = refusal(unread);
+        assertTrue(message.contains("'usageRestrictions' at /classes/0/datasets/0/variables/0"),
+                message);
+
+        ObjectNode examples = document(DART_12);
+        row(examples).putArray("examples").add(1);
+        message = refusal(examples);
+        assertTrue(message.contains("'examples' at"), message);
+    }
+
+
+    /**
+     * The control of the raw scan: the product, a class, a dataset (of a class or top-level), a
+     * data structure and an analysis variable set may carry a {@code description} of their own —
+     * the shipped register does (product, classes, datasets) — and only the description; a variable
+     * row never.
+     */
+    @Test
+    void aDescriptionOfTheProductAClassADatasetOrAStructureIsNotVariableText()
+    {
+        ObjectNode doc = document(DART_12);
+        ObjectNode product = (ObjectNode) firstEntry(doc).get("product");
+        product.put("description", "Product description");
+        ObjectNode clazz = (ObjectNode) product.get("classes").get(0);
+        clazz.put("description", "Class description");
+        ((ObjectNode) clazz.get("datasets").get(0)).put("description", "Dataset description");
+        product.putArray("datasets").addObject().put("name", "DP").put("description",
+                "Top-level dataset description");
+        ObjectNode structure = product.putArray("dataStructures").addObject().put("name", "ADSL")
+                .put("description", "Structure description");
+        structure.putArray("analysisVariableSets").addObject().put("name", "Identifier")
+                .put("description", "Set description").putArray("analysisVariables").addObject()
+                .put("name", "STUDYID");
+        assertEquals(1, StoreSupplements.parse(doc).supplements().size());
+
+        ObjectNode classNotes = document(DART_12);
+        ((ObjectNode) firstEntry(classNotes).get("product").get("classes").get(0)).put("notes",
+                "CDISC Notes text");
+        assertTrue(refusal(classNotes).contains("'notes' at /classes/0/notes"),
+                "only the description is a container's own");
+    }
+
+
+    /**
+     * The guard of L1's "every path by construction" (confirmation look L-a): every record PATH
+     * from {@link StoredProduct} to a {@link StoredVariable} list, walked over every record
+     * component and deduplicated only on the recursion stack — so a second path to an EXISTING
+     * holder (a dataset list added to another record) reds here as much as a new holder does.
      */
     @Test
     void theRefusalWalksEveryRecordPathThatHoldsVariables()
     {
-        Set<String> holders = new java.util.TreeSet<>();
-        collectVariableHolders(StoredProduct.class, holders, new java.util.HashSet<>());
-        assertEquals(Set.of("StoredClass.classVariables", "StoredDataset.variables",
-                "StoredVariableSet.variables"), holders);
+        Set<String> paths = new TreeSet<>();
+        collectVariablePaths(StoredProduct.class, "", paths, new HashSet<>());
+        assertEquals(Set.of("StoredProduct.classes>StoredClass.classVariables",
+                "StoredProduct.classes>StoredClass.datasets>StoredDataset.variables",
+                "StoredProduct.datasets>StoredDataset.variables",
+                "StoredProduct.dataStructures>StoredDataStructure.variableSets"
+                        + ">StoredVariableSet.variables"),
+                paths);
 
-        // The sensitivity arm: a planted record with a direct and a nested path is seen.
-        Set<String> planted = new java.util.TreeSet<>();
-        collectVariableHolders(PlantedHolder.class, planted, new java.util.HashSet<>());
-        assertEquals(Set.of("PlantedHolder.extra", "StoredDataset.variables"), planted);
+        // The sensitivity arm: a direct list, a nested holder, and a second path to that holder.
+        Set<String> planted = new TreeSet<>();
+        collectVariablePaths(PlantedHolder.class, "", planted, new HashSet<>());
+        assertEquals(Set.of("PlantedHolder.extra", "PlantedHolder.nested>StoredDataset.variables",
+                "PlantedHolder.more>StoredDataset.variables"), planted);
     }
 
-    /** A record the guard must see through: one direct variable list, one nested holder. */
-    private record PlantedHolder(List<StoredVariable> extra, StoredDataset nested)
+    /** A record the guard must see through: a direct variable list and two paths to a holder. */
+    private record PlantedHolder(List<StoredVariable> extra, StoredDataset nested,
+            List<StoredDataset> more)
     {
     }
 
-    private static void collectVariableHolders(Class<?> aType, Set<String> aHolders,
-            Set<Class<?>> aSeen)
+    private static void collectVariablePaths(Class<?> aType, String aPrefix, Set<String> aPaths,
+            Set<Class<?>> aStack)
     {
-        if (!aType.isRecord() || !aSeen.add(aType))
+        if (!aType.isRecord() || !aStack.add(aType))
         {
             return;
         }
-        for (java.lang.reflect.RecordComponent component : aType.getRecordComponents())
+        for (RecordComponent component : aType.getRecordComponents())
         {
-            Class<?> element = component.getType();
-            if (component.getGenericType() instanceof java.lang.reflect.ParameterizedType list
-                    && list.getActualTypeArguments()[0] instanceof Class<?> argument)
+            String step = aPrefix + aType.getSimpleName() + "." + component.getName();
+            List<Class<?>> elements = new ArrayList<>();
+            elements.add(component.getType());
+            if (component.getGenericType() instanceof ParameterizedType generic)
             {
-                element = argument;
+                for (Type argument : generic.getActualTypeArguments())
+                {
+                    if (argument instanceof Class<?> type)
+                    {
+                        elements.add(type);
+                    }
+                }
             }
-            if (element == StoredVariable.class)
+            for (Class<?> element : elements)
             {
-                aHolders.add(aType.getSimpleName() + "." + component.getName());
+                if (element == StoredVariable.class)
+                {
+                    aPaths.add(step);
+                }
+                collectVariablePaths(element, step + ">", aPaths, aStack);
             }
-            collectVariableHolders(element, aHolders, aSeen);
         }
+        aStack.remove(aType);
     }
 
 

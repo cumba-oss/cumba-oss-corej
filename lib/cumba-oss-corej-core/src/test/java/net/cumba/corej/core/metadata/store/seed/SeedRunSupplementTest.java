@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -334,6 +335,66 @@ class SeedRunSupplementTest
         {
             assertFalse(store.product("models/sdtm/1-6").isEmpty());
             assertEquals("/mdr/sdtm/1-6", store.product(DART_12).orElseThrow().modelHref());
+        }
+    }
+
+
+    /**
+     * F11's gate is each applied supplement's FAMILY ({@code standards/sendig/} for DART 1.2 — the
+     * D13 behaviour, above), derived from its key rather than fixed to SEND (confirmation look,
+     * optional): a supplement of another family linking a model the seed lacks warns when the
+     * source serves an IG of THAT family, and stays silent when the source serves none.
+     */
+    @Test
+    void theMissingModelGateFollowsEachSupplementsFamily() throws IOException
+    {
+        String sdtmigKey = "standards/sdtmig/9-9";
+        ObjectNode product = MAPPER.createObjectNode().put("name", "SDTMIG v9.9").put("version",
+                "9.9");
+        product.putObject("_links").putObject("model").put("href", "/mdr/sdtm/9-9");
+        product.putArray("classes").addObject().put("name", "Findings").putArray("datasets")
+                .addObject().put("name", "LB").putArray("datasetVariables").addObject()
+                .put("name", "LBTESTCD");
+        ObjectNode entry = MAPPER.createObjectNode().put("key", sdtmigKey).put("approval", "test");
+        entry.set("product", product);
+        ObjectNode document = MAPPER.createObjectNode();
+        document.putArray("supplements").add(entry);
+        StoreSupplements register = StoreSupplements.parse(document);
+
+        StoreProjection projection = new StoreProjection();
+        StoredProduct sdtmig = projection.product(SeedFixtures.IG_KEY,
+                MAPPER.valueToTree(SeedFixtures.igDoc()));
+        StoredProduct model = projection.product(SeedFixtures.SDTM_MODEL_KEY,
+                MAPPER.valueToTree(SeedFixtures.sdtmModelDoc()));
+
+        assertEquals(
+                List.of(sdtmigKey + ": the seed supplement links the model /mdr/sdtm/9-9,"
+                        + " which this seed does not hold - its model walk answers nothing"),
+                mergeWarnings(register,
+                        Map.of(SeedFixtures.IG_KEY, sdtmig, SeedFixtures.SDTM_MODEL_KEY, model),
+                        "sdtmig.zip"),
+                "models and an SDTMIG offered: the SDTMIG-family supplement's model is missing");
+        assertEquals(List.of(),
+                mergeWarnings(register, Map.of(SeedFixtures.SDTM_MODEL_KEY, model),
+                        "models-only.zip"),
+                "the control: models but no IG of the supplement's family - silent");
+    }
+
+
+    private List<String> mergeWarnings(StoreSupplements aRegister,
+            Map<String, StoredProduct> aFromSource, String aStore)
+        throws IOException
+    {
+        SeedRun run = new SeedRun(StoreSeedOptions.of(temp.resolve(aStore)),
+                StoreErrata.SOURCE_PICKLE, aRegister);
+        try
+        {
+            run.mergeProducts(aFromSource);
+            return run.report(aFromSource.size(), null, 0).warnings();
+        }
+        finally
+        {
+            run.close();
         }
     }
 

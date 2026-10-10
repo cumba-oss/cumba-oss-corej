@@ -87,8 +87,6 @@ final class SeedRun
 
     private static final String MODELS_PREFIX = "models/";
 
-    private static final String SENDIG_PREFIX = "standards/sendig/";
-
     private final StoreSeedOptions options;
 
     private final List<String> warnings = new ArrayList<>();
@@ -381,24 +379,29 @@ final class SeedRun
     /**
      * D7 / F11, narrowed by D10 and D13 (owner 2026-10-10): an applied supplement whose model is
      * absent from the merged products would answer nothing on the model walk — a warning, but only
-     * when the source offers models AND serves a SEND IG, the one case where the SENDIG-DART 1.2
-     * supplement needs {@code models/sdtm/1-6}. A source without any model is a partial source by
-     * design (a one-IG cache); a source without a SEND IG is not a SEND user's seed (an SDTM-only
-     * cache, the hermetic fixtures).
+     * when the source offers models AND serves an IG of the supplement's own family (its key up to
+     * the last {@code /}: {@code standards/sendig/} for SENDIG-DART 1.2, the one case where it
+     * needs {@code models/sdtm/1-6}). A source without any model is a partial source by design (a
+     * one-IG cache); a source without an IG of that family is not that family's seed (an SDTM-only
+     * cache, the hermetic fixtures, for a SEND supplement). The family is derived per key, not
+     * fixed, so a supplement of another family is gated by its own (confirmation look, optional).
      */
     private void warnOnMissingSupplementModels(Map<String, StoredProduct> aFromSource,
             Map<String, StoredProduct> aMerged)
     {
         boolean sourceOffersModels = aFromSource.keySet().stream()
                 .anyMatch(key -> key.startsWith(MODELS_PREFIX));
-        boolean sourceServesSendIg = aFromSource.keySet().stream()
-                .anyMatch(key -> key.startsWith(SENDIG_PREFIX));
-        if (!sourceOffersModels || !sourceServesSendIg)
+        if (!sourceOffersModels)
         {
             return;
         }
         for (String key : supplemented)
         {
+            String family = key.substring(0, key.lastIndexOf('/') + 1);
+            if (aFromSource.keySet().stream().noneMatch(served -> served.startsWith(family)))
+            {
+                continue;
+            }
             StoredProduct product = aMerged.get(key);
             String href = product == null ? null : product.modelHref();
             String modelKey = href == null ? null : WebApiStoreSeeder.modelKeyFor(href);

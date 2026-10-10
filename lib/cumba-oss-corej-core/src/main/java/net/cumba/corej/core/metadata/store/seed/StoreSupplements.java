@@ -8,6 +8,7 @@ import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -31,8 +32,10 @@ import org.jspecify.annotations.Nullable;
  * loader refuses (a build defect, never a runtime condition) a key outside the store's product-key
  * grammar or outside {@code standards/} (the catalogue holds IG keys only), a duplicate key, a
  * missing approval, and — owner ruling Q1 (c) — any variable of the PROJECTED product carrying a
- * free-text slot (description, notes, definition, examples, role description, usage restrictions):
- * the CDISC Notes text is not shipped.
+ * free-text slot (description, notes, definition, examples, role description, usage restrictions),
+ * and any of those member names anywhere in the RAW product document, whatever its value type, bar
+ * the {@code description} of the product, a class, a dataset, a data structure or an analysis
+ * variable set: the CDISC Notes text is not shipped.
  * </p>
  *
  * <p>
@@ -67,6 +70,18 @@ public final class StoreSupplements
             .compile("[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*");
 
     private static final String STANDARDS_PREFIX = "standards/";
+
+    /** The free-text variable members of owner ruling Q1 (c), as the source documents name them. */
+    private static final Set<String> FREE_TEXT_MEMBERS = Set.of("description", "notes",
+            "definition", "examples", "roleDescription", "usageRestrictions");
+
+    /**
+     * The arrays whose elements are not variables, so — like the product itself — may carry a
+     * {@code description} of their own (the projection keeps it as the class's, dataset's,
+     * structure's or variable set's description).
+     */
+    private static final Set<String> DESCRIBED_CONTAINERS = Set.of("classes", "datasets",
+            "dataStructures", "analysisVariableSets");
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -193,6 +208,7 @@ public final class StoreSupplements
                 throw new IllegalStateException("seed supplements: " + key + " has no product");
             }
             refuseVariableText(key, product);
+            refuseRawText(key, product, "", true);
             entries.add(new Supplement(key, approval, product));
         }
         return entries;
@@ -244,6 +260,62 @@ public final class StoreSupplements
                         + variable.name() + " carries a variable " + slot
                         + " - owner ruling Q1 (c): the CDISC Notes text is not shipped");
             }
+        }
+    }
+
+
+    /**
+     * Owner ruling Q1 (c) on the RAW document (confirmation look L-b), behind the projected check:
+     * a free-text member the projection does not keep — a container value, a member nested inside a
+     * variable row, a variable row under an array the projection does not read — would still ship
+     * verbatim in the resource. Any {@link #FREE_TEXT_MEMBERS} name at any depth is refused,
+     * whatever its value type (JSON null included); the one exception is the {@code description} of
+     * the product or of an element of a {@link #DESCRIBED_CONTAINERS} array.
+     *
+     * @param aPointer
+     *            the JSON pointer of {@code aNode} within the product
+     * @param aMayDescribe
+     *            whether {@code aNode} may carry a {@code description} of its own
+     */
+    private static void refuseRawText(String aKey, JsonNode aNode, String aPointer,
+            boolean aMayDescribe)
+    {
+        if (aNode.isObject())
+        {
+            for (Map.Entry<String, JsonNode> member : aNode.properties())
+            {
+                String name = member.getKey();
+                String pointer = aPointer + "/" + name;
+                if (FREE_TEXT_MEMBERS.contains(name)
+                        && !(aMayDescribe && "description".equals(name)))
+                {
+                    throw new IllegalStateException("seed supplements: " + aKey
+                            + " carries a free-text member '" + name + "' at " + pointer
+                            + " - owner ruling Q1 (c): the CDISC Notes text is not shipped");
+                }
+                refuseRawElements(aKey, member.getValue(), pointer,
+                        DESCRIBED_CONTAINERS.contains(name));
+            }
+        }
+        else if (aNode.isArray())
+        {
+            refuseRawElements(aKey, aNode, aPointer, false);
+        }
+    }
+
+
+    /** {@link #refuseRawText} over an array's elements, or over a non-array value itself. */
+    private static void refuseRawElements(String aKey, JsonNode aValue, String aPointer,
+            boolean aElementsMayDescribe)
+    {
+        if (!aValue.isArray())
+        {
+            refuseRawText(aKey, aValue, aPointer, false);
+            return;
+        }
+        for (int i = 0; i < aValue.size(); i++)
+        {
+            refuseRawText(aKey, aValue.get(i), aPointer + "/" + i, aElementsMayDescribe);
         }
     }
 
