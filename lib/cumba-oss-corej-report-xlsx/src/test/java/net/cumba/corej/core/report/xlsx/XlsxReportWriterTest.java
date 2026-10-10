@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.List;
+import net.cumba.corej.core.model.Authority;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -445,6 +446,49 @@ class XlsxReportWriterTest
             assertEquals("STUDYID, RELID", string(rr, 1, 9), "SEND: the key the merge paired on");
             assertEquals("CORE-002", string(rr, 2, 0));
             assertNull(string(rr, 2, 9), "no forward RELREC entry: blank");
+        }
+    }
+
+
+    /**
+     * {@code PLAN-report-v2-rule-metadata} RM5 — the rule sheet carries the rule's PMDA ids and its
+     * declared severity, appended after {@code RELREC Key} so no earlier column moves. A rule
+     * without PMDA ids leaves the id cell blank; an orphan row (a finding of a rule the run did not
+     * supply) has neither value, so both cells stay blank.
+     */
+    @Test
+    void rulesReportSheetCarriesThePmdaIdsAndTheDeclaredSeverity() throws Exception
+    {
+        ValidationReport report = ValidationReport.builder()
+                .members(List.of(ValidationReportMember.builder().domain("AE").fileName("ae.xpt")
+                        .findings(List.of(ValidationFinding.builder().source("cumba.core")
+                                .ruleId("CORE-999").kind(FindingKind.ENGINE_ERROR)
+                                .severity(Severity.ERROR).message("boom").variableNames(List.of())
+                                .rows(RowFindingSlab.EMPTY).build()))
+                        .build()))
+                .executedCoreIds(List.of(CORE_001, "CORE-002", "CORE-999")).build();
+        Rule pmda = rule(CORE_001);
+        Authority authority = new Authority();
+        authority.setOrganization("PMDA");
+        authority.setRuleIds(List.of("SD1002", "SD0058"));
+        pmda.setAuthorities(List.of(authority));
+        pmda.setSeverity(Severity.WARNING);
+        try (XSSFWorkbook wb = render(new ReportAssembler().report(report)
+                .rules(List.of(pmda, rule("CORE-002"))).sections(), 10_000))
+        {
+            Sheet rr = wb.getSheet("Rules Report");
+            assertEquals("RELREC Key", string(rr, 0, 9), "the earlier appended columns stay put");
+            assertEquals("PMDA Rule ID", string(rr, 0, 10));
+            assertEquals("Severity", string(rr, 0, 11));
+            assertEquals(CORE_001, string(rr, 1, 0));
+            assertEquals("SD0058, SD1002", string(rr, 1, 10));
+            assertEquals("Warning", string(rr, 1, 11), "the declared severity");
+            assertEquals("CORE-002", string(rr, 2, 0));
+            assertNull(string(rr, 2, 10), "no PMDA ids: blank");
+            assertEquals("Error", string(rr, 2, 11), "an absent Severity is Error");
+            assertEquals("CORE-999", string(rr, 3, 0));
+            assertNull(string(rr, 3, 10), "an orphan row has no PMDA ids");
+            assertNull(string(rr, 3, 11), "an orphan row has no declared severity");
         }
     }
 

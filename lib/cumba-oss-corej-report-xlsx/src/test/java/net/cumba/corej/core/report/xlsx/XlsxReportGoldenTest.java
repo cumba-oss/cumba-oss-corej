@@ -93,6 +93,18 @@ import org.junit.jupiter.api.io.TempDir;
  * </p>
  *
  * <p>
+ * ⚠ <b>Regenerated a sixth time, deliberately, for {@code PLAN-report-v2-rule-metadata} (owner
+ * rulings RM5 + RM9, 2026-10-08)</b>: the {@code Rules Report} sheet gained the appended columns
+ * {@code PMDA Rule ID} (K) and {@code Severity} (L), and the fixture's three rules gained v2's
+ * {@code pmda_rule_id} and {@code severity}. Rendered through this class's own {@link #render()}
+ * and verified cell-by-cell against the previous golden (resolved values, every sheet): exactly
+ * <b>eight</b> differences, all in columns K and L of {@code Rules Report} — the two new headers
+ * and the three rows' values ({@code K2}/{@code K4} empty strings, {@code K3 SD1002};
+ * {@code L2..L4 Error, Warning, Error}). Every earlier column is unchanged. The ratchet resumes
+ * from here.
+ * </p>
+ *
+ * <p>
  * ⚠⚠ <b>Compared by per-entry content digest, never by file hash.</b> An XLSX is a zip, and a zip
  * carries a per-entry modification timestamp: two runs of <em>identical</em> code produce files
  * with different bytes and different SHA-256s. A file-hash comparison here would fail every time

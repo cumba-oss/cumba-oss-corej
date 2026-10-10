@@ -237,7 +237,7 @@ public final class ReportAssembler
     public ReportSections sections()
     {
         return new ReportSections(buildConformanceDetails(), buildDatasetDetails(),
-                buildIssueSummary(), issueDetailRows(buildIssueDetails()), buildRulesReport(),
+                buildIssueSummary(), issueDetailRows(buildIssueDetails()), rulesReport(),
                 buildSkippedRules(), buildCombinedFindings());
     }
 
@@ -739,7 +739,30 @@ public final class ReportAssembler
      */
     public static final String FIELD_COLUMNS = "columns";
 
-    private List<Map<String, Object>> buildRulesReport()
+    /**
+     * Builds the {@code Rules_Report} rows alone — the <b>summary-only</b> entry point
+     * ({@code PLAN-report-v2-rule-metadata} §2.2, RM8): exactly the rows {@link #sections()}
+     * carries, in the same {@code List<Map<String, Object>>} shape the writers consume, without
+     * assembling the combined findings or the issue details (O(findings) memory).
+     *
+     * <p>
+     * Inputs: the {@link #rules(Collection) rules}, the {@link #report(ValidationReport) report}
+     * (one walk over the members' findings for the per-rule status, plus its executed ids and
+     * skipped rules), the {@link #ruleRuntimesMillis(Map) rule runtimes} and the
+     * {@link #conformance(Conformance) conformance} (for {@code relrec_key}). Extra memory is
+     * O(rules). A row's keys are the v2 ones; the frozen v1 projection strips the v2-only keys in
+     * {@link ReportSections#toExportDocument()}.
+     * </p>
+     *
+     * <p>
+     * A run result should call {@code StudyValidationResult.rulesReport()}, which wires this
+     * assembler exactly as its {@code sections()} does.
+     * </p>
+     *
+     * @return one row per supplied rule with a CORE id, plus one per orphan finding id, sorted by
+     *         {@code core_id}; never {@code null}
+     */
+    public List<Map<String, Object>> rulesReport()
     {
         List<Map<String, Object>> out = new ArrayList<>();
 
@@ -1001,8 +1024,20 @@ public final class ReportAssembler
         m.put("version", "1");
         m.put("cdisc_rule_id", collectRuleIds(rule, "CDISC"));
         m.put("fda_rule_id", collectRuleIds(rule, "FDA"));
+        // PLAN-report-v2-rule-metadata (RM2/RM3/RM7): the PMDA ids and the rule's DECLARED
+        // severity — never its findings' levels (a multi-level rule reports WARNING / INFO
+        // findings under a declared Error). ⛔ v2-only like the counts: stripped by
+        // ReportSections.toExportDocument. An orphan row (no rule) omits both, as relrec_key.
+        if (rule != null)
+        {
+            m.put(ReportSections.PMDA_RULE_ID, collectRuleIds(rule, "PMDA"));
+        }
         m.put("message", message);
         m.put("status", status);
+        if (rule != null)
+        {
+            m.put(ReportSections.RULE_SEVERITY, rule.effectiveSeverity().getJsonValue());
+        }
         // Summed per-rule runtime in ms across the datasets this rule ran on (-1 = not measured).
         m.put("runtime_ms", runtimeMs);
         // D65: the three per-rule execution counts, per (rule × dataset). ⛔ v2-only — v1 is
@@ -1301,7 +1336,8 @@ public final class ReportAssembler
      * <p>
      * This is the oracle for the {@code cdisc_rule_id} / {@code fda_rule_id} columns of the xlsx
      * Rules Report, of the JSON report's {@code Rules_Report}, and of {@code GET
-     * /api/checks/{id}/rules}. It is <b>public rather than private</b> so
+     * /api/checks/{id}/rules}, and for the v2-only {@code pmda_rule_id} column of the first two
+     * ({@code PLAN-report-v2-rule-metadata}). It is <b>public rather than private</b> so
      * {@code ReleasedRuleIdColumnsTest} (in {@code corej-rules}, which owns the corpus) can assert
      * that a released package and its authored source produce identical columns — the whole
      * justification for the §10 strip of {@code plans/done/PLAN-rules-corpus-build-integration.md}.
@@ -1311,7 +1347,7 @@ public final class ReportAssembler
      * @param rule
      *            the rule, or {@code null}
      * @param organization
-     *            the publishing organization, e.g. {@code "CDISC"} or {@code "FDA"}
+     *            the publishing organization, e.g. {@code "CDISC"}, {@code "FDA"} or {@code "PMDA"}
      * @return the ids, comma-separated and sorted; empty when there are none
      */
     public static String collectRuleIds(@Nullable Rule rule, String organization)

@@ -120,24 +120,30 @@
       "version": "1",
       "cdisc_rule_id": "CG0001",
       "fda_rule_id": null,
+      "pmda_rule_id": "",
       "message": "AESTDY must be populated",
-      "status": "SUCCESS"
+      "status": "SUCCESS",
+      "severity": "Error"
     },
     {
       "core_id": "CORE-000002",
       "version": "2",
       "cdisc_rule_id": "CG0002",
       "fda_rule_id": "FDAB001",
+      "pmda_rule_id": "SD1002",
       "message": "AGE out of range",
-      "status": "SUCCESS"
+      "status": "SUCCESS",
+      "severity": "Warning"
     },
     {
       "core_id": "CORE-000003",
       "version": "1",
       "cdisc_rule_id": "CG0003",
       "fda_rule_id": null,
+      "pmda_rule_id": "",
       "message": "unused rule",
-      "status": "SKIPPED"
+      "status": "SKIPPED",
+      "severity": "Error"
     }
   ],
   "Skipped_Rules": [

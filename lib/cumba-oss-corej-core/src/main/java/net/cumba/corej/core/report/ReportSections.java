@@ -142,6 +142,32 @@ public record ReportSections(Map<String, @Nullable Object> conformanceDetails,
     static final String RELREC_KEY = "relrec_key";
 
     /**
+     * ⭐ <b>v2-only</b> {@code Rules_Report} row key carrying the rule's PMDA ids
+     * ({@code ReportAssembler.collectRuleIds(rule, "PMDA")}: sorted, comma-separated, {@code ""}
+     * when there are none) — {@code PLAN-report-v2-rule-metadata} RM2. Absent on an orphan row (a
+     * finding of a rule the run did not supply, RM7).
+     *
+     * <p>
+     * ⛔ v2-only for the same reason as {@link #RULES_EXECUTED_COUNT}: {@link #toExportDocument}
+     * strips it with the counts.
+     * </p>
+     */
+    static final String PMDA_RULE_ID = "pmda_rule_id";
+
+    /**
+     * ⭐ <b>v2-only</b> {@code Rules_Report} row key carrying the rule's <b>declared</b> severity —
+     * {@code Rule.effectiveSeverity()} spelled by {@code Severity.getJsonValue()} ({@code Error},
+     * {@code Warning}, {@code Reject} …), never the level of its findings
+     * ({@code PLAN-report-v2-rule-metadata} RM3). Absent on an orphan row (RM7).
+     *
+     * <p>
+     * ⛔ v2-only for the same reason as {@link #RULES_EXECUTED_COUNT}: {@link #toExportDocument}
+     * strips it with the counts.
+     * </p>
+     */
+    static final String RULE_SEVERITY = "severity";
+
+    /**
      * Projects these sections into the <b>v1</b> export document: the nested {@link LinkedHashMap}
      * whose key order <em>is</em> the published v1 schema
      * ({@code Conformance_Details, Dataset_Details, Issue_Summary, Issue_Details, Rules_Report,
@@ -223,13 +249,17 @@ public record ReportSections(Map<String, @Nullable Object> conformanceDetails,
         return m;
     }
 
-    /** The v2-only {@code Rules_Report} row keys: the D65 counts and the RELREC key. */
+    /**
+     * The v2-only {@code Rules_Report} row keys: the D65 counts, the RELREC key, the PMDA ids and
+     * the declared severity.
+     */
     private static final List<String> V2_ONLY_RULE_KEYS = List.of(RULES_EXECUTED_COUNT,
-            RULES_SKIPPED_COUNT, RULES_ERRORED_COUNT, RELREC_KEY);
+            RULES_SKIPPED_COUNT, RULES_ERRORED_COUNT, RELREC_KEY, PMDA_RULE_ID, RULE_SEVERITY);
 
     /**
-     * {@code rows} without the v2-only keys — the D65 execution counts and the RELREC key
-     * ({@link #RELREC_KEY}) — for the frozen v1 projection. Stripped rather than assumed absent,
+     * {@code rows} without the v2-only keys — the D65 execution counts, the RELREC key
+     * ({@link #RELREC_KEY}), the PMDA ids ({@link #PMDA_RULE_ID}) and the declared severity
+     * ({@link #RULE_SEVERITY}) — for the frozen v1 projection. Stripped rather than assumed absent,
      * for the same round-trip reason as {@link #withoutToleranceKey}: a document read back through
      * {@link #fromExportDocument} carries whatever its source had.
      */

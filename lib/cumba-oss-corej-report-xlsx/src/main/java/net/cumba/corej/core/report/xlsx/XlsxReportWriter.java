@@ -127,25 +127,41 @@ public final class XlsxReportWriter implements ReportWriter
     static final String DETAIL_COLUMNS_HEADER = "Columns (name only)";
 
     /**
-     * D65: the three count columns ({@code executed} / {@code skipped} / {@code errored}) and,
-     * after them, the OD-9 {@code relrec_key} column ({@code PLAN-merge-followups} FU-4 (a): the
-     * RELREC key a forward-RELREC rule's merge paired on, blank on every other rule) have no header
-     * in the shipped template (copied verbatim from the Python resources), so
-     * {@link #rulesReportSheet} appends their headers programmatically — the same pattern as the
-     * Java-only {@code Skipped Rules} sheet.
+     * D65: the three count columns ({@code executed} / {@code skipped} / {@code errored}), after
+     * them the OD-9 {@code relrec_key} column ({@code PLAN-merge-followups} FU-4 (a): the RELREC
+     * key a forward-RELREC rule's merge paired on, blank on every other rule), and after that the
+     * rule's PMDA ids ({@code pmda_rule_id}) and declared severity ({@code severity}) —
+     * {@code PLAN-report-v2-rule-metadata} RM5 — have no header in the shipped template (copied
+     * verbatim from the Python resources), so {@link #rulesReportSheet} appends their headers
+     * programmatically — the same pattern as the Java-only {@code Skipped Rules} sheet.
+     *
+     * <p>
+     * ⚑ The two metadata columns are appended <b>last</b>, not beside {@code FDA Rule ID} /
+     * {@code Status} as in the v2 JSON row: inserting them would rewrite the template's own header
+     * cells and move every earlier appended column, which a reader of the sheet by position would
+     * see as a silent shift.
+     * </p>
      */
     private static final List<String> RULES_COLUMNS = List.of("core_id", "version", "cdisc_rule_id",
-            "fda_rule_id", "message", "status", "executed", "skipped", "errored", "relrec_key");
+            "fda_rule_id", "message", "status", "executed", "skipped", "errored", "relrec_key",
+            "pmda_rule_id", "severity");
 
     /**
      * Header labels for the v2-only columns appended to the {@code Rules Report} sheet: the D65
-     * counts and the RELREC key, in {@link #RULES_COLUMNS}' order.
+     * counts, the RELREC key, the PMDA ids and the declared severity, in {@link #RULES_COLUMNS}'
+     * order.
      */
     private static final List<String> RULES_APPENDED_HEADERS = List.of("Executed", "Skipped",
-            "Errored", "RELREC Key");
+            "Errored", "RELREC Key", "PMDA Rule ID", "Severity");
 
     /** The RELREC key column's width: its longest value is the spelled-out inference. */
     private static final int RELREC_KEY_COLUMN_WIDTH = 48 * 256;
+
+    /** The PMDA ids column's width: a rule may carry several comma-separated ids. */
+    private static final int PMDA_RULE_ID_COLUMN_WIDTH = 24 * 256;
+
+    /** The width of every other appended {@code Rules Report} column (counts, severity). */
+    private static final int APPENDED_COLUMN_WIDTH = 12 * 256;
 
     private static final List<String> SKIPPED_COLUMNS = List.of("core_id", "dataset", "reason");
 
@@ -316,11 +332,12 @@ public final class XlsxReportWriter implements ReportWriter
 
     /**
      * Returns the {@code Rules Report} sheet with the v2-only column headers — the three D65 counts
-     * ({@code Executed} / {@code Skipped} / {@code Errored}) and the OD-9 {@code RELREC Key} —
-     * appended to its header row when they are not already present. The shipped template (copied
-     * verbatim from the Python resources) carries six header cells; the appended headers reuse the
-     * last template header's style so the row reads as one. A future template that ships the
-     * headers — or a second call on the same workbook — is used as-is.
+     * ({@code Executed} / {@code Skipped} / {@code Errored}), the OD-9 {@code RELREC Key}, the
+     * {@code PMDA Rule ID} and the declared {@code Severity} — appended to its header row when they
+     * are not already present. The shipped template (copied verbatim from the Python resources)
+     * carries six header cells; the appended headers reuse the last template header's style so the
+     * row reads as one. A future template that ships the headers — or a second call on the same
+     * workbook — is used as-is.
      */
     static @Nullable Sheet rulesReportSheet(XSSFWorkbook aWorkbook)
     {
@@ -358,10 +375,20 @@ public final class XlsxReportWriter implements ReportWriter
             }
             String label = RULES_APPENDED_HEADERS.get(i);
             cell.setCellValue(label);
-            sheet.setColumnWidth(firstCountCol + i,
-                    "RELREC Key".equals(label) ? RELREC_KEY_COLUMN_WIDTH : 12 * 256);
+            sheet.setColumnWidth(firstCountCol + i, appendedColumnWidth(label));
         }
         return sheet;
+    }
+
+
+    private static int appendedColumnWidth(String aLabel)
+    {
+        return switch (aLabel)
+        {
+        case "RELREC Key" -> RELREC_KEY_COLUMN_WIDTH;
+        case "PMDA Rule ID" -> PMDA_RULE_ID_COLUMN_WIDTH;
+        default -> APPENDED_COLUMN_WIDTH;
+        };
     }
 
 

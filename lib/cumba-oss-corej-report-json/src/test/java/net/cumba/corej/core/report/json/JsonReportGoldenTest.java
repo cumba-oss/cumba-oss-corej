@@ -38,6 +38,15 @@ import org.junit.jupiter.api.Test;
  * </p>
  *
  * <p>
+ * ⚑ <b>{@code golden-v2.json} was regenerated a second time, on 2026-10-10</b>, by the owner
+ * decision RM9 of {@code PLAN-report-v2-rule-metadata} (2026-10-08): the fixture's
+ * {@code Rules_Report} rows gained the v2-only {@code pmda_rule_id} and {@code severity}, rendered
+ * through this module's writer. The diff was <b>exactly six insertions</b> — the two keys on each
+ * of the three rows; everything else stayed byte-identical. ⭐ {@code golden-v1.json} did <b>not</b>
+ * move: the v1 projection strips both keys, including on the round trip.
+ * </p>
+ *
+ * <p>
  * ⚠ The fixture is driven through {@link ReportSections#fromExportDocument} rather than through the
  * assembler on purpose: it makes the input a fixed literal with no timestamp, no runtime and no
  * environment in it, so the comparison is a real byte comparison rather than a comparison of two

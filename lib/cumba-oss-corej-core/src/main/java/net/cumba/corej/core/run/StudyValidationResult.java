@@ -86,16 +86,38 @@ public record StudyValidationResult(ValidationReport report,
 
     /**
      * Assembles this result into the neutral {@link ReportSections} every report writer consumes —
-     * the one and only rendering entry point on this record.
+     * the one rendering entry point on this record ({@link #rulesReport()} is the summary-only
+     * one).
      *
      * @return the assembled sections, carrying both the v1 sections and the v2 combined findings
      */
     public ReportSections sections()
     {
+        return assembler().sections();
+    }
+
+
+    /**
+     * The {@code Rules_Report} rows alone — the summary-only entry point
+     * ({@code PLAN-report-v2-rule-metadata} §2.2): exactly {@code sections().rulesReport()}, from
+     * the same wiring (the per-rule runtimes summed across datasets, the conformance), without
+     * assembling the combined findings or the issue details. Use it when only the per-rule status
+     * and metadata are needed; see {@link ReportAssembler#rulesReport()}.
+     *
+     * @return the v2 {@code Rules_Report} rows, never {@code null}
+     */
+    public List<Map<String, Object>> rulesReport()
+    {
+        return assembler().rulesReport();
+    }
+
+
+    /** The assembler wired with everything this result carries — shared by both entry points. */
+    private ReportAssembler assembler()
+    {
         return new ReportAssembler().report(report).conformance(conformance).datasets(datasets)
                 .rules(rules).ruleRuntimesMillis(ruleRuntimesByCoreId())
-                .datasetRuntimesMillis(datasetRuntimesByKey()).bundledCoreIds(bundledCoreIds)
-                .sections();
+                .datasetRuntimesMillis(datasetRuntimesByKey()).bundledCoreIds(bundledCoreIds);
     }
 
 
