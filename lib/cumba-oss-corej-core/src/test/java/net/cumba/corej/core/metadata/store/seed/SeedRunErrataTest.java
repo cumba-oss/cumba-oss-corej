@@ -136,7 +136,7 @@ class SeedRunErrataTest
         assertEquals(EVLINT_FIXED, examples(target, "--EVLINT"),
                 "D4: reported, NOT applied - the source's value stays");
 
-        assertEquals(SeedFixtures.DART_12_MODEL_WARNINGS, report.warnings(),
+        assertEquals(List.of(), report.warnings(),
                 "F1: a stale entry is no warning, so a user seed does not fail on it");
         assertTrue(report.summary().contains("(" + report.errataStale().size() + " stale,"),
                 "the summary counts the stale entries: " + report.summary());
@@ -235,7 +235,7 @@ class SeedRunErrataTest
         assertEquals(0, other.productsCarried(),
                 "F3: products corrected under another register are never carried");
         assertEquals(3, other.ctPackagesCarried(), "CT packages are untouched by the register");
-        assertEquals(SeedFixtures.DART_12_MODEL_WARNINGS, other.warnings());
+        assertEquals(List.of(), other.warnings());
         try (MetadataStore store = MetadataStore.open(target))
         {
             assertTrue(store.product(SeedFixtures.IG_KEY).isEmpty());

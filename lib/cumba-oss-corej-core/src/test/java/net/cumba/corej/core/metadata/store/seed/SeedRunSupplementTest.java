@@ -2,6 +2,7 @@ package net.cumba.corej.core.metadata.store.seed;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -9,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +20,7 @@ import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.pickle.LocalPickleSource;
 import net.cumba.corej.core.metadata.pickle.ProductKeyResolver;
 import net.cumba.corej.core.metadata.store.MetadataStore;
+import net.cumba.corej.core.metadata.store.MetadataStoreWriter;
 import net.cumba.corej.core.metadata.store.StoreLibraryProvider;
 import net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory;
 import net.cumba.corej.core.metadata.store.StoreProvenance;
@@ -29,9 +32,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The E14 seed supplement through a whole seed run (PLAN-seed-sendig-dart-1-2 D3, D6/F7, D7/F11 as
- * narrowed by D10, D9, F10, F12, Q1 (c)), with the SHIPPED supplements register over the miniature
- * {@link SeedFixtures} corpus — which, like the pinned pickle, does not serve
- * {@code standards/sendig/dart-1-2}.
+ * narrowed by D10 and D13, D9, F10, F12, Q1 (c), review L2/L4), with the SHIPPED supplements
+ * register over the miniature {@link SeedFixtures} corpus — which, like the pinned pickle, does not
+ * serve {@code standards/sendig/dart-1-2}.
  */
 class SeedRunSupplementTest
 {
@@ -39,6 +42,8 @@ class SeedRunSupplementTest
     private static final String DART_12 = SeedFixtures.DART_12_KEY;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static final String SEND_IG = "standards/sendig/3-1-1";
 
     private static final String SOURCE_LABEL = "DART 1.2 as a future source serves it";
 
@@ -68,7 +73,24 @@ class SeedRunSupplementTest
     /** Rewrites the source's standards with {@code standards/sendig/dart-1-2} served or not. */
     private void writeStandards(boolean aServeDart12) throws IOException
     {
+        writeStandards(aServeDart12, false);
+    }
+
+
+    /**
+     * Rewrites the source's standards with {@code standards/sendig/dart-1-2} and a SEND IG
+     * ({@code standards/sendig/3-1-1}) each served or not.
+     */
+    private void writeStandards(boolean aServeDart12, boolean aServeSendIg) throws IOException
+    {
         Map<String, Object> standards = new LinkedHashMap<>();
+        if (aServeSendIg)
+        {
+            Map<String, Object> sendIg = SeedFixtures.igDoc();
+            sendIg.put("name", "SENDIG v3.1.1");
+            sendIg.put("version", "3.1.1");
+            standards.put(SEND_IG, sendIg);
+        }
         standards.put(SeedFixtures.IG_KEY, SeedFixtures.igDoc());
         standards.put(SeedFixtures.TIG_KEY, SeedFixtures.tigDoc());
         standards.put(SeedFixtures.ADAM_KEY, SeedFixtures.adamDoc());
@@ -274,25 +296,38 @@ class SeedRunSupplementTest
 
 
     /**
-     * F11 as narrowed by D10: the missing-model warning fires when the source offers models but not
-     * the supplement's ({@code models/sdtm/1-6}), and NOT when the source offers no model at all (a
-     * one-IG cache, the CLI seed tests' shape) or offers that model.
+     * F11 as narrowed by D10 and D13 (owner 2026-10-10): the missing-model warning fires only when
+     * the source offers models AND serves a SEND IG (the one case where the DART 1.2 supplement
+     * needs {@code models/sdtm/1-6}) but not that model — and NOT for the miniature corpus as it is
+     * (models, no SEND IG: the seven zero-warning pins), for a source with a SEND IG but no model
+     * at all (a one-IG cache, the CLI seed tests' shape), or when the model is held.
      */
     @Test
-    void theMissingModelWarningFiresOnlyWhenTheSourceOffersModelsButNotThatOne() throws IOException
+    void theMissingModelWarningFiresOnlyWhenTheSourceServesASendIgAndModelsButNotThatOne()
+        throws IOException
     {
-        assertEquals(SeedFixtures.DART_12_MODEL_WARNINGS, pickleSeed(target).warnings(),
-                "models offered, models/sdtm/1-6 not");
+        assertEquals(List.of(), pickleSeed(target).warnings(),
+                "D13: models offered, no SEND IG - the miniature corpus seeds without a warning");
 
-        Files.delete(pickleDir.resolve("standards_models.pkl"));
+        writeStandards(false, true);
+        assertEquals(
+                List.of(DART_12 + ": the seed supplement links the model /mdr/sdtm/1-6,"
+                        + " which this seed does not hold - its model walk answers nothing"),
+                pickleSeed(temp.resolve("send.zip")).warnings(),
+                "a SEND IG and models offered, models/sdtm/1-6 not");
+
+        Path models = pickleDir.resolve("standards_models.pkl");
+        Path modelsBackup = temp.resolve("standards_models.pkl");
+        Files.move(models, modelsBackup);
         StoreSeedReport modelless = pickleSeed(temp.resolve("modelless.zip"));
         assertEquals(List.of(DART_12), modelless.supplemented());
-        assertEquals(List.of(), modelless.warnings(), "a source without any model: no warning");
+        assertEquals(List.of(), modelless.warnings(), "a SEND IG but no model at all: no warning");
+        Files.move(modelsBackup, models);
 
-        Map<String, Object> models = new LinkedHashMap<>();
-        models.put(SeedFixtures.SDTM_MODEL_KEY, SeedFixtures.sdtmModelDoc());
-        models.put("models/sdtm/1-6", SeedFixtures.sdtmModelDoc());
-        SeedFixtures.writePickle(pickleDir.resolve("standards_models.pkl"), models);
+        Map<String, Object> withSdtm16 = new LinkedHashMap<>();
+        withSdtm16.put(SeedFixtures.SDTM_MODEL_KEY, SeedFixtures.sdtmModelDoc());
+        withSdtm16.put("models/sdtm/1-6", SeedFixtures.sdtmModelDoc());
+        SeedFixtures.writePickle(models, withSdtm16);
         StoreSeedReport withModel = pickleSeed(temp.resolve("with-model.zip"));
         assertEquals(List.of(), withModel.warnings(), "the linked model is held: no warning");
         try (MetadataStore store = MetadataStore.open(temp.resolve("with-model.zip")))
@@ -300,5 +335,122 @@ class SeedRunSupplementTest
             assertFalse(store.product("models/sdtm/1-6").isEmpty());
             assertEquals("/mdr/sdtm/1-6", store.product(DART_12).orElseThrow().modelHref());
         }
+    }
+
+
+    /**
+     * Review L2: D3 (ii) is decided on what the carry really carries. A baseline whose
+     * source-served copy is CORRUPT (D-27: it fails on first access, so the carry would drop it) no
+     * longer makes the run skip the supplement and then drop the copy it deferred to — the
+     * supplement replaces it, the corruption stays a warning and the replacement is reported.
+     */
+    @Test
+    void aCorruptBaselineSourceServedCopyIsReplacedByTheSupplementNotDropped() throws IOException
+    {
+        writeStandards(true);
+        pickleSeed(target);
+        Path damaged = temp.resolve("damaged.zip");
+        net.cumba.corej.core.metadata.store.CorruptStores.withMismatchingProductKey(target, damaged,
+                DART_12);
+        Files.move(damaged, target, StandardCopyOption.REPLACE_EXISTING);
+        writeStandards(false);
+
+        StoreSeedReport report = pickleSeed(target);
+
+        assertEquals(List.of(DART_12), report.supplemented(),
+                "the copy the skip would defer to is not carried, so the supplement applies");
+        assertEquals(List.of(), report.supplementSkipped());
+        assertEquals(0, report.productsCarried());
+        assertEquals(1, report.warnings().size(), report.warnings().toString());
+        assertTrue(
+                report.warnings().get(0)
+                        .startsWith(DART_12 + ": the existing store's copy is" + " corrupt (")
+                        && report.warnings().get(0).endsWith(
+                                ") - replaced by the E14 owner 2026-10-07 seed supplement"),
+                report.warnings().toString());
+        assertTrue(report.details()
+                .contains("seed supplement REPLACED the existing store's copy: " + DART_12
+                        + ": its source-served copy is corrupt - the E14 owner 2026-10-07 seed"
+                        + " supplement replaces it"),
+                report.details().toString());
+        try (MetadataStore store = MetadataStore.open(target))
+        {
+            StoredProduct dart = store.product(DART_12).orElseThrow();
+            assertNotEquals(SOURCE_LABEL, dart.label(), "the supplement, not the source copy");
+            assertEquals("sha256:" + StoreSupplements.load().digest() + " applied:" + DART_12,
+                    line(store, StoreSupplements.PROVENANCE_SOURCE).ref());
+        }
+    }
+
+
+    /**
+     * Review L4 (b), the F10 deviation made visible: a source-served baseline copy corrected under
+     * ANOTHER errata register is never carried (F3), so the supplement replaces it — and the report
+     * says so (it is in no "not carrying" list, since the merged products hold the key).
+     */
+    @Test
+    void aSourceServedCopyUnderAnotherRegisterIsReplacedAndTheReplacementReported()
+        throws IOException
+    {
+        writeStandards(true);
+        pickleSeed(target);
+        relabelErrataDigest(target, "sha256:" + "0".repeat(64));
+        writeStandards(false);
+
+        StoreSeedReport report = pickleSeed(target);
+
+        assertEquals(List.of(DART_12), report.supplemented());
+        assertEquals(List.of(), report.supplementSkipped());
+        assertEquals(List.of(), report.warnings(), "a replacement is reported, NOT a warning");
+        assertTrue(report.details().contains("seed supplement REPLACED the existing store's copy: "
+                + DART_12 + ": its source-served copy was corrected under another errata register"
+                + " and is not carried - the E14 owner 2026-10-07 seed supplement replaces it"),
+                report.details().toString());
+        try (MetadataStore store = MetadataStore.open(target))
+        {
+            assertNotEquals(SOURCE_LABEL, store.product(DART_12).orElseThrow().label());
+        }
+
+        Path supplementedBaseline = temp.resolve("supplemented.zip");
+        pickleSeed(supplementedBaseline);
+        relabelErrataDigest(supplementedBaseline, "sha256:" + "0".repeat(64));
+        StoreSeedReport again = pickleSeed(supplementedBaseline);
+        assertEquals(List.of(DART_12), again.supplemented());
+        assertTrue(again.details().stream().noneMatch(d -> d.contains("REPLACED")),
+                "the control: a SUPPLEMENTED copy re-supplemented is no replacement: "
+                        + again.details());
+    }
+
+
+    /** Rewrites the store with its errata digest line set to {@code aRef} (another register). */
+    private void relabelErrataDigest(Path aStore, String aRef) throws IOException
+    {
+        MetadataStoreWriter writer = new MetadataStoreWriter();
+        try (MetadataStore store = MetadataStore.open(aStore))
+        {
+            for (String entry : store.manifest().partHashes().keySet())
+            {
+                if (entry.startsWith("products/") && entry.endsWith(".json"))
+                {
+                    writer.addProduct(store.product(entry.substring("products/".length(),
+                            entry.length() - ".json".length())).orElseThrow());
+                }
+            }
+            for (String id : store.publishedCtPackages())
+            {
+                store.ctPackage(id).ifPresent(writer::addCtPackage);
+            }
+            writer.publishedCtPackages(store.publishedCtPackages())
+                    .productCatalogue(store.productCatalogue());
+            for (StoreProvenance provenance : store.manifest().provenance())
+            {
+                writer.addProvenance(StoreErrata.PROVENANCE_SOURCE.equals(provenance.source())
+                        ? new StoreProvenance(provenance.source(), aRef, provenance.fetchedAt())
+                        : provenance);
+            }
+        }
+        Path rewritten = temp.resolve("relabelled.zip");
+        writer.write(rewritten);
+        Files.move(rewritten, aStore, StandardCopyOption.REPLACE_EXISTING);
     }
 }

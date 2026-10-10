@@ -64,15 +64,6 @@ final class SeedFixtures
     /** The E14 seed supplement's product, which every seed adds (PLAN-seed-sendig-dart-1-2 D9). */
     static final String DART_12_KEY = "standards/sendig/dart-1-2";
 
-    /**
-     * The one warning a seed of this miniature corpus carries since the E14 supplement: the corpus
-     * offers models but not {@code models/sdtm/1-6}, which SENDIG-DART 1.2 links (F11 as narrowed
-     * by D10 — the fixtures stay as they are). Every other warning is still a defect.
-     */
-    static final List<String> DART_12_MODEL_WARNINGS = List.of(DART_12_KEY
-            + ": the seed supplement links the model /mdr/sdtm/1-6, which this seed does not hold"
-            + " - its model walk answers nothing");
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private SeedFixtures()

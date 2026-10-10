@@ -219,6 +219,38 @@ class StoreSeederRealDataConformanceTest
                             .filter(d -> !d.isBlank()).isPresent(),
                     "the control: a SENDIG 3.1.1 variable still answers its CDISC Notes");
             assertEquals(List.of(), library.missedProducts());
+
+            // Review L3, measured: the reachable rule path - get_dataset_filtered_variables(
+            // key_name="description") - reads the IG-base + Model-merge rows. Under DART 1.2 no
+            // row of an IG-LISTED variable carries the key (Q1 (c)); the rows that do are the
+            // model-derived variables the IG dataset does not list, carrying the SDTM 1.6 MODEL's
+            // description (the same algorithm-B shape as under every SENDIG) - never IG Notes.
+            net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory providers = new net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory(
+                    store);
+            List<java.util.Map<String, String>> dartRows = providers
+                    .forSdtm("sendig", "dart-1-2", List.of()).orElseThrow()
+                    .getStandardVariablesDetailed(lbTable(), null);
+            assertNotNull(dartRows);
+            Set<String> igListed = new LinkedHashSet<>();
+            store.product("standards/sendig/dart-1-2").orElseThrow().classes().stream()
+                    .flatMap(c -> c.datasets().stream()).filter(d -> "LB".equals(d.name()))
+                    .flatMap(d -> d.variables().stream()).forEach(v -> igListed.add(v.name()));
+            List<String> igRows = dartRows.stream().map(row -> row.get("name"))
+                    .filter(igListed::contains).toList();
+            assertFalse(igRows.isEmpty(), "the DART 1.2 LB rows are served: " + dartRows.size());
+            List<String> describedIgRows = dartRows.stream().filter(
+                    row -> igListed.contains(row.get("name")) && row.containsKey("description"))
+                    .map(row -> row.get("name")).toList();
+            assertEquals(List.of(), describedIgRows,
+                    "Q1 (c): no IG-listed DART 1.2 row carries key_name=description");
+            List<java.util.Map<String, String>> sendRows = providers
+                    .forSdtm("sendig", "3-1-1", List.of()).orElseThrow()
+                    .getStandardVariablesDetailed(lbTable(), null);
+            assertTrue(
+                    sendRows.stream()
+                            .anyMatch(row -> "LBTESTCD".equals(row.get("name"))
+                                    && row.containsKey("description")),
+                    "the control: SENDIG 3.1.1's IG-listed LBTESTCD serves key_name=description");
         }
     }
 
@@ -743,5 +775,12 @@ class StoreSeederRealDataConformanceTest
         }
         Path legacy = REAL_WEB_CACHE.resolve(LEGACY_PRODUCTS_ENTRY);
         return Files.isRegularFile(legacy) ? legacy : null;
+    }
+
+
+    /** A one-column LB dataset, for the provider's dataset-scoped walks. */
+    private static net.cumba.datatable.IDataTable lbTable()
+    {
+        return net.cumba.datatable.testkit.MockTable.of().name("LB").col("DOMAIN", "LB").build();
     }
 }

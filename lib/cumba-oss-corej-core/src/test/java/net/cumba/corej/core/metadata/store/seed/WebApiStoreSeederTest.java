@@ -89,7 +89,7 @@ class WebApiStoreSeederTest
 
         assertEquals(5, report.productsSeeded(), "3 IGs + 2 distinct linked models");
         assertEquals(3, report.ctPackagesFetched());
-        assertEquals(SeedFixtures.DART_12_MODEL_WARNINGS, report.warnings());
+        assertEquals(List.of(), report.warnings());
         try (MetadataStore store = MetadataStore.open(target))
         {
             assertEquals(
@@ -192,7 +192,7 @@ class WebApiStoreSeederTest
 
         assertEquals(3, report.ctPackagesCarried());
         assertEquals(0, report.ctPackagesFetched());
-        assertEquals(SeedFixtures.DART_12_MODEL_WARNINGS, report.warnings(),
+        assertEquals(List.of(), report.warnings(),
                 "no package request may have been issued: " + report.warnings());
         try (MetadataStore store = MetadataStore.open(target))
         {

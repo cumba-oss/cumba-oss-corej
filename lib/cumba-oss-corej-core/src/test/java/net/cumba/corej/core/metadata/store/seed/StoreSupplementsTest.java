@@ -16,7 +16,9 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.cumba.corej.core.metadata.store.StoredDataset;
 import net.cumba.corej.core.metadata.store.StoredProduct;
+import net.cumba.corej.core.metadata.store.StoredVariable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -146,6 +148,111 @@ class StoreSupplementsTest
         variable.put("description", "CDISC Notes text");
         String message = refusal(doc);
         assertTrue(message.contains("FX.FXRESCAT") && message.contains("Q1 (c)"), message);
+    }
+
+
+    /**
+     * Review L1: the refusal runs on the PROJECTED product, so every slot of every
+     * {@link StoredVariable} the projection reaches is covered — the class's dataset rows above,
+     * and here the other three paths (class variables, top-level datasets, ADaM analysis variable
+     * sets), one planted document each.
+     */
+    @Test
+    void aVariableDescriptionOnAnyOtherProjectedPathIsRefused()
+    {
+        ObjectNode classVariable = document(DART_12);
+        ObjectNode clazz = (ObjectNode) firstEntry(classVariable).get("product").get("classes")
+                .get(0);
+        clazz.putArray("classVariables").addObject().put("name", "--TESTCD").put("description",
+                "CDISC Notes text");
+        String message = refusal(classVariable);
+        assertTrue(message.contains("Findings.--TESTCD carries a variable description")
+                && message.contains("Q1 (c)"), message);
+
+        ObjectNode topLevel = document(DART_12);
+        ((ObjectNode) firstEntry(topLevel).get("product")).putArray("datasets").addObject()
+                .put("name", "DP").putArray("datasetVariables").addObject().put("name", "DPDTC")
+                .put("description", "CDISC Notes text");
+        message = refusal(topLevel);
+        assertTrue(message.contains("DP.DPDTC carries a variable description"), message);
+
+        ObjectNode analysis = document(DART_12);
+        ObjectNode structure = ((ObjectNode) firstEntry(analysis).get("product"))
+                .putArray("dataStructures").addObject().put("name", "ADSL");
+        structure.putArray("analysisVariableSets").addObject().put("name", "Identifier")
+                .putArray("analysisVariables").addObject().put("name", "STUDYID")
+                .put("description", "CDISC Notes text");
+        message = refusal(analysis);
+        assertTrue(message.contains("ADSL/Identifier.STUDYID carries a variable description"),
+                message);
+    }
+
+
+    /**
+     * Review L1: the other free-text variable slots the projection keeps are refused like the
+     * description — notes, definition, examples, role description, usage restrictions — and an
+     * empty string is refused too (present, not absent).
+     */
+    @Test
+    void everyFreeTextVariableSlotIsRefused()
+    {
+        for (String slot : List.of("notes", "definition", "examples", "roleDescription",
+                "usageRestrictions", "description"))
+        {
+            ObjectNode doc = document(DART_12);
+            ((ObjectNode) firstEntry(doc).get("product").get("classes").get(0).get("datasets")
+                    .get(0).get("datasetVariables").get(0)).put(slot, "");
+            String message = refusal(doc);
+            assertTrue(message.contains("FX.FXRESCAT carries a variable " + slot), message);
+        }
+    }
+
+
+    /**
+     * The guard of L1's "every path by construction": the record types that hold
+     * {@link StoredVariable} lists, walked from {@link StoredProduct} over every record component.
+     * A new holder added to the store records without extending the refusal reds here.
+     */
+    @Test
+    void theRefusalWalksEveryRecordPathThatHoldsVariables()
+    {
+        Set<String> holders = new java.util.TreeSet<>();
+        collectVariableHolders(StoredProduct.class, holders, new java.util.HashSet<>());
+        assertEquals(Set.of("StoredClass.classVariables", "StoredDataset.variables",
+                "StoredVariableSet.variables"), holders);
+
+        // The sensitivity arm: a planted record with a direct and a nested path is seen.
+        Set<String> planted = new java.util.TreeSet<>();
+        collectVariableHolders(PlantedHolder.class, planted, new java.util.HashSet<>());
+        assertEquals(Set.of("PlantedHolder.extra", "StoredDataset.variables"), planted);
+    }
+
+    /** A record the guard must see through: one direct variable list, one nested holder. */
+    private record PlantedHolder(List<StoredVariable> extra, StoredDataset nested)
+    {
+    }
+
+    private static void collectVariableHolders(Class<?> aType, Set<String> aHolders,
+            Set<Class<?>> aSeen)
+    {
+        if (!aType.isRecord() || !aSeen.add(aType))
+        {
+            return;
+        }
+        for (java.lang.reflect.RecordComponent component : aType.getRecordComponents())
+        {
+            Class<?> element = component.getType();
+            if (component.getGenericType() instanceof java.lang.reflect.ParameterizedType list
+                    && list.getActualTypeArguments()[0] instanceof Class<?> argument)
+            {
+                element = argument;
+            }
+            if (element == StoredVariable.class)
+            {
+                aHolders.add(aType.getSimpleName() + "." + component.getName());
+            }
+            collectVariableHolders(element, aHolders, aSeen);
+        }
     }
 
 

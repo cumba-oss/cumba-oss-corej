@@ -68,13 +68,18 @@ import org.jspecify.annotations.Nullable;
  *            {@code <key>: <reason>} for every supplement IGNORED because the source serves its key
  *            or the existing store holds a source-served copy — reported, NOT a warning (D3); the
  *            summary names each, since it means the supplement is due for retirement
+ * @param supplementReplaced
+ *            {@code <key>: <reason>} for every supplement applied IN PLACE of a source-served copy
+ *            the existing store held but this run did not carry — corrected under another errata
+ *            register (F3), or corrupt — reported by {@link #details()}, NOT a warning (review L2 /
+ *            L4 b: the F10 "never replaced" holds only for a copy the carry really carries)
  */
 public record StoreSeedReport(int productsSeeded, int productsCarried, int ctPackagesFetched,
         int ctPackagesCarried, List<String> ctPackagesMissed, List<String> warnings,
         @Nullable String sourceRef, Path target, long storeBytes, Normalisations normalisations,
         List<String> errataApplied, List<String> errataStale, List<String> errataUnreached,
         List<String> errataNotApplicable, List<String> footnoteLabels, List<String> supplemented,
-        List<String> supplementSkipped)
+        List<String> supplementSkipped, List<String> supplementReplaced)
 {
 
     /**
@@ -122,6 +127,8 @@ public record StoreSeedReport(int productsSeeded, int productsCarried, int ctPac
         supplemented = List.copyOf(Objects.requireNonNull(supplemented, "supplemented"));
         supplementSkipped = List
                 .copyOf(Objects.requireNonNull(supplementSkipped, "supplementSkipped"));
+        supplementReplaced = List
+                .copyOf(Objects.requireNonNull(supplementReplaced, "supplementReplaced"));
     }
 
 
@@ -153,8 +160,9 @@ public record StoreSeedReport(int productsSeeded, int productsCarried, int ctPac
 
     /**
      * The report's per-entry detail, one line each: every stale erratum with its reason (reported,
-     * NOT applied — retire it from the register), every seed supplement IGNORED (retire it) and
-     * every label still ending in a footnote marker. Empty on a conforming seed.
+     * NOT applied — retire it from the register), every seed supplement IGNORED (retire it), every
+     * seed supplement that REPLACED a source-served copy this run did not carry, and every label
+     * still ending in a footnote marker. Empty on a conforming seed.
      *
      * @return the detail lines
      */
@@ -163,6 +171,8 @@ public record StoreSeedReport(int productsSeeded, int productsCarried, int ctPac
         List<String> lines = new java.util.ArrayList<>();
         errataStale.forEach(s -> lines.add("errata entry stale, reported and NOT applied: " + s));
         supplementSkipped.forEach(s -> lines.add("seed supplement IGNORED: " + s));
+        supplementReplaced.forEach(
+                s -> lines.add("seed supplement REPLACED the existing store's copy: " + s));
         footnoteLabels.forEach(f -> lines.add("label ends in a footnote marker: " + f));
         return List.copyOf(lines);
     }

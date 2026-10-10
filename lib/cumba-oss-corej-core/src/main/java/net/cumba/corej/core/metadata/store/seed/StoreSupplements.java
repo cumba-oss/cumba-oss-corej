@@ -11,6 +11,13 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
+import net.cumba.corej.core.metadata.store.StoredClass;
+import net.cumba.corej.core.metadata.store.StoredDataStructure;
+import net.cumba.corej.core.metadata.store.StoredDataset;
+import net.cumba.corej.core.metadata.store.StoredProduct;
+import net.cumba.corej.core.metadata.store.StoredVariable;
+import net.cumba.corej.core.metadata.store.StoredVariableSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The seed supplements (PLAN-seed-sendig-dart-1-2 D1/D2): whole products the seed sources do not
@@ -23,8 +30,9 @@ import java.util.regex.Pattern;
  * {@link StoreProjection} and the errata register and the footnote scan apply to it unchanged. The
  * loader refuses (a build defect, never a runtime condition) a key outside the store's product-key
  * grammar or outside {@code standards/} (the catalogue holds IG keys only), a duplicate key, a
- * missing approval, and — owner ruling Q1 (c) — a {@code description} member on any
- * {@code datasetVariables} row: the CDISC Notes text is not shipped.
+ * missing approval, and — owner ruling Q1 (c) — any variable of the PROJECTED product carrying a
+ * free-text slot (description, notes, definition, examples, role description, usage restrictions):
+ * the CDISC Notes text is not shipped.
  * </p>
  *
  * <p>
@@ -184,33 +192,86 @@ public final class StoreSupplements
             {
                 throw new IllegalStateException("seed supplements: " + key + " has no product");
             }
-            refuseVariableDescriptions(key, product);
+            refuseVariableText(key, product);
             entries.add(new Supplement(key, approval, product));
         }
         return entries;
     }
 
 
-    /** Owner ruling Q1 (c): no {@code datasetVariables} row may carry a {@code description}. */
-    private static void refuseVariableDescriptions(String aKey, JsonNode aProduct)
+    /**
+     * Owner ruling Q1 (c), checked on the PROJECTED product (review L1): no {@link StoredVariable}
+     * the projection reaches — a class's variables, a class's or a top-level dataset's variables,
+     * an analysis variable set's variables — may carry a free-text slot (description, notes,
+     * definition, examples, role description, usage restrictions). Checking what the projection
+     * keeps covers every source path by construction; {@code StoreSupplementsTest} reds when a new
+     * record path to a variable appears.
+     */
+    private static void refuseVariableText(String aKey, JsonNode aProduct)
     {
-        for (JsonNode clazz : aProduct.path("classes"))
+        StoredProduct projected = new StoreProjection().product(aKey, aProduct);
+        for (StoredClass clazz : projected.classes())
         {
-            for (JsonNode dataset : clazz.path("datasets"))
+            refuseVariableText(aKey, clazz.name(), clazz.classVariables());
+            for (StoredDataset dataset : clazz.datasets())
             {
-                for (JsonNode variable : dataset.path("datasetVariables"))
-                {
-                    if (variable.has("description"))
-                    {
-                        throw new IllegalStateException(
-                                "seed supplements: " + aKey + " " + dataset.path("name").asText()
-                                        + "." + variable.path("name").asText()
-                                        + " carries a variable description - owner ruling Q1 (c):"
-                                        + " the CDISC Notes text is not shipped");
-                    }
-                }
+                refuseVariableText(aKey, dataset.name(), dataset.variables());
             }
         }
+        for (StoredDataset dataset : projected.datasets())
+        {
+            refuseVariableText(aKey, dataset.name(), dataset.variables());
+        }
+        for (StoredDataStructure structure : projected.dataStructures())
+        {
+            for (StoredVariableSet set : structure.variableSets())
+            {
+                refuseVariableText(aKey, structure.name() + "/" + set.name(), set.variables());
+            }
+        }
+    }
+
+
+    private static void refuseVariableText(String aKey, @Nullable String aOwner,
+            List<StoredVariable> aVariables)
+    {
+        for (StoredVariable variable : aVariables)
+        {
+            String slot = freeTextSlot(variable);
+            if (slot != null)
+            {
+                throw new IllegalStateException("seed supplements: " + aKey + " " + aOwner + "."
+                        + variable.name() + " carries a variable " + slot
+                        + " - owner ruling Q1 (c): the CDISC Notes text is not shipped");
+            }
+        }
+    }
+
+
+    /** The first free-text slot the variable carries, or {@code null} when it carries none. */
+    private static @Nullable String freeTextSlot(StoredVariable aVariable)
+    {
+        if (aVariable.description() != null)
+        {
+            return "description";
+        }
+        if (aVariable.notes() != null)
+        {
+            return "notes";
+        }
+        if (aVariable.definition() != null)
+        {
+            return "definition";
+        }
+        if (aVariable.examples() != null)
+        {
+            return "examples";
+        }
+        if (aVariable.roleDescription() != null)
+        {
+            return "roleDescription";
+        }
+        return aVariable.usageRestrictions() != null ? "usageRestrictions" : null;
     }
 
 

@@ -85,7 +85,7 @@ class StoreSeederConformanceTest
 
         assertEquals(5, report.productsSeeded(), "D9: source products only");
         assertEquals(3, report.ctPackagesFetched());
-        assertEquals(SeedFixtures.DART_12_MODEL_WARNINGS, report.warnings());
+        assertEquals(List.of(), report.warnings());
         assertEquals(List.of(SeedFixtures.DART_12_KEY), report.supplemented());
         try (MetadataStore store = MetadataStore.open(target))
         {

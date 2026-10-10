@@ -2349,7 +2349,8 @@ public final class StudyValidationService
                         + String.join(", ", supplied) + ", which the metadata store in use does"
                         + " not hold. It is not served by the CDISC Library; the store was seeded"
                         + " before this build added it: re-seed the metadata store (this build"
-                        + " seeds it from the E14 supplement).", e);
+                        + " seeds it from the E14 supplement; a REST deployment re-seeds an"
+                        + " existing store only with corej.cache-seed.refresh=true).", e);
             }
             throw new StudyValidationException("The selected rule package(s) declare a CDISC "
                     + "Library standard that cannot be resolved. " + e.getMessage()

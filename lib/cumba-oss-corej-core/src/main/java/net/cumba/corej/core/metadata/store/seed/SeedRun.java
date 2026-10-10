@@ -54,10 +54,11 @@ import org.jspecify.annotations.Nullable;
  * {@link StoreSupplements} register are projected through the same projection and added to this
  * run's source products BEFORE the errata are applied, unless the source projects the key itself
  * (D3 (i)) or the carried baseline holds a copy its {@value StoreSupplements#PROVENANCE_SOURCE}
- * provenance line does not list as supplemented — a source-served product (D3 (ii), F10). A skip is
- * reported, not warned about; the supplements' digest and applied keys are always recorded as a
- * provenance line (F7), before the register digest line. {@link StoreSeedReport#productsSeeded()}
- * keeps counting source products only (D9).</li>
+ * provenance line does not list as supplemented — a source-served product (D3 (ii), F10) — that the
+ * carry really carries (a copy corrected under another register or corrupt is replaced, and the
+ * replacement reported). A skip is reported, not warned about; the supplements' digest and applied
+ * keys are always recorded as a provenance line (F7), before the register digest line.
+ * {@link StoreSeedReport#productsSeeded()} keeps counting source products only (D9).</li>
  * <li><b>Rebuild:</b> the writer rebuilds the whole file from the merged model and the target is
  * replaced via temp file + atomic move, so an interrupted seed never leaves a partial store and a
  * concurrent reader keeps its old file.</li>
@@ -85,6 +86,8 @@ final class SeedRun
     }
 
     private static final String MODELS_PREFIX = "models/";
+
+    private static final String SENDIG_PREFIX = "standards/sendig/";
 
     private final StoreSeedOptions options;
 
@@ -115,6 +118,8 @@ final class SeedRun
     private final List<String> supplemented = new ArrayList<>();
 
     private final List<String> supplementSkipped = new ArrayList<>();
+
+    private final List<String> supplementReplaced = new ArrayList<>();
 
     /**
      * Set by {@link #mergeProducts(Map)}; {@link #catalogueUnion(List)} reads its outcome (F12).
@@ -301,14 +306,16 @@ final class SeedRun
 
     /**
      * D3: this run's source products plus every supplement that is neither served by the source (i)
-     * nor held by the carried baseline as a source-served copy (ii), each projected through the
-     * run's {@link #projection()} — so the errata register and the footnote scan, which run on the
-     * returned map next, apply to it as to a source product. The caller's map is not modified.
+     * nor held by the baseline as a source-served copy the carry really carries (ii), each
+     * projected through the run's {@link #projection()} — so the errata register and the footnote
+     * scan, which run on the returned map next, apply to it as to a source product. The caller's
+     * map is not modified.
      */
     private Map<String, StoredProduct> supplement(Map<String, StoredProduct> aFromSource)
     {
         Map<String, StoredProduct> out = new TreeMap<>(aFromSource);
         Set<String> baselineSupplemented = baselineSupplementedKeys();
+        List<String> baselineKeys = existing == null ? List.of() : storedProductKeys(existing);
         for (StoreSupplements.Supplement entry : supplements.supplements())
         {
             String key = entry.key();
@@ -318,16 +325,19 @@ final class SeedRun
                         + " seed supplement was IGNORED; retire it");
                 continue;
             }
-            if (baselineProductsCurrent && existing != null
-                    && storedProductKeys(existing).contains(key)
-                    && !baselineSupplemented.contains(key))
+            if (baselineKeys.contains(key) && !baselineSupplemented.contains(key))
             {
-                // F10: a real source product carried after a source dropped it (or failed to
-                // deliver it) is never replaced by the extract.
-                supplementSkipped.add(key + ": the existing store holds a source-served copy,"
-                        + " carried forward - the " + entry.approval()
-                        + " seed supplement was IGNORED; retire it");
-                continue;
+                String notCarried = uncarriedSourceServedCopy(key, entry.approval());
+                if (notCarried == null)
+                {
+                    // F10: a real source product carried after a source dropped it (or failed to
+                    // deliver it) is never replaced by the extract.
+                    supplementSkipped.add(key + ": the existing store holds a source-served copy,"
+                            + " carried forward - the " + entry.approval()
+                            + " seed supplement was IGNORED; retire it");
+                    continue;
+                }
+                supplementReplaced.add(notCarried);
             }
             out.put(key, projection.product(key, entry.product()));
             supplemented.add(key);
@@ -337,17 +347,53 @@ final class SeedRun
 
 
     /**
-     * D7 / F11, narrowed by D10 (owner 2026-10-10): an applied supplement whose model is absent
-     * from the merged products would answer nothing on the model walk — a warning, but only when
-     * the source offers models at all (a source without any model is a partial source by design,
-     * such as a one-IG cache).
+     * D3 (ii) decided on what {@link #carryBaseline(Map)} really carries (review L2): {@code null}
+     * when the baseline's source-served copy of {@code aKey} will be carried; otherwise why not —
+     * the baseline was corrected under another errata register, so none of its products is carried
+     * (F3; the F10 deviation, review L4 b), or the copy is corrupt (D-27: it fails on first access,
+     * which is a warning as in the carry) — and the supplement then replaces it, reported.
+     */
+    private @Nullable String uncarriedSourceServedCopy(String aKey, String aApproval)
+    {
+        String replaces = " - the " + aApproval + " seed supplement replaces it";
+        if (!baselineProductsCurrent || existing == null)
+        {
+            return aKey + ": its source-served copy was corrected under another errata register"
+                    + " and is not carried" + replaces;
+        }
+        try
+        {
+            if (existing.product(aKey).isPresent())
+            {
+                return null;
+            }
+            return aKey + ": its source-served copy is unreadable" + replaces;
+        }
+        catch (java.io.UncheckedIOException e)
+        {
+            warn(aKey + ": the existing store's copy is corrupt (" + e.getMessage()
+                    + ") - replaced by the " + aApproval + " seed supplement");
+            return aKey + ": its source-served copy is corrupt" + replaces;
+        }
+    }
+
+
+    /**
+     * D7 / F11, narrowed by D10 and D13 (owner 2026-10-10): an applied supplement whose model is
+     * absent from the merged products would answer nothing on the model walk — a warning, but only
+     * when the source offers models AND serves a SEND IG, the one case where the SENDIG-DART 1.2
+     * supplement needs {@code models/sdtm/1-6}. A source without any model is a partial source by
+     * design (a one-IG cache); a source without a SEND IG is not a SEND user's seed (an SDTM-only
+     * cache, the hermetic fixtures).
      */
     private void warnOnMissingSupplementModels(Map<String, StoredProduct> aFromSource,
             Map<String, StoredProduct> aMerged)
     {
         boolean sourceOffersModels = aFromSource.keySet().stream()
                 .anyMatch(key -> key.startsWith(MODELS_PREFIX));
-        if (!sourceOffersModels)
+        boolean sourceServesSendIg = aFromSource.keySet().stream()
+                .anyMatch(key -> key.startsWith(SENDIG_PREFIX));
+        if (!sourceOffersModels || !sourceServesSendIg)
         {
             return;
         }
@@ -594,7 +640,7 @@ final class SeedRun
                 outcome == null ? List.of() : outcome.stale(),
                 outcome == null ? List.of() : outcome.unreached(),
                 outcome == null ? List.of() : outcome.notApplicable(), footnoteLabels, supplemented,
-                supplementSkipped);
+                supplementSkipped, supplementReplaced);
     }
 
 

@@ -1607,6 +1607,9 @@ class StudyValidationServiceTest
                     "the message must blame the DECLARATION, not the user's -mp: "
                             + ex.getMessage());
             assertTrue(ex.getMessage().contains("re-seed the metadata store"), ex.getMessage());
+            assertTrue(ex.getMessage().contains("corej.cache-seed.refresh=true"),
+                    "review L4 (a): a REST deployment re-seeds an existing current store only"
+                            + " with the refresh switch: " + ex.getMessage());
             assertFalse(ex.getMessage().contains("-mp"),
                     "D8: never steer an old-store user to another product: " + ex.getMessage());
 
