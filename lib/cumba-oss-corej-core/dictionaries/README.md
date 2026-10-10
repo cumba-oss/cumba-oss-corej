@@ -19,13 +19,22 @@ supports to a map lookup.
 > Real dictionary data belongs in a **separate, operator-controlled
 > directory** — see [Pointing the engine at real data](#4-pointing-the-engine-at-real-data).
 
+> ⚑ **Where the code lives.** Since 2026-10-10 the house-format model
+> (`ValueMapDictionary`, `LevelScopedHierarchy`), the store, cache, provider
+> and validator, the seven converters, the installer, its sources and the
+> licence texts live in the module **`cumba-oss-datatable-dictionary`** (repo
+> `cumba-oss-datatable`, packages `net.cumba.datatable.dictionary.house` /
+> `.convert`). The engine imports them. This README stays the format's
+> specification, beside the dummy fixtures the engine tests are pinned to.
+
 ---
 
 ## 1. The house format
 
 One JSON document per dictionary type. All top-level keys are optional;
 an absent or mis-shaped key degrades to empty **silently**
-(`ValueMapDictionary.parse`, `.../metadata/ValueMapDictionary.java:106`).
+(`ValueMapDictionary.parse`, `cumba-oss-datatable-dictionary`
+`.../dictionary/house/ValueMapDictionary.java`).
 
 ```jsonc
 {
@@ -191,6 +200,52 @@ and the rule its first fixtures.)
 > dictionary types and `cdiscct` is not among them, so a `cdiscct.json`
 > would load cleanly and answer nothing.
 
+### 1.4 House format 2 — header first, `decodes` (2026-10-10)
+
+Every file the installer writes since 2026-10-10 is **house format 2**. A file without the field is house format 1
+and is still read; no reader rejects either version.
+
+```jsonc
+{
+  "type": "meddra",                      // the header comes FIRST, in this order:
+  "version": "27.1",
+  "source": "/path/to/meddra/MedAscii",  // the raw distribution's provenance
+  "retrieved": "2026-10-10",             // UTC date
+  "house_format": 2,                     // absent ⇒ house format 1
+  "levels": { … }, "hierarchy": { … }, "hierarchy_by_level": { … },
+  "decodes": {                           // code level -> code -> published name, verbatim
+    "PTCD": { "10019211": "Headache" },
+    "SOCCD": { "10029205": "Nervous system disorders" }
+  }
+}
+```
+
+- **`decodes`** maps a code of a code level to its published name, exactly
+  as the vendor file spells it. MedDRA: `LLTCD` `PTCD` `HLTCD` `HLGTCD`
+  `SOCCD`. WHODrug: `ATCCD` (from `INA.txt`) and `DRUGCD` — a WHODrug file
+  also carries the new level **`levels.DRUGCD`** (every `DD.txt` drug code
+  `[0:11]`), and each drug code decodes to its **own row's** name.
+  The other types keep their decodes in `pairs` (house format 1 shape).
+- **The engine does not read `decodes`.** No rule names it, and the pair /
+  decode fall-through scan (§1, `pairs` + `attributes`) cannot reach it, so
+  adding it moves no finding. A `decodes` entry is **not content**: a file
+  holding only `decodes` counts as carrying no usable terms (§4.2, SKIP).
+  A reader that displays code columns can show these names as labels.
+- **Header first** so that a header read (listing the installed versions)
+  stops after the five fields instead of walking a multi-MB file.
+  Files written before that change are still read, just to their end.
+- **Written atomically**: `<name>.tmp`, then an atomic move — a killed
+  install leaves the previous file intact, never a truncated one.
+- **Validator** (`HouseFormatValidator`): a house-format-2 file must have
+  every `decodes` key a member of its code level and every decode a name its
+  name level publishes (`PTCD → PT`, `ATCCD → ATC`; a WHODrug drug code
+  ending `01001` decodes to a `PT`); a missing or empty `decodes` level the
+  converter writes is reported as an advisory gap.
+- **A house-format-1 MedDRA / WHODrug install** carries no labels for its
+  codes and makes `CdiscValidate --install-dictionaries` print one WARNING
+  per such file. Re-installing the same distribution rewrites it as house format 2;
+  its findings do not change.
+
 ---
 
 ## 2. Where to download
@@ -241,7 +296,8 @@ must be filtered to preferred records or `--DECOD` accepts trade names.
 
 Every source needs converting — no authority publishes the house format,
 and no off-the-shelf converter exists. The converters live in the
-dictionary installer; the design and delivery state are recorded in
+dictionary installer (module `cumba-oss-datatable-dictionary`, package
+`net.cumba.datatable.dictionary.convert`); the design and delivery state are recorded in
 `plans/done/PLAN-dictionary-seeder.md`, which is kept in the internal monorepo
 and is not redistributed here.
 
@@ -398,6 +454,9 @@ notice always travels with the release it applies to:
   selected-versions.json          {"medrt": "2026.07.06", "unii": "4Aug2026"}
   SOURCES.md                      per type: URL · artefact · version ·
                                   retrieval date · SHA-256 · entry counts
+                                  (a local distribution: the SHA-256 of
+                                  every file the converter read, of the
+                                  bytes it actually read)
   medrt/2026.07.06/
     medrt.json                    (or medrt.json.gz above ~1 MB)
     LICENSES/MEDRT.txt
