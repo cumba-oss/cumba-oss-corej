@@ -351,17 +351,14 @@
         <Bug pattern="NM_CONFUSING" />
     </Match>
     <Match>
-        <!-- Dictionary installer (Phase 8): the second member of the same
-             filename/fileName family. Download.fileName is a record component
-             naming the plain file a dictionary artefact is saved under — the
-             natural name for it, camel-cased per this package's convention.
-             The clash is with ReportAssembler$DatasetInfo.filename above:
-             unrelated nested records in unrelated packages, no inheritance
-             relationship, so the case-confusion the pattern guards against
-             (accidentally failing to override) cannot arise. Attribution
-             lands on this class when SpotBugs visits it first, hence its own
-             entry alongside DatasetInfo above. -->
-        <Class name="net.cumba.corej.core.metadata.dictionary.HttpDictionarySource$Download" />
+        <!-- The other member of the filename/fileName family since the dictionary installer's
+             HttpDictionarySource$Download (whose own entry stood here) moved to the shared
+             dictionary module (PLAN-dictionary-backed-formats B3): LibraryValidator$Dataset.fileName
+             is a record component naming a library member's file, in a different package from
+             ReportAssembler$DatasetInfo.filename above, no inheritance relationship — the
+             case-confusion the pattern guards against (failing to override) cannot arise.
+             Attribution lands on whichever class SpotBugs visits first, hence its own entry. -->
+        <Class name="net.cumba.corej.core.report.LibraryValidator$Dataset" />
         <Method name="fileName" />
         <Bug pattern="NM_CONFUSING" />
     </Match>

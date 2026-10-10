@@ -20,10 +20,10 @@ import net.cumba.corej.core.expr.eval.FunctionKind;
 import net.cumba.corej.core.expr.eval.RegistryTestSeam;
 import net.cumba.corej.core.expr.eval.UngatedProviderReachException;
 import net.cumba.corej.core.expr.eval.Vector;
-import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
-import net.cumba.corej.core.metadata.ValueMapDictionary;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.dictionary.house.RuntimeDictionaryProvider;
+import net.cumba.datatable.dictionary.house.ValueMapDictionary;
 import org.junit.jupiter.api.Test;
 
 /**

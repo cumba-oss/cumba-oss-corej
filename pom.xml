@@ -1374,6 +1374,9 @@
             <!-- Upstream cumba-oss-datatable modules (released separately). -->
             <dependency><groupId>net.cumba</groupId><artifactId>cumba-oss-datatable</artifactId><version>${dependency.cumba-oss-datatable.version}</version></dependency>
             <dependency><groupId>net.cumba</groupId><artifactId>cumba-oss-datatable-impl</artifactId><version>${dependency.cumba-oss-datatable.version}</version></dependency>
+            <!-- PLAN-dictionary-backed-formats B-OSS: the engine's dictionary model, store, cache,
+                 provider, validator, converters and installer live in the shared module. -->
+            <dependency><groupId>net.cumba</groupId><artifactId>cumba-oss-datatable-dictionary</artifactId><version>${dependency.cumba-oss-datatable.version}</version></dependency>
             <dependency><groupId>net.cumba</groupId><artifactId>cumba-oss-cdisc-define</artifactId><version>${dependency.cumba-oss-datatable.version}</version></dependency>
             <dependency><groupId>net.cumba</groupId><artifactId>cumba-oss-datatable-provider-define</artifactId><version>${dependency.cumba-oss-datatable.version}</version></dependency>
             <dependency><groupId>net.cumba</groupId><artifactId>cumba-oss-datatable-provider-cdt</artifactId><version>${dependency.cumba-oss-datatable.version}</version></dependency>

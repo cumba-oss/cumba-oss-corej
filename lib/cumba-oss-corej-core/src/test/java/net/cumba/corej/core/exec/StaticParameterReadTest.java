@@ -15,9 +15,9 @@ import net.cumba.corej.core.expr.eval.ConstVector;
 import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.NativeExprEvaluator;
 import net.cumba.corej.core.expr.eval.Vector;
-import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
-import net.cumba.corej.core.metadata.ValueMapDictionary;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.dictionary.house.RuntimeDictionaryProvider;
+import net.cumba.datatable.dictionary.house.ValueMapDictionary;
 import org.junit.jupiter.api.Test;
 
 /**

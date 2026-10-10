@@ -14,11 +14,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.RulePackageLoader;
-import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
-import net.cumba.corej.core.metadata.ValueMapDictionary;
-import net.cumba.corej.core.metadata.dictionary.MedDraConverter;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.dictionary.convert.MedDraConverter;
+import net.cumba.datatable.dictionary.house.RuntimeDictionaryProvider;
+import net.cumba.datatable.dictionary.house.ValueMapDictionary;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -223,7 +223,7 @@ class DictionaryHierarchyLevelTest
         }
         for (String unmapped : new String[]
         {
-                "AEBODSYS", "AETERM", "$hlt", "MHDECODX"
+                "AEBODSYS", "AEBDSYCD", "AETERM", "$hlt", "MHDECODX"
         })
         {
             assertNull(DictionaryFunctions.hierarchyLevelOf(unmapped), unmapped);

@@ -12,8 +12,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import net.cumba.corej.core.RulePackageLoader;
-import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
 import net.cumba.corej.core.model.Rule;
+import net.cumba.datatable.dictionary.house.RuntimeDictionaryProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

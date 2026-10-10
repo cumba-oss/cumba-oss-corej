@@ -86,6 +86,17 @@
             <artifactId>cumba-oss-datatable</artifactId>
         </dependency>
 
+        <!--
+            The external-dictionary code (house-format model, store, cache, provider, validator,
+            converters, installer) — moved out of this module into the shared datatable module
+            (PLAN-dictionary-backed-formats B-OSS, DF15 / DF20): one reader, as in the internal
+            engine.
+        -->
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-datatable-dictionary</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>net.cumba</groupId>
             <artifactId>cumba-oss-datatable-impl</artifactId>

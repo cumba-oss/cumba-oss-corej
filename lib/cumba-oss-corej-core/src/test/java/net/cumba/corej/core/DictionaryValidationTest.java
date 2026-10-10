@@ -19,11 +19,11 @@ import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
 import net.cumba.corej.core.exec.RuleRunner;
 import net.cumba.corej.core.exec.RuleRunnerCalls;
-import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
-import net.cumba.corej.core.metadata.ValueMapDictionary;
-import net.cumba.corej.core.metadata.dictionary.HouseFormatValidator;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.dictionary.house.HouseFormatValidator;
+import net.cumba.datatable.dictionary.house.RuntimeDictionaryProvider;
+import net.cumba.datatable.dictionary.house.ValueMapDictionary;
 import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 

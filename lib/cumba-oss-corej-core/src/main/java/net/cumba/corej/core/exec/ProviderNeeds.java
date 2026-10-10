@@ -413,7 +413,7 @@ public record ProviderNeeds(boolean library, boolean define, boolean dictionary,
             // (MedDRA only — W4 fold, R5 P3-L3: every other type answers from its bare map)
             String childLevel = DictionaryFunctions.HIERARCHY.equals(call.name())
                     && !bound.isEmpty()
-                    && net.cumba.corej.core.metadata.RuntimeDictionaryProvider
+                    && net.cumba.datatable.dictionary.house.RuntimeDictionaryProvider
                             .levelScopedHierarchy(literal)
                                     ? DictionaryFunctions.hierarchyLevelOfArgument(bound.get(0))
                                     : null;

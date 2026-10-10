@@ -20,6 +20,7 @@ import net.cumba.cdisc.define.Study;
 import net.cumba.cdisc.define.TranslatedText;
 import net.cumba.corej.core.gen.CtStandardRef;
 import net.cumba.corej.core.gen.DefineXMLProvider;
+import net.cumba.datatable.dictionary.house.DictionaryTypes;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -97,15 +98,6 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
         return out;
     }
 
-    /**
-     * The dictionary types the installed store models — the only keys
-     * {@link #externalDictionaryVersions()} may emit. Matching strips non-alphanumerics and case
-     * ({@code MedDRA}, {@code MED-RT}, {@code WHO Drug} all resolve); anything else is not a
-     * version-selection source and is omitted.
-     */
-    private static final Map<String, String> DICTIONARY_TYPES = Map.of("meddra", "meddra",
-            "whodrug", "whodrug", "loinc", "loinc", "medrt", "medrt", "unii", "unii", "snomed",
-            "snomed", "neoplasm", "neoplasm");
 
     @Override
     public Map<String, String> externalDictionaryVersions()
@@ -119,8 +111,10 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
             {
                 continue;
             }
-            String type = DICTIONARY_TYPES.get(ecl.getDictionary().replaceAll("[^A-Za-z0-9]", "")
-                    .toLowerCase(java.util.Locale.ROOT));
+            // the dictionary types the installed store models — the only keys emitted; matching
+            // strips non-alphanumerics and case (MedDRA, MED-RT, WHO Drug all resolve), the
+            // shared rule of the format path (DictionaryTypes, PLAN-dictionary-backed-formats DF2)
+            String type = DictionaryTypes.typeOf(ecl.getDictionary());
             if (type == null)
             {
                 continue;

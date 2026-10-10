@@ -11,8 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
-import net.cumba.corej.core.metadata.dictionary.DictionaryDirectoryResolver;
+import net.cumba.datatable.dictionary.convert.DictionaryDirectoryResolver;
+import net.cumba.datatable.dictionary.house.RuntimeDictionaryProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

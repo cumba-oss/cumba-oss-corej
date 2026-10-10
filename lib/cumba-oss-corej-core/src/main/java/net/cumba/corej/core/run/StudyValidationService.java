@@ -448,7 +448,7 @@ public final class StudyValidationService
         // Phase 6b (D6): version selection, per type — CLI option > define.xml
         // ExternalCodeList/@Version > the store's selected-versions.json manifest > skip.
         // The first two merge here; the manifest fallback lives inside DictionaryStore.load.
-        net.cumba.corej.core.metadata.RuntimeDictionaryProvider dictionaryProvider = buildDictionaryProvider(
+        net.cumba.datatable.dictionary.house.RuntimeDictionaryProvider dictionaryProvider = buildDictionaryProvider(
                 params.dictionariesDir(),
                 requestedDictionaryVersions(params.dictionaryVersions(), directDefine));
 
@@ -1015,13 +1015,13 @@ public final class StudyValidationService
      * {@code dictionary_available(<type>)} precondition — never false-passing.
      * </p>
      */
-    static net.cumba.corej.core.metadata.@Nullable RuntimeDictionaryProvider buildDictionaryProvider(
+    static net.cumba.datatable.dictionary.house.@Nullable RuntimeDictionaryProvider buildDictionaryProvider(
             @Nullable String explicitDir, Map<String, String> requestedVersions)
     {
         Optional<Path> dir;
         try
         {
-            dir = net.cumba.corej.core.metadata.dictionary.DictionaryDirectoryResolver
+            dir = net.cumba.datatable.dictionary.convert.DictionaryDirectoryResolver
                     .resolve(explicitDir);
         }
         catch (IllegalStateException e)
@@ -1042,7 +1042,7 @@ public final class StudyValidationService
         }
         try
         {
-            return net.cumba.corej.core.metadata.dictionary.DictionaryStore.load(dir.get(),
+            return net.cumba.datatable.dictionary.house.DictionaryStore.load(dir.get(),
                     requestedVersions);
         }
         catch (IOException e)
@@ -1087,7 +1087,8 @@ public final class StudyValidationService
 
     /** The loaded release of {@code type}, or {@code null} — null-provider tolerant. */
     private static @Nullable String versionOf(
-            net.cumba.corej.core.metadata.@Nullable RuntimeDictionaryProvider dict, String type)
+            net.cumba.datatable.dictionary.house.@Nullable RuntimeDictionaryProvider dict,
+            String type)
     {
         return dict == null ? null : dict.versionOf(type);
     }
@@ -1160,7 +1161,7 @@ public final class StudyValidationService
      *            the rules selected for this run (post-filter)
      */
     static @Nullable String dictionaryBasis(
-            net.cumba.corej.core.metadata.@Nullable RuntimeDictionaryProvider dict,
+            net.cumba.datatable.dictionary.house.@Nullable RuntimeDictionaryProvider dict,
             List<Rule> rules)
     {
         int dictionaryRules = 0;
@@ -1234,7 +1235,7 @@ public final class StudyValidationService
         {
             basis.append(first ? "" : "; ").append("external dictionary ").append(type).append(' ')
                     .append(dict == null
-                            ? net.cumba.corej.core.metadata.RuntimeDictionaryProvider
+                            ? net.cumba.datatable.dictionary.house.RuntimeDictionaryProvider
                                     .notInstalledDetail()
                             : dict.unavailabilityDetail(type));
             first = false;
@@ -1251,8 +1252,8 @@ public final class StudyValidationService
      * @return whether the rule has such a gap
      */
     private static boolean hierarchyGaps(
-            net.cumba.corej.core.metadata.@Nullable RuntimeDictionaryProvider dict, Rule rule,
-            Map<String, Set<String>> gaps)
+            net.cumba.datatable.dictionary.house.@Nullable RuntimeDictionaryProvider dict,
+            Rule rule, Map<String, Set<String>> gaps)
     {
         if (dict == null)
         {

@@ -24,7 +24,6 @@ import net.cumba.corej.core.expr.eval.MetadataExprScan;
 import net.cumba.corej.core.expr.eval.MetadataNormalizer;
 import net.cumba.corej.core.expr.eval.MetadataNormalizer.Normalization;
 import net.cumba.corej.core.metadata.LibraryTemplates;
-import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
 import net.cumba.corej.core.metadata.VlmResolver;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
@@ -38,6 +37,7 @@ import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
+import net.cumba.datatable.dictionary.house.RuntimeDictionaryProvider;
 import net.cumba.datatable.report.Severity;
 import net.cumba.datatable.values.GroupKeyPolicy;
 import net.cumba.datatable.values.IDataValue;
@@ -139,7 +139,7 @@ public final class RuleRunner
      * {@link EvaluationContext} so pure expression leaves can be reused across the dataset's rules
      * ({@code null} disables caching, behaviour-identical to computing every lookup).
      * {@code dictionaryProvider} (T1) is the runtime
-     * {@link net.cumba.corej.core.metadata.RuntimeDictionaryProvider} consulted by the
+     * {@link net.cumba.datatable.dictionary.house.RuntimeDictionaryProvider} consulted by the
      * {@code valid_external_dictionary_*} callables (the pair and hierarchy registry functions, the
      * value / code operations until W3) and the {@code dictionary_available} skip-gate.
      * {@code vlmResolver} is the per-record Define-XML value-level metadata resolver for the

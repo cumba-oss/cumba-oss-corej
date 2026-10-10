@@ -4,6 +4,7 @@ import java.util.BitSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.ast.Expr;
@@ -14,7 +15,8 @@ import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionRegistry;
 import net.cumba.corej.core.expr.eval.UngatedProviderReachException;
 import net.cumba.corej.core.expr.eval.Vector;
-import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
+import net.cumba.datatable.dictionary.house.DictionaryLevels;
+import net.cumba.datatable.dictionary.house.RuntimeDictionaryProvider;
 import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
@@ -89,17 +91,24 @@ public final class DictionaryFunctions
     public static final String LEVEL_PARAMETER = "dictionary_term_type";
 
     /**
+     * The MedDRA suffix rows the hierarchy mapping deliberately leaves out: {@code --BODSYS} (and
+     * its code twin {@code --BDSYCD}) may carry a secondary SOC — a hierarchy call reading it is a
+     * load error since runbook W4 DI2 ({@link #checkLevels}). A hierarchy-only exclusion: the
+     * membership rules check both as SOC / SOCCD.
+     */
+    private static final Set<String> HIERARCHY_EXCLUDED_SUFFIXES = Set.of("BODSYS", "BDSYCD");
+
+    /**
      * Runbook W2 DI1 ({@code PLAN-engine-gap-dict-unsupported} §4.1, §5.1 Q1/Q2): the MedDRA level
      * a column reads, by its name's suffix — longest suffix first, so {@code AEHLGTCD} is
-     * {@code HLGTCD} and never {@code HLGT}. {@code --DECOD} is the PT. {@code --BODSYS} is
-     * deliberately absent: it may carry a secondary SOC — a hierarchy call reading it is a load
-     * error since runbook W4 DI2 ({@link #checkLevels}).
+     * {@code HLGTCD} and never {@code HLGT}. {@code --DECOD} is the PT. Since
+     * PLAN-dictionary-backed-formats B3 the rows come from the shared variable &rarr; level table
+     * ({@link DictionaryLevels#suffixRowsOf}, the rows the format path reads too) minus
+     * {@link #HIERARCHY_EXCLUDED_SUFFIXES}; matched by suffix alone, whatever precedes it.
      */
-    private static final List<Map.Entry<String, String>> HIERARCHY_LEVEL_SUFFIXES = List.of(
-            Map.entry("HLGTCD", "HLGTCD"), Map.entry("HLTCD", "HLTCD"), Map.entry("LLTCD", "LLTCD"),
-            Map.entry("SOCCD", "SOCCD"), Map.entry("PTCD", "PTCD"), Map.entry("HLGT", "HLGT"),
-            Map.entry("HLT", "HLT"), Map.entry("LLT", "LLT"), Map.entry("SOC", "SOC"),
-            Map.entry("DECOD", "PT"));
+    private static final List<Map.Entry<String, String>> HIERARCHY_LEVEL_SUFFIXES = DictionaryLevels
+            .suffixRowsOf("meddra").stream()
+            .filter(row -> !HIERARCHY_EXCLUDED_SUFFIXES.contains(row.getKey())).toList();
 
     /**
      * The function {@code valid_external_dictionary_hierarchy}'s descriptor publishes (runbook W2
