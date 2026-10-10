@@ -235,7 +235,8 @@ class StoreFieldManifestTest
      * neither a manifest {@code field} (by its {@code source}) nor an {@code excluded} entry with a
      * reason. T1-9 rules the pickle cache the universe: every key it publishes is stored, unless it
      * is {@code _links} or a Python cache-builder addition, and that decision is recorded here, not
-     * implied by silence.
+     * implied by silence. The shipped {@link StoreSupplements seed supplements} are source
+     * documents of the same shape and are walked as well (PLAN-seed-sendig-dart-1-2 F9).
      */
     @Test
     void everySourceKeyIsEitherAStoredFieldOrADeliberateExclusion()
@@ -250,6 +251,18 @@ class StoreFieldManifestTest
         walker.product(SeedFixtures.adamModelDoc());
         walker.product(SeedFixtures.cdashigDoc());
         RealCorpusLocator.locate().ifPresent(walker::realCorpus);
+        // F9 (PLAN-seed-sendig-dart-1-2): the shipped seed supplements are source documents too,
+        // projected by the same StoreProjection, so they are walked the same way.
+        List<StoreSupplements.Supplement> supplements = StoreSupplements.load().supplements();
+        for (StoreSupplements.Supplement supplement : supplements)
+        {
+            @SuppressWarnings("unchecked")
+            Map<String, ?> document = MAPPER.convertValue(supplement.product(), Map.class);
+            walker.product(document);
+            walker.supplements++;
+        }
+        assertTrue(walker.supplements >= 1 && walker.supplements == supplements.size(),
+                "the walk must reach every shipped supplement: " + walker.supplements);
 
         // Non-vacuity: the walk reached every level, and each with at least one key.
         assertTrue(walker.ctPackages >= 1 && walker.codelists >= 1 && walker.terms >= 1,
@@ -385,6 +398,8 @@ class StoreFieldManifestTest
         int codelists;
 
         int terms;
+
+        int supplements;
 
         void ctPackage(Map<String, ?> aPackage)
         {

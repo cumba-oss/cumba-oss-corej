@@ -166,7 +166,8 @@ class StoreSeederRealDataConformanceTest
         try (MetadataStore store = MetadataStore.open(fromPickles))
         {
             assertEquals(206, store.publishedCtPackages().size());
-            assertEquals(34, store.productCatalogue().size());
+            assertEquals(35, store.productCatalogue().size(),
+                    "the 34 IGs of /mdr/products + the E14 supplement's sendig/dart-1-2 (D9)");
             assertTrue(store.product("standards/tig/1-0/sdtm").isPresent());
             assertTrue(store.product("models/adam/2-1").isPresent());
         }
@@ -177,6 +178,48 @@ class StoreSeederRealDataConformanceTest
         // Surfaced in the test log for the phase report; the assertion above is the gate.
         System.out.printf("real-corpus store: %,d bytes; pickle seed: %s%n", size,
                 pickleReport.summary());
+    }
+
+
+    /**
+     * D7 (PLAN-seed-sendig-dart-1-2): the pinned pickle does NOT serve {@code sendig/dart-1-2}, so
+     * the E14 seed supplement is APPLIED, and the model it links ({@code models/sdtm/1-6}) is held,
+     * so its model walk answers (F11, no warning). When a future pickle pin serves the key this
+     * goes red: retire the E14 supplement (delete its entry from {@code store-supplements.json},
+     * keep the loader, mark E14 retired in the access register). Q1 (c): its variables carry no
+     * description, while a SENDIG 3.1.1 variable still answers its CDISC Notes — the control.
+     */
+    @Test
+    void theRealSeedAppliesTheE14SupplementWhileThePinLacksDart12() throws IOException
+    {
+        assumeTrue(RealCorpusLocator.locate().isPresent(), RealCorpusLocator.ABSENT_MESSAGE);
+        PickleSeed seed = pickleSeed(RealCorpusLocator.locate().orElseThrow());
+        StoreSeedReport report = seed.report();
+
+        assertEquals(List.of(), report.supplementSkipped(),
+                "the pinned source serves sendig/dart-1-2 now - retire the E14 supplement: "
+                        + report.supplementSkipped());
+        assertEquals(List.of("standards/sendig/dart-1-2"), report.supplemented());
+        assertTrue(report.warnings().stream().noneMatch(w -> w.contains("seed supplement")),
+                report.warnings().toString());
+        try (MetadataStore store = MetadataStore.open(seed.store()))
+        {
+            assertTrue(store.product("models/sdtm/1-6").isPresent(),
+                    "F11: the supplement's model is in the real seed");
+            assertTrue(store.productCatalogue().contains("standards/sendig/dart-1-2"));
+            net.cumba.corej.core.metadata.store.StoreLibraryProvider library = net.cumba.corej.core.metadata.store.StoreLibraryProvider
+                    .over(store);
+            assertEquals(java.util.Optional.of("Exp"),
+                    library.variableCoreDesignation("SENDIG-DART", "1.2", "FX", "FXRESCAT"));
+            assertEquals(java.util.Optional.empty(),
+                    library.variableDescription("SENDIG-DART", "1.2", "LB", "LBTESTCD"),
+                    "Q1 (c): no DART 1.2 variable description is shipped");
+            assertTrue(
+                    library.variableDescription("SENDIG", "3.1.1", "LB", "LBTESTCD")
+                            .filter(d -> !d.isBlank()).isPresent(),
+                    "the control: a SENDIG 3.1.1 variable still answers its CDISC Notes");
+            assertEquals(List.of(), library.missedProducts());
+        }
     }
 
 

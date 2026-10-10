@@ -2299,8 +2299,11 @@ public final class StudyValidationService
      *
      * <p>
      * Declared ids resolve through {@code ProductKeyResolver} exactly as user tokens do, so a
-     * package declaring a product CDISC never published (e.g. {@code sendig/dart-1-2}) fails loud
-     * naming the candidates, rather than resolving to a plausible wrong product.
+     * package declaring a product the store does not hold fails loud naming the candidates, rather
+     * than resolving to a plausible wrong product (owner ruling Q1). {@code sendig/dart-1-2} is not
+     * served by the CDISC Library; this build seeds it from the E14 seed supplement
+     * ({@code StoreSupplements}), so it fails only on a store seeded before — and then the message
+     * says to re-seed, never to name another product (PLAN-seed-sendig-dart-1-2 D8).
      * </p>
      *
      * @param params
@@ -2330,19 +2333,62 @@ public final class StudyValidationService
         {
             // ⛔ Review finding R-8 — these ids come from the PACKAGE's declaration, not from the
             // user's -mp, but ProductKeyResolver's message is hard-coded "Cannot resolve
-            // --metadata-products: …". Three of the 58 shipped packages declare an unresolvable
-            // primary (sendig/dart-1-2, which CDISC never published), so selecting one of them
-            // told the user their --metadata-products was wrong when they had not passed it — and
-            // as an IllegalArgumentException no CLI catch handled it, so it surfaced as a raw
-            // stack trace and exit 1 instead of the clean "Error: …" / exit 2 every other
-            // operational failure gives. Q1's fail-loud ruling is preserved: this still fails, and
-            // still names the offending token; it just blames the right thing.
+            // --metadata-products: …". Selecting a package whose declared primary the store
+            // cannot resolve told the user their --metadata-products was wrong when they had not
+            // passed it — and as an IllegalArgumentException no CLI catch handled it, so it
+            // surfaced as a raw stack trace and exit 1 instead of the clean "Error: …" / exit 2
+            // every other operational failure gives. Q1's fail-loud ruling is preserved: this
+            // still fails, and still names the offending token; it just blames the right thing.
+            // D8 (PLAN-seed-sendig-dart-1-2): a token this build's seed supplements supply (the
+            // two sendig/dart-1-2 packages) fails only on a store seeded before the supplement —
+            // steering that user to -mp would recommend the wrong IG, so the remedy is a re-seed.
+            List<String> supplied = unresolvedSupplementTokens(ids, params.metadataStore());
+            if (!supplied.isEmpty())
+            {
+                throw new StudyValidationException("The selected rule package(s) declare "
+                        + String.join(", ", supplied) + ", which the metadata store in use does"
+                        + " not hold. It is not served by the CDISC Library; the store was seeded"
+                        + " before this build added it: re-seed the metadata store (this build"
+                        + " seeds it from the E14 supplement).", e);
+            }
             throw new StudyValidationException("The selected rule package(s) declare a CDISC "
                     + "Library standard that cannot be resolved. " + e.getMessage()
                     + " Select a different rule package, or name a resolvable product with "
                     + "-mp / --metadata-products.", e);
         }
         return List.copyOf(out);
+    }
+
+
+    /**
+     * D8: the declared tokens that fail to resolve against the run's store although this build's
+     * seed supplements supply them — a full key or a {@code /}-bounded suffix of one.
+     */
+    private static List<String> unresolvedSupplementTokens(List<String> aIds,
+            @Nullable String aStore)
+    {
+        Set<String> shipped = net.cumba.corej.core.metadata.store.seed.StoreSupplements
+                .shippedKeys();
+        List<String> out = new ArrayList<>();
+        for (String id : aIds)
+        {
+            boolean supplied = shipped.stream()
+                    .anyMatch(key -> key.equals(id) || key.endsWith("/" + id));
+            if (!supplied)
+            {
+                continue;
+            }
+            try
+            {
+                net.cumba.corej.core.metadata.pickle.ProductKeyResolver
+                        .resolveAllConfigured(List.of(id), aStore);
+            }
+            catch (IllegalArgumentException _)
+            {
+                out.add(id);
+            }
+        }
+        return out;
     }
 
 

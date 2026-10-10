@@ -83,15 +83,19 @@ class StoreSeederConformanceTest
         StoreSeedReport report = new PickleStoreSeeder(new LocalPickleSource(pickleDir))
                 .seed(StoreSeedOptions.of(target).withProvenanceOverride(FIXED_PROVENANCE));
 
-        assertEquals(5, report.productsSeeded());
+        assertEquals(5, report.productsSeeded(), "D9: source products only");
         assertEquals(3, report.ctPackagesFetched());
-        assertEquals(List.of(), report.warnings());
+        assertEquals(SeedFixtures.DART_12_MODEL_WARNINGS, report.warnings());
+        assertEquals(List.of(SeedFixtures.DART_12_KEY), report.supplemented());
         try (MetadataStore store = MetadataStore.open(target))
         {
             assertEquals(List.of(SeedFixtures.PKG_QS, SeedFixtures.PKG_1, SeedFixtures.PKG_2),
                     store.publishedCtPackages());
-            assertEquals(List.of(SeedFixtures.ADAM_KEY, SeedFixtures.IG_KEY, SeedFixtures.TIG_KEY),
-                    store.productCatalogue(), "the catalogue is IG-typed keys only, TIG included");
+            assertEquals(
+                    List.of(SeedFixtures.ADAM_KEY, SeedFixtures.IG_KEY, SeedFixtures.DART_12_KEY,
+                            SeedFixtures.TIG_KEY),
+                    store.productCatalogue(),
+                    "the catalogue is IG-typed keys only, TIG and the E14 supplement included");
 
             StoredProduct ig = store.product(SeedFixtures.IG_KEY).orElseThrow();
             assertEquals("/mdr/sdtm/2-0", ig.modelHref());
@@ -172,9 +176,10 @@ class StoreSeederConformanceTest
                     .map(StoreProvenance::source).toList();
             assertEquals(
                     List.of(PickleStoreSeeder.PROVENANCE_SOURCE,
-                            WebApiStoreSeeder.PROVENANCE_SOURCE, StoreErrata.PROVENANCE_SOURCE),
-                    sources,
-                    "both sources appear in provenance, once each, and the register digest last");
+                            WebApiStoreSeeder.PROVENANCE_SOURCE, StoreSupplements.PROVENANCE_SOURCE,
+                            StoreErrata.PROVENANCE_SOURCE),
+                    sources, "both sources appear in provenance, once each, then the supplements"
+                            + " line (F7) and the register digest last (D10)");
             assertTrue(store.product(SeedFixtures.IG_KEY).isPresent());
         }
     }

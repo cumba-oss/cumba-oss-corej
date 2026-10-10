@@ -1567,10 +1567,13 @@ class StudyValidationServiceTest
 
 
     /**
-     * ⛔ Owner ruling Q1 — a package declaring a product CDISC never published must FAIL LOUD, not
+     * ⛔ Owner ruling Q1 — a package declaring a product the store does not hold must FAIL LOUD, not
      * resolve to something plausible. {@code sendig/dart-1-2} is the real case: CDISC publishes
-     * DART 1.2 <em>rules</em> but no DART 1.2 metadata product, so it is absent from
-     * {@code /mdr/products} and from every {@code standards/} cache namespace.
+     * DART 1.2 <em>rules</em> but no DART 1.2 metadata product (it is not served by the Library);
+     * this build seeds it from the E14 seed supplement, so it is missing only from a store seeded
+     * before — this hermetic store, without it, is that old store. D8 (PLAN-seed-sendig-dart-1-2):
+     * the message then says to re-seed instead of steering to {@code -mp} with another product,
+     * which would be the wrong IG.
      */
     @Test
     void effectiveMetadataProducts_unpublishedDeclarationFailsLoud() throws IOException
@@ -1590,8 +1593,8 @@ class StudyValidationServiceTest
 
         // ⛔ Review finding R-8 — the TYPE changed deliberately. These ids come from the PACKAGE's
         // declaration, not from the user's -mp, but ProductKeyResolver reports an
-        // IllegalArgumentException that no CLI catch handles, so selecting one of the three
-        // shipped packages declaring the unpublished sendig/dart-1-2 produced a raw stack trace
+        // IllegalArgumentException that no CLI catch handles, so selecting a shipped package
+        // declaring sendig/dart-1-2 (which the Library does not serve) produced a raw stack trace
         // and exit 1 while blaming a flag the user never passed. Q1's fail-loud ruling is intact:
         // it still fails, and still names the token — it is now an operational error.
         try
@@ -1603,6 +1606,18 @@ class StudyValidationServiceTest
             assertTrue(ex.getMessage().contains("rule package"),
                     "the message must blame the DECLARATION, not the user's -mp: "
                             + ex.getMessage());
+            assertTrue(ex.getMessage().contains("re-seed the metadata store"), ex.getMessage());
+            assertFalse(ex.getMessage().contains("-mp"),
+                    "D8: never steer an old-store user to another product: " + ex.getMessage());
+
+            // The control: a declared token no supplement supplies keeps the Q1 message.
+            StudyValidationException other = assertThrows(StudyValidationException.class,
+                    () -> StudyValidationService.effectiveMetadataProducts(params,
+                            List.of(primary("sendig/dart-9-9"))));
+            assertTrue(other.getMessage().contains("dart-9-9"), other.getMessage());
+            assertTrue(other.getMessage().contains("-mp / --metadata-products"),
+                    other.getMessage());
+            assertFalse(other.getMessage().contains("re-seed"), other.getMessage());
         }
         finally
         {

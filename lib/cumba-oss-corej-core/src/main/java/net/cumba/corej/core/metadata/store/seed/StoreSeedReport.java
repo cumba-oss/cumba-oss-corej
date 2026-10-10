@@ -60,12 +60,21 @@ import org.jspecify.annotations.Nullable;
  * @param footnoteLabels
  *            labels and prompts still ending in a footnote marker after the errata (owner rule
  *            2026-10-03); empty on a conforming seed
+ * @param supplemented
+ *            the product keys the {@link StoreSupplements seed supplements} added this run
+ *            (PLAN-seed-sendig-dart-1-2 D3) — NOT counted in {@link #productsSeeded()}, which
+ *            counts what the source delivered (D9)
+ * @param supplementSkipped
+ *            {@code <key>: <reason>} for every supplement IGNORED because the source serves its key
+ *            or the existing store holds a source-served copy — reported, NOT a warning (D3); the
+ *            summary names each, since it means the supplement is due for retirement
  */
 public record StoreSeedReport(int productsSeeded, int productsCarried, int ctPackagesFetched,
         int ctPackagesCarried, List<String> ctPackagesMissed, List<String> warnings,
         @Nullable String sourceRef, Path target, long storeBytes, Normalisations normalisations,
         List<String> errataApplied, List<String> errataStale, List<String> errataUnreached,
-        List<String> errataNotApplicable, List<String> footnoteLabels)
+        List<String> errataNotApplicable, List<String> footnoteLabels, List<String> supplemented,
+        List<String> supplementSkipped)
 {
 
     /**
@@ -110,6 +119,9 @@ public record StoreSeedReport(int productsSeeded, int productsCarried, int ctPac
         errataNotApplicable = List
                 .copyOf(Objects.requireNonNull(errataNotApplicable, "errataNotApplicable"));
         footnoteLabels = List.copyOf(Objects.requireNonNull(footnoteLabels, "footnoteLabels"));
+        supplemented = List.copyOf(Objects.requireNonNull(supplemented, "supplemented"));
+        supplementSkipped = List
+                .copyOf(Objects.requireNonNull(supplementSkipped, "supplementSkipped"));
     }
 
 
@@ -117,27 +129,32 @@ public record StoreSeedReport(int productsSeeded, int productsCarried, int ctPac
      * A one-line summary suitable for CLI output or a log line. Its shape is fixed and the source
      * ref, when known, is always its LAST element. Stale errata appear in it only as their count;
      * their ids and reasons are spelled out by {@link #details()}, which the surfaces print or log
-     * beside it, so a register with many stale entries cannot bury the provenance in a list.
+     * beside it, so a register with many stale entries cannot bury the provenance in a list. A
+     * skipped seed supplement is the exception: it is named in full (D3 — a handful at most, and
+     * each one means the supplement is due for retirement).
      *
      * @return the summary
      */
     public String summary()
     {
         return ("seeded %d products (%d carried), %d CT packages fetched, %d carried, %d missing,"
-                + " %d errata applied (%d stale, %d unreached, %d not for this source), %d fields"
-                + " normalised -> %s (%d bytes, %d warnings)%s").formatted(productsSeeded,
-                        productsCarried, ctPackagesFetched, ctPackagesCarried,
-                        ctPackagesMissed.size(), errataApplied.size(), errataStale.size(),
-                        errataUnreached.size(), errataNotApplicable.size(), normalisations.total(),
-                        target, storeBytes, warnings.size(),
-                        sourceRef == null ? "" : " from " + sourceRef);
+                + " %d errata applied (%d stale, %d unreached, %d not for this source), %d"
+                + " supplemented%s, %d fields normalised -> %s (%d bytes, %d warnings)%s")
+                        .formatted(productsSeeded, productsCarried, ctPackagesFetched,
+                                ctPackagesCarried, ctPackagesMissed.size(), errataApplied.size(),
+                                errataStale.size(), errataUnreached.size(),
+                                errataNotApplicable.size(), supplemented.size(),
+                                supplementSkipped.isEmpty() ? ""
+                                        : " (" + String.join("; ", supplementSkipped) + ")",
+                                normalisations.total(), target, storeBytes, warnings.size(),
+                                sourceRef == null ? "" : " from " + sourceRef);
     }
 
 
     /**
      * The report's per-entry detail, one line each: every stale erratum with its reason (reported,
-     * NOT applied — retire it from the register) and every label still ending in a footnote marker.
-     * Empty on a conforming seed.
+     * NOT applied — retire it from the register), every seed supplement IGNORED (retire it) and
+     * every label still ending in a footnote marker. Empty on a conforming seed.
      *
      * @return the detail lines
      */
@@ -145,6 +162,7 @@ public record StoreSeedReport(int productsSeeded, int productsCarried, int ctPac
     {
         List<String> lines = new java.util.ArrayList<>();
         errataStale.forEach(s -> lines.add("errata entry stale, reported and NOT applied: " + s));
+        supplementSkipped.forEach(s -> lines.add("seed supplement IGNORED: " + s));
         footnoteLabels.forEach(f -> lines.add("label ends in a footnote marker: " + f));
         return List.copyOf(lines);
     }

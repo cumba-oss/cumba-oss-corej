@@ -136,7 +136,7 @@ class SeedRunErrataTest
         assertEquals(EVLINT_FIXED, examples(target, "--EVLINT"),
                 "D4: reported, NOT applied - the source's value stays");
 
-        assertEquals(List.of(), report.warnings(),
+        assertEquals(SeedFixtures.DART_12_MODEL_WARNINGS, report.warnings(),
                 "F1: a stale entry is no warning, so a user seed does not fail on it");
         assertTrue(report.summary().contains("(" + report.errataStale().size() + " stale,"),
                 "the summary counts the stale entries: " + report.summary());
@@ -206,10 +206,15 @@ class SeedRunErrataTest
         {
             assertEquals(
                     List.of(new StoreProvenance("conformance", "fixture", ""),
+                            new StoreProvenance(StoreSupplements.PROVENANCE_SOURCE,
+                                    "sha256:" + StoreSupplements.load().digest() + " applied:"
+                                            + SeedFixtures.DART_12_KEY,
+                                    ""),
                             new StoreProvenance(StoreErrata.PROVENANCE_SOURCE,
                                     "sha256:" + StoreErrata.load().digest(), "")),
                     store.manifest().provenance(),
-                    "an override keeps its lines, but the digest line is always this build's");
+                    "an override keeps its lines, but the supplements line (F7) and the digest"
+                            + " line are always this build's, the digest line last (D10)");
         }
     }
 
@@ -230,7 +235,7 @@ class SeedRunErrataTest
         assertEquals(0, other.productsCarried(),
                 "F3: products corrected under another register are never carried");
         assertEquals(3, other.ctPackagesCarried(), "CT packages are untouched by the register");
-        assertEquals(List.of(), other.warnings());
+        assertEquals(SeedFixtures.DART_12_MODEL_WARNINGS, other.warnings());
         try (MetadataStore store = MetadataStore.open(target))
         {
             assertTrue(store.product(SeedFixtures.IG_KEY).isEmpty());

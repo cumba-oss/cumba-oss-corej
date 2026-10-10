@@ -89,12 +89,15 @@ class WebApiStoreSeederTest
 
         assertEquals(5, report.productsSeeded(), "3 IGs + 2 distinct linked models");
         assertEquals(3, report.ctPackagesFetched());
-        assertEquals(List.of(), report.warnings());
+        assertEquals(SeedFixtures.DART_12_MODEL_WARNINGS, report.warnings());
         try (MetadataStore store = MetadataStore.open(target))
         {
-            assertEquals(List.of(SeedFixtures.ADAM_KEY, SeedFixtures.IG_KEY, SeedFixtures.TIG_KEY),
+            assertEquals(
+                    List.of(SeedFixtures.ADAM_KEY, SeedFixtures.IG_KEY, SeedFixtures.DART_12_KEY,
+                            SeedFixtures.TIG_KEY),
                     store.productCatalogue(),
-                    "only Implementation-Guide-typed entries enter the catalogue");
+                    "only Implementation-Guide-typed entries enter the catalogue (and the E14"
+                            + " supplement)");
             assertTrue(store.product(SeedFixtures.ADAM_MODEL_KEY).isPresent(),
                     "/mdr/adam/adam-2-1 must land under models/adam/2-1");
             assertTrue(store.product(SeedFixtures.TIG_KEY).isPresent(),
@@ -189,7 +192,7 @@ class WebApiStoreSeederTest
 
         assertEquals(3, report.ctPackagesCarried());
         assertEquals(0, report.ctPackagesFetched());
-        assertEquals(List.of(), report.warnings(),
+        assertEquals(SeedFixtures.DART_12_MODEL_WARNINGS, report.warnings(),
                 "no package request may have been issued: " + report.warnings());
         try (MetadataStore store = MetadataStore.open(target))
         {

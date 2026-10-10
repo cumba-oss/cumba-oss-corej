@@ -75,7 +75,7 @@ class PickleStoreSeederTest
                 () -> MetadataStore.open(target), "the newer store is left untouched");
 
         StoreSeedReport replaced = seeder().seed(StoreSeedOptions.of(target).withRefresh(true));
-        assertEquals(List.of(), replaced.warnings());
+        assertEquals(SeedFixtures.DART_12_MODEL_WARNINGS, replaced.warnings());
         try (MetadataStore store = MetadataStore.open(target))
         {
             assertEquals(current, store.manifest().formatVersion());
@@ -83,7 +83,7 @@ class PickleStoreSeederTest
 
         relabelFormatVersion(target, 1);
         StoreSeedReport reseeded = seeder().seed(StoreSeedOptions.of(target));
-        assertEquals(List.of(), reseeded.warnings(),
+        assertEquals(SeedFixtures.DART_12_MODEL_WARNINGS, reseeded.warnings(),
                 "D-17: an OLDER store is re-acquired in full and that is a notice, not a warning");
         assertEquals(0, reseeded.ctPackagesCarried(), "nothing is carried from an old store");
         try (MetadataStore store = MetadataStore.open(target))
@@ -189,7 +189,7 @@ class PickleStoreSeederTest
 
         assertEquals(3, report.ctPackagesCarried());
         assertEquals(1, report.ctPackagesFetched(), "only the new package is acquired");
-        assertEquals(List.of(), report.warnings(),
+        assertEquals(SeedFixtures.DART_12_MODEL_WARNINGS, report.warnings(),
                 "the corrupted pickle must never have been read");
         try (MetadataStore store = MetadataStore.open(target))
         {

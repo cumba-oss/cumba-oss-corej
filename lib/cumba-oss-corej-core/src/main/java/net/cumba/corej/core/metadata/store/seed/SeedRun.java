@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import net.cumba.corej.core.metadata.store.MetadataStore;
@@ -49,6 +50,14 @@ import org.jspecify.annotations.Nullable;
  * ({@link StoreErrata#PROVENANCE_SOURCE}). A baseline recorded under a different digest — or none —
  * holds products corrected by another register, so its products are NOT carried (as for an older
  * format); its CT packages, which the register never touches, still are.</li>
+ * <li><b>Seed supplements (PLAN-seed-sendig-dart-1-2, owner approval E14):</b> the products of the
+ * {@link StoreSupplements} register are projected through the same projection and added to this
+ * run's source products BEFORE the errata are applied, unless the source projects the key itself
+ * (D3 (i)) or the carried baseline holds a copy its {@value StoreSupplements#PROVENANCE_SOURCE}
+ * provenance line does not list as supplemented — a source-served product (D3 (ii), F10). A skip is
+ * reported, not warned about; the supplements' digest and applied keys are always recorded as a
+ * provenance line (F7), before the register digest line. {@link StoreSeedReport#productsSeeded()}
+ * keeps counting source products only (D9).</li>
  * <li><b>Rebuild:</b> the writer rebuilds the whole file from the merged model and the target is
  * replaced via temp file + atomic move, so an interrupted seed never leaves a partial store and a
  * concurrent reader keeps its old file.</li>
@@ -75,6 +84,8 @@ final class SeedRun
         Optional<JsonNode> fetch(String aId) throws IOException;
     }
 
+    private static final String MODELS_PREFIX = "models/";
+
     private final StoreSeedOptions options;
 
     private final List<String> warnings = new ArrayList<>();
@@ -84,6 +95,8 @@ final class SeedRun
     private final StoreProjection projection = new StoreProjection();
 
     private final StoreErrata errata = StoreErrata.load();
+
+    private final StoreSupplements supplements;
 
     private final String errataSource;
 
@@ -98,6 +111,15 @@ final class SeedRun
     private StoreErrata.@Nullable Outcome errataOutcome;
 
     private List<String> footnoteLabels = List.of();
+
+    private final List<String> supplemented = new ArrayList<>();
+
+    private final List<String> supplementSkipped = new ArrayList<>();
+
+    /**
+     * Set by {@link #mergeProducts(Map)}; {@link #catalogueUnion(List)} reads its outcome (F12).
+     */
+    private boolean productsMerged;
 
     private int ctFetched;
 
@@ -118,8 +140,28 @@ final class SeedRun
      */
     SeedRun(StoreSeedOptions aOptions, String aErrataSource) throws IOException
     {
+        this(aOptions, aErrataSource, StoreSupplements.load());
+    }
+
+
+    /**
+     * Opens a run with the given supplements register (tests).
+     *
+     * @param aOptions
+     *            the run configuration
+     * @param aErrataSource
+     *            the seed source the errata register is scoped by
+     * @param aSupplements
+     *            the seed supplements to apply
+     * @throws IOException
+     *             when the target holds a store of a newer format and {@code refresh} is off
+     */
+    SeedRun(StoreSeedOptions aOptions, String aErrataSource, StoreSupplements aSupplements)
+        throws IOException
+    {
         options = aOptions;
         errataSource = aErrataSource;
+        supplements = aSupplements;
         existing = openBaseline(aOptions);
         baselineProductsCurrent = existing != null && errataDigestCurrent(existing);
     }
@@ -239,8 +281,9 @@ final class SeedRun
 
 
     /**
-     * Merges the source's freshly projected products with baseline products whose key the source no
-     * longer offers (carried, with a warning — they cannot be refreshed from this source).
+     * Merges the source's freshly projected products, plus the seed supplements this run applies
+     * (D3), with baseline products whose key neither offers (carried, with a warning — they cannot
+     * be refreshed from this source). Must precede {@link #catalogueUnion(List)} (F12).
      *
      * @param aFromSource
      *            the products projected from the source this run, by key
@@ -248,15 +291,107 @@ final class SeedRun
      */
     Map<String, StoredProduct> mergeProducts(Map<String, StoredProduct> aFromSource)
     {
-        Map<String, StoredProduct> merged = new TreeMap<>(applyErrata(aFromSource));
+        Map<String, StoredProduct> merged = new TreeMap<>(applyErrata(supplement(aFromSource)));
+        carryBaseline(merged);
+        warnOnMissingSupplementModels(aFromSource, merged);
+        productsMerged = true;
+        return merged;
+    }
+
+
+    /**
+     * D3: this run's source products plus every supplement that is neither served by the source (i)
+     * nor held by the carried baseline as a source-served copy (ii), each projected through the
+     * run's {@link #projection()} — so the errata register and the footnote scan, which run on the
+     * returned map next, apply to it as to a source product. The caller's map is not modified.
+     */
+    private Map<String, StoredProduct> supplement(Map<String, StoredProduct> aFromSource)
+    {
+        Map<String, StoredProduct> out = new TreeMap<>(aFromSource);
+        Set<String> baselineSupplemented = baselineSupplementedKeys();
+        for (StoreSupplements.Supplement entry : supplements.supplements())
+        {
+            String key = entry.key();
+            if (aFromSource.containsKey(key))
+            {
+                supplementSkipped.add(key + ": the source now serves it - the " + entry.approval()
+                        + " seed supplement was IGNORED; retire it");
+                continue;
+            }
+            if (baselineProductsCurrent && existing != null
+                    && storedProductKeys(existing).contains(key)
+                    && !baselineSupplemented.contains(key))
+            {
+                // F10: a real source product carried after a source dropped it (or failed to
+                // deliver it) is never replaced by the extract.
+                supplementSkipped.add(key + ": the existing store holds a source-served copy,"
+                        + " carried forward - the " + entry.approval()
+                        + " seed supplement was IGNORED; retire it");
+                continue;
+            }
+            out.put(key, projection.product(key, entry.product()));
+            supplemented.add(key);
+        }
+        return out;
+    }
+
+
+    /**
+     * D7 / F11, narrowed by D10 (owner 2026-10-10): an applied supplement whose model is absent
+     * from the merged products would answer nothing on the model walk — a warning, but only when
+     * the source offers models at all (a source without any model is a partial source by design,
+     * such as a one-IG cache).
+     */
+    private void warnOnMissingSupplementModels(Map<String, StoredProduct> aFromSource,
+            Map<String, StoredProduct> aMerged)
+    {
+        boolean sourceOffersModels = aFromSource.keySet().stream()
+                .anyMatch(key -> key.startsWith(MODELS_PREFIX));
+        if (!sourceOffersModels)
+        {
+            return;
+        }
+        for (String key : supplemented)
+        {
+            StoredProduct product = aMerged.get(key);
+            String href = product == null ? null : product.modelHref();
+            String modelKey = href == null ? null : WebApiStoreSeeder.modelKeyFor(href);
+            if (modelKey == null || !aMerged.containsKey(modelKey))
+            {
+                warn(key + ": the seed supplement links the model " + href
+                        + ", which this seed does not hold - its model walk answers nothing");
+            }
+        }
+    }
+
+
+    /** The keys the baseline's supplement provenance line lists as applied, under any digest. */
+    private Set<String> baselineSupplementedKeys()
+    {
         if (existing == null)
         {
-            return merged;
+            return Set.of();
+        }
+        return existing.manifest().provenance().stream()
+                .filter(line -> StoreSupplements.PROVENANCE_SOURCE.equals(line.source()))
+                .findFirst().map(line -> StoreSupplements.appliedKeys(line.ref())).orElse(Set.of());
+    }
+
+
+    /**
+     * Adds the baseline products whose key {@code aMerged} lacks, when the baseline's products were
+     * corrected under this build's register.
+     */
+    private void carryBaseline(Map<String, StoredProduct> aMerged)
+    {
+        if (existing == null)
+        {
+            return;
         }
         if (!baselineProductsCurrent)
         {
             List<String> dropped = storedProductKeys(existing).stream()
-                    .filter(key -> !merged.containsKey(key)).toList();
+                    .filter(key -> !aMerged.containsKey(key)).toList();
             if (!dropped.isEmpty())
             {
                 // F3 (review): those products were corrected under another register, and the
@@ -267,11 +402,11 @@ final class SeedRun
                                 + " not carrying the products this source does not offer: {1}",
                         options.target(), dropped);
             }
-            return merged;
+            return;
         }
         for (String key : storedProductKeys(existing))
         {
-            if (!merged.containsKey(key))
+            if (!aMerged.containsKey(key))
             {
                 Optional<StoredProduct> carried;
                 try
@@ -290,28 +425,37 @@ final class SeedRun
                 }
                 carried.ifPresent(product ->
                 {
-                    merged.put(key, product);
+                    aMerged.put(key, product);
                     productsCarried++;
                     warn(key + ": not offered by this source - carried forward unchanged"
                             + " from the existing store");
                 });
             }
         }
-        return merged;
     }
 
 
     /**
-     * The product catalogue for the manifest: the sorted union of the source's catalogue and the
-     * baseline's, mirroring {@link #mergeProducts(Map)}.
+     * The product catalogue for the manifest: the sorted union of the source's catalogue, the keys
+     * of the supplements this run applied, and the baseline's, mirroring
+     * {@link #mergeProducts(Map)}.
      *
      * @param aSourceCatalogue
      *            the declarable product keys the source derives
      * @return the sorted, distinct catalogue
+     * @throws IllegalStateException
+     *             when called before {@link #mergeProducts(Map)} (F12)
      */
     List<String> catalogueUnion(List<String> aSourceCatalogue)
     {
+        if (!productsMerged)
+        {
+            // F12: the applied supplements are known only once the products are merged.
+            throw new IllegalStateException(
+                    "catalogueUnion before mergeProducts: the applied supplements are not known");
+        }
         TreeSet<String> union = new TreeSet<>(aSourceCatalogue);
+        union.addAll(supplemented);
         if (existing != null)
         {
             union.addAll(existing.productCatalogue());
@@ -323,10 +467,12 @@ final class SeedRun
     /**
      * The manifest provenance: the options' override verbatim when set; otherwise the baseline's
      * lines with the line for this seeder's source replaced (or appended), so provenance stays one
-     * line per source rather than growing per run. Either way the register digest line
-     * ({@link StoreErrata#PROVENANCE_SOURCE}, ref {@code sha256:<hex>}) is replaced by this build's
-     * and comes last — it describes how the products were corrected, not where they came from, so
-     * an override cannot drop it.
+     * line per source rather than growing per run. Either way the supplements line
+     * ({@link StoreSupplements#PROVENANCE_SOURCE}, ref {@code sha256:<hex>} plus the applied keys,
+     * F7) and then the register digest line ({@link StoreErrata#PROVENANCE_SOURCE}, ref
+     * {@code sha256:<hex>}) are replaced by this build's and come last (D10: the errata line stays
+     * the very last) — they describe how the products were supplemented and corrected, not where
+     * they came from, so an override cannot drop them.
      *
      * @param aOwn
      *            this run's provenance line
@@ -344,7 +490,10 @@ final class SeedRun
         {
             merged.addAll(sourceProvenance(aOwn));
         }
-        merged.removeIf(line -> StoreErrata.PROVENANCE_SOURCE.equals(line.source()));
+        merged.removeIf(line -> StoreErrata.PROVENANCE_SOURCE.equals(line.source())
+                || StoreSupplements.PROVENANCE_SOURCE.equals(line.source()));
+        merged.add(new StoreProvenance(StoreSupplements.PROVENANCE_SOURCE,
+                supplements.provenanceRef(supplemented), ""));
         merged.add(new StoreProvenance(StoreErrata.PROVENANCE_SOURCE,
                 StoreErrata.DIGEST_PREFIX + errata.digest(), ""));
         return merged;
@@ -444,7 +593,8 @@ final class SeedRun
                 outcome == null ? List.of() : outcome.applied(),
                 outcome == null ? List.of() : outcome.stale(),
                 outcome == null ? List.of() : outcome.unreached(),
-                outcome == null ? List.of() : outcome.notApplicable(), footnoteLabels);
+                outcome == null ? List.of() : outcome.notApplicable(), footnoteLabels, supplemented,
+                supplementSkipped);
     }
 
 
