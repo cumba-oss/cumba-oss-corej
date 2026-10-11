@@ -834,26 +834,35 @@ class GroupedAggregateFunctionsTest
     }
 
 
+    /**
+     * EX without a POOLID column under a POOLDEF that carries one: the inner call's only
+     * {@code group=} member, POOLID, is on one side only (the POOLDEF rows it is evaluated over
+     * carry it, EX does not), so no member is left on both sides — QK16 (b), owner 2026-10-11:
+     * <i>"B the rule errors."</i> — with or without the filter. Until then {@code group=[POOLID]}
+     * keyed {@code ""} on EX's side, matched nothing, and the filter kept the pool part missing. ⚠
+     * The shape of the corpus scenarios {@code CDISC-SEND-0204 / 0205 / 0305 / 0306}
+     * {@code valid_ex_without_poolid} (expected: no violation) — reported to the coordinator with
+     * the phase-3 measurement.
+     */
     @Test
-    void exWithoutAPoolidColumnAnswersMissingAndOnlyTheFilterKeepsItSo()
+    void exWithoutAPoolidColumnUnderAPooldefWithOneErrorsTheRule()
     {
-        // With POOLID absent from EX, group=[POOLID] partitions nothing: every EX row is ONE block
-        // keyed "" (IndexHelper.groupByPresent). The filter empties the inner call (an absent
-        // column is a constant missing, `not empty` is false on every row), so the pool part is
-        // missing for everyone — a POOLDEF row with a non-blank POOLID matches nothing either way,
-        // and a POOLDEF row with a BLANK POOLID matches nothing only because of the filter.
         IDataTable ex = RealTableFixture.of("EX").str("USUBJID", "S1", "S2")
                 .str("EXSTDTC", "2020-01-05", "2020-01-01").build();
         IDataTable pooldef = RealTableFixture.of("POOLDEF").str("POOLID", "P1", "")
                 .str("USUBJID", "S1", "S1").build();
-        assertEquals(4, fires(POOL_FIRST, "empty($v)", sendDm(), ex, pooldef));
-        // Without the filter the blank-POOLID POOLDEF row takes the whole study's first dose.
-        assertEquals(1, fires(POOL_FIRST_NO_FILTER, "$v == date(\\\"2020-01-01\\\")", sendDm(), ex,
-                pooldef), "S1, through its blank-POOLID POOLDEF row");
-        IDataTable pooldefNamedOnly = RealTableFixture.of("POOLDEF").str("POOLID", "P1")
-                .str("USUBJID", "S1").build();
-        assertEquals(4, fires(POOL_FIRST_NO_FILTER, "empty($v)", sendDm(), ex, pooldefNamedOnly),
-                "a non-blank POOLID matches nothing in the all-absent block");
+        for (String binding : List.of(POOL_FIRST, POOL_FIRST_NO_FILTER))
+        {
+            RuleExecutionResult result = run(binding, "empty($v)", sendDm(), ex, pooldef);
+            assertEquals(RuleExecutionStatus.ERROR, result.getStatus(), binding);
+            assertTrue(
+                    String.valueOf(result.getStatusMessage())
+                            .contains("min_date group= over 'EX' has no usable key"),
+                    result.getStatusMessage());
+        }
+        // control: without POOLDEF the outer call answers its no-value (Q17-a) and the inner call
+        // is never keyed — the pool part is missing for everyone, no ERROR
+        assertEquals(4, fires(POOL_FIRST, "empty($v)", sendDm(), ex));
     }
 
 

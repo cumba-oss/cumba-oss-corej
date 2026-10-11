@@ -44,6 +44,21 @@ class JoinKeyDropWarningTest
     /** The WARNING lines {@code MergedEvaluation} logs while {@code body} runs. */
     static List<String> warnings(Runnable body)
     {
+        return warnings(MergedEvaluation.class, body);
+    }
+
+
+    /**
+     * The WARNING lines {@code source}'s logger logs while {@code body} runs.
+     *
+     * @param source
+     *            the class whose {@code System.Logger} is captured
+     * @param body
+     *            the work
+     * @return the WARNING lines, in order
+     */
+    static List<String> warnings(Class<?> source, Runnable body)
+    {
         List<String> out = new ArrayList<>();
         Handler handler = new Handler()
         {
@@ -74,7 +89,7 @@ class JoinKeyDropWarningTest
                 // nothing to release
             }
         };
-        Logger juli = Logger.getLogger(MergedEvaluation.class.getName());
+        Logger juli = Logger.getLogger(source.getName());
         juli.addHandler(handler);
         try
         {

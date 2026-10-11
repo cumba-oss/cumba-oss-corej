@@ -336,45 +336,27 @@ class IndexHelperGroupByPresentTest
 
 
     /**
-     * §5.4 — presence is resolved per table. When an operation carries {@code domain:} the table
-     * being grouped is not the evaluation table, so a column present in one and absent from the
-     * other legitimately yields keys that do not meet: the operation side collapses to one
-     * {@code ""} group while the row side still renders real values, every row misses, and the
-     * per-row read falls back to {@code missingKeyDefault}. This asymmetry pre-dates EC-44 (before
-     * it, the whole operation was simply null); no shipped rule hits it — all four
-     * {@code domain:}-carrying exposed rules are same-table. Pinned so a future reader can see it
-     * was considered rather than overlooked.
-     *
-     * <p>
-     * <b>EC-45 §5.3 — why the fallback is benign here is not luck, it is the classification.</b>
-     * The operation is {@code record_count}, whose declared empty result is {@code 0L}: no record
-     * for the group really <em>is</em> zero records, so the row reads a correct answer and a
-     * {@code $N > 0} leaf does not fire. The property that matters is therefore the non-firing,
-     * which the second half of this test now asserts rather than leaving implied. For a
-     * {@code MISSING}-declaring aggregate (the retired {@code EmptyResult}) the same path reads "no
-     * value" instead, the comparison folds it to {@code ""} and the check fires — also correct, and
-     * also decided by the declaration rather than by the shape of the join.
-     * </p>
-     *
-     * <p>
-     * ⚠ Do not "fix" this by widening the join. {@code IndexHelper.buildGroupKey} deliberately keys
-     * the <b>full declared list</b> with {@code ""} for absent columns, so the family-1 cross-table
-     * join misses on purpose; a policy that instead dropped the absent column would hand the row
-     * the study-wide aggregate — a plausible wrong number in place of a clean miss, and two
-     * contradictory answers to one fact inside one engine.
-     * </p>
+     * §5.4 — presence is resolved per table, and since {@code REG-Q4} QK14 (b) (owner 2026-10-09) a
+     * {@code domain=} group column present on ONE of the two tables leaves the key on both: the
+     * grouped table and the evaluated rows key on the members both carry, with the WARNING
+     * ({@code GroupedAggregate.SidedKey}). Here {@code EPOCH} is on DS only, so DM is counted per
+     * {@code USUBJID} and each DS row reads its subject's one DM record. This test pinned the
+     * opposite until then — the grouped side keyed {@code ""} for the absent column, the row side
+     * its real value, no key met and every row read 0 — and warned against the drop as "a plausible
+     * wrong number"; the owner's principle (<i>"only join on variables available in both data
+     * sets"</i>) decided it the other way. With NO member left on both sides the rule errors
+     * instead (QK16 (b), {@code GroupedAggregateQualifiedGroupTest}).
      */
     @Test
-    void crossTableAsymmetry_keysDoNotMeetAndTheRowSideReadsTheDefault()
+    void crossTable_aColumnOnOneTableOnlyLeavesTheKey()
     {
-        IDataTable eval = MockTable.of().name("DS").col("USUBJID", "S1", "S2")
-                .col("EPOCH", "SCREENING", "TREATMENT").build();
-        IDataTable foreign = MockTable.of().name("DM").col("USUBJID", "S1", "S2").build();
-        // Grouped on the foreign table, where EPOCH is absent, the keys carry "" for it; the
-        // evaluated rows carry their real EPOCH, so no key meets and every row reads
-        // record_count's declared empty result, 0 — "no record for the group" is zero records.
-        assertEquals(List.of(0L, 0L), counts("record_count(domain=DM, group=[USUBJID, EPOCH])",
-                eval, d -> "DM".equals(d) ? foreign : null));
+        IDataTable eval = RealTables.of("DS").str("USUBJID", "S1", "S2")
+                .str("EPOCH", "SCREENING", "TREATMENT").build();
+        IDataTable foreign = RealTables.of("DM").str("USUBJID", "S1", "S2").build();
+        assertEquals(List.of(1L, 1L),
+                counts("record_count(domain=DM, group=[USUBJID, EPOCH])", eval,
+                        d -> "DM".equals(d) ? foreign : null),
+                "[0, 0] is the retired \"no key meets\"");
     }
 
     // -----------------------------------------------------------------------

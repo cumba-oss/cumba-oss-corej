@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -298,19 +299,27 @@ class RuleRunnerDateDiffKeyAbsenceTest
 
 
     /**
-     * §4.2, the other half: a group column present on one side only is <b>unmeetable in either
-     * direction</b>. The producer keys on the real {@code RPHASE} value, the consumer on
-     * {@code ""}, no key ever matches, and every populated row reads "no value" and fires. Removing
-     * the guard did not change this — it is what the guard already produced, reached honestly.
+     * §4.2, the other half — <b>changed by {@code REG-Q4} QK14 (b)</b> (owner 2026-10-09: a
+     * {@code domain=} group member present on one side only leaves the key on both sides, with the
+     * WARNING, as a join key does under {@code REG-Q3}). {@code RPHASE} is on EX only, so the
+     * foreign extreme groups by {@code USUBJID}: S1's TFDETECT is right and passes, S2's wrong one
+     * fires. Until then the producer keyed on the real {@code RPHASE}, the consumer on {@code ""},
+     * nothing matched and every populated row fired.
      */
     @Test
-    void groupColumnPresentOnOneSideOnlyMatchesNothing()
+    void groupColumnPresentOnOneSideOnlyLeavesTheKeyWithOneWarning()
     {
         IDataTable ex = RealTables.of("EX").str("USUBJID", "S1", "S2").str("RPHASE", "P1", "P1")
                 .str("EXSTDTC", "2020-01-01", "2020-01-01").build();
-        RuleExecutionResult res = run(send0202(List.of("USUBJID", "RPHASE")),
-                study(tf("11", "6"), ex));
-        assertEquals(List.of("S1", "S2"), firedSubjects(res));
+        List<RuleExecutionResult> res = new ArrayList<>();
+        List<String> warnings = JoinKeyDropWarningTest.warnings(GroupedAggregate.class, () -> res
+                .add(run(send0202(List.of("USUBJID", "RPHASE")), study(tf("11", "99"), ex))));
+        assertEquals(List.of("S2"), firedSubjects(res.get(0)),
+                "[S1, S2] is the retired \"matches nothing\"");
+        assertEquals(
+                List.of("[TEST-SEND-0202] min_date group=: "
+                        + net.cumba.datatable.merge.KeyDropWarning.format("EX", "RPHASE", "EX")),
+                warnings, "exactly one WARNING, naming EX as the side that carries RPHASE");
     }
 
 
@@ -332,7 +341,7 @@ class RuleRunnerDateDiffKeyAbsenceTest
      * </p>
      */
     @Test
-    void noGroupColumnOnTheForeignDatasetFormsOneWholeTableGroup()
+    void aGroupColumnOnTheRecordSideOnlyAsTheWholeKeyIsARuleError()
     {
         IDataTable tf = RealTables.of("TF").str("USUBJID", "", "")
                 .str("TFDTC", "2020-01-11", "2020-01-06").str("TFDETECT", "11", "6").build();
@@ -340,64 +349,50 @@ class RuleRunnerDateDiffKeyAbsenceTest
                 .str("EXSTDTC", "2020-01-01", "2020-01-01").build();
         // no Match_Datasets: the inner join would otherwise empty the evaluation table
         RuleExecutionResult res = run(send0202(List.of("USUBJID"), false), study(tf, ex));
-        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
-        assertEquals(0, res.getViolations().size(),
-                "both blank-keyed rows meet the one whole-table group and match");
+        assertEquals(RuleExecutionStatus.ERROR, res.getStatus(),
+                "QK16 (b): USUBJID is on TF only, so no member is left on both sides — the rule"
+                        + " errors, never the study-wide earliest EXSTDTC (W2b's whole-table"
+                        + " group, which blank-keyed rows used to meet)");
+        assertTrue(String.valueOf(res.getStatusMessage())
+                .contains("min_date group= over 'EX' has no usable key"), res.getStatusMessage());
     }
 
 
     /**
-     * ⚠ <b>The conflation the coupling rests on, pinned as a decision rather than left as an
-     * accident.</b> The group key ({@code GroupedResult.buildKey} then,
-     * {@code GroupKeyIdentity.identityKey} since runbook W8) renders an <em>absent column</em> and
-     * a <em>literal-{@code ""} value</em> identically as {@code ""}, so when a group column is
-     * absent from the foreign dataset only, an evaluation row whose own value for it is {@code ""}
-     * <b>does</b> match the collapsed foreign bucket and receives the aggregate over the whole
-     * foreign column.
-     *
-     * <p>
-     * That is the reachable half of the EC-43 contract — an absent column is a column whose values
-     * are all missing — so the absent-column case behaves exactly as a present-but-all-{@code ""}
-     * column. ⚠ Scoped by {@code W38-A1} (Fix #249): a <em>marker-missing</em> evaluation cell now
-     * renders its own identity token and no longer matches the collapsed {@code ""} bucket — a
-     * {@code MissingValue} equals no string key (ruling part 4) — so this pin holds for {@code ""}
-     * blanks, which is what this fixture carries. Here {@code RPHASE} is absent from {@code EX}: S1
-     * has a populated {@code RPHASE} and can never match, so it fires; S2's is {@code ""}, so it
-     * joins to the study-wide earliest {@code EXSTDTC} and its correct {@code TFDETECT} passes.
-     * Tightening this back into the all-or-nothing guard means re-opening Q2.
-     * </p>
+     * The conflation the W8 key derivation carries — an absent column and a literal {@code ""}
+     * render alike — is no longer reached through a one-side column: {@code RPHASE} on TF only
+     * leaves the key ({@code REG-Q4} QK14 (b)), so S1's populated and S2's blank {@code RPHASE}
+     * both key on {@code USUBJID} and their correct TFDETECT values pass. (Until then S1 could
+     * never match and fired, S2's {@code ""} met the collapsed {@code ""} bucket.)
      */
     @Test
-    void aBlankKeyComponentJoinsTheCollapsedForeignBucket()
+    void aBlankAndAPopulatedValueOfAOneSideColumnKeyAlike()
     {
         IDataTable tf = RealTables.of("TF").str("USUBJID", "S1", "S2").str("RPHASE", "P1", "")
                 .str("TFDTC", "2020-01-11", "2020-01-06").str("TFDETECT", "11", "6").build();
         IDataTable ex = RealTables.of("EX").str("USUBJID", "S1", "S2")
                 .str("EXSTDTC", "2020-01-01", "2020-01-01").build();
-        assertEquals(List.of("S1"),
+        assertEquals(List.of(),
                 firedSubjects(run(send0202(List.of("USUBJID", "RPHASE")), study(tf, ex))));
     }
 
 
     /**
-     * Combined review of runbook W2–W8, W2 M5: the one whole-table group of the test above is
-     * reached ONLY by a blank-keyed primary row (IndexHelper.groupByPresent keys it {@code ""}). A
-     * TF row whose {@code USUBJID} is populated meets no group, its {@code $days_from_first_dose}
-     * is the computed missing, and EC-45's {@code TFDETECT != missing} FIRES — the retired
-     * operation's carve-out answer, kept. So "the foreign dataset without the group column forms
-     * one whole-table group" is a statement about blank-keyed rows, not about every row.
+     * Combined review of runbook W2–W8, W2 M5, re-answered by QK16 (b): a TF row with a populated
+     * {@code USUBJID} and one with a blank one over an EX without {@code USUBJID} — the call's only
+     * member is on one side only, so the rule ERRORs whatever the rows hold (it used to fire the
+     * populated row and match the blank one against the whole-table group).
      */
     @Test
-    void aPopulatedKeyMeetsNoGroupWhenTheForeignDatasetLacksTheGroupColumn()
+    void aPopulatedAndABlankKeyOverAForeignDatasetLackingTheGroupColumnErrorTheRule()
     {
         IDataTable tf = RealTables.of("TF").str("USUBJID", "S1", "")
                 .str("TFDTC", "2020-01-11", "2020-01-06").str("TFDETECT", "11", "6").build();
         IDataTable ex = RealTables.of("EX").str("SPARE", "x", "y")
                 .str("EXSTDTC", "2020-01-01", "2020-01-01").build();
         RuleExecutionResult res = run(send0202(List.of("USUBJID"), false), study(tf, ex));
-        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
-        assertEquals(List.of("S1"), firedSubjects(res),
-                "S1's populated key meets no group (fires on the missing); the blank key meets"
-                        + " the whole-table group and matches");
+        assertEquals(RuleExecutionStatus.ERROR, res.getStatus());
+        assertEquals(res.getStatusMessage(),
+                res.getViolations().get(0).getValues().get("__error__"));
     }
 }

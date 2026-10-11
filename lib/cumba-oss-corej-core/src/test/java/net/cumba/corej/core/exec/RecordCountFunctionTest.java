@@ -577,25 +577,26 @@ class RecordCountFunctionTest
 
 
     /**
-     * Review round 1 of {@code PLAN-rprfdy-offset-tp-join} (lane 2, SPECULATIVE): a qualified
-     * {@code group=} member is judged at load (D-DOMAIN / D-SRC / D-REGEX), and a spliced one never
-     * reaches those gates — so under {@code domain=} a {@code $} list that yields a qualified name
-     * ERRORs the rule. RED before: the name was spliced and keyed through the join. ⭐ W3c of
-     * {@code PLAN-merged-evaluation-table} (N5 lifted per MQ8): WITHOUT {@code domain=} a qualified
-     * name is a column of the one evaluation table, so the spliced member answers exactly as the
-     * literal {@code group=[USUBJID, DM.USUBJID]} does (here no DM join: the member resolves
-     * nowhere and EC-44 drops it on both spellings).
+     * A {@code $} list yielding a qualified name splices like the literal member, with or without
+     * {@code domain=} ({@code REG-Q4}, plan §5 Q7 — under {@code domain=} it used to ERROR the
+     * rule: review round 1 of {@code PLAN-rprfdy-offset-tp-join}, lane 2, SPECULATIVE). Here no DM
+     * join serves {@code DM.USUBJID}: under {@code domain=DS} it is absent on the record side while
+     * DS carries {@code USUBJID}, so it leaves the key (QK14 (b)) and the count is the
+     * {@code USUBJID}-only one; without {@code domain=} it resolves nowhere and {@code EC-44} drops
+     * it (W3c).
      */
     @Test
-    void aSplicedQualifiedNameErrorsTheRuleUnderDomain()
+    void aSplicedQualifiedNameReadsAsTheLiteralMemberWithOrWithoutDomain()
     {
         DatasetResolver study = resolver(dm(), ds());
         EvaluationContext spliced = EvaluationContext.builder().table(dm()).datasetResolver(study)
                 .variables(Map.of("$K", List.of("DM.USUBJID"))).ruleId("X-1").build();
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> values("record_count(domain=DS, group=[USUBJID, $K])", spliced));
-        assertTrue(ex.getMessage().contains("splices the qualified name DM.USUBJID"),
-                ex.getMessage());
+        assertEquals(values("record_count(domain=DS, group=[USUBJID, DM.USUBJID])", spliced),
+                values("record_count(domain=DS, group=[USUBJID, $K])", spliced),
+                "under domain= the spliced qualified member reads as the literal one");
+        assertEquals(values("record_count(domain=DS, group=[USUBJID])", spliced),
+                values("record_count(domain=DS, group=[USUBJID, $K])", spliced),
+                "DM.USUBJID is on one side only: it leaves the key");
         assertEquals(values("record_count(group=[USUBJID, DM.USUBJID])", spliced),
                 values("record_count(group=[USUBJID, $K])", spliced),
                 "without domain= the spliced qualified member reads as the literal one");

@@ -308,16 +308,12 @@ public final class Distinct
                 .computeIfAbsent(DatasetExpressionCache.keyOf(primary,
                         GroupedAggregate.memoKey(spec.canonical(), spec.members(), names),
                         ctx.getDomainPrefix()), () -> perGroup(ctx, spec, names));
-        @SuppressWarnings("unchecked")
-        Map<Object, List<Object>> byKey = (Map<Object, List<Object>>) java.util.Objects
+        GroupedAggregate.KeyedLists lists = (GroupedAggregate.KeyedLists) java.util.Objects
                 .requireNonNull(memo, "the memo never stores null");
-        // C2: a qualified member's record side is read through the join, from THIS context, never
-        // memoised — and resolved BEFORE the no-group shortcut, so D-ABSENT does not depend on
-        // whether the target formed a group (review round 1, lane 2 L2).
-        boolean foreign = spec.dataset() != null;
-        GroupedAggregate.RowKey keyer = GroupedAggregate.keysRecordSide(foreign, names)
-                ? GroupedAggregate.recordKeyer(ctx, NAME, names)
-                : null;
+        Map<Object, List<Object>> byKey = lists.byKey();
+        // Under domain= the grouping decided its SidedKey (REG-Q3 / QK14 / QK16) inside the memo,
+        // before forming any group, and carries the record side's keyer.
+        GroupedAggregate.RowKey keyer = lists.keyer();
         if (byKey.isEmpty())
         {
             // One answer for every row (XCUT PERF 2): the constant, not a per-row carrier.
@@ -334,8 +330,8 @@ public final class Distinct
         }
         // Without domain= the row's key is read on the evaluated rows' one table, where a merged
         // member (a qualified J.X, a SUPP qualifier) is a column too (W3c) — the very table the
-        // blocks were keyed on; else on the primary.
-        IDataTable keyTable = foreign ? primary : GroupReadTable.of(ctx, names);
+        // blocks were keyed on.
+        IDataTable keyTable = GroupReadTable.of(ctx, names);
         int[] keyColumns = GroupKeyIdentity.columnIndices(keyTable.getMetaData(), names);
         return new ComputedVector(run.rowCount(), DataValueType.STRING, row -> byKey
                 .getOrDefault(GroupKeyIdentity.identityKey(keyTable, keyColumns, row), EMPTY));
@@ -502,7 +498,7 @@ public final class Distinct
 
 
     /** The grouped value sets over the target table: one list per group key. */
-    private static Map<Object, List<Object>> perGroup(EvaluationContext ctx, Spec spec,
+    private static GroupedAggregate.KeyedLists perGroup(EvaluationContext ctx, Spec spec,
             List<String> names)
     {
         boolean foreign = spec.dataset() != null;
@@ -510,7 +506,7 @@ public final class Distinct
                 GroupedAggregate.targetNames(spec.target(), names));
         if (table == null)
         {
-            return Map.of();
+            return GroupedAggregate.KeyedLists.NONE;
         }
         IntFunction<IDataValue> cellAt = targetCells(ctx, table,
                 java.util.Objects.requireNonNull(spec.target()), foreign);
@@ -518,13 +514,16 @@ public final class Distinct
         // EC-44: absent PLAIN group columns are ignored; all absent ⇒ the dataset is one group.
         // C2: under domain= a qualified member groups the target by its UNQUALIFIED name (absent
         // ⇒ ERROR); without it the member is a column of the one evaluation table (W3c).
-        boolean qualified = GroupedAggregate.keysRecordSide(foreign, names);
+        GroupedAggregate.SidedKey sided = foreign
+                ? GroupedAggregate.sidedKey(ctx, NAME, table, names)
+                : null;
         IndexHelper.Grouping grouping = IndexHelper.groupByPresent(table,
-                qualified ? GroupedAggregate.groupedSideNames(NAME, table, names) : names,
+                sided != null ? sided.groupedNames() : names,
                 GroupedAggregate.logContext(ctx, NAME), spec.policy());
         if (grouping == null)
         {
-            return Map.of(); // an unexpanded $-ref in the group list — the reader refuses those
+            return GroupedAggregate.KeyedLists.NONE; // an unexpanded $-ref in the group list — the
+                                                     // reader refuses those
         }
         // Every block claims its key with a value (never skip): a key is never shared silently
         // (the tripwire), and a row of the block always reads its own block's answer.
@@ -536,12 +535,11 @@ public final class Distinct
             ListValueGuard.requireNoNullElement(values, () -> NAME + " group " + block.key());
             results.put(block, values);
         }
-        if (foreign)
+        if (sided != null)
         {
             // GKI Q2: a Char/Num key pair between the grouped table and the evaluated one ERRORs
             // the rule instead of silently matching no row. Once per evaluation, never per row.
-            // A qualified member is judged against its SOURCE column (C2).
-            GroupedAggregate.requireCompatibleKeys(ctx, table, names);
+            sided.requireCompatible(table);
         }
         Map<Object, List<Object>> byKey = new LinkedHashMap<>();
         results.results().forEach((key, value) ->
@@ -550,6 +548,6 @@ public final class Distinct
             List<Object> list = (List<Object>) value;
             byKey.put(key, list);
         });
-        return byKey;
+        return new GroupedAggregate.KeyedLists(byKey, sided != null ? sided.keyer() : null);
     }
 }

@@ -281,7 +281,7 @@ class GroupedAggregateQualifiedGroupTest
     }
 
     // -----------------------------------------------------------------------
-    // GKI Q2 against the SOURCE column, D-ABSENT
+    // GKI Q2 against the SOURCE column; a member on one side only (REG-Q3 / QK14 / QK16)
     // -----------------------------------------------------------------------
 
 
@@ -300,59 +300,93 @@ class GroupedAggregateQualifiedGroupTest
     }
 
 
-    private static String errorMessage(RuleExecutionResult res)
+    /** The rule as loaded, its declaration removed — the authoring gate would SKIP the study. */
+    private static Rule ungated(String binding, String check)
     {
-        assertEquals(RuleExecutionStatus.ERROR, res.getStatus(), res.getStatusMessage());
-        String msg = String.valueOf(res.getStatusMessage());
-        assertTrue(msg.contains("qualified key DM.RPATHCD"), msg);
-        assertEquals(msg, res.getViolations().get(0).getValues().get("__error__"));
-        return msg;
+        Rule rule = loadClean(binding, check);
+        rule.setRequirements(null);
+        return rule;
+    }
+
+
+    private static String dropWarning(String aCarrier)
+    {
+        return "[T-QG] read_value group=: " + net.cumba.datatable.merge.KeyDropWarning.format("TP",
+                "DM.RPATHCD/RPATHCD", aCarrier);
     }
 
 
     /**
-     * The source entry's dataset absent from the study: through a loaded rule the join-key
-     * declaration ({@code [USUBJID, DM.USUBJID]}) SKIPS it first (JKM R7's authoring gate, Q8), so
-     * the ERROR is pinned at the keyer — a context carrying no DM lookup.
+     * The source entry's dataset absent from the study (QK2: its column absent on the record side)
+     * — through the loaded rule the join-key declaration ({@code [USUBJID, DM.USUBJID]}) SKIPS it
+     * first; with the declaration removed the member leaves the key with the WARNING and RPHASE
+     * alone keys (REG-Q4 QK3 / QK14 — it used to ERROR, D-ABSENT).
      */
     @Test
-    void theSourceDatasetAbsentFromTheStudyErrors()
+    void theSourceDatasetAbsentFromTheStudyDropsTheMember()
     {
-        Rule rule = loadClean(READ_MAX, "$v == 1");
-        RuleExecutionResult skipped = run(rule, bw("S1/P1"), tp("A/1/P1/0"));
+        RuleExecutionResult skipped = run(loadClean(READ_MAX, "$v == 1"), bw("S1/P1"),
+                tp("A/1/P1/0", "B/1/P1/1"));
         assertEquals(RuleExecutionStatus.SKIPPED, skipped.getStatus(), skipped.getStatusMessage());
-
-        EvaluationContext noJoin = EvaluationContext.builder().table(bw("S1/P1")).build();
-        UnresolvedQualifiedKeyException ex = org.junit.jupiter.api.Assertions
-                .assertThrows(UnresolvedQualifiedKeyException.class, () -> GroupedAggregate
-                        .recordKeyer(noJoin, "read_value", List.of("DM.RPATHCD", "RPHASE")));
-        assertTrue(ex.getMessage().contains("no DM record is bound"), ex.getMessage());
+        List<RuleExecutionResult> res = new ArrayList<>();
+        List<String> warnings = JoinKeyDropWarningTest.warnings(GroupedAggregate.class,
+                () -> res.add(run(ungated(READ_MAX, "$v == 1"), bw("S1/P1"),
+                        tp("A/1/P1/0", "B/1/P1/1", "C/1/P2/5"))));
+        assertEquals(List.of("S1=1"), fired(res.get(0)),
+                "RPHASE alone keys: the MAX over both P1 paths is 1 (not the P2 stage's 5)");
+        assertEquals(List.of(dropWarning("TP")), warnings);
     }
 
 
     @Test
-    void theSourceColumnAbsentFromTheSourceDatasetErrors()
+    void theSourceColumnAbsentFromTheSourceDatasetDropsTheMember()
     {
-        Rule rule = loadClean(READ_MAX, "$v == 1");
         IDataTable dmWithoutPath = RealTables.of("DM").str("USUBJID", "S1").build();
-        String msg = errorMessage(run(rule, bw("S1/P1"), dmWithoutPath, tp("A/1/P1/0")));
-        assertTrue(msg.contains("DM has no column RPATHCD"), msg);
+        List<RuleExecutionResult> res = new ArrayList<>();
+        List<String> warnings = JoinKeyDropWarningTest.warnings(GroupedAggregate.class,
+                () -> res.add(run(loadClean(READ_MAX, "$v == 1"), bw("S1/P1"), dmWithoutPath,
+                        tp("A/1/P1/0", "B/1/P1/1", "C/1/P2/5"))));
+        assertEquals(List.of("S1=1"), fired(res.get(0)));
+        assertEquals(List.of(dropWarning("TP")), warnings,
+                "one WARNING per dropped member, naming TP as the side that carries RPATHCD");
     }
 
 
-    /** The unqualified variable absent from the grouped dataset is an ERROR — not EC-44's drop. */
+    /** The unqualified variable absent from the grouped dataset: dropped, the WARNING names DM. */
     @Test
-    void theUnqualifiedVariableAbsentFromTheGroupedDatasetErrors()
+    void theUnqualifiedVariableAbsentFromTheGroupedDatasetDropsTheMember()
     {
-        Rule rule = loadClean(READ_MAX, "$v == 1");
-        IDataTable tpWithoutPath = RealTables.of("TP").str("RPHASE", "P1").lng("RPRFDY", 1L)
-                .build();
-        String msg = errorMessage(run(rule, bw("S1/P1"), dm("S1/A"), tpWithoutPath));
-        assertTrue(msg.contains("TP has no column RPATHCD"), msg);
+        IDataTable tpWithoutPath = RealTables.of("TP").str("RPHASE", "P1", "P2")
+                .lng("RPRFDY", 1L, 5L).build();
+        List<RuleExecutionResult> res = new ArrayList<>();
+        List<String> warnings = JoinKeyDropWarningTest.warnings(GroupedAggregate.class, () -> res
+                .add(run(loadClean(READ_MAX, "$v == 1"), bw("S1/P1"), dm("S1/A"), tpWithoutPath)));
+        assertEquals(List.of("S1=1"), fired(res.get(0)));
+        assertEquals(List.of(dropWarning("DM")), warnings);
+    }
+
+
+    /**
+     * {@code RPATHCD} absent on BOTH sides: {@code EC-44}'s silent "partitions nothing" (QK5 (a)),
+     * unchanged — RPHASE keys, no WARNING.
+     */
+    @Test
+    void aMemberAbsentFromBothSidesPartitionsNothingSilently()
+    {
+        IDataTable dmWithoutPath = RealTables.of("DM").str("USUBJID", "S1").build();
+        IDataTable tpWithoutPath = RealTables.of("TP").str("RPHASE", "P1", "P2")
+                .lng("RPRFDY", 1L, 5L).build();
+        List<RuleExecutionResult> res = new ArrayList<>();
+        List<String> warnings = JoinKeyDropWarningTest.warnings(GroupedAggregate.class,
+                () -> res.add(run(loadClean(READ_MAX, "$v == 1"), bw("S1/P1"), dmWithoutPath,
+                        tpWithoutPath)));
+        assertEquals(List.of("S1=1"), fired(res.get(0)));
+        assertEquals(List.of(), warnings);
     }
 
     // -----------------------------------------------------------------------
-    // The loader — D-DOMAIN, D-REGEX, `--`, an undeclared qualifier, D-SRC
+    // The loader // -----------------------------------------------------------------------
+    // The loader — `--`, an undeclared qualifier, D-SRC (any declared entry), regex= (QK11)
     // -----------------------------------------------------------------------
 
 
@@ -371,12 +405,20 @@ class GroupedAggregateQualifiedGroupTest
     }
 
 
+    /**
+     * {@code regex=} with a qualified member (REG-Q4 QK11; refused at load until then, D-REGEX):
+     * the record side's merged cell is normalised by the pattern its grouped column takes — paths
+     * A1 and A2 both read as {@code A}, so the record on path AX counts both P1 stages.
+     */
     @Test
-    void aQualifiedMemberWithRegexIsRefused()
+    void aQualifiedMemberWithRegexNormalisesTheRecordSideToo()
     {
-        String error = loadError(DM_ENTRY, DM_REQUIREMENTS,
-                "record_count(domain=\"TP\", group=[DM.RPATHCD, RPHASE], regex=\"^(.*)$\")");
-        assertTrue(error.contains("DM.RPATHCD") && error.contains("regex"), error);
+        Rule rule = loadClean(
+                "record_count(domain=\"TP\", group=[DM.RPATHCD, RPHASE], regex=\"^.\")", "$v == 2");
+        RuleExecutionResult res = run(rule, bw("S1/P1", "S2/P1"), dm("S1/AX", "S2/BX"),
+                tp("A1/1/P1/0", "A2/2/P1/0", "B1/1/P1/1"));
+        assertEquals(List.of("S1=2"), fired(res),
+                "AX normalises to A and pairs A1 + A2; BX to B, one stage");
     }
 
 
@@ -403,19 +445,24 @@ class GroupedAggregateQualifiedGroupTest
     }
 
 
+    /**
+     * REG-Q4 QK10 (owner 2026-10-09): a qualified {@code group=} member may name any declared entry
+     * — a {@code left} one, a {@code Child} parent — the member reads the merged column like a bare
+     * name (it used to be refused unless the entry was an ordinary keyed {@code inner} join,
+     * D-SRC). A C1 join key keeps that restriction (QK15, {@code QualifiedMatchKeyTest}).
+     */
     @Test
-    void theSourceEntryMustBeAnOrdinaryInnerJoin()
+    void theSourceEntryMayBeAnyDeclaredEntry()
     {
-        String left = loadError("[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"],\"Join_Type\":\"left\"}]",
-                DM_REQUIREMENTS, READ_MAX);
-        assertTrue(left.contains("names entry DM with Join_Type left"), left);
-        String child = loadError(
+        assertNull(load(
+                ruleJson("[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"],\"Join_Type\":" + "\"left\"}]",
+                        DM_REQUIREMENTS, READ_MAX, "not empty($v)")).getLoadError());
+        assertNull(load(ruleJson(
                 "[{\"Name\":\"SUPPBW\",\"Child\":true,\"Keys\":[\"USUBJID\",\"IDVAR\","
                         + "\"IDVARVAL\"]}]",
                 "{\"All\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]}",
-                "read_value(RPRFDY, domain=\"TP\", group=[SUPPBW.RPATHCD, RPHASE], mode=\"MAX\")");
-        assertTrue(child.contains("names entry SUPPBW, which is not an ordinary keyed join"),
-                child);
+                "read_value(RPRFDY, domain=\"TP\", group=[SUPPBW.RPATHCD, RPHASE], mode=\"MAX\")",
+                "not empty($v)")).getLoadError());
     }
 
 
@@ -436,8 +483,8 @@ class GroupedAggregateQualifiedGroupTest
     /**
      * Review round 1 (lane 2 M1): D-SRC judges EVERY declared Check level, not only the strictest
      * ({@code Rule.effectiveCheckLevels}' warning). Before, a qualified member in a weaker level
-     * loaded clean: an undeclared qualifier ERRORed at run time, a {@code left} source keyed its
-     * unmatched rows on the type default.
+     * loaded clean and an undeclared qualifier ERRORed at run time. (A {@code left} source is a
+     * source like any since REG-Q4 QK10.)
      */
     @Test
     void aQualifiedMemberInAWeakerCheckLevelIsJudgedToo()
@@ -446,10 +493,6 @@ class GroupedAggregateQualifiedGroupTest
                 "read_value(RPRFDY, domain=\"TP\", group=[EX.RPATHCD, RPHASE], mode=\"MAX\") == 1");
         assertTrue(undeclared.contains("group= member EX.RPATHCD names no Match_Datasets entry EX"),
                 undeclared);
-        String left = weakerLevelError(
-                "[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"],\"Join_Type\":\"left\"}]",
-                READ_MAX + " == 1");
-        assertTrue(left.contains("names entry DM with Join_Type left"), left);
         // CONTROL: the same WARNING level over an inner DM entry loads clean.
         assertNull(load("{\"rules\":{\"T\":{\"Core\":{\"Id\":\"T-QG\"},"
                 + "\"Sensitivity\":\"Record\",\"Requirements\":{\"Variables\":" + DM_REQUIREMENTS
@@ -461,28 +504,33 @@ class GroupedAggregateQualifiedGroupTest
 
 
     /**
-     * Review round 1 (lane 2 L2): D-ABSENT is not data-dependent. A grouped side that forms no
-     * group (an empty TP) used to answer its constant before the record side was resolved, so a DM
-     * lacking {@code RPATHCD} EXECUTED on an empty TP and ERRORed on a populated one. The error
-     * names the FUNCTION (lane 2 L5), not the whole call text.
+     * QK16 (b), owner 2026-10-11 (<i>"B the rule errors."</i>): a key with no member left on both
+     * sides after a one-side drop is a rule ERROR, for every grouped function — and, as review
+     * round 1 of {@code PLAN-rprfdy-offset-tp-join} (lane 2 L2) required of D-ABSENT, not
+     * data-dependent: an empty TP ERRORs as a populated one would. The error names the FUNCTION,
+     * not the call text.
      */
     @Test
-    void theRecordSideResolvesEvenWhenTheGroupedSideFormsNoGroup()
+    void aKeyLeftWithNoMemberAfterAOneSideDropErrorsEvenWhenTheGroupedSideFormsNoGroup()
     {
         IDataTable emptyTp = RealTables.of("TP").str("RPATHCD").str("TPSTGORD").str("RPHASE")
                 .lng("RPRFDY").str("TPDTC").build();
         IDataTable dmWithoutPath = RealTables.of("DM").str("USUBJID", "S1").build();
-        for (String call : List.of(READ_MAX,
-                "max(RPRFDY, domain=\"TP\", group=[DM.RPATHCD, RPHASE])",
-                "record_count(domain=\"TP\", group=[DM.RPATHCD, RPHASE])",
-                "distinct(RPRFDY, domain=\"TP\", group=[DM.RPATHCD, RPHASE])"))
+        for (String call : List.of(
+                "read_value(RPRFDY, domain=\"TP\", group=[DM.RPATHCD]," + " mode=\"MAX\")",
+                "max(RPRFDY, domain=\"TP\", group=[DM.RPATHCD])",
+                "record_count(domain=\"TP\", group=[DM.RPATHCD])",
+                "distinct(RPRFDY, domain=\"TP\", group=[DM.RPATHCD])"))
         {
             String name = call.substring(0, call.indexOf('('));
-            String msg = errorMessage(run(loadClean(call, "not empty(USUBJID)"), bw("S1/P1"),
-                    dmWithoutPath, emptyTp));
-            assertTrue(msg.contains("DM has no column RPATHCD"), call + ": " + msg);
-            assertTrue(msg.contains(name + " group=: qualified key DM.RPATHCD"),
+            RuleExecutionResult res = run(loadClean(call, "not empty(USUBJID)"), bw("S1/P1"),
+                    dmWithoutPath, emptyTp);
+            assertEquals(RuleExecutionStatus.ERROR, res.getStatus(), call);
+            String msg = String.valueOf(res.getStatusMessage());
+            assertTrue(msg.contains(name + " group= over 'TP' has no usable key"),
                     call + " must name the function, not the call text: " + msg);
+            assertTrue(msg.contains("DM.RPATHCD/RPATHCD present on one side only"), msg);
+            assertEquals(msg, res.getViolations().get(0).getValues().get("__error__"));
         }
         // CONTROL: the same empty TP with a DM that carries RPATHCD runs, every row the default.
         RuleExecutionResult res = run(loadClean(READ_MAX, "not empty(USUBJID)"), bw("S1/P1"),

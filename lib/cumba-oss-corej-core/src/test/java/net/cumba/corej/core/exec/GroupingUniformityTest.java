@@ -12,7 +12,6 @@ import static net.cumba.corej.core.exec.QualifiedNameFixture.ruleJson;
 import static net.cumba.corej.core.exec.QualifiedNameFixture.run;
 import static net.cumba.corej.core.exec.QualifiedNameFixture.table;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -128,9 +127,13 @@ class GroupingUniformityTest
     }
 
 
-    /** ⚠ Known red N6 — ruled (plan §2.3, D-ABSENT), recorded, not a finding. */
+    /**
+     * N6, resolved by {@code REG-Q4} QK4 (owner 2026-10-09): an absent qualified {@code Grouping}
+     * member is dropped exactly as an absent bare one ({@code EC-44}) — it used to ERROR (D-ABSENT,
+     * plan §2.3, recorded as a known red).
+     */
     @Test
-    void anAbsentQualifiedKeyErrorsWhereAnAbsentBareKeyIsDropped()
+    void anAbsentQualifiedKeyIsDroppedLikeAnAbsentBareKey()
     {
         IDataTable p = table("P", "G");
         IDataTable j = table("J", "G");
@@ -139,10 +142,9 @@ class GroupingUniformityTest
         assertEquals(RuleExecutionStatus.EXECUTED, bare.getStatus(), bare.getStatusMessage());
         assertEquals(1, bare.getViolations().size(),
                 "EC-44: the absent bare member is dropped, one group remains");
-        assertEquals(RuleExecutionStatus.ERROR, dotted.getStatus(),
-                "D-ABSENT: UnresolvedQualifiedKeyException — " + dotted.getStatusMessage());
-        assertTrue(String.valueOf(dotted.getStatusMessage()).contains("J.G"),
-                dotted.getStatusMessage());
+        assertEquals(RuleExecutionStatus.EXECUTED, dotted.getStatus(), dotted.getStatusMessage());
+        assertEquals(bare.getViolations().size(), dotted.getViolations().size(),
+                "the absent qualified member is dropped the same way");
     }
 
 
@@ -181,8 +183,8 @@ class GroupingUniformityTest
     /**
      * W3c (N5 lifted per MQ8): WITHOUT {@code domain=} a qualified {@code group=} member is a
      * column of the one evaluation table, so a {@code find_vars} binding holding it splices into
-     * {@code record_count(group=[$b])} and answers exactly as the literal {@code group=[J.G]};
-     * under {@code domain=} the splice stays the rule's ERROR (N15, the pin below).
+     * {@code record_count(group=[$b])} and answers exactly as the literal {@code group=[J.G]} — as
+     * it does under {@code domain=} since {@code REG-Q4} (the test below).
      */
     @Test
     void aFindVarsBindingOfQualifiedNamesSplicedWithoutDomainReadsLikeTheLiteral()
@@ -207,17 +209,14 @@ class GroupingUniformityTest
 
     /**
      * The row the plan shares with {@code PLAN-stage-a-parameter-type-arming} (plan §3 phase 1),
-     * MEASURED: a {@code find_vars} binding holding a QUALIFIED name cannot be spliced into
-     * {@code record_count(group=[$b])} — {@code GroupSplice} refuses the splice by design ("a
-     * qualified group= member is judged at load, so author it in the group= list itself": D-DOMAIN
-     * / D-SRC / D-REGEX are load gates, and the join type D-SRC needs is not on the evaluation
-     * context), while the literal {@code group=[J.G]} is admitted. ⭐ N15 (fixed): the refusal is
-     * the rule's ERROR on {@code RuleRunner}'s sentinel channel — until then an
-     * {@link IllegalStateException} escaped {@code RuleRunner}. The literal row is the uniform one;
-     * the arming plan's splice premise must read this pin, not the plan text.
+     * re-measured after {@code REG-Q4}: a {@code find_vars} binding holding a QUALIFIED name
+     * splices into {@code record_count(domain=…, group=[$b])} and answers exactly as the literal
+     * {@code group=[J.G]} — no load gate is left to judge the spliced name (D-SRC's kind /
+     * join-type refusal withdrawn for group members, D-REGEX aligned; plan §5 Q7). Until then
+     * {@code GroupSplice} refused the splice (N15: the rule's ERROR).
      */
     @Test
-    void aFindVarsBindingOfQualifiedNamesSplicedIntoRecordCountErrorsTheRule()
+    void aFindVarsBindingOfQualifiedNamesSplicedIntoRecordCountReadsLikeTheLiteral()
     {
         IDataTable p = primary();
         IDataTable j = joined();
@@ -231,9 +230,7 @@ class GroupingUniformityTest
         RuleExecutionResult lit = executed(loadClean(literal, true), p, exactInventory(p, j));
         assertEquals(6, lit.getViolations().size(), "every record's group of J has two rows");
         assertEquals("2", QualifiedNameFixture.values(lit).get(0).get("$c"));
-        RuleExecutionResult refused = run(loadClean(spliced, true), p, exactInventory(p, j));
-        assertEquals(RuleExecutionStatus.ERROR, refused.getStatus(), refused.getStatusMessage());
-        assertTrue(String.valueOf(refused.getStatusMessage())
-                .contains("splices the qualified name J.G"), refused.getStatusMessage());
+        RuleExecutionResult viaSplice = executed(loadClean(spliced, true), p, exactInventory(p, j));
+        assertEquals(QualifiedNameFixture.values(lit), QualifiedNameFixture.values(viaSplice));
     }
 }

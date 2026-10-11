@@ -248,6 +248,24 @@ public final class NameListBinding
     }
 
 
+    /** Whether {@code binding} is spliced into {@code call}'s {@code by=} sort keys. */
+    private static boolean splicedAsSortKey(Expr.Call call, String binding)
+    {
+        Expr by = call.kwargs().get(net.cumba.corej.core.exec.SortKeys.PARAMETER);
+        if (by instanceof Expr.Ref ref)
+        {
+            return binding.equals(ref.name());
+        }
+        if (by instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
+                && lit.value() instanceof List<?> items)
+        {
+            return items.stream()
+                    .anyMatch(i -> i instanceof Expr.Ref r && binding.equals(r.name()));
+        }
+        return false;
+    }
+
+
     /**
      * Runbook W1a fold (R5 review A-M2 / BS2b MED-3, coordinator decision: load-time refusal): a
      * name-list binding spliced at a slot of a {@link #isForeign foreign} call, holding a
@@ -255,9 +273,10 @@ public final class NameListBinding
      * dataset's prefix, not the domain's, so it would be looked up in the other table and partition
      * nothing; the written member is refused at load ({@code GroupedAggregate.columnName} — this
      * sentence mirrors it), and so is the written list bound to a name. Since the T2 fold (review
-     * L1-L1) so is a QUALIFIED member: the run time refuses every spliced qualified name under
-     * {@code domain=} ({@code GroupSplice.splicedName}), so the load refuses it first. One sentence
-     * for stage A and the loader's seam pass.
+     * L1-L1) so is a QUALIFIED member spliced into a {@code by=} sort key: the run time refuses it
+     * under {@code domain=} ({@code GroupSplice.splicedName}), so the load refuses it first. A
+     * qualified {@code group=} member splices through ({@code REG-Q4}: no gate is left to judge
+     * it). One sentence for stage A and the loader's seam pass.
      *
      * @param call
      *            the splicing call
@@ -277,6 +296,7 @@ public final class NameListBinding
         {
             return null;
         }
+        boolean sortKey = splicedAsSortKey(call, binding);
         for (String name : names(lit))
         {
             if (name.startsWith("--") && name.indexOf('.') < 0)
@@ -285,15 +305,19 @@ public final class NameListBinding
                         + " does not resolve `--` (" + name + ", spliced from " + binding
                         + ") under domain=: name the column of the dataset explicitly";
             }
-            if (net.cumba.corej.core.model.MatchDataset.qualifierOf(name) != null)
+            String qualifier = net.cumba.corej.core.model.MatchDataset.qualifierOf(name);
+            if (qualifier != null && name.substring(qualifier.length() + 1).startsWith("--"))
             {
-                // T2 fold (review L1-L1): the run time refuses every spliced qualified name under
-                // domain= (GroupSplice.splicedName - a qualified group= member is judged at load,
-                // D-DOMAIN / D-SRC, which a spliced one never reaches); the load says so first
+                return (where == null ? "" : where + ": ") + call.name() + " splices " + name
+                        + " (from " + binding + ") under domain= — a `--` inside a qualified name"
+                        + " resolves against different datasets on the two sides; name the column"
+                        + " explicitly";
+            }
+            if (sortKey && qualifier != null)
+            {
                 return (where == null ? "" : where + ": ") + call.name() + " splices the qualified"
-                        + " name " + name + " (from " + binding + ") under domain= — a qualified"
-                        + " group= member is judged at load, so author it in the group= list"
-                        + " itself";
+                        + " name " + name + " (from " + binding + ") into its by= sort keys under"
+                        + " domain= — a sort key is a column of the ordered table, written bare";
             }
         }
         return null;

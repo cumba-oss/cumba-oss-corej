@@ -43,13 +43,12 @@ import org.jspecify.annotations.Nullable;
  * place, on the same context. Either way a list is spliced element by element as column names
  * ({@link ListValueGuard#elements}: the list was born at a guard site, register NNL §1), a
  * {@code String} is one name. Anything else — a scalar, a per-row binding, an unresolvable name —
- * is a rule {@code ERROR}, never a silent answer. So is a spliced <b>qualified</b> name under
- * {@code domain=}: there a qualified {@code group=} member keys the record side through the join
- * (C2) and is judged at load (D-DOMAIN / D-SRC / D-REGEX), and a spliced one never reaches those
- * gates — the join type D-SRC requires is not on the evaluation context, so it is refused. Without
- * {@code domain=} a qualified name is a column of the rule's one evaluation table like any other
- * ({@code PLAN-merged-evaluation-table} W3c, N5 lifted per MQ8): it splices through and is read by
- * {@link GroupReadTable}.
+ * is a rule {@code ERROR}, never a silent answer. A spliced <b>qualified</b> name splices through
+ * like an authored one: it is a column of the rule's one evaluation table
+ * ({@code PLAN-merged-evaluation-table} W3c, N5 lifted per MQ8), read by {@link GroupReadTable} —
+ * under {@code domain=} too, where it keys the record side (C2); no load gate is left to judge it
+ * ({@code REG-Q4}: D-SRC's kind / join-type refusal is withdrawn for group members, D-REGEX aligned
+ * — it used to be refused under {@code domain=}, D-W6-7).
  * </p>
  *
  * <p>
@@ -702,14 +701,17 @@ public final class GroupSplice
      *            resolve against the evaluated dataset's prefix and be looked up in the OTHER
      *            table, silently partitioning nothing (combined review of runbook W2–W8, W5/W6 L6)
      * @param qualifiedAdvice
-     *            what the author should write instead of a spliced qualified name
+     *            what the author should write instead of a qualified name spliced under
+     *            {@code domain=} (a sort key), or {@code null} when such a name splices through (a
+     *            {@code group=} member, {@code REG-Q4})
      * @return the spliced names
      * @throws GroupSpliceException
      *             for a spliced member that does not hold a list of names or a name, that splices a
-     *             qualified name, or a {@code --} name under {@code domain=}
+     *             qualified name where {@code qualifiedAdvice} refuses one, or a {@code --} name
+     *             under {@code domain=}
      */
     public static List<String> splice(String fn, String where, List<Member> members,
-            EvaluationContext ctx, boolean foreign, String qualifiedAdvice)
+            EvaluationContext ctx, boolean foreign, @Nullable String qualifiedAdvice)
     {
         List<String> out = new ArrayList<>(members.size());
         for (Member member : members)
@@ -767,7 +769,8 @@ public final class GroupSplice
 
 
     private static void spliceValue(String fn, String where, String member, @Nullable Object value,
-            EvaluationContext ctx, boolean foreign, String qualifiedAdvice, List<String> out)
+            EvaluationContext ctx, boolean foreign, @Nullable String qualifiedAdvice,
+            List<String> out)
     {
         switch (value)
         {
@@ -792,9 +795,17 @@ public final class GroupSplice
 
 
     private static String splicedName(String fn, String where, String member, String name,
-            EvaluationContext ctx, boolean foreign, String qualifiedAdvice)
+            EvaluationContext ctx, boolean foreign, @Nullable String qualifiedAdvice)
     {
-        if (foreign && MatchDataset.qualifierOf(name) != null)
+        String qualifier = MatchDataset.qualifierOf(name);
+        if (foreign && qualifier != null && name.substring(qualifier.length() + 1).startsWith("--"))
+        {
+            throw new GroupSpliceException("[" + ctx.getRuleId() + "] " + fn + ": the " + where
+                    + " " + member + " splices " + name + " under domain= — a `--` inside a"
+                    + " qualified name resolves against different datasets on the two sides; name"
+                    + " the column explicitly");
+        }
+        if (foreign && qualifiedAdvice != null && qualifier != null)
         {
             throw new GroupSpliceException(
                     "[" + ctx.getRuleId() + "] " + fn + ": the " + where + " " + member

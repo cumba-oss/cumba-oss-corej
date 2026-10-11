@@ -7233,14 +7233,14 @@ public class RulePackageLoader
 
     /**
      * D-SRC for a qualified member of a grouped function's {@code group=} (C2) and of the
-     * rule-level {@code Grouping} (C3) — {@code PLAN-rprfdy-offset-tp-join}: the qualifier names an
-     * ordinary, expandable, {@code inner} entry of the rule ({@link #qualifiedSourceError}), and a
-     * qualifier naming NO entry is this gate's load error on both surfaces — Stage A's
-     * {@code DOTTED_REF_UNDECLARED} does reach a {@code group=} list member, but it is an UNARMED
-     * kind (reported, never parking), and Stage A does not read the grouping at all. The readers'
-     * own refusals — a qualified {@code group=} member without {@code domain=} (D-DOMAIN), with
-     * {@code regex=} (D-REGEX), with a {@code --} inside — are load errors of the binding / Check
-     * compile, before this gate runs.
+     * rule-level {@code Grouping} (C3) — {@code PLAN-rprfdy-offset-tp-join}: the qualifier names a
+     * declared entry of the rule ({@link #qualifiedSourceError}; any kind since {@code REG-Q4} QK10
+     * / QK12), and a qualifier naming NO entry is this gate's load error on both surfaces — Stage
+     * A's {@code DOTTED_REF_UNDECLARED} does reach a {@code group=} list member, but it is an
+     * UNARMED kind (reported, never parking), and Stage A does not read the grouping at all. The
+     * readers' own refusal of a qualified member with a {@code --} inside is a load error of the
+     * binding / Check compile, before this gate runs (a member without {@code domain=} is a column
+     * of the one table since W3c / MQ8, and {@code regex=} aligns since QK11).
      *
      * @param rule
      *            the rule to check.
@@ -7438,9 +7438,16 @@ public class RulePackageLoader
 
     /**
      * D-SRC for every qualified-variable surface ({@code PLAN-rprfdy-offset-tp-join}): the reason
-     * {@code qualifier} is not a usable source, or {@code null} when it is — an ordinary,
-     * expandable, {@code inner} {@code Match_Datasets} entry of the rule, and (when
-     * {@code beforeEntry} is non-negative, the C1 case) one declared BEFORE that entry.
+     * {@code qualifier} is not a usable source, or {@code null} when it is. A qualifier must name a
+     * declared entry of the rule (a name that resolves nowhere, every surface). For a
+     * {@code Match_Datasets} key ({@code beforeEntry} non-negative, C1) the entry must also be
+     * declared BEFORE that entry and be an ordinary, expandable, {@code inner} one — a load-time
+     * name-resolution limit, kept for join keys only ({@code REG-Q4} QK15: the other source kinds
+     * are undesigned for a join key). For a {@code group=} / {@code Grouping} member or a group
+     * operator's operand ({@code beforeEntry} {@code -1}) any declared entry is a source —
+     * {@code left}, {@code Child}, RELREC, SUPP ({@code REG-Q4} QK10 / QK12, owner 2026-10-09:
+     * {@code MET D-SRC-ops} withdrawn): the name reads the merged column like a bare one, and a
+     * name the view does not serve is simply absent.
      *
      * @param matches
      *            the rule's entries
@@ -7470,6 +7477,10 @@ public class RulePackageLoader
         String unqualified = key.substring(qualifier.length() + 1);
         if (s < 0)
         {
+            if (beforeEntry < 0 && net.cumba.corej.core.exec.RelrecEntries.hasForwardEntry(matches))
+            {
+                return null; // a declared RELREC related domain: a qualifier like any (QK10)
+            }
             if (net.cumba.corej.core.exec.RelrecEntries.hasForwardEntry(matches))
             {
                 // P-14 (W5): under a forward RELREC entry the qualifier is a declared related
@@ -7493,6 +7504,10 @@ public class RulePackageLoader
         {
             return "names entry " + qualifier + ", which is declared LATER — the source of a"
                     + " qualified key is an earlier entry, bound before this join runs";
+        }
+        if (beforeEntry < 0)
+        {
+            return null; // REG-Q4 QK10 / QK12: any declared entry sources a group member or operand
         }
         net.cumba.corej.core.model.MatchDataset source = java.util.Objects
                 .requireNonNull(matches.get(s));

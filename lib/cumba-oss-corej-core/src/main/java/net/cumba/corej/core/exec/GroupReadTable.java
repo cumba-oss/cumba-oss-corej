@@ -42,8 +42,9 @@ import org.jspecify.annotations.Nullable;
  * carries, a qualified one whose join lacks the column or whose qualifier names no join — is simply
  * not a column of this table, so EC-44's "an absent group column partitions nothing" and every
  * reader's absent-subject bail apply to it unchanged (§3.3: <i>"partner lacks the column — the
- * absent-column machinery of a bare name"</i>). The rule-level {@code Grouping}'s qualified members
- * keep their own D-ABSENT ERROR (P-2) in {@code RuleRunner}.
+ * absent-column machinery of a bare name"</i>) — for the rule-level {@code Grouping}'s qualified
+ * members too ({@code REG-Q4} QK4: their D-ABSENT ERROR is gone), and under {@code domain=} a
+ * member absent here is the record side of {@code GroupedAggregate.SidedKey}'s one-side drop.
  * </p>
  *
  * <p>
@@ -65,10 +66,11 @@ public final class GroupReadTable extends AbstractDataTable
     /**
      * The group operators and extremes whose key / name / members / within readers read a qualified
      * operand as a merged column ({@code PLAN-merged-evaluation-table} W3c, N5 lifted per MQ8) —
-     * the roster the loader's D-SRC gate judges (owner 2026-10-05: <i>"apply D-SRC to the group
-     * operators too"</i>): a qualifier among their operands must name an ordinary, expandable,
-     * keyed {@code inner} {@code Match_Datasets} entry of the rule
-     * ({@code RulePackageLoader.qualifiedSourceError}). {@code read_value} is not listed: its
+     * the roster the loader's D-SRC gate judges: a qualifier among their operands must name a
+     * declared {@code Match_Datasets} entry of the rule
+     * ({@code RulePackageLoader.qualifiedSourceError}; the owner's 2026-10-05 <i>"apply D-SRC to
+     * the group operators too"</i> — the ordinary / {@code inner} half, {@code MET D-SRC-ops} — was
+     * withdrawn 2026-10-09, {@code REG-Q4} QK12). {@code read_value} is not listed: its
      * {@code domain=} names the dataset itself (W3c), and a call carrying {@code domain=} is not
      * judged for any member. The positive twins {@code is_unique_value} /
      * {@code is_unique_relationship} read through the same readers as their negatives (T2 review,

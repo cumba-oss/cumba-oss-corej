@@ -547,10 +547,11 @@ class QualifiedNameUniformityTest
      * ⭐ The exemption ratchet — every (parameter, criterion) that differs TODAY, with its finding
      * id. {@code REFUSED} means the qualified spelling is refused at compile time with a message
      * naming the bare spelling (head-start N5: a loud refusal with a stated reason, recorded, not a
-     * silent divergence). The harness asserts the measured red set EQUALS this table.
+     * silent divergence). The harness asserts the measured red set EQUALS this table. Row
+     * {@code read_value/group | C3 | N6} left with {@code REG-Q4} QK3 / QK14 (owner 2026-10-09): an
+     * absent qualified {@code group=} member is dropped like a bare one, no longer an ERROR.
      */
     static final String EXPECTED_RED = """
-            read_value/group | C3 | N6
             referenced_key_is_unique/keys | REFUSED | P6-L1
             referenced_record_count/keys | REFUSED | P6-L1
             """;

@@ -790,7 +790,11 @@ class ScalarSemanticsComputedMissingTest
     // kernel's computed number as a typed list member, a present DOUBLE cell whose text is the
     // canonical number text; its argument is a present Number (the callers pass a non-missing
     // payload), so it never answers a missing and is never null.
-    private static final int EXPECTED_VALUE_PRODUCERS = 40;
+    // 40 -> 39 (PLAN-join-key-one-side-absent-drop phase 3, REG-Q4 QK4): RuleRunner
+    // .QualifiedGroupKey.cell went (-1) with the qualified Grouping path it served — a qualified
+    // member's cell is read on the one evaluation table (GroupReadTable.getDataValue, counted
+    // already) like a bare member's, so no producer replaced it.
+    private static final int EXPECTED_VALUE_PRODUCERS = 39;
 
     private static Method declared(Class<?> owner, String name)
     {

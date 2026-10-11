@@ -268,20 +268,25 @@ class RuleRunnerQualifiedGroupingTest
     }
 
     // -----------------------------------------------------------------------
-    // D-ABSENT, the declaration, the loader
+    // An absent member (EC-44, QK4), the declaration, the loader
     // -----------------------------------------------------------------------
 
 
+    /**
+     * {@code REG-Q4} QK4 (owner 2026-10-09): a qualified {@code Grouping} member whose source
+     * column is absent is dropped exactly as an absent bare member ({@code EC-44}) — the records
+     * group by RPHASE alone, one group, one finding. It used to ERROR (D-ABSENT) on a path of its
+     * own; the blocks are now visited in the index order the plain path uses (plan §5 Q9).
+     */
     @Test
-    void theSourceColumnAbsentFromTheSourceDatasetErrors()
+    void theSourceColumnAbsentFromTheSourceDatasetDropsTheMember()
     {
-        IDataTable dmWithoutPath = RealTables.of("DM").str("USUBJID", "S1").build();
-        RuleExecutionResult res = run(loadClean(BLOCK_GROUPING), bw("S1/P1/BAD"), dmWithoutPath);
-        assertEquals(RuleExecutionStatus.ERROR, res.getStatus(), res.getStatusMessage());
-        String msg = String.valueOf(res.getStatusMessage());
-        assertTrue(msg.contains("Grouping: qualified key DM.RPATHCD"), msg);
-        assertTrue(msg.contains("DM has no column RPATHCD"), msg);
-        assertEquals(msg, res.getViolations().get(0).getValues().get("__error__"));
+        IDataTable dmWithoutPath = RealTables.of("DM").str("USUBJID", "S1", "S2").build();
+        RuleExecutionResult res = run(loadClean(BLOCK_GROUPING), bw("S1/P1/BAD", "S2/P1/BAD"),
+                dmWithoutPath);
+        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(), res.getStatusMessage());
+        assertEquals(List.of("S1"), anchors(res),
+                "one group (RPHASE P1), anchored at its first flagged record");
     }
 
 
@@ -302,19 +307,22 @@ class RuleRunnerQualifiedGroupingTest
     }
 
 
+    /**
+     * The qualifier must name a DECLARED entry (an undeclared one is a name that resolves nowhere);
+     * since {@code REG-Q4} QK10 any declared entry is a source — a {@code left} one loads (it was
+     * refused: D-SRC's ordinary / {@code inner} half).
+     */
     @Test
-    void theQualifierMustNameAnOrdinaryInnerEntry()
+    void theQualifierMustNameADeclaredEntryOfAnyKind()
     {
         String undeclared = loadError(BLOCK_GROUPING, "[]", "{\"All\":[\"USUBJID\"]}");
         assertTrue(
                 undeclared.contains(
                         "Grouping member DM.RPATHCD names no Match_Datasets entry" + " DM"),
                 undeclared);
-        String left = loadError(BLOCK_GROUPING,
+        assertNull(load(ruleJson(BLOCK_GROUPING,
                 "[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"],\"Join_Type\":\"left\"}]",
-                DM_REQUIREMENTS);
-        assertTrue(left.contains("Grouping member DM.RPATHCD names entry DM with Join_Type left"),
-                left);
+                DM_REQUIREMENTS, BAD)).getLoadError());
     }
 
 

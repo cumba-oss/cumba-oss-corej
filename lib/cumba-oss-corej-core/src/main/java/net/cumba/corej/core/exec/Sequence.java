@@ -219,12 +219,12 @@ public final class Sequence
                                         names), keys),
                                 ctx.getDomainPrefix()),
                         () -> perGroup(ctx, spec, names, keys));
-        @SuppressWarnings("unchecked")
-        Map<Object, List<Object>> byKey = (Map<Object, List<Object>>) java.util.Objects
+        GroupedAggregate.KeyedLists lists = (GroupedAggregate.KeyedLists) java.util.Objects
                 .requireNonNull(memo, "the memo never stores null");
-        GroupedAggregate.RowKey keyer = GroupedAggregate.keysRecordSide(foreign, names)
-                ? GroupedAggregate.recordKeyer(ctx, NAME, names)
-                : null;
+        Map<Object, List<Object>> byKey = lists.byKey();
+        // Under domain= the grouping decided its SidedKey (REG-Q3 / QK14 / QK16) inside the memo,
+        // before forming any group, and carries the record side's keyer.
+        GroupedAggregate.RowKey keyer = lists.keyer();
         if (byKey.isEmpty())
         {
             return ConstVector.of(EMPTY, () -> NAME);
@@ -235,7 +235,7 @@ public final class Sequence
             return new ComputedVector(run.rowCount(), DataValueType.STRING,
                     row -> byKey.getOrDefault(keyer.of(meta, primary, row), EMPTY));
         }
-        IDataTable keyTable = foreign ? primary : GroupReadTable.of(ctx, names);
+        IDataTable keyTable = GroupReadTable.of(ctx, names);
         int[] keyColumns = GroupKeyIdentity.columnIndices(keyTable.getMetaData(), names);
         return new ComputedVector(run.rowCount(), DataValueType.STRING, row -> byKey
                 .getOrDefault(GroupKeyIdentity.identityKey(keyTable, keyColumns, row), EMPTY));
@@ -290,7 +290,7 @@ public final class Sequence
 
 
     /** The grouped ordered lists over the target table: one list per group key. */
-    private static Map<Object, List<Object>> perGroup(EvaluationContext ctx, Spec spec,
+    private static GroupedAggregate.KeyedLists perGroup(EvaluationContext ctx, Spec spec,
             List<String> names, List<SortKeys.ResolvedKey> keys)
     {
         boolean foreign = spec.dataset() != null;
@@ -299,17 +299,19 @@ public final class Sequence
         IDataTable table = GroupedAggregate.resolveTarget(ctx, spec.dataset(), read);
         if (table == null)
         {
-            return Map.of();
+            return GroupedAggregate.KeyedLists.NONE;
         }
         IntFunction<IDataValue> cellAt = targetCells(ctx, table, spec.target(), foreign);
         BitSet keep = GroupedAggregate.filterMask(ctx, table, spec.filter(), foreign);
-        boolean qualified = GroupedAggregate.keysRecordSide(foreign, names);
+        GroupedAggregate.SidedKey sided = foreign
+                ? GroupedAggregate.sidedKey(ctx, NAME, table, names)
+                : null;
         IndexHelper.Grouping grouping = IndexHelper.groupByPresent(table,
-                qualified ? GroupedAggregate.groupedSideNames(NAME, table, names) : names,
+                sided != null ? sided.groupedNames() : names,
                 GroupedAggregate.logContext(ctx, NAME), spec.policy());
         if (grouping == null)
         {
-            return Map.of();
+            return GroupedAggregate.KeyedLists.NONE;
         }
         IndexHelper.BlockResults results = new IndexHelper.BlockResults(grouping);
         for (IndexHelper.GroupBlock block : grouping.blocks())
@@ -318,9 +320,11 @@ public final class Sequence
             ListValueGuard.requireNoNullElement(values, () -> NAME + " group " + block.key());
             results.put(block, values);
         }
-        if (foreign)
+        if (sided != null)
         {
-            GroupedAggregate.requireCompatibleKeys(ctx, table, names);
+            // GKI Q2: a Char/Num key pair between the grouped table and the evaluated one ERRORs
+            // the rule instead of silently matching no row. Once per evaluation, never per row.
+            sided.requireCompatible(table);
         }
         Map<Object, List<Object>> byKey = new LinkedHashMap<>();
         results.results().forEach((key, value) ->
@@ -329,7 +333,7 @@ public final class Sequence
             List<Object> list = (List<Object>) value;
             byKey.put(key, list);
         });
-        return byKey;
+        return new GroupedAggregate.KeyedLists(byKey, sided != null ? sided.keyer() : null);
     }
 
 

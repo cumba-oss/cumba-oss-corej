@@ -136,6 +136,28 @@ class ReadValueTest
     }
 
 
+    /**
+     * {@code PLAN-join-key-one-side-absent-drop} §5 Q14 (owner: <i>"the plan should fix the bug if
+     * proven"</i>): a dataset name is case-insensitive ({@code MET #6}, {@code CIT §1}), so under
+     * {@code domain=TS} the qualifier {@code ts} names TS itself, exactly as {@code TS} does — in
+     * the target (the reader's name check) and in the filter (the rewrite to the bare name). Before
+     * the fix the qualifier was compared case-sensitively: {@code ts.TSVAL} was refused at load.
+     */
+    @Test
+    void aQualifierNamingTheDomainDatasetInAnotherCaseReadsItsOwnColumn()
+    {
+        String tail = ", domain=TS, filter=(ts.TSPARMCD == \\\"SPECIES\\\"), mode=\\\"FIRST\\\")";
+        RuleExecutionResult upper = run("read_value(TS.TSVAL" + tail, "$v == \\\"RAT\\\"", ts());
+        RuleExecutionResult lower = run("read_value(ts.TSVAL" + tail, "$v == \\\"RAT\\\"", ts());
+        assertEquals(RuleExecutionStatus.EXECUTED, lower.getStatus(), lower.getStatusMessage());
+        assertEquals(2, lower.getViolations().size(),
+                "ts.TSVAL under domain=TS reads TS's own TSVAL, the filter's ts.TSPARMCD its own"
+                        + " TSPARMCD: the first SPECIES row, RAT, broadcast to both DM rows");
+        assertEquals(upper.getViolations().size(), lower.getViolations().size(),
+                "the two spellings of one dataset name read alike");
+    }
+
+
     @Test
     void aBindingOnlyCheckOverReadValueIsADatasetLevelFact()
     {
