@@ -208,6 +208,38 @@ class LibraryValidatorTaskDecoratorTest
         }
     }
 
+
+    /**
+     * An interrupt pending on the calling thread (a server shutting its run pool down) must not
+     * drop queued rule tasks: every rule still runs and the run returns its report, with the
+     * interrupt status left for the caller to see.
+     */
+    @Test
+    void anInterruptedCaller_stillRunsEveryRuleAndKeepsItsInterruptStatus()
+    {
+        AtomicInteger uninterrupted = new AtomicInteger();
+        assertNotNull(buildValidator().sequential(true).ruleThreads(2)
+                .runtimeListener(_ -> uninterrupted.incrementAndGet()).validate());
+
+        AtomicInteger interrupted = new AtomicInteger();
+        LibraryValidator validator = buildValidator().sequential(true).ruleThreads(2)
+                .runtimeListener(_ -> interrupted.incrementAndGet()).build();
+        boolean stillInterrupted;
+        Thread.currentThread().interrupt();
+        try
+        {
+            assertNotNull(validator.validate());
+        }
+        finally
+        {
+            stillInterrupted = Thread.interrupted();
+        }
+        assertTrue(stillInterrupted, "the caller's interrupt status must survive the run");
+        assertTrue(uninterrupted.get() > 2, "the fixture must queue rule tasks behind 2 threads");
+        assertEquals(uninterrupted.get(), interrupted.get(),
+                "every rule must run although the caller was interrupted");
+    }
+
     // ------------------------------------------------------------------
     // Fixture: two datasets so the virtual-thread fan-out fires, and four selected rules so the
     // rule pool submits more than one task per dataset at ruleThreads > 1.

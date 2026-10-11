@@ -11,7 +11,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Supplier;
@@ -474,23 +473,24 @@ public final class LibraryValidator
             // Fan out — one virtual thread per target dataset. Virtual threads
             // are lightweight and ideal for I/O-mixed workloads; the JVM
             // schedules them across available carriers automatically.
-            List<CompletableFuture<DatasetResult>> futures;
             try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor())
             {
-                Executor wrapped = decorated(executor);
-                futures = orderedTargets.stream().map(ds -> CompletableFuture.supplyAsync(() ->
-                {
-                    DatasetResult r = validateDataset(ds, resolver, sharedIndex, perDatasetRules);
-                    // Fire on the worker thread, in completion order, before the result
-                    // is joined and merged below.
-                    fireDatasetCompleted(completed.incrementAndGet(), total, ds.domain(),
-                            findingsOf(r));
-                    return r;
-                }, wrapped)).toList();
-            } // close() waits for every task the executor accepted
-              // Join all futures (preserving insertion order). The merge happens single-threaded
-              // below, after the study-sensitivity collapse — no synchronization needed.
-            datasetResults.addAll(joinFinished(futures));
+                List<CompletableFuture<DatasetResult>> futures = orderedTargets.stream()
+                        .map(ds -> submit(executor, () ->
+                        {
+                            DatasetResult r = validateDataset(ds, resolver, sharedIndex,
+                                    perDatasetRules);
+                            // Fire on the worker thread, in completion order, before the result
+                            // is joined and merged below.
+                            fireDatasetCompleted(completed.incrementAndGet(), total, ds.domain(),
+                                    findingsOf(r));
+                            return r;
+                        })).toList();
+
+                // Join all futures (preserving insertion order). The merge happens single-threaded
+                // below, after the study-sensitivity collapse — no synchronization needed.
+                datasetResults.addAll(joinAll(futures));
+            }
         }
 
         // Study-sensitivity collapse (mirrors the Python reference engine's
@@ -531,34 +531,78 @@ public final class LibraryValidator
     }
 
 
-    /** Wrap an executor so each task is decorated on the SUBMITTING thread before it runs. */
-    private Executor decorated(ExecutorService raw)
+    /**
+     * Submits {@code work} to {@code raw}, decorated on the SUBMITTING thread. The returned future
+     * completes with the work's result or failure, or — when the decorated runnable returns without
+     * having run the work (a decorator that breaks its contract) — with {@link TaskNeverRun}, so a
+     * join fails naming the cause instead of waiting forever for a result that cannot arrive.
+     */
+    private <T> CompletableFuture<T> submit(ExecutorService raw, Supplier<T> work)
     {
-        return task -> raw.execute(taskDecorator.apply(task));
+        CompletableFuture<T> future = new CompletableFuture<>();
+        Runnable decoratedTask = taskDecorator.apply(() ->
+        {
+            try
+            {
+                future.complete(work.get());
+            }
+            catch (Throwable t)
+            {
+                future.completeExceptionally(t);
+            }
+        });
+        raw.execute(() ->
+        {
+            try
+            {
+                decoratedTask.run();
+            }
+            finally
+            {
+                future.completeExceptionally(new TaskNeverRun());
+            }
+        });
+        return future;
     }
 
 
     /**
-     * The results of tasks whose executor has been closed, so every task it accepted has finished,
-     * in submission order; the first failure in that order is rethrown as {@code join} does. A
-     * future that is still not done was never run (a task decorator that does not run its task):
-     * that fails here, naming the cause, instead of blocking {@code join} forever.
+     * The results in submission order; the first failure in that order is rethrown as {@code join}
+     * does, except a {@link TaskNeverRun}, which is rethrown as itself.
      */
-    private static <T> List<T> joinFinished(List<CompletableFuture<T>> futures)
+    private static <T> List<T> joinAll(List<CompletableFuture<T>> futures)
     {
         List<T> results = new ArrayList<>(futures.size());
         for (CompletableFuture<T> future : futures)
         {
-            if (!future.isDone())
+            try
             {
-                throw new IllegalStateException("A validation task was never run: the task "
-                        + "decorator must run the task it is given");
+                results.add(future.join());
             }
-            results.add(future.join());
+            catch (java.util.concurrent.CompletionException e)
+            {
+                if (e.getCause() instanceof TaskNeverRun neverRun)
+                {
+                    throw neverRun;
+                }
+                throw e;
+            }
         }
         return results;
     }
 
+    /** A decorated task returned without running the work it was given. */
+    private static final class TaskNeverRun extends IllegalStateException
+    {
+
+        private static final long serialVersionUID = 1L;
+
+        TaskNeverRun()
+        {
+            super("A validation task was never run: the task decorator must run the task it is "
+                    + "given before its runnable returns");
+        }
+    }
 
     private void fireDatasetCompleted(int processed, int total, String domain, int datasetFindings)
     {
@@ -1428,19 +1472,21 @@ public final class LibraryValidator
             slotByRule.put(generatedRules.get(i), i);
         }
 
-        List<CompletableFuture<Void>> futures = new ArrayList<>(generatedRules.size());
         try (ExecutorService pool = Executors.newFixedThreadPool(n,
                 Thread.ofPlatform().name("cdisc-rule-" + ctx.domain()).daemon(true).factory()))
         {
-            Executor wrapped = decorated(pool);
+            List<CompletableFuture<Boolean>> futures = new ArrayList<>(generatedRules.size());
             for (Rule rule : generatedRules)
             {
                 final Rule finalRule = rule;
-                futures.add(CompletableFuture.runAsync(
-                        () -> runRuleIntoSlot(finalRule, ctx, slots, slotByRule), wrapped));
+                futures.add(submit(pool, () ->
+                {
+                    runRuleIntoSlot(finalRule, ctx, slots, slotByRule);
+                    return Boolean.TRUE;
+                }));
             }
-        } // close() waits for every task the pool accepted
-        joinFinished(futures);
+            joinAll(futures);
+        }
         return slots;
     }
 
@@ -1872,6 +1918,10 @@ public final class LibraryValidator
          * a log-capture sink) on the worker thread that ultimately runs the task — robust against
          * thread pooling, reuse, and virtual-vs-platform threads. Defaults to
          * {@link UnaryOperator#identity()} (no-op). Must not be {@code null}.
+         * <p>
+         * The returned runnable must run the task it was given, synchronously, before it returns
+         * (wrapping it, never handing it to another executor): a task not run by then fails the
+         * validation with an {@link IllegalStateException}.
          */
         public Builder taskDecorator(UnaryOperator<Runnable> aDecorator)
         {
