@@ -56,6 +56,7 @@ import net.cumba.datatable.dictionary.house.ValueMapDictionary;
 import net.cumba.datatable.report.Severity;
 import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -239,11 +240,21 @@ class NameSlotRosterTest
         dictionary = new RuntimeDictionaryProvider(
                 Map.of("meddra", ValueMapDictionary.load(Paths.get("dictionaries/meddra.json"))));
         // Pitest re-runs @BeforeAll in the same JVM, a new mutant each time: the static list must
-        // not accumulate, and the worlds are rebuilt so no resolver-keyed engine memo
-        // (SplitDomainResolution) carries a resolution computed under an earlier mutant.
+        // not accumulate, the worlds are rebuilt so no resolver-keyed engine memo
+        // (SplitDomainResolution) carries a resolution computed under an earlier mutant, and the
+        // compiled-program cache is emptied (its isolation extension only runs before each test).
         keywords.clear();
         WORLDS.clear();
+        NativeExprEvaluator.clearCacheForTesting();
         roster = measureRoster();
+    }
+
+
+    /** The shared worlds' mocks record every call made on them: release them with the class. */
+    @AfterAll
+    static void releaseWorlds()
+    {
+        WORLDS.clear();
     }
 
     // ================================================================== the contract
