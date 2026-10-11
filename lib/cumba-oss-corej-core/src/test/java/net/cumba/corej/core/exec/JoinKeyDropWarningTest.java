@@ -41,10 +41,18 @@ class JoinKeyDropWarningTest
 
     private static final String USUBJID = "USUBJID";
 
-    /** The WARNING lines {@code MergedEvaluation} logs while {@code body} runs. */
+    /**
+     * The key-drop WARNING lines logged while {@code body} runs: {@code MergedEvaluation}'s (a view
+     * built directly) and {@code RuleRunner}'s (an execution, which logs them once Stage B has not
+     * skipped the rule — T2 review, lane 1 L6).
+     */
     static List<String> warnings(Runnable body)
     {
-        return warnings(MergedEvaluation.class, body);
+        List<String> merged = new ArrayList<>();
+        List<String> runner = warnings(RuleRunner.class,
+                () -> merged.addAll(warnings(MergedEvaluation.class, body)));
+        merged.addAll(runner);
+        return List.copyOf(merged);
     }
 
 

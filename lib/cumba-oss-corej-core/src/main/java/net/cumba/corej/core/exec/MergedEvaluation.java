@@ -444,6 +444,39 @@ public final class MergedEvaluation
             DatasetResolver resolver, @Nullable JoinCache joinCache, @Nullable String ruleId,
             @Nullable String domainPrefix)
     {
+        return build(rule, primary, original, resolver, joinCache, ruleId, domainPrefix, null);
+    }
+
+
+    /**
+     * {@link #build(Rule, IDataTable, IDataTable, DatasetResolver, JoinCache, String, String)}, the
+     * {@code REG-Q3} key-drop WARNINGs collected into {@code keyDropWarnings} instead of logged:
+     * {@code RuleRunner} logs them only once Stage B's declared skip is decided against — a rule
+     * that SKIPS never ran, so it must not report a key it "ignored" (T2 review, lane 1 L6).
+     *
+     * @param rule
+     *            the rule
+     * @param primary
+     *            the table the rule evaluates
+     * @param original
+     *            the dataset as resolved
+     * @param resolver
+     *            the run's resolver
+     * @param joinCache
+     *            the dataset's cache, or {@code null}
+     * @param ruleId
+     *            for messages
+     * @param domainPrefix
+     *            the dataset's domain code
+     * @param keyDropWarnings
+     *            receives each WARNING text, or {@code null} to log them here
+     * @return the built view, or {@code null} when nothing is merged
+     */
+    @SuppressWarnings("checkstyle:ParameterNumber")
+    static @Nullable Built build(Rule rule, IDataTable primary, IDataTable original,
+            DatasetResolver resolver, @Nullable JoinCache joinCache, @Nullable String ruleId,
+            @Nullable String domainPrefix, @Nullable List<String> keyDropWarnings)
+    {
         ChildMergeSpec child = resolver == null ? null
                 : ChildEntries.spec(rule.getMatchDatasets(), primary);
         RelrecPartSpec relrec = RelrecEntries.spec(rule.getMatchDatasets());
@@ -458,7 +491,7 @@ public final class MergedEvaluation
         List<KeyedMergeSpec> keyed = new ArrayList<>();
         Map<String, IDataTable> partners = new LinkedHashMap<>();
         keyedSpecs(rule, primary, resolver, ruleId, keyed, rule.isSuppMergeEnabled(), chosen,
-                partners);
+                partners, keyDropWarnings);
         String dataset = Objects.requireNonNullElse(primary.getMetaData().getName(), "");
         String domain = null;
         List<String> supp = List.of();
@@ -742,19 +775,20 @@ public final class MergedEvaluation
      *
      * <p>
      * ⭐ <b>{@code REG-Q3}</b> (owner, 2026-10-09): a key component present on one side only leaves
-     * the key with a log WARNING naming the rule — emitted here, for <b>every</b> served keyed part
+     * the key with a log WARNING naming the rule — decided here, for <b>every</b> served keyed part
      * (a {@code SUPP*} / {@code SQ*} / {@code --} / {@code RELREC} named entry is a keyed part the
-     * gates do not govern, review M1), once per rule and dataset; the datatable, which has no rule,
-     * logs the same drop at DEBUG. A qualified component that leaves the key is left out of the
-     * spec (the datatable refuses a chained key whose record side it cannot see); an entry whose
-     * only qualified component left therefore joins in the stage before it, on its plain
-     * components.
+     * gates do not govern, review M1), once per rule and dataset, and handed to the caller's sink
+     * ({@code RuleRunner} logs it once Stage B has not skipped the rule) or logged here without
+     * one; the datatable, which has no rule, logs the same drop at DEBUG. A qualified component
+     * that leaves the key is left out of the spec (the datatable refuses a chained key whose record
+     * side it cannot see); an entry whose only qualified component left therefore joins in the
+     * stage before it, on its plain components.
      * </p>
      */
     @SuppressWarnings("checkstyle:ParameterNumber")
     private static void keyedSpecs(Rule rule, IDataTable primary, DatasetResolver resolver,
             @Nullable String ruleId, List<KeyedMergeSpec> out, boolean suppMerge, ChosenSupp chosen,
-            Map<String, IDataTable> partners)
+            Map<String, IDataTable> partners, @Nullable List<String> keyDropWarnings)
     {
         List<KeyColumn> suppKeys = rule.suppKeyColumns();
         List<MatchDataset> entries = rule.getMatchDatasets();
@@ -812,12 +846,18 @@ public final class MergedEvaluation
                 KeyGates.KeySide side = sides.get(i);
                 if (side.oneSideOnly())
                 {
-                    LOGGER.log(System.Logger.Level.WARNING,
-                            "[" + Objects.requireNonNullElse(ruleId, "?") + "] Match_Datasets "
-                                    + name + ": "
-                                    + KeyDropWarning.format(dsName,
-                                            KeyDropWarning.keyText(left.get(i), r),
-                                            side.onRecordSide() ? side.recordDataset() : dsName));
+                    String warning = "[" + Objects.requireNonNullElse(ruleId, "?")
+                            + "] Match_Datasets " + name + ": "
+                            + KeyDropWarning.format(dsName, KeyDropWarning.keyText(left.get(i), r),
+                                    side.onRecordSide() ? side.recordDataset() : dsName);
+                    if (keyDropWarnings != null)
+                    {
+                        keyDropWarnings.add(warning);
+                    }
+                    else
+                    {
+                        LOGGER.log(System.Logger.Level.WARNING, warning);
+                    }
                 }
                 if (!side.joins() && i < qualifiers.size() && qualifiers.get(i) != null)
                 {

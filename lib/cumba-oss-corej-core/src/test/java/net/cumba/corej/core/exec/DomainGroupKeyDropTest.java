@@ -1,7 +1,6 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -284,7 +283,6 @@ class DomainGroupKeyDropTest
             String msg = run(bare(fn + "(EXENDTC, domain=\"EX\", group=[USUBJID])"), dm, exWithout)
                     .error();
             assertTrue(msg.contains(fn + " group= over 'EX' has no usable key"), msg);
-            assertNotNull(msg);
         }
         IDataTable exWith = RealTables.of("EX").str("USUBJID", "S1", "S2")
                 .str("EXENDTC", "2020-01-05", "2020-02-01").build();

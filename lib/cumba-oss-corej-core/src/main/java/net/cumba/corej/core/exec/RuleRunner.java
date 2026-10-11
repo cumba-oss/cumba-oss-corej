@@ -799,10 +799,13 @@ public final class RuleRunner
         // its parts are the context's joins, its qualifier columns the context's SUPP
         // qualifiers; built once per (dataset, merge signature) through the JoinCache (P-3).
         MergedEvaluation.Built mergedView;
+        // REG-Q3's key-drop WARNINGs wait for Stage B: a rule its declared skip stops never ran,
+        // so it reports no key it "ignored" (T2 review, lane 1 L6)
+        List<String> keyDropWarnings = new ArrayList<>(0);
         try
         {
             mergedView = MergedEvaluation.build(rule, evalTable, table, resolver, joinCache, ruleId,
-                    domainPrefix);
+                    domainPrefix, keyDropWarnings);
         }
         catch (net.cumba.datatable.merge.MergeException | JoinKeyTypeMismatchException
                 | DegenerateJoinKeyException | MalformedSidedKeyException e)
@@ -830,11 +833,16 @@ public final class RuleRunner
             {
                 return declaredSkip;
             }
+            logKeyDropWarnings(keyDropWarnings);
             throw e;
         }
         RuleExecutionResult stageBOutcome = stageBGate(rule, table, varWildcardPrefix != null,
                 ruleId, message, foreignInventory(resolver, ruleId), stageBSuppressed,
                 mergedView != null ? mergedView.view().getMetaData() : null);
+        if (stageBOutcome == null || stageBOutcome.getStatus() != RuleExecutionStatus.SKIPPED)
+        {
+            logKeyDropWarnings(keyDropWarnings);
+        }
         if (stageBOutcome != null)
         {
             return stageBOutcome;
@@ -1991,6 +1999,22 @@ public final class RuleRunner
         return RuleExecutionResult.builder().ruleId(ruleId).message(message)
                 .violations(violations.stored()).totalViolationCount(violations.total())
                 .totalRows(RealRows.count(ctx.getTable())).keySource(keySpec.source()).build();
+    }
+
+
+    /**
+     * Logs the {@code REG-Q3} key-drop WARNINGs {@link MergedEvaluation#build} collected for an
+     * execution that Stage B did not skip.
+     *
+     * @param warnings
+     *            the WARNING texts, each naming its rule
+     */
+    private static void logKeyDropWarnings(List<String> warnings)
+    {
+        for (String warning : warnings)
+        {
+            LOGGER.log(System.Logger.Level.WARNING, warning);
+        }
     }
 
 

@@ -511,9 +511,11 @@ public final class Distinct
         IntFunction<IDataValue> cellAt = targetCells(ctx, table,
                 java.util.Objects.requireNonNull(spec.target()), foreign);
         BitSet keep = GroupedAggregate.filterMask(ctx, table, spec.filter(), foreign);
-        // EC-44: absent PLAIN group columns are ignored; all absent ⇒ the dataset is one group.
-        // C2: under domain= a qualified member groups the target by its UNQUALIFIED name (absent
-        // ⇒ ERROR); without it the member is a column of the one evaluation table (W3c).
+        // EC-44: absent group columns are ignored; all absent ⇒ the dataset is one group. Under
+        // domain= the key is the members both sides carry (GroupedAggregate.SidedKey: REG-Q3 /
+        // QK14 / QK16 — a member on one side only is dropped with a WARNING, none left after
+        // such a drop is a rule ERROR); without it every member is a column of the one
+        // evaluation table (W3c).
         GroupedAggregate.SidedKey sided = foreign
                 ? GroupedAggregate.sidedKey(ctx, NAME, table, names)
                 : null;

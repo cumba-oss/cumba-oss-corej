@@ -299,10 +299,18 @@ class NameListBindingTest
             assertTrue(error.contains("splices DM.--SEQ") && error.contains("$keys")
                     && error.contains("under domain="), () -> check + " -> " + error);
         }
-        String sortKey = loadError("not empty(sequence(AESEQ, domain=DM, by=$keys))", "$keys",
-                "[DM.USUBJID]");
-        assertTrue(sortKey.contains("splices the qualified name DM.USUBJID")
-                && sortKey.contains("by= sort keys"), sortKey);
+        // T2 review (lane 1 L3): the spliced binding is a sort key inside a descriptor too —
+        // by=[desc($keys)] / by=[asc($keys)] is refused at load like by=$keys, not at run time
+        for (String by : List.of("$keys", "[$keys]", "[desc($keys)]", "[asc($keys)]",
+                "[AESEQ, desc($keys)]"))
+        {
+            String sortKey = loadError("not empty(sequence(AESEQ, domain=DM, by=" + by + "))",
+                    "$keys", "[DM.USUBJID]");
+            assertTrue(
+                    sortKey.contains("splices the qualified name DM.USUBJID")
+                            && sortKey.contains("by= sort keys"),
+                    () -> "by=" + by + " -> " + sortKey);
+        }
         // control: without domain= a qualified member is a column of the evaluation table
         assertEquals("null", loadError("max(AESEQ, group=$keys) > 0", "$keys", "[DM.USUBJID]"));
     }

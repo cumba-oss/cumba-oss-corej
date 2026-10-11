@@ -10,6 +10,7 @@ import java.util.List;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -297,6 +298,29 @@ class GroupedAggregateQualifiedGroupTest
         String msg = String.valueOf(res.getStatusMessage());
         assertTrue(msg.contains("RPATHCD is Numeric in TP"), msg);
         assertTrue(msg.contains("Character in DM"), msg);
+    }
+
+
+    /**
+     * GKI Q2 judges the SOURCE column's DECLARED type (T2 review, lane 1 L2): a {@code DM.RPATHCD}
+     * declared {@code MISSING} — the engine's spelling of <i>unknown</i>, which classifies as no
+     * kind (D4-R6a) — is not judged against TP's numeric column, as a bare member on such a column
+     * is not. The merged column the record side reads maps {@code MISSING} to {@code STRING}, so
+     * judging that type would ERROR the rule with a Char/Num mismatch no column has.
+     */
+    @Test
+    void aSourceColumnDeclaredMissingIsNotKindJudged()
+    {
+        Rule rule = loadClean(READ_MAX, "$v == 1");
+        IDataTable numericTp = RealTables.of("TP").lng("RPATHCD", 1L).str("RPHASE", "P1")
+                .lng("RPRFDY", 1L).build();
+        IDataTable untypedDm = RealTables.of("DM").str("USUBJID", "S1")
+                .typed("RPATHCD", DataValueType.MISSING, (Object) null).build();
+        RuleExecutionResult res = run(rule, bw("S1/P1"), untypedDm, numericTp);
+        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(), res.getStatusMessage());
+        // control: the same source column declared Character IS judged
+        RuleExecutionResult control = run(rule, bw("S1/P1"), dm("S1/1"), numericTp);
+        assertEquals(RuleExecutionStatus.ERROR, control.getStatus(), control.getStatusMessage());
     }
 
 

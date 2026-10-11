@@ -248,19 +248,25 @@ public final class NameListBinding
     }
 
 
-    /** Whether {@code binding} is spliced into {@code call}'s {@code by=} sort keys. */
+    /**
+     * Whether {@code binding} is spliced into {@code call}'s {@code by=} sort keys, bare or inside
+     * a descriptor.
+     */
     private static boolean splicedAsSortKey(Expr.Call call, String binding)
     {
         Expr by = call.kwargs().get(net.cumba.corej.core.exec.SortKeys.PARAMETER);
-        if (by instanceof Expr.Ref ref)
+        if (by == null)
         {
-            return binding.equals(ref.name());
+            return false;
         }
-        if (by instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
-                && lit.value() instanceof List<?> items)
+        // a descriptor's one argument is the key too (by=[desc($K)]), as SortKeys.read unwraps it
+        for (Expr member : net.cumba.corej.core.exec.SortKeys.members(by))
         {
-            return items.stream()
-                    .anyMatch(i -> i instanceof Expr.Ref r && binding.equals(r.name()));
+            if (net.cumba.corej.core.exec.SortKeys.column(member) instanceof Expr.Ref ref
+                    && binding.equals(ref.name()))
+            {
+                return true;
+            }
         }
         return false;
     }

@@ -934,13 +934,17 @@ public final class GroupedAggregate
 
         private final List<@Nullable String> qualifiers;
 
+        private final List<@Nullable DataValueType> sourceTypes;
+
         private SidedKey(List<String> aGroupedNames, IDataTable aRecordTable,
-                List<String> aRecordNames, List<@Nullable String> aQualifiers)
+                List<String> aRecordNames, List<@Nullable String> aQualifiers,
+                List<@Nullable DataValueType> aSourceTypes)
         {
             groupedNames = List.copyOf(aGroupedNames);
             recordTable = aRecordTable;
             recordNames = List.copyOf(aRecordNames);
             qualifiers = java.util.Collections.unmodifiableList(new ArrayList<>(aQualifiers));
+            sourceTypes = java.util.Collections.unmodifiableList(new ArrayList<>(aSourceTypes));
             recordColumns = GroupKeyIdentity.columnIndices(aRecordTable.getMetaData(), recordNames);
         }
 
@@ -1008,8 +1012,9 @@ public final class GroupedAggregate
         /**
          * GKI Q2 over the kept members (owner 2026-09-27): a Char/Num pair between the grouped
          * column and the record column ERRORs the rule; a qualified member is judged against its
-         * SOURCE column's declared type (the merged column carries it) and named by its source
-         * entry (C2); a member both sides lack is not judged.
+         * SOURCE column's declared type, read from its entry's lookup (the merged column maps
+         * {@code MISSING}, which is no kind, to {@code STRING}), and named by its source entry
+         * (C2); a member both sides lack is not judged.
          *
          * @param grouped
          *            the grouped dataset
@@ -1026,8 +1031,12 @@ public final class GroupedAggregate
                             List.of(groupedNames.get(i)), recordTable, List.of(recordNames.get(i)));
                     continue;
                 }
+                // the source column's DECLARED type: the merged column maps MISSING (unknown, no
+                // kind — D4-R6a) to STRING, which would judge a Char/Num pair no column has
+                DataValueType declared = sourceTypes.get(i);
                 GroupKeyIdentity.requireCompatibleKeyColumn(grouped, groupedNames.get(i), qualifier,
-                        recordMeta.getColumn(recordColumns[i]).getType());
+                        declared != null ? declared
+                                : recordMeta.getColumn(recordColumns[i]).getType());
             }
         }
     }
@@ -1095,6 +1104,7 @@ public final class GroupedAggregate
         List<String> keptRecord = new ArrayList<>(n);
         List<String> keptGrouped = new ArrayList<>(n);
         List<@Nullable String> keptQualifiers = new ArrayList<>(n);
+        List<@Nullable DataValueType> keptSourceTypes = new ArrayList<>(n);
         List<String> oneSided = new ArrayList<>(2);
         boolean anyJoins = false;
         for (int i = 0; i < n; i++)
@@ -1118,12 +1128,31 @@ public final class GroupedAggregate
             keptRecord.add(recordAll.get(i));
             keptGrouped.add(groupedAll.get(i));
             keptQualifiers.add(qualifiers.get(i));
+            keptSourceTypes.add(declaredSourceType(ctx, qualifiers.get(i), recordAll.get(i)));
         }
         if (!anyJoins && !oneSided.isEmpty())
         {
             throw new DegenerateGroupKeyException(fn, groupNames, groupedName, oneSided);
         }
-        return new SidedKey(keptGrouped, recordTable, keptRecord, keptQualifiers);
+        return new SidedKey(keptGrouped, recordTable, keptRecord, keptQualifiers, keptSourceTypes);
+    }
+
+
+    /**
+     * A qualified member's source column type as its entry DECLARES it
+     * ({@link JoinLookup#declaredTypeOf}), or {@code null} for a bare member or a qualifier that
+     * names no join (a SUPP-delivered column: the record table's own type is the declared one).
+     */
+    private static @Nullable DataValueType declaredSourceType(EvaluationContext ctx,
+            @Nullable String qualifier, String name)
+    {
+        if (qualifier == null)
+        {
+            return null;
+        }
+        JoinLookup lookup = ctx.joins().get(qualifier);
+        return lookup == null ? null
+                : lookup.declaredTypeOf(name.substring(qualifier.length() + 1));
     }
 
 

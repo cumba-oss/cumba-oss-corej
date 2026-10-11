@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,7 +16,9 @@ import java.util.stream.Collectors;
 import net.cumba.corej.core.KeyedJoinFixtures;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
+import net.cumba.corej.core.model.VariableRequirement;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.merge.KeyDropWarning;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -290,6 +294,70 @@ class MatchFilterExecutionTest
         String message = String.valueOf(refused.getStatusMessage());
         assertTrue(message.contains("Character") && message.contains("Numeric"),
                 "the D4 key-type refusal, not the Cardinality one: " + message);
+    }
+
+
+    /**
+     * T2 review (lane 1 L6): the {@code REG-Q3} key-drop WARNING is logged only for an execution
+     * Stage B does not skip. AE keyed on {@code [USUBJID, AESPID]} over a DM without {@code AESPID}
+     * drops AESPID (its {@code All_Or_None} declaration removed, so the upstream gate does not skip
+     * first); the Filter column AEBOGUS is absent and declared in an {@code Any} leg DTHFL
+     * satisfies upstream, so Stage B SKIPS — and the rule, which never ran, reports no key it
+     * "ignored". Control: a present filter column runs the rule, and the WARNING is logged, once.
+     */
+    @Test
+    @DisplayName("a declared Stage B skip logs no key-drop WARNING (REG-Q3, T2 review L6)")
+    void aDeclaredStageBSkipLogsNoKeyDropWarning() throws IOException
+    {
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "P1", "P2").str("AESPID", "S1", "S2")
+                .str("AEOUT", "MILD", "FATAL").build();
+        List<RuleExecutionResult> skipped = new ArrayList<>(1);
+        List<String> skipWarnings = JoinKeyDropWarningTest
+                .warnings(() -> skipped.add(runOneSideKey("AEBOGUS != \"X\"", ae)));
+        assertEquals(RuleExecutionStatus.SKIPPED, skipped.get(0).getStatus(),
+                String.valueOf(skipped.get(0).getStatusMessage()));
+        assertEquals(List.of(), skipWarnings, "a skipped rule logs no key-drop WARNING");
+        List<RuleExecutionResult> ran = new ArrayList<>(1);
+        List<String> ranWarnings = JoinKeyDropWarningTest
+                .warnings(() -> ran.add(runOneSideKey("AEOUT != \"X\"", ae)));
+        assertEquals(RuleExecutionStatus.EXECUTED, ran.get(0).getStatus(),
+                String.valueOf(ran.get(0).getStatusMessage()));
+        assertEquals(
+                List.of("[TEST-FLT] Match_Datasets AE: "
+                        + KeyDropWarning.format("AE", "AESPID", "AE")),
+                ranWarnings, "control: the rule ran, so the dropped key is reported");
+    }
+
+
+    /** DM over AE keyed {@code [USUBJID, AESPID]} — AESPID on AE only — with {@code filter}. */
+    private static RuleExecutionResult runOneSideKey(String filter, IDataTable ae)
+    {
+        String body = "{\"rules\":{\"R1\":{\"Core\":{\"Id\":\"TEST-FLT\"},"
+                + "\"Sensitivity\":\"Record\","
+                + "\"Requirements\":{\"Variables\":{\"Any\":[\"AE.AEBOGUS\",\"DTHFL\"]}},"
+                + "\"Match_Datasets\":[{\"Name\":\"AE\",\"Keys\":[\"USUBJID\",\"AESPID\"],"
+                + "\"Join_Type\":\"left\",\"Filter\":\"" + filter.replace("\"", "\\\"") + "\"}],"
+                + "\"Check\":{\"expression\":\"not AE._matched_\"},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}";
+        Rule r;
+        try
+        {
+            r = RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(body)).getRules()
+                    .get("R1");
+        }
+        catch (IOException e)
+        {
+            throw new UncheckedIOException(e);
+        }
+        assertNotNull(r);
+        assertNull(r.getLoadError());
+        // the study lacks DM.AESPID: without its All_Or_None pair the upstream gate lets it run
+        VariableRequirement variables = r.effectiveVariableRequirement();
+        assertNotNull(variables);
+        variables.setAllOrNoneGroups(List.of(List.of("USUBJID", "AE.USUBJID")));
+        IDataTable primary = dm();
+        return RuleRunnerCalls.execute(r, primary, inventory(study(primary, ae)), "DM", null, null,
+                null);
     }
 
 

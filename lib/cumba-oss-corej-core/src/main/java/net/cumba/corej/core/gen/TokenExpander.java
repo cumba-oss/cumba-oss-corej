@@ -229,12 +229,13 @@ public final class TokenExpander
             String unjoinable = firstAbsentMergeKey(concrete, meta);
             if (unjoinable != null)
             {
-                // The join key is missing from the PRIMARY. RuleRunner still registers the lookup
-                // (only a failure on the JOINED side self-skips), so every primary row would fail
-                // to match and an absence-shaped Check — `var_exists(AE.AESEQ) and
-                // empty(AE.AESEQ)`,
-                // the PMDA-AD0258 shape — would fire on EVERY RECORD. A flood of false positives
-                // is the one outcome worse than silence. Same audit channel as the survivor drop.
+                // A join key is missing from the PRIMARY. Since REG-Q3 the merged view would drop
+                // it with a WARNING and join on the rest, which no longer names the one parent
+                // record the absence-shaped Check expects (`var_exists(AE.AESEQ) and
+                // empty(AE.AESEQ)`, the PMDA-AD0258 shape): without USUBJID, an AESEQ matches that
+                // sequence number of every subject. The expansion is dropped instead — the answer
+                // an authored rule gets by declaring the key in Requirements (REG-Q3: declared ⇒
+                // skip). Same audit channel as the survivor drop.
                 String message = "Expansion " + concrete.effectiveId() + " joins on '" + unjoinable
                         + "', which the dataset under validation does not carry — dropped rather"
                         + " than fired on every record";
@@ -893,14 +894,20 @@ public final class TokenExpander
      * {@code null} when every key resolves.
      *
      * <p>
-     * This is a <b>false-positive</b> guard, not a silence guard, and it is the mirror image of the
-     * self-skip the authored shape already has. The merged view builds the keyed part unless the
-     * JOINED side fails to resolve, so an absence-shaped Check whose primary lacks a key sees an
-     * unmatched row every time and fires on all of them. The hand-authored {@code PMDA-AD0258} is
-     * insulated only by its {@code Data_Structures}/{@code Subclasses} scope, which guarantees
-     * {@code STUDYID}/{@code USUBJID}; {@code CDISC-AD0898} ships {@code Domains: Include: [ALL]}
-     * and has no such guarantee. Guarding here rather than adding {@code exists} conjuncts to the
-     * template keeps the expansion byte-identical to the shape {@code PMDA-AD0258} proves.
+     * This guard KEEPS the template expander's own answer for a key the primary lacks (REG-Q3
+     * review, 2026-10-11). An authored rule whose key is on one side only has the key dropped with
+     * a WARNING and joins on the rest ({@code REG-Q3}); for an expansion that rest no longer names
+     * the one parent record its absence-shaped Check expects (the {@code &DOM&SEQ} key always
+     * exists — the expansion is generated from it — but without {@code USUBJID} a sequence number
+     * matches that number of every subject), so the expansion is dropped instead: the answer an
+     * authored rule gets by declaring the key in {@code Requirements} (declared ⇒ skip). A skip is
+     * never a fan-out. The one shipped template, {@code CDISC-AD0898} ({@code Domains: Include:
+     * [ALL]}), declares {@code STUDYID} and {@code USUBJID} in {@code All} ({@code USUBJID} since
+     * QK8), so for it the guard and the Requirements gate give the same answer; the guard stays for
+     * a template that declares neither. The hand-authored {@code PMDA-AD0258} is insulated by its
+     * {@code Data_Structures}/{@code Subclasses} scope, which guarantees
+     * {@code STUDYID}/{@code USUBJID}. Guarding here rather than adding {@code exists} conjuncts to
+     * the template keeps the expansion byte-identical to the shape {@code PMDA-AD0258} proves.
      * </p>
      */
     private static @Nullable String firstAbsentMergeKey(Rule concrete, DataTableMeta meta)
