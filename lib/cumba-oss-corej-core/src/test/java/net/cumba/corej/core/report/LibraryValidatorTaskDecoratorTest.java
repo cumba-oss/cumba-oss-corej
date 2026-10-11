@@ -3,8 +3,11 @@ package net.cumba.corej.core.report;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -175,6 +178,34 @@ class LibraryValidatorTaskDecoratorTest
                 "identity default must not propagate the marker to dataset workers");
         assertFalse(ruleObserved.contains(KNOWN),
                 "identity default must not propagate the marker to rule workers");
+    }
+
+
+    /**
+     * A decorator that drops its task (here: returns a runnable that never runs it) breaks the
+     * decorator contract. Both fan-outs must then fail loudly naming the cause, not wait forever
+     * for a result that can never arrive. The dataset fan-out is probed with every task dropped;
+     * the rule pool alone in sequential-dataset mode.
+     */
+    @Test
+    void aDecoratorThatDropsItsTask_failsTheRunInsteadOfHangingIt()
+    {
+        UnaryOperator<Runnable> dropping = _ -> () ->
+        {
+        };
+        for (boolean sequential : new boolean[]
+        {
+                false, true
+        })
+        {
+            LibraryValidator.Builder validator = buildValidator().sequential(sequential)
+                    .ruleThreads(2).taskDecorator(dropping);
+            IllegalStateException ex = assertTimeoutPreemptively(Duration.ofSeconds(60),
+                    () -> assertThrows(IllegalStateException.class, validator::validate),
+                    "sequential=" + sequential);
+            assertTrue(ex.getMessage().contains("never run"),
+                    "sequential=" + sequential + ": " + ex.getMessage());
+        }
     }
 
     // ------------------------------------------------------------------

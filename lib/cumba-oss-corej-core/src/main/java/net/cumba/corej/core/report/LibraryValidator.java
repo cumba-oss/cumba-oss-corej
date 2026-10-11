@@ -474,28 +474,23 @@ public final class LibraryValidator
             // Fan out — one virtual thread per target dataset. Virtual threads
             // are lightweight and ideal for I/O-mixed workloads; the JVM
             // schedules them across available carriers automatically.
+            List<CompletableFuture<DatasetResult>> futures;
             try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor())
             {
                 Executor wrapped = decorated(executor);
-                List<CompletableFuture<DatasetResult>> futures = orderedTargets.stream()
-                        .map(ds -> CompletableFuture.supplyAsync(() ->
-                        {
-                            DatasetResult r = validateDataset(ds, resolver, sharedIndex,
-                                    perDatasetRules);
-                            // Fire on the worker thread, in completion order, before the result
-                            // is joined and merged below.
-                            fireDatasetCompleted(completed.incrementAndGet(), total, ds.domain(),
-                                    findingsOf(r));
-                            return r;
-                        }, wrapped)).toList();
-
-                // Join all futures (preserving insertion order). The merge happens single-threaded
-                // below, after the study-sensitivity collapse — no synchronization needed.
-                for (CompletableFuture<DatasetResult> future : futures)
+                futures = orderedTargets.stream().map(ds -> CompletableFuture.supplyAsync(() ->
                 {
-                    datasetResults.add(future.join());
-                }
-            }
+                    DatasetResult r = validateDataset(ds, resolver, sharedIndex, perDatasetRules);
+                    // Fire on the worker thread, in completion order, before the result
+                    // is joined and merged below.
+                    fireDatasetCompleted(completed.incrementAndGet(), total, ds.domain(),
+                            findingsOf(r));
+                    return r;
+                }, wrapped)).toList();
+            } // close() waits for every task the executor accepted
+              // Join all futures (preserving insertion order). The merge happens single-threaded
+              // below, after the study-sensitivity collapse — no synchronization needed.
+            datasetResults.addAll(joinFinished(futures));
         }
 
         // Study-sensitivity collapse (mirrors the Python reference engine's
@@ -540,6 +535,28 @@ public final class LibraryValidator
     private Executor decorated(ExecutorService raw)
     {
         return task -> raw.execute(taskDecorator.apply(task));
+    }
+
+
+    /**
+     * The results of tasks whose executor has been closed, so every task it accepted has finished,
+     * in submission order; the first failure in that order is rethrown as {@code join} does. A
+     * future that is still not done was never run (a task decorator that does not run its task):
+     * that fails here, naming the cause, instead of blocking {@code join} forever.
+     */
+    private static <T> List<T> joinFinished(List<CompletableFuture<T>> futures)
+    {
+        List<T> results = new ArrayList<>(futures.size());
+        for (CompletableFuture<T> future : futures)
+        {
+            if (!future.isDone())
+            {
+                throw new IllegalStateException("A validation task was never run: the task "
+                        + "decorator must run the task it is given");
+            }
+            results.add(future.join());
+        }
+        return results;
     }
 
 
@@ -1411,26 +1428,19 @@ public final class LibraryValidator
             slotByRule.put(generatedRules.get(i), i);
         }
 
-        try (ExecutorService pool = Executors.newFixedThreadPool(n, r ->
-        {
-            Thread t = new Thread(r, "cdisc-rule-" + ctx.domain());
-            t.setDaemon(true);
-            return t;
-        }))
+        List<CompletableFuture<Void>> futures = new ArrayList<>(generatedRules.size());
+        try (ExecutorService pool = Executors.newFixedThreadPool(n,
+                Thread.ofPlatform().name("cdisc-rule-" + ctx.domain()).daemon(true).factory()))
         {
             Executor wrapped = decorated(pool);
-            List<CompletableFuture<Void>> futures = new ArrayList<>(generatedRules.size());
             for (Rule rule : generatedRules)
             {
                 final Rule finalRule = rule;
                 futures.add(CompletableFuture.runAsync(
                         () -> runRuleIntoSlot(finalRule, ctx, slots, slotByRule), wrapped));
             }
-            for (CompletableFuture<Void> f : futures)
-            {
-                f.join();
-            }
-        }
+        } // close() waits for every task the pool accepted
+        joinFinished(futures);
         return slots;
     }
 
