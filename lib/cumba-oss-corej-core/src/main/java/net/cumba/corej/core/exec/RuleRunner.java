@@ -836,6 +836,14 @@ public final class RuleRunner
             logKeyDropWarnings(keyDropWarnings);
             throw e;
         }
+        catch (RuntimeException e)
+        {
+            // any other refusal of the view build (an InvalidJoinedDomainException of a later
+            // entry's split domain, …) is the rule's ERROR through the outer catch; the WARNINGs
+            // collected before it are still logged (T2 confirmation look, LOW-2)
+            logKeyDropWarnings(keyDropWarnings);
+            throw e;
+        }
         RuleExecutionResult stageBOutcome = stageBGate(rule, table, varWildcardPrefix != null,
                 ruleId, message, foreignInventory(resolver, ruleId), stageBSuppressed,
                 mergedView != null ? mergedView.view().getMetaData() : null);

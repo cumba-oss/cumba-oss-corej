@@ -616,8 +616,11 @@ public final class ExprCompiler
                 result.and(part.eval(run));
                 // Candidate-mask short-circuit (E2): the running intersection can only shrink, so
                 // once it is empty no later part can add a violation — skip the rest. Verdict-
-                // identical (a whole part is skipped, never given a partial row view, so group/
-                // aggregate operators that need the full dataset are unaffected).
+                // identical except that a skipped part's ERROR is not raised (a whole part is
+                // skipped, never given a partial row view, so group/aggregate operators that need
+                // the full dataset are unaffected; a lazy binding read only by a skipped part — a
+                // QK16 domain= grouped call, owner QK19 — is never evaluated, unless the
+                // absent-column fold of the ungrouped path already read it).
                 if (result.isEmpty())
                 {
                     break;

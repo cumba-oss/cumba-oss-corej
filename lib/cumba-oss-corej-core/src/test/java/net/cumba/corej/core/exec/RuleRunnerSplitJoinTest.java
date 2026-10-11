@@ -19,6 +19,7 @@ import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.Scope;
 import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.merge.KeyDropWarning;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -373,6 +374,49 @@ class RuleRunnerSplitJoinTest
             assertNotNull(sentinel);
             assertTrue(sentinel.contains("LBSTRESN"), sentinel);
         }
+    }
+
+
+    /**
+     * T2 confirmation look (LOW-2): a key-drop WARNING already collected for an earlier entry is
+     * still logged when a later entry's split domain cannot be unioned. {@code SV} keyed
+     * {@code [USUBJID, VISITNUM]} over an ADLB without {@code VISITNUM} drops VISITNUM; then
+     * {@code LB}'s type-clashing split raises {@code InvalidJoinedDomainException}, which no
+     * specific catch around the view build names — the rule ERRORs, and the WARNING for the key it
+     * would have ignored must not be lost on the way.
+     */
+    @Test
+    void aKeyDropWarningSurvivesALaterInvalidSplitDomain()
+    {
+        Rule r = new Rule();
+        r.setId("TEST-JK-INV");
+        RuleCore core = new RuleCore();
+        core.setId("TEST-JK-INV");
+        r.setCore(core);
+        Outcome outcome = new Outcome();
+        outcome.setMessage("m");
+        outcome.setOutputVariables(List.of("USUBJID"));
+        r.setOutcome(outcome);
+        r.setCheck(new CheckConditionAll(List.of(expr("not empty(USUBJID)"))));
+        r.setMatchDatasets(
+                List.of(md("SV", "left", "USUBJID", "VISITNUM"), md("LB", "left", "USUBJID")));
+        r.setSensitivity(Sensitivity.RECORD);
+        RulePackageLoader.installNativeExpr(r);
+        IDataTable sv = RealTables.of("SV").str("USUBJID", "U1").lng("VISITNUM", 1L).build();
+        IDataTable primary = adlb();
+        DatasetResolver resolver = RealTables.inventoryOf(primary, sv, lbchClash(), lbheClash());
+        List<RuleExecutionResult> res = new ArrayList<>(1);
+        List<String> warnings = JoinKeyDropWarningTest
+                .warnings(() -> res.add(RuleRunnerCalls.execute(r, primary, resolver, null, null)));
+        assertEquals(RuleExecutionStatus.ERROR, res.get(0).getStatus(),
+                String.valueOf(res.get(0).getStatusMessage()));
+        assertTrue(String.valueOf(res.get(0).getStatusMessage()).contains("LBSTRESN"),
+                "the LB split's union refusal: " + res.get(0).getStatusMessage());
+        assertEquals(
+                List.of("[TEST-JK-INV] Match_Datasets SV: "
+                        + KeyDropWarning.format("SV", "VISITNUM", "SV")),
+                warnings.stream().filter(w -> w.contains("Match_Datasets")).toList(),
+                "the key-drop WARNING beside the rule's ERROR log line: " + warnings);
     }
 
 

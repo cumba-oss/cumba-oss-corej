@@ -422,6 +422,13 @@ public final class MergedEvaluation
      * when there is nothing to merge (no resolver, no part a declared entry or SUPP dataset
      * supplies) — the execution then reads the primary alone.
      *
+     * <p>
+     * ⚑ The convenience of the tests that build a view directly: the {@code REG-Q3} key-drop
+     * WARNINGs are logged here, as the build decides them. {@code RuleRunner}, the one production
+     * caller, uses the overload with a sink, so it logs them only once Stage B has not skipped the
+     * rule (T2 confirmation look, LOW-3).
+     * </p>
+     *
      * @param rule
      *            the rule (its {@code Match_Datasets} and {@code Supp_Merge})
      * @param primary
