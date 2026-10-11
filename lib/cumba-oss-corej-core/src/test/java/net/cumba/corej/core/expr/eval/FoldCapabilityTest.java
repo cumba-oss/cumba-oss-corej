@@ -233,6 +233,11 @@ class FoldCapabilityTest
                 "", ""));
         assertFalse(facts.capable(), "the absent leaf is FALSE whatever the facts are");
         assertEquals(2, facts.enumeratedLeaves());
+        FoldCapability.AbsentFoldCensus both = census(record(
+                "var_exists(AESEV) and var_exists(AETOXGR) and AEBDSYCD != \\\"X\\\"", "", ""));
+        assertTrue(both.capable(),
+                "TRUE only under the assignment that sets BOTH leaves: every one is enumerated");
+        assertEquals(2, both.enumeratedLeaves());
         FoldCapability.AbsentFoldCensus binding = census(
                 record("AEBDSYCD != $expected", "", ",\"Operations\":[]"));
         assertTrue(binding.capable(), "a $-reference may be a scalar at run time: enumerated");

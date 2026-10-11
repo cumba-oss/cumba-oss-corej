@@ -755,20 +755,32 @@ public final class FoldCapability
 
         Verdicts verdicts(Expr root)
         {
-            int m = enumerated.size();
-            boolean absentTrue = false;
-            boolean unknown = false;
-            for (long bits = 0; bits < (1L << m); bits++)
+            boolean[] found = new boolean[2]; // [absentTrue, unknown]
+            assign(root, 0, 0L, found);
+            return new Verdicts(found[0], found[1]);
+        }
+
+
+        /**
+         * Folds {@code root} under every assignment of the enumerated leaves from {@code leaf} on,
+         * the leaves below it fixed by {@code bits}: both truth values of one leaf per level, so
+         * the walk is exactly as deep as there are enumerated leaves.
+         */
+        private void assign(Expr root, int leaf, long bits, boolean[] found)
+        {
+            if (leaf == enumerated.size())
             {
                 BroadcastFold.Verdict full = fold(root, bits, false);
                 if (full == BroadcastFold.Verdict.TRUE
                         && fold(root, bits, true) != BroadcastFold.Verdict.TRUE)
                 {
-                    absentTrue = true;
+                    found[0] = true;
                 }
-                unknown |= full == BroadcastFold.Verdict.UNKNOWN;
+                found[1] |= full == BroadcastFold.Verdict.UNKNOWN;
+                return;
             }
-            return new Verdicts(absentTrue, unknown);
+            assign(root, leaf + 1, bits, found);
+            assign(root, leaf + 1, bits | (1L << leaf), found);
         }
 
 

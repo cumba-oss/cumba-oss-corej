@@ -220,13 +220,16 @@ class IdentitySafeJoinCachesTest
         JoinCache.SharedIndexCache cache = new JoinCache.SharedIndexCache();
         WeakReference<IDataTable> probe = populateAll(cache);
         long deadline = System.nanoTime() + 20_000_000_000L;
-        while ((probe.get() != null || cache.wildcardColumns().entryCount() != 0)
-                && System.nanoTime() < deadline)
+        while (probe.get() != null && System.nanoTime() < deadline)
         {
             System.gc();
             Thread.sleep(10);
         }
         assertNull(probe.get(), "no cache may keep the table reachable (D3: no parent field)");
+        // The collector clears every weak reference to the table at once, so the cache's own
+        // references are cleared by now: one count, which sweeps, must find nothing left. (Waiting
+        // for the count as well would let a sweep that never removes anything spin to the
+        // deadline.)
         assertEquals(0, cache.wildcardColumns().entryCount());
     }
 

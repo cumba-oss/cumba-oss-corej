@@ -95,7 +95,8 @@ public final class NativeExprEvaluator
     }
 
 
-    private static ExprProgram program(Expr expr)
+    /** The compiled program of {@code expr}, cached; package-private for the cache's own test. */
+    static ExprProgram program(Expr expr)
     {
         return CACHE.computeIfAbsent(expr, ExprCompiler::compile);
     }
