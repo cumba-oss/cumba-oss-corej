@@ -238,6 +238,11 @@ class NameSlotRosterTest
     {
         dictionary = new RuntimeDictionaryProvider(
                 Map.of("meddra", ValueMapDictionary.load(Paths.get("dictionaries/meddra.json"))));
+        // Pitest re-runs @BeforeAll in the same JVM, a new mutant each time: the static list must
+        // not accumulate, and the worlds are rebuilt so no resolver-keyed engine memo
+        // (SplitDomainResolution) carries a resolution computed under an earlier mutant.
+        keywords.clear();
+        WORLDS.clear();
         roster = measureRoster();
     }
 
@@ -1043,8 +1048,33 @@ class NameSlotRosterTest
      * The world named {@code n}: everything that bears the name exists under {@code n} — the column
      * (and its decode partner {@code n} minus its trailing {@code N}), a dataset, Define / Library
      * metadata, value-level metadata; everything else is the same in both worlds.
+     *
+     * <p>
+     * Only the context is built per evaluation; its tables, resolver, metadata and VLM are built
+     * once per world and shared, since nothing the evaluator does writes to them. Rebuilding them
+     * per evaluation made the measurement dominate the suite under Pitest, which re-runs it for
+     * every covered mutant.
      */
     private static EvaluationContext world(String n, boolean missing)
+    {
+        World w = WORLDS.computeIfAbsent(n + (missing ? "/missing" : "/filled"),
+                k -> buildWorld(n, missing));
+        return EvaluationContext.builder().table(w.primary()).datasetResolver(w.resolver())
+                .domainName("AE").domainPrefix("AE").variableWildcardPrefix("AE")
+                .className("EVENTS").defineProvider(w.metadata()).libraryProvider(w.metadata())
+                .vlmResolver(w.vlm()).dictionaryProvider(dictionary)
+                .variables(Map.of("variable_name", "X")).build();
+    }
+
+    /** The immutable parts of one world, shared by every evaluation in it. */
+    private record World(IDataTable primary, DatasetResolver.WithInventory resolver,
+            Metadata metadata, VlmResolver vlm)
+    {
+    }
+
+    private static final Map<String, World> WORLDS = new HashMap<>();
+
+    private static World buildWorld(String n, boolean missing)
     {
         MockTable primary = MockTable.of().name("AE");
         primary = missing ? primary.colSasMissing(n, null, null) : primary.col(n, "q1", "q2");
@@ -1080,11 +1110,7 @@ class NameSlotRosterTest
                 return inventory.keySet();
             }
         };
-        Metadata metadata = new Metadata(n);
-        return EvaluationContext.builder().table(ae).datasetResolver(resolver).domainName("AE")
-                .domainPrefix("AE").variableWildcardPrefix("AE").className("EVENTS")
-                .defineProvider(metadata).libraryProvider(metadata).vlmResolver(vlm(n))
-                .dictionaryProvider(dictionary).variables(Map.of("variable_name", "X")).build();
+        return new World(ae, resolver, new Metadata(n), vlm(n));
     }
 
 
