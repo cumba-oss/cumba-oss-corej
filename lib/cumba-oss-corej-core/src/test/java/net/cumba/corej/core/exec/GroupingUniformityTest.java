@@ -25,12 +25,15 @@ import org.junit.jupiter.api.Test;
  * (qualified keys since {@code PLAN-rprfdy-offset-tp-join} C3) and the harness row shared with
  * {@code PLAN-stage-a-parameter-type-arming}: a {@code find_vars} binding holding QUALIFIED names,
  * spliced into {@code record_count(group=[…, $b])} — the plan's premise was that it reads the
- * joined columns exactly as the literal {@code group=[…, J.X]} does; MEASURED, the splice is
- * refused as the rule's ERROR (N15), and only the literal spelling reads the join.
+ * joined columns exactly as the literal {@code group=[…, J.X]} does. Measured at the time, the
+ * splice was refused as the rule's ERROR (N15).
  *
  * <p>
- * Known red recorded, not fixed: <b>N6</b> (ruled, plan §2.3 D-ABSENT) — an absent qualified key
- * component ERRORs the rule while an absent bare key is dropped from the key (EC-44).
+ * Both known reds of that review are resolved by {@code REG-Q4} ({@code
+ * PLAN-join-key-one-side-absent-drop}): <b>N6</b> — an absent qualified key component is dropped
+ * like an absent bare one ({@code EC-44}, QK4) instead of ERRORing the rule; <b>N15</b> — the
+ * spliced qualified name reads exactly as the literal (plan §5 Q7). The methods below assert the
+ * resolved behaviour.
  * </p>
  */
 class GroupingUniformityTest
