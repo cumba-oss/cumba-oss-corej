@@ -228,9 +228,8 @@ public final class OperandSubstitutor
                     "`${*}` does not accept a format spec in operand `" + operand + "`");
         }
 
-        // Count wildcard occurrences. One or more → Wildcard with n+1 fragments (EC-16).
-        int wildcardCount = countOccurrences(body, WILDCARD_TOKEN);
-        if (wildcardCount >= 1)
+        // One or more wildcard occurrences → Wildcard with n+1 fragments (EC-16).
+        if (body.contains(WILDCARD_TOKEN))
         {
             List<String> rawFragments = splitOnWildcard(body);
             // Reject adjacent runs (`${*}${*}` with no literal between): an empty interior
@@ -260,17 +259,13 @@ public final class OperandSubstitutor
 
     private static void validateNoUnterminatedPlaceholder(String body)
     {
-        int idx = 0;
-        while ((idx = body.indexOf("${", idx)) >= 0)
+        // Every "${" needs a '}' behind it, and a '}' behind the last one is behind all of them.
+        // Empty braces are caught by parseSegments; format empty-body too.
+        int last = body.lastIndexOf("${");
+        if (last >= 0 && body.indexOf('}', last + 2) == -1)
         {
-            int close = body.indexOf('}', idx + 2);
-            if (close < 0)
-            {
-                throw new OperandParseException(
-                        "unterminated `${` placeholder in operand `" + body + "`");
-            }
-            // Empty braces are caught by parseSegments; format empty-body too.
-            idx = close + 1;
+            throw new OperandParseException(
+                    "unterminated `${` placeholder in operand `" + body + "`");
         }
     }
 
@@ -377,19 +372,6 @@ public final class OperandSubstitutor
             throw new OperandParseException(
                     "invalid format spec `" + fmt + "` in operand `" + wholeOperand + "`");
         }
-    }
-
-
-    private static int countOccurrences(String s, String token)
-    {
-        int count = 0;
-        int idx = 0;
-        while ((idx = s.indexOf(token, idx)) >= 0)
-        {
-            count++;
-            idx += token.length();
-        }
-        return count;
     }
 
 

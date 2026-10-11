@@ -225,6 +225,30 @@ class ExpressionLexerTest
         assertThrows(ExpressionException.class, () -> ExpressionLexer.tokenize(null));
     }
 
+
+    /**
+     * A source made only of one-character tokens yields one token per character, each at its own
+     * offset: the most tokens a source can produce, which the lexer's progress guard (more tokens
+     * than characters means a token consumed nothing) must still accept.
+     */
+    @Test
+    void oneTokenPerCharacterIsTheMostASourceYields()
+    {
+        assertArrayEquals(new TokenType[]
+        {
+                TokenType.LPAREN, TokenType.IDENT, TokenType.RPAREN, TokenType.EOF
+        }, types("(A)"));
+        List<Token> t = lex("(A)");
+        for (int i = 0; i < 3; i++)
+        {
+            assertEquals(i, t.get(i).position());
+        }
+        assertEquals(3, t.get(3).position(), "EOF sits behind the last character");
+        List<Token> single = lex("A");
+        assertEquals(2, single.size());
+        assertEquals("A", single.get(0).text());
+    }
+
     // ------------------------------------------------------------------
     // PLAN-expansion-token-delimiters — a bare `&NAME&` token inside an identifier
     // ------------------------------------------------------------------

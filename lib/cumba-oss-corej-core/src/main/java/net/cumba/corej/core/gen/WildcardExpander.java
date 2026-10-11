@@ -1302,8 +1302,8 @@ public final class WildcardExpander
                 char c = name.charAt(i);
                 if (Character.isLowerCase(c))
                 {
-                    // Collect the full lowercase sequence
-                    int start = i;
+                    // Collect the full lowercase sequence: c itself, then the run behind it
+                    int start = i++;
                     while (i < name.length() && Character.isLowerCase(name.charAt(i)))
                     {
                         i++;
@@ -1373,7 +1373,7 @@ public final class WildcardExpander
                 char c = original.charAt(i);
                 if (Character.isLowerCase(c))
                 {
-                    int start = i;
+                    int start = i++;
                     while (i < original.length() && Character.isLowerCase(original.charAt(i)))
                     {
                         i++;

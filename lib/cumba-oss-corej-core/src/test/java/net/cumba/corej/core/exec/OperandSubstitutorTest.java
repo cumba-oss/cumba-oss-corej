@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
 import java.util.regex.Pattern;
 import net.cumba.corej.core.exec.OperandSubstitutor.Driver;
 import net.cumba.corej.core.exec.OperandSubstitutor.Literal;
@@ -171,6 +172,24 @@ class OperandSubstitutorTest
     void parse_rejects_unterminatedDriver()
     {
         assertThrows(OperandParseException.class, () -> OperandSubstitutor.parse("${VAR"));
+    }
+
+
+    /**
+     * The unterminated-placeholder check names the problem wherever the open {@code ${} sits: at
+     * the very start, and behind an earlier placeholder that does close (its {@code '}'} must not
+     * count for the later one).
+     */
+    @Test
+    void parse_rejects_unterminatedPlaceholder_atStartAndBehindAClosedOne()
+    {
+        for (String operand : List.of("${VAR", "${A}${B", "X${A}Y${B"))
+        {
+            OperandParseException ex = assertThrows(OperandParseException.class,
+                    () -> OperandSubstitutor.parse(operand), operand);
+            assertTrue(ex.getMessage().startsWith("unterminated `${` placeholder"),
+                    operand + ": " + ex.getMessage());
+        }
     }
 
 

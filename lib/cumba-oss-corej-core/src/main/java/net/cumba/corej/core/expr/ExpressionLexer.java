@@ -124,6 +124,13 @@ public final class ExpressionLexer
             Token t = nextToken();
             tokens.add(t);
             prev = t.type();
+            // every token consumes at least one character: more tokens than characters means one
+            // consumed none (or stepped back), and the loop would never reach the end
+            if (tokens.size() > src.length())
+            {
+                throw new IllegalStateException(
+                        "Lexer made no progress at position " + t.position() + " in: " + src);
+            }
         }
     }
 
@@ -447,31 +454,38 @@ public final class ExpressionLexer
         int start = pos;
         while (pos < src.length())
         {
+            int at = pos;
             char c = src.charAt(pos);
             // A '${...}' operand-substitution template is consumed whole (its inner ':', '%', ...
             // are not identifier characters but are preserved verbatim in the token text).
             if (c == '$' && peek(1) == '{')
             {
                 consumeSubstitution();
-                continue;
             }
             // A bare expansion token `&NAME&` is part of the identifier (`&DOM&.&DOM&SEQ`,
             // `ADSL.&VAR&`); a '&&' ends it, being the operator (`A&&B`). ⛔ '&' is deliberately
             // NOT an identifier character: that would lex `A&&B` as one identifier.
-            if (c == '&')
+            else if (c == '&')
             {
                 if (peek(1) == '&')
                 {
                     break;
                 }
                 consumeExpansionToken();
-                continue;
             }
-            if (!isIdentPart(c))
+            else if (isIdentPart(c))
+            {
+                pos++;
+            }
+            else
             {
                 break;
             }
-            pos++;
+            if (pos <= at)
+            {
+                throw new IllegalStateException(
+                        "Lexer made no progress at position " + at + " in: " + src);
+            }
         }
         String text = src.substring(start, pos);
         // KW (O21): the keyword lookup folds the letter case; the token keeps the text as written

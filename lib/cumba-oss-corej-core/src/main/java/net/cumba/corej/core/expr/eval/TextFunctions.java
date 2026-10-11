@@ -262,8 +262,16 @@ public final class TextFunctions
         List<Conversion> conversions = new ArrayList<>();
         StringBuilder text = new StringBuilder();
         int i = 0;
+        int previous = -1;
         while (i < format.length())
         {
+            // every step consumes at least one character; one that did not would loop forever
+            if (i <= previous)
+            {
+                throw new IllegalStateException(
+                        "printf format \"" + format + "\": parse made no progress at " + i);
+            }
+            previous = i;
             char ch = format.charAt(i);
             if (ch != '%')
             {

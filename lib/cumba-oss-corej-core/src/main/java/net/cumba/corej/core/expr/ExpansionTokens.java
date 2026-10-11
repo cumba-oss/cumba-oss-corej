@@ -196,8 +196,16 @@ public final class ExpansionTokens
         }
         int n = text.length();
         int i = 0;
+        int previous = -1;
         while (i < n)
         {
+            // every step consumes at least one character; one that did not would loop forever
+            if (i <= previous)
+            {
+                throw new IllegalStateException(
+                        "Expansion-token scan made no progress at " + i + " in: " + text);
+            }
+            previous = i;
             if (text.charAt(i) != '&')
             {
                 i++;
