@@ -1958,6 +1958,13 @@ public final class RuleRunner
                     && violations.wantsMore(); r = violationBits.nextSetBit(r + 1))
             {
                 visited++;
+                // each set row is visited once: a walk past the cardinality revisits a row and
+                // would never end on a table whose identity drops the repeats
+                if (visited > card)
+                {
+                    throw new IllegalStateException(
+                            "[" + ruleId + "] the violation walk revisited row " + r);
+                }
                 long realRow = ctx.getTable().getRealRowIndex(r);
                 FindingIdentity.Key key = identity == null ? null
                         : identity.at(ctx.getTable(), r, realRow, null);

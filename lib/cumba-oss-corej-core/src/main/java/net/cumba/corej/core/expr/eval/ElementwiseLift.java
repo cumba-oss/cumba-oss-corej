@@ -440,22 +440,26 @@ final class ElementwiseLift
                 cursor = row + 1;
                 return cursor;
             }
-            int lo = 0;
-            int hi = offsets.length - 2;
-            while (lo < hi)
+            cursor = lastRowStartingBy(i, 0, offsets.length - 2);
+            return cursor;
+        }
+
+
+        /**
+         * The last row in {@code [lo, hi]} whose list starts at or before item {@code i} (a row of
+         * an empty list shares its successor's offset, so the last such row is the one holding
+         * {@code i}). Every step strictly narrows the range, which bounds the recursion by the
+         * binary logarithm of the row count.
+         */
+        private int lastRowStartingBy(int i, int lo, int hi)
+        {
+            if (lo >= hi)
             {
-                int mid = (lo + hi + 1) >>> 1;
-                if (offsets[mid] <= i)
-                {
-                    lo = mid;
-                }
-                else
-                {
-                    hi = mid - 1;
-                }
+                return lo;
             }
-            cursor = lo;
-            return lo;
+            int mid = (lo + hi + 1) >>> 1;
+            return offsets[mid] <= i ? lastRowStartingBy(i, mid, hi)
+                    : lastRowStartingBy(i, lo, mid - 1);
         }
 
 

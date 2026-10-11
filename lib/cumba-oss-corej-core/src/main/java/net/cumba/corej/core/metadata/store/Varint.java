@@ -36,13 +36,24 @@ final class Varint
         {
             throw new IllegalArgumentException("negative varint: " + aValue);
         }
-        long remaining = aValue;
-        while ((remaining & ~0x7FL) != 0)
+        writeGroups(aOut, aValue);
+    }
+
+
+    /**
+     * The 7-bit groups of a non-negative {@code aRemaining}, low group first: one call per group,
+     * so the depth is at most nine, and a step that failed to shift the value down would overflow
+     * the stack at once rather than write forever.
+     */
+    private static void writeGroups(ByteArrayOutputStream aOut, long aRemaining)
+    {
+        if ((aRemaining & ~0x7FL) == 0)
         {
-            aOut.write((int) ((remaining & 0x7F) | 0x80));
-            remaining >>>= 7;
+            aOut.write((int) aRemaining);
+            return;
         }
-        aOut.write((int) remaining);
+        aOut.write((int) ((aRemaining & 0x7F) | 0x80));
+        writeGroups(aOut, aRemaining >>> 7);
     }
 
 

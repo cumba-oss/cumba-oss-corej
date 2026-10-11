@@ -137,11 +137,8 @@ public final class JoinedRowFold
         }
         else
         {
-            for (int row = condition.nextSetBit(0); row >= 0
-                    && row < rowCount; row = condition.nextSetBit(row + 1))
-            {
-                records.set(real.representative(row));
-            }
+            condition.stream().takeWhile(row -> row < rowCount)
+                    .forEach(row -> records.set(real.representative(row)));
         }
         boolean setWhenMarked = quantifier == Quantifier.ANY;
         for (int row = 0; row < rowCount; row++)

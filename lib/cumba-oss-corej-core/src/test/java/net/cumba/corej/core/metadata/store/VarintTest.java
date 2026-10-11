@@ -52,9 +52,9 @@ class VarintTest
     // ------------------------------------------------------------------
 
     /**
-     * ⚠ The single-byte cases never enter the {@code while} loop, so on their own they leave the
-     * whole continuation-byte path — the encoder's only interesting part — untouched. They are here
-     * to pin the boundary at 127/128, not to cover the loop; the multi-byte test below does that.
+     * ⚠ The single-byte cases never write a continuation byte, so on their own they leave the whole
+     * continuation-byte path — the encoder's only interesting part — untouched. They are here to
+     * pin the boundary at 127/128, not to cover that path; the multi-byte test below does that.
      */
     @Test
     void singleByteValuesEncodeAsThemselves()
@@ -313,9 +313,26 @@ class VarintTest
     // ------------------------------------------------------------------
 
 
+    /**
+     * Encodes into a stream that refuses a tenth byte: a non-negative long is at most nine 7-bit
+     * groups, so an encoder that writes more has lost its termination, and fails here at once
+     * instead of filling the heap.
+     */
     private static byte[] encode(long aValue)
     {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream out = new ByteArrayOutputStream()
+        {
+
+            @Override
+            public synchronized void write(int aByte)
+            {
+                if (size() == 9)
+                {
+                    throw new AssertionError("a varint of a non-negative long is at most 9 bytes");
+                }
+                super.write(aByte);
+            }
+        };
         Varint.writeUnsigned(out, aValue);
         return out.toByteArray();
     }
