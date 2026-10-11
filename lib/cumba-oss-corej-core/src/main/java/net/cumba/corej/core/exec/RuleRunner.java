@@ -282,17 +282,19 @@ public final class RuleRunner
             // IllegalStateException until then. Same sentinel channel, no new ERROR site
             // (EngineErrorMessageContractTest's count is unchanged).
             // ⭐ UnresolvedQualifiedKeyException joins this catch for D-ABSENT of
-            // PLAN-rprfdy-offset-tp-join: a qualified key component (DM.RPATHCD in a join key, a
-            // grouped function's group= or the rule-level Grouping) whose source dataset, source
-            // column or unqualified other side is absent. Same channel, same shape — never a ""
-            // key, never JKM R7's absent-side default, never EC-44's silent partition-nothing.
+            // PLAN-rprfdy-offset-tp-join: a qualified group key component (a grouped function's
+            // group= or the rule-level Grouping) whose source dataset, source column or
+            // unqualified other side is absent. Same channel, same shape. A qualified JOIN key
+            // no longer reaches it: REG-Q3 drops a component absent on one side (KeyGates).
             // ⭐ JoinKeyTypeMismatchException joins this catch for D4-R2 (owner, 2026-09-22: "a
             // rule errors out if the types do not match … I do not want a silent mismatch"). Same
             // channel, same shape; thrown from KeyGates.check, which runs before the merged view
             // is asked for the entry's part and holds BOTH sides' declared types.
             // ⭐ DegenerateJoinKeyException joins this catch for JKM R7 (owner, 2026-09-21: "if all
-            // columns are absent, then the rule should fail with an error"). Same channel, same
-            // shape, same reason: a submission the sponsor must see, never a silent skip.
+            // columns are absent, then the rule should fail with an error"), kept by REG-Q3
+            // (2026-10-09: "no key column left ⇒ rule ERROR" — a column on one side only leaves
+            // the key too). Same channel, same shape, same reason: a submission the sponsor must
+            // see, never a silent skip.
             // Multi-catch
             // rather than a shared supertype — two unrelated defects that happen to report alike.
             // Fix #358 (ruling 1): a Match_Datasets name / RDOMAIN value resolved to a split

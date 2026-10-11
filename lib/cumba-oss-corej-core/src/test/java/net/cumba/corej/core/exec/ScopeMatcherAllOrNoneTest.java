@@ -159,9 +159,10 @@ class ScopeMatcherAllOrNoneTest
 
 
         /**
-         * ⭐ The common real-world shape: TV carries the planned study day, SV omits it. Today, with
-         * nothing declared, the join contributes SV's type default, no TV row matches, and every
-         * planned SV record is reported.
+         * ⭐ The common real-world shape: TV carries the planned study day, SV omits it. With
+         * nothing declared, the join drops VISITDY from the key ({@code REG-Q3}, a WARNING) and
+         * pairs each SV record with every TV row its other keys allow — a fan-out; declared, the
+         * rule skips.
          */
         @Test
         @DisplayName("⭐ row 3 — SV without, TV with: SKIP naming both halves")

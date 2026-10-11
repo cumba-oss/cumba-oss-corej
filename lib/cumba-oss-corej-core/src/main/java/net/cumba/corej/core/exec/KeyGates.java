@@ -1,5 +1,6 @@
 package net.cumba.corej.core.exec;
 
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
@@ -19,20 +20,27 @@ import org.jspecify.annotations.Nullable;
  *
  * <ul>
  * <li>a malformed sided key element ({@link MalformedSidedKeyException});</li>
+ * <li>where each component's column is ({@link KeySide}): owner ruling {@code REG-Q3} (2026-10-09,
+ * replacing {@code JKM R7}'s one-side type default) — a component joins only when <b>both</b> sides
+ * carry it; present on one side only it leaves the key (the caller logs the WARNING,
+ * {@link MergedEvaluation}), absent from both it leaves the key silently;</li>
  * <li>the D4 key-type identity ({@code PLAN-join-key-type-identity} D4-R1/R2): a component that is
  * numeric on one side and character on the other is a {@link JoinKeyTypeMismatchException}, unless
- * the entry declares {@code Join_As_String} (D4-R3) or the component is absent on one side (one
- * type only — JKM R7's absent-side default stands), or either kind classifies {@code null} (D4-R6a:
- * an all-NA R column is {@code logical});</li>
- * <li>a degenerate key — no component present on either side ({@link DegenerateJoinKeyException},
- * JKM R7);</li>
+ * the entry declares {@code Join_As_String} (D4-R3), or either kind classifies {@code null}
+ * (D4-R6a: an all-NA R column is {@code logical}) — judged only for a component both sides
+ * carry;</li>
+ * <li>a degenerate key — no component present on both sides ({@link DegenerateJoinKeyException},
+ * {@code REG-Q3}: no key column left ⇒ rule ERROR);</li>
  * <li>a <b>qualified</b> component ({@code DM.RPATHCD}, {@code PLAN-rprfdy-offset-tp-join} C1) has
- * a SOURCE: an EARLIER ordinary entry of the rule, whose part the view builds first. Its three
- * D-ABSENT cases are {@link UnresolvedQualifiedKeyException} — the study lacks the source dataset,
- * the source dataset lacks the column, the joined dataset lacks the unqualified variable — never a
- * type default on one side and never a drop; D4 compares the SOURCE column's kind with the joined
- * one. A qualifier naming no earlier ordinary entry never came through the loader
- * ({@code RulePackageLoader.checkQualifiedKeys}) and is refused as a bypass.</li>
+ * a SOURCE: an EARLIER ordinary entry of the rule, whose part the view builds first. Its record
+ * side is the source entry's column: the study lacking the source dataset (QK2: an unsupplied
+ * dataset is its column absent, {@code D72a-1}) or the source dataset lacking the column is the
+ * record side absent, the joined dataset lacking the unqualified variable the joined side absent —
+ * the component then leaves the key like an unqualified one ({@code REG-Q3}, the owner's principle:
+ * <i>"a qualified variable reference should ALWAYS be treated like an unqualified one"</i>); D4
+ * compares the SOURCE column's kind with the joined one. A qualifier naming no earlier ordinary
+ * entry never came through the loader ({@code RulePackageLoader.checkQualifiedKeys}) and is refused
+ * as a bypass.</li>
  * </ul>
  */
 final class KeyGates
@@ -42,9 +50,77 @@ final class KeyGates
     {
     }
 
+    /**
+     * Where one key component's column is ({@code REG-Q3}).
+     *
+     * @param onRecordSide
+     *            the record side carries it (the evaluated dataset; a qualified component's source
+     *            dataset)
+     * @param onPartnerSide
+     *            the entry's partner carries it
+     * @param recordDataset
+     *            the dataset the record side reads it from, for the WARNING
+     */
+    record KeySide(boolean onRecordSide, boolean onPartnerSide, String recordDataset)
+    {
+
+        /**
+         * Whether the component stays in the key — both sides carry it.
+         *
+         * @return whether it joins
+         */
+        boolean joins()
+        {
+            return onRecordSide && onPartnerSide;
+        }
+
+
+        /**
+         * Whether it leaves the key with a WARNING — exactly one side carries it.
+         *
+         * @return whether it is on one side only
+         */
+        boolean oneSideOnly()
+        {
+            return onRecordSide != onPartnerSide;
+        }
+    }
 
     /**
-     * Runs every gate of one entry against its resolved partner.
+     * Where each component of a keyed entry's key is, with no gate run — for a keyed part outside
+     * {@link JoinKeyTypes#governedByKeyTypeCheck} (a {@code SUPP*} / {@code SQ*} / {@code --} /
+     * {@code RELREC} named entry), which carries no qualified component (the loader refuses one,
+     * {@code RulePackageLoader.checkQualifiedKeys}).
+     *
+     * @param primary
+     *            the evaluated dataset
+     * @param partner
+     *            the entry's resolved partner
+     * @param md
+     *            the entry
+     * @return one side per key component, in key order
+     */
+    static List<KeySide> sides(IDataTable primary, IDataTable partner, MatchDataset md)
+    {
+        List<String> keys = Objects.requireNonNull(md.getKeys());
+        List<String> childKeys = Objects.requireNonNull(md.getRightKeys());
+        DataTableMeta primaryMeta = primary.getMetaData();
+        DataTableMeta childMeta = partner.getMetaData();
+        String primaryName = Objects.requireNonNullElse(primaryMeta.getName(), "?");
+        List<KeySide> out = new ArrayList<>(keys.size());
+        for (int i = 0; i < keys.size(); i++)
+        {
+            String right = i < childKeys.size() ? childKeys.get(i) : keys.get(i);
+            out.add(new KeySide(primaryMeta.getColumnIndex(keys.get(i)) >= 0,
+                    childMeta.getColumnIndex(right) >= 0, primaryName));
+        }
+        return out;
+    }
+
+
+    /**
+     * Runs every gate of one entry against its resolved partner and answers where each key
+     * component is ({@code REG-Q3}: only a component both sides carry joins).
      *
      * @param primary
      *            the evaluated dataset (the record side of a plain component)
@@ -61,13 +137,11 @@ final class KeyGates
      *             a sided key element names one side only
      * @throws JoinKeyTypeMismatchException
      *             a key compares a numeric column with a character one (D4)
+     * @return one side per key component, in key order
      * @throws DegenerateJoinKeyException
-     *             no key column exists on either side
-     * @throws UnresolvedQualifiedKeyException
-     *             a qualified component's source dataset, source column or joined variable is
-     *             absent (D-ABSENT)
+     *             no key column is present on both sides
      */
-    static void check(IDataTable primary, IDataTable partner, MatchDataset md,
+    static List<KeySide> check(IDataTable primary, IDataTable partner, MatchDataset md,
             List<MatchDataset> entries, IdentityHashMap<MatchDataset, IDataTable> resolved)
     {
         String childName = Objects.requireNonNull(md.getName());
@@ -90,28 +164,27 @@ final class KeyGates
         List<@Nullable String> qualifiers = md.keyQualifiers();
         DataTableMeta primaryMeta = primary.getMetaData();
         DataTableMeta childMeta = partner.getMetaData();
+        String primaryName = Objects.requireNonNullElse(primaryMeta.getName(), "?");
+        List<KeySide> sides = new ArrayList<>(keys.size());
         int nActive = 0;
         for (int i = 0; i < keys.size(); i++)
         {
             int childCol = childMeta.getColumnIndex(childKeys.get(i));
             String qualifier = i < qualifiers.size() ? qualifiers.get(i) : null;
-            if (qualifier != null)
+            KeySide side = qualifier != null
+                    ? checkQualified(partner, md, keys.get(i), childKeys.get(i), childCol,
+                            qualifier, entries, resolved, typeChecked && !asString)
+                    : new KeySide(primaryMeta.getColumnIndex(keys.get(i)) >= 0, childCol >= 0,
+                            primaryName);
+            sides.add(side);
+            if (!side.joins())
             {
-                checkQualified(partner, md, keys.get(i), childKeys.get(i), childCol, qualifier,
-                        entries, resolved, typeChecked && !asString);
-                nActive++; // always active: neither side may be absent
-                continue;
-            }
-            int recordCol = primaryMeta.getColumnIndex(keys.get(i));
-            boolean inPrimary = recordCol >= 0;
-            boolean inChild = childCol >= 0;
-            if (!inPrimary && !inChild)
-            {
-                continue; // absent on both sides: the component is dropped (JKM R7)
+                continue; // REG-Q3: on one side only, or on neither, the component leaves the key
             }
             nActive++;
-            if (typeChecked && !asString && inPrimary && inChild)
+            if (qualifier == null && typeChecked && !asString)
             {
+                int recordCol = primaryMeta.getColumnIndex(keys.get(i));
                 ColumnTypeGate.Kind primaryKind = ColumnTypeGate
                         .kindOf(primaryMeta.getColumn(recordCol).getType());
                 ColumnTypeGate.Kind childKind = ColumnTypeGate
@@ -127,12 +200,18 @@ final class KeyGates
         {
             throw new DegenerateJoinKeyException(childName, keys);
         }
+        return sides;
     }
 
 
-    /** The D-SRC / D-ABSENT / D4 gates of one qualified component. */
+    /**
+     * The D-SRC / D4 gates of one qualified component and where its two sides are: the record side
+     * is the source entry's column — absent when the study does not supply the source dataset (QK2)
+     * or the source dataset lacks the column — the joined side the unqualified variable in the
+     * partner ({@code REG-Q3}).
+     */
     @SuppressWarnings("checkstyle:ParameterNumber")
-    private static void checkQualified(IDataTable partner, MatchDataset md, String key,
+    private static KeySide checkQualified(IDataTable partner, MatchDataset md, String key,
             String childKey, int childCol, String qualifier, List<MatchDataset> entries,
             IdentityHashMap<MatchDataset, IDataTable> resolved, boolean typeChecked)
     {
@@ -145,25 +224,12 @@ final class KeyGates
                     + " RulePackageLoader.checkQualifiedKeys, which refuses it; a hand-built rule"
                     + " orders its entries");
         }
-        String where = "Match_Datasets " + childName;
         IDataTable source = resolved.get(sourceEntry);
-        if (source == null)
-        {
-            throw new UnresolvedQualifiedKeyException(where, key,
-                    "the study has no " + qualifier + " dataset to read " + childKey + " from");
-        }
-        int sourceCol = source.getMetaData().getColumnIndex(childKey);
-        if (sourceCol < 0)
-        {
-            throw new UnresolvedQualifiedKeyException(where, key,
-                    qualifier + " has no column " + childKey);
-        }
-        if (childCol < 0)
-        {
-            throw new UnresolvedQualifiedKeyException(where, key, childName + " has no column "
-                    + childKey + " (the joined dataset needs the same variable, unqualified)");
-        }
-        if (typeChecked)
+        int sourceCol = source == null ? -1 : source.getMetaData().getColumnIndex(childKey);
+        String sourceName = source == null ? qualifier
+                : Objects.requireNonNullElse(source.getMetaData().getName(), qualifier);
+        KeySide side = new KeySide(sourceCol >= 0, childCol >= 0, sourceName);
+        if (source != null && side.joins() && typeChecked)
         {
             DataValueType sourceType = source.getMetaData().getColumn(sourceCol).getType();
             DataValueType childType = partner.getMetaData().getColumn(childCol).getType();
@@ -175,6 +241,7 @@ final class KeyGates
                         describeKind(sourceKind), describeKind(childKind));
             }
         }
+        return side;
     }
 
 

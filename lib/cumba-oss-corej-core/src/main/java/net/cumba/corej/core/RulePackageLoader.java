@@ -7159,11 +7159,11 @@ public class RulePackageLoader
      * only reader of the shape), and neither part of the key carries a {@code --} / {@code &}
      * wildcard (the two sides resolve against different datasets).</li>
      * </ul>
-     * Column inventories are data, so an unresolvable source at run time is a rule ERROR there
-     * ({@code UnresolvedQualifiedKeyException}, D-ABSENT), not a load error here.
-     * {@link #validateJoinKeyDeclarations} judges the declaration of the key like any other:
-     * {@code DM.RPATHCD} bare in {@code All} when it is the first key, and one {@code All_Or_None}
-     * group holding {@code DM.RPATHCD} and {@code TP.RPATHCD}.
+     * Column inventories are data, so a source dataset or column absent at run time is decided
+     * there: the component leaves the key with a WARNING ({@code REG-Q3}, {@code KeyGates}), not a
+     * load error here. {@link #validateJoinKeyDeclarations} judges the declaration of the key like
+     * any other: {@code DM.RPATHCD} bare in {@code All} when it is the first key, and one
+     * {@code All_Or_None} group holding {@code DM.RPATHCD} and {@code TP.RPATHCD}.
      *
      * @param rule
      *            the rule to check.
@@ -7568,10 +7568,9 @@ public class RulePackageLoader
      * {@code RelrecEntries}) and the keyed non-Child shapes outside the type check (a
      * {@code SUPP--} / {@code SQ*} or template name, served by the merged view as {@code left}
      * parts that never dropped a row) KEEP a blank key unconditionally ({@code JKM R4}'s default) —
-     * and since {@code JKM R7}'s one-side rule holds for every keyed part, an absent key column
-     * there is present-but-blank on every row, exactly the rows an authored {@code false} claims to
-     * drop. An author who writes the flag there believes they have chosen DROP and has not. An
-     * authored {@code true} is accepted: it states the default those paths already implement.
+     * exactly the rows an authored {@code false} claims to drop. An author who writes the flag
+     * there believes they have chosen DROP and has not. An authored {@code true} is accepted: it
+     * states the default those paths already implement.
      * </p>
      *
      * <p>

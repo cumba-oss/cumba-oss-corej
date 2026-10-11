@@ -139,11 +139,10 @@ public class MatchDataset
      * </p>
      *
      * <p>
-     * ⚠ Under an authored {@code false}, a key column that is <b>absent on one side</b> makes every
-     * row on that side blank at that component, so the join matches nothing. That follows from the
-     * author's own declaration ({@code JKM R7} gives the absent column its type default, and DROP
-     * drops blanks) and is not a separate rule. JSON key {@code "keep_missings"} — the same
-     * spelling the two grouping surfaces use.
+     * ⚠ The flag judges the key components that join: a key column <b>absent on one side</b> leaves
+     * the key ({@code REG-Q3}), so it is never a blank component and an authored {@code false}
+     * drops nothing for it. JSON key {@code "keep_missings"} — the same spelling the two grouping
+     * surfaces use.
      * </p>
      *
      * <p>

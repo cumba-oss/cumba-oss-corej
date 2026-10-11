@@ -3,9 +3,11 @@ package net.cumba.corej.core.exec;
 import java.io.Serial;
 
 /**
- * A <b>qualified</b> key component — {@code DM.RPATHCD} in a {@code Match_Datasets} key, in a
- * grouped function's {@code group=} or in the rule-level {@code Grouping} — cannot be resolved at
- * run time ({@code PLAN-rprfdy-offset-tp-join} D-ABSENT).
+ * A <b>qualified</b> group key component — {@code DM.RPATHCD} in a grouped function's
+ * {@code group=} or in the rule-level {@code Grouping} — cannot be resolved at run time
+ * ({@code PLAN-rprfdy-offset-tp-join} D-ABSENT). ⚠ A qualified {@code Match_Datasets} key no longer
+ * reaches it: owner ruling {@code REG-Q3} (2026-10-09) drops a join-key component present on one
+ * side only, qualified or not ({@code KeyGates}).
  *
  * <p>
  * A qualified variable names where the <b>record-side</b> value comes from: the rule's own

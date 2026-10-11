@@ -16,6 +16,7 @@ import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.merge.KeyDropWarning;
 import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -384,51 +385,83 @@ class QualifiedMatchKeyTest
     }
 
     // -----------------------------------------------------------------------
-    // D-ABSENT — an unresolvable source is a rule ERROR, never a "" key, never a drop
+    // REG-Q3 (was D-ABSENT) — a qualified component present on ONE side only leaves the key with
+    // the WARNING, exactly as an unqualified one (the owner's principle: "a qualified variable
+    // reference should ALWAYS be treated like an unqualified one"); QK2: a source dataset the
+    // study does not supply is its column absent on the record side
     // -----------------------------------------------------------------------
 
 
-    private static String unresolvedMessage(List<MatchDataset> entries, DatasetResolver inv)
+    /** TP paths with phases P1, P1, P2 — a key on RPHASE alone binds a P1 record to two paths. */
+    private static IDataTable tpTwoPathsInP1()
     {
-        RuntimeException ex = assertThrows(RuntimeException.class,
-                () -> view(bw("S1/P1"), entries, inv));
-        assertFalse(ex instanceof IllegalStateException,
-                "a diagnosis, not a bypass refusal: " + ex);
-        assertTrue(ex instanceof UnresolvedQualifiedKeyException,
-                "the engine's D-ABSENT diagnosis, never the datatable's: " + ex);
-        String msg = String.valueOf(ex.getMessage());
-        assertTrue(msg.contains("DM.RPATHCD"), msg);
-        return msg;
+        return tp("A/1/P1/0", "B/2/P1/1", "C/3/P2/0");
+    }
+
+
+    /** The TP rows each record binds, as {@code USUBJID:TP.TPSTGORD}, sorted. */
+    private static List<String> tpStages(MergedEvaluation.@Nullable Built built)
+    {
+        assertNotNull(built, "the entry is served by the merged view");
+        IDataTable t = built.table();
+        JoinLookup tp = built.lookups().get("TP");
+        assertNotNull(tp, "TP is supplied, so it is a part of the view");
+        List<String> out = new ArrayList<>();
+        for (long i = 0; i < t.getRowCount(); i++)
+        {
+            out.add(t.getColumn(t.getMetaData().getColumnIndex("USUBJID")).getDataValue(i)
+                    .getValueAsString() + ":" + tp.lookup(t, i, "TPSTGORD"));
+        }
+        out.sort(null);
+        return out;
+    }
+
+
+    private static String dropWarning(String aCarrier)
+    {
+        return "[R] Match_Datasets TP: "
+                + KeyDropWarning.format("TP", "DM.RPATHCD/RPATHCD", aCarrier);
     }
 
 
     @Test
-    void theSourceDatasetAbsentFromTheStudyErrors()
+    void theSourceDatasetAbsentFromTheStudyDropsTheQualifiedKey()
     {
-        String msg = unresolvedMessage(List.of(dmEntry(), tpEntry("inner")),
-                resolver(tp("A/1/P1/0")));
-        assertTrue(msg.contains("the study has no DM dataset to read RPATHCD from"), msg);
+        List<MergedEvaluation.Built> built = new ArrayList<>();
+        List<String> warnings = JoinKeyDropWarningTest.warnings(() -> built.add(view(bw("S1/P1"),
+                List.of(dmEntry(), tpEntry("inner")), resolver(tpTwoPathsInP1()))));
+        assertEquals(List.of("S1:1", "S1:2"), tpStages(built.get(0)),
+                "QK2: no DM dataset is DM.RPATHCD absent on the record side, so it leaves the key"
+                        + " and RPHASE alone binds S1 to both P1 stages (not the P2 one)");
+        assertEquals(List.of(dropWarning("TP")), warnings,
+                "one WARNING, naming TP as the side that carries RPATHCD");
     }
 
 
     @Test
-    void theSourceColumnAbsentFromTheSourceDatasetErrors()
+    void theSourceColumnAbsentFromTheSourceDatasetDropsTheQualifiedKey()
     {
         IDataTable dmWithoutPath = RealTables.of("DM").str("USUBJID", "S1").build();
-        String msg = unresolvedMessage(List.of(dmEntry(), tpEntry("inner")),
-                resolver(dmWithoutPath, tp("A/1/P1/0")));
-        assertTrue(msg.contains("DM has no column RPATHCD"), msg);
+        List<MergedEvaluation.Built> built = new ArrayList<>();
+        List<String> warnings = JoinKeyDropWarningTest.warnings(() -> built.add(view(bw("S1/P1"),
+                List.of(dmEntry(), tpEntry("inner")), resolver(dmWithoutPath, tpTwoPathsInP1()))));
+        assertEquals(List.of("S1:1", "S1:2"), tpStages(built.get(0)));
+        assertEquals(List.of(dropWarning("TP")), warnings);
     }
 
 
     @Test
-    void theUnqualifiedVariableAbsentFromTheJoinedDatasetErrors()
+    void theUnqualifiedVariableAbsentFromTheJoinedDatasetDropsTheQualifiedKey()
     {
-        IDataTable tpWithoutPath = RealTables.of("TP").str("RPHASE", "P1").str("RPRFDY", "0")
-                .build();
-        String msg = unresolvedMessage(List.of(dmEntry(), tpEntry("inner")),
-                resolver(dm("S1/A"), tpWithoutPath));
-        assertTrue(msg.contains("TP has no column RPATHCD"), msg);
+        IDataTable tpWithoutPath = RealTables.of("TP").str("TPSTGORD", "1", "2", "3")
+                .str("RPHASE", "P1", "P1", "P2").str("RPRFDY", "0", "1", "0").build();
+        List<MergedEvaluation.Built> built = new ArrayList<>();
+        List<String> warnings = JoinKeyDropWarningTest.warnings(() -> built.add(view(bw("S1/P1"),
+                List.of(dmEntry(), tpEntry("inner")), resolver(dm("S1/A"), tpWithoutPath))));
+        assertEquals(List.of("S1:1", "S1:2"), tpStages(built.get(0)),
+                "TP lacks RPATHCD: the qualified key leaves, RPHASE alone binds");
+        assertEquals(List.of(dropWarning("DM")), warnings,
+                "the record side carries it: the WARNING names DM, the source");
     }
 
 
@@ -545,14 +578,13 @@ class QualifiedMatchKeyTest
 
 
     /**
-     * The one D-ABSENT case the authoring gate cannot turn into a SKIP: {@code RPATHCD} absent on
-     * BOTH sides satisfies the {@code All_Or_None} group, the rule runs, and the qualified
-     * component — unlike a plain one — may not be dropped (JKM R7's both-absent drop is for a
-     * component both sides lack; here the sides are different datasets, and the join has no
-     * answer). The rule ERRORs on the sentinel channel.
+     * {@code RPATHCD} absent on BOTH sides satisfies the {@code All_Or_None} group, the rule runs,
+     * and the qualified component leaves the key silently — {@code JKM R7}'s both-absent drop,
+     * which {@code REG-Q3} keeps and the owner's principle now extends to a qualified key (it used
+     * to ERROR, D-ABSENT). RPHASE alone binds each record to both P1 stages.
      */
     @Test
-    void bothSidesAbsentIsAnErrorNotADrop()
+    void bothSidesAbsentDropsTheQualifiedKeySilently()
     {
         // The qualified key SECOND: a first key is declared bare in All (the gate), which would
         // SKIP the study before the join; a later key is declared by its All_Or_None group only.
@@ -566,16 +598,16 @@ class QualifiedMatchKeyTest
         IDataTable dmWithoutPath = RealTables.of("DM").str("USUBJID", "S1", "S2").build();
         IDataTable tpWithoutPath = RealTables.of("TP").str("RPHASE", "P1", "P1")
                 .str("RPRFDY", "0", "1").build();
-        RuleExecutionResult res = RuleRunnerCalls.execute(rule, bwTable,
-                RealTables.inventoryOf(bwTable, dmWithoutPath, tpWithoutPath));
-        assertEquals(RuleExecutionStatus.ERROR, res.getStatus(), res.getStatusMessage());
-        String msg = String.valueOf(res.getStatusMessage());
-        assertTrue(msg.contains("DM.RPATHCD"), msg);
-        // Review round 1 (lane 1 L1): this rule DECLARES the group, so the remedy the message
-        // names is the one that would have skipped it — All, not "declare both spellings".
-        assertTrue(msg.contains("Requirements.Variables.All")
-                && msg.contains("All_Or_None group alone"), msg);
-        assertEquals(msg, res.getViolations().get(0).getValues().get("__error__"));
+        List<RuleExecutionResult> res = new ArrayList<>();
+        List<String> warnings = JoinKeyDropWarningTest
+                .warnings(() -> res.add(RuleRunnerCalls.execute(rule, bwTable,
+                        RealTables.inventoryOf(bwTable, dmWithoutPath, tpWithoutPath))));
+        assertEquals(RuleExecutionStatus.EXECUTED, res.get(0).getStatus(),
+                res.get(0).getStatusMessage());
+        // each record binds both P1 stages and fires on the RPRFDY 1 one: S1 and S2 once each
+        assertEquals(List.of("S1", "S2"), res.get(0).getViolations().stream()
+                .map(v -> String.valueOf(v.getValues().get("USUBJID"))).sorted().toList());
+        assertEquals(List.of(), warnings, "QK5 (a): both sides absent leaves the key silently");
     }
 
 

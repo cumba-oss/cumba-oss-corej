@@ -21,6 +21,7 @@ import net.cumba.datatable.impl.databuffer.IDataBufferNumeric;
 import net.cumba.datatable.merge.Cardinality;
 import net.cumba.datatable.merge.ChildMergeSpec;
 import net.cumba.datatable.merge.KeyColumn;
+import net.cumba.datatable.merge.KeyDropWarning;
 import net.cumba.datatable.merge.KeyedMergeSpec;
 import net.cumba.datatable.merge.MergeKind;
 import net.cumba.datatable.merge.MergeMeta;
@@ -81,10 +82,10 @@ import org.jspecify.annotations.Nullable;
  * fold M3). Every part keeps its column range in the final table (a stage's primary columns are the
  * previous table's, in order), the evaluation row is the final table's row, and the rows keep the
  * entry order of the retired expander (an earlier entry the major factor). The engine's own key
- * gates run first ({@link KeyGates}: D-ABSENT, the D4 kinds of the source column), so a chained
- * key's errors keep their messages. There is no other pipeline: the view is the only reader of
- * every part ({@code PLAN-merged-evaluation-table} W6 retired the key-match expander, the
- * first-wins lookups and the SUPP pivot).
+ * gates run first ({@link KeyGates}: where each component is ({@code REG-Q3}), the D4 kinds of the
+ * source column), so a chained key's errors keep their messages. There is no other pipeline: the
+ * view is the only reader of every part ({@code PLAN-merged-evaluation-table} W6 retired the
+ * key-match expander, the first-wins lookups and the SUPP pivot).
  * </p>
  *
  * <p>
@@ -120,6 +121,8 @@ public final class MergedEvaluation
     {
         plantForTests = aKind;
     }
+
+    private static final System.Logger LOGGER = System.getLogger(MergedEvaluation.class.getName());
 
     /**
      * The fixed prefix of the rule ERROR a flagged column raises (OD-7) — the classifier's key in
@@ -733,9 +736,20 @@ public final class MergedEvaluation
     /**
      * Fills {@code out} with one spec per keyed entry whose partner resolves, running the engine's
      * own key gates first ({@link KeyGates}: a malformed sided key, the D4 key-type identity, a
-     * degenerate key, a chained key's D-ABSENT — the exceptions and messages the retired expander
-     * raised). A chained qualified key ({@code DM.RPATHCD}) becomes a sided key component whose
-     * left name is the source part's column, composed by the stages of {@link #construct}.
+     * degenerate key — the exceptions and messages the retired expander raised). A chained
+     * qualified key ({@code DM.RPATHCD}) becomes a sided key component whose left name is the
+     * source part's column, composed by the stages of {@link #construct}.
+     *
+     * <p>
+     * ⭐ <b>{@code REG-Q3}</b> (owner, 2026-10-09): a key component present on one side only leaves
+     * the key with a log WARNING naming the rule — emitted here, for <b>every</b> served keyed part
+     * (a {@code SUPP*} / {@code SQ*} / {@code --} / {@code RELREC} named entry is a keyed part the
+     * gates do not govern, review M1), once per rule and dataset; the datatable, which has no rule,
+     * logs the same drop at DEBUG. A qualified component that leaves the key is left out of the
+     * spec (the datatable refuses a chained key whose record side it cannot see); an entry whose
+     * only qualified component left therefore joins in the stage before it, on its plain
+     * components.
+     * </p>
      */
     @SuppressWarnings("checkstyle:ParameterNumber")
     private static void keyedSpecs(Rule rule, IDataTable primary, DatasetResolver resolver,
@@ -778,17 +792,37 @@ public final class MergedEvaluation
                 refuseSuppQualifierKey(md, name, primary, resolver, ruleId);
             }
             boolean expandable = JoinKeyTypes.governedByKeyTypeCheck(md);
+            List<KeyGates.KeySide> sides;
             if (expandable)
             {
-                KeyGates.check(primary, partner, md, entries, resolved);
+                sides = KeyGates.check(primary, partner, md, entries, resolved);
                 resolved.put(md, partner);
+            }
+            else
+            {
+                sides = KeyGates.sides(primary, partner, md);
             }
             List<String> left = Objects.requireNonNull(md.getKeys()); // servedAsKeyedPart
             List<String> right = md.getRightKeys();
+            List<@Nullable String> qualifiers = md.keyQualifiers();
             List<KeyColumn> keys = new ArrayList<>();
             for (int i = 0; i < left.size(); i++)
             {
                 String r = right != null && i < right.size() ? right.get(i) : left.get(i);
+                KeyGates.KeySide side = sides.get(i);
+                if (side.oneSideOnly())
+                {
+                    LOGGER.log(System.Logger.Level.WARNING,
+                            "[" + Objects.requireNonNullElse(ruleId, "?") + "] Match_Datasets "
+                                    + name + ": "
+                                    + KeyDropWarning.format(dsName,
+                                            KeyDropWarning.keyText(left.get(i), r),
+                                            side.onRecordSide() ? side.recordDataset() : dsName));
+                }
+                if (!side.joins() && i < qualifiers.size() && qualifiers.get(i) != null)
+                {
+                    continue; // REG-Q3: a dropped qualified component never reaches the datatable
+                }
                 keys.add(Objects.equals(left.get(i), r) ? KeyColumn.of(left.get(i))
                         : KeyColumn.sided(left.get(i), r));
             }
@@ -830,10 +864,12 @@ public final class MergedEvaluation
      * {@link SplitDomainResolution#suppMergeSources} — its {@code SUPP<dataset>} and the
      * domain-level members of its family) supplies as a qualifier ({@code QNAM}) is refused — the
      * rule's ERROR under the merged table's prefix ({@link #MERGE_REFUSED_MESSAGE_PREFIX}), never
-     * served: the datatable keys the raw primary before the SUPP parts exist, so the key would read
-     * its absent default on every row (JKM R7) — a silent mis-join. Serving it is a datatable
-     * change (both twins), assessed in the plan's T1. Costs nothing unless a key is absent from the
-     * primary (corpus exposure 0, W3f).
+     * served: the datatable keys the raw primary before the SUPP parts exist, so the key would be
+     * absent from the primary and leave the join ({@code REG-Q3}'s one-side drop) — a silent
+     * fan-out over the rest of the key, where the author named a real qualifier. A QNAM is not an
+     * absent column, so the refusal stays. Serving it is a datatable change (both twins), assessed
+     * in the plan's T1. Costs nothing unless a key is absent from the primary (corpus exposure 0,
+     * W3f).
      */
     private static void refuseSuppQualifierKey(MatchDataset md, String name, IDataTable primary,
             DatasetResolver resolver, @Nullable String ruleId)
@@ -866,8 +902,9 @@ public final class MergedEvaluation
                             + " of the Match_Datasets entry " + name + " is not a column of "
                             + dataset + " but a supplemental qualifier (QNAM) of "
                             + supp.getMetaData().getName()
-                            + " — a SUPP qualifier cannot key a join yet, so the join would"
-                            + " read the key's absent default on every row");
+                            + " — a SUPP qualifier cannot key a join yet, so the key would be"
+                            + " dropped from the join (a key column the dataset lacks) and the"
+                            + " join would run on the rest");
                 }
             }
         }

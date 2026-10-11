@@ -1,7 +1,6 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -12,36 +11,35 @@ import java.util.Map;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
-import net.cumba.datatable.values.GroupKeyPolicy;
-import net.cumba.datatable.values.GroupKeyPolicy.KeyPart;
 import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 /**
- * ⭐⭐ {@code JKM R7} — an <b>absent</b> join-key column is <b>present-but-empty</b>, and an empty
- * key is an error.
+ * ⭐⭐ {@code REG-Q3} — a join-key column present on <b>one</b> side only <b>leaves the key</b>;
+ * absent on both sides it leaves the key too; with no key column left the rule ERRORS.
  *
  * <p>
- * Owner, 2026-09-21: <i>"Absent columns are treated like present, but empty (with default value).
- * So if a string column is absent on one side, this is treated as empty and stays empty in the
- * join. Absent in both sides can be dropped from the join. if all columns are absent, then the rule
- * should fail with an error."</i>
+ * Owner, 2026-10-09: <i>"Ok, I would like to change my ruling JKM R7 and move to the drop as
+ * proposed with your warning."</i> — the proposal it accepts: <i>"drop a key column that is present
+ * on one side only from the join key, with a WARNING per dropped column […], so a fan-out is always
+ * traceable; no key column left ⇒ rule ERROR; a rule listing its key columns under
+ * Requirements.Variables SKIPS instead."</i> It replaced {@code JKM R7}'s one-side half (the absent
+ * side contributed the present side's type default, so only a blank cell could match).
  * </p>
  *
  * <p>
  * ⚠⚠ <b>Why this class exists separately from {@link MissingValueJoinKeyTest}:</b> that class
  * varies the <em>cell</em>, this one varies the <em>column</em>. They are different rulings — R4/R5
- * govern a missing value, R7 governs an absent column — and the two builders in this package
- * disagreed on R7 while agreeing on nothing about R4. {@code KeyHashing:131} already dropped a
- * both-sides-absent component (right) and let an all-absent key match every row against every row
- * (wrong); {@code KeyMatchRowExpander} made <em>any</em> absent column match nothing (wrong three
- * times).
+ * govern a missing value, {@code REG-Q3} (and {@code JKM R7}'s both-absent and all-absent halves)
+ * an absent column.
  * </p>
  *
  * <p>
  * ⛔ Every case below carries its own falsifier in the assertion message, because the shapes here
- * are degenerate by construction and a green over the wrong fixture proves nothing.
+ * are degenerate by construction and a green over the wrong fixture proves nothing. The partners of
+ * the one-side cases differ in the dropped column, so the drop shows as a <b>fan-out</b> (one
+ * record, both partner rows) and the retired type default as a single blank-cell match.
  * </p>
  */
 class AbsentJoinKeyColumnTest
@@ -52,6 +50,11 @@ class AbsentJoinKeyColumnTest
     private static final String USUBJID = "USUBJID";
 
     private static final String VISIT = "VISITNUM";
+
+    private static final String AETERM = "AETERM";
+
+    private static final List<String> FAN_OUT = List.of("0:HEADACHE", "0:NAUSEA", "1:HEADACHE",
+            "1:NAUSEA");
 
     private static MatchDataset md(List<String> keys)
     {
@@ -78,49 +81,55 @@ class AbsentJoinKeyColumnTest
 
     private static MergedEvaluation.Built expand(IDataTable dm, IDataTable ae, List<String> keys)
     {
-        var exp = ExecCalls.expand(dm, List.of(md(keys)), Map.of("DM", dm, AE, ae)::get, "R-TEST");
+        return expand(dm, ae, md(keys));
+    }
+
+
+    private static MergedEvaluation.Built expand(IDataTable dm, IDataTable ae, MatchDataset m)
+    {
+        var exp = ExecCalls.expand(dm, List.of(m), Map.of("DM", dm, AE, ae)::get, "R-TEST");
         assertNotNull(exp, "one keyed entry is expandable, so the expansion must be built");
         return exp;
     }
 
 
-    /**
-     * ⭐ Absent on ONE side, character: the absent side contributes {@code ""} for every row, so it
-     * pairs the rows whose present side genuinely holds {@code ""} — and only those.
-     */
-    @Test
-    void aCharacterKeyColumnAbsentOnOneSideContributesTheEmptyString()
+    /** Two DM rows of subject P1, no VISITNUM column. */
+    private static IDataTable dmWithoutVisit()
     {
-        // The primary has no VISITNUM at all; AE has it, holding "" on row 1 only.
-        IDataTable dm = MockTable.of().col(USUBJID, "P1", "P1").col("AGE", "34", "51").name("DM")
-                .build();
-        IDataTable ae = MockTable.of().col(USUBJID, "P1", "P1").col(VISIT, "2", "")
-                .col("AETERM", "HEADACHE", "NAUSEA").name(AE).build();
-        assertEquals(List.of("0:NAUSEA", "1:NAUSEA"),
-                rows(expand(dm, ae, List.of(USUBJID, VISIT)), "AETERM"),
-                "R7: the absent VISITNUM contributes \"\" on the primary side, so both primary rows"
-                        + " match ONLY the AE row whose VISITNUM is \"\". '0:HEADACHE' would mean the"
-                        + " component was ignored; ':null' would mean the pre-R7 match-nothing");
+        return RealTables.of("DM").str(USUBJID, "P1", "P1").str("AGE", "34", "51").build();
     }
 
 
     /**
-     * ⭐ Absent on ONE side, numeric: the constant is a {@code MissingValue}, not {@code ""} — a
-     * numeric cell cannot hold an empty string. It therefore pairs the rows whose present side is a
-     * missing numeric.
+     * ⭐ Absent on ONE side, character: the component leaves the key, so USUBJID alone decides and
+     * each primary row pairs BOTH partner rows — the fan-out the ruling's WARNING exists to make
+     * traceable.
      */
     @Test
-    void aNumericKeyColumnAbsentOnOneSideContributesTheNumericMissing()
+    void aCharacterKeyColumnAbsentOnOneSideIsDroppedFromTheKey()
     {
-        IDataTable dm = MockTable.of().col(USUBJID, "P1", "P1").col("AGE", "34", "51").name("DM")
-                .build();
-        IDataTable ae = MockTable.of().col(USUBJID, "P1", "P1").colLong(VISIT, 2L, null)
-                .col("AETERM", "HEADACHE", "NAUSEA").name(AE).build();
-        assertEquals(List.of("0:NAUSEA", "1:NAUSEA"),
-                rows(expand(dm, ae, List.of(USUBJID, VISIT)), "AETERM"),
-                "R7: an absent NUMERIC column contributes a MissingValue, so it matches the missing"
-                        + " numeric cell and not the present 2. '0:HEADACHE' would mean it keyed as"
-                        + " \"\" or was ignored");
+        // The primary has no VISITNUM at all; AE has it, holding "" on row 1 only.
+        IDataTable ae = RealTables.of(AE).str(USUBJID, "P1", "P1").str(VISIT, "2", "")
+                .str(AETERM, "HEADACHE", "NAUSEA").build();
+        assertEquals(FAN_OUT, rows(expand(dmWithoutVisit(), ae, List.of(USUBJID, VISIT)), AETERM),
+                "REG-Q3: VISITNUM is on AE only, so it leaves the key and every primary row pairs"
+                        + " both AE rows. '[0:NAUSEA, 1:NAUSEA]' is the retired JKM R7 one-side"
+                        + " default (\"\" on the primary side)");
+    }
+
+
+    /**
+     * ⭐ Absent on ONE side, numeric: dropped the same way — the retired default was {@code MIS} for
+     * a numeric column, and it is gone with the {@code ""} of the character case.
+     */
+    @Test
+    void aNumericKeyColumnAbsentOnOneSideIsDroppedFromTheKey()
+    {
+        IDataTable ae = RealTables.of(AE).str(USUBJID, "P1", "P1").lng(VISIT, 2L, null)
+                .str(AETERM, "HEADACHE", "NAUSEA").build();
+        assertEquals(FAN_OUT, rows(expand(dmWithoutVisit(), ae, List.of(USUBJID, VISIT)), AETERM),
+                "REG-Q3: a numeric key column on one side only leaves the key too. '[0:NAUSEA,"
+                        + " 1:NAUSEA]' is the retired MIS default pairing the missing cell");
     }
 
 
@@ -166,56 +175,75 @@ class AbsentJoinKeyColumnTest
 
 
     /**
-     * ⭐ The authored {@code keep_missings: false} path — {@code JKM R4}'s flag-OFF arm, and the
-     * only way to get the historical DROP back. With the character key absent on the primary side
-     * every primary row is blank at that component, so nothing matches at all: a consequence of the
-     * author's own declaration, recorded here so it is not read as a defect later.
+     * ⛔ Every component on ONE side only: each leaves the key, none is left — the same ERROR as an
+     * all-absent key ({@code REG-Q3}: <i>"no key column left ⇒ rule ERROR"</i>), raised by the
+     * engine's gate so it names the authored key. Under the retired default it joined {@code ""}
+     * against the present values and matched nothing.
      */
     @Test
-    void anAuthoredKeepMissingsFalseRestoresTheDropAndThenMatchesNothing()
+    void aKeyWhoseEveryComponentIsOnOneSideOnlyIsARuleError()
     {
-        IDataTable dm = MockTable.of().col(USUBJID, "P1", "P1").col("AGE", "34", "51").name("DM")
-                .build();
-        IDataTable ae = MockTable.of().col(USUBJID, "P1", "P1").col(VISIT, "2", "")
-                .col("AETERM", "HEADACHE", "NAUSEA").name(AE).build();
+        IDataTable dm = RealTables.of("DM").str(USUBJID, "P1", "P2").build();
+        IDataTable ae = RealTables.of(AE).str(VISIT, "1").str(AETERM, "HEADACHE").build();
+        var thrown = assertThrows(DegenerateJoinKeyException.class,
+                () -> ExecCalls.expand(dm, List.of(md(List.of(USUBJID, VISIT))),
+                        Map.of("DM", dm, AE, ae)::get, "R-TEST"),
+                "USUBJID on DM only and VISITNUM on AE only: no key column is on both sides");
+        assertTrue(
+                String.valueOf(thrown.getMessage())
+                        .contains("no key column of (USUBJID, VISITNUM) is present on both"),
+                thrown.getMessage());
+    }
+
+
+    /**
+     * ⭐ The authored {@code keep_missings: false} path — {@code JKM R4}'s flag-OFF arm — judges the
+     * components that stay in the key only: a dropped column is no longer a blank key part on every
+     * primary row, so the flag no longer empties the join.
+     */
+    @Test
+    void anAuthoredKeepMissingsFalseJudgesOnlyTheComponentsLeftInTheKey()
+    {
+        IDataTable ae = RealTables.of(AE).str(USUBJID, "P1", "P1").str(VISIT, "2", "")
+                .str(AETERM, "HEADACHE", "NAUSEA").build();
         MatchDataset m = md(List.of(USUBJID, VISIT));
         m.setKeepMissings(Boolean.FALSE);
-        var exp = ExecCalls.expand(dm, List.of(m), Map.of("DM", dm, AE, ae)::get, "R-TEST");
-        assertNotNull(exp);
-        assertEquals(List.of("0:null", "1:null"), rows(exp, "AETERM"),
-                "keep_missings:false drops every blank-keyed row, and an absent column makes every"
-                        + " row blank. '0:NAUSEA' would mean the flag was ignored");
+        assertEquals(FAN_OUT, rows(expand(dmWithoutVisit(), ae, m), AETERM),
+                "keep_missings:false drops blank-keyed rows over the KEPT components; VISITNUM left"
+                        + " the key, so its blank AE cell drops nothing. '[0:null, 1:null]' is the"
+                        + " retired default (every primary row blank at VISITNUM)");
     }
 
 
     /**
-     * ⭐ Non-vacuity control for the flag: the same fixture with the flag at its DEFAULT must give
-     * the opposite answer. Without this, the test above would pass just as well if the expansion
-     * had silently produced nothing for an unrelated reason.
+     * ⭐ Non-vacuity control for the flag: on the same one-side shape it still governs a blank in a
+     * KEPT component — a blank USUBJID pairs a blank USUBJID by default and nothing under
+     * {@code keep_missings: false}.
      */
     @Test
-    void theFlagIsWhatMakesTheDifference()
+    void theFlagStillGovernsABlankInAKeptComponent()
     {
-        IDataTable dm = MockTable.of().col(USUBJID, "P1", "P1").col("AGE", "34", "51").name("DM")
-                .build();
-        IDataTable ae = MockTable.of().col(USUBJID, "P1", "P1").col(VISIT, "2", "")
-                .col("AETERM", "HEADACHE", "NAUSEA").name(AE).build();
+        IDataTable dm = RealTables.of("DM").str(USUBJID, "P1", "").str("AGE", "34", "51").build();
+        IDataTable ae = RealTables.of(AE).str(USUBJID, "P1", "").str(VISIT, "2", "")
+                .str(AETERM, "HEADACHE", "NAUSEA").build();
         MatchDataset kept = md(List.of(USUBJID, VISIT));
         assertTrue(kept.keepMissingKeys(), "JKM R4: an unauthored flag means KEEP");
-        assertEquals(List.of("0:NAUSEA", "1:NAUSEA"),
-                rows(expand(dm, ae, List.of(USUBJID, VISIT)), "AETERM"),
-                "the default KEEP matches where the authored DROP matched nothing");
+        assertEquals(List.of("0:HEADACHE", "1:NAUSEA"), rows(expand(dm, ae, kept), AETERM),
+                "KEEP: P1 pairs P1 and \"\" pairs \"\" on USUBJID alone. '0:null' would mean the"
+                        + " dropped VISITNUM still keyed (the primary's retired \"\" against \"2\")");
+        MatchDataset dropped = md(List.of(USUBJID, VISIT));
+        dropped.setKeepMissings(Boolean.FALSE);
+        assertEquals(List.of("0:HEADACHE", "1:null"), rows(expand(dm, ae, dropped), AETERM),
+                "DROP: the blank-USUBJID rows take no part; '1:NAUSEA' would mean the flag was"
+                        + " ignored");
     }
 
     /**
-     * ⭐⭐ The same three one-side cases read through a keyed part's <b>lookup</b>
-     * ({@link JoinLookup#matchedRow} and {@link JoinLookup#lookup}) — until W6 of
-     * {@code PLAN-merged-evaluation-table} the <b>hashed</b> arm ({@code KeyHashing.KeyMatcher}
-     * behind the retired {@code DatasetLookup}), which answered <i>no match</i> for a
-     * one-side-absent component until 2026-09-25 ({@code PLAN-hashed-join-arm-absent-columns}
-     * landed JKM R7 there). Since W6 every keyed entry is a part of the merged view, so these pins
-     * now hold the view's lookup to the same answers, the falsifier in each message the pre-fix one
-     * (named {@code TheHashedArm} until T1).
+     * ⭐⭐ The same one-side cases read through a keyed part's <b>lookup</b>
+     * ({@link JoinLookup#matchedRow} and {@link JoinLookup#lookup}) over a partner with ONE row per
+     * subject (the lookup helper reads primary rows, so the fixture must not fan out): the dropped
+     * column lets a record pair a partner whose value the retired default ({@code ""} /
+     * {@code MIS}) would not have matched.
      */
     @Nested
     class ThroughTheKeyedPartLookup
@@ -227,137 +255,104 @@ class AbsentJoinKeyColumnTest
         }
 
 
-        /** Absent on the PRIMARY side, character: the primary contributes {@code ""}. */
+        /** Absent on the PRIMARY side, character: dropped, so the record pairs AE's "2" row. */
         @Test
-        void aCharacterKeyColumnAbsentOnThePrimarySideContributesTheEmptyString()
+        void aCharacterKeyColumnAbsentOnThePrimarySideIsDropped()
         {
-            IDataTable dm = MockTable.of().col(USUBJID, "P1", "P1").col("AGE", "34", "51")
-                    .name("DM").build();
-            IDataTable ae = MockTable.of().col(USUBJID, "P1", "P1").col(VISIT, "2", "")
-                    .col("AETERM", "HEADACHE", "NAUSEA").name(AE).build();
+            IDataTable ae = RealTables.of(AE).str(USUBJID, "P1").str(VISIT, "2")
+                    .str(AETERM, "HEADACHE").build();
+            IDataTable dm = dmWithoutVisit();
             JoinLookup lk = lookupOver(dm, ae, List.of(USUBJID, VISIT));
             assertTrue(lk.matchedRow(dm, 0L) && lk.matchedRow(dm, 1L),
-                    "R7 on the hashed arm: the absent VISITNUM contributes \"\" on the primary"
-                            + " side, so both primary rows match the AE row whose VISITNUM is"
-                            + " \"\". Unmatched is the pre-fix guard (`return false`)");
-            assertEquals("NAUSEA", lk.lookup(dm, 0L, "AETERM"),
-                    "and it is THAT row: HEADACHE would mean the component was ignored");
+                    "REG-Q3: VISITNUM left the key, USUBJID pairs. Unmatched is the retired \"\""
+                            + " default against \"2\"");
+            assertEquals("HEADACHE", lk.lookup(dm, 0L, AETERM));
         }
 
 
-        /** Absent on the PRIMARY side, numeric: the constant is the numeric missing, not "". */
+        /** Absent on the PRIMARY side, numeric: dropped the same way. */
         @Test
-        void aNumericKeyColumnAbsentOnThePrimarySideContributesTheNumericMissing()
+        void aNumericKeyColumnAbsentOnThePrimarySideIsDropped()
         {
-            IDataTable dm = MockTable.of().col(USUBJID, "P1", "P1").col("AGE", "34", "51")
-                    .name("DM").build();
-            IDataTable ae = MockTable.of().col(USUBJID, "P1", "P1").colLong(VISIT, 2L, null)
-                    .col("AETERM", "HEADACHE", "NAUSEA").name(AE).build();
+            IDataTable ae = RealTables.of(AE).str(USUBJID, "P1").lng(VISIT, 2L)
+                    .str(AETERM, "HEADACHE").build();
+            IDataTable dm = dmWithoutVisit();
             JoinLookup lk = lookupOver(dm, ae, List.of(USUBJID, VISIT));
             assertTrue(lk.matchedRow(dm, 0L),
-                    "R7: an absent NUMERIC column contributes a MissingValue, which pairs the"
-                            + " missing numeric cell. Unmatched is the pre-fix guard");
-            assertEquals("NAUSEA", lk.lookup(dm, 0L, "AETERM"),
-                    "HEADACHE would mean the absent side keyed as the present 2");
+                    "unmatched is the retired MIS default against the present 2");
+            assertEquals("HEADACHE", lk.lookup(dm, 0L, AETERM));
         }
 
 
         /**
-         * ⭐ Absent on the JOINED side — the shape of the two {@code AE} Child entries the plan
-         * measured ({@code [n, -1, -1]} on the joined side): a primary row whose present value is
-         * {@code ""} pairs the joined side's {@code ""}; a primary row holding a value does not.
+         * ⭐ Absent on the JOINED side — the shape of the two {@code AE} Child entries the
+         * {@code JKM R7} plan measured: the component leaves the key, so a primary row holding a
+         * value pairs as well as one holding {@code ""}.
          */
         @Test
-        void aCharacterKeyColumnAbsentOnTheJoinedSidePairsOnlyTheEmptyPrimaryCell()
+        void aCharacterKeyColumnAbsentOnTheJoinedSideIsDropped()
         {
-            IDataTable suppae = MockTable.of().col(USUBJID, "P1", "P1").col("IDVAR", "AESEQ", "")
-                    .name("SUPPAE").build();
-            IDataTable ae = MockTable.of().col(USUBJID, "P1").col("AETERM", "HEADACHE").name(AE)
-                    .build();
+            IDataTable suppae = RealTables.of("SUPPAE").str(USUBJID, "P1", "P1")
+                    .str("IDVAR", "AESEQ", "").build();
+            IDataTable ae = RealTables.of(AE).str(USUBJID, "P1").str(AETERM, "HEADACHE").build();
             JoinLookup lk = lookupOver(suppae, ae, List.of(USUBJID, "IDVAR"));
-            assertFalse(lk.matchedRow(suppae, 0L),
-                    "IDVAR=AESEQ against the joined side's \"\" is a mismatch — matched would"
-                            + " mean the absent component was dropped instead of defaulted");
-            assertTrue(lk.matchedRow(suppae, 1L),
-                    "IDVAR=\"\" against the joined side's \"\" is a match — unmatched is the"
-                            + " pre-fix guard");
-            assertEquals("HEADACHE", lk.lookup(suppae, 1L, "AETERM"));
+            assertTrue(lk.matchedRow(suppae, 0L),
+                    "IDVAR=AESEQ pairs on USUBJID alone — unmatched is the retired default (the"
+                            + " joined side's \"\" against AESEQ)");
+            assertTrue(lk.matchedRow(suppae, 1L));
+            assertEquals("HEADACHE", lk.lookup(suppae, 0L, AETERM));
         }
 
 
         /**
-         * ⭐ {@code JKM R5} inside R7: the absent numeric side contributes exactly {@code MIS}, so
-         * it pairs the {@code MIS} row and neither a {@code MIS_A} nor a {@code MIS_UNKNOWN} row —
-         * identity is exact with markers too (review round 1, L2).
+         * ⭐ An absent numeric side no longer keys the join at all: the record pairs a partner whose
+         * cell is {@code MIS_A} — the retired {@code MIS} default paired only a {@code MIS} cell
+         * ({@code JKM R5}'s marker identity is no longer reached by an absent column).
          */
         @Test
-        void anAbsentNumericSidePairsMisAndNoOtherMarker()
+        void anAbsentNumericSideNoLongerKeysTheJoin()
         {
-            IDataTable dm = MockTable.of().col(USUBJID, "P1").col("AGE", "34").name("DM").build();
-            // ⚠ A real DOUBLE buffer: MockTable.colDouble renders a payload NaN as the PRESENT text
-            // "MIS_A", which would make this test measure the mock rather than the key identity.
-            IDataTable ae = RealTables.of(AE).str(USUBJID, "P1", "P1", "P1", "P1")
-                    .dbl(VISIT, 2.0, MissingValue.MIS_A.asDouble(),
-                            MissingValue.MIS_UNKNOWN.asDouble(), MissingValue.MIS.asDouble())
-                    .str("AETERM", "PRESENT", "MIS_A", "MIS_UNKNOWN", "MIS").build();
-            // control: the fixture's markers really are distinct key parts
-            assertEquals(KeyPart.MISSING_MIS,
-                    GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(ae.getColumn(1).getDataValue(3L)),
-                    "row 3 must carry MIS");
-            assertEquals(KeyPart.missing(MissingValue.MIS_A),
-                    GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(ae.getColumn(1).getDataValue(1L)),
-                    "row 1 must carry MIS_A");
-            assertEquals(KeyPart.missing(MissingValue.MIS_UNKNOWN),
-                    GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(ae.getColumn(1).getDataValue(2L)),
-                    "row 2 must carry MIS_UNKNOWN");
+            IDataTable dm = RealTables.of("DM").str(USUBJID, "P1").str("AGE", "34").build();
+            IDataTable ae = RealTables.of(AE).str(USUBJID, "P1")
+                    .dbl(VISIT, MissingValue.MIS_A.asDouble()).str(AETERM, "MIS_A").build();
             JoinLookup lk = lookupOver(dm, ae, List.of(USUBJID, VISIT));
-            assertTrue(lk.matchedRow(dm, 0L));
-            assertEquals("MIS", lk.lookup(dm, 0L, "AETERM"),
-                    "R5: the absent side is MIS and MIS joins neither MIS_A nor MIS_UNKNOWN nor a"
-                            + " present value; MIS_A here would mean the marker identity collapsed");
+            assertTrue(lk.matchedRow(dm, 0L),
+                    "unmatched is the retired MIS default against the MIS_A cell");
+            assertEquals("MIS_A", lk.lookup(dm, 0L, AETERM));
         }
 
 
-        /**
-         * Absent on the JOINED side, numeric: a missing primary cell pairs, a present one does not.
-         */
+        /** Absent on the JOINED side, numeric: a present primary cell pairs as well. */
         @Test
-        void aNumericKeyColumnAbsentOnTheJoinedSidePairsOnlyTheMissingPrimaryCell()
+        void aNumericKeyColumnAbsentOnTheJoinedSideIsDropped()
         {
-            IDataTable dm = MockTable.of().col(USUBJID, "P1", "P1").colLong(VISIT, 2L, null)
-                    .name("DM").build();
-            IDataTable ae = MockTable.of().col(USUBJID, "P1").col("AETERM", "HEADACHE").name(AE)
+            IDataTable dm = RealTables.of("DM").str(USUBJID, "P1", "P1").lng(VISIT, 2L, null)
                     .build();
+            IDataTable ae = RealTables.of(AE).str(USUBJID, "P1").str(AETERM, "HEADACHE").build();
             JoinLookup lk = lookupOver(dm, ae, List.of(USUBJID, VISIT));
-            assertFalse(lk.matchedRow(dm, 0L), "VISITNUM=2 against the joined side's MIS");
-            assertTrue(lk.matchedRow(dm, 1L), "VISITNUM=MIS against the joined side's MIS");
+            assertTrue(lk.matchedRow(dm, 0L),
+                    "VISITNUM=2 pairs on USUBJID alone — unmatched is the retired MIS default");
+            assertTrue(lk.matchedRow(dm, 1L));
         }
 
 
         /**
-         * ⭐ A date key. There is no {@code DATE} in {@code DataValueType} — a date column is a
-         * {@code STRING} column with a format — so {@code ColumnTypeGate.kindOf} classifies it
-         * CHARACTER and both arms default the absent side to {@code ""}; a blank date cell is
-         * {@code KeyPart.EMPTY} on both. Pinned on BOTH arms so the two cannot drift (L2).
+         * ⭐ A date key (a {@code STRING} column holding ISO dates — there is no {@code DATE} in
+         * {@code DataValueType}) is dropped like any other column; the lookup and the merged rows
+         * agree.
          */
         @Test
-        void aDateKeyColumnAbsentOnOneSideAgreesOnBothArms()
+        void aDateKeyColumnAbsentOnOneSideIsDroppedOnBothReads()
         {
-            IDataTable dm = MockTable.of().col(USUBJID, "P1", "P1").col("AGE", "34", "51")
-                    .name("DM").build();
-            IDataTable ae = MockTable.of().col(USUBJID, "P1", "P1").col("AESTDTC", "2024-01-05", "")
-                    .colMeta("AESTDTC", "Start", 10, "E8601DA").col("AETERM", "HEADACHE", "NAUSEA")
-                    .name(AE).build();
-            assertEquals(KeyPart.EMPTY,
-                    GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(ae.getColumn(1).getDataValue(1L)),
-                    "a blank date cell is EMPTY");
-            // read through the part's lookup
+            IDataTable dm = dmWithoutVisit();
+            IDataTable ae = RealTables.of(AE).str(USUBJID, "P1").str("AESTDTC", "2024-01-05")
+                    .str(AETERM, "HEADACHE").build();
             JoinLookup lk = lookupOver(dm, ae, List.of(USUBJID, "AESTDTC"));
-            assertEquals("NAUSEA", lk.lookup(dm, 0L, "AETERM"));
-            // the merged rows, the same fixture
-            assertEquals(List.of("0:NAUSEA", "1:NAUSEA"),
-                    rows(expand(dm, ae, List.of(USUBJID, "AESTDTC")), "AETERM"),
-                    "the two reads must agree: the absent date side is \"\" on both");
+            assertEquals("HEADACHE", lk.lookup(dm, 0L, AETERM),
+                    "null is the retired \"\" default against the present date");
+            assertEquals(List.of("0:HEADACHE", "1:HEADACHE"),
+                    rows(expand(dm, ae, List.of(USUBJID, "AESTDTC")), AETERM),
+                    "the two reads must agree: the date column left the key on both");
         }
 
 
