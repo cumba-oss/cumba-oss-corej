@@ -42,15 +42,25 @@ import net.cumba.datatable.values.IDataValue;
  * <li><b>Merge:</b> every distinct package is kept (CTD-2, D1 "merge, never first-wins"), newest
  * first, like {@code StudyValidationService.ctIdsWithPrefix}.</li>
  * </ul>
+ *
+ * <p>
+ * Public for its second consumer, the define.xml generator's metadata-store enrichment
+ * (PLAN-define-generator-ts-ct-source TS1): it calls {@link #read} with the root its implementation
+ * guide decides, so a generated define and a run read the Trial Summary through this one
+ * implementation, never a copy. The class stays a pure function over a loaded table.
+ * </p>
  */
-final class TrialSummaryCt
+public final class TrialSummaryCt
 {
 
     /** The SEND CT version parameter (CT term C96370). */
     static final String SNDCTVER = "SNDCTVER";
 
     /** The SEND CT root, whose Trial Summary also carries {@link #SNDCTVER} rows. */
-    static final String SENDCT_ROOT = "sendct";
+    public static final String SENDCT_ROOT = "sendct";
+
+    /** The SDTM CT root: the Trial Summary root of every SDTM-family run that is not SEND. */
+    public static final String SDTMCT_ROOT = "sdtmct";
 
     /** Exactly a {@code YYYY-MM-DD} shape; the calendar check is {@link #STRICT_DATE}'s. */
     private static final Pattern ISO_DATE = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
@@ -78,10 +88,10 @@ final class TrialSummaryCt
      * @param aTs
      *            the study's Trial Summary
      * @param aCtRoot
-     *            the run's TS root: {@code sdtmct} or {@code sendct}
+     *            the TS root: {@link #SDTMCT_ROOT} or {@link #SENDCT_ROOT}
      * @return the packages (distinct, newest first) and the values not taken
      */
-    static CtSelection.TrialSummaryEvidence read(IDataTable aTs, String aCtRoot)
+    public static CtSelection.TrialSummaryEvidence read(IDataTable aTs, String aCtRoot)
     {
         int vcdref = columnIndex(aTs, "TSVCDREF");
         int vcdver = columnIndex(aTs, "TSVCDVER");
