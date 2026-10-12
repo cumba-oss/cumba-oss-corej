@@ -84,20 +84,54 @@ class JoinCacheViewIdentityTest
     }
 
 
+    /** One collection under a little allocation pressure (bounded: at most 9 MiB held). */
+    private static void cycle(List<byte[]> pressure)
+    {
+        pressure.add(new byte[1 << 20]);
+        System.gc();
+        if (pressure.size() > 8)
+        {
+            pressure.clear();
+        }
+    }
+
+
     /** Runs the collector until {@code ref} clears or the attempts run out; whether it cleared. */
     private static boolean collected(WeakReference<?> ref)
     {
         List<byte[]> pressure = new ArrayList<>();
         for (int i = 0; i < GC_ATTEMPTS && ref.get() != null; i++)
         {
-            pressure.add(new byte[1 << 20]);
-            System.gc();
-            if (pressure.size() > 8)
-            {
-                pressure.clear();
-            }
+            cycle(pressure);
         }
         return ref.get() == null;
+    }
+
+
+    /**
+     * Whether {@code ref} survives the collector, judged against a positive control: runs the
+     * collector until the unpinned {@code control} clears (bounded by {@link #GC_ATTEMPTS}), then
+     * as many cycles again, and answers whether {@code ref} still holds. A {@code ref} that
+     * survives has outlived twice the cycles that reclaimed an object nothing pins, which is what
+     * "not collected" means here, without the full {@link #GC_ATTEMPTS} cycles a survivor used to
+     * cost. Fails when the control is never reclaimed: the collector then proved nothing.
+     */
+    private static boolean survives(WeakReference<?> ref, WeakReference<?> control)
+    {
+        List<byte[]> pressure = new ArrayList<>();
+        int cycles = 0;
+        while (cycles < GC_ATTEMPTS && control.get() != null)
+        {
+            cycle(pressure);
+            cycles++;
+        }
+        assertNull(control.get(), "the positive control, an unpinned partner, is reclaimed within "
+                + GC_ATTEMPTS + " collections, or the collector proved nothing");
+        for (int i = 0; i < cycles; i++)
+        {
+            cycle(pressure);
+        }
+        return ref.get() != null;
     }
 
 
@@ -113,8 +147,10 @@ class JoinCacheViewIdentityTest
         WeakReference<IDataTable> seen = new WeakReference<>(resolver.resolve("AE"));
         assertNotNull(seen.get(), "the partner resolves while the view is cached");
 
-        // the test holds no strong reference to the partner: only the cached view does
-        assertEquals(false, collected(seen),
+        // the test holds no strong reference to the partner: only the cached view does; the
+        // control is the same partner shape that nothing pins, collected in the same cycles
+        WeakReference<IDataTable> control = new WeakReference<>(partner());
+        assertEquals(true, survives(seen, control),
                 "the cached view holds its partner strongly — the memo cannot clear it, so no"
                         + " reload can hand a later rule of this dataset a NEW instance");
         MergedEvaluation.Built second = MergedEvaluation.build(rule(), dm, dm, resolver, cache,
@@ -130,8 +166,9 @@ class JoinCacheViewIdentityTest
 
     /**
      * ⭐ The planted control: the same partner, the same weak resolver, NO cached view — the
-     * collector reclaims it. Without this the first test's "not collected" could only mean the
-     * collector never ran.
+     * collector reclaims it and the resolver loses it. The first test's inline control proves the
+     * collector ran; this one proves the weak resolver itself pins nothing, so the first test's
+     * survivor is pinned by the view alone.
      */
     @Test
     void withoutAViewTheSamePartnerIsReclaimed()
