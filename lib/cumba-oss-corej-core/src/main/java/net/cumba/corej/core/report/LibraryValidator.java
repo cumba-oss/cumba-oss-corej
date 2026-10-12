@@ -583,6 +583,7 @@ public final class LibraryValidator
             {
                 if (e.getCause() instanceof TaskNeverRun neverRun)
                 {
+                    neverRun.addSuppressed(e);
                     throw neverRun;
                 }
                 throw e;
