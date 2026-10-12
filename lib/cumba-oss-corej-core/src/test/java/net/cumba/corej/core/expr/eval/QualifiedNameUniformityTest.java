@@ -1713,18 +1713,21 @@ class QualifiedNameUniformityTest
         try
         {
             Row stub = new Row(STUB, "x", true, "V:" + STUB + "(@S)", null, null, null);
-            SequencedMap<String, String> red = redCriteria(stub);
+            // The control is a REAL divergence in the detector's own terms (T2 r1 L3): measure()
+            // — the judged filter, the non-empty-red filter, the id key — reports the stub row,
+            // and the stub is no row of the table. measure() is a per-row map with no state
+            // across rows, so this is exactly "the measured set over the table plus the stub
+            // differs from the table alone by this row", without the two whole-table passes
+            // that statement used to cost (the table's own measured set is pinned by
+            // everyProbedParameterIsUniformExceptTheRecordedRows).
+            SequencedMap<String, SequencedMap<String, String>> measured = measure(List.of(stub));
+            assertEquals(Set.of(STUB + "/x"), measured.keySet());
+            assertTrue(rows().stream().noneMatch(r -> r.id().equals(stub.id())),
+                    "the stub is no row of the table");
+            SequencedMap<String, String> red = measured.get(stub.id());
             assertTrue(red.containsKey("C1"), "a primary-only function must red C1: " + red);
             assertTrue(red.containsKey("C2"), "… and C2: " + red);
             assertFalse(red.containsKey("PROBE"), red.toString());
-            // The control is a REAL divergence in the detector's own terms: the measured set
-            // over the table plus the stub differs from the table alone by EXACTLY this row
-            // (T2 r1 L3).
-            List<Row> withStub = new ArrayList<>(rows());
-            withStub.add(stub);
-            Set<String> delta = new TreeSet<>(measure(withStub).keySet());
-            delta.removeAll(measure(rows()).keySet());
-            assertEquals(Set.of(STUB + "/x"), delta);
         }
         finally
         {
