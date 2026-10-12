@@ -418,6 +418,24 @@ class FoldCapabilityTest
     void theAllAbsentCensusBoundsEverySubsetOfAbsentColumns() throws IOException
     {
         Random random = new Random(20261007L);
+        // One table per mask, built once and shared by every tree: a table depends only on its
+        // mask, and nothing the fold reaches caches against a table across contexts — the
+        // compiled-program cache is keyed by the Expr alone, and every per-table cache
+        // (wildcard columns, aggregate memo) belongs to the EvaluationContext, built fresh per
+        // (tree, mask) below. Building them per tree cost 60 x 32 Mockito tables.
+        IDataTable[] tables = new IDataTable[1 << COLUMNS.length];
+        for (int mask = 0; mask < tables.length; mask++)
+        {
+            MockTable table = MockTable.of().name("AE").col("ZZZCENSUS", "v", "w");
+            for (int i = 0; i < COLUMNS.length; i++)
+            {
+                if ((mask & (1 << i)) != 0)
+                {
+                    table.col(COLUMNS[i], "x", "");
+                }
+            }
+            tables[mask] = table.build();
+        }
         int trueFolds = 0;
         for (int t = 0; t < 60; t++)
         {
@@ -428,18 +446,9 @@ class FoldCapabilityTest
             Rule spec = Objects.requireNonNull(RuleSpecialiser.specialise(rule, null, "AE"));
             Expr expr = Objects.requireNonNull(spec.getCheckExpr());
             TypeExpectations expectations = TypeExpectations.forRule(spec);
-            for (int mask = 0; mask < (1 << COLUMNS.length); mask++)
+            for (int mask = 0; mask < tables.length; mask++)
             {
-                MockTable table = MockTable.of().name("AE").col("ZZZCENSUS", "v", "w");
-                for (int i = 0; i < COLUMNS.length; i++)
-                {
-                    if ((mask & (1 << i)) != 0)
-                    {
-                        table.col(COLUMNS[i], "x", "");
-                    }
-                }
-                IDataTable built = table.build();
-                EvaluationContext ctx = EvaluationContext.builder().table(built)
+                EvaluationContext ctx = EvaluationContext.builder().table(tables[mask])
                         .numericExpectedColumns(expectations.numericDefaultColumns())
                         .numericExpectedDynamicSites(expectations.numericDynamicSites())
                         .domainPrefix("AE").variableWildcardPrefix("AE").domainName("AE").build();
