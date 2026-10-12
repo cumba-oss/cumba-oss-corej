@@ -31,12 +31,12 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code PLAN-library-template-label-resolution} on OUR metadata store seeded from the real corpus
- * (the seeding is the one sanctioned use of the pickle files; every read below is a store read):
- * the four mechanisms behind the nine AD0018 label findings on the PhUSE pilot (plan §8) — the
- * structure-keyed BDS read, the D10-inferred OCCDS 1.0 for an ADaMIG 1.1 run, the D9 ADSL copy, and
- * the index template — plus the 1.0 case where nothing is inferred. Skipped, with the named reason,
- * only where the corpus is absent everywhere.
+ * {@code PLAN-library-template-label-resolution} on OUR metadata store seeded from the real
+ * corpus's two standards pickles, the products only (the seeding is the one sanctioned use of the
+ * pickle files; every read below is a store read): the four mechanisms behind the nine AD0018 label
+ * findings on the PhUSE pilot (plan §8) — the structure-keyed BDS read, the D10-inferred OCCDS 1.0
+ * for an ADaMIG 1.1 run, the D9 ADSL copy, and the index template — plus the 1.0 case where nothing
+ * is inferred. Skipped, with the named reason, only where the corpus is absent everywhere.
  */
 class AdamTemplateRealStoreTest
 {
@@ -57,9 +57,24 @@ class AdamTemplateRealStoreTest
         }
         if (realStore == null)
         {
-            Path store = Files.createTempDirectory("corej-template-store").resolve("store.zip");
-            new PickleStoreSeeder(new LocalPickleSource(dir.get()))
-                    .seed(StoreSeedOptions.of(store));
+            // The products only (the StoreErrataRealCorpusTest pattern): every read here is an
+            // ADaM product read with no CT package selected, and a directory holding just the two
+            // standards pickles enumerates no CT package — seconds instead of the whole corpus.
+            Path temp = Files.createTempDirectory("corej-template-store");
+            Path source = Files.createDirectories(temp.resolve("products-only"));
+            List<String> products = List.of("standards_details.pkl", "standards_models.pkl");
+            for (String file : products)
+            {
+                Files.copy(dir.get().resolve(file), source.resolve(file));
+            }
+            Path store = temp.resolve("store.zip");
+            new PickleStoreSeeder(new LocalPickleSource(source)).seed(StoreSeedOptions.of(store));
+            // the seed input is spent; only the store stays behind, as before
+            for (String file : products)
+            {
+                Files.delete(source.resolve(file));
+            }
+            Files.delete(source);
             realStore = StoreMetadataProviderFactory.open(store);
         }
         return realStore;
