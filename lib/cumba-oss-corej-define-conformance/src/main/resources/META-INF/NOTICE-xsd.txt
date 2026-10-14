@@ -1,0 +1,121 @@
+Third-party notices for the XML schemas under xsd/ in this jar
+==============================================================
+
+The jar ships the CDISC Define-XML 2.0.0 and 2.1.0 schemas, the CDISC ODM
+1.3.2 and Analysis Results Metadata (ARM) 1.0 schemas they import, and the
+core schemas xml.xsd, xlink.xsd and xmldsig-core-schema.xsd.
+
+Provenance. The files were mirrored on 2026-07-03 from Lex Jansen's
+define-xml-2.0-stylesheets and define-xml-2.1-stylesheets repositories
+(schema/). CDISC publishes the same files, under the MIT License, in its own
+GitHub organisation; verified byte-identical on 2026-10-14:
+  https://github.com/cdisc-org/define-xml-2.0-stylesheets  (schema/, commit e94be4ec64c3360e86d756f54533b8f4f94f8a50)
+  https://github.com/cdisc-org/define-xml-2.1-stylesheets  (schema/, commit e54eb4821ce5dfa34598b95a6bb4c58b3618662b;
+      all files except define-enumerations.xsd, which CDISC updated later)
+  https://github.com/cdisc-org/DataExchange-ODM            (archive/ODM1-3-2/, commit 6cb00a9cb38f245069758a7c5a6823cdf3ea48be;
+      xml.xsd, xlink.xsd, xmldsig-core-schema.xsd)
+The files are redistributed under the MIT License of those repositories
+(section 1). The CDISC-authored schemas carry no licence statement of their
+own; that the repositories' MIT grant covers them is our reading, not a
+statement by CDISC. xmldsig-core-schema.xsd is additionally governed by the
+W3C Software Notice and License that the file itself names (section 2).
+
+Change made: on 2026-10-14 the W3C copyright and licence comment of
+https://www.w3.org/TR/xmldsig-core/xmldsig-core-schema.xsd, missing from the
+copies as CDISC publishes them, was restored verbatim in both copies of
+xmldsig-core-schema.xsd. The canonical file's DOCTYPE was not restored (it
+names an external DTD). No other file was changed. Full record: xsd/README.md
+in the source tree of this module.
+
+
+1. MIT License
+--------------
+
+Copyright lines, as they appear in the repositories' licence files:
+
+  cdisc-org/define-xml-2.0-stylesheets, LICENSE.md:  Copyright (c) 2020 Lex Jansen
+  cdisc-org/define-xml-2.1-stylesheets, LICENSE.md:  Copyright (c) 2022 Lex Jansen
+  cdisc-org/DataExchange-ODM, LICENSE:               Copyright (c) 2022 cdisc
+
+The licence text (identical in the three files):
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+2. W3C Software Notice and License (applies to xmldsig-core-schema.xsd)
+-----------------------------------------------------------------------
+
+xmldsig-core-schema.xsd states: "Copyright 2001 The Internet Society and W3C
+(Massachusetts Institute of Technology, Institut National de Recherche en
+Informatique et en Automatique, Keio University). All Rights Reserved.
+http://www.w3.org/Consortium/Legal/ This document is governed by the W3C
+Software License [1] ... [1] http://www.w3.org/Consortium/Legal/copyright-software-19980720".
+The text below is that version, as published at
+https://www.w3.org/Consortium/Legal/copyright-software-19980720 (retrieved
+2026-10-14). It is the version the file names; W3C's current Software and
+Document License (2023, https://www.w3.org/copyright/software-license-2023/)
+carries the same three conditions.
+
+W3C® SOFTWARE NOTICE AND LICENSE
+
+Copyright © 1994-2002 World Wide Web Consortium, (Massachusetts Institute
+of Technology, Institut National de Recherche en Informatique et en
+Automatique, Keio University). All Rights Reserved.
+http://www.w3.org/Consortium/Legal/
+
+This W3C work (including software, documents, or other related items) is
+being provided by the copyright holders under the following license. By
+obtaining, using and/or copying this work, you (the licensee) agree that you
+have read, understood, and will comply with the following terms and
+conditions:
+
+Permission to use, copy, modify, and distribute this software and its
+documentation, with or without modification, for any purpose and without fee
+or royalty is hereby granted, provided that you include the following on ALL
+copies of the software and documentation or portions thereof, including
+modifications, that you make:
+
+  1. The full text of this NOTICE in a location viewable to users of the
+     redistributed or derivative work.
+  2. Any pre-existing intellectual property disclaimers, notices, or terms
+     and conditions. If none exist, a short notice of the following form
+     (hypertext is preferred, text is permitted) should be used within the
+     body of any redistributed or derivative code: "Copyright ©
+     [$date-of-software] World Wide Web Consortium, (Massachusetts Institute
+     of Technology, Institut National de Recherche en Informatique et en
+     Automatique, Keio University). All Rights Reserved.
+     http://www.w3.org/Consortium/Legal/"
+  3. Notice of any changes or modifications to the W3C files, including the
+     date changes were made. (We recommend you provide URIs to the location
+     from which the code is derived.)
+
+THIS SOFTWARE AND DOCUMENTATION IS PROVIDED "AS IS," AND COPYRIGHT HOLDERS
+MAKE NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+LIMITED TO, WARRANTIES OF MERCHANTABILITY OR FITNESS FOR ANY PARTICULAR
+PURPOSE OR THAT THE USE OF THE SOFTWARE OR DOCUMENTATION WILL NOT INFRINGE
+ANY THIRD PARTY PATENTS, COPYRIGHTS, TRADEMARKS OR OTHER RIGHTS.
+
+COPYRIGHT HOLDERS WILL NOT BE LIABLE FOR ANY DIRECT, INDIRECT, SPECIAL OR
+CONSEQUENTIAL DAMAGES ARISING OUT OF ANY USE OF THE SOFTWARE OR
+DOCUMENTATION.
+
+The name and trademarks of copyright holders may NOT be used in advertising
+or publicity pertaining to the software without specific, written prior
+permission. Title to copyright in this software and any associated
+documentation will at all times remain with copyright holders.
