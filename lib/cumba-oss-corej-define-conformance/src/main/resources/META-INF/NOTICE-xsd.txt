@@ -17,7 +17,9 @@ GitHub organisation; verified byte-identical on 2026-10-14:
 The files are redistributed under the MIT License of those repositories
 (section 1). The CDISC-authored schemas carry no licence statement of their
 own; that the repositories' MIT grant covers them is our reading, not a
-statement by CDISC. xmldsig-core-schema.xsd is additionally governed by the
+statement by CDISC. The W3C-authored xml.xsd carries no notice either (nor
+does the W3C original); it is shipped as CDISC hosts it, and the MIT grant of
+a CDISC repository cannot license W3C's rights in it. xmldsig-core-schema.xsd is additionally governed by the
 W3C Software Notice and License that the file itself names (section 2).
 
 Change made: on 2026-10-14 the W3C copyright and licence comment of

@@ -71,9 +71,9 @@ substantial portions of the Software."* The full texts are in
 | CDISC Define-XML 2.1.0 | `define-2-1/cdisc-define-2.1/*.xsd` | CDISC XML Technologies Team | `cdisc-org/define-xml-2.1-stylesheets` `schema/` | MIT (repository licence) |
 | CDISC ODM 1.3.2 | `define-2-{0,1}/cdisc-odm-1.3.2/*.xsd` | CDISC | both stylesheet repositories, `schema/cdisc-odm-1.3.2/` | MIT (repository licence) |
 | CDISC ARM 1.0 | `define-2-{0,1}/cdisc-arm-1.0/*.xsd` (the 2.0 and 2.1 sets differ) | CDISC ADaM Metadata Sub-Team | the stylesheet repository of the same Define-XML version | MIT (repository licence) |
-| W3C XML namespace schema | `define-2-{0,1}/core/xml.xsd` | W3C | `cdisc-org/DataExchange-ODM` `archive/ODM1-3-2/` | MIT (repository licence); the file carries no notice of its own, and neither does the W3C original |
+| W3C XML namespace schema | `define-2-{0,1}/core/xml.xsd` | W3C | `cdisc-org/DataExchange-ODM` `archive/ODM1-3-2/` | **not determined**: the file and the W3C original carry no notice; we ship it as CDISC hosts it, in an MIT repository, but that licence cannot grant W3C's rights (inference) |
 | `xlink.xsd` | `define-2-{0,1}/core/xlink.xsd` | not stated in the file | `cdisc-org/DataExchange-ODM` `archive/ODM1-3-2/` | MIT (repository licence) |
-| W3C XML Signature schema | `define-2-{0,1}/core/xmldsig-core-schema.xsd` | The Internet Society and W3C | `cdisc-org/DataExchange-ODM` `archive/ODM1-3-2/`; canonical https://www.w3.org/TR/xmldsig-core/xmldsig-core-schema.xsd | W3C Software Notice and License (1998-07-20), named by the file itself; also MIT as hosted by CDISC |
+| W3C XML Signature schema | `define-2-{0,1}/core/xmldsig-core-schema.xsd` | The Internet Society and W3C | `cdisc-org/DataExchange-ODM` `archive/ODM1-3-2/`; canonical https://www.w3.org/TR/xmldsig-core/xmldsig-core-schema.xsd | W3C Software Notice and License (1998-07-20), named by the file itself. CDISC hosts it in an MIT repository; that licence cannot grant W3C's rights (inference) |
 
 Notes on the table:
 
@@ -121,3 +121,11 @@ fetch. Apart from the missing DOCTYPE the file is now identical to the W3C
 original; the schema content is unchanged.
 
 No other file under `xsd/` was changed.
+
+**Where the notices travel (inference).** The W3C licence asks for its full
+text *"in a location viewable to users of the redistributed or derivative
+work"*. Every distribution carries this module's jar whole, and the jar
+carries `META-INF/NOTICE-xsd.txt`; the data browser also lists the schemas in
+its About dialog through `licenses.xml`. The CLI, REST and rule-editor
+distributions have no licence listing of their own, so there the notice is
+only inside the jar. That this satisfies "viewable" is our reading.

@@ -52,6 +52,10 @@
         </license>
       </licenses>
     </dependency>
+    <!-- ODM 1.3.2 and ARM 1.0 ship in both define-2-0/ and define-2-1/; their URL names the 2.1
+         repository's LICENSE.md. The define-2-0/ copies come from the 2.0 repository, whose
+         LICENSE.md carries the same MIT text (Copyright (c) 2020 Lex Jansen); both copyright lines
+         are in META-INF/NOTICE-xsd.txt. -->
     <dependency>
       <groupId>CDISC</groupId>
       <artifactId>ODM 1.3.2 schema</artifactId>
@@ -76,7 +80,7 @@
     </dependency>
     <dependency>
       <groupId>CDISC</groupId>
-      <artifactId>ODM 1.3.2 core schemas (xml.xsd, xlink.xsd)</artifactId>
+      <artifactId>ODM 1.3.2 package core schemas (xml.xsd, xlink.xsd)</artifactId>
       <version>1.3.2</version>
       <licenses>
         <license>
