@@ -9,13 +9,22 @@ Licensed under the **GNU Affero General Public License v3.0 only**
 
 ## Provenance
 
-Every module in this repository is **original work**. No module is derived from,
-ported from, or adapted from third-party source, so no upstream attribution or
-licence-retention obligation applies to the code here.
+The **Java code** in this repository is **original work**: no class is derived from,
+ported from, or adapted from third-party source.
 
-Third-party code is consumed only as ordinary **Maven dependencies** (Jackson, Apache
-POI, commons-compress, pyrolite, Lombok, JSpecify); those carry no obligation beyond
-not misrepresenting them.
+Not everything shipped is our own, though. `cumba-oss-corej-define-conformance`
+**bundles third-party XML schemas** under their own terms — the CDISC Define-XML
+2.0 / 2.1 and ODM schema packages (which CDISC publishes under the MIT License) and the
+W3C `xmldsig-core-schema.xsd` (W3C Software Notice and License). Their provenance and
+licence record is [`xsd/README.md`](lib/cumba-oss-corej-define-conformance/src/main/resources/xsd/README.md);
+the licence texts travel in the jar as `META-INF/NOTICE-xsd.txt`, and the module's
+`licenses.xml` lists them for applications that aggregate licences. Third-party test
+fixtures carry a provenance note beside them (for example
+`lib/cumba-oss-corej-core/src/test/resources/convert/README.md`).
+
+Third-party code is otherwise consumed only as ordinary **Maven dependencies**
+(Jackson, Apache POI, commons-compress, pyrolite, Lombok, JSpecify); those carry no
+obligation beyond not misrepresenting them.
 
 > Two points of possible confusion. Parts of this code — the
 > `cumba-oss-corej-ruletest` harness among them — originate in "dataviewer", the
@@ -50,21 +59,36 @@ classpath first; they are released separately to Maven Central.
 
 ```
 cumba-oss-commons     help · web-api · cdisc-library · bootstrap
-      ▲
 cumba-oss-formats     sas-utils · cdisc-dsj                (independent leaf)
       ▲
-cumba-oss-datatable   datatable · impl · cdisc-define · providers · manager-local · testkit
+cumba-oss-datatable   datatable · impl · cdisc-define · providers · manager-local · testkit · dictionary
       ▲
-cumba-oss-corej       corej-core · report-json · report-xlsx · ruletest · define-conformance
+cumba-oss-corej       corej-core · report-json · report-xlsx · ruletest · authoring · define-conformance
       ▲
-      ├─ cumba-oss-corej-rules  the rule corpus, loaded at runtime
-      ├─ cumba-oss-corej-cli    the validation CLI
-      └─ cumba-oss-corej-rest   the REST API      ◀─ cumba-oss-corej-web  (browser SPA)
+      ├─ cumba-oss-corej-rules             the rule corpus
+      ├─ cumba-oss-corej-cli               the validation CLI   (bundles a pinned corpus release)
+      ├─ cumba-oss-corej-rest              the REST API         (bundles a pinned corpus release)
+      │                                       ◀─ cumba-oss-corej-web              (browser SPA)
+      └─ cumba-oss-corej-rule-editor-rest  the rule editor API  (works on a corpus checkout in git)
+                                              ◀─ cumba-oss-corej-rule-editor-web  (browser SPA)
 ```
 
 Dependencies run in one direction only. Build order is `cumba-oss-commons` →
-`cumba-oss-formats` → `cumba-oss-datatable` → `cumba-oss-corej`. The four leaf
-repositories publish nothing to Maven Central — they ship signed release assets.
+`cumba-oss-formats` → `cumba-oss-datatable` → `cumba-oss-corej`. The six
+repositories below `cumba-oss-corej` publish nothing to Maven Central — they ship
+signed release assets.
+
+### Engine and corpus compatibility
+
+The engine and the corpus each carry a **rule-language level**: `RuleLanguage.LEVEL` in
+`cumba-oss-corej-core` and `rules-src/LANGUAGE-LEVEL` in `cumba-oss-corej-rules` (both `5`
+on `main`). The corpus's build asserts that its level equals the level of the engine it is
+built against, and the rule editor shows both. ⚠ The engine does **not** read the level at
+run time, so a mismatched corpus is not refused when it loads — it is simply unsupported.
+Run a corpus release built against your engine (its `pom.xml` names it as
+`dependency.cumba-oss-corej.version`): the levels first ship with the next releases, and
+engine 0.7.x needs corpus 0.6.x or later; of the current releases, corpus `v0.5.0` was
+built against engine `0.6.0`.
 
 ## Quick start
 
@@ -72,13 +96,14 @@ repositories publish nothing to Maven Central — they ship signed release asset
 mvn -T1C clean install
 ```
 
-Artifacts are published under groupId `net.cumba` with the module's artifactId:
+Artifacts are published under groupId `net.cumba` with the module's artifactId; use the
+latest release (see the repository's releases page / Maven Central):
 
 ```xml
 <dependency>
     <groupId>net.cumba</groupId>
     <artifactId>cumba-oss-corej-core</artifactId>
-    <version>0.5.0</version>
+    <version><!-- latest release --></version>
 </dependency>
 ```
 
