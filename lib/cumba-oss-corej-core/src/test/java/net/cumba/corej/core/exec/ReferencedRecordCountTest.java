@@ -18,6 +18,7 @@ import net.cumba.corej.core.expr.eval.Vector;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.values.GroupKeyPolicy;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -396,6 +397,30 @@ class ReferencedRecordCountTest
                 "A/1 twice, B/2 once, the rest none");
         assertEquals(byBits.get(2), byBits.get(0), "1 bit: every key collides");
         assertEquals(byBits.get(2), byBits.get(1), "2 bits");
+    }
+
+
+    /**
+     * {@code PLAN-key-match-index-identity-rekey}: the pointer index keys on each hash's canonical
+     * {@code Double} key identity - no {@code KeyPart} wrapper per distinct key.
+     */
+    @Test
+    void thePointerIndexKeysOnTheHashsDoubleIdentity()
+    {
+        IDataTable target = dv();
+        net.cumba.datatable.impl.merge.KeyMatchIndex index = ReferencedRecordCount.index(target,
+                target.getMetaData().getColumnIndex("DVSPID"), false, new int[]
+                {
+                        target.getMetaData().getColumnIndex("USUBJID")
+                }, ReferencedRecordCount.HASH_BITS);
+        assertTrue(index.keyCount() > 1, "premise: more than one key");
+        for (int id = 0; id < index.keyCount(); id++)
+        {
+            Object key = index.key(id);
+            assertEquals(Double.class, key.getClass(), () -> "key " + key);
+            // a valid identity of the KeyPart bijection: canonical, never -0.0 or a NaN
+            assertEquals(key, GroupKeyPolicy.KeyPart.ofIdentity(key).identity());
+        }
     }
 
 

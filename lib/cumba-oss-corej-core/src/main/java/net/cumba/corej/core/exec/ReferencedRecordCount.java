@@ -14,7 +14,6 @@ import net.cumba.datatable.impl.merge.KeyMatchIndex;
 import net.cumba.datatable.merge.JoinToken;
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.GroupKeyPolicy;
-import net.cumba.datatable.values.GroupKeyPolicy.KeyPart;
 import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
@@ -51,8 +50,9 @@ import org.jspecify.annotations.Nullable;
  * {@link KeyMatchIndex} (Q9) — memoised for the run in {@link JoinCache.SharedIndexCache}, shared
  * across rules and threads — and probed once per row. The index keys on a 52-bit hash of the
  * components' text-join identities (the index's own {@code CompositeKey} is package-private to the
- * datatable), held as one number part per distinct key — about 24 B where the joined text was about
- * 88 B (T2 fold, review L2-L5b, memory first) — and every candidate row of a hit is verified
+ * datatable), held as one {@code Double} key identity per distinct key — about 16 B where the
+ * joined text was about 88 B (T2 fold, review L2-L5b, memory first; 24 B as a {@code KeyPart} until
+ * {@code PLAN-key-match-index-identity-rekey}) — and every candidate row of a hit is verified
  * component by component, so a collision never counts a foreign record.
  * </p>
  */
@@ -386,8 +386,9 @@ public final class ReferencedRecordCount
 
     /**
      * The bits of the key hash an index keys on: 52, so the hash is held exactly by a
-     * {@code double} - the one compact {@link KeyPart} identity the datatable offers
-     * ({@link KeyPart#ofIdentity}: a {@code Double} is a {@code PresentNumber}).
+     * {@code double} - the one compact key identity the datatable offers (a canonical
+     * {@code Double}, {@link GroupKeyPolicy#numberKeyIdentity}; the {@code KeyMatchIndex} keys on
+     * identities since {@code PLAN-key-match-index-identity-rekey}).
      */
     static final int HASH_BITS = 52;
 
@@ -405,8 +406,11 @@ public final class ReferencedRecordCount
     }
 
 
-    /** The index key of a hash: its top {@code bits} after a final avalanche, as a number part. */
-    private static KeyPart hashPart(long hash, int bits)
+    /**
+     * The index key of a hash: its top {@code bits} after a final avalanche, as a number's key
+     * identity (a non-negative integral {@code double}, so never {@code -0.0} or a {@code NaN}).
+     */
+    private static Double hashPart(long hash, int bits)
     {
         long h = hash;
         h ^= h >>> 33;
@@ -414,7 +418,7 @@ public final class ReferencedRecordCount
         h ^= h >>> 33;
         h *= 0xc4ceb9fe1a85ec53L;
         h ^= h >>> 33;
-        return KeyPart.ofIdentity((double) (h >>> (Long.SIZE - bits)));
+        return GroupKeyPolicy.numberKeyIdentity((double) (h >>> (Long.SIZE - bits)));
     }
 
 
@@ -477,8 +481,9 @@ public final class ReferencedRecordCount
      * The index of {@code table} on ({@code keys}, the pointer column), the text-join identity -
      * keyed on the {@code bits}-bit hash of the key text (T2 fold, review L2-L5b: the text itself,
      * a {@code String} of every component per distinct key, was ~88 B retained per key against ~24
-     * B for the number part; the probe verifies each candidate row, {@link Probe#matches}).
-     * Package-private with {@code bits} for the collision test.
+     * B for the number part, ~16 B for its {@code Double} identity since
+     * {@code PLAN-key-match-index-identity-rekey}; the probe verifies each candidate row,
+     * {@link Probe#matches}). Package-private with {@code bits} for the collision test.
      */
     static KeyMatchIndex index(IDataTable table, int pointerColumn, boolean numeric, int[] keys,
             int bits)
