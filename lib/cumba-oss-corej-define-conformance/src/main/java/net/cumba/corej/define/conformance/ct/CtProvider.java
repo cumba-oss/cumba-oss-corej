@@ -49,4 +49,19 @@ public interface CtProvider
         return false;
     }
 
+
+    /**
+     * The CDISC QRS class and role of the codelist with this c-code ({@link CodelistClass}), or
+     * empty when the provider does not know the codelist or it is in no QRS class. Read by the
+     * {@code exempt:} block of {@code library_codelist_ccode_matches} (PMDA DD0118 on RS clinical
+     * classifications, {@code PLAN-stopped-rule-engine-fixes} SR3) — and ONLY from the CT the run
+     * bound (SR7 (a), owner 2026-10-12: the engine never selects a CT version on its own). The
+     * empty default is conservative: a provider without the lookup makes a class exemption never
+     * apply, so the rule fires as it did before — it never mis-fires.
+     */
+    default Optional<CodelistClass> codelistClass(String aCCode)
+    {
+        return Optional.empty();
+    }
+
 }

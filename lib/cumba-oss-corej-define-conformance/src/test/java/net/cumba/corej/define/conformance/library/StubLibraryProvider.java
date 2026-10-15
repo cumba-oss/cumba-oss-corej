@@ -48,9 +48,22 @@ public final class StubLibraryProvider implements LibraryProvider
      * {@code DS.DSDECOD} carries two, as SDTMIG 3.3's does ({@code C114118} and {@code C66727}) —
      * 21 real SDTMIG/SENDIG variables carry two to five refs (PLAN-define-ct-evaluation D-12).
      */
-    private static final Map<String, List<String>> VARIABLE_CODELISTS = Map.of(
-            SDTMIG_34 + "|DM|SEX", List.of("C66731"), SDTMIG_34 + "|AE|AESEV", List.of("C66769"),
-            SDTMIG_34 + "|DS|DSDECOD", List.of("C114118", "C66727"));
+    private static final Map<String, List<String>> VARIABLE_CODELISTS = Map.ofEntries(
+            Map.entry(SDTMIG_34 + "|DM|SEX", List.of("C66731")),
+            Map.entry(SDTMIG_34 + "|AE|AESEV", List.of("C66769")),
+            Map.entry(SDTMIG_34 + "|DS|DSDECOD", List.of("C114118", "C66727")),
+            // RS as the Library publishes it in every SDTMIG version: the oncology Tumor
+            // Response lists only (PLAN-stopped-rule-engine-fixes SR2: SDTMIG 3.3+ RS also holds
+            // clinical classifications, each with its own instrument codelist). 3.10 and the
+            // non-numeric "3.3 Amendment 1" exist only for the exemption's version compare;
+            // SDTMIG-MD normalises to a different key, as the real library keys it.
+            Map.entry("SDTMIG|3.3|RS|RSTESTCD", List.of("C96782")),
+            Map.entry("SDTMIG|3.3|RS|RSTEST", List.of("C96781")),
+            Map.entry("SDTMIG|3.3|RS|RSORRES", List.of("C96783")),
+            Map.entry("SDTMIG|3.2|RS|RSTESTCD", List.of("C96782")),
+            Map.entry("SDTMIG|3.10|RS|RSTESTCD", List.of("C96782")),
+            Map.entry("SDTMIG|3.3 Amendment 1|RS|RSTESTCD", List.of("C96782")),
+            Map.entry("SDTMIGMD|3.3|RS|RSTESTCD", List.of("C96782")));
 
     /** SDTM Event/Intervention qualifier fragments, keyed "<standard>|<version>|<fragment>". */
     private static final Map<String, String> QUALIFIERS = Map.of(SDTMIG_34 + "|OCCUR", "Occurrence",

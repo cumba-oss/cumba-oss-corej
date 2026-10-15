@@ -952,6 +952,9 @@ public final class RuleRunner
                 .libraryProvider(libraryProvider).dictionaryProvider(dictionaryProvider)
                 .exprCache(exprCache).checkExprOverride(absentSkip.effectiveCheckExpr())
                 .severityThreshold(severityThreshold)
+                // PLAN-stopped-rule-engine-fixes SR6 (a): the Check's own keyword forms of the
+                // operand-backed calls, so the projection reports what the Check counted
+                .operandForms(rule.operandForms())
                 // PLAN-identity-safe-join-caches D4: the run's wildcard column cache, so every rule
                 // of a validation run shares it; without a run cache the context's own default is
                 // used (per-execute scope, still cached).
@@ -3454,8 +3457,13 @@ public final class RuleRunner
         out.put(ov, projected != null ? projected : kind.defaultValue());
     }
 
-    /** The accessor-form programs of {@link #operandVector}, compiled once per operand. */
-    private static final Map<String, BindingProgram> OPERAND_PROGRAMS = new ConcurrentHashMap<>();
+    /**
+     * The accessor-form programs of {@link #operandVector}, compiled once per FORM — keyed by the
+     * evaluated {@link Expr} (records with value equality), not by the operand name, because a
+     * rule's own keyword form ({@code max_value_length(variable_name, unit="bytes")}) and the plain
+     * form of the same operand are different programs (SR6 (a)).
+     */
+    private static final Map<Expr, BindingProgram> OPERAND_PROGRAMS = new ConcurrentHashMap<>();
 
     /**
      * M3 of {@code PLAN-output-variable-null-key-provenance}: a builtin operand's value for the
@@ -3489,7 +3497,10 @@ public final class RuleRunner
     private static net.cumba.corej.core.expr.eval.@Nullable Vector operandVector(String ov,
             EvaluationContext colCtx)
     {
-        Expr forward = MetadataOperandMapping.forwardOperand(ov);
+        // SR6 (a): the rule's own keyword form of this operand's call wins over the plain form,
+        // so a Check that counted bytes reports bytes (PLAN-stopped-rule-engine-fixes §4.4)
+        Expr form = colCtx.getOperandForms().get(ov);
+        Expr forward = form != null ? form : MetadataOperandMapping.forwardOperand(ov);
         if (forward == null)
         {
             return null;
@@ -3499,8 +3510,8 @@ public final class RuleRunner
         {
             return net.cumba.corej.core.expr.eval.ConstVector.of(null);
         }
-        BindingProgram program = OPERAND_PROGRAMS.computeIfAbsent(ov,
-                _ -> net.cumba.corej.core.expr.eval.NativeExprEvaluator.bindingProgram(forward));
+        BindingProgram program = OPERAND_PROGRAMS.computeIfAbsent(forward,
+                net.cumba.corej.core.expr.eval.NativeExprEvaluator::bindingProgram);
         return program.evaluate(EvalRun.fullRange(colCtx));
     }
 

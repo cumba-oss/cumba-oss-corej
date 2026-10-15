@@ -18,6 +18,7 @@ import net.cumba.cdisc.define.Origin;
 import net.cumba.cdisc.define.Standard;
 import net.cumba.cdisc.define.Study;
 import net.cumba.cdisc.define.TranslatedText;
+import net.cumba.cdisc.define.ValueListDef;
 import net.cumba.corej.core.gen.CtStandardRef;
 import net.cumba.corej.core.gen.DefineXMLProvider;
 import net.cumba.datatable.dictionary.house.DictionaryTypes;
@@ -96,6 +97,63 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
             }
         }
         return out;
+    }
+
+
+    private Map<String, ValueListDef> valueListsByOid()
+    {
+        MetaDataVersion mdv = mdv();
+        Map<String, ValueListDef> out = new LinkedHashMap<>();
+        if (mdv != null && mdv.getValueListDefs() != null)
+        {
+            for (ValueListDef vl : mdv.getValueListDefs())
+            {
+                out.put(vl.getOid(), vl);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Whether EVERY value-level entry of a variable carries a method, a comment and an origin — the
+     * variable-level reading of Define-XML 2.1 §5.3.12.3 ("each ItemDef element referenced in the
+     * corresponding def:ValueListDef includes a def:Origin element"), backing
+     * {@code var_vlm_has_method} / {@code var_vlm_has_comment} / {@code var_vlm_has_origin}
+     * ({@code PLAN-stopped-rule-engine-fixes} SR1 / T1). {@link #NONE} for a variable without a
+     * value list, a value list that does not resolve or holds no entry.
+     */
+    private record VlmCoverage(boolean method, boolean comment, boolean origin)
+    {
+
+        static final VlmCoverage NONE = new VlmCoverage(false, false, false);
+    }
+
+    /**
+     * The per-value documentation of {@code def}: all three flags hold only when every
+     * {@code ItemRef} of the value list carries the item AND names an {@code ItemDef} that resolves
+     * — an entry whose value-level {@code ItemDef} is missing from the define counts as
+     * undocumented for all three (T1), the conservative direction for the rules that read them.
+     */
+    private static VlmCoverage vlmCoverage(ItemDef def, Map<String, ItemDef> defs,
+            Map<String, ValueListDef> valueLists)
+    {
+        ValueListDef vl = def.getValueListRef() == null ? null
+                : valueLists.get(def.getValueListRef().getValueListOID());
+        if (vl == null || vl.getItemRefs() == null || vl.getItemRefs().isEmpty())
+        {
+            return VlmCoverage.NONE;
+        }
+        boolean method = true;
+        boolean comment = true;
+        boolean origin = true;
+        for (ItemRef r : vl.getItemRefs())
+        {
+            ItemDef vd = defs.get(r.getItemOID());
+            method &= vd != null && r.getMethodOID() != null;
+            comment &= vd != null && vd.getCommentOID() != null;
+            origin &= vd != null && !originType(vd).isEmpty();
+        }
+        return new VlmCoverage(method, comment, origin);
     }
 
 
@@ -374,6 +432,7 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
         }
         Map<String, ItemDef> defs = itemDefsByOid();
         Map<String, CodeList> codeLists = codeListsByOid();
+        Map<String, ValueListDef> valueLists = valueListsByOid();
         List<Map<String, String>> out = new ArrayList<>();
         for (ItemRef ref : igd.getItemRefs())
         {
@@ -440,6 +499,14 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
             // runbook W1b DV: the variable is documented per value (def:ValueListRef), backing
             // var_has_value_list("DEFINE")
             v.put("has_value_list", boolStr(def.getValueListRef() != null));
+            // PLAN-stopped-rule-engine-fixes SR1: every value-level entry documented, backing
+            // var_vlm_has_method / var_vlm_has_comment / var_vlm_has_origin ("DEFINE"). The keys
+            // equal the functions' suffixes so a derived define_variable_vlm_has_* entry meets the
+            // provider's copy (RuleRunner's "define_variable_" + key).
+            VlmCoverage cov = vlmCoverage(def, defs, valueLists);
+            v.put("vlm_has_method", boolStr(cov.method()));
+            v.put("vlm_has_comment", boolStr(cov.comment()));
+            v.put("vlm_has_origin", boolStr(cov.origin()));
             v.put("external_dictionary", externalDictionary);
             v.put("external_dictionary_version", externalDictionaryVersion);
             out.add(v);

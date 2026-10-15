@@ -113,6 +113,19 @@ public class EvaluationContext
     ExpressionResultCache exprCache;
 
     /**
+     * The rule's own keyword-bearing form of each operand-backed accessor call, by operand name
+     * ({@code Rule#operandForms}, {@code PLAN-stopped-rule-engine-fixes} SR6 (a)): the finding
+     * projection ({@code RuleRunner#operandVector}) evaluates
+     * {@code max_value_length(variable_name,
+     * unit="bytes")} for {@code variable_max_size} where the Check wrote it, so the reported length
+     * is in the Check's unit; an operand absent here keeps its plain form. Installed once where the
+     * rule's context is built and copied by {@code toBuilder} into every derived context; empty for
+     * contexts built outside rule execution.
+     */
+    @Builder.Default
+    Map<String, net.cumba.corej.core.expr.ast.Expr> operandForms = Map.of();
+
+    /**
      * Column sets of {@code ${*}} wildcards per (table instance, regex) — see
      * {@link WildcardForeignColumnCache} ({@code PLAN-identity-safe-join-caches} D4). ⭐ Never
      * {@code null}, deliberately unlike {@link #exprCache}: a context built without one gets its

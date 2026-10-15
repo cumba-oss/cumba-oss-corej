@@ -97,6 +97,11 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
         putIfPresent(out, "has_method", genVar.get("has_method"));
         // runbook W1b DV: def:ValueListRef presence, backing var_has_value_list("DEFINE")
         putIfPresent(out, "has_value_list", genVar.get("has_value_list"));
+        // PLAN-stopped-rule-engine-fixes SR1: every value-level entry documented, backing
+        // var_vlm_has_method / var_vlm_has_comment / var_vlm_has_origin("DEFINE")
+        putIfPresent(out, "vlm_has_method", genVar.get("vlm_has_method"));
+        putIfPresent(out, "vlm_has_comment", genVar.get("vlm_has_comment"));
+        putIfPresent(out, "vlm_has_origin", genVar.get("vlm_has_origin"));
         putIfPresent(out, "external_dictionary", genVar.get("external_dictionary"));
         putIfPresent(out, "external_dictionary_version", genVar.get("external_dictionary_version"));
         // EC-19 (Value Check against Define XML Variable): the variable-level ItemDef codelist

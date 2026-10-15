@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import net.cumba.corej.define.conformance.ct.CodelistClass;
 import net.cumba.corej.define.conformance.ct.CtCodelist;
 import net.cumba.corej.define.conformance.ct.CtProvider;
 
@@ -35,13 +36,22 @@ public final class StoreCtProvider implements CtProvider
 
     private final Map<String, CtCodelist> byName;
 
+    /**
+     * The QRS class of each c-code WINNER (PLAN-stopped-rule-engine-fixes SR3 / T8): an
+     * {@link Optional} value because {@code Map.copyOf} rejects {@code null}, and a classless
+     * winner records empty so a later package's classed loser of the same c-code cannot lend it a
+     * class.
+     */
+    private final Map<String, Optional<CodelistClass>> classByCCode;
+
     private final List<String> packageIds;
 
     private StoreCtProvider(Map<String, CtCodelist> aByCCode, Map<String, CtCodelist> aByName,
-            List<String> aPackageIds)
+            Map<String, Optional<CodelistClass>> aClassByCCode, List<String> aPackageIds)
     {
         byCCode = aByCCode;
         byName = aByName;
+        classByCCode = aClassByCCode;
         packageIds = aPackageIds;
     }
 
@@ -63,6 +73,7 @@ public final class StoreCtProvider implements CtProvider
     {
         Map<String, CtCodelist> byCCode = new HashMap<>();
         Map<String, CtCodelist> byName = new HashMap<>();
+        Map<String, Optional<CodelistClass>> classByCCode = new HashMap<>();
         for (String id : aPackageIds)
         {
             StoredCtPackage pkg = aStore.ctPackage(id).orElseThrow(() -> new IllegalStateException(
@@ -79,6 +90,13 @@ public final class StoreCtProvider implements CtProvider
                     continue; // first wins on both indexes: no term map is built for a loser
                 }
                 CtCodelist codelist = toCtCodelist(cl);
+                // The guard above lets a c-code LOSER through whenever its name is still free, and
+                // putIfAbsent then keeps the earlier winner — so the class is recorded only for
+                // the codelist that wins its c-code, classed or not (SR3 / T8, review LOW 8).
+                if (!byCCode.containsKey(cl.conceptId()))
+                {
+                    classByCCode.put(cl.conceptId(), CodelistClass.of(cl.preferredTerm()));
+                }
                 byCCode.putIfAbsent(cl.conceptId(), codelist);
                 if (cl.name() != null)
                 {
@@ -87,7 +105,7 @@ public final class StoreCtProvider implements CtProvider
             }
         }
         return new StoreCtProvider(Map.copyOf(byCCode), Map.copyOf(byName),
-                List.copyOf(aPackageIds));
+                Map.copyOf(classByCCode), List.copyOf(aPackageIds));
     }
 
 
@@ -125,6 +143,18 @@ public final class StoreCtProvider implements CtProvider
     public boolean hasNameLookup()
     {
         return true;
+    }
+
+
+    /**
+     * The QRS class and role of the c-code's winning codelist, read from its NCI preferred term
+     * (the store's {@code preferredTerm}); empty for a c-code the bound packages do not hold, or
+     * whose winner is in no QRS class.
+     */
+    @Override
+    public Optional<CodelistClass> codelistClass(String aCCode)
+    {
+        return classByCCode.getOrDefault(aCCode, Optional.empty());
     }
 
 

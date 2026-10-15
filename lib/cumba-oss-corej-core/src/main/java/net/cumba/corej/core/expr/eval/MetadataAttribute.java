@@ -148,6 +148,28 @@ public enum MetadataAttribute
      */
     VAR_HAS_VALUE_LIST("var_has_value_list", Scope.VARIABLE, "has_value_list", Normalization.BOOLEAN, DEFINE),
     /**
+     * DEFINE-only: the variable is documented per value and EVERY value-level entry carries a
+     * method — the {@code ItemDef}'s {@code def:ValueListRef} names a {@code def:ValueListDef} with
+     * at least one {@code ItemRef}, each with a {@code MethodOID} and a resolvable {@code ItemDef}.
+     * {@code false} without a (non-empty, resolvable) value list; missing for a variable the define
+     * does not declare. One answer per variable, so a Check stays variable-level under both
+     * universes — the per-record {@code vlm_has_method(X)} answers the matched entry of a row
+     * ({@code PLAN-stopped-rule-engine-fixes} SR1 / T1).
+     */
+    VAR_VLM_HAS_METHOD("var_vlm_has_method", Scope.VARIABLE, "vlm_has_method", Normalization.BOOLEAN, DEFINE),
+    /**
+     * DEFINE-only: every value-level {@code ItemDef} of the variable's value list carries a
+     * {@code def:CommentOID}, read as {@link #VAR_HAS_COMMENT} reads the variable level; otherwise
+     * as {@link #VAR_VLM_HAS_METHOD}.
+     */
+    VAR_VLM_HAS_COMMENT("var_vlm_has_comment", Scope.VARIABLE, "vlm_has_comment", Normalization.BOOLEAN, DEFINE),
+    /**
+     * DEFINE-only: every value-level {@code ItemDef} of the variable's value list has an origin (a
+     * non-empty {@code OdmDefineXMLProvider.originType}: the {@code def:Origin/@Type} element or
+     * the v2.0 {@code @Origin} attribute); otherwise as {@link #VAR_VLM_HAS_METHOD}.
+     */
+    VAR_VLM_HAS_ORIGIN("var_vlm_has_origin", Scope.VARIABLE, "vlm_has_origin", Normalization.BOOLEAN, DEFINE),
+    /**
      * DEFINE-only external-dictionary name of the variable's bound codelist (Define-XML
      * {@code CodeList/ExternalCodeList/@Dictionary}). Backs
      * {@code define_variable_external_dictionary}; empty when the variable's codelist declares no

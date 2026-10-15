@@ -495,6 +495,12 @@ class QualifiedNameUniformityTest
             var_has_method | level | - | static level
             var_has_value_list | name | N | X:provider — DEFINE level only ; C4:V:var_has_value_list("@S", "DEFINE")
             var_has_value_list | level | - | static level
+            var_vlm_has_method | name | N | X:provider — DEFINE level only ; C4:V:var_vlm_has_method("@S", "DEFINE")
+            var_vlm_has_method | level | - | static level
+            var_vlm_has_comment | name | N | X:provider — DEFINE level only ; C4:V:var_vlm_has_comment("@S", "DEFINE")
+            var_vlm_has_comment | level | - | static level
+            var_vlm_has_origin | name | N | X:provider — DEFINE level only ; C4:V:var_vlm_has_origin("@S", "DEFINE")
+            var_vlm_has_origin | level | - | static level
             var_external_dictionary | name | N | X:provider — DEFINE level only ; C4:V:var_external_dictionary("@S", "DEFINE")
             var_external_dictionary | level | - | static level
             var_external_dictionary_version | name | N | X:provider — DEFINE level only ; C4:V:var_external_dictionary_version("@S", "DEFINE")
@@ -901,7 +907,9 @@ class QualifiedNameUniformityTest
                         + " referenced_dataset_variables, four for referenced_record_count and"
                         + " three for referenced_key_is_unique, W1b VA; - three ordering=,"
                         + " renamed in place to by=, runbook W4 OR2)");
-        assertEquals(28, MetadataAttribute.values().length, "metadata accessors");
+        assertEquals(31, MetadataAttribute.values().length,
+                "metadata accessors (28 + the three var_vlm_has_* coverage accessors,"
+                        + " PLAN-stopped-rule-engine-fixes SR1)");
         assertEquals(Set.of("date", "date_part", "duration", "num", "time", "time_part"),
                 new TreeSet<>(ExprCompiler.comparisonMarkers()),
                 "comparison markers (+ duration, runbook W1b DO)");
@@ -909,9 +917,10 @@ class QualifiedNameUniformityTest
         List<Row> rows = rows();
         long probed = rows.stream().filter(Row::probed).count();
         long nameClass = rows.stream().filter(Row::name).count();
-        assertEquals(282, nameClass,
+        assertEquals(285, nameClass,
                 "name-bearing parameters in the hand table (265 + ~ left, W1b SX; + sequence's"
                         + " name / filter / group / by and the three by=, W1b RO / SK;"
+                        + " + the three var_vlm_has_* names, PLAN-stopped-rule-engine-fixes SR1;"
                         + " + is_not_unique_member_set's members / group, W1b SS1; + the seven"
                         + " value-addressed parameters of referenced_record_count /"
                         + " referenced_key_is_unique, W1b VA; - the three ordering= rows, W4 OR2)");
@@ -931,7 +940,9 @@ class QualifiedNameUniformityTest
                 unprobed.add(r.id());
             }
         }
-        assertEquals(53, unprobed.size(), "unprobed name-bearing rows: " + unprobed);
+        assertEquals(56, unprobed.size(), "unprobed name-bearing rows (53 + the three"
+                + " provider-backed var_vlm_has_* names, PLAN-stopped-rule-engine-fixes SR1): "
+                + unprobed);
         // T2 r2 L5: the non-name class is pinned too — a row that flips to '-' to dodge a probe
         // moves this count. +1 for label_template's stem= keyword (R2-3), a static selector.
         // +4 for the quantifier family (PLAN-cg0218): any / all / none take joined(…), joined
@@ -944,8 +955,11 @@ class QualifiedNameUniformityTest
         // is_(not_)prefix_of / is_increasing / collapse_runs (runbook W1b RO).
         // +1 for is_not_unique_member_set's keep_missings (runbook W1b SS1).
         // +1 for referenced_dataset_variables' qualifiers= (runbook W1b VA, V3).
-        assertEquals(164, rows.stream().filter(r -> !r.name()).count(),
-                "non-name rows (153 + the ~ literal, W1b SX; + 8, W1b RO; + 1, W1b VA)");
+        // +3 for the level slots of var_vlm_has_method / _comment / _origin
+        // (PLAN-stopped-rule-engine-fixes SR1).
+        assertEquals(167, rows.stream().filter(r -> !r.name()).count(),
+                "non-name rows (153 + the ~ literal, W1b SX; + 8, W1b RO; + 1, W1b VA;"
+                        + " + 3 var_vlm_has_* levels, SR1)");
     }
 
     // ------------------------------------------------------------------

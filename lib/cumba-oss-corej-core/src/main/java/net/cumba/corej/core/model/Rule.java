@@ -456,6 +456,29 @@ public class Rule
 
 
     /**
+     * The rule's own keyword-bearing form of each operand-backed accessor call, by operand name
+     * ({@code OutputVariableDeriver#operandFormsOf}; {@code PLAN-stopped-rule-engine-fixes} SR6
+     * (a)): the finding projection evaluates {@code max_value_length(variable_name,
+     * unit="bytes")} for {@code variable_max_size} where the Check wrote it, the plain form
+     * elsewhere. Derived on first read and memoised like
+     * {@link #effectiveOutputVariablesOrAuthored} (a pure function of the authored Check; a racing
+     * second derivation stores an equal map). Never {@code null}; empty for a rule without such a
+     * call.
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public Map<String, net.cumba.corej.core.expr.ast.Expr> operandForms()
+    {
+        Map<String, net.cumba.corej.core.expr.ast.Expr> forms = operandForms;
+        if (forms == null)
+        {
+            forms = net.cumba.corej.core.exec.OutputVariableDeriver.operandFormsOf(this);
+            operandForms = forms;
+        }
+        return forms;
+    }
+
+
+    /**
      * The stage-A static type of each of this rule's bindings ({@code StageAChecker.bindingTypes})
      * — the finding's type source for a binding that answers no value
      * ({@code PLAN-output-variable-null-key-provenance} H3). A pure function of the rule's compiled
@@ -1234,6 +1257,17 @@ public class Rule
     @lombok.EqualsAndHashCode.Exclude
     @lombok.ToString.Exclude
     private @Nullable Set<String> excludedOutputVariables;
+
+    /**
+     * The memo of {@link #operandForms()}: the rule's own keyword-bearing form of each
+     * operand-backed accessor call ({@code OutputVariableDeriver#operandFormsOf},
+     * {@code PLAN-stopped-rule-engine-fixes} SR6 (a)), which the finding projection evaluates in
+     * place of the plain form. Runtime-only, never serialised; {@code null} until first read.
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
+    private @Nullable Map<String, net.cumba.corej.core.expr.ast.Expr> operandForms;
 
     /**
      * The memo of {@link #staticBindingTypes()}: the stage-A static types of this rule's bindings,

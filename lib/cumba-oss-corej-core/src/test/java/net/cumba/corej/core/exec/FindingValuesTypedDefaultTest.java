@@ -201,6 +201,94 @@ class FindingValuesTypedDefaultTest
         assertEquals("4", v.get("variable_max_size"), v.toString());
     }
 
+
+    /** A UTF-8 LB table whose LBSTRESC holds {@code µmol}: 4 characters, 5 bytes. */
+    private static IDataTable utf8Micromol()
+    {
+        return MockTable.of().name("LB").metaValue("Encoding", "UTF-8")
+                .col("LBSTRESC", "µmol", "g/L").colMeta("LBSTRESC", "Result", 4, null).build();
+    }
+
+
+    private static Rule lengthRule(String check) throws Exception
+    {
+        return load(
+                """
+                        {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                         "Check":{"expression": "%s"},
+                         "Outcome":{"Message":"m","Output_Variables":["variable_size","variable_max_size"]}}"""
+                        .formatted(check.replace("\"", "\\\"")));
+    }
+
+
+    /**
+     * {@code PLAN-stopped-rule-engine-fixes} SR6 (a) — FDA/PMDA-SD1082's shape since rule round
+     * 2026-10-12: the Check compares BYTES ({@code max_value_length(variable_name, unit="bytes")})
+     * but {@code variable_max_size} used to be recomputed from the operand's plain form, so a
+     * finding on a 5-byte {@code µmol} in a width-4 column reported {@code 4}. The projection now
+     * evaluates the Check's own form: {@code 5}. The plain-form rule keeps counting characters.
+     */
+    @Test
+    void m3TheReportedLengthIsInTheChecksUnit() throws Exception
+    {
+        Map<String, String> bytes = single(RuleRunnerCalls.execute(lengthRule(
+                "var_type(\"DATA\") == \"Char\" and var_length(\"DATA\") != max_value_length(variable_name, unit=\"bytes\")"),
+                utf8Micromol()));
+        assertEquals("4", bytes.get("variable_size"), bytes.toString());
+        assertEquals("5", bytes.get("variable_max_size"),
+                "the bytes the Check counted, not the characters of the plain form: " + bytes);
+
+        Map<String, String> chars = single(RuleRunnerCalls.execute(
+                lengthRule(
+                        "var_type(\"DATA\") == \"Char\" and max_value_length(variable_name) > 3"),
+                utf8Micromol()));
+        assertEquals("4", chars.get("variable_max_size"),
+                "a plain-form Check keeps the character count: " + chars);
+    }
+
+
+    /** Two keyword forms of one operand in one Check: the first in walk order wins (SR6 (a)). */
+    @Test
+    void m3TheFirstKeywordFormOfAnOperandWins() throws Exception
+    {
+        Rule rule = lengthRule("max_value_length(variable_name, unit=\"bytes\") > 4"
+                + " and max_value_length(variable_name, unit=\"bytes\", encoding=\"ISO-8859-1\") > 0");
+        assertEquals(1, rule.operandForms().size(), rule.operandForms().toString());
+        net.cumba.corej.core.expr.ast.Expr.Call form = (net.cumba.corej.core.expr.ast.Expr.Call) rule
+                .operandForms().get("variable_max_size");
+        assertEquals(java.util.Set.of("unit"), form.kwargs().keySet(),
+                "the first form (UTF-8 bytes, no encoding=) is the recorded one: " + form);
+
+        Map<String, String> v = single(RuleRunnerCalls.execute(rule, utf8Micromol()));
+        assertEquals("5", v.get("variable_max_size"),
+                "UTF-8 bytes (first form), not the 4 bytes of the latin1 form: " + v);
+    }
+
+
+    /**
+     * Phase 0 (ii) of the plan, measured here: a table with no usable encoding (none declared, or
+     * {@code MIXED}) makes the byte count MISSING; the comparison {@code X != missing} is total
+     * (D34 #5-2 / D34a) and fires, and the reported {@code variable_max_size} is the bytes form's
+     * missing, printed as the numeric default — it used to print the character count.
+     */
+    @Test
+    void m3AnUnusableEncodingReportsTheMissingByteCount() throws Exception
+    {
+        Rule rule = lengthRule(
+                "var_type(\"DATA\") == \"Char\" and var_length(\"DATA\") != max_value_length(variable_name, unit=\"bytes\")");
+        IDataTable mixed = MockTable.of().name("LB").metaValue("Encoding", "MIXED")
+                .col("LBSTRESC", "abcd", "g/L").colMeta("LBSTRESC", "Result", 4, null).build();
+        IDataTable undeclared = MockTable.of().name("LB").col("LBSTRESC", "abcd", "g/L")
+                .colMeta("LBSTRESC", "Result", 4, null).build();
+
+        Map<String, String> onMixed = single(RuleRunnerCalls.execute(rule, mixed));
+        assertEquals(MIS, onMixed.get("variable_max_size"),
+                "MIXED: the byte count is not knowable, so the entry is the numeric default: "
+                        + onMixed);
+        Map<String, String> onUndeclared = single(RuleRunnerCalls.execute(rule, undeclared));
+        assertEquals(MIS, onUndeclared.get("variable_max_size"), onUndeclared.toString());
+    }
+
     // ------------------------------------------------------------------ M3 on the row path
 
     /**

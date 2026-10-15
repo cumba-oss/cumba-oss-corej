@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- PLAN-stopped-rule-engine-fixes SR1 / T1: the variable-level value-level coverage accessors
+     var_vlm_has_method / var_vlm_has_comment / var_vlm_has_origin ("DEFINE"). One LB variable per
+     shape:
+       LBSTRESC  two entries, each with a method, a comment and an origin      -> true  true  true
+       LBORRES   two entries, the second carries nothing                        -> false false false
+       LBSTAT    two entries, each with a method only                           -> true  false false
+       LBTESTCD  no value list                                                  -> false false false
+       LBSPEC    def:ValueListRef to a ValueListOID the define does not declare -> false false false
+       LBMETHOD  a value list without any ItemRef                               -> false false false
+       LBNAM     one entry whose ItemOID resolves to no ItemDef (documented
+                 on the ItemRef side by a MethodOID)                            -> false false false
+     The comment is written as def:CommentOID on one entry and as CommentOID on another, and the
+     origin as the 2.1 def:Origin element on one and the v2.0 @Origin attribute on another, so
+     both spellings the provider reads at variable level count at value level too. -->
+<ODM xmlns:def="http://www.cdisc.org/ns/def/v2.1" ODMVersion="1.3.2" FileType="Snapshot"
+     FileOID="DEF.VLM.COVERAGE" CreationDateTime="2026-01-01T00:00:00">
+  <Study OID="S1">
+    <MetaDataVersion OID="MDV.1" Name="Define VLM coverage" DefineVersion="2.1.0"
+                     StandardName="SDTM-IG" StandardVersion="3.4">
+
+      <ItemGroupDef OID="IG.LB" Name="LB" Domain="LB" Repeating="Yes" Purpose="Tabulation"
+                    SASDatasetName="LB">
+        <ItemRef ItemOID="IT.LB.LBTESTCD" OrderNumber="1" Mandatory="Yes" Role="Topic"/>
+        <ItemRef ItemOID="IT.LB.LBSTRESC" OrderNumber="2" Mandatory="No" Role="Result Qualifier"/>
+        <ItemRef ItemOID="IT.LB.LBORRES" OrderNumber="3" Mandatory="No" Role="Result Qualifier"/>
+        <ItemRef ItemOID="IT.LB.LBSTAT" OrderNumber="4" Mandatory="No" Role="Record Qualifier"/>
+        <ItemRef ItemOID="IT.LB.LBSPEC" OrderNumber="5" Mandatory="No" Role="Record Qualifier"/>
+        <ItemRef ItemOID="IT.LB.LBMETHOD" OrderNumber="6" Mandatory="No" Role="Record Qualifier"/>
+        <ItemRef ItemOID="IT.LB.LBNAM" OrderNumber="7" Mandatory="No" Role="Record Qualifier"/>
+      </ItemGroupDef>
+
+      <ItemDef OID="IT.LB.LBTESTCD" Name="LBTESTCD" DataType="text" Length="8">
+        <Description><TranslatedText xml:lang="en">Lab Test Code</TranslatedText></Description>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBSTRESC" Name="LBSTRESC" DataType="text" Length="20">
+        <Description><TranslatedText xml:lang="en">Character Result/Finding in Std Format</TranslatedText></Description>
+        <def:ValueListRef ValueListOID="VL.FULL"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBORRES" Name="LBORRES" DataType="text" Length="20">
+        <Description><TranslatedText xml:lang="en">Result in Original Units</TranslatedText></Description>
+        <def:ValueListRef ValueListOID="VL.PARTIAL"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBSTAT" Name="LBSTAT" DataType="text" Length="8">
+        <Description><TranslatedText xml:lang="en">Completion Status</TranslatedText></Description>
+        <def:ValueListRef ValueListOID="VL.METHOD_ONLY"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBSPEC" Name="LBSPEC" DataType="text" Length="8">
+        <Description><TranslatedText xml:lang="en">Specimen Type</TranslatedText></Description>
+        <def:ValueListRef ValueListOID="VL.NOWHERE"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBMETHOD" Name="LBMETHOD" DataType="text" Length="8">
+        <Description><TranslatedText xml:lang="en">Method of Test</TranslatedText></Description>
+        <def:ValueListRef ValueListOID="VL.EMPTY"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBNAM" Name="LBNAM" DataType="text" Length="20">
+        <Description><TranslatedText xml:lang="en">Vendor Name</TranslatedText></Description>
+        <def:ValueListRef ValueListOID="VL.DANGLING_ITEM"/>
+      </ItemDef>
+
+      <!-- VL.FULL: every entry documented three ways -->
+      <ItemDef OID="IT.LB.LBSTRESC.GLUC" Name="LBSTRESC_GLUC" DataType="float" Length="5"
+               def:CommentOID="COM.GLUC">
+        <Description><TranslatedText xml:lang="en">Glucose result</TranslatedText></Description>
+        <def:Origin Type="Derived"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBSTRESC.HGB" Name="LBSTRESC_HGB" DataType="float" Length="5"
+               CommentOID="COM.HGB" Origin="Collected">
+        <Description><TranslatedText xml:lang="en">Haemoglobin result</TranslatedText></Description>
+      </ItemDef>
+      <!-- VL.PARTIAL: the first entry documented three ways, the second by nothing -->
+      <ItemDef OID="IT.LB.LBORRES.GLUC" Name="LBORRES_GLUC" DataType="float" Length="5"
+               def:CommentOID="COM.GLUC">
+        <Description><TranslatedText xml:lang="en">Glucose original</TranslatedText></Description>
+        <def:Origin Type="Collected"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBORRES.HGB" Name="LBORRES_HGB" DataType="float" Length="5">
+        <Description><TranslatedText xml:lang="en">Haemoglobin original</TranslatedText></Description>
+      </ItemDef>
+      <!-- VL.METHOD_ONLY: both entries carry a method and nothing else -->
+      <ItemDef OID="IT.LB.LBSTAT.GLUC" Name="LBSTAT_GLUC" DataType="text" Length="8">
+        <Description><TranslatedText xml:lang="en">Glucose status</TranslatedText></Description>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBSTAT.HGB" Name="LBSTAT_HGB" DataType="text" Length="8">
+        <Description><TranslatedText xml:lang="en">Haemoglobin status</TranslatedText></Description>
+      </ItemDef>
+
+      <def:ValueListDef OID="VL.FULL">
+        <ItemRef ItemOID="IT.LB.LBSTRESC.GLUC" OrderNumber="1" Mandatory="No" MethodOID="MT.GLUC">
+          <def:WhereClauseRef WhereClauseOID="WC.GLUC"/>
+        </ItemRef>
+        <ItemRef ItemOID="IT.LB.LBSTRESC.HGB" OrderNumber="2" Mandatory="No" MethodOID="MT.HGB">
+          <def:WhereClauseRef WhereClauseOID="WC.HGB"/>
+        </ItemRef>
+      </def:ValueListDef>
+      <def:ValueListDef OID="VL.PARTIAL">
+        <ItemRef ItemOID="IT.LB.LBORRES.GLUC" OrderNumber="1" Mandatory="No" MethodOID="MT.GLUC">
+          <def:WhereClauseRef WhereClauseOID="WC.GLUC"/>
+        </ItemRef>
+        <ItemRef ItemOID="IT.LB.LBORRES.HGB" OrderNumber="2" Mandatory="No">
+          <def:WhereClauseRef WhereClauseOID="WC.HGB"/>
+        </ItemRef>
+      </def:ValueListDef>
+      <def:ValueListDef OID="VL.METHOD_ONLY">
+        <ItemRef ItemOID="IT.LB.LBSTAT.GLUC" OrderNumber="1" Mandatory="No" MethodOID="MT.GLUC">
+          <def:WhereClauseRef WhereClauseOID="WC.GLUC"/>
+        </ItemRef>
+        <ItemRef ItemOID="IT.LB.LBSTAT.HGB" OrderNumber="2" Mandatory="No" MethodOID="MT.HGB">
+          <def:WhereClauseRef WhereClauseOID="WC.HGB"/>
+        </ItemRef>
+      </def:ValueListDef>
+      <def:ValueListDef OID="VL.EMPTY"/>
+      <def:ValueListDef OID="VL.DANGLING_ITEM">
+        <ItemRef ItemOID="IT.LB.LBNAM.NOWHERE" OrderNumber="1" Mandatory="No" MethodOID="MT.GLUC">
+          <def:WhereClauseRef WhereClauseOID="WC.GLUC"/>
+        </ItemRef>
+      </def:ValueListDef>
+
+      <def:WhereClauseDef OID="WC.GLUC">
+        <RangeCheck SoftHard="Soft" def:ItemOID="IT.LB.LBTESTCD" Comparator="EQ">
+          <CheckValue>GLUC</CheckValue>
+        </RangeCheck>
+      </def:WhereClauseDef>
+      <def:WhereClauseDef OID="WC.HGB">
+        <RangeCheck SoftHard="Soft" def:ItemOID="IT.LB.LBTESTCD" Comparator="EQ">
+          <CheckValue>HGB</CheckValue>
+        </RangeCheck>
+      </def:WhereClauseDef>
+
+      <MethodDef OID="MT.GLUC" Name="Glucose derivation" Type="Computation">
+        <Description><TranslatedText xml:lang="en">Converted to mmol/L.</TranslatedText></Description>
+      </MethodDef>
+      <MethodDef OID="MT.HGB" Name="Haemoglobin derivation" Type="Computation">
+        <Description><TranslatedText xml:lang="en">Converted to g/L.</TranslatedText></Description>
+      </MethodDef>
+      <def:CommentDef OID="COM.GLUC">
+        <Description><TranslatedText xml:lang="en">Glucose as reported.</TranslatedText></Description>
+      </def:CommentDef>
+      <def:CommentDef OID="COM.HGB">
+        <Description><TranslatedText xml:lang="en">Haemoglobin as reported.</TranslatedText></Description>
+      </def:CommentDef>
+    </MetaDataVersion>
+  </Study>
+</ODM>

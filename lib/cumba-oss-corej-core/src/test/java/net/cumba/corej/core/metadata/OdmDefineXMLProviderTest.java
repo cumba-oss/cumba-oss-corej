@@ -102,6 +102,12 @@ class OdmDefineXMLProviderTest
         assertEquals("Derived", age.get("origin_type"), "ItemDef/@Origin attribute");
         assertEquals("true", age.get("has_comment"), "CommentOID present -> has_comment");
         assertEquals("true", age.get("has_method"), "ItemRef MethodOID present -> has_method");
+        // PLAN-stopped-rule-engine-fixes SR1: no def:ValueListRef -> every value-level coverage
+        // flag is a real false (the per-variable accessors read them; VarVlmCoverageAccessorTest
+        // covers the documented shapes on define-vlm-coverage.xml)
+        assertEquals("false", age.get("vlm_has_method"), "no value list -> vlm_has_method false");
+        assertEquals("false", age.get("vlm_has_comment"));
+        assertEquals("false", age.get("vlm_has_origin"));
         assertEquals("", age.get("external_dictionary"));
         assertEquals("", age.get("external_dictionary_version"));
 

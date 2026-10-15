@@ -16,6 +16,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
+import net.cumba.corej.define.conformance.ct.CodelistClass;
 import net.cumba.corej.define.conformance.ct.CtCodelist;
 import net.cumba.corej.define.conformance.ct.CtProvider;
 import net.cumba.corej.define.conformance.library.LibraryProvider;
@@ -125,8 +126,8 @@ public final class RuleEvaluator
                 aRule, guarded, aContext);
         case CheckDefinition.LibraryCodelistRefRequired _ -> libraryCodelistRefRequired(aRule,
                 guarded, aContext);
-        case CheckDefinition.LibraryCodelistCCodeMatches _ -> libraryCodelistCCode(aRule, guarded,
-                aContext);
+        case CheckDefinition.LibraryCodelistCCodeMatches c -> libraryCodelistCCode(aRule, guarded,
+                c, aContext);
         case CheckDefinition.LibraryQualifierLabelDecode _ -> libraryQualifierDecode(aRule, guarded,
                 aContext);
         case CheckDefinition.LibraryCoreMandatory _ -> libraryCoreMandatory(aRule, guarded,
@@ -1037,7 +1038,8 @@ public final class RuleEvaluator
      * beat and out of reach here.
      */
     private static List<ConformanceFinding> libraryCodelistCCode(ConformanceRule aRule,
-            List<ElementNode> aNodes, DocumentContext aContext)
+            List<ElementNode> aNodes, CheckDefinition.LibraryCodelistCCodeMatches aCheck,
+            DocumentContext aContext)
     {
         LibraryProvider library = libraryProvider(aContext);
         List<ConformanceFinding> findings = new ArrayList<>();
@@ -1055,13 +1057,47 @@ public final class RuleEvaluator
                     .flatMap(oid -> aContext.oidResolver().resolve("CodeList", "OID", oid))
                     .flatMap(RuleEvaluator::nciCodeOf);
             if (!libraryCodes.isEmpty() && documentCode.isPresent()
-                    && !libraryCodes.contains(documentCode.get()))
+                    && !libraryCodes.contains(documentCode.get())
+                    && !exemptByCtClass(aCheck, binding, documentCode.get(), aContext))
             {
                 findings.add(finding(aRule, node, binding.variable() + ": " + documentCode.get()
                         + " vs " + String.join(", ", libraryCodes)));
             }
         }
         return findings;
+    }
+
+
+    /**
+     * Whether one of the check's {@code exempt} entries covers this binding and the document
+     * codelist's QRS class ({@code PLAN-stopped-rule-engine-fixes} SR2 / SR3 / T8). The class comes
+     * from the bound CT provider ONLY ({@link #classOf}): with none, or with a CT that does not
+     * know the c-code, nothing is exempt and the rule fires as it did before (SR7 (a), T4).
+     */
+    private static boolean exemptByCtClass(CheckDefinition.LibraryCodelistCCodeMatches aCheck,
+            VariableBinding aBinding, String aDocumentCode, DocumentContext aContext)
+    {
+        List<CheckDefinition.CtClassExemption> exempt = aCheck.exempt();
+        if (exempt.isEmpty())
+        {
+            return false;
+        }
+        Optional<CodelistClass> ctClass = classOf(aDocumentCode, aContext);
+        return ctClass.isPresent() && exempt.stream()
+                .anyMatch(e -> e.covers(aBinding.standard().name(), aBinding.standard().version(),
+                        aBinding.dataset(), aBinding.variable(), ctClass.get()));
+    }
+
+
+    /**
+     * The QRS class of a c-code as the run's bound CT knows it; empty when no CT is bound (every
+     * 2.0 define, a 2.1 define declaring no CT, unless the run names packages) or the bound CT does
+     * not hold the c-code. Never a store package the engine picks itself (SR7 (a), owner
+     * 2026-10-12: <i>"we only use the bound CT when there is one"</i>).
+     */
+    private static Optional<CodelistClass> classOf(String aCCode, DocumentContext aContext)
+    {
+        return aContext.ctProvider().flatMap(ct -> ct.codelistClass(aCCode));
     }
 
 

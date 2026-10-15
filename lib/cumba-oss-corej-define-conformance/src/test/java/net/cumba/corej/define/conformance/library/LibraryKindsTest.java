@@ -7,7 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import net.cumba.cdisc.define.DefineDomIo;
+import net.cumba.corej.define.conformance.ct.CodelistClass;
+import net.cumba.corej.define.conformance.ct.CtCodelist;
+import net.cumba.corej.define.conformance.ct.CtProvider;
 import net.cumba.corej.define.conformance.eval.DocumentContext;
 import net.cumba.corej.define.conformance.eval.RuleEvaluator;
 import net.cumba.corej.define.conformance.eval.RuleResult;
@@ -112,6 +117,14 @@ class LibraryKindsTest
     private static DocumentContext context(String aMetaDataVersionBody, String aVersion,
             @Nullable LibraryProvider aProvider, String aMetaDataVersionAttributes)
     {
+        return context(aMetaDataVersionBody, aVersion, aProvider, aMetaDataVersionAttributes, null);
+    }
+
+
+    private static DocumentContext context(String aMetaDataVersionBody, String aVersion,
+            @Nullable LibraryProvider aProvider, String aMetaDataVersionAttributes,
+            @Nullable CtProvider aCtProvider)
+    {
         String xml = """
                 <ODM xmlns="http://www.cdisc.org/ns/odm/v1.3"
                      xmlns:def="http://www.cdisc.org/ns/def/v2.1">
@@ -126,7 +139,7 @@ class LibraryKindsTest
         {
             ElementNode root = ElementNodeBuilder
                     .build(DefineDomIo.parse(new ByteArrayInputStream(xml.getBytes(UTF_8))));
-            return new DocumentContext(root, aVersion, null, null, List.of(), aProvider);
+            return new DocumentContext(root, aVersion, aCtProvider, null, List.of(), aProvider);
         }
         catch (Exception e)
         {
@@ -248,7 +261,7 @@ class LibraryKindsTest
         // single parent domain can substitute. Comparing it would flag every combined SUPPQUAL.
         // Control first: the stub really serves the template, so without the guard the labels
         // below differ and the check would fire.
-        assertEquals(java.util.Optional.of("Supplemental Qualifiers for [domain name]"),
+        assertEquals(Optional.of("Supplemental Qualifiers for [domain name]"),
                 new StubLibraryProvider().datasetLabel("SDTMIG", "3.4", "SUPPQUAL"));
         RuleResult result = evaluate(rule("ItemGroupDef", """
                 kind: "library_dataset_label_matches"
@@ -613,6 +626,242 @@ class LibraryKindsTest
                   <Alias Context="nci:ExtCodeID" Name="%s"/>
                 </CodeList>
                 """.formatted(aAlias);
+    }
+
+    // ------------------------------------------------------------------
+    // library_codelist_ccode_matches with exempt: (PMDA DD0118 on RS clinical classifications,
+    // PLAN-stopped-rule-engine-fixes SR2 / SR3 / SR7 / T4 / T8)
+    // ------------------------------------------------------------------
+
+    /** The shipped PMDA-DD0118 exemption: RS, one entry per role. */
+    private static final String DD0118_EXEMPT = """
+            kind: "library_codelist_ccode_matches"
+            exempt:
+            - datasets: ["RS"]
+              variables: ["RSTESTCD"]
+              ct_class: "Clinical Classification"
+              ct_role: "Test Code"
+              standard: "SDTMIG"
+              since_version: "3.3"
+            - datasets: ["RS"]
+              variables: ["RSTEST"]
+              ct_class: "Clinical Classification"
+              ct_role: "Test Name"
+              standard: "SDTMIG"
+              since_version: "3.3"
+            """;
+
+    /**
+     * A CT provider that knows only the QRS class of a few c-codes (the codelists themselves are
+     * not consulted by this kind): HAMD-17's five instrument lists and a questionnaire's test code
+     * list; everything else (the oncology lists, an unknown c-code) is in no class.
+     */
+    private static final class ClassedCtProvider implements CtProvider
+    {
+
+        private static final Map<String, CodelistClass> CLASSES = Map.of(//
+                "C100138", new CodelistClass("Clinical Classification", Optional.of("Test Code")),
+                "C100137", new CodelistClass("Clinical Classification", Optional.of("Test Name")),
+                "C100136",
+                new CodelistClass("Clinical Classification", Optional.of("Original Response")),
+                "C100135",
+                new CodelistClass("Clinical Classification", Optional.of("Character Response")),
+                "C118971", new CodelistClass("Clinical Classification", Optional.of("Category")),
+                "C100101", new CodelistClass("Questionnaire", Optional.of("Test Code")));
+
+        @Override
+        public Optional<CtCodelist> codelistByCCode(String aCCode)
+        {
+            return Optional.empty();
+        }
+
+
+        @Override
+        public Optional<CodelistClass> codelistClass(String aCCode)
+        {
+            return Optional.ofNullable(CLASSES.get(aCCode));
+        }
+    }
+
+    /**
+     * An RS dataset governed by {@code aStandard} {@code aVersion} (a 2.1 def:Standards block)
+     * whose {@code aVariable} is bound to a codelist carrying {@code aAlias}.
+     */
+    private static String rs(String aStandard, String aVersion, String aVariable, String aAlias)
+    {
+        return """
+                <def:Standards>
+                  <def:Standard OID="STD.IG" Name="%s" Type="IG" Version="%s"/>
+                </def:Standards>
+                """.formatted(aStandard, aVersion) + rsBody(aVariable, aAlias);
+    }
+
+
+    private static String rsBody(String aVariable, String aAlias)
+    {
+        return """
+                <ItemGroupDef OID="IG.RS" Name="RS" Domain="RS" def:StandardOID="STD.IG">
+                  <ItemRef ItemOID="IT.RS.VAR" Mandatory="Yes"/>
+                </ItemGroupDef>
+                <ItemDef OID="IT.RS.VAR" Name="%s">
+                  <CodeListRef CodeListOID="CL.RS"/>
+                </ItemDef>
+                <CodeList OID="CL.RS" Name="Instrument list">
+                  <Alias Context="nci:ExtCodeID" Name="%s"/>
+                </CodeList>
+                """.formatted(aVariable, aAlias);
+    }
+
+
+    private static List<String> dd0118(String aBody, @Nullable CtProvider aCt)
+    {
+        return values(evaluate(rule("ItemGroupDef/ItemRef", DD0118_EXEMPT),
+                context(aBody, "2.1", new StubLibraryProvider(), "", aCt)));
+    }
+
+
+    @Test
+    void codelistCCodeExemptsAClinicalClassificationTestCodeListOnRsSince33()
+    {
+        ClassedCtProvider ct = new ClassedCtProvider();
+        // SDTMIG 3.3 RS.RSTESTCD -> HAMD-17's Test Code list: a clinical classification in RS,
+        // which the IG prescribes since 3.3 while the Library assigns the oncology list only
+        assertEquals(List.of(), dd0118(rs("SDTMIG", "3.3", "RSTESTCD", "C100138"), ct));
+        assertEquals(List.of(), dd0118(rs("SDTMIG", "3.3", "RSTEST", "C100137"), ct),
+                "RSTEST takes the Test Name list");
+        assertEquals(List.of(), dd0118(rs("SDTMIG", "3.10", "RSTESTCD", "C100138"), ct),
+                "3.10 >= 3.3, compared component-wise, not as text");
+        assertEquals(List.of(), dd0118(rs("SDTM-IG", "3.4", "RSTESTCD", "C100138"), ct),
+                "the standard matches after hyphen removal");
+        // the exemption is not blanket: the same define on an unexempt version still fires
+        assertEquals(List.of("RSTESTCD: C100138 vs C96782"),
+                dd0118(rs("SDTMIG", "3.2", "RSTESTCD", "C100138"), ct),
+                "SDTMIG 3.2's RS is Disease Response only");
+    }
+
+
+    @Test
+    void codelistCCodeExemptionNeedsTheRoleTheVariableTakes()
+    {
+        ClassedCtProvider ct = new ClassedCtProvider();
+        // T8: the class alone would admit any of HAMD-17's five lists on RSTESTCD
+        assertEquals(List.of("RSTESTCD: C100137 vs C96782"),
+                dd0118(rs("SDTMIG", "3.3", "RSTESTCD", "C100137"), ct),
+                "RSTESTCD bound to the instrument's Test NAME list is a mismatch");
+        assertEquals(List.of("RSTESTCD: C100136 vs C96782"),
+                dd0118(rs("SDTMIG", "3.3", "RSTESTCD", "C100136"), ct),
+                "an Original Response list on RSTESTCD is a mismatch");
+        assertEquals(List.of("RSTEST: C100138 vs C96781"),
+                dd0118(rs("SDTMIG", "3.3", "RSTEST", "C100138"), ct),
+                "RSTEST bound to the Test CODE list is a mismatch");
+    }
+
+
+    @Test
+    void codelistCCodeExemptionIsBoundToItsDatasetVariablesClassAndStandard()
+    {
+        ClassedCtProvider ct = new ClassedCtProvider();
+        assertEquals(List.of("RSORRES: C100136 vs C96783"),
+                dd0118(rs("SDTMIG", "3.3", "RSORRES", "C100136"), ct),
+                "RSORRES is not an exempt variable");
+        assertEquals(List.of("RSTESTCD: C100101 vs C96782"),
+                dd0118(rs("SDTMIG", "3.3", "RSTESTCD", "C100101"), ct),
+                "a Questionnaire test-code list is another class: questionnaires belong in QS");
+        assertEquals(List.of("RSTESTCD: C99999 vs C96782"),
+                dd0118(rs("SDTMIG", "3.3", "RSTESTCD", "C99999"), ct),
+                "a c-code in no QRS class (an oncology mismatch) fires as before");
+        assertEquals(List.of("RSTESTCD: C100138 vs C96782"),
+                dd0118(rs("SDTMIG-MD", "3.3", "RSTESTCD", "C100138"), ct),
+                "SDTMIG-MD is not SDTMIG: equality after hyphen removal, never startsWith");
+        assertEquals(List.of("RSTESTCD: C100138 vs C96782"),
+                dd0118(rs("SDTMIG", "3.3 Amendment 1", "RSTESTCD", "C100138"), ct),
+                "a non-numeric version is not covered - the conservative direction");
+    }
+
+
+    /**
+     * SR7 (a) / T4: the class comes from the bound CT ONLY. With no CT bound — every 2.0 define
+     * ({@code def:Standards} is a 2.1 element, so none names a CT package) and a 2.1 define that
+     * declares no CT — the exemption is inert and DD0118 fires as it did before. The engine never
+     * selects a CT version on its own (owner 2026-10-12).
+     */
+    @Test
+    void codelistCCodeExemptionIsInertWithoutABoundCt()
+    {
+        assertEquals(List.of("RSTESTCD: C100138 vs C96782"),
+                dd0118(rs("SDTMIG", "3.3", "RSTESTCD", "C100138"), null),
+                "a 2.1 define with no CT provider bound: the class is unknown, the rule fires");
+        // the 2.0 leg: the standard from the MetaDataVersion attributes, no CT provider
+        List<String> twoZero = values(evaluate(rule("ItemGroupDef/ItemRef", DD0118_EXEMPT),
+                context(rsBody("RSTESTCD", "C100138"), "2.0", new StubLibraryProvider(),
+                        "def:StandardName=\"SDTM-IG\" def:StandardVersion=\"3.3\"", null)));
+        assertEquals(List.of("RSTESTCD: C100138 vs C96782"), twoZero,
+                "a 2.0 define binds no CT, so the gap is accepted and pinned (SR7 (a))");
+        // sensitivity: the same 2.0 define WITH a CT bound is exempt — the provider is the only
+        // thing that changed
+        List<String> twoZeroWithCt = values(evaluate(rule("ItemGroupDef/ItemRef", DD0118_EXEMPT),
+                context(rsBody("RSTESTCD", "C100138"), "2.0", new StubLibraryProvider(),
+                        "def:StandardName=\"SDTM-IG\" def:StandardVersion=\"3.3\"",
+                        new ClassedCtProvider())));
+        assertEquals(List.of(), twoZeroWithCt, "-ct / CT Packages on a 2.0 run binds the class");
+    }
+
+
+    @Test
+    void codelistCCodeWithoutAnExemptBlockIsUnchanged()
+    {
+        ClassedCtProvider ct = new ClassedCtProvider();
+        String plain = """
+                kind: "library_codelist_ccode_matches"
+                """;
+        assertEquals(List.of("RSTESTCD: C100138 vs C96782"),
+                values(evaluate(rule("ItemGroupDef/ItemRef", plain),
+                        context(rs("SDTMIG", "3.3", "RSTESTCD", "C100138"), "2.1",
+                                new StubLibraryProvider(), "", ct))),
+                "no exempt block: a classed CT changes nothing");
+        assertEquals(List.of("SEX: C99999 vs C66731"),
+                values(evaluate(rule("ItemGroupDef/ItemRef", plain),
+                        context(DM_AND_AE, "2.1", new StubLibraryProvider(), "", ct))));
+    }
+
+
+    @Test
+    void codelistCCodeExemptEntriesAreValidatedAtLoad()
+    {
+        String head = """
+                kind: "library_codelist_ccode_matches"
+                exempt:
+                """;
+        for (String entry : List.of("""
+                - datasets: []
+                  variables: ["RSTESTCD"]
+                  ct_class: "Clinical Classification"
+                  ct_role: "Test Code"
+                """, """
+                - datasets: ["RS"]
+                  variables: ["RSTESTCD"]
+                  ct_class: "Clinical Classification"
+                """, """
+                - datasets: ["RS"]
+                  variables: ["RSTESTCD"]
+                  ct_class: "Clinical Classification"
+                  ct_role: "Test Code"
+                  since_version: "3.3"
+                """, """
+                - datasets: ["RS"]
+                  variables: ["RSTESTCD"]
+                  ct_class: "Clinical Classification"
+                  ct_role: "Test Code"
+                  standard: "SDTMIG"
+                  since_version: "3.3a"
+                """))
+        {
+            String yaml = rule("ItemGroupDef/ItemRef", head + entry);
+            IllegalStateException failure = assertThrows(IllegalStateException.class,
+                    () -> RuleRepository.parse(yaml, "test"), entry);
+            assertTrue(failure.getMessage().contains("library_codelist_ccode_matches exempt"),
+                    failure.getMessage());
+        }
     }
 
     // ------------------------------------------------------------------

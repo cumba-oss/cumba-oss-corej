@@ -366,6 +366,71 @@ public final class OutputVariableDeriver
 
 
     /**
+     * The rule's own form of each operand-backed accessor call that carries a keyword argument
+     * ({@code PLAN-stopped-rule-engine-fixes} SR6 (a)): {@code max_value_length(variable_name,
+     * unit="bytes")} maps to {@code variable_max_size} like the plain call, but its projection must
+     * count what the Check counted — the plain form ({@link MetadataOperandMapping#forwardOperand})
+     * counts characters, so FDA-SD1082 fired on a 5-byte {@code µmol} in a width-4 column and
+     * reported {@code 4}. The finding projection ({@code RuleRunner#operandVector}) evaluates the
+     * recorded call instead of the plain form; an operand without a keyword-bearing call keeps the
+     * plain form. Two different keyword forms of one operand in one Check: the first in walk order
+     * wins (no corpus rule has two). Same walk as {@link #derive}, Check levels joined.
+     */
+    public static Map<String, Expr> operandFormsOf(@Nullable Rule rule)
+    {
+        Map<String, Expr> forms = new java.util.LinkedHashMap<>();
+        for (Expr expr : checkExprsOf(rule))
+        {
+            collectOperandForms(expr, forms);
+        }
+        return Map.copyOf(forms);
+    }
+
+
+    private static void collectOperandForms(Expr e, Map<String, Expr> forms)
+    {
+        switch (e)
+        {
+        case Expr.And a -> a.parts().forEach(p -> collectOperandForms(p, forms));
+        case Expr.Or o -> o.parts().forEach(p -> collectOperandForms(p, forms));
+        case Expr.Not n -> collectOperandForms(n.inner(), forms);
+        case Expr.Binary b ->
+        {
+            collectOperandForms(b.left(), forms);
+            collectOperandForms(b.right(), forms);
+        }
+        case Expr.Lit l ->
+        {
+            if (l.kind() == Expr.LitKind.LIST && l.value() instanceof List<?> items)
+            {
+                for (Object item : items)
+                {
+                    if (item instanceof Expr inner)
+                    {
+                        collectOperandForms(inner, forms);
+                    }
+                }
+            }
+        }
+        case Expr.Ref _ ->
+        {
+            // a reference carries no call
+        }
+        case Expr.Call c ->
+        {
+            String operand = MetadataOperandMapping.reverseAnyAccessor(c);
+            if (operand != null && !c.kwargs().isEmpty())
+            {
+                forms.putIfAbsent(operand, c);
+            }
+            c.args().forEach(arg -> collectOperandForms(arg, forms));
+            c.kwargs().values().forEach(arg -> collectOperandForms(arg, forms));
+        }
+        }
+    }
+
+
+    /**
      * Every declared check level's compiled expression, strictest first (Plan C &#167;3.3) — a
      * one-element list holding exactly {@code rule.getCheckExpr()} for every single-level rule, and
      * empty when nothing compiled.

@@ -1,8 +1,10 @@
 package net.cumba.corej.define.conformance.rule;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -172,7 +174,7 @@ public sealed interface CheckDefinition
             {
                 try
                 {
-                    java.util.regex.Pattern.compile(pattern);
+                    Pattern.compile(pattern);
                 }
                 catch (java.util.regex.PatternSyntaxException e)
                 {
@@ -540,9 +542,162 @@ public sealed interface CheckDefinition
      * referenced {@code ItemDef}'s {@code CodeListRef} resolves to a {@code CodeList} carrying an
      * {@code Alias[@Context="nci:ExtCodeID"]}, the two c-codes must match. A missing alias is
      * DD0031's beat, not this rule's.
+     *
+     * <p>
+     * {@code exempt} ({@code PLAN-stopped-rule-engine-fixes} SR2 / SR3 / T8): a mismatch is not a
+     * finding when one {@link CtClassExemption} covers the binding and the document codelist's QRS
+     * class and role, read from the CT the run bound ({@code CtProvider#codelistClass}) — RS since
+     * SDTMIG 3.3 holds clinical classifications, each with its own instrument codelist, while the
+     * Library assigns {@code RSTESTCD} / {@code RSTEST} the oncology lists. With no CT bound (every
+     * 2.0 define, a 2.1 define declaring no CT, unless the run names packages) the class is
+     * unknown, the exemption is inert and the rule fires as before (SR7 (a), T4).
+     * </p>
      */
-    record LibraryCodelistCCodeMatches(@Nullable Condition when) implements CheckDefinition
+    record LibraryCodelistCCodeMatches(List<CtClassExemption> exempt,
+            @Nullable Condition when) implements CheckDefinition
     {
+
+        /** An omitted {@code exempt:} reads as no exemption; the list is copied (immutable). */
+        public LibraryCodelistCCodeMatches
+        {
+            exempt = exempt == null ? List.of() : List.copyOf(exempt);
+        }
+
+
+        @Override
+        public void validate()
+        {
+            CheckDefinition.super.validate();
+            for (CtClassExemption exemption : exempt)
+            {
+                exemption.validate();
+            }
+        }
+    }
+
+
+    /**
+     * One exemption of {@link LibraryCodelistCCodeMatches}: the named datasets and variables
+     * (matched ignoring letter case), bound to a codelist of this QRS class AND role, under a
+     * governing standard of this name at {@code since_version} or later, are not a finding.
+     *
+     * <p>
+     * The standard and version tests are this record's own (review LOW 7): the standard is compared
+     * by equality after removing hyphens from both sides ({@code SDTM-IG} = {@code SDTMIG};
+     * {@code SDTMIG-MD} ≠ {@code SDTMIG}, which the evaluator's wider family test would admit); the
+     * document's version must be numeric-dotted ({@code 3.3}, {@code 3.10}) and at least
+     * {@code since_version} component-wise ({@code 3.10} > {@code 3.3}). A non-numeric version
+     * ({@code 3.1.2 Amendment 1}) is NOT covered, so the rule fires — the conservative direction.
+     * Without {@code standard} / {@code since_version} the exemption applies to every standard /
+     * version.
+     * </p>
+     */
+    record CtClassExemption(List<String> datasets, List<String> variables,
+            @JsonProperty("ct_class") @Nullable String ctClass,
+            @JsonProperty("ct_role") @Nullable String ctRole, @Nullable String standard,
+            @JsonProperty("since_version") @Nullable String sinceVersion)
+    {
+
+        private static final Pattern NUMERIC_DOTTED = Pattern.compile("\\d+(\\.\\d+)*");
+
+        /** The lists are copied (immutable); an omitted one reads as empty and fails validate. */
+        public CtClassExemption
+        {
+            datasets = datasets == null ? List.of() : List.copyOf(datasets);
+            variables = variables == null ? List.of() : List.copyOf(variables);
+        }
+
+
+        /** Load-time structural validation. */
+        public void validate()
+        {
+            if (datasets.isEmpty() || datasets.stream().anyMatch(String::isBlank))
+            {
+                throw new IllegalStateException(
+                        "library_codelist_ccode_matches exempt entry needs non-empty datasets");
+            }
+            if (variables.isEmpty() || variables.stream().anyMatch(String::isBlank))
+            {
+                throw new IllegalStateException(
+                        "library_codelist_ccode_matches exempt entry needs non-empty variables");
+            }
+            if (ctClass == null || ctClass.isBlank() || ctRole == null || ctRole.isBlank())
+            {
+                throw new IllegalStateException(
+                        "library_codelist_ccode_matches exempt entry needs ct_class and ct_role");
+            }
+            if (sinceVersion != null)
+            {
+                if (standard == null || standard.isBlank())
+                {
+                    throw new IllegalStateException("library_codelist_ccode_matches exempt entry: "
+                            + "since_version needs a standard");
+                }
+                if (!NUMERIC_DOTTED.matcher(sinceVersion).matches())
+                {
+                    throw new IllegalStateException("library_codelist_ccode_matches exempt entry: "
+                            + "since_version must be numeric-dotted, got '" + sinceVersion + "'");
+                }
+            }
+            else if (standard != null && standard.isBlank())
+            {
+                throw new IllegalStateException(
+                        "library_codelist_ccode_matches exempt entry: standard must not be blank");
+            }
+        }
+
+
+        /**
+         * Whether this exemption covers a variable of {@code aDataset} governed by
+         * {@code aStandard} {@code aVersion}, bound to a codelist of {@code aClass}.
+         */
+        public boolean covers(String aStandard, String aVersion, String aDataset, String aVariable,
+                net.cumba.corej.define.conformance.ct.CodelistClass aClass)
+        {
+            return containsIgnoreCase(datasets, aDataset)
+                    && containsIgnoreCase(variables, aVariable) && aClass.qrsClass().equals(ctClass)
+                    && aClass.role().isPresent() && aClass.role().get().equals(ctRole)
+                    && standardCovered(aStandard) && versionCovered(aVersion);
+        }
+
+
+        private static boolean containsIgnoreCase(List<String> aNames, String aName)
+        {
+            return aNames.stream().anyMatch(n -> n.equalsIgnoreCase(aName));
+        }
+
+
+        private boolean standardCovered(String aStandard)
+        {
+            return standard == null
+                    || standard.replace("-", "").equalsIgnoreCase(aStandard.replace("-", ""));
+        }
+
+
+        private boolean versionCovered(String aVersion)
+        {
+            if (sinceVersion == null)
+            {
+                return true;
+            }
+            if (!NUMERIC_DOTTED.matcher(aVersion).matches())
+            {
+                return false;
+            }
+            String[] actual = aVersion.split("\\.", -1);
+            String[] floor = sinceVersion.split("\\.", -1);
+            int n = Math.max(actual.length, floor.length);
+            for (int i = 0; i < n; i++)
+            {
+                int a = i < actual.length ? Integer.parseInt(actual[i]) : 0;
+                int f = i < floor.length ? Integer.parseInt(floor[i]) : 0;
+                if (a != f)
+                {
+                    return a > f;
+                }
+            }
+            return true;
+        }
     }
 
 

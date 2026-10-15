@@ -103,6 +103,9 @@ class DefineXmlMetadataProviderTest
                 v.put("origin_type", "Derived");
                 v.put("has_comment", "true");
                 v.put("has_method", "false");
+                v.put("vlm_has_method", "true");
+                v.put("vlm_has_comment", "false");
+                v.put("vlm_has_origin", "true");
                 v.put("external_dictionary", "MEDDRA");
                 v.put("external_dictionary_version", "25.0");
                 return List.of(v);
@@ -134,6 +137,11 @@ class DefineXmlMetadataProviderTest
         assertEquals("Derived", meta.get("origin_type"));
         assertEquals("true", meta.get("has_comment"));
         assertEquals("false", meta.get("has_method"));
+        // PLAN-stopped-rule-engine-fixes SR1: the value-level coverage flags are carried through
+        // under their function suffixes (var_vlm_has_method -> vlm_has_method)
+        assertEquals("true", meta.get("vlm_has_method"));
+        assertEquals("false", meta.get("vlm_has_comment"));
+        assertEquals("true", meta.get("vlm_has_origin"));
         assertEquals("MEDDRA", meta.get("external_dictionary"));
         assertEquals("25.0", meta.get("external_dictionary_version"));
     }
