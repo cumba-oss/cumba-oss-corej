@@ -176,47 +176,115 @@ public final class StudyValidationService
         AdamSubclassDetector.resetDeclarationWarnings();
         IDataTableManager manager = params.manager();
 
-        // Phase 6 flag shape:
-        // dataLibrary → the data library (any shape: dir, file, URI). Required source for
-        // dataset enumeration unless defineXmlPath acts as the fallback (below).
-        // defineXmlPath → optional define.xml. Two modes:
-        // • If dataLibrary is given: define.xml provides metadata enrichment for the data library.
-        // • If dataLibrary is absent: define.xml acts as the data library too (legacy fallback).
-        IDataTableLibraryRef dataLibrary;
-        IDataTableLibraryRef metadataLibrary;
-        if (params.dataLibrary() != null)
+        // Runbook W1b LR (OPEN-DECISIONS §3.9 ⓐ, owner 2026-10-07): every library reference this
+        // run acquires — the data library, a Define-XML overlay, a Define-XML standing in for the
+        // data, each reference library — is released on the run's own exit path, exactly once,
+        // whether the run completes, refuses or is cancelled: a reference is recorded here the
+        // moment the manager hands it out, and the finally below gives each distinct one back
+        // after the last reader (the validator) has run. A reference acquired for both the data
+        // and the metadata is one reference, released once. Internal engine only (O19): the OSS
+        // datatable manager has no release call, so its twin keeps the references open.
+        List<IDataTableLibraryRef> acquired = new ArrayList<>(3);
+        try
         {
-            dataLibrary = resolveLibrary(manager, params.dataLibrary());
-            LOGGER.log(System.Logger.Level.INFO, "Using data library: {0}", params.dataLibrary());
-            if (params.defineXmlPath() != null)
+            // Phase 6 flag shape:
+            // dataLibrary → the data library (any shape: dir, file, URI). Required source for
+            // dataset enumeration unless defineXmlPath acts as the fallback (below).
+            // defineXmlPath → optional define.xml. Two modes:
+            // • If dataLibrary is given: define.xml provides metadata enrichment for the data
+            // library.
+            // • If dataLibrary is absent: define.xml acts as the data library too (legacy
+            // fallback).
+            IDataTableLibraryRef dataLibrary;
+            IDataTableLibraryRef metadataLibrary;
+            if (params.dataLibrary() != null)
             {
+                dataLibrary = resolveLibrary(manager, params.dataLibrary());
+                acquired.add(dataLibrary);
+                LOGGER.log(System.Logger.Level.INFO, "Using data library: {0}",
+                        params.dataLibrary());
+                if (params.defineXmlPath() != null)
+                {
+                    Path dxp = Path.of(params.defineXmlPath());
+                    requireExists(dxp);
+                    metadataLibrary = manager.getLibraryRef(dxp.toUri(), null);
+                    if (metadataLibrary != null)
+                    {
+                        acquired.add(metadataLibrary);
+                    }
+                    LOGGER.log(System.Logger.Level.INFO, "Using metadata overlay (define.xml): {0}",
+                            dxp);
+                }
+                else
+                {
+                    metadataLibrary = dataLibrary;
+                }
+            }
+            else if (params.defineXmlPath() != null)
+            {
+                // Fallback: define.xml alone drives both data and metadata.
                 Path dxp = Path.of(params.defineXmlPath());
                 requireExists(dxp);
-                metadataLibrary = manager.getLibraryRef(dxp.toUri(), null);
-                LOGGER.log(System.Logger.Level.INFO, "Using metadata overlay (define.xml): {0}",
-                        dxp);
+                dataLibrary = manager.getLibraryRef(dxp.toUri(), null);
+                if (dataLibrary != null)
+                {
+                    acquired.add(dataLibrary);
+                }
+                metadataLibrary = dataLibrary;
+                LOGGER.log(System.Logger.Level.INFO,
+                        "Using define.xml as both data + metadata: {0}", dxp);
             }
             else
             {
-                metadataLibrary = dataLibrary;
+                throw new StudyValidationException(
+                        "provide a data library or a define.xml path before validating");
+            }
+            return validateWith(params, manager, dataLibrary, metadataLibrary, acquired, start);
+        }
+        finally
+        {
+            releaseLibraries(manager, acquired);
+        }
+    }
+
+
+    /**
+     * Gives every reference of {@code acquired} back to the manager, last acquired first (runbook
+     * W1b LR): each recorded acquisition is released exactly once - a manager answering its
+     * canonical cached reference twice counted two acquisitions
+     * ({@code IDataTableManager.releaseLibraryRef}: "released as often as it was called"), so the
+     * identity dedupe this used to apply leaked a count (T2 fold, review L2-L1); the
+     * {@code metadataLibrary == dataLibrary} alias is never recorded twice. A release that fails is
+     * logged and the others are still released — never a second exception over the run's own.
+     */
+    private static void releaseLibraries(IDataTableManager manager,
+            List<IDataTableLibraryRef> acquired)
+    {
+        for (int i = acquired.size() - 1; i >= 0; i--)
+        {
+            IDataTableLibraryRef ref = acquired.get(i);
+            try
+            {
+                manager.releaseLibraryRef(ref);
+            }
+            catch (IOException | RuntimeException e)
+            {
+                LOGGER.log(System.Logger.Level.WARNING, "Could not release library {0}: {1}", ref,
+                        e.toString());
             }
         }
-        else if (params.defineXmlPath() != null)
-        {
-            // Fallback: define.xml alone drives both data and metadata.
-            Path dxp = Path.of(params.defineXmlPath());
-            requireExists(dxp);
-            dataLibrary = manager.getLibraryRef(dxp.toUri(), null);
-            metadataLibrary = dataLibrary;
-            LOGGER.log(System.Logger.Level.INFO, "Using define.xml as both data + metadata: {0}",
-                    dxp);
-        }
-        else
-        {
-            throw new StudyValidationException(
-                    "provide a data library or a define.xml path before validating");
-        }
+    }
 
+
+    /**
+     * The run over the acquired libraries — {@link #validate} with its references in hand (and
+     * recorded in {@code acquired}, which a reference library joins when it is resolved).
+     */
+    private StudyValidationResult validateWith(StudyValidationParams params,
+            IDataTableManager manager, IDataTableLibraryRef dataLibrary,
+            IDataTableLibraryRef metadataLibrary, List<IDataTableLibraryRef> acquired, long start)
+        throws IOException
+    {
         checkCancelled(params.cancellation(), "before dataset load");
 
         // Phase A: load datasets. Members listed in the dataset filter become validation targets;
@@ -246,7 +314,8 @@ public final class StudyValidationService
         List<ReferenceDataset> externalReferences = new ArrayList<>();
         for (String refPath : params.referenceData())
         {
-            externalReferences.addAll(loadReferenceLibrary(manager, refPath, datasets, loaded));
+            externalReferences
+                    .addAll(loadReferenceLibrary(manager, refPath, datasets, loaded, acquired));
         }
 
         // Phase A3 (define-ct plan §4.5): parse the sponsor Define-XML BEFORE the metadata
@@ -875,12 +944,15 @@ public final class StudyValidationService
      * warning) — targets must take precedence over external references.
      */
     private static List<ReferenceDataset> loadReferenceLibrary(IDataTableManager manager,
-            String refPath, List<DatasetEntry> targetDatasets, LoadedLibrary inLibraryRefs)
+            String refPath, List<DatasetEntry> targetDatasets, LoadedLibrary inLibraryRefs,
+            List<IDataTableLibraryRef> acquired)
         throws IOException
     {
         // Phase 6: same library-resolution shape as the primary data library. Accepts any path /
         // file / URI; the manager's SPI dispatches by extension or content marker.
         IDataTableLibraryRef refLibrary = resolveLibrary(manager, refPath);
+        // LR: recorded before anything reads it, so a failing member listing still releases it
+        acquired.add(refLibrary);
         LOGGER.log(System.Logger.Level.INFO, "Loading reference library: {0}", refPath);
 
         Set<String> alreadyKnown = new LinkedHashSet<>();
