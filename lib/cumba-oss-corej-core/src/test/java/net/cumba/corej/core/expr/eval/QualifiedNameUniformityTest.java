@@ -1481,7 +1481,7 @@ class QualifiedNameUniformityTest
         IDataTable jLower = table("J", columns('\0', '\0', '\0'), false, true);
         compare(red, "C5c", evaluate(bare, bool, ctx(pLower, jLower, bare)),
                 evaluate(dotted, bool, joinedCtx(pLower, jLower, dotted)));
-        // C5q — the QUALIFIER matched ignoring case (owner-pending N2, plan §2.4): the join is
+        // C5q — the QUALIFIER matched ignoring case (N2, ruled by P-19 / MET #6): the join is
         // declared / registered under the lower-case name "j", the probe spells "J.".
         compare(red, "C5q", bareC1, evaluate(dotted, bool, ctx(p, j, true, dotted, "j")));
         // C9 — the string form resolves like the reference form (UNIFORMITY).
@@ -1580,8 +1580,8 @@ class QualifiedNameUniformityTest
     {
         List<Row> rows = rows();
         SequencedMap<String, SequencedMap<String, String>> measured = measure(rows);
-        // The qualifier-case criterion is owner-pending as a WHOLE (N2) and the blind rows are
-        // a fixture property: both are asserted separately below, so they are lifted out here.
+        // The qualifier-case criterion (C5q, N2 ruled by P-19 / MET #6) and the blind rows (a
+        // fixture property) have their own exact ratchet below, so they are lifted out here.
         SequencedMap<String, String> actual = new TreeMap<>();
         StringBuilder details = new StringBuilder();
         for (Map.Entry<String, SequencedMap<String, String>> e : measured.entrySet())

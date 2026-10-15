@@ -145,7 +145,10 @@ public enum StageAErrorKind
      * is constant-true, and with 242 of 266 corpus entries defaulting to inner this is the
      * <em>default</em> case, not an edge case). Armed: measured 0 newly parked — re-measured in
      * phase 5b-J with the parser able to spell the flag (before 5b-J the kind was vacuous by
-     * construction), over the shipped corpus and the {@code rulespec/} harness.
+     * construction), over the shipped corpus and the {@code rulespec/} harness. ⚠ That zero was
+     * over an EMPTY population: no rule spelled {@code _matched_} then (D88b). Re-counted
+     * 2026-10-15: 15 authored rules of the rule corpus ({@code rules-src/}, the same 15 in the
+     * internal and the published corpus) and 3 {@code rulespec} specs spell it.
      */
     MATCHED_FLAG_INNER_JOIN(true),
 
@@ -159,8 +162,10 @@ public enum StageAErrorKind
      * <em>condition</em> — {@code not AE._matched_} — never a comparison operand).
      * Dataset-independent and decidable at load, so a stage-A error under D67's fail-loud
      * precedent, exactly like {@link #MATCHED_FLAG_INNER_JOIN}. Armed: measured 0 newly parked in
-     * phase 5b-J (no corpus or rulespec spelling of {@code _matched_} exists yet — the namespace
-     * scan found 0 over the 3&#8239;940 authored checks, D88b).
+     * phase 5b-J, when no corpus or rulespec rule spelled {@code _matched_} (the namespace scan
+     * found 0 over the 3&#8239;940 authored checks, D88b) — a zero over an EMPTY population.
+     * Re-counted 2026-10-15: 15 authored rules of the rule corpus ({@code rules-src/}, the same 15
+     * in the internal and the published corpus) and 3 {@code rulespec} specs spell it.
      */
     MATCHED_FLAG_INVALID(true),
 

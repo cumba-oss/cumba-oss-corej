@@ -57,8 +57,11 @@ public enum StageBErrorKind
      *
      * <p>
      * Armed in phase 5b-J with a structurally-zero production population: no corpus or rulespec
-     * rule spells {@code _matched_} yet (D88b measured 0 over the 3&#8239;940 authored checks),
-     * re-measured over both populations with the parser able to spell it.
+     * rule spelled {@code _matched_} then (D88b measured 0 over the 3&#8239;940 authored checks),
+     * re-measured over both populations with the parser able to spell it. Re-counted 2026-10-15: 15
+     * authored rules of the rule corpus ({@code rules-src/}, the same 15 in the internal and the
+     * published corpus) and 3 {@code rulespec} specs spell it, so the population is no longer
+     * empty.
      * </p>
      */
     MATCHED_FLAG_UNRESOLVABLE(true),

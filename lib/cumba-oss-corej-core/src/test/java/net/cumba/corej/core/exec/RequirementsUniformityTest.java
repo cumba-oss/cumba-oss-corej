@@ -26,8 +26,8 @@ import org.junit.jupiter.api.Test;
  * <p>
  * Ruled difference pinned (plan §2.3, Q12 / N7): a qualified entry is ALSO met by a SUPP-QNAM pivot
  * ({@code ScopeVariableSource.existsViaSuppQnam}) that the value read of {@code J.S} does not
- * consult. Known red recorded (N2, owner-pending): the qualifier of an entry is matched exactly by
- * an exact-case resolver — a lower-case {@code j.S} is "not available" and SKIPs.
+ * consult. The qualifier of an entry is matched ignoring case (P-19 / MET #6, which ruled the
+ * former known red N2): a lower-case {@code j.S} is available even against an exact-case resolver.
  * </p>
  */
 class RequirementsUniformityTest

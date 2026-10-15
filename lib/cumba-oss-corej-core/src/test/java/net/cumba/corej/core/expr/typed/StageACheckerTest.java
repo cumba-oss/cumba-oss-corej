@@ -1499,8 +1499,9 @@ class StageACheckerTest
         String message = report.findings().get(0).toString();
         assertTrue(message.contains("Output_Variables entry DM.ARM"), message);
         // controls: declared; a ${…} / -- qualifier (resolved later); a case-only difference
-        // (owner-pending N2); a template entry name (deferred); a per-VARIABLE rule, where the
-        // runner reports the entry as its own identifier (Fix #18)
+        // (resolves ignoring case, P-19 / MET #6 — asserted below); a template entry name
+        // (deferred); a per-VARIABLE rule, where the runner reports the entry as its own
+        // identifier (Fix #18)
         assertEquals(List.of(),
                 check(withOutputs(ruleJoining("AE", "left", "USUBJID"), "AE.AETERM"),
                         "QNAM == \"x\"").findings());
