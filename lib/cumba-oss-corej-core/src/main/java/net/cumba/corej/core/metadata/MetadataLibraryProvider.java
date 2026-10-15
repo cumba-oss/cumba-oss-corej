@@ -117,10 +117,12 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * {@link #getIgAbsentVariableMetadata} serves: what the SDTM model is the authority for on a
      * domain the run's IG does not define (since {@code PLAN-send-base-ig-view} the SEND domains
      * SENDIG-AR / -DART leave out no longer get here — the base-IG view gives the run's IG those
-     * datasets — so the population is sponsor domains and the model-only datasets of {@code B-MD}).
-     * An allow-list, not "drop the label": the walk row also carries the class {@code ordinal} and,
-     * per product, {@code definition}, {@code description}, …, and the finding enrichment copies
-     * every served key into a {@code library_variable_*} cell.
+     * datasets — so the population is sponsor domains, the model-only datasets of {@code B-MD}, and
+     * standard domains only a later IG defines, e.g. {@code GF} / {@code BE} / {@code BS} /
+     * {@code CP} on an SDTMIG 3.3 run, {@code CV} / {@code RE} on a SENDIG 3.0 run). An allow-list,
+     * not "drop the label": the walk row also carries the class {@code ordinal} and, per product,
+     * {@code definition}, {@code description}, …, and the finding enrichment copies every served
+     * key into a {@code library_variable_*} cell.
      */
     private static final List<String> IG_ABSENT_SERVED_KEYS = List.of(ATTR_NAME,
             ATTR_SIMPLE_DATATYPE, ATTR_ROLE);
@@ -3386,9 +3388,12 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * <p>
      * The model dataset is looked up by the dataset's <b>own</b> name first, then by its canonical
      * domain: {@code APRELSUB} is a model dataset in its own right, while the {@code AP--} ladder
-     * strips it to {@code RELSUB}, which the IG may define (SDTMIG 3.3 / 3.4) — keyed on the
-     * canonical domain alone it would never be reached. A name the IG defines is never answered
-     * here (a sponsor variable of an IG-defined dataset stays unserved).
+     * strips it to {@code RELSUB}. The own-name lookup is what answers it where the run's IG lacks
+     * {@code RELSUB} — SEND packages and SDTMIG 3.2: keyed on the canonical domain alone the arm
+     * would read the model's {@code RELSUB}, never {@code APRELSUB}'s own variables. At SDTMIG 3.3
+     * / 3.4, which define {@code RELSUB}, tier 1's AP shim answers {@code APRELSUB} before this arm
+     * is asked. A name the IG defines is never answered here (a sponsor variable of an IG-defined
+     * dataset stays unserved).
      * </p>
      */
     private Map<String, String> modelDatasetAttributes(String aDomain, String aEffectiveDomain,

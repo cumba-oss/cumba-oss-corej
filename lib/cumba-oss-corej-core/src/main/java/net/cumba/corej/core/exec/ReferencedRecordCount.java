@@ -50,10 +50,10 @@ import org.jspecify.annotations.Nullable;
  * {@link KeyMatchIndex} (Q9) — memoised for the run in {@link JoinCache.SharedIndexCache}, shared
  * across rules and threads — and probed once per row. The index keys on a 52-bit hash of the
  * components' text-join identities (the index's own {@code CompositeKey} is package-private to the
- * datatable), held as one {@code Double} key identity per distinct key — about 16 B where the
- * joined text was about 88 B (T2 fold, review L2-L5b, memory first; 24 B as a {@code KeyPart} until
- * {@code PLAN-key-match-index-identity-rekey}) — and every candidate row of a hit is verified
- * component by component, so a collision never counts a foreign record.
+ * datatable), held as one {@code Double} key identity per distinct key — 24 B, the same as the
+ * {@code PresentNumber} it replaces ({@code PLAN-key-match-index-identity-rekey}), where the joined
+ * text was about 88 B (T2 fold, review L2-L5b, memory first) — and every candidate row of a hit is
+ * verified component by component, so a collision never counts a foreign record.
  * </p>
  */
 public final class ReferencedRecordCount
@@ -480,9 +480,9 @@ public final class ReferencedRecordCount
     /**
      * The index of {@code table} on ({@code keys}, the pointer column), the text-join identity -
      * keyed on the {@code bits}-bit hash of the key text (T2 fold, review L2-L5b: the text itself,
-     * a {@code String} of every component per distinct key, was ~88 B retained per key against ~24
-     * B for the number part, ~16 B for its {@code Double} identity since
-     * {@code PLAN-key-match-index-identity-rekey}; the probe verifies each candidate row,
+     * a {@code String} of every component per distinct key, was ~88 B retained per key against 24 B
+     * for its {@code Double} identity since {@code PLAN-key-match-index-identity-rekey}, the same
+     * as the {@code PresentNumber} it replaces; the probe verifies each candidate row,
      * {@link Probe#matches}). Package-private with {@code bits} for the collision test.
      */
     static KeyMatchIndex index(IDataTable table, int pointerColumn, boolean numeric, int[] keys,

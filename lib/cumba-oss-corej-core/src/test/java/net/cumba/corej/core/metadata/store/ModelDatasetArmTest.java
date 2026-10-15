@@ -21,8 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
  * dataset: {@code name}, {@code simpleDatatype}, {@code role} only ({@code LVC-D1} (a)). The reach
  * is the mechanism, not a name list ({@code B-MD-REACH} (b)); "no row" covers a dataset no class
  * places and one placed in a class with nothing to walk ({@code B-MD-WALK} (b)); {@code APRELSUB}
- * is looked up by its own name (the {@code AP--} ladder would strip it to an IG-defined
- * {@code RELSUB}).
+ * is looked up by its own name (the {@code AP--} ladder would strip it to {@code RELSUB}).
  */
 class ModelDatasetArmTest
 {
@@ -70,7 +69,10 @@ class ModelDatasetArmTest
     @Test
     void anAssociatedPersonsModelDatasetIsFoundByItsOwnName()
     {
-        // APRELSUB: the AP-- ladder strips it to RELSUB, which this IG defines.
+        // APRELSUB: the AP-- ladder strips it to RELSUB. The own-name lookup matters where the IG
+        // lacks RELSUB (SEND packages, SDTMIG 3.2): the canonical lookup would read the model's
+        // RELSUB, which has no APID. At SDTMIG 3.3 / 3.4 tier 1's AP shim answers instead; this
+        // fixture's RELSUB has no APID, so tiers 1-3 miss and the arm is reached.
         IDataTable aprelsub = dataset("APRELSUB", null, "STUDYID", "APID", "RSUBJID", "SREL");
         assertEquals(Map.of("name", "APID", "simpleDatatype", "Char", "role", "Identifier"),
                 read(aprelsub, "APID"));

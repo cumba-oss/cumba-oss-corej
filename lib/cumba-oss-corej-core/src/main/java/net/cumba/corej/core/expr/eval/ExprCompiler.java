@@ -9439,9 +9439,11 @@ public final class ExprCompiler
      * walk returns no row, the model's own definition of the dataset ({@code DI}, {@code SV},
      * {@code APRELSUB}, …; {@code PLAN-send-base-ig-view} {@code B-MD}). The SEND domains SENDIG-AR
      * / -DART leave out no longer reach this tier: the base-IG view gives the run's IG those
-     * datasets, so tiers 1–3 answer them. It is LAST, so it never pre-empts an answer tiers 1–3
-     * give, and it is not asked at all when one of them answered (a class walk per read would
-     * otherwise be spent on every IG variable).
+     * datasets, so tiers 1–3 answer them — unless the store lacks the base SENDIG, which is a
+     * WARNING at provider open and the old behaviour (those domains stay on this tier's model
+     * answer). It is LAST, so it never pre-empts an answer tiers 1–3 give, and it is not asked at
+     * all when one of them answered (a class walk per read would otherwise be spent on every IG
+     * variable).
      * </p>
      *
      * @param provider
