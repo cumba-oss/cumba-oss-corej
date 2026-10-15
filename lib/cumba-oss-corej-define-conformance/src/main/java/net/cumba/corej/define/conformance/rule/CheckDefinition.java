@@ -152,10 +152,28 @@ public sealed interface CheckDefinition
      * The attribute's value (when present — presence is a separate rule) must match. Exactly one of
      * {@code pattern} (an explicit regex, full-match) or {@code format} (a named canned pattern
      * from {@link RegexFormats}) must be given.
+     *
+     * <p>
+     * {@code exemptLibraryLabel} ({@code PLAN-define-rule-library-label}): a value equal to the
+     * CDISC Library label of the scoped text's own variable passes whatever the pattern says. The
+     * variable is every ItemGroupDef/ItemRef binding of the ItemDef whose Description holds the
+     * text (or of the scoped ItemDef itself); the label is the one the binding's governing SDTMIG /
+     * SENDIG standard publishes, compared with whitespace collapsed and letter case ignored. No
+     * label (no binding, no governing standard, a product the library lacks, a sponsor variable)
+     * means no exemption, and a comment is never a label. Needs {@code Requires: library}
+     * ({@link ConformanceRule#validate()}).
+     * </p>
      */
     record MatchesRegex(String attribute, @Nullable String pattern, @Nullable String format,
+            @Nullable Boolean exemptLibraryLabel,
             @Nullable Condition when) implements CheckDefinition
     {
+
+        public boolean exemptLibraryLabelOrDefault()
+        {
+            return Boolean.TRUE.equals(exemptLibraryLabel);
+        }
+
 
         @Override
         public void validate()

@@ -8,8 +8,9 @@ import java.util.Optional;
 /**
  * Deterministic in-memory {@link LibraryProvider} for the library-gated rule tests, modelled on
  * {@code ct.StubCtProvider}. It knows exactly one implementation guide — SDTMIG 3.4 — plus SENDIG
- * 3.1, and answers empty for everything else, which is the interface's documented contract ("every
- * method answers empty for anything the loaded library does not know").
+ * 3.1 (and SENDIG 3.0's BGDY label), and answers empty for everything else, which is the
+ * interface's documented contract ("every method answers empty for anything the loaded library does
+ * not know").
  *
  * <p>
  * Standard names are matched <b>hyphen-insensitively and case-insensitively</b>, as
@@ -27,6 +28,8 @@ public final class StubLibraryProvider implements LibraryProvider
 
     private static final String SENDIG_31 = "SENDIG|3.1";
 
+    private static final String SENDIG_30 = "SENDIG|3.0";
+
     private static final String ADAMIG_13 = "ADAMIG|1.3";
 
     /** Dataset labels, keyed "<standard>|<version>|<dataset>". */
@@ -36,12 +39,28 @@ public final class StubLibraryProvider implements LibraryProvider
             "Demographics (ADaM spelling)",
             // SDTMIG's combined SUPPQUAL dataset is published with a template label (measured
             // in the store across SDTMIG 3.2-3.4 and TIG 1.0: "[domain name]" / "[DOMAIN NAME]")
-            SDTMIG_34 + "|SUPPQUAL", "Supplemental Qualifiers for [domain name]");
+            SDTMIG_34 + "|SUPPQUAL", "Supplemental Qualifiers for [domain name]", SENDIG_31 + "|BW",
+            "Body Weight", SENDIG_31 + "|BG", "Body Weight Gains");
 
-    /** Variable labels, keyed "<standard>|<version>|<dataset>|<variable>". */
-    private static final Map<String, String> VARIABLE_LABELS = Map.of(SDTMIG_34 + "|DM|SEX", "Sex",
-            SDTMIG_34 + "|DM|USUBJID", "Unique Subject Identifier", SDTMIG_34 + "|AE|AETERM",
-            "Reported Term for the Adverse Event");
+    /**
+     * Variable labels, keyed "<standard>|<version>|<dataset>|<variable>". The SENDIG entries serve
+     * {@code matches_regex} + {@code exemptLibraryLabel} (PLAN-define-rule-library-label row 4):
+     * the store's SENDIG 3.1 labels of BW / BG, SENDIG 3.0's BGDY (whose label 3.1 changed), a
+     * synthetic label no fixed list ever named (BWXANIM) and one variable name labelled differently
+     * in two datasets (XXANIM).
+     */
+    private static final Map<String, String> VARIABLE_LABELS = Map.ofEntries(
+            Map.entry(SDTMIG_34 + "|DM|SEX", "Sex"),
+            Map.entry(SDTMIG_34 + "|DM|USUBJID", "Unique Subject Identifier"),
+            Map.entry(SDTMIG_34 + "|AE|AETERM", "Reported Term for the Adverse Event"),
+            Map.entry(SENDIG_31 + "|BW|BWDTC", "Date/Time Animal Weighed"),
+            Map.entry(SENDIG_31 + "|BW|BWDY", "Study Day Animal Weighed"),
+            Map.entry(SENDIG_31 + "|BW|BWTESTCD", "Test Short Name"),
+            Map.entry(SENDIG_31 + "|BG|BGDY", "Study Day of Start of Interval"),
+            Map.entry(SENDIG_30 + "|BG|BGDY", "Study Day Animal Weighed"),
+            Map.entry(SENDIG_31 + "|BW|BWXANIM", "Animal Housing Weight"),
+            Map.entry(SENDIG_31 + "|BW|XXANIM", "Animal Count Weighed"),
+            Map.entry(SENDIG_31 + "|BG|XXANIM", "Animal Count Grouped"));
 
     /**
      * Variables the IG assigns CT codelists, keyed like {@link #VARIABLE_LABELS}. Most carry one;

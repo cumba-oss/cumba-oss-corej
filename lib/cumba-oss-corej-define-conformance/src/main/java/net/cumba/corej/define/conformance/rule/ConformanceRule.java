@@ -113,18 +113,24 @@ public record ConformanceRule(//
         {
             throw new IllegalStateException(ruleId + ": CT-backed kinds require 'Requires: ct'");
         }
+        // Every library_* kind, plus matches_regex reading the Library label for its exemption
+        // (PLAN-define-rule-library-label LL2 (a)); LibraryKindsTest derives the kind roster
+        // from @JsonSubTypes, so a kind missing here reds there.
         boolean libraryKind = check instanceof CheckDefinition.LibraryDatasetLabelMatches
                 || check instanceof CheckDefinition.LibraryVariableLabelMatches
+                || check instanceof CheckDefinition.LibraryVariableDescriptionCopied
                 || check instanceof CheckDefinition.LibraryCodelistRefRequired
                 || check instanceof CheckDefinition.LibraryCodelistCCodeMatches
                 || check instanceof CheckDefinition.LibraryQualifierLabelDecode
                 || check instanceof CheckDefinition.LibraryCoreMandatory
                 || check instanceof CheckDefinition.LibraryCtAliasRequired
-                || check instanceof CheckDefinition.LibraryStandardVersionKnown;
+                || check instanceof CheckDefinition.LibraryStandardVersionKnown
+                || (check instanceof CheckDefinition.MatchesRegex regex
+                        && regex.exemptLibraryLabelOrDefault());
         if (libraryKind && requires != Requires.LIBRARY)
         {
-            throw new IllegalStateException(
-                    ruleId + ": library-backed kinds require 'Requires: library'");
+            throw new IllegalStateException(ruleId + ": library-backed kinds (and matches_regex "
+                    + "with exemptLibraryLabel) require 'Requires: library'");
         }
     }
 

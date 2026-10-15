@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import java.util.Objects;
 import net.cumba.corej.define.conformance.report.Severity;
 import org.junit.jupiter.api.Test;
 
@@ -136,6 +137,59 @@ class CheckDefinitionTest
                 format: "no-such-format"
                 """));
         assertTrue(e.getMessage().contains("no-such-format"), e.getMessage());
+    }
+
+
+    @Test
+    void matchesRegexExemptLibraryLabelIsOffWhenAbsentOrFalse()
+    {
+        // PLAN-define-rule-library-label row 7: absent and false both read as no exemption, and
+        // neither needs 'Requires: library' (only the flag set does, ConformanceRule.validate)
+        CheckDefinition.MatchesRegex absent = assertInstanceOf(CheckDefinition.MatchesRegex.class,
+                rule("""
+                        kind: "matches_regex"
+                        attribute: "#text"
+                        pattern: "[A-Z]+"
+                        """).check());
+        assertNull(absent.exemptLibraryLabel());
+        assertFalse(absent.exemptLibraryLabelOrDefault());
+        CheckDefinition.MatchesRegex off = assertInstanceOf(CheckDefinition.MatchesRegex.class,
+                rule("""
+                        kind: "matches_regex"
+                        attribute: "#text"
+                        pattern: "[A-Z]+"
+                        exemptLibraryLabel: false
+                        """).check());
+        assertFalse(Objects.requireNonNull(off.exemptLibraryLabel()));
+        assertFalse(off.exemptLibraryLabelOrDefault());
+    }
+
+
+    @Test
+    void matchesRegexExemptLibraryLabelTrueParsesUnderRequiresLibrary()
+    {
+        ConformanceRule rule = RuleRepository.parse("""
+                Rule_Id: "DEFINE-XML-9999"
+                Sheet_Rule_Identifier: "9999"
+                Rule_Set: "CDISC"
+                Element: "Description/TranslatedText"
+                Attribute: null
+                Applicable_Versions: ["2.0", "2.1"]
+                Source_Type: "Specification"
+                Requires: "library"
+                Plain_Text_Rule: "Test rule."
+                Message: "Test message."
+                Check:
+                  kind: "matches_regex"
+                  attribute: "#text"
+                  pattern: "[A-Z]+"
+                  exemptLibraryLabel: true
+                """, "test");
+        CheckDefinition.MatchesRegex check = assertInstanceOf(CheckDefinition.MatchesRegex.class,
+                rule.check());
+        assertTrue(Objects.requireNonNull(check.exemptLibraryLabel()));
+        assertTrue(check.exemptLibraryLabelOrDefault());
+        assertEquals(Requires.LIBRARY, rule.requires());
     }
 
 

@@ -101,7 +101,7 @@ public final class RuleEvaluator
         case CheckDefinition.Exists c -> presence(aRule, guarded, c.target(), true);
         case CheckDefinition.NotExists c -> presence(aRule, guarded, c.target(), false);
         case CheckDefinition.CardinalityAtMost c -> cardinality(aRule, guarded, c);
-        case CheckDefinition.MatchesRegex c -> regex(aRule, guarded, c);
+        case CheckDefinition.MatchesRegex c -> regex(aRule, guarded, c, aContext);
         case CheckDefinition.OneOf c -> oneOf(aRule, guarded, c);
         case CheckDefinition.References c -> references(aRule, guarded, c, aContext);
         case CheckDefinition.UniqueAmongSiblings c -> uniqueAmongSiblings(aRule, guarded, c);
@@ -250,17 +250,21 @@ public final class RuleEvaluator
 
 
     private static List<ConformanceFinding> regex(ConformanceRule aRule, List<ElementNode> aNodes,
-            CheckDefinition.MatchesRegex aCheck)
+            CheckDefinition.MatchesRegex aCheck, DocumentContext aContext)
     {
         String explicit = aCheck.pattern();
         Pattern pattern = explicit != null ? Pattern.compile(explicit)
                 : RegexFormats.byName(Objects.requireNonNull(aCheck.format(),
                         "matches_regex validated to carry pattern xor format"));
+        OwnLibraryLabels exemption = aCheck.exemptLibraryLabelOrDefault()
+                ? new OwnLibraryLabels(aContext)
+                : null;
         List<ConformanceFinding> findings = new ArrayList<>();
         for (ElementNode node : aNodes)
         {
             Optional<String> value = valueOf(node, aCheck.attribute());
-            if (value.isPresent() && !pattern.matcher(value.get()).matches())
+            if (value.isPresent() && !pattern.matcher(value.get()).matches()
+                    && (exemption == null || !exemption.isOwnLabel(node, value.get())))
             {
                 findings.add(finding(aRule, node, value.get()));
             }
@@ -1245,6 +1249,102 @@ public final class RuleEvaluator
                     .ifPresent(codeLists::add);
         }
         return codeLists;
+    }
+
+    /**
+     * The {@code exemptLibraryLabel} lookup of {@code matches_regex}
+     * ({@code PLAN-define-rule-library-label}), resolved lazily: nothing is read until a value
+     * fails the pattern; then one pass builds ItemOID → every ItemGroupDef/ItemRef naming it (T1:
+     * every binding, never last-wins), and the library is asked only for the failing node's own
+     * ItemDef. A binding without a governing SDTMIG / SENDIG standard, or one the library has no
+     * label for, adds nothing (LL3 (a), LL4 (a)); a value-level ItemDef has no ItemGroupDef binding
+     * (T2).
+     */
+    private static final class OwnLibraryLabels
+    {
+
+        private final DocumentContext context;
+
+        private final LibraryProvider library;
+
+        private @Nullable Map<String, List<ElementNode>> itemRefsByOid;
+
+        OwnLibraryLabels(DocumentContext aContext)
+        {
+            context = aContext;
+            library = libraryProvider(aContext);
+        }
+
+
+        /**
+         * Whether the failing text is the library label of its own ItemDef's variable (T8: the
+         * node's own ItemDef; LL6 (a): a CommentDef has none). LL5 (b): whitespace collapsed,
+         * letter case ignored.
+         */
+        boolean isOwnLabel(ElementNode aNode, String aValue)
+        {
+            Optional<String> oid = ownItemDef(aNode).flatMap(def -> def.attribute("OID"));
+            if (oid.isEmpty())
+            {
+                return false;
+            }
+            String text = collapseWhitespace(aValue);
+            for (ElementNode itemRef : itemRefs().getOrDefault(oid.get(), List.of()))
+            {
+                VariableBinding binding = resolveVariable(itemRef, context).orElse(null);
+                if (binding != null && binding.standard().isSdtmigOrSendig()
+                        && library.variableLabel(binding.standard().name(),
+                                binding.standard().version(), binding.dataset(), binding.variable())
+                                .filter(label -> collapseWhitespace(label).equalsIgnoreCase(text))
+                                .isPresent())
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+
+        private Map<String, List<ElementNode>> itemRefs()
+        {
+            Map<String, List<ElementNode>> index = itemRefsByOid;
+            if (index == null)
+            {
+                index = new HashMap<>();
+                for (ElementNode node : context.allNodes())
+                {
+                    if ("ItemRef".equals(node.localName()) && node.parent()
+                            .filter(p -> "ItemGroupDef".equals(p.localName())).isPresent())
+                    {
+                        Map<String, List<ElementNode>> target = index;
+                        node.attribute("ItemOID").ifPresent(oid -> target
+                                .computeIfAbsent(oid, _ -> new ArrayList<>()).add(node));
+                    }
+                }
+                itemRefsByOid = index;
+            }
+            return index;
+        }
+    }
+
+    /**
+     * The scoped node's own ItemDef (T8), a fixed walk: the node itself when it is an ItemDef, else
+     * a TranslatedText whose parent is a Description whose parent is an ItemDef. Anything else — an
+     * Origin's or a MethodDef's description, a comment — has none; a nearest-ancestor walk would
+     * give an origin's text the variable's label.
+     */
+    private static Optional<ElementNode> ownItemDef(ElementNode aNode)
+    {
+        if ("ItemDef".equals(aNode.localName()))
+        {
+            return Optional.of(aNode);
+        }
+        if (!"TranslatedText".equals(aNode.localName()))
+        {
+            return Optional.empty();
+        }
+        return aNode.parent().filter(p -> "Description".equals(p.localName()))
+                .flatMap(ElementNode::parent).filter(p -> "ItemDef".equals(p.localName()));
     }
 
 

@@ -18,6 +18,13 @@ import java.util.Optional;
  * </p>
  *
  * <p>
+ * <b>The one exception</b> is an exemption read from the library: for {@code matches_regex} with
+ * {@code exemptLibraryLabel} an empty {@link #variableLabel} answer means "no exemption"
+ * ({@code PLAN-define-rule-library-label} LL3 (a)), so a partial provider can make such a rule fire
+ * on text the implementation guide itself publishes.
+ * </p>
+ *
+ * <p>
  * <b>Standard-name spellings:</b> the kinds pass the document's verbatim standard name, and the two
  * Define-XML versions spell it differently — 2.1 {@code def:Standard/@Name} uses
  * {@code SDTMIG}/{@code SENDIG}, while 2.0's {@code def:StandardName} CT uses {@code SDTM-IG}/

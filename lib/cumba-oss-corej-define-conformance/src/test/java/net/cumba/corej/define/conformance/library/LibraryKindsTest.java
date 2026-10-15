@@ -2,10 +2,13 @@ package net.cumba.corej.define.conformance.library;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
 import java.io.ByteArrayInputStream;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -17,6 +20,8 @@ import net.cumba.corej.define.conformance.eval.DocumentContext;
 import net.cumba.corej.define.conformance.eval.RuleEvaluator;
 import net.cumba.corej.define.conformance.eval.RuleResult;
 import net.cumba.corej.define.conformance.report.ExecutionStatus;
+import net.cumba.corej.define.conformance.rule.CheckDefinition;
+import net.cumba.corej.define.conformance.rule.Requires;
 import net.cumba.corej.define.conformance.rule.RuleRepository;
 import net.cumba.corej.define.conformance.tree.ElementNode;
 import net.cumba.corej.define.conformance.tree.ElementNodeBuilder;
@@ -24,7 +29,7 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
- * The eight library-backed check kinds ({@code Requires: library}) and the standard-resolution
+ * The nine library-backed check kinds ({@code Requires: library}) and the standard-resolution
  * machinery behind them — the half of the engine that compares a define.xml against the CDISC
  * implementation guide it claims to follow (PMDA DD0116/DD0118/DD0124/DD0136/DD0137, CDISC 67,
  * 97/98/99, 263).
@@ -200,18 +205,67 @@ class LibraryKindsTest
     }
 
 
+    /**
+     * Every {@code library_*} kind, read from {@link CheckDefinition}'s own {@code @JsonSubTypes}
+     * roster rather than transcribed, so a kind added later reds here unless the load-time guard
+     * learns it too ({@code PLAN-define-rule-library-label} T3: the guard missed
+     * {@code library_variable_description_copied}).
+     */
+    private static List<String> libraryKindNames()
+    {
+        return Arrays.stream(CheckDefinition.class.getAnnotation(JsonSubTypes.class).value())
+                .map(JsonSubTypes.Type::name).filter(name -> name.startsWith("library_")).sorted()
+                .toList();
+    }
+
+
     @Test
     void aLibraryKindWithoutTheRequiresGateIsRejectedAtLoadTime()
     {
         // An authoring error: the kind is library-backed but the rule forgot Requires: library, so
         // the SKIP gate above could never fire and the rule would evaluate against no library at
         // all. The corpus loader refuses it rather than letting it degrade to "no findings".
-        String yaml = rule("ItemGroupDef", """
-                kind: "library_dataset_label_matches"
-                """, "");
+        List<String> kinds = libraryKindNames();
+        assertEquals(9, kinds.size(), "the library kind roster: " + kinds);
+        for (String kind : kinds)
+        {
+            // a body the kind's own validate() accepts, so the refusal can only be the gate's
+            // (check.validate() runs first; library_ct_alias_required needs its level)
+            String body = "kind: \"" + kind + "\"\n"
+                    + ("library_ct_alias_required".equals(kind) ? "level: \"codelist\"\n" : "");
+            assertEquals(ExecutionStatus.SKIPPED_MISSING_LIBRARY,
+                    evaluate(rule("ItemGroupDef", body), context(DM_AND_AE, "2.1", null)).status(),
+                    kind + " loads under Requires: library");
+            String yaml = rule("ItemGroupDef", body, "");
+            IllegalStateException thrown = assertThrows(IllegalStateException.class,
+                    () -> RuleRepository.parse(yaml, "test"), kind);
+            assertTrue(thrown.getMessage().contains("Requires: library"),
+                    kind + ": " + thrown.getMessage());
+        }
+    }
+
+
+    @Test
+    void aMatchesRegexWithTheLibraryLabelExemptionNeedsTheRequiresGate()
+    {
+        // PLAN-define-rule-library-label LL2 (a) / E9: the exemption reads the library, so a rule
+        // carrying it without Requires: library is refused; without the flag the kind needs none
+        String body = """
+                kind: "matches_regex"
+                attribute: "#text"
+                pattern: "(?is)(?!.*\\\\banimals?\\\\b).*"
+                exemptLibraryLabel: true
+                """;
         IllegalStateException thrown = assertThrows(IllegalStateException.class,
-                () -> RuleRepository.parse(yaml, "test"));
-        assertTrue(thrown.getMessage().contains("Requires"), thrown.getMessage());
+                () -> RuleRepository.parse(rule("Description/TranslatedText", body, ""), "test"));
+        assertTrue(thrown.getMessage().contains("exemptLibraryLabel")
+                && thrown.getMessage().contains("Requires: library"), thrown.getMessage());
+        assertEquals(Requires.LIBRARY,
+                RuleRepository.parse(rule("Description/TranslatedText", body), "test").requires());
+        assertNull(RuleRepository.parse(
+                rule("Description/TranslatedText",
+                        body.replace("exemptLibraryLabel: true", "exemptLibraryLabel: false"), ""),
+                "test").requires());
     }
 
     // ------------------------------------------------------------------
