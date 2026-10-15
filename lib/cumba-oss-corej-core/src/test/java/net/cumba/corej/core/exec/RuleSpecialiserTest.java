@@ -428,4 +428,32 @@ class RuleSpecialiserTest
         assertNull(specialised.getLoadError());
     }
 
+
+    /**
+     * PACK G fold (G8 LOW1): {@code Rule.operandForms} is a memo, and {@code shallowCopy} carries
+     * every field across. A template whose memo was read before specialisation (a rule run once
+     * without a domain code, then bound to a domain) must not hand its {@code --} keyword form to
+     * the copy: the finding projection would evaluate the unresolved name.
+     */
+    @Test
+    void theOperandFormsMemoFollowsTheSpecialisedCheck()
+    {
+        Rule rule = exprRule("TEST-OPFORMS", "max_value_length(--STDTC, unit=\"bytes\") > 4");
+        net.cumba.corej.core.expr.ast.Expr templateForm = rule.operandForms()
+                .get("variable_max_size");
+        assertEquals("max_value_length(--STDTC, unit=\"bytes\")",
+                ExpressionPrinter.print(Objects.requireNonNull(templateForm)),
+                "the template's memo holds its own -- form");
+
+        Rule specialised = Objects.requireNonNull(RuleSpecialiser.specialise(rule, ae(), "AE"));
+
+        assertNotSame(rule, specialised);
+        assertEquals("max_value_length(AESTDTC, unit=\"bytes\")",
+                ExpressionPrinter.print(Objects
+                        .requireNonNull(specialised.operandForms().get("variable_max_size"))),
+                "the copy's keyword form is its own resolved Check's, not the template's memo");
+        assertSame(templateForm, rule.operandForms().get("variable_max_size"),
+                "the template keeps its own memo");
+    }
+
 }

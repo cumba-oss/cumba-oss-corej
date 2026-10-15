@@ -460,20 +460,26 @@ public class Rule
      * ({@code OutputVariableDeriver#operandFormsOf}; {@code PLAN-stopped-rule-engine-fixes} SR6
      * (a)): the finding projection evaluates {@code max_value_length(variable_name,
      * unit="bytes")} for {@code variable_max_size} where the Check wrote it, the plain form
-     * elsewhere. Derived on first read and memoised like
-     * {@link #effectiveOutputVariablesOrAuthored} (a pure function of the authored Check; a racing
-     * second derivation stores an equal map). Never {@code null}; empty for a rule without such a
-     * call.
+     * elsewhere. A pure function of the compiled Check, derived on first read and memoised like
+     * {@link #staticBindingTypes()}: the memo is keyed on the identity of the compiled Check
+     * ({@link #checkExpr} and {@link #checkLevelExprs}), so a copy whose Check was replaced —
+     * {@code RuleSpecialiser}'s copy-on-write, which carries every field across reflectively —
+     * re-derives instead of reading its template's {@code --} forms. A racing second derivation
+     * stores an equal map. Never {@code null}; empty for a rule without such a call.
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
     public Map<String, net.cumba.corej.core.expr.ast.Expr> operandForms()
     {
-        Map<String, net.cumba.corej.core.expr.ast.Expr> forms = operandForms;
-        if (forms == null)
+        OperandForms memo = operandForms;
+        net.cumba.corej.core.expr.ast.Expr expr = checkExpr;
+        Map<Severity, net.cumba.corej.core.expr.ast.Expr> levelExprs = checkLevelExprs;
+        if (memo != null && memo.checkExpr() == expr && memo.levelExprs() == levelExprs)
         {
-            forms = net.cumba.corej.core.exec.OutputVariableDeriver.operandFormsOf(this);
-            operandForms = forms;
+            return memo.forms();
         }
+        Map<String, net.cumba.corej.core.expr.ast.Expr> forms = net.cumba.corej.core.exec.OutputVariableDeriver
+                .operandFormsOf(this);
+        operandForms = new OperandForms(expr, levelExprs, forms);
         return forms;
     }
 
@@ -1262,12 +1268,24 @@ public class Rule
      * The memo of {@link #operandForms()}: the rule's own keyword-bearing form of each
      * operand-backed accessor call ({@code OutputVariableDeriver#operandFormsOf},
      * {@code PLAN-stopped-rule-engine-fixes} SR6 (a)), which the finding projection evaluates in
-     * place of the plain form. Runtime-only, never serialised; {@code null} until first read.
+     * place of the plain form, beside the compiled Check instances it was derived from.
+     * Runtime-only, never serialised, no part of {@code equals} / {@code hashCode} /
+     * {@code toString}, and no Lombok accessors; {@code null} until first read. Keyed on the
+     * Check's <em>identity</em>, so a specialised copy re-derives (PACK G fold, G8 LOW1).
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
     @lombok.EqualsAndHashCode.Exclude
     @lombok.ToString.Exclude
-    private @Nullable Map<String, net.cumba.corej.core.expr.ast.Expr> operandForms;
+    @lombok.Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private volatile @Nullable OperandForms operandForms;
+
+    /** {@link #operandForms}: the forms and the compiled Check instances they were derived from. */
+    private record OperandForms(net.cumba.corej.core.expr.ast.@Nullable Expr checkExpr,
+            @Nullable Map<Severity, net.cumba.corej.core.expr.ast.Expr> levelExprs,
+            Map<String, net.cumba.corej.core.expr.ast.Expr> forms)
+    {
+    }
 
     /**
      * The memo of {@link #staticBindingTypes()}: the stage-A static types of this rule's bindings,
