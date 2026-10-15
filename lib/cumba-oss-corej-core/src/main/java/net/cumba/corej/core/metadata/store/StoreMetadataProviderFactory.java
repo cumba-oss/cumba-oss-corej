@@ -28,6 +28,12 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
+ * {@link #forSdtm} composes the <b>base-IG view</b> ({@code PLAN-send-base-ig-view},
+ * {@link BaseIgView}): a SENDIG-AR 1.0 / SENDIG-DART 1.1 / 1.2 run reads the SENDIG datasets its
+ * own IG does not print from the base SENDIG the document names. The store itself is unchanged.
+ * </p>
+ *
+ * <p>
  * ⭐ {@code PUBLISHED_CT_PACKAGES} is always the store's <b>whole</b> published enumeration
  * ({@link MetadataStore#publishedCtPackages()}), never the ids this run happened to request — on
  * the ADaM side that makes the store path the first to carry the full enumeration at all (the
@@ -169,8 +175,9 @@ public final class StoreMetadataProviderFactory
             List<String> aCtPackageIds)
     {
         String igKey = MetadataProductKeys.standardsKey(aStandard, aVersion);
-        return store.product(igKey).map(ig ->
+        return store.product(igKey).map(stored ->
         {
+            StoredProduct ig = withBaseIgView(stored);
             StoredProduct model = modelFor(ig);
             List<StoredCtPackage> packages = new ArrayList<>();
             for (String id : aCtPackageIds)
@@ -285,6 +292,36 @@ public final class StoreMetadataProviderFactory
                     aId);
             return new StoredCtPackage(aId, List.of());
         });
+    }
+
+
+    /**
+     * {@code PLAN-send-base-ig-view} ({@code LVC-F1} (b)) — a SENDIG-AR / SENDIG-DART product gets
+     * the base SENDIG's datasets it does not print ({@link BaseIgView}); every other product is
+     * returned as stored. A base the store lacks is a WARNING and today's answer (the carried
+     * domains stay on the model tier), never a failed run.
+     */
+    private StoredProduct withBaseIgView(StoredProduct aIg)
+    {
+        String baseKey = BaseIgView.baseKeyFor(aIg.key());
+        if (baseKey == null)
+        {
+            return aIg;
+        }
+        Optional<StoredProduct> base = store.product(baseKey);
+        if (base.isEmpty())
+        {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "Metadata store does not hold {1}, the base IG of {0}; the SENDIG domains {0} "
+                            + "does not print are judged against the SDTM model only.",
+                    aIg.key(), baseKey);
+            return aIg;
+        }
+        BaseIgView.Composition view = BaseIgView.compose(aIg, base.get());
+        LOGGER.log(System.Logger.Level.DEBUG,
+                "Base-IG view: {0} reads {1} dataset(s) from {2}: {3}", aIg.key(),
+                view.addedDatasets().size(), baseKey, view.addedDatasets());
+        return view.product();
     }
 
 

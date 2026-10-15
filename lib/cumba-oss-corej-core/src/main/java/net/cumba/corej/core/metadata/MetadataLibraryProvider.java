@@ -115,9 +115,12 @@ public final class MetadataLibraryProvider implements MetadataProvider
     /**
      * {@code PLAN-library-var-custom-domains} {@code LVC-D1} (a) — the only attributes
      * {@link #getIgAbsentVariableMetadata} serves: what the SDTM model is the authority for on a
-     * domain the run's IG does not define. An allow-list, not "drop the label": the walk row also
-     * carries the class {@code ordinal} and, per product, {@code definition}, {@code description},
-     * …, and the finding enrichment copies every served key into a {@code library_variable_*} cell.
+     * domain the run's IG does not define (since {@code PLAN-send-base-ig-view} the SEND domains
+     * SENDIG-AR / -DART leave out no longer get here — the base-IG view gives the run's IG those
+     * datasets — so the population is sponsor domains and the model-only datasets of {@code B-MD}).
+     * An allow-list, not "drop the label": the walk row also carries the class {@code ordinal} and,
+     * per product, {@code definition}, {@code description}, …, and the finding enrichment copies
+     * every served key into a {@code library_variable_*} cell.
      */
     private static final List<String> IG_ABSENT_SERVED_KEYS = List.of(ATTR_NAME,
             ATTR_SIMPLE_DATATYPE, ATTR_ROLE);
@@ -3305,13 +3308,21 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * decides only the {@code --} substitution and the {@code AP--} shim.
      *
      * <p>
+     * When the class walk returns no row — no class places the dataset, or its class
+     * (special-purpose, trial design, relationship, study reference) has no class variables to walk
+     * — the dataset is answered from the model's own definition of it, when the model defines one
+     * ({@code PLAN-send-base-ig-view} {@code B-MD}, {@code B-MD-WALK} (b): {@code DI}, {@code DR},
+     * {@code OI}, {@code SJ}, {@code TX}, {@code TV}, {@code SV}, {@code APRELSUB}, … — see
+     * {@link #modelDatasetAttributes}).
+     * </p>
+     *
+     * <p>
      * Answers {@code {}} — today's answer — when: no SDTM product is loaded (ADaM, Define-only and
      * degraded providers; S3.1); the domain is a {@code SUPP--} name or one the IG defines (the
      * domain-keyed tiers own those, and a sponsor variable of an IG-defined domain stays unserved);
-     * no class places the dataset ({@code LVC-D3} (a): a sniffer miss, or an {@code AP--} dataset
-     * whose parent is absent); the class walk is empty (a special-purpose, trial-design or
-     * relationship class — algorithm B has no domain-keyed model tier); or the model has no row for
-     * the variable (a sponsor variable).
+     * the walk has rows but none for the variable (a sponsor variable); or the walk is empty and
+     * the model defines no such dataset or no such variable in it ({@code LVC-D3} (a): a sniffer
+     * miss on a sponsor domain, an {@code AP--} dataset whose parent is absent).
      * </p>
      *
      * <p>
@@ -3335,17 +3346,88 @@ public final class MetadataLibraryProvider implements MetadataProvider
             return Map.of();
         }
         String effectiveDomain = canonicalSdtmDomain(aDomain);
-        if (DOMAIN_SUPPQUAL.equals(effectiveDomain) || sdtmProductHasDomain(effectiveDomain))
+        if (DOMAIN_SUPPQUAL.equals(effectiveDomain))
         {
             return Map.of();
         }
-        for (ResolvedVariable v : buildResolvedSdtm(aDomain, DatasetInHand.of(aTable, aResolver)))
+        if (!sdtmProductHasDomain(effectiveDomain))
         {
-            // A column name in the dataset's own spelling, matched ignoring letter case like every
-            // other tier (register CIT §1): a lowercase xxterm reads XXTERM's model row.
+            List<ResolvedVariable> walk = buildResolvedSdtm(aDomain,
+                    DatasetInHand.of(aTable, aResolver));
+            if (!walk.isEmpty())
+            {
+                for (ResolvedVariable v : walk)
+                {
+                    // A column name in the dataset's own spelling, matched ignoring letter case
+                    // like every other tier (register CIT §1): a lowercase xxterm reads XXTERM's
+                    // model row.
+                    if (aVariable.equalsIgnoreCase(v.name()))
+                    {
+                        return servedIgAbsentAttributes(v);
+                    }
+                }
+                // The walk answers alone: a sponsor variable of a placed dataset stays unserved.
+                return Map.of();
+            }
+        }
+        return modelDatasetAttributes(aDomain, effectiveDomain, aVariable);
+    }
+
+
+    /**
+     * {@code PLAN-send-base-ig-view} {@code B-MD} — the model-dataset arm of
+     * {@link #getIgAbsentVariableMetadata}: a dataset the run's IG lacks, whose class walk returned
+     * no row ({@code B-MD-WALK} (b): no class places it, or its class — special-purpose, trial
+     * design, relationship, study reference — has no class variables to walk), is answered from the
+     * run's <em>model</em> definition of that dataset ({@code LVC-F2} (c), {@code B-MD-REACH} (b):
+     * every such dataset the model defines, no name list). Restricted to
+     * {@link #IG_ABSENT_SERVED_KEYS} ({@code LVC-D1} (a): no label, CT or core).
+     *
+     * <p>
+     * The model dataset is looked up by the dataset's <b>own</b> name first, then by its canonical
+     * domain: {@code APRELSUB} is a model dataset in its own right, while the {@code AP--} ladder
+     * strips it to {@code RELSUB}, which the IG may define (SDTMIG 3.3 / 3.4) — keyed on the
+     * canonical domain alone it would never be reached. A name the IG defines is never answered
+     * here (a sponsor variable of an IG-defined dataset stays unserved).
+     * </p>
+     */
+    private Map<String, String> modelDatasetAttributes(String aDomain, String aEffectiveDomain,
+            String aVariable)
+    {
+        StoredDataset modelDataset = null;
+        if (!sdtmProductHasDomain(aDomain))
+        {
+            modelDataset = findModelDatasetByDomain(aDomain);
+        }
+        if (modelDataset == null && !aEffectiveDomain.equalsIgnoreCase(aDomain)
+                && !sdtmProductHasDomain(aEffectiveDomain))
+        {
+            modelDataset = findModelDatasetByDomain(aEffectiveDomain);
+        }
+        if (modelDataset == null)
+        {
+            return Map.of();
+        }
+        for (StoredVariable v : modelDataset.variables())
+        {
             if (aVariable.equalsIgnoreCase(v.name()))
             {
-                return servedIgAbsentAttributes(v);
+                // The same allow-list and the same "absent or empty omitted" rule as a walk row
+                // (servedIgAbsentAttributes); older models carry no role on some rows.
+                Map<String, String> row = new LinkedHashMap<>();
+                putAttr(row, ATTR_NAME, v.name());
+                putAttr(row, ATTR_SIMPLE_DATATYPE, v.simpleDatatype());
+                putAttr(row, ATTR_ROLE, v.role());
+                Map<String, String> out = new LinkedHashMap<>();
+                for (String key : IG_ABSENT_SERVED_KEYS)
+                {
+                    String value = row.get(key);
+                    if (value != null && !value.isEmpty())
+                    {
+                        out.put(key, value);
+                    }
+                }
+                return Collections.unmodifiableMap(out);
             }
         }
         return Map.of();
