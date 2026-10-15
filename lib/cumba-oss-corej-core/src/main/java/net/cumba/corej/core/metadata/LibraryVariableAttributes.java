@@ -122,9 +122,11 @@ public final class LibraryVariableAttributes
 
     /**
      * Returns {@code true} when at least one of the resolved variable rows carries the given
-     * attribute key. Used by the runtime diagnostic to tell "the filter matched nothing" (the key
-     * is served, no variable has that value) apart from "the level cannot serve this key at all"
-     * (the FDA-SD1078 shape).
+     * attribute key. Used by {@code LibraryLists.requireServedKeyName} to tell "the filter matched
+     * nothing" (the key is served, no variable has that value — a normal answer) apart from "the
+     * level cannot serve this key at all" (the FDA-SD1078 shape): a {@code key_name} with a
+     * {@code key_value} that no resolved row carries SKIPs the rule ({@code LIBRARY_NOT_AVAILABLE},
+     * {@code PLAN-unserved-key-name-skip}, CDW-F1) instead of passing it silently.
      *
      * @param aRows
      *            the resolved variable rows, as handed to the filter
