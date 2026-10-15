@@ -96,11 +96,13 @@ final class StandardVariableSelector
      * resolved variable rows to {@code sourceInspector} before filtering them.
      *
      * <p>
-     * The inspector exists for the {@code key_name} diagnostic (the retired executor's
-     * {@code warnUnservedKeyName}): whether the level serves the declared key is a property of
-     * these rows, and only this method knows which of the two sources (the class-aware resolver or
-     * the legacy per-domain fallback) actually answered. It is invoked once, after the source is
-     * known to be non-empty, and must not mutate the rows.
+     * The inspector exists for the {@code key_name} servability check
+     * ({@code LibraryLists.requireServedKeyName}, CDW-F1): whether the level serves the declared
+     * key is a property of these rows, and only this method knows which of the two sources (the
+     * class-aware resolver or the legacy per-domain fallback) actually answered. It is invoked
+     * once, after the source is known to be non-empty, and must not mutate the rows. It may throw
+     * an {@code UnusableProviderAnswerException} to SKIP the rule; the exception propagates
+     * unchanged.
      * </p>
      *
      * @param sourceInspector

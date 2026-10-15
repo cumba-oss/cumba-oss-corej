@@ -1272,7 +1272,9 @@ class NameSlotRosterTest
         @Override
         public List<Map<String, String>> getDomainVariables(String domain)
         {
-            return List.of(Map.of("name", "X"));
+            // The row serves `core`, the base call's key: a key_name no row carries SKIPs the
+            // rule (CDW-F1), which would leave get_dataset_filtered_variables without a base.
+            return List.of(Map.of("name", "X", "core", "Req"));
         }
 
 

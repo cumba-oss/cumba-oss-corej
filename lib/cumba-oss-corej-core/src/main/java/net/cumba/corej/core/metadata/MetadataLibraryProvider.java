@@ -2085,8 +2085,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * PLAN-library-variable-key-name-breadth.md P3, because both engines filter these rows by an
      * arbitrary caller-supplied {@code key_name} and a field the row omits makes such a filter
      * match nothing on every dataset, with no diagnostic (the FDA-SD1078 shape). A field the source
-     * did not publish stays absent from the map, which is what the runtime diagnostic (the retired
-     * executor's {@code warnUnservedKeyName}) reads.
+     * did not publish stays absent from the map, which is what the runtime servability check
+     * ({@code LibraryLists.requireServedKeyName}, which SKIPs the rule — CDW-F1) reads.
      * </p>
      *
      * <p>

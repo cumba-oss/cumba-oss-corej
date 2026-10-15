@@ -60,8 +60,9 @@ import java.util.TreeSet;
  * ({@code buildResolvedSdtm}), by the SUPP--/SQ-- cascade (whose tier A projects IG
  * {@code SUPPQUAL} dataset variables and whose tier C is the hard-coded RELATIONSHIP fallback
  * above), and by every ADaM dataset. So {@code get_model_filtered_variables(key_name="core")} is
- * inert on a standard SDTM domain and correct on a SUPP domain — which is why it is a runtime
- * diagnostic (the retired executor's {@code warnUnservedKeyName}) and not a load error.</li>
+ * inert on a standard SDTM domain and correct on a SUPP domain — which is why it is decided at
+ * runtime ({@code LibraryLists.requireServedKeyName}: an unserved key with a {@code key_value}
+ * SKIPs the rule, CDW-F1) and not a load error.</li>
  * <li>{@code role} is symmetrically absent from every ADaM row.</li>
  * </ul>
  *

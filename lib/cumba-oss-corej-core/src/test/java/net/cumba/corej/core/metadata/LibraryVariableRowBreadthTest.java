@@ -345,7 +345,8 @@ class LibraryVariableRowBreadthTest
     void aNewlyServedKeyIsNotWarnedAbout()
     {
         // The complement of UnservedKeyNameDiagnosticTest: before P3 every one of these keys was
-        // absent from every row, so warnUnservedKeyName would have fired on all of them.
+        // absent from every row, so the runtime check (then warnUnservedKeyName, now
+        // requireServedKeyName, which SKIPs) would have fired on all of them.
         List<Map<String, String>> rows = sdtm("AE").getStandardModelVariablesDetailed(mock("AE"),
                 null);
         assertNotNull(rows);

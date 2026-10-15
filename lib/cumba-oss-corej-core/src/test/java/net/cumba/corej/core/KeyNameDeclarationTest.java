@@ -155,7 +155,8 @@ class KeyNameDeclarationTest
     {
         // The FDA-SD1078 shape itself. A blanket reject here would be WRONG: the Model walk
         // publishes `core` for SUPP--/SQ-- datasets and for every ADaM dataset. Servability is a
-        // per-dataset runtime fact, so the diagnostic for it is a runtime WARNING — see
+        // per-dataset runtime fact, so it is decided at runtime — an unserved key with a
+        // key_value SKIPs the rule (CDW-F1); see
         // net.cumba.corej.core.exec.UnservedKeyNameDiagnosticTest.
         assertNull(binding("get_model_filtered_variables(key_name=\"core\", key_value=\"Perm\")")
                 .getLoadError());

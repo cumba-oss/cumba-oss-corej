@@ -518,8 +518,8 @@ public final class LibraryLists
         List<String> selected = StandardVariableSelector.select(provider, table,
                 run.ctx().getDatasetResolver(),
                 varRow -> keyName == null || Objects.equals(varRow.get(keyName), keyValue),
-                rows -> warnUnservedKeyName(keyName, rows, GET_DATASET_FILTERED_VARIABLES, table,
-                        ruleId));
+                rows -> requireServedKeyName(keyName, keyValue, rows,
+                        GET_DATASET_FILTERED_VARIABLES, table, ruleId));
         return ListFunctionSupport.broadcast(GET_DATASET_FILTERED_VARIABLES, ListFunctionSupport
                 .degradedAnswer(provider, run, GET_DATASET_FILTERED_VARIABLES, selected));
     }
@@ -605,7 +605,7 @@ public final class LibraryLists
         String prefix = Objects.requireNonNullElse(
                 DatasetIdentity.variableWildcardPrefix(table, DatasetIdentity.domainPrefix(table)),
                 "");
-        warnUnservedKeyName(keyName, source, GET_MODEL_FILTERED_VARIABLES, table,
+        requireServedKeyName(keyName, keyValue, source, GET_MODEL_FILTERED_VARIABLES, table,
                 ListFunctionSupport.ruleId(run));
         List<String> out = new ArrayList<>();
         for (Map<String, String> varRow : source)
@@ -628,15 +628,28 @@ public final class LibraryLists
 
 
     /**
-     * ⭐ The FDA-SD1078 diagnostic (CDW-F1, kept as a WARNING — D-W4-12): a {@code key_name} filter
-     * running against variable rows that carry no such key at all can never match, on any data, for
-     * any {@code key_value}. The load seam rejects a key <em>no</em> level publishes; it
-     * deliberately cannot reject {@code core} on {@code get_model_filtered_variables}, because the
-     * Model walk does publish {@code core} for SUPP--/SQ-- and ADaM datasets — servability there is
-     * a per-dataset runtime fact, reported here. The verdict is unchanged.
+     * ⭐ CDW-F1 (a): an unserved {@code key_name} SKIPs the rule — never a silent pass. A
+     * {@code key_name} filter with a {@code key_value} running against variable rows that carry no
+     * such key at all can never match, on any data: the rule would report "executed, 0 findings"
+     * for a question the Library cannot answer for this dataset (the FDA-SD1078 / FDA-SD1149 shape
+     * on a domain the run's IG does not define, whose rows are the SDTM Model's and carry no
+     * {@code core}). The load seam rejects a key <em>no</em> level publishes; it deliberately
+     * cannot reject {@code core} here, because the Model walk does publish {@code core} for
+     * SUPP--/SQ-- and ADaM datasets — servability is a per-dataset runtime fact, decided here.
+     *
+     * <p>
+     * Not a SKIP (U-DEF): no {@code key_name}; no {@code key_value} — an unserved key then matches
+     * every row ({@code Objects.equals(null, null)}), so the filter <em>can</em> match; an empty
+     * resolution, which keeps each function's own answer; a key carried by at least one row (a row
+     * without it simply does not match). The detail (key, dataset, published keys) goes to an INFO
+     * line and the exception message; {@code RuleRunner} reports its generic
+     * {@code "Rule skipped — library returned no data for <function>"}, as for {@code model_class}.
+     * </p>
      *
      * @param aKeyName
      *            the declared {@code key_name}; {@code null} means no filter
+     * @param aKeyValue
+     *            the declared {@code key_value}; {@code null} means none
      * @param aRows
      *            the resolved variable rows the filter is about to run over
      * @param aFunction
@@ -645,21 +658,29 @@ public final class LibraryLists
      *            the dataset being validated
      * @param aRuleId
      *            the rule, for the log line
+     * @throws net.cumba.corej.core.expr.eval.UnusableProviderAnswerException
+     *             ({@link ProviderNeed.Kind#LIBRARY}) when the key is unserved and a value is given
      */
-    static void warnUnservedKeyName(@Nullable String aKeyName, List<Map<String, String>> aRows,
-            String aFunction, @Nullable IDataTable aTable, @Nullable String aRuleId)
+    static void requireServedKeyName(@Nullable String aKeyName, @Nullable String aKeyValue,
+            List<Map<String, String>> aRows, String aFunction, @Nullable IDataTable aTable,
+            @Nullable String aRuleId)
     {
-        if (aKeyName == null || aRows.isEmpty()
+        if (aKeyName == null || aKeyValue == null || aRows.isEmpty()
                 || LibraryVariableAttributes.carriedByAny(aRows, aKeyName))
         {
             return;
         }
-        LOGGER.log(System.Logger.Level.WARNING,
+        String dataset = aTable != null ? aTable.getMetaData().getName() : "?";
+        Set<String> published = LibraryVariableAttributes.publishedKeys(aRows);
+        LOGGER.log(System.Logger.Level.INFO,
                 "[{0}] {1}: key_name `{2}` is carried by none of the {3} variables resolved for"
-                        + " dataset {4} — the filter can never match. This level publishes {5}.",
-                aRuleId != null ? aRuleId : "?", aFunction, aKeyName, aRows.size(),
-                aTable != null ? aTable.getMetaData().getName() : "?",
-                LibraryVariableAttributes.publishedKeys(aRows));
+                        + " dataset {4} — rule will be skipped. This level publishes {5}.",
+                aRuleId != null ? aRuleId : "?", aFunction, aKeyName, aRows.size(), dataset,
+                published);
+        throw ListFunctionSupport.unusable(aFunction, ProviderNeed.Kind.LIBRARY,
+                "key_name `" + aKeyName + "` is carried by none of the " + aRows.size()
+                        + " variables resolved for dataset " + dataset + "; this level publishes "
+                        + published);
     }
 
     // ------------------------------------------------------------------ the CT walks
