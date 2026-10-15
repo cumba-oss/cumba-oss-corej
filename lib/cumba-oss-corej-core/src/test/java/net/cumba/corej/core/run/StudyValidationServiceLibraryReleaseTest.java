@@ -13,14 +13,11 @@ import java.util.Set;
 import java.util.function.Consumer;
 import net.cumba.corej.core.metadata.MetadataKeys;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.manager.IDataTableLibraryRef;
 import net.cumba.datatable.manager.IDataTableManager;
 import net.cumba.datatable.metadata.IMetadataLibrary;
 import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.testkit.TestMetadataFixtures;
 import net.cumba.datatable.values.DataValueType;
-import org.junit.jupiter.api.Assumptions;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -31,12 +28,6 @@ import org.junit.jupiter.api.io.TempDir;
  * the run completes, refuses ("no datasets") or is cancelled. One reference acquired for both the
  * data and the metadata is released once. Measured through {@link CountingStudyManager}, which
  * counts the references it hands out against the ones given back.
- *
- * <p>
- * Internal engine only (O19): a manager without a {@code releaseLibraryRef} call has nothing to
- * release to, so the test is skipped there (the OSS datatable manager's interface carries no such
- * call; this file stays the byte-identical twin).
- * </p>
  */
 class StudyValidationServiceLibraryReleaseTest
 {
@@ -45,24 +36,6 @@ class StudyValidationServiceLibraryReleaseTest
     Path tempDir;
 
     private static final List<String> CUSTOM_PRODUCT = List.of("standards/custom/1-0");
-
-    @BeforeEach
-    void onlyWhereTheManagerReleases()
-    {
-        boolean releasable;
-        try
-        {
-            IDataTableManager.class.getMethod("releaseLibraryRef", IDataTableLibraryRef.class);
-            releasable = true;
-        }
-        catch (NoSuchMethodException e)
-        {
-            releasable = false;
-        }
-        Assumptions.assumeTrue(releasable,
-                "the manager interface has no releaseLibraryRef: nothing to release (O19)");
-    }
-
 
     private static IDataTable dmTable()
     {

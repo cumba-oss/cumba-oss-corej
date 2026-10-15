@@ -182,8 +182,7 @@ public final class StudyValidationService
         // whether the run completes, refuses or is cancelled: a reference is recorded here the
         // moment the manager hands it out, and the finally below gives each distinct one back
         // after the last reader (the validator) has run. A reference acquired for both the data
-        // and the metadata is one reference, released once. Internal engine only (O19): the OSS
-        // datatable manager has no release call, so its twin keeps the references open.
+        // and the metadata is one reference, released once.
         List<IDataTableLibraryRef> acquired = new ArrayList<>(3);
         try
         {

@@ -20,9 +20,7 @@ import org.jspecify.annotations.Nullable;
  * A small {@link IDataTableManager} fake for the {@link StudyValidationService} tests (no Mockito):
  * every library it opens is a single member {@code DM} backed by one table. It also counts the
  * library references the service takes through {@code getLibraryRef(URI, …)} against the ones it
- * gives back through {@code releaseLibraryRef}, for the day the service releases them (runbook W1b
- * LR left the pack: the OSS datatable manager has no release call, so the edit cannot be a
- * byte-identical twin). Runbook W1b DP1a uses it.
+ * gives back through {@code releaseLibraryRef} (runbook W1b LR). Runbook W1b DP1a uses it.
  *
  * <p>
  * Built as a dynamic proxy so the interface's many unrelated methods need no stubs: an unhandled
