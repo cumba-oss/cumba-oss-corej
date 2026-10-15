@@ -32,9 +32,11 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * ⚠ {@code gen_register.py}'s {@code norm()} mirrors these rules character for character: the
- * register's {@code expected} values are the <em>normalised</em> source values, so a rule changed
- * here without regenerating the register makes entries go stale.
+ * ⚠ The errata register's {@code expected} values are the <em>normalised</em> source values, so a
+ * rule changed here makes entries go stale unless the affected {@code expected} values in
+ * {@code store-errata.json} are re-derived by hand. (The generator that produced the register's
+ * first version, {@code gen_register.py}, mirrored these rules in its {@code norm()}; it is frozen
+ * and no longer reproduces the register, which is now edited by hand.)
  * </p>
  */
 final class StoreTextNormaliser
