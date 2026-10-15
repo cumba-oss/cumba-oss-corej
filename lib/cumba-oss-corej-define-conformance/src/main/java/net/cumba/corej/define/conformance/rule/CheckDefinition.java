@@ -601,13 +601,13 @@ public sealed interface CheckDefinition
      *
      * <p>
      * The standard and version tests are this record's own (review LOW 7): the standard is compared
-     * by equality after removing hyphens from both sides ({@code SDTM-IG} = {@code SDTMIG};
-     * {@code SDTMIG-MD} ≠ {@code SDTMIG}, which the evaluator's wider family test would admit); the
-     * document's version must be numeric-dotted ({@code 3.3}, {@code 3.10}) and at least
-     * {@code since_version} component-wise ({@code 3.10} > {@code 3.3}). A non-numeric version
-     * ({@code 3.1.2 Amendment 1}) is NOT covered, so the rule fires — the conservative direction.
-     * Without {@code standard} / {@code since_version} the exemption applies to every standard /
-     * version.
+     * ignoring letter case after removing hyphens from both sides ({@code SDTM-IG} =
+     * {@code sdtmig}; {@code SDTMIG-MD} ≠ {@code SDTMIG}, which the evaluator's wider family test
+     * would admit); the document's version must be numeric-dotted ({@code 3.3}, {@code 3.10}) and
+     * at least {@code since_version} component-wise ({@code 3.10} > {@code 3.3}). A non-numeric
+     * version ({@code 3.1.2 Amendment 1}) is NOT covered, so the rule fires — the conservative
+     * direction. Without {@code standard} / {@code since_version} the exemption applies to every
+     * standard / version.
      * </p>
      */
     record CtClassExemption(List<String> datasets, List<String> variables,

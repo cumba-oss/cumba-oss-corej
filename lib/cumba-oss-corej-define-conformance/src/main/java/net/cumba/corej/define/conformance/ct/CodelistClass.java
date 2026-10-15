@@ -1,6 +1,7 @@
 package net.cumba.corej.define.conformance.ct;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -29,11 +30,21 @@ public record CodelistClass(String qrsClass, Optional<String> role)
     private static final List<String> QRS_CLASSES = List.of("Clinical Classification",
             "Questionnaire", "Functional Test");
 
-    /** The role suffixes, each followed by {@code " Terminology"}. */
+    /**
+     * The role suffixes, each followed by {@code " Terminology"}; matched in any case (published
+     * Questionnaire terms spell some in lower case, {@code "… Test code Terminology"}).
+     */
     private static final List<String> ROLES = List.of("Test Code", "Test Name", "Original Response",
             "Character Response", "Category");
 
     private static final String TERMINOLOGY = " Terminology";
+
+    /** An absent role is {@link Optional#empty()}, never {@code null}. */
+    public CodelistClass
+    {
+        Objects.requireNonNull(role, "role");
+    }
+
 
     /**
      * The class and role of a codelist with this NCI preferred term, or empty when the term is
@@ -60,7 +71,9 @@ public record CodelistClass(String qrsClass, Optional<String> role)
     {
         for (String role : ROLES)
         {
-            if (aPreferredTerm.endsWith(" " + role + TERMINOLOGY))
+            String suffix = " " + role + TERMINOLOGY;
+            int from = aPreferredTerm.length() - suffix.length();
+            if (from >= 0 && aPreferredTerm.regionMatches(true, from, suffix, 0, suffix.length()))
             {
                 return Optional.of(role);
             }

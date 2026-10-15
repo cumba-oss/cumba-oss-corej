@@ -1,6 +1,7 @@
 package net.cumba.corej.define.conformance.ct;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Optional;
@@ -74,5 +75,30 @@ class CodelistClassTest
                 "the prefix starts with CDISC");
         assertTrue(CodelistClass.of("").isEmpty());
         assertTrue(CodelistClass.of(null).isEmpty());
+    }
+
+
+    /**
+     * PACK G fold (G8 LOW2): the role suffix is matched in any case — published Questionnaire terms
+     * spell it in lower case too ({@code "… Test code Terminology"}); the role answered is the
+     * canonical spelling.
+     */
+    @Test
+    void theRoleSuffixMatchesInAnyCase()
+    {
+        assertEquals(Optional.of("Test Code"),
+                of("CDISC Questionnaire GAD-7 Test code Terminology").role());
+        assertEquals(Optional.of("Original Response"),
+                of("CDISC Questionnaire GAD-7 Original response terminology").role());
+        assertEquals(Optional.of("Character Response"),
+                of("CDISC Questionnaire GAD-7 CHARACTER RESPONSE TERMINOLOGY").role());
+    }
+
+
+    /** PACK G fold (G8 LOW3): an absent role is {@code Optional.empty()}, never {@code null}. */
+    @Test
+    void aNullRoleIsRefused()
+    {
+        assertThrows(NullPointerException.class, () -> new CodelistClass("Questionnaire", null));
     }
 }
