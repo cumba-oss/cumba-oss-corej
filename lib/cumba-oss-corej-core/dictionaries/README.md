@@ -34,7 +34,11 @@ supports to a map lookup.
 One JSON document per dictionary type. All top-level keys are optional;
 an absent or mis-shaped key degrades to empty **silently**
 (`ValueMapDictionary.parse`, `cumba-oss-datatable-dictionary`
-`.../dictionary/house/ValueMapDictionary.java`).
+`.../dictionary/house/ValueMapDictionary.java`). A value counts only as a
+JSON **string**: a term, a decode, a pair or attribute value and a hierarchy
+ancestor (`hierarchy` and `hierarchy_by_level` alike) that is a JSON `null`,
+a number, a boolean or a container is no entry, in both load profiles
+(owner rulings PS-D4-T / PS-D4-U, 2026-10-15).
 
 ```jsonc
 {
