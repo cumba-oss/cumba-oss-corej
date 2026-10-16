@@ -253,8 +253,8 @@ class ElementwiseLiftRosterRuleTest
         // the statically scalar shape (a column) is the kernel call: pinned answers
         assertEquals(List.of("4", "2", "1"), rendered("len(A)"));
         assertEquals(List.of("ab", "Cd", "e"), rendered("trim(A)"));
-        assertEquals(List.of("ab", "d", "."), rendered("substring(A, 2, 2)"),
-                "a start beyond the value is the computed missing");
+        assertEquals(List.of("ab", "d", ""), rendered("substring(A, 2, 2)"),
+                "a start beyond the value is the empty slice \"\" (SVY OQ1, 2026-10-16)");
         assertEquals(List.of("2020", "2021", "2019"), rendered("year(D1)"));
         assertEquals(List.of("-2", "2", "3"), rendered("floor(N1)"));
         assertEquals(List.of(1L), fired("len(A) == 4"));

@@ -234,9 +234,16 @@ class ExprCompilerGroupAggregateVerdictTest
         IDataTable t = MockTable.of().name("DS").col("TOK", "A;B", "A;X", "").build();
         EvaluationContext c = EvaluationContext.builder().table(t)
                 .variables(Map.of("$allowed", List.of("A", "B"))).build();
-        // Per-row verdict: row 1 carries the out-of-set token X; the blank row makes no decision.
-        assertEquals(bits(1), eval("not_contains_all($allowed, split_by(TOK, \";\"))", c),
-                "the split_by token branch must fire PER ROW, only where a token is out of set");
+        // Per-row verdict: row 1 carries the out-of-set token X. The blank row is the one-token
+        // list [""] since SVY OQ2 (2026-10-16), and "" is not in $allowed, so it fires too — a
+        // rule that means "no tokens ⇒ no finding" guards the split with `not empty(TOK)`, as
+        // every shipped split_by rule does (B5 T2). Until then the blank row was the computed
+        // MIS, a scalar, and made no decision.
+        assertEquals(bits(1, 2), eval("not_contains_all($allowed, split_by(TOK, \";\"))", c),
+                "the split_by token branch must fire PER ROW, where a token is out of set");
+        assertEquals(bits(1),
+                eval("not empty(TOK) and not_contains_all($allowed, split_by(TOK, \";\"))", c),
+                "the shipped guard keeps the blank row out");
     }
 
     // ---- shares_no_elements_with -----------------------------------------------------------

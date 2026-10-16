@@ -851,7 +851,8 @@ public final class AbsentDatasetSkip
                         && ref.kind() == OperandKind.COLUMN)
                 {
                     // D10 (runbook W2a): `domain=TS` is the bare dataset reference, the same
-                    // dataset the quoted spelling names — read_value's authored form.
+                    // dataset the quoted spelling names — read_value's authored form. The reader
+                    // arm (callReads) takes the same two spellings (OQ10, 2026-10-16).
                     addDataset(out, ref.name());
                 }
                 call.args().forEach(a -> collectDotted(a, out));
@@ -913,6 +914,16 @@ public final class AbsentDatasetSkip
         if (call.kwargs().get("domain") instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
                 && matches(datasets, String.valueOf(lit.value())))
         {
+            return true;
+        }
+        if (call.kwargs().get("domain") instanceof Expr.Ref ref && ref.kind() == OperandKind.COLUMN
+                && matches(datasets, ref.name()))
+        {
+            // OQ10 (owner 2026-10-16, ⓐ): the bare `domain=TS` is the quoted "TS" (D10) — the
+            // collector above took both spellings, this arm took only the quoted one, so
+            // FDA-SE1148–SE1151 (`read_value(TSVAL, domain=TS, …)`) passed silently on an
+            // unpositionable date("") where TS was absent and reported instead of SKIPPING
+            // (Fix #222). A `domain=$x` (OPERATION_REF) keeps the operation route below.
             return true;
         }
         return call.args().stream().anyMatch(a -> readsAny(a, rule, datasets, seen))

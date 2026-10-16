@@ -962,15 +962,24 @@ public final class GroupedAggregate
 
         private final List<@Nullable DataValueType> sourceTypes;
 
+        /**
+         * Per qualified member, the lookup that answers its SOURCE column's content ({@code null}
+         * for a bare member) — asked lazily by {@link #requireCompatible}, only when the kinds
+         * disagree ({@code SVY OQ11}, B5 T7).
+         */
+        private final List<@Nullable JoinLookup> sourceLookups;
+
         private SidedKey(List<String> aGroupedNames, IDataTable aRecordTable,
                 List<String> aRecordNames, List<@Nullable String> aQualifiers,
-                List<@Nullable DataValueType> aSourceTypes)
+                List<@Nullable DataValueType> aSourceTypes,
+                List<@Nullable JoinLookup> aSourceLookups)
         {
             groupedNames = List.copyOf(aGroupedNames);
             recordTable = aRecordTable;
             recordNames = List.copyOf(aRecordNames);
             qualifiers = java.util.Collections.unmodifiableList(new ArrayList<>(aQualifiers));
             sourceTypes = java.util.Collections.unmodifiableList(new ArrayList<>(aSourceTypes));
+            sourceLookups = java.util.Collections.unmodifiableList(new ArrayList<>(aSourceLookups));
             recordColumns = GroupKeyIdentity.columnIndices(aRecordTable.getMetaData(), recordNames);
         }
 
@@ -1058,11 +1067,16 @@ public final class GroupedAggregate
                     continue;
                 }
                 // the source column's DECLARED type: the merged column maps MISSING (unknown, no
-                // kind — D4-R6a) to STRING, which would judge a Char/Num pair no column has
+                // kind — D4-R6a) to STRING, which would judge a Char/Num pair no column has.
+                // SVY OQ11 (B5 T7 / M2): the blankness too is the SOURCE column's, asked of the
+                // entry's lookup — the merged column reads blank wherever no row matched (D72a-1)
                 DataValueType declared = sourceTypes.get(i);
+                JoinLookup lookup = sourceLookups.get(i);
+                String sourceColumn = recordNames.get(i).substring(qualifier.length() + 1);
                 GroupKeyIdentity.requireCompatibleKeyColumn(grouped, groupedNames.get(i), qualifier,
                         declared != null ? declared
-                                : recordMeta.getColumn(recordColumns[i]).getType());
+                                : recordMeta.getColumn(recordColumns[i]).getType(),
+                        lookup != null && lookup.sourceColumnIsBlank(sourceColumn));
             }
         }
     }
@@ -1131,6 +1145,7 @@ public final class GroupedAggregate
         List<String> keptGrouped = new ArrayList<>(n);
         List<@Nullable String> keptQualifiers = new ArrayList<>(n);
         List<@Nullable DataValueType> keptSourceTypes = new ArrayList<>(n);
+        List<@Nullable JoinLookup> keptSourceLookups = new ArrayList<>(n);
         List<String> oneSided = new ArrayList<>(2);
         boolean anyJoins = false;
         for (int i = 0; i < n; i++)
@@ -1155,12 +1170,15 @@ public final class GroupedAggregate
             keptGrouped.add(groupedAll.get(i));
             keptQualifiers.add(qualifiers.get(i));
             keptSourceTypes.add(declaredSourceType(ctx, qualifiers.get(i), recordAll.get(i)));
+            keptSourceLookups
+                    .add(qualifiers.get(i) == null ? null : ctx.joins().get(qualifiers.get(i)));
         }
         if (!anyJoins && !oneSided.isEmpty())
         {
             throw new DegenerateGroupKeyException(fn, groupNames, groupedName, oneSided);
         }
-        return new SidedKey(keptGrouped, recordTable, keptRecord, keptQualifiers, keptSourceTypes);
+        return new SidedKey(keptGrouped, recordTable, keptRecord, keptQualifiers, keptSourceTypes,
+                keptSourceLookups);
     }
 
 

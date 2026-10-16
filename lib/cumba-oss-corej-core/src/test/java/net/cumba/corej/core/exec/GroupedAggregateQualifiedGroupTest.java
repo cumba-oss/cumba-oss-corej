@@ -324,6 +324,34 @@ class GroupedAggregateQualifiedGroupTest
     }
 
 
+    /**
+     * {@code SVY OQ11} on the grouped QUALIFIED path (B5 T7 / M2): an all-blank SOURCE column
+     * ({@code DM.RPATHCD} with no value in any row) takes no part in the kind decision against TP's
+     * numeric {@code RPATHCD} — and the question is put to the <b>source</b> column, never to the
+     * merged column the record side reads: an unmatched row carries the type default there
+     * (D72a-1), so a populated source with no matched row would read blank and be wrongly exempt.
+     */
+    @Test
+    void anAllBlankSourceColumnIsExemptFromTheKindCheckButAnUnmatchedPopulatedOneIsNot()
+    {
+        Rule rule = loadClean(READ_MAX, "$v == 1");
+        IDataTable numericTp = RealTables.of("TP").lng("RPATHCD", 1L).str("RPHASE", "P1")
+                .lng("RPRFDY", 1L).build();
+        // DM.RPATHCD declared Char, blank in every row ⇒ exempt, the rule EXECUTES
+        RuleExecutionResult blank = run(rule, bw("S1/P1"), dm("S1/"), numericTp);
+        assertEquals(RuleExecutionStatus.EXECUTED, blank.getStatus(), blank.getStatusMessage());
+        // control (M2): DM.RPATHCD populated — for a subject BW does not carry, so NO row of the
+        // merged column is matched and the merged cells are all type defaults — is NOT blank at
+        // the source: the ERROR is still raised
+        RuleExecutionResult unmatched = run(rule, bw("S1/P1"), dm("S9/A"), numericTp);
+        assertEquals(RuleExecutionStatus.ERROR, unmatched.getStatus(),
+                "a populated source column is judged even when no row matched");
+        assertTrue(
+                String.valueOf(unmatched.getStatusMessage()).contains("RPATHCD is Numeric in TP"),
+                unmatched.getStatusMessage());
+    }
+
+
     /** The rule as loaded, its declaration removed — the authoring gate would SKIP the study. */
     private static Rule ungated(String binding, String check)
     {

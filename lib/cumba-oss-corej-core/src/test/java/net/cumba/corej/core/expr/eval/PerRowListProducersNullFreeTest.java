@@ -32,9 +32,9 @@ import org.junit.jupiter.api.Test;
  * <p>
  * {@code split_by} of a missing cell is that missing — the input's own cell, a <b>scalar</b>, so
  * there is no list and hence no element ({@code PLAN-missing-identity-nonstring-functions}, closing
- * the missing half of {@code FINDINGS-unowned-residuals} I1); a present blank keeps its answer, the
- * computed {@code MIS}. The missing rows below are asserted to be <b>not a list</b> and to carry
- * their identity.
+ * the missing half of {@code FINDINGS-unowned-residuals} I1); a present blank is the one-token list
+ * {@code [""]} ({@code SVY OQ2}, 2026-10-16). The missing rows below are asserted to be <b>not a
+ * list</b> and to carry their identity.
  * </p>
  */
 class PerRowListProducersNullFreeTest
@@ -89,26 +89,28 @@ class PerRowListProducersNullFreeTest
         IDataTable t = MissingCellTables.strings("X", "A,,B", "A,", "", ",", "AB", MissingValue.MIS,
                 MissingValue.MIS_A);
         Vector comma = value("split_by", 7, col(t, "X"), ConstVector.of(","));
-        assertEquals(4, assertNoNullElement("split_by(X, \",\")", comma, 7),
-                "the four non-blank rows are lists; the blank (Vector.isMissing's F3 fold) and the"
-                        + " two missing rows are not");
+        assertEquals(5, assertNoNullElement("split_by(X, \",\")", comma, 7),
+                "the five present rows are lists — the blank one too (SVY OQ2: [\"\"]); the two"
+                        + " missing rows are not");
         assertEquals(List.of("A", "", "B"), comma.value(0).resolved(),
                 "an empty token is a present \"\", never a null");
         assertEquals(List.of("", ""), comma.value(3).resolved(), "a lone delimiter: two \"\"");
+        assertEquals(List.of(""), comma.value(2).resolved(),
+                "split_by(\"\", \",\") is the one-token list [\"\"] (SVY OQ2, 2026-10-16)");
 
         Vector empty = value("split_by", 7, col(t, "X"), ConstVector.of(""));
-        assertEquals(4, assertNoNullElement("split_by(X, \"\")", empty, 7),
-                "an empty delimiter answers the singleton [x] for each present row");
+        assertEquals(5, assertNoNullElement("split_by(X, \"\")", empty, 7),
+                "an empty delimiter answers the singleton [x] for each present row, [\"\"] for"
+                        + " the blank one");
+        assertEquals(List.of(""), empty.value(2).resolved(), "split_by(\"\", \"\") is [\"\"]");
         for (int r : new int[]
         {
-                2, 5, 6
+                5, 6
         })
         {
             assertFalse(comma.value(r).resolved() instanceof Collection<?>,
-                    "row " + r + ": a blank or missing x is the scalar channel, not a list");
+                    "row " + r + ": a missing x is the scalar channel, not a list");
         }
-        assertSame(MissingValue.MIS, comma.value(2).missing(),
-                "split_by(\"\", \",\") keeps its answer, the computed MIS");
         assertSame(MissingValue.MIS, comma.value(5).missing(), "split_by(MIS, \",\") is MIS");
         assertSame(MissingValue.MIS_A, comma.value(6).missing(),
                 "split_by(.A, \",\") is .A — the input's own cell, not a fresh MIS (D85c)");

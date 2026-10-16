@@ -806,7 +806,7 @@ public final class RuleRunner
         try
         {
             mergedView = MergedEvaluation.build(rule, evalTable, table, resolver, joinCache, ruleId,
-                    domainPrefix, keyDropWarnings);
+                    domainPrefix, keyDropWarnings, libraryProvider);
         }
         catch (net.cumba.datatable.merge.MergeException | JoinKeyTypeMismatchException
                 | DegenerateJoinKeyException | MalformedSidedKeyException e)

@@ -487,9 +487,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // substring(x, start, length): at most `length` characters from that position. A missing
         // operand (x, start or length) makes the result that missing, identity combined per D86a
         // (D36; one distinct identity ⇒ that identity, two or more ⇒ MIS); a non-integral start
-        // (or length), a start < 1, or a start beyond x's length yield the computed missing MIS.
-        // A length <= 0 yields the empty string; a length running past the end of x is clamped
-        // to x's end (no exception).
+        // (or length) or a start < 1 yield the computed missing MIS. A start beyond x's length
+        // yields the empty slice "" (SVY OQ2's sibling ruling SVY OQ1, 2026-10-16), and so does a
+        // length <= 0; a length running past the end of x is clamped to x's end (no exception).
         fns.add(new FunctionDescriptor("substring",
                 List.of(p("x"), p("start", Primitive.NUMBER), opt("length", Primitive.NUMBER)),
                 FunctionKind.VALUE, (run, args) ->
@@ -516,8 +516,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // cell is a List<String>, so a list-consuming operator (the per-row not_contains_all token
         // branch) reads it element-wise. The delimiter is a broadcast literal (2nd positional arg).
         // A missing x yields that missing, its own cell — a scalar, not a list (D85c; no tokens ⇒
-        // no violation); a present "" the computed MIS. Populated rows are the only ones a split
-        // rule targets (its non_empty Precondition gates blanks). This is the native
+        // no violation); a present "" the one-token list [""] (SVY OQ2). Populated rows are the
+        // only ones a split rule targets (its non_empty Precondition gates blanks). This is the
+        // native
         // lowering of a split_by OPERATION (the retired inliner): coreJ never had a SPLIT_BY
         // operation
         // because a broadcast operation cannot carry a per-row-varying list.
@@ -1123,10 +1124,15 @@ public final class BuiltinFunctions implements FunctionProvider
      * <em>literal</em> {@code delimiter} (quoted so it is never a regex), keeping trailing empty
      * tokens — bit-for-bit pandas {@code Series.str.split(delimiter)} (Python reference engine). A
      * missing {@code x} yields that missing — its own cell, a scalar, never a list (D85c;
-     * {@code FINDINGS-unowned-residuals} I1's missing half) — and a present {@code ""} the computed
-     * {@code MIS}; the operator treats either as no tokens ⇒ no violation. An empty delimiter
-     * yields the single-element list {@code [x]}. A returned list is immutable and never contains
-     * {@code null} (splitting produces strings only).
+     * {@code FINDINGS-unowned-residuals} I1's missing half), which the operators treat as no tokens
+     * ⇒ no violation. A present {@code ""} is a present string with no delimiter in it, so it is
+     * the one-token list {@code [""]} — tokens = delimiters + 1, the function's own rule
+     * ({@code SVY OQ2}, owner 2026-10-16: <i>"agree to a: [""]"</i>; until then the computed
+     * {@code MIS}). ⚠ A {@code [""]} list used as a <b>needle</b> list ({@code contains_any})
+     * matches every present subject ({@code "".contains("")}, D13 / D96c): a rule that means "no
+     * tokens ⇒ no finding" guards the split with {@code not empty(…)}, as every corpus site does.
+     * An empty delimiter yields the single-element list {@code [x]}. A returned list is immutable
+     * and never contains {@code null} (splitting produces strings only).
      */
     private static Object splitBy(Vector x, String delimiter, int row)
     {
@@ -1135,10 +1141,6 @@ public final class BuiltinFunctions implements FunctionProvider
         if (tv.missing() != null)
         {
             return cell;
-        }
-        if (ScalarSemantics.isMissing(cell))
-        {
-            return ScalarSemantics.computedMissing();
         }
         String s = cell.getValueAsString();
         if (delimiter.isEmpty())
@@ -1363,12 +1365,18 @@ public final class BuiltinFunctions implements FunctionProvider
      * cell of {@link ArithmeticSemantics#carrierCell} for its
      * {@link ArithmeticSemantics#combinedMissing} identity (D36 with the D86a identity rule), as
      * the operand's own cell. Returns {@link ScalarSemantics#computedMissing()} (the computed
-     * missing, {@code MIS}) when a present {@code start} is non-integral / {@code < 1} / past the
-     * end of {@code x}, or a present {@code length} is non-integral — never {@code null}, so every
-     * missing row is an {@code IDataValue} and every present one a {@code String}. A
-     * {@code length <= 0} yields the empty string; a {@code length} running past the end of
-     * {@code x} is clamped. {@code substring("", 1)} is a start past the end of a length-0 string,
-     * so it stays the computed missing (the documented bounds rule, unchanged).
+     * missing, {@code MIS}) when a present {@code start} is non-integral / {@code < 1}, or a
+     * present {@code length} is non-integral — the error-shaped answers to an authoring error —
+     * never {@code null}, so every missing row is an {@code IDataValue} and every present one a
+     * {@code String}. A present {@code start} <b>past the end</b> of {@code x} yields the empty
+     * slice, the present {@code ""} ({@code SVY OQ1}, owner 2026-10-16: <i>"I would go with "" as
+     * proposed"</i> — until then the computed {@code MIS}), so {@code substring("", 1)} and
+     * {@code substring("abc", 4)} are {@code ""} and {@code == ""} / {@code !=} decide on them. A
+     * {@code length <= 0} yields the empty string too; a {@code length} running past the end of
+     * {@code x} is clamped. Order of the judgements (B5 T1): missing operands → {@code start}
+     * non-integral / {@code < 1} ⇒ {@code MIS} → {@code length} non-integral ⇒ {@code MIS} (judged
+     * <em>before</em> the bounds, so {@code substring("abc", 4, 1.5)} stays {@code MIS}) → past the
+     * end or {@code length <= 0} ⇒ {@code ""} → the clamped slice.
      */
     private static Object substring(Vector x, Vector start, @Nullable Vector length, int row)
     {
@@ -1385,24 +1393,20 @@ public final class BuiltinFunctions implements FunctionProvider
         {
             return ScalarSemantics.computedMissing();
         }
+        Integer len = length == null ? null : integral(length, row);
+        if (length != null && len == null)
+        {
+            return ScalarSemantics.computedMissing(); // a non-integral length, wherever start is
+        }
         String s = tx.cell().getValueAsString();
         int from = startIdx - 1; // 1-based -> 0-based
-        if (from >= s.length())
+        if (from >= s.length() || (len != null && len <= 0))
         {
-            return ScalarSemantics.computedMissing(); // start past the end ⇒ computed MIS
+            return ""; // SVY OQ1: the empty slice — a start past the end, or nothing to take
         }
-        if (length == null)
-        {
-            return s.substring(from);
-        }
-        Integer len = integral(length, row);
         if (len == null)
         {
-            return ScalarSemantics.computedMissing();
-        }
-        if (len <= 0)
-        {
-            return "";
+            return s.substring(from);
         }
         int to = Math.min(s.length(), from + len); // clamp past-the-end length
         return s.substring(from, to);

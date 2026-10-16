@@ -66,6 +66,30 @@ public sealed interface Vector
 
 
     /**
+     * Whether this vector stands for an authored column that holds <b>no value in any row</b> —
+     * every cell missing or {@code ""} ({@link net.cumba.datatable.ColumnContent#isBlank()}). The
+     * column-type gate exempts such a column from its three checks ({@code ECT-Q5} ⓐ, owner
+     * 2026-10-16; B5 S12 / T14): its declared type is the provider's guess (CSV types an all-blank
+     * column Char, XLSX Num), a property of the transport, not of the data, and the ERROR it raised
+     * hid the (rule, dataset)'s other findings.
+     *
+     * <p>
+     * The default is {@code false} — a computed value is never exempt. {@link ColumnVector} scans
+     * its column; the joined {@link ComputedVector} answers from the SOURCE column through
+     * {@code JoinLookup.sourceColumnIsBlank} (never from the merged cells, D72a-1); a remapped
+     * vector delegates to its inner vector, as it delegates {@link #gatedName()}. The gate asks
+     * only at its throw point, after the kinds disagree, so the common path costs nothing.
+     * </p>
+     *
+     * @return {@code true} only for an authored column known to be blank in every row
+     */
+    default boolean isBlank()
+    {
+        return false;
+    }
+
+
+    /**
      * The statically-declared type of this vector, used by the compiler's operand-homogeneity check
      * (decision #15) and by callers that need a type hint without reading a cell.
      */

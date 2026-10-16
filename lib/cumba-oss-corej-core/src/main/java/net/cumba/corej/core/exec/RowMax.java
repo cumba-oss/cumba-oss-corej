@@ -41,7 +41,7 @@ import org.jspecify.annotations.Nullable;
  * plain lexicographic order — owner K3, 2026-09-30, "text is text"; date-looking text gets no date
  * rule). A matched column with no candidate in <em>any</em> row takes no part in that decision
  * (round 2 H2: a provider infers a column's type from its values, so an all-blank column has an
- * arbitrary one — CSV types it {@code STRING}, XLSX {@code DOUBLE} — and an all-blank
+ * arbitrary one — a provider may type an all-blank column either way — and an all-blank
  * {@code TR02EDT} beside a numeric {@code TR01EDT}, or an all-blank Char-intended column beside a
  * Char set, is not a mixed set). A set in which Num <em>and</em> Char columns both carry values is
  * a {@link ColumnTypeMismatchException} — the rule ERRORs (column-type doctrine), since the two
@@ -184,10 +184,11 @@ public final class RowMax
         {
             // Combined review of runbook W2–W8, round 2 H2: a column with no candidate in ANY
             // row answers nothing and takes no part in the type decision. A provider types an
-            // all-blank column arbitrarily: CSV types a column STRING unless a sampled cell is
-            // numeric evidence (an all-blank TR02EDT arrives as Char beside a numeric TR01EDT),
-            // XLSX types it DOUBLE (a blank cell is no text evidence) — neither is a mixed set.
-            // One early-exit scan per column, once per dataset, only when both kinds matched.
+            // all-blank column arbitrarily — either way, by its own inference, with no cell as
+            // evidence (an all-blank TR02EDT beside a numeric TR01EDT) — so neither pairing is a
+            // mixed set. One early-exit scan per column, once per dataset, only when both kinds
+            // matched. The same exemption now holds in every key-kind check and in the
+            // column-type gate (SVY OQ11 / ECT-Q5, 2026-10-16: ColumnContent.isBlank()).
             List<String> liveNumeric = candidateBearing(table, numericNames);
             List<String> liveCharacter = candidateBearing(table, characterNames);
             if (!liveNumeric.isEmpty() && !liveCharacter.isEmpty())

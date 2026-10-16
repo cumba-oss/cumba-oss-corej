@@ -252,6 +252,30 @@ public interface JoinLookup
 
 
     /**
+     * Whether the joined dataset's <b>source</b> column {@code columnName} holds no value in any
+     * row — every cell missing or {@code ""} ({@link net.cumba.datatable.ColumnContent#isBlank()}).
+     * The key-kind checks ({@code SVY OQ11}) and the column-type gate ({@code ECT-Q5} ⓐ) exempt
+     * such a column: its declared type is the provider's guess, not a property of the data.
+     *
+     * <p>
+     * ⛔ Asked of the SOURCE table on purpose, never of the merged column a reader sees: an
+     * unmatched merged row carries the partner column's type default (D72a-1, MET #4), so a
+     * populated source column with no matched row reads blank in the view and would be wrongly
+     * exempt (B5 T7 / M2). The default answers {@code false} — "not blank", never exempt — so a
+     * test double or an implementation that does not know its source keeps every check armed.
+     * </p>
+     *
+     * @param columnName
+     *            the joined column, unqualified
+     * @return {@code true} only when the source column is known and blank in every row
+     */
+    default boolean sourceColumnIsBlank(String columnName)
+    {
+        return false;
+    }
+
+
+    /**
      * The join-match flag {@code <dataset>._matched_} for one primary row (spec §3.3, D88 /
      * {@code PLAN-join-match-flag.md}): {@code true} iff the row found at least one partner in the
      * joined dataset under this entry's keys.

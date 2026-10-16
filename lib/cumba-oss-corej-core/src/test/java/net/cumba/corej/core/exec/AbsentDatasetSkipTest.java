@@ -423,6 +423,61 @@ class AbsentDatasetSkipTest
     }
 
 
+    /**
+     * {@code FDA-SE1148}'s shape: a {@code read_value(TSVAL, domain=TS, …)} binding with the BARE
+     * dataset spelling (D10: {@code domain=TS} and {@code domain="TS"} name one dataset), read by
+     * the check.
+     */
+    private static String tsReaderRule(String id, String domainSpelling)
+    {
+        return "{\"Core\":{\"Id\":\"" + id + "\"},"
+                + "\"Sensitivity\":\"Record\",\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
+                + "\"Bindings\":[{\"name\":\"$exp_start\",\"expression\":\"read_value(TSVAL, domain="
+                + domainSpelling + ", filter=(TSPARMCD==\\\"EXPSTDTC\\\"), mode=\\\"FIRST\\\")\"}],"
+                + "\"Check\":{\"expression\":\"not empty(EXSTDTC) and date(EXSTDTC) < date($exp_start)\"},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"EXSTDTC\"]}}";
+    }
+
+
+    /**
+     * {@code OQ10} (owner 2026-10-16, ⓐ: <i>"treat the bare spelling as the quoted one"</i>): the
+     * reader arm of the absent-dataset skip suppresses a {@code domain=TS} kwarg exactly as it
+     * suppresses {@code domain="TS"} — the candidate collector already took both spellings (D10),
+     * the reader arm only the quoted one, so {@code FDA-SE1148}–{@code SE1151} PASSED silently on
+     * an unpositionable {@code date("")} where TS was absent and reported. Fix #222's ruling (a
+     * reading of an absent, reported dataset yields no finding — SKIPPED) now applies to them.
+     */
+    @Test
+    void aBareDomainSpellingIsSuppressedLikeTheQuotedOne() throws Exception
+    {
+        IDataTable ex = RealTables.of("EX").str("USUBJID", "S1").str("EXSTDTC", "2019-01-01")
+                .build();
+        DatasetResolver noTs = resolverOf(Map.of("EX", ex));
+
+        RuleExecutionResult quoted = run(load(tsReaderRule("R1", "\\\"TS\\\"")), ex, noTs,
+                Set.of("TS"));
+        assertEquals(RuleExecutionStatus.SKIPPED, quoted.getStatus(),
+                "control: the quoted spelling was always suppressed");
+
+        RuleExecutionResult bare = run(load(tsReaderRule("R1", "TS")), ex, noTs, Set.of("TS"));
+        assertEquals(RuleExecutionStatus.SKIPPED, bare.getStatus(),
+                "OQ10: the bare spelling names the same absent, reported dataset — "
+                        + bare.getStatusMessage());
+        assertTrue(String.valueOf(bare.getStatusMessage()).contains("TS"),
+                "the skip reason names TS: " + bare.getStatusMessage());
+
+        // controls: TS absent but NOT reported ⇒ the rule evaluates (no finding: date("") never
+        // positions); an opted-out id keeps evaluating however TS is spelled
+        RuleExecutionResult unreported = run(load(tsReaderRule("R1", "TS")), ex, noTs, Set.of());
+        assertEquals(RuleExecutionStatus.EXECUTED, unreported.getStatus());
+        assertEquals(0, unreported.getViolations().size());
+        RuleExecutionResult optedOut = run(load(tsReaderRule("CDISC-SEND-0105", "TS")), ex, noTs,
+                Set.of("TS"));
+        assertEquals(RuleExecutionStatus.EXECUTED, optedOut.getStatus(),
+                "INTENT_OPT_OUT_RULE_IDS is untouched by OQ10");
+    }
+
+
     @Test
     void theOptOutPopulationIsTheFourRulesStep1Derived()
     {

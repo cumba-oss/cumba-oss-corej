@@ -451,7 +451,8 @@ public final class MergedEvaluation
             DatasetResolver resolver, @Nullable JoinCache joinCache, @Nullable String ruleId,
             @Nullable String domainPrefix)
     {
-        return build(rule, primary, original, resolver, joinCache, ruleId, domainPrefix, null);
+        return build(rule, primary, original, resolver, joinCache, ruleId, domainPrefix, null,
+                null);
     }
 
 
@@ -477,12 +478,17 @@ public final class MergedEvaluation
      *            the dataset's domain code
      * @param keyDropWarnings
      *            receives each WARNING text, or {@code null} to log them here
+     * @param library
+     *            the run's CDISC Library provider, read by a {@code Match_Datasets} Filter's
+     *            Library calls ({@link MatchFilter#mask}; B5 S13), or {@code null} when the run has
+     *            none
      * @return the built view, or {@code null} when nothing is merged
      */
     @SuppressWarnings("checkstyle:ParameterNumber")
     static @Nullable Built build(Rule rule, IDataTable primary, IDataTable original,
             DatasetResolver resolver, @Nullable JoinCache joinCache, @Nullable String ruleId,
-            @Nullable String domainPrefix, @Nullable List<String> keyDropWarnings)
+            @Nullable String domainPrefix, @Nullable List<String> keyDropWarnings,
+            @Nullable MetadataProvider library)
     {
         ChildMergeSpec child = resolver == null ? null
                 : ChildEntries.spec(rule.getMatchDatasets(), primary);
@@ -498,7 +504,7 @@ public final class MergedEvaluation
         List<KeyedMergeSpec> keyed = new ArrayList<>();
         Map<String, IDataTable> partners = new LinkedHashMap<>();
         keyedSpecs(rule, primary, resolver, ruleId, keyed, rule.isSuppMergeEnabled(), chosen,
-                partners, keyDropWarnings);
+                partners, keyDropWarnings, library);
         String dataset = Objects.requireNonNullElse(primary.getMetaData().getName(), "");
         String domain = null;
         List<String> supp = List.of();
@@ -550,14 +556,18 @@ public final class MergedEvaluation
                 encodings.put(partner.getKey(), declared.toString());
             }
         }
+        // SVY OQ11 (B5 T7): each keyed partner table travels with its lookup, so a key-kind check
+        // can ask the SOURCE column's content (deterministic per partner table, so the cached
+        // view carries the same answer)
+        Map<String, IDataTable> sources = Map.copyOf(partners);
         if (joinCache != null && primary == original)
         {
             return joinCache.mergedView(new ViewKey(keyed, supp, suppKeys, child, relrec),
                     () -> construct(primary, keyed, suppSpec, child, relrec, primaryDomain,
-                            standard, datasets, true, encodings));
+                            standard, datasets, true, encodings, sources));
         }
         return construct(primary, keyed, suppSpec, child, relrec, primaryDomain, standard, datasets,
-                false, encodings);
+                false, encodings, sources);
     }
 
 
@@ -581,7 +591,7 @@ public final class MergedEvaluation
             @Nullable SuppMergeSpec supp, @Nullable ChildMergeSpec child,
             @Nullable RelrecPartSpec relrec, @Nullable String primaryDomain, MergeStandard standard,
             net.cumba.datatable.merge.DatasetResolver datasets, boolean shared,
-            Map<String, String> encodings)
+            Map<String, String> encodings, Map<String, IDataTable> partners)
     {
         // J5 (ChildEntries): a Child primary's IDVARVAL reads as the pointer's join token
         IDataTable primary = child == null ? dataset
@@ -660,8 +670,8 @@ public final class MergedEvaluation
             {
                 lookups.put(part.qualifier(),
                         new MergedViewLookup(view, part, partOf, plant == part.kind(),
-                                Collections.unmodifiableMap(flagged),
-                                encodings.get(part.source())));
+                                Collections.unmodifiableMap(flagged), encodings.get(part.source()),
+                                partners.get(part.source())));
             }
         }
         return new Built(view, table, lookups, flat, suppQnams, flagged, plant == MergeKind.SUPP,
@@ -810,7 +820,8 @@ public final class MergedEvaluation
     @SuppressWarnings("checkstyle:ParameterNumber")
     private static void keyedSpecs(Rule rule, IDataTable primary, DatasetResolver resolver,
             @Nullable String ruleId, List<KeyedMergeSpec> out, boolean suppMerge, ChosenSupp chosen,
-            Map<String, IDataTable> partners, @Nullable List<String> keyDropWarnings)
+            Map<String, IDataTable> partners, @Nullable List<String> keyDropWarnings,
+            @Nullable MetadataProvider library)
     {
         List<KeyColumn> suppKeys = rule.suppKeyColumns();
         List<MatchDataset> entries = rule.getMatchDatasets();
@@ -888,8 +899,10 @@ public final class MergedEvaluation
                 keys.add(Objects.equals(left.get(i), r) ? KeyColumn.of(left.get(i))
                         : KeyColumn.sided(left.get(i), r));
             }
+            // B5 S13: the Filter reads the run's CDISC Library (MatchFilter.mask's contract) —
+            // until 2026-10-16 it was handed null, so a Library call in a Filter saw no provider
             BitSet mask = md.getFilter() != null && !md.getFilter().isBlank()
-                    ? MatchFilter.mask(md, partner, ruleId, resolver, null)
+                    ? MatchFilter.mask(md, partner, ruleId, resolver, library)
                     : null;
             // An entry outside the key-type check (a SUPP-named or wildcard-named partner) was a
             // first-wins lookup that never dropped a primary row, whatever Join_Type the loader

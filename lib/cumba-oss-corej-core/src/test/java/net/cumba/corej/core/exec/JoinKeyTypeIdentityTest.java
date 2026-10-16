@@ -1,5 +1,6 @@
 package net.cumba.corej.core.exec;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -16,7 +17,7 @@ import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.values.DataValueType;
-import org.junit.jupiter.api.Assertions;
+import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -148,6 +149,31 @@ class JoinKeyTypeIdentityTest
         assertTrue(msg.contains("\"AE.AESEQ:N\""),
                 "the JOINED side's tag must be named too: " + msg);
         assertTrue(msg.contains("Join_As_String"), "the other remedy must be named: " + msg);
+    }
+
+
+    /**
+     * {@code SVY OQ11} (owner 2026-10-16, (b)): a key column with no value in any row — every cell
+     * missing or {@code ""} — is exempt from the D4 kind check on the keyed-join path too: its type
+     * is the provider's guess (CSV Char, XLSX Num), not a property of the data. A populated
+     * Char/Num pair still ERRORs ({@link #aCharacterKeyAgainstANumericKeyErrorsTheRule}).
+     */
+    @Test
+    void anAllBlankKeyColumnIsExemptFromTheTypeCheck()
+    {
+        IDataTable blankCharAdae = MockTable.of().col(USUBJID, "P1", "P2").col(AESEQ, "", "")
+                .name("ADAE").build();
+        IDataTable ae = MockTable.of().col(USUBJID, "P1").colLong(AESEQ, 1L).col("AETERM", "HA")
+                .name(AE).build();
+        MergedEvaluation.Built exp = assertDoesNotThrow(
+                () -> expand(blankCharAdae, ae, md(AE, List.of(USUBJID, AESEQ))),
+                "an all-blank Char AESEQ beside a Num AESEQ has no kind to disagree with");
+        assertEquals(2, exp.table().getRowCount(), "every primary row is kept (left join)");
+        // the mirror: an all-blank NUMERIC partner key beside a populated Char primary key
+        IDataTable adae = MockTable.of().col(USUBJID, "P1").col(AESEQ, "1").name("ADAE").build();
+        IDataTable blankNumAe = MockTable.of().col(USUBJID, "P1").colLong(AESEQ, (Long) null)
+                .col("AETERM", "HA").name(AE).build();
+        assertDoesNotThrow(() -> expand(adae, blankNumAe, md(AE, List.of(USUBJID, AESEQ))));
     }
 
 
@@ -283,18 +309,20 @@ class JoinKeyTypeIdentityTest
      * ⭐⭐ {@code D4-R6a} — an unclassified kind is NOT a mismatch, and that arm is load-bearing.
      *
      * <p>
-     * ⚠⚠ An all-{@code NA} R column is {@code logical}, which {@code RdataTableProvider.mapType}
-     * maps to {@code BOOLEAN}; the engine itself publishes {@code MISSING} for an absent joined
-     * column ({@code JoinLookup:264}). Were {@code null} treated as a mismatch, every such study
-     * would ERROR on every keyed rule.
+     * ⚠⚠ D4-R6a covers the kindless types — {@code BOOLEAN}, and the {@code MISSING} the engine
+     * publishes for an absent joined column ({@code JoinLookup.declaredTypeOf}). (The
+     * all-{@code NA} {@code .rds} key column, which used to arrive as {@code BOOLEAN}, loads as
+     * Char since ECT U3 and is exempted by {@code SVY OQ11}'s blank check —
+     * {@link #anAllNaCharacterKeyColumnIsExempt}.) Were {@code null} treated as a mismatch, a
+     * kindless key would ERROR on every keyed rule.
      * </p>
      */
     @Test
     void anUnclassifiedColumnKindIsNotAMismatch()
     {
         assertNull(ColumnTypeGate.kindOf(DataValueType.BOOLEAN),
-                "BOOLEAN must stay unclassified -- an all-NA R `logical` key column arrives as"
-                        + " this, and D4-R6a is what stops it erroring");
+                "BOOLEAN must stay unclassified -- D4-R6a covers the kindless types (the .rds"
+                        + " all-NA shape is Char since ECT U3 and takes OQ11's blank check)");
         assertNull(ColumnTypeGate.kindOf(DataValueType.MISSING),
                 "MISSING must stay unclassified -- the engine publishes it for an absent joined"
                         + " column");
@@ -359,8 +387,8 @@ class JoinKeyTypeIdentityTest
 
 
     /**
-     * ⭐⭐ {@code D4-R6a} reaching {@code keySpec} — the arm that protects every all-{@code NA} R
-     * column.
+     * ⭐⭐ {@code D4-R6a} reaching {@code keySpec} — the arm that protects a kindless key column
+     * ({@code BOOLEAN}, {@code MISSING}).
      *
      * <p>
      * ⛔ {@link #anUnclassifiedColumnKindIsNotAMismatch} asserts only what {@code kindOf} answers;
@@ -373,17 +401,38 @@ class JoinKeyTypeIdentityTest
     void aKeyColumnWhoseKindIsUnclassifiedDoesNotError()
     {
         IDataTable adae = MockTable.of().col(USUBJID, "P1").col(AESEQ, "1").name("ADAE").build();
-        // An all-NA R `logical` column arrives as BOOLEAN; MockTable cannot declare one (and its
-        // metadata is real since T1, so it is no longer re-stubbed): a real table declares it.
+        // A BOOLEAN key column is kindless; MockTable cannot declare one (and its metadata is
+        // real since T1, so it is no longer re-stubbed): a real table declares it.
         // kindOf(BOOLEAN) is null -> not gated (D4-R6a).
         IDataTable ae = RealTables.of(AE).str(USUBJID, "P1")
                 .typed(AESEQ, DataValueType.BOOLEAN, (Object) null).str("AETERM", "HA").build();
         assertEquals(DataValueType.BOOLEAN,
                 ae.getMetaData().getColumn(ae.getMetaData().getColumnIndex(AESEQ)).getType(),
                 "the fixture really declares the unclassified kind");
-        Assertions.assertDoesNotThrow(() -> expand(adae, ae, md(AE, List.of(USUBJID, AESEQ))),
-                "D4-R6a: an unclassified kind is NOT a mismatch. If this throws, every .rds study"
-                        + " whose key variable is wholly missing ERRORs on every keyed rule");
+        assertDoesNotThrow(() -> expand(adae, ae, md(AE, List.of(USUBJID, AESEQ))),
+                "D4-R6a: an unclassified kind is NOT a mismatch — a kindless key column must"
+                        + " never ERROR a keyed rule");
+    }
+
+
+    /**
+     * The real {@code .rds} shape after ECT U3: an all-{@code NA} R column loads as <b>Char</b>
+     * whose every cell is {@link MissingValue#NA} — no longer {@code BOOLEAN}, so {@code D4-R6a}
+     * does not reach it; {@code SVY OQ11}'s blank check does (B5 S11). Beside a Num partner key it
+     * must not ERROR.
+     */
+    @Test
+    void anAllNaCharacterKeyColumnIsExempt()
+    {
+        IDataTable adae = RealTables.of("ADAE").str(USUBJID, "P1", "P2")
+                .typed(AESEQ, DataValueType.STRING, MissingValue.NA, MissingValue.NA).build();
+        assertEquals(DataValueType.STRING,
+                adae.getMetaData().getColumn(adae.getMetaData().getColumnIndex(AESEQ)).getType(),
+                "the fixture declares the post-ECT Char shape");
+        IDataTable ae = MockTable.of().col(USUBJID, "P1").colLong(AESEQ, 1L).col("AETERM", "HA")
+                .name(AE).build();
+        assertDoesNotThrow(() -> expand(adae, ae, md(AE, List.of(USUBJID, AESEQ))),
+                "an all-NA Char key column has no type of its own (SVY OQ11)");
     }
 
 
@@ -396,7 +445,7 @@ class JoinKeyTypeIdentityTest
     {
         IDataTable adae = MockTable.of().col(USUBJID, "P1").col(AESEQ, "1").name("ADAE").build();
         IDataTable ae = MockTable.of().col(USUBJID, "P1").col("AETERM", "HA").name(AE).build();
-        Assertions.assertDoesNotThrow(() -> expand(adae, ae, md(AE, List.of(USUBJID, AESEQ))),
+        assertDoesNotThrow(() -> expand(adae, ae, md(AE, List.of(USUBJID, AESEQ))),
                 "AESEQ is absent on the joined side, so only the primary declares a type and there"
                         + " is nothing to disagree with. A throw here would break JKM R7");
     }

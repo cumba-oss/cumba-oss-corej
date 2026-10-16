@@ -27,8 +27,9 @@ import org.junit.jupiter.api.Test;
  * read would match no row — silently. The rule ERRORs instead, naming both columns and kinds;
  * asserted at {@link RuleRunner} level (the rule's status and message), not only as a unit
  * exception. Never an error: {@code LONG} against {@code DOUBLE} (both numeric), a kind the gate
- * does not classify ({@code D4-R6a}: the all-NA {@code .rds} column arrives as {@code BOOLEAN}),
- * and the text-carried family ({@code SUPP--}, {@code D4-R5}).
+ * does not classify ({@code D4-R6a} covers kindless types — {@code BOOLEAN}, {@code MISSING}; the
+ * all-NA {@code .rds} column is Char since ECT U3 and is exempted by {@code SVY OQ11}'s blank
+ * check), and the text-carried family ({@code SUPP--}, {@code D4-R5}).
  * </p>
  */
 class GroupedLookupKeyTypeTest
@@ -89,7 +90,10 @@ class GroupedLookupKeyTypeTest
     }
 
 
-    /** A one-column {@code BOOLEAN} table whose every cell is missing — the all-NA R shape. */
+    /**
+     * A one-column {@code BOOLEAN} table whose every cell is missing — a kindless type (D4-R6a; the
+     * all-NA {@code .rds} column itself loads as Char since ECT U3 and takes {@code SVY OQ11}).
+     */
     private static IDataTable allNaBoolean(String aName, String aColumn, int aRows)
     {
         CachedDataTableColumn col = new CachedDataTableColumn(0, DataValueType.BOOLEAN);
@@ -236,6 +240,39 @@ class GroupedLookupKeyTypeTest
         // nor one the grouped table lacks
         assertDoesNotThrow(() -> GroupKeyIdentity.requireCompatibleKeyColumns(numTable,
                 List.of("ABSENT"), charTable, List.of("X")));
+    }
+
+
+    /**
+     * {@code SVY OQ11} (owner 2026-10-16, (b): <i>"exempt in every key-kind check (grouped lookup
+     * and joins)"</i>): a key column whose every cell is missing or {@code ""} has no type of its
+     * own — a provider infers it from values it does not have (CSV Char, XLSX Num) — so it takes no
+     * part in the kind decision, as {@code RowMax} already exempts it. The pair then groups under
+     * today's key policy; a populated Char/Num pair still ERRORs ({@code GKI Q2}, the control).
+     */
+    @Test
+    void anAllBlankKeyColumnIsExemptFromTheKindCheck()
+    {
+        IDataTable blankNum = RealTables.of("DM").dbl("USUBJID", (Double) null, (Double) null)
+                .build();
+        IDataTable blankChar = RealTables.of("AE").str("USUBJID", "", "").build();
+        IDataTable charTable = RealTables.of("AE").str("USUBJID", "1", "2").build();
+        IDataTable numTable = RealTables.of("DM").dbl("USUBJID", 1.0, 2.0).build();
+        List<String> usubjid = List.of("USUBJID");
+        // the unit: the grouped side blank, the evaluated side blank, both blank — no ERROR
+        assertDoesNotThrow(() -> GroupKeyIdentity.requireCompatibleKeyColumns(blankNum, usubjid,
+                charTable, usubjid));
+        assertDoesNotThrow(() -> GroupKeyIdentity.requireCompatibleKeyColumns(numTable, usubjid,
+                blankChar, usubjid));
+        assertDoesNotThrow(() -> GroupKeyIdentity.requireCompatibleKeyColumns(blankNum, usubjid,
+                blankChar, usubjid));
+        // control: both populated, kinds differ — GKI Q2 kept
+        assertThrows(JoinKeyTypeMismatchException.class, () -> GroupKeyIdentity
+                .requireCompatibleKeyColumns(numTable, usubjid, charTable, usubjid));
+        // end to end: the SEND POOLID shape — an all-blank Num key beside character keys EXECUTES
+        RuleExecutionResult res = run(rule("$n > 1", List.of("USUBJID"), countIn("DM", "USUBJID")),
+                charTable, blankNum);
+        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(), res.getStatusMessage());
     }
 
 

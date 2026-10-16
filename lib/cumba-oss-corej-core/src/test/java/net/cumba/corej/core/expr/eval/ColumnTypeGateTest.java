@@ -1,6 +1,7 @@
 package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -346,6 +347,100 @@ class ColumnTypeGateTest
         EvaluationContext c = ctxOf(table());
         assertEquals(new BitSet(), eval("num($notthere) == 10", c),
                 "a $-name absent from the context resolves nothing — num() must not change that");
+    }
+
+    // ---- ECT-Q5 ⓐ / B5 S12: an all-empty column has no type and is not gated ----
+
+
+    /** DOSE Char populated, AVAL Num populated, EMPTYC Char all-blank, EMPTYN Num all-missing. */
+    private static IDataTable withEmptyColumns()
+    {
+        return MockTable.of().name("EX").col("DOSE", "10", "25", "abc", "")
+                .colLong("AVAL", 10L, 25L, 1L, null).col("EMPTYC", "", "", "", "")
+                .colLong("EMPTYN", null, null, null, null).build();
+    }
+
+
+    /**
+     * {@code ECT-Q5} ⓐ (owner 2026-10-16, built here as B5 S12 / T14): a column whose every cell is
+     * {@code ""} or missing ({@code ColumnContent.isBlank()}) is exempt from all three gate checks
+     * — its declared type is the provider's guess (CSV types an all-blank column Char, XLSX Num), a
+     * property of the transport, not of the data; the ERROR it raised hid the (rule, dataset)'s
+     * other findings. A populated column of the wrong kind still ERRORs (the controls).
+     */
+    @Test
+    @DisplayName("S12: an all-empty column is exempt from the three gate checks")
+    void anAllEmptyColumnIsNotGated()
+    {
+        EvaluationContext c = ctxOf(withEmptyColumns());
+        // (1) a Char all-blank column in a numeric position
+        assertEquals(new BitSet(), assertDoesNotThrow(() -> eval("EMPTYC > 5", c)));
+        // (2) a Num all-missing column as a regex subject
+        assertEquals(new BitSet(), assertDoesNotThrow(() -> eval("EMPTYN =~ /^\\d+$/", c)));
+        // (3) Char/Num equality with an empty column on EITHER side
+        assertDoesNotThrow(() -> eval("EMPTYN == DOSE", c));
+        assertDoesNotThrow(() -> eval("AVAL != EMPTYC", c));
+        assertDoesNotThrow(() -> eval("EMPTYC == 10", c),
+                "an empty Char against a numeric literal");
+        assertDoesNotThrow(() -> eval("EMPTYN != \"0\"", c),
+                "an empty Num against a string literal");
+        // controls: the populated columns keep every gate (R3, R9, R12)
+        assertThrows(ColumnTypeMismatchException.class, () -> eval("DOSE > 5", c));
+        assertThrows(ColumnTypeMismatchException.class, () -> eval("AVAL =~ /^\\d+$/", c));
+        assertThrows(ColumnTypeMismatchException.class, () -> eval("AVAL != DOSE", c));
+    }
+
+
+    /**
+     * T14 (M5): the gate reaches a JOINED column through a {@code ComputedVector}, whose blankness
+     * is answered from the <b>source</b> column — never from the merged cells, where an unmatched
+     * row carries the type default (D72a-1) and a populated source with no matched row would read
+     * blank.
+     */
+    @Test
+    @DisplayName("S12: a joined all-blank source column is exempt; an unmatched populated one is not")
+    void aJoinedAllBlankSourceColumnIsNotGated()
+    {
+        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "U1").colLong("AGE", 30L).build();
+        IDataTable blankDm = MockTable.of().name("DM").col("USUBJID", "U1").col("ARM", "").build();
+        EvaluationContext blank = joinedCtx(ae, blankDm);
+        assertEquals(new BitSet(), assertDoesNotThrow(() -> eval("DM.ARM > 5", blank)));
+        assertDoesNotThrow(() -> eval("DM.ARM == AGE", blank));
+        // control: ARM populated on a subject AE does not carry — no merged row matched, every
+        // merged ARM cell is the type default — is NOT blank at the source: still an ERROR
+        IDataTable unmatchedDm = MockTable.of().name("DM").col("USUBJID", "U9")
+                .col("ARM", "PLACEBO").build();
+        EvaluationContext unmatched = joinedCtx(ae, unmatchedDm);
+        assertThrows(ColumnTypeMismatchException.class, () -> eval("DM.ARM > 5", unmatched));
+    }
+
+
+    /** T14 (3): a remapped vector answers its inner vector's blankness, as it answers its name. */
+    @Test
+    @DisplayName("S12: a remapped vector over an all-blank column is exempt")
+    void aRemappedVectorOverAnAllBlankColumnIsNotGated()
+    {
+        IDataTable t = withEmptyColumns();
+        int emptyc = t.getMetaData().getColumnIndex("EMPTYC");
+        int dose = t.getMetaData().getColumnIndex("DOSE");
+        Vector blank = ComputedVector.remapped(
+                new ColumnVector("EMPTYC", t.getColumn(emptyc), DataValueType.STRING), 4, r -> r);
+        assertDoesNotThrow(() -> ColumnTypeGate.requireNumericRead(blank, "a numeric position"));
+        Vector populated = ComputedVector.remapped(
+                new ColumnVector("DOSE", t.getColumn(dose), DataValueType.STRING), 4, r -> r);
+        assertThrows(ColumnTypeMismatchException.class,
+                () -> ColumnTypeGate.requireNumericRead(populated, "a numeric position"));
+    }
+
+
+    private static EvaluationContext joinedCtx(IDataTable primary, IDataTable dm)
+    {
+        net.cumba.corej.core.exec.JoinLookup lk = net.cumba.corej.core.exec.ExecCalls
+                .viewLookup(primary, "DM", dm, List.of("USUBJID"));
+        net.cumba.corej.core.exec.DatasetResolver res = n -> "DM".equals(n) ? dm : null;
+        return EvaluationContext.builder().table(primary).datasetResolver(res)
+                .mergedView(net.cumba.corej.core.exec.ExecCalls.joinsView(Map.of("DM", lk)))
+                .build();
     }
 
     // ---- end to end: RuleRunner maps the mismatch to ERROR per dataset ----------

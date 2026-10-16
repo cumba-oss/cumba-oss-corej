@@ -4138,7 +4138,11 @@ public final class ExprCompiler
                 "within", c.kwargs().get("within"), "requires a single within column");
         net.cumba.corej.core.exec.GroupSplice.Member orderMember = orderingMember(c);
         GroupKeyPolicy policy = groupKeyPolicy(c, GroupKeyPolicy.DROP_MISSING_KEYS);
-        GroupSemantics.NeighbourRelation relation = nameMarked ? durationRelation(c)
+        // SVY OQ9 (B5 S9): the unmarked relation's arm is chosen ONCE per run from the two
+        // operands' declared kinds, inside the run lambda once the columns resolve — never per
+        // cell pair. The duration marker routes to its own family regardless of the kinds.
+        GroupSemantics.NeighbourRelation duration = nameMarked ? durationRelation(c) : null;
+        RelationFactory relation = duration != null ? (_, _, _, _, _) -> duration
                 : neighbourRelation(c);
         return run ->
         {
@@ -4162,56 +4166,131 @@ public final class ExprCompiler
             IDataTableColumn nameCol = table.getColumn(nameIdx);
             IDataTableColumn valueCol = table.getColumn(valueIdx);
             IDataTableColumn orderCol = table.getColumn(orderIdx);
+            GroupSemantics.NeighbourRelation corresponds = relation.forColumns(table, nameIdx,
+                    valueIdx, name, value);
             List<int[]> groups = GroupSemantics.group(table, List.of(withinCol), policy);
             BitSet result = new BitSet(run.rowCount());
             for (int[] rows : groups)
             {
                 GroupSemantics.flagNoNextCorrespondingRecord(nameCol, valueCol, orderCol, rows,
-                        result, relation);
+                        result, corresponds);
             }
             return result;
         };
     }
 
+    /**
+     * The per-run choice of a {@code has_next_corresponding_record} relation: given the resolved
+     * table and the two operand columns, the {@link GroupSemantics.NeighbourRelation} every
+     * neighbour pair of the run is judged by ({@code SVY OQ9}: the arm is decided once from the
+     * declared kinds, not per cell pair).
+     */
+    @FunctionalInterface
+    private interface RelationFactory
+    {
+
+        GroupSemantics.NeighbourRelation forColumns(IDataTable table, int nameIdx, int valueIdx,
+                String name, String value);
+    }
 
     /**
      * EC-87 — builds the {@code relation=} kwarg's neighbour relation. Absent (or {@code "=="}) ⇒
-     * the shipped identity relation, and nothing else changes (D-2). {@code "<="} / {@code ">="} ⇒
-     * identity <b>in disjunction with</b> the {@code date_*}-family comparison
-     * ({@link Primitives#compareCells}, direction {@code -1} / {@code 1}, or-equal): a relation may
-     * only widen what "corresponds", never narrow it (D-1) — so two month-precision {@code 2020-01}
-     * cells, which the ∀-hull rule would call not-{@code <=}, still correspond by identity, and a
-     * missing or blank cell keeps exactly its identity disposition because the comparison arm
-     * answers {@code false} on it (D-3).
+     * the shipped identity relation, and nothing else changes (D-2) — no kind is looked at, so a
+     * mixed-kind pair under identity is judged by identity alone (B5 T4 / M1: the three corpus
+     * rules without {@code relation=} are untouched). {@code "<="} / {@code ">="} ⇒ identity <b>in
+     * disjunction with</b> a comparison arm: a relation may only widen what "corresponds", never
+     * narrow it (D-1) — so two month-precision {@code 2020-01} cells, which the ∀-hull rule would
+     * call not-{@code <=}, still correspond by identity, and a missing or blank cell keeps exactly
+     * its identity disposition because the comparison arm answers {@code false} on it (D-3).
      *
      * <p>
-     * The next record's cell is handed to {@code compareCells} in the shape
-     * {@code TypedValue.resolved()} produces for a plain column
-     * ({@code ScalarSemantics.resolvedString}): its string form, or {@code null} when
-     * missing/invalid — so a numeric-typed pair still takes the numeric branch, as a same-row
-     * {@code date_*} comparison would. ⚠ D-5: a <em>mixed</em> numeric/ISO pair does NOT correspond
-     * ({@code mixedVerdict=false}) — the malformed shape stays reported, as it is today under
-     * identity; the {@code date_*} operators' "fires regardless of direction" is the same
-     * disposition read from the other side.
+     * <b>The comparison arm is chosen ONCE per run from the two operand columns' declared kinds</b>
+     * ({@code SVY OQ9}, owner 2026-10-16, <i>"agree to a"</i>; B5 S9 / T4): Num/Num ⇒ the numeric
+     * order on the cells' own values; Char/Char ⇒ the ISO date hull
+     * ({@link IsoDateComparison#fires}) — numeric-looking text is <em>not</em> sniffed as numbers;
+     * a Num/Char pair ⇒ {@link ColumnTypeMismatchException} naming both columns and kinds (the
+     * rule's ERROR, the {@code CTC R4} shape {@code RowMax} uses: the two have no common order).
+     * Until then the arm was chosen per cell pair by {@link Primitives#compareCells}, and a Num
+     * current cell beside a parsing Char next cell compared numerically. ⚠ T5: an operand column
+     * that is <b>all-blank</b> ({@link ColumnContent#isBlank()} — every cell missing or {@code ""})
+     * takes no part in the kind decision, as {@code RowMax} and the key-kind checks
+     * ({@code SVY OQ11}) exempt it: a provider types such a column arbitrarily (CSV Char, XLSX
+     * Num), and every comparison arm answers {@code false} on a blank anyway, so the exemption only
+     * turns an ERROR into the identity verdict. The scan runs only when the two kinds disagree. A
+     * column of no gated kind (BOOLEAN, MISSING) on either side ⇒ identity only.
      * </p>
      * <p>
      * ⚠ The spelling is validated on the inline surface by {@code RulePackageLoader} as a load
-     * error; the throw here is the declared-surface backstop and must never be reached by a shipped
-     * rule.
+     * error; the throw in {@link #relationOf} is the declared-surface backstop and must never be
+     * reached by a shipped rule.
      * </p>
      */
-    private static GroupSemantics.NeighbourRelation neighbourRelation(Expr.Call c)
+    private static RelationFactory neighbourRelation(Expr.Call c)
     {
         NextRecordRelation rel = relationOf(c);
         if (rel == null || rel == NextRecordRelation.IDENTITY)
         {
-            return GroupSemantics::identityCorresponds;
+            return (_, _, _, _, _) -> GroupSemantics::identityCorresponds;
         }
         int direction = rel.direction();
-        return (cur,
-                next) -> GroupSemantics.identityCorresponds(cur, next) || Primitives.compareCells(
-                        cur, next.isMissingOrInvalid() ? null : next.getValueAsString(), direction,
-                        true, false, false);
+        return (table, nameIdx, valueIdx, name, value) ->
+        {
+            DataTableMeta meta = table.getMetaData();
+            ColumnTypeGate.Kind nameKind = ColumnTypeGate.kindOf(meta.getColumn(nameIdx).getType());
+            ColumnTypeGate.Kind valueKind = ColumnTypeGate
+                    .kindOf(meta.getColumn(valueIdx).getType());
+            if (nameKind != null && valueKind != null && nameKind != valueKind)
+            {
+                // T5: the exemption is decided lazily — a scan only when the kinds disagree
+                boolean nameBlank = table.getColumnContent(nameIdx).isBlank();
+                boolean valueBlank = table.getColumnContent(valueIdx).isBlank();
+                if (!nameBlank && !valueBlank)
+                {
+                    throw new ColumnTypeMismatchException("column-type mismatch: " + name
+                            + " is declared " + describeKind(nameKind) + " and " + value
+                            + " is declared " + describeKind(valueKind) + ", but " + c.name()
+                            + " relation=\"" + rel.spelling()
+                            + "\" compares the two columns, which have no common order; a rule"
+                            + " compares a numeric pair or a character pair");
+                }
+                nameKind = nameBlank ? null : nameKind;
+                valueKind = valueBlank ? null : valueKind;
+            }
+            ColumnTypeGate.Kind kind = nameKind != null ? nameKind : valueKind;
+            if (kind == null)
+            {
+                return GroupSemantics::identityCorresponds;
+            }
+            if (kind == ColumnTypeGate.Kind.NUMERIC)
+            {
+                return (cur, next) -> GroupSemantics.identityCorresponds(cur, next)
+                        || numericCorresponds(cur, next, direction);
+            }
+            return (cur, next) -> GroupSemantics.identityCorresponds(cur, next)
+                    || (!ScalarSemantics.isMissing(cur) && !next.isMissingOrInvalid()
+                            && IsoDateComparison.fires(cur.getValueAsString(),
+                                    next.getValueAsString(), direction, true, false));
+        };
+    }
+
+
+    /** The Num/Num arm of {@link #neighbourRelation}: the cells' own values, or-equal (D-3). */
+    private static boolean numericCorresponds(IDataValue cur, IDataValue next, int direction)
+    {
+        if (ScalarSemantics.isMissing(cur) || next.isMissingOrInvalid())
+        {
+            return false;
+        }
+        double a = cur.getValueAsDouble();
+        double b = next.getValueAsDouble();
+        return !Double.isNaN(a) && !Double.isNaN(b)
+                && ScalarSemantics.matchNumeric(a, b, direction, true);
+    }
+
+
+    private static String describeKind(ColumnTypeGate.Kind kind)
+    {
+        return kind == ColumnTypeGate.Kind.NUMERIC ? "Num" : "Char";
     }
 
 
@@ -9962,8 +10041,11 @@ public final class ExprCompiler
             // column were one type apart.
             return numericExpected ? ALL_MISSING : ConstVector.of("");
         }
+        // B5 S12 (T14): the gate's blankness exemption asks the SOURCE column through the lookup,
+        // never the merged cells (an unmatched row carries the type default, D72a-1)
         return ComputedVector.typed(rowCount, lookup.declaredTypeOf(col),
-                row -> lookup.lookupValue(ctx.getTable(), row, col, numericExpected), name);
+                row -> lookup.lookupValue(ctx.getTable(), row, col, numericExpected), name,
+                () -> lookup.sourceColumnIsBlank(col));
     }
 
 

@@ -760,10 +760,15 @@ public final class GroupSemantics
      * what corresponds.
      *
      * <p>
-     * ⚑ The relation is injected rather than computed here on purpose: the comparison primitive
-     * lives in {@code expr.eval} ({@code Primitives.compareCells}), and the dependency direction is
-     * {@code expr.eval → exec}. Calling it from this package would make the two mutually dependent.
-     * Do not "simplify" this into a {@code String} relation parameter — that is the same inversion.
+     * ⚑ The relation is injected rather than computed here on purpose: the comparison primitives
+     * live in {@code expr.eval} ({@code IsoDateComparison}, the numeric order), and the dependency
+     * direction is {@code expr.eval → exec}. Calling them from this package would make the two
+     * mutually dependent. Do not "simplify" this into a {@code String} relation parameter — that is
+     * the same inversion. Since {@code SVY OQ9} (B5 S9, 2026-10-16) the caller chooses the
+     * comparison arm <b>once per run from the two operand columns' declared kinds</b> (Num/Num
+     * numeric, Char/Char the ISO hull, a mixed pair the rule's ERROR; an all-blank column takes no
+     * part) and hands the chosen relation in; this seam sees one relation per run, never a per-cell
+     * dispatch.
      * </p>
      */
     @FunctionalInterface

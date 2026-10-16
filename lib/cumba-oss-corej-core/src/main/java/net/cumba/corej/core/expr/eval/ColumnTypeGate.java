@@ -43,6 +43,17 @@ import org.jspecify.annotations.Nullable;
  * semantics with no demand); and dynamic membership sets ({@code $}-lists, accessors, grouped
  * results — their member types are not statically known).
  * </p>
+ *
+ * <p>
+ * <b>An all-empty column is not gated</b> ({@code ECT-Q5} ⓐ, owner 2026-10-16; built as B5 S12 /
+ * T14): a gated column whose every cell is {@code ""} or missing ({@link Vector#isBlank()},
+ * {@code ColumnContent.isBlank()}) is exempt from all three checks — a CSV provider types such a
+ * column Char, an XLSX provider Num, so its declared type is a property of the transport, not of
+ * the data, and the ERROR hid the (rule, dataset)'s other findings. The exemption sits at each
+ * throw point, after the kinds already disagree, so the common path costs nothing; a joined column
+ * answers from its SOURCE column (never the merged cells, D72a-1); a remapped vector from its inner
+ * one. The same predicate exempts the key-kind checks ({@code SVY OQ11}) and {@code RowMax}.
+ * </p>
  */
 public final class ColumnTypeGate
 {
@@ -116,7 +127,7 @@ public final class ColumnTypeGate
     public static void requireNumericRead(@Nullable Vector v, String context)
     {
         Vector cv = gatedColumn(v);
-        if (cv != null && kindOf(cv.declaredType()) == Kind.CHARACTER)
+        if (cv != null && kindOf(cv.declaredType()) == Kind.CHARACTER && !cv.isBlank())
         {
             throw new ColumnTypeMismatchException("column-type mismatch: " + describe(cv) + " but "
                     + context + " expects a numeric value — author num(" + cv.gatedName()
@@ -133,7 +144,7 @@ public final class ColumnTypeGate
     public static void requireCharacterRead(@Nullable Vector v, String context)
     {
         Vector cv = gatedColumn(v);
-        if (cv != null && kindOf(cv.declaredType()) == Kind.NUMERIC)
+        if (cv != null && kindOf(cv.declaredType()) == Kind.NUMERIC && !cv.isBlank())
         {
             throw new ColumnTypeMismatchException(
                     "column-type mismatch: " + describe(cv) + " but " + context
@@ -210,6 +221,10 @@ public final class ColumnTypeGate
         if (lk == null || rk == null || lk == rk || (lc == null && rc == null))
         {
             return;
+        }
+        if ((lc != null && lc.isBlank()) || (rc != null && rc.isBlank()))
+        {
+            return; // ECT-Q5 ⓐ: an all-empty column on either side has no type to disagree with
         }
         StringBuilder sb = new StringBuilder("column-type mismatch: ");
         sb.append(lc != null ? describe(lc)

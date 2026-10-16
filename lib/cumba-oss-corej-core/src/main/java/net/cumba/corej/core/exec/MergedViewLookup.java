@@ -78,8 +78,16 @@ final class MergedViewLookup implements JoinLookup
      */
     private final @Nullable String encoding;
 
+    /**
+     * The part's source table as resolved for the merge, or {@code null} when the builder does not
+     * hold it (a Child parent, a RELREC domain) — {@link #sourceColumnIsBlank} then answers "not
+     * blank".
+     */
+    private final @Nullable IDataTable source;
+
     MergedViewLookup(MergedTable aView, MergedPart aPart, IntFunction<@Nullable MergedPart> aPartOf,
-            boolean aShifted, Map<String, String> aFlagged, @Nullable String aEncoding)
+            boolean aShifted, Map<String, String> aFlagged, @Nullable String aEncoding,
+            @Nullable IDataTable aSource)
     {
         view = aView;
         part = aPart;
@@ -88,6 +96,24 @@ final class MergedViewLookup implements JoinLookup
         shifted = aShifted;
         flagged = aFlagged;
         encoding = aEncoding;
+        source = aSource;
+    }
+
+
+    /**
+     * {@inheritDoc} Answered from the SOURCE table's own content status
+     * ({@code IDataTable.getColumnContent}, cached per table where the table caches it), never from
+     * the merged cells (D72a-1: an unmatched row reads the type default there).
+     */
+    @Override
+    public boolean sourceColumnIsBlank(String columnName)
+    {
+        if (source == null)
+        {
+            return false;
+        }
+        int idx = source.getMetaData().getColumnIndex(columnName);
+        return idx >= 0 && source.getColumnContent(idx).isBlank();
     }
 
 

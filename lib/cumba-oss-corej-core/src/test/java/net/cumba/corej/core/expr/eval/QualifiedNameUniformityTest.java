@@ -597,6 +597,12 @@ class QualifiedNameUniformityTest
             // with and without the join. Their sensitivity (a partner's SUPP qualifier the
             // inventory table lacks) is QualifiedNamePhase3FixesTest's MQ9 case.
             "var_exists/name", "var_not_exists/name",
+            // Since SVY OQ2 (2026-10-16, B5 S2) split_by("") is the one-token list [""] — so over
+            // this fixture's one-token S values a split through the join and the split of the
+            // absent default "" are both one-element lists, and a count / size / contains_any over
+            // them cannot tell the join from its absence. Their sensitivity is a multi-token
+            // fixture value (not this one's) or a missing cell (a scalar, never a list).
+            "contains_any/list", "count/x", "size/x",
             // The strict predicate (register D50, owner 2026-10-05) is true only for a
             // MissingValue, and the probed character column S carries none ("" is a present
             // value): through the join every row reads FALSE, and with the join unreachable the

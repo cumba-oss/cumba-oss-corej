@@ -882,19 +882,27 @@ class GroupedAggregateFunctionsTest
 
 
     @Test
-    void aCharExPoolidBesideANumPooldefPoolidErrorsTheRule()
+    void aCharExPoolidBesideANumPooldefPoolidErrorsTheRuleOnlyWhenPopulated()
     {
-        // S14 / GKI Q2: a CSV provider types a column blank in every row STRING (an XLSX one types
-        // it Num), so an all-blank CSV EX.POOLID beside a numeric-looking POOLDEF.POOLID is a key
-        // pair that differs in kind — the rule ERRORs.
+        // S14 / GKI Q2, narrowed by SVY OQ11 (owner 2026-10-16, B5 S11): a provider types a column
+        // blank in every row arbitrarily (CSV Char, XLSX Num), so an all-blank EX.POOLID has no
+        // type of its own and is EXEMPT from the kind check beside a Num POOLDEF.POOLID — the pool
+        // read matches nothing and the rule EXECUTES (until then it ERRORed, which hid every
+        // other finding of the (rule, dataset)).
         IDataTable ex = RealTableFixture.of("EX").str("USUBJID", "S1").str("POOLID", "")
                 .str("EXSTDTC", "2020-01-05").build();
         IDataTable pooldef = RealTableFixture.of("POOLDEF").lng("POOLID", 1L).str("USUBJID", "S1")
                 .build();
         RuleExecutionResult result = run(POOL_FIRST, "empty($v)", sendDm(), ex, pooldef);
-        assertEquals(RuleExecutionStatus.ERROR, result.getStatus(), result.getStatusMessage());
-        assertTrue(String.valueOf(result.getStatusMessage()).contains("POOLID"),
-                result.getStatusMessage());
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        // control (GKI Q2 kept): a POPULATED Char EX.POOLID beside the Num POOLDEF.POOLID is a
+        // key pair that differs in kind — the rule ERRORs, naming the column
+        IDataTable pooledEx = RealTableFixture.of("EX").str("USUBJID", "S1").str("POOLID", "P1")
+                .str("EXSTDTC", "2020-01-05").build();
+        RuleExecutionResult error = run(POOL_FIRST, "empty($v)", sendDm(), pooledEx, pooldef);
+        assertEquals(RuleExecutionStatus.ERROR, error.getStatus(), error.getStatusMessage());
+        assertTrue(String.valueOf(error.getStatusMessage()).contains("POOLID"),
+                error.getStatusMessage());
     }
 
 

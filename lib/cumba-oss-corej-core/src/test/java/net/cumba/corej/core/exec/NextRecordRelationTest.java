@@ -191,6 +191,112 @@ class NextRecordRelationTest
         assertEquals(Set.of(1L), firedRows(rule(", relation=\"<=\""), blankVsValue));
     }
 
+    // ---------------------------------------------------------------- SVY OQ9: the arm by kind
+
+
+    /**
+     * Two SJ rows of one subject with a <b>numeric</b> {@code SJENDTC} (row 1 ends {@code end}) and
+     * a character {@code SJSTDTC} (row 2 starts {@code nextStart}).
+     */
+    private static IDataTable numCharPair(@org.jspecify.annotations.Nullable Long end,
+            String nextStart)
+    {
+        return MockTable.of().name("SJ").col("USUBJID", "R-001", "R-001").col("SJSEQ", "1", "2")
+                .col("SJSTDTC", "2019-12-01", nextStart).colLong("SJENDTC", end, 99L).build();
+    }
+
+
+    private static RuleExecutionResult result(Rule rule, IDataTable table)
+    {
+        return RuleRunnerCalls.execute(rule, table);
+    }
+
+
+    /**
+     * {@code SVY OQ9} (owner 2026-10-16, "agree to a"): the arm of {@code relation=} is taken from
+     * the two operands' <b>declared</b> types, once per run — Num/Num numeric, Char/Char the ISO
+     * hull, a mixed pair the rule's ERROR naming both columns. Until then the arm was chosen per
+     * cell pair, and a Num current cell beside a parsing Char next cell compared numerically
+     * ({@code 5 <= "10"} corresponded, no finding).
+     */
+    @Test
+    @DisplayName("SVY OQ9: a Num/Char operand pair under a comparing relation is the rule's ERROR")
+    void aNumericCharacterPairUnderAComparingRelationErrorsTheRule()
+    {
+        RuleExecutionResult res = result(rule(", relation=\"<=\""), numCharPair(5L, "10"));
+        assertEquals(RuleExecutionStatus.ERROR, res.getStatus(),
+                "a Num SJENDTC beside a Char SJSTDTC has no common order: " + res.getStatus());
+        String msg = String.valueOf(res.getStatusMessage());
+        assertTrue(msg.contains("SJENDTC") && msg.contains("SJSTDTC"), msg);
+        assertTrue(msg.contains("Num") && msg.contains("Char"), msg);
+        assertTrue(msg.contains("relation="), "the message names the kwarg that compares: " + msg);
+        // the mirror relation is judged the same way
+        assertEquals(RuleExecutionStatus.ERROR,
+                result(rule(", relation=\">=\""), numCharPair(5L, "10")).getStatus());
+    }
+
+
+    /**
+     * B5 T4 / M1: the kind decision — and so the ERROR — exists only for a relation that compares.
+     * Without {@code relation=} (or with {@code "=="}) nothing is compared, so a Num/Char pair
+     * keeps the identity verdict: {@code 5} and {@code "10"} are not identical, the row fires, and
+     * the rule EXECUTES (the three corpus rules without {@code relation=} — {@code CDISC-CG0207},
+     * {@code CDISC-SEND-0126}, {@code CDISC-SEND-0353.1} — stay where they are).
+     */
+    @Test
+    void theKindCheckRunsOnlyWhenTheRelationCompares()
+    {
+        for (String kwarg : List.of("", ", relation=\"==\""))
+        {
+            RuleExecutionResult res = result(rule(kwarg), numCharPair(5L, "10"));
+            assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(),
+                    "`" + kwarg + "`: identity only, no kind decision — " + res.getStatusMessage());
+            assertEquals(Set.of(1L), firedRows(rule(kwarg), numCharPair(5L, "10")),
+                    "`" + kwarg + "`: 5 and \"10\" are not identical");
+        }
+    }
+
+
+    /** Num/Num compares numerically (unchanged); Char/Char numeric-looking text does not move. */
+    @Test
+    void numericPairsCompareNumericallyAndCharacterTextKeepsTheHull()
+    {
+        IDataTable numNum = MockTable.of().name("SJ").col("USUBJID", "R-001", "R-001")
+                .col("SJSEQ", "1", "2").colLong("SJSTDTC", 1L, 7L).colLong("SJENDTC", 5L, 99L)
+                .build();
+        assertEquals(Set.of(), firedRows(rule(", relation=\"<=\""), numNum), "5 <= 7 corresponds");
+        IDataTable numNumLater = MockTable.of().name("SJ").col("USUBJID", "R-001", "R-001")
+                .col("SJSEQ", "1", "2").colLong("SJSTDTC", 1L, 4L).colLong("SJENDTC", 5L, 99L)
+                .build();
+        assertEquals(Set.of(1L), firedRows(rule(", relation=\"<=\""), numNumLater), "5 > 4 fires");
+        assertEquals(RuleExecutionStatus.EXECUTED,
+                result(rule(", relation=\"<=\""), numNum).getStatus());
+        // ⚑ Labelled NO-MOVE control (B5 pre-go review H1): Char/Char "9" → "10" under "<=" fires
+        // both before (the per-cell arm never coerced a Char current cell: mixed verdict) and
+        // after (the ISO hull answers false on non-dates) — numeric-looking text in a Char pair
+        // is NOT compared as numbers, and never was.
+        assertEquals(Set.of(1L), firedRows(rule(", relation=\"<=\""), pair("9", "10")));
+    }
+
+
+    /**
+     * B5 T5: an all-blank operand column takes no part in the kind decision — the same provider
+     * artefact {@code SVY OQ11} exempts ({@code RowMax}'s precedent): CSV types an all-blank
+     * {@code SJENDTC} Char, XLSX Num. The other column's arm is used and no ERROR is raised; every
+     * comparison arm answers {@code false} on a blank anyway (D-3), so the verdict is identity's.
+     */
+    @Test
+    void anAllBlankNumericOperandTakesNoPartInTheKindDecision()
+    {
+        IDataTable blankNum = MockTable.of().name("SJ").col("USUBJID", "R-001", "R-001")
+                .col("SJSEQ", "1", "2").col("SJSTDTC", "2019-12-01", "2020-01-15")
+                .colLong("SJENDTC", null, null).build();
+        RuleExecutionResult res = result(rule(", relation=\"<=\""), blankNum);
+        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(), res.getStatusMessage());
+        assertEquals(Set.of(1L), firedRows(rule(", relation=\"<=\""), blankNum),
+                "missing vs value fires on every arm (D-3)");
+    }
+
     // ---------------------------------------------------------------- GroupSemantics level
 
 
@@ -218,7 +324,11 @@ class NextRecordRelationTest
 
 
     /**
-     * The ExprCompiler's {@code "<="} relation, rebuilt here so the D-1 shape is pinned at source.
+     * The per-cell-pair {@code "<="} relation over {@link Primitives#compareCells} — the shape
+     * {@code ExprCompiler} built until {@code SVY OQ9} (B5 S9, 2026-10-16), kept here as the pin of
+     * the primitive's own D-1 disjunction. The compiler now chooses the arm once per run from the
+     * operands' declared kinds ({@code ExprCompiler.neighbourRelation}); the end-to-end tests above
+     * pin that.
      */
     private static GroupSemantics.NeighbourRelation atMost()
     {
@@ -324,7 +434,9 @@ class NextRecordRelationTest
         // D-5: a mixed numeric/ISO pair is malformed data and must stay REPORTED under a relation,
         // exactly as it is under identity (review finding 1: compareCells's "true regardless of
         // direction" is the date_* operators' fire verdict; read as "corresponds" it would have
-        // silenced every row of a numeric-typed SJENDTC against a character SJSTDTC).
+        // silenced every row of a numeric-typed SJENDTC against a character SJSTDTC). Since SVY
+        // OQ9 the compiler never reaches this primitive for a Num/Char COLUMN pair (the rule
+        // ERRORs first); the pin stays for the primitive itself.
         assertFalse(atMost().corresponds(new DataValueDouble(5.0), str("2020-01-15")));
         assertFalse(atMost().corresponds(str("2020-01-15"), new DataValueDouble(5.0)));
     }

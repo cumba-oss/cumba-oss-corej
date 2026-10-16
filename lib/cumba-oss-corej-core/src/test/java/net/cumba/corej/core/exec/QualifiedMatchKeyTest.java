@@ -1,5 +1,6 @@
 package net.cumba.corej.core.exec;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -308,6 +309,24 @@ class QualifiedMatchKeyTest
         assertTrue(msg.contains("DM.RPATHCD"), msg);
         assertTrue(msg.contains("Character in DM"), msg);
         assertTrue(msg.contains("RPATHCD is Numeric in TP"), msg);
+    }
+
+
+    /**
+     * {@code SVY OQ11} on the qualified key ({@code KeyGates.checkQualified}): an all-blank SOURCE
+     * column ({@code DM.RPATHCD} with no value in any row) is exempt from the D4 kind check against
+     * TP's numeric {@code RPATHCD}; a populated one is judged
+     * ({@link #aKindMismatchBetweenSourceAndJoinedColumnErrorsNamingBoth}).
+     */
+    @Test
+    void anAllBlankSourceColumnIsExemptFromTheKindCheck()
+    {
+        IDataTable numericTp = RealTables.of("TP").str("RPHASE", "P1").lng("RPATHCD", 1L)
+                .str("RPRFDY", "0").build();
+        DatasetResolver inv = resolver(dm("S1/"), numericTp);
+        List<MatchDataset> entries = List.of(dmEntry(), tpEntry("left"));
+        assertDoesNotThrow(() -> view(bw("S1/P1"), entries, inv),
+                "a source column blank in every row has no kind to disagree with");
     }
 
 

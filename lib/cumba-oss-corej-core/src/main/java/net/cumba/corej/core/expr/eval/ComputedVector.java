@@ -1,5 +1,6 @@
 package net.cumba.corej.core.expr.eval;
 
+import java.util.function.BooleanSupplier;
 import java.util.function.IntFunction;
 import java.util.function.IntUnaryOperator;
 
@@ -49,6 +50,13 @@ public final class ComputedVector implements Vector
     private final @Nullable String gatedName;
 
     /**
+     * B5 S12 (T14): whether the authored column this vector stands for is blank in every row —
+     * {@code null} for a computed value (never exempt, {@link Vector#isBlank()}'s default); the
+     * joined vector's supplier asks the SOURCE column, a remapped vector's its inner vector.
+     */
+    private final @Nullable BooleanSupplier blank;
+
+    /**
      * Per-row memo of the produced carrier — one producer call per row, however many channels of
      * the {@link TypedValue} are read (F9: produce ONCE, derive every view from the result).
      */
@@ -88,13 +96,13 @@ public final class ComputedVector implements Vector
      */
     public ComputedVector(int rowCount, DataValueType declaredType, IntFunction<Object> producer)
     {
-        this(rowCount, declaredType, producer, null, null, null);
+        this(rowCount, declaredType, producer, null, null, null, null);
     }
 
 
     private ComputedVector(int rowCount, DataValueType declaredType, IntFunction<Object> producer,
             @Nullable IntFunction<IDataValue> typedProducer, @Nullable String gatedName,
-            @Nullable IntFunction<TypedValue> carrierProducer)
+            @Nullable IntFunction<TypedValue> carrierProducer, @Nullable BooleanSupplier blank)
     {
         this.declaredType = declaredType;
         this.producer = producer;
@@ -103,6 +111,7 @@ public final class ComputedVector implements Vector
         // F8: final and constructor-set. This field decides whether the vector is gated at all, so
         // an unsafely-published instance reading null would silently exit the column-type gate.
         this.gatedName = gatedName;
+        this.blank = blank;
         this.rowCache = new TypedValue[rowCount];
     }
 
@@ -140,7 +149,7 @@ public final class ComputedVector implements Vector
     public static ComputedVector typed(int rowCount, DataValueType declaredType,
             IntFunction<IDataValue> typedProducer)
     {
-        return typedInternal(rowCount, declaredType, typedProducer, null);
+        return typedInternal(rowCount, declaredType, typedProducer, null, null);
     }
 
 
@@ -162,7 +171,34 @@ public final class ComputedVector implements Vector
     public static ComputedVector typed(int rowCount, DataValueType declaredType,
             IntFunction<IDataValue> typedProducer, @Nullable String gatedName)
     {
-        return typedInternal(rowCount, declaredType, typedProducer, gatedName);
+        return typedInternal(rowCount, declaredType, typedProducer, gatedName, null);
+    }
+
+
+    /**
+     * {@link #typed(int, DataValueType, IntFunction, String)} with the gated column's
+     * <b>blankness</b> (B5 S12 / T14): {@code blank} answers whether the authored column holds no
+     * value in any row, asked by the column-type gate only at its throw point — for a joined column
+     * it is {@code JoinLookup.sourceColumnIsBlank}, the SOURCE column's content (never the merged
+     * cells, D72a-1).
+     *
+     * @param rowCount
+     *            the number of rows the vector spans
+     * @param declaredType
+     *            the joined column's declared type
+     * @param typedProducer
+     *            computes the row's typed value; never {@code null}
+     * @param gatedName
+     *            the authored name, or {@code null} to stay outside the gate
+     * @param blank
+     *            whether the authored column is blank in every row
+     * @return the typed vector
+     */
+    public static ComputedVector typed(int rowCount, DataValueType declaredType,
+            IntFunction<IDataValue> typedProducer, @Nullable String gatedName,
+            BooleanSupplier blank)
+    {
+        return typedInternal(rowCount, declaredType, typedProducer, gatedName, blank);
     }
 
 
@@ -188,7 +224,7 @@ public final class ComputedVector implements Vector
         {
             throw new IllegalStateException(
                     "a carried ComputedVector must produce through its carrier producer");
-        }, null, null, carrierProducer);
+        }, null, null, carrierProducer, null);
     }
 
 
@@ -196,7 +232,7 @@ public final class ComputedVector implements Vector
      * A vector whose row {@code row} is {@code inner}'s row {@code rowMap(row)}, the carrier handed
      * through as it is — the real-row hand-back of an aggregate evaluated once per primary record
      * ({@code PLAN-merged-evaluation-table} W3e, OD-6): every merged row of a record reads that
-     * record's answer. The gated name and declared type are {@code inner}'s.
+     * record's answer. The gated name, the blankness and the declared type are {@code inner}'s.
      *
      * @param inner
      *            the per-record vector
@@ -212,12 +248,13 @@ public final class ComputedVector implements Vector
         {
             throw new IllegalStateException(
                     "a remapped ComputedVector must produce through its carrier producer");
-        }, null, inner.gatedName(), row -> inner.value(rowMap.applyAsInt(row)));
+        }, null, inner.gatedName(), row -> inner.value(rowMap.applyAsInt(row)), inner::isBlank);
     }
 
 
     private static ComputedVector typedInternal(int rowCount, DataValueType declaredType,
-            IntFunction<IDataValue> typedProducer, @Nullable String gatedName)
+            IntFunction<IDataValue> typedProducer, @Nullable String gatedName,
+            @Nullable BooleanSupplier blank)
     {
         // ⚑ The untyped producer is never invoked for a typed vector (value() branches on
         // typedProducer), so it is a guard rather than a code path: if the branching is ever
@@ -226,7 +263,7 @@ public final class ComputedVector implements Vector
         {
             throw new IllegalStateException(
                     "a typed ComputedVector must produce through its typed producer");
-        }, typedProducer, gatedName, null);
+        }, typedProducer, gatedName, null, blank);
     }
 
 
@@ -279,6 +316,14 @@ public final class ComputedVector implements Vector
     public @Nullable String gatedName()
     {
         return gatedName;
+    }
+
+
+    /** {@inheritDoc} The supplier's answer, or {@code false} for a computed value. */
+    @Override
+    public boolean isBlank()
+    {
+        return blank != null && blank.getAsBoolean();
     }
 
 }

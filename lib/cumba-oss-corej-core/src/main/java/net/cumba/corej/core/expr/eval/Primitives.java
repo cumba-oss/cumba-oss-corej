@@ -572,6 +572,11 @@ public final class Primitives
      * it</b>, checked rather than assumed: {@code ExprCompiler} passes {@code negate == false}
      * there, and {@code negate} is what the unbounded branch now returns — so an unpositionable
      * neighbour still answers {@code false} ("does not correspond by relation"), exactly as before.
+     * ⚑ Since {@code SVY OQ9} (B5 S9, 2026-10-16) the {@code relation=} consumer no longer reaches
+     * this per-pair dispatch at all: {@code ExprCompiler.neighbourRelation} chooses the arm once
+     * per run from the operand columns' declared kinds (Num/Num numeric, Char/Char
+     * {@link IsoDateComparison#fires}, mixed ⇒ the rule's ERROR); the {@code date_*} operators keep
+     * this per-pair dispatch, which the ruling does not name.
      * </p>
      *
      * @param aLhs
@@ -1125,9 +1130,15 @@ public final class Primitives
      * through first): a cell whose content does not parse (or a present {@code ""}) yields the
      * computed <b>missing</b>, {@code MIS} — never an error (§4b F1: a mixed-content column such as
      * {@code --STRESC} legitimately holds free text on some rows, and {@code num()} must tolerate
-     * exactly those rows) and never {@code null}. A <b>missing</b> cell yields that missing — its
-     * own cell, identity kept (D85c, {@code PLAN-missing-identity-nonstring-functions}):
-     * {@code num(.A)} is {@code .A}, so {@code abs(num(X))} keeps {@code X}'s {@code .A} too.
+     * exactly those rows) and never {@code null}. So does <b>text</b> whose parse is not finite —
+     * {@code "1e400"} (overflows to {@code +Infinity}), {@code "Infinity"}, {@code "NaN"}: not a
+     * number the engine can hold, and the same text {@link #isNumericCell is_numeric} answers
+     * {@code false} for ({@code SVY OQ3}, owner 2026-10-16: <i>"agree to a: MIS"</i>; until then
+     * {@code num("1e400")} was {@code +Infinity}). A <b>numeric</b> cell is handed through as its
+     * value, a {@code ±Infinity} payload included (a Parquet / RDS / Delta cell: the ruling exempts
+     * a numeric cell). A <b>missing</b> cell yields that missing — its own cell, identity kept
+     * (D85c, {@code PLAN-missing-identity-nonstring-functions}): {@code num(.A)} is {@code .A}, so
+     * {@code abs(num(X))} keeps {@code X}'s {@code .A} too.
      */
     public static Vector numConversion(Vector v, int rowCount)
     {
@@ -1138,9 +1149,26 @@ public final class Primitives
             {
                 return tv.cell();
             }
-            Double d = ScalarSemantics.comparisonLhsAsDouble(tv.cell());
-            return d != null ? d : ScalarSemantics.computedMissing();
+            IDataValue cell = tv.cell();
+            Double d = ScalarSemantics.comparisonLhsAsDouble(cell);
+            if (d == null || (!Double.isFinite(d) && isTextCell(cell)))
+            {
+                return ScalarSemantics.computedMissing();
+            }
+            return d;
         });
+    }
+
+
+    /**
+     * Whether a present cell is a <em>text</em> cell — one whose own {@code getValueAsDouble()} is
+     * the hard {@code NaN} a {@code DataValueString} answers by contract (R1), so any number read
+     * from it came from parsing its string form. Not {@link #isNumericCell}, which asks whether the
+     * cell's <em>content</em> parses ({@code is_numeric}); this asks what the cell <em>is</em>.
+     */
+    private static boolean isTextCell(IDataValue cell)
+    {
+        return Double.isNaN(cell.getValueAsDouble());
     }
 
 

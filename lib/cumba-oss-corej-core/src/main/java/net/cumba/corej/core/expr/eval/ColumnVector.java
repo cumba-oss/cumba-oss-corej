@@ -1,6 +1,7 @@
 package net.cumba.corej.core.expr.eval;
 
 import net.cumba.datatable.IDataTableColumn;
+import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.DataValueType;
 import org.jspecify.annotations.Nullable;
 
@@ -46,6 +47,30 @@ public record ColumnVector(@Nullable String name, IDataTableColumn column,
     public @Nullable String gatedName()
     {
         return name;
+    }
+
+
+    /**
+     * {@inheritDoc} One early-exit scan of the resolved column under the datatable's own blank test
+     * ({@link DataValueSupport#isEmptyOrMissing}, the cell predicate {@code ColumnContentScan}
+     * folds into {@code ColumnContent.isBlank()} — this vector holds the column, not its table), so
+     * the answer agrees with every other reader of that status; a 0-row column is vacuously blank,
+     * as {@code ColumnContent.NO_ROWS} is. Not memoised: a record cannot carry a cache, and the
+     * gate asks only once per compiled site, after the kinds already disagree — the path that is a
+     * rule ERROR without the exemption.
+     */
+    @Override
+    public boolean isBlank()
+    {
+        long rows = column.getRowCount();
+        for (long r = 0; r < rows; r++)
+        {
+            if (!DataValueSupport.isEmptyOrMissing(column.getDataValue(r)))
+            {
+                return false; // a value: FILLED, decided
+            }
+        }
+        return true;
     }
 
 }

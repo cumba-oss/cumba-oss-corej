@@ -282,14 +282,41 @@ class BuiltinFunctionsTest
     void splitByKeepsTheInputsMissingIdentityAsAScalar()
     {
         // FINDINGS I1's missing half: split_by(.A, ",") is .A — the input's own cell, a scalar
-        // (so NF §1 / NNL §1 hold: no list, hence no element). split_by("", ",") keeps its
-        // answer, the computed MIS.
+        // (so NF §1 / NNL §1 hold: no list, hence no element). split_by("", ",") is the one-token
+        // list [""] (SVY OQ2, owner 2026-10-16: tokens = delimiters + 1 — was the computed MIS).
         IDataTable t = MissingCellTables.strings("X", "a,b", "", MissingValue.MIS,
                 MissingValue.MIS_A, MissingValue.MIS_B);
         Vector v = value("split_by", 5, col(t, "X"), ConstVector.of(","));
         assertEquals(List.of("a", "b"), v.value(0).resolved());
-        assertMissing(v, 1, MissingValue.MIS);
+        assertEquals(List.of(""), v.value(1).resolved(), "split_by(\"\", \",\") is [\"\"]");
         assertIdentityRows(v, 2);
+    }
+
+
+    @Test
+    void numOfNonFiniteTextIsTheComputedMissing()
+    {
+        // SVY OQ3 (owner 2026-10-16, "agree to a: MIS"): text whose parse overflows or spells a
+        // non-finite value is not a number the engine can hold — num() answers the computed MIS,
+        // as is_numeric answers false for the same text. A finite parse is unchanged.
+        IDataTable s = MissingCellTables.strings("X", "1e400", "Infinity", "-Infinity", "NaN",
+                "1e300", "-2.5", MissingValue.MIS_A);
+        Vector n = Primitives.numConversion(col(s, "X"), 7);
+        assertMissing(n, 0, MissingValue.MIS); // num("1e400"): overflows to +Infinity
+        assertMissing(n, 1, MissingValue.MIS);
+        assertMissing(n, 2, MissingValue.MIS);
+        assertMissing(n, 3, MissingValue.MIS);
+        assertEquals(1e300, n.asDouble(4));
+        assertEquals(-2.5, n.asDouble(5));
+        assertMissing(n, 6, MissingValue.MIS_A); // num(.A) is .A
+        // Control: a NUMERIC cell holding ±Infinity (a Parquet / RDS / Delta payload) is handed
+        // through unchanged — the ruling exempts a numeric cell.
+        IDataTable d = MissingCellTables.of("T")
+                .dbl("D", Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, 3.0).build();
+        Vector nd = Primitives.numConversion(col(d, "D"), 3);
+        assertEquals(Double.POSITIVE_INFINITY, nd.asDouble(0));
+        assertEquals(Double.NEGATIVE_INFINITY, nd.asDouble(1));
+        assertEquals(3.0, nd.asDouble(2));
     }
 
 
@@ -950,7 +977,8 @@ class BuiltinFunctionsTest
     void substringIdentityCombinesPerD86a()
     {
         // A missing x, start or length makes substring that missing, identities combined per
-        // D86a; a present "" x stays under the bounds rule (start 1 is past the end ⇒ the computed
+        // D86a; a present "" x is judged by the bounds rule: start 1 is past the end of a
+        // length-0 string, so the slice is the present "" (SVY OQ1, 2026-10-16 — was the computed
         // MIS).
         IDataTable t = MissingCellTables.of("T")
                 .str("X", MissingValue.MIS_A, "ABC", MissingValue.MIS_A, "ABC", MissingValue.MIS_A,
@@ -962,11 +990,11 @@ class BuiltinFunctionsTest
         assertMissing(two, 1, MissingValue.MIS_A); // substring("ABC", .A)
         assertMissing(two, 2, MissingValue.MIS); // substring(.A, MIS)
         assertEquals("ABC", two.asString(3));
-        assertMissing(two, 5, MissingValue.MIS); // substring("", 1): bounds rule, computed MIS
+        assertPresentEmpty(two, 5); // substring("", 1): past the end ⇒ "" (SVY OQ1)
         Vector three = value("substring", 7, col(t, "X"), col(t, "S"), col(t, "L"));
         assertMissing(three, 3, MissingValue.MIS_A); // substring("ABC", 1, .A)
         assertMissing(three, 4, MissingValue.MIS); // substring(.A, 1, MIS)
-        assertMissing(three, 5, MissingValue.MIS); // substring("", 1, 2): computed MIS
+        assertPresentEmpty(three, 5); // substring("", 1, 2): past the end ⇒ "" (SVY OQ1)
         assertEquals("AB", three.asString(6)); // every operand present
     }
 
@@ -1001,14 +1029,15 @@ class BuiltinFunctionsTest
         // 1-based start: start=2 -> "BCDE".
         Vector s2 = value("substring", 3, col(t, "X"), ConstVector.of(2.0));
         assertEquals("BCDE", s2.asString(0));
-        // substring("", 2): the "" input is judged literally (no longer pre-treated as missing),
-        // but start=2 is past the end of a length-0 string, so the bounds rule yields the
-        // COMPUTED missing, MIS (function-examples.md "Substring"). Every "no result" row below is
-        // asserted on the typed carrier (TypedValue.missing() == MIS), never through the F3
-        // Vector.isMissing fold, which a present "" answer would satisfy too.
-        assertMissing(s2, 1, MissingValue.MIS);
-        // start beyond length -> computed MIS.
-        assertMissing(value("substring", 3, col(t, "X"), ConstVector.of(5.0)), 2, MissingValue.MIS);
+        // substring("", 2): the "" input is judged literally (no longer pre-treated as missing);
+        // start=2 is past the end of a length-0 string, and a present start past the end is the
+        // EMPTY SLICE, the present "" (SVY OQ1, owner 2026-10-16: "" as proposed — was the
+        // computed MIS). Every "no result" row below is asserted on the typed carrier
+        // (TypedValue.missing() == MIS), never through the F3 Vector.isMissing fold, which a
+        // present "" answer would satisfy too.
+        assertPresentEmpty(s2, 1);
+        // start beyond length -> "" (SVY OQ1).
+        assertPresentEmpty(value("substring", 3, col(t, "X"), ConstVector.of(5.0)), 2);
         // start == length (1-based) -> last char.
         assertEquals("B", value("substring", 3, col(t, "X"), ConstVector.of(2.0)).asString(2));
         // start < 1 -> computed MIS.
@@ -1036,14 +1065,25 @@ class BuiltinFunctionsTest
         // non-integral length -> the computed MIS (typed carrier, not the F3 fold).
         assertMissing(value("substring", 1, col(t, "X"), ConstVector.of(2.0), ConstVector.of(1.5)),
                 0, MissingValue.MIS);
+        // SVY OQ1 (T1): a start past the end is the empty slice whatever the length — but a
+        // non-integral length is an authoring error wherever the start is, so it keeps MIS.
+        assertPresentEmpty(
+                value("substring", 1, col(t, "X"), ConstVector.of(9.0), ConstVector.of(0.0)), 0);
+        assertPresentEmpty(
+                value("substring", 1, col(t, "X"), ConstVector.of(9.0), ConstVector.of(3.0)), 0);
+        assertMissing(value("substring", 1, col(t, "X"), ConstVector.of(9.0), ConstVector.of(1.5)),
+                0, MissingValue.MIS);
+        // start < 1 keeps MIS, past the end or not
+        assertMissing(value("substring", 1, col(t, "X"), ConstVector.of(0.0), ConstVector.of(2.0)),
+                0, MissingValue.MIS);
 
-        // substring("", 1, 1): "" is present (D34 #1) but start=1 is already past the end of a
-        // length-0 string (from index 0 >= length 0), so the bounds rule yields the COMPUTED
-        // missing, MIS. substring(«missing», 1, 1) is that missing, identity kept (D36): MIS
-        // stays MIS and .A stays .A — carried, not computed.
+        // substring("", 1, 1): "" is present (D34 #1) and start=1 is already past the end of a
+        // length-0 string (from index 0 >= length 0), so the slice is the present "" (SVY OQ1).
+        // substring(«missing», 1, 1) is that missing, identity kept (D36): MIS stays MIS and .A
+        // stays .A — carried, not computed.
         IDataTable e = MissingCellTables.strings("X", "", MissingValue.MIS, MissingValue.MIS_A);
         Vector v = value("substring", 3, col(e, "X"), ConstVector.of(1.0), ConstVector.of(1.0));
-        assertMissing(v, 0, MissingValue.MIS); // substring("",1,1) -> computed MIS
+        assertPresentEmpty(v, 0); // substring("",1,1) -> "" (SVY OQ1)
         assertMissing(v, 1, MissingValue.MIS); // substring(MIS,1,1) -> MIS
         assertMissing(v, 2, MissingValue.MIS_A); // substring(.A,1,1) -> .A
     }

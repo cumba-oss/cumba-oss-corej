@@ -126,6 +126,110 @@ class MatchFilterExecutionTest
     }
 
 
+    /**
+     * B5 S13 ({@code BACKLOG.md}, found by the B3 confirmation look): a {@code Match_Datasets}
+     * Filter is evaluated with the run's CDISC Library — {@link MatchFilter#mask}'s javadoc always
+     * said so, but {@code MergedEvaluation.keyedSpecs} handed it {@code null}, so a Library call in
+     * a Filter saw no library. {@code required_variables()} reads the Library for the joined
+     * dataset's domain (AE), and the fake answers {@code FATAL} for it.
+     */
+    @Test
+    @DisplayName("S13: a Library call inside a Filter reads the run's library")
+    void aFilterReadingTheLibrarySeesTheRunsLibrary() throws IOException
+    {
+        Rule r = rule(aeJoin("AEOUT in required_variables()"), "AE._matched_ and DTHFL != \"Y\"");
+        assertNull(r.getLoadError(), "the filter loads: " + r.getLoadError());
+        IDataTable primary = dm();
+        MetadataProvider library = new RequiredVariablesLibrary(Map.of("AE", List.of("FATAL")));
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, ae())), "DM", library);
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        // the Filter kept the FATAL rows only, so the verdict is filterComposesWithTheFlag's
+        assertEquals(List.of("P1"), firedSubjects(result, primary));
+    }
+
+    /** A Library answering {@code getRequiredVariables} from a map; everything else is empty. */
+    private static final class RequiredVariablesLibrary implements MetadataProvider
+    {
+
+        private final Map<String, List<String>> required;
+
+        RequiredVariablesLibrary(Map<String, List<String>> aRequired)
+        {
+            required = aRequired;
+        }
+
+
+        @Override
+        public List<String> getRequiredVariables(String domain)
+        {
+            return required.getOrDefault(domain, List.of());
+        }
+
+
+        @Override
+        public List<String> getExpectedVariables(String domain)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public List<String> getColumnOrder(String domain)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public boolean isDomainCustom(String domain)
+        {
+            return false;
+        }
+
+
+        @Override
+        public List<String> getCodelistTerms(String codelistCode)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public Map<String, String> getVariableMetadata(String domain, String variable)
+        {
+            return Map.of();
+        }
+
+
+        @Override
+        public List<Map<String, String>> getDomainVariables(String domain)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public Map<String, String> getDatasetMetadata(String domain)
+        {
+            return Map.of();
+        }
+
+
+        @Override
+        public java.util.Optional<Boolean> isCodelistExtensible(String codelistName)
+        {
+            return java.util.Optional.empty();
+        }
+
+
+        @Override
+        public String getStandard()
+        {
+            return "sdtmig";
+        }
+    }
+
     @Test
     @DisplayName("without the filter the same rule matches on ANY partner — the filter is live")
     void withoutTheFilterEveryPartnerCounts() throws IOException

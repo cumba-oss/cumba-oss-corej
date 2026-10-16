@@ -26,9 +26,12 @@ import org.jspecify.annotations.Nullable;
  * {@link MergedEvaluation}), absent from both it leaves the key silently;</li>
  * <li>the D4 key-type identity ({@code PLAN-join-key-type-identity} D4-R1/R2): a component that is
  * numeric on one side and character on the other is a {@link JoinKeyTypeMismatchException}, unless
- * the entry declares {@code Join_As_String} (D4-R3), or either kind classifies {@code null}
- * (D4-R6a: an all-NA R column is {@code logical}) — judged only for a component both sides
- * carry;</li>
+ * the entry declares {@code Join_As_String} (D4-R3), or either kind classifies {@code null} (D4-R6a
+ * covers kindless types), or either column is <b>blank in every row</b> ({@code SVY OQ11}, owner
+ * 2026-10-16 — a provider types an all-blank column arbitrarily, CSV Char / XLSX Num, so it has no
+ * type to disagree with; the {@code .rds} all-NA shape loads as Char since ECT U3 and is exempted
+ * here; {@code GroupKeyIdentity.isBlank}, asked only when the kinds already differ) — judged only
+ * for a component both sides carry;</li>
  * <li>a degenerate key — no component present on both sides ({@link DegenerateJoinKeyException},
  * {@code REG-Q3}: no key column left ⇒ rule ERROR);</li>
  * <li>a <b>qualified</b> component ({@code DM.RPATHCD}, {@code PLAN-rprfdy-offset-tp-join} C1) has
@@ -189,7 +192,9 @@ final class KeyGates
                         .kindOf(primaryMeta.getColumn(recordCol).getType());
                 ColumnTypeGate.Kind childKind = ColumnTypeGate
                         .kindOf(childMeta.getColumn(childCol).getType());
-                if (primaryKind != null && childKind != null && primaryKind != childKind)
+                if (primaryKind != null && childKind != null && primaryKind != childKind
+                        && !GroupKeyIdentity.isBlank(primary, keys.get(i))
+                        && !GroupKeyIdentity.isBlank(partner, childKeys.get(i)))
                 {
                     throw new JoinKeyTypeMismatchException(childName, keys.get(i), childKeys.get(i),
                             describeKind(primaryKind), describeKind(childKind));
@@ -235,7 +240,9 @@ final class KeyGates
             DataValueType childType = partner.getMetaData().getColumn(childCol).getType();
             ColumnTypeGate.Kind sourceKind = ColumnTypeGate.kindOf(sourceType);
             ColumnTypeGate.Kind childKind = ColumnTypeGate.kindOf(childType);
-            if (sourceKind != null && childKind != null && sourceKind != childKind)
+            if (sourceKind != null && childKind != null && sourceKind != childKind
+                    && !GroupKeyIdentity.isBlank(source, childKey)
+                    && !GroupKeyIdentity.isBlank(partner, childKey))
             {
                 throw new JoinKeyTypeMismatchException(childName, key, qualifier, childKey,
                         describeKind(sourceKind), describeKind(childKind));

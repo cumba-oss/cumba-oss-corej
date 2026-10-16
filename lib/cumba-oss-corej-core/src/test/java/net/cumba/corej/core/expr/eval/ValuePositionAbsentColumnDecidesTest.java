@@ -77,9 +77,14 @@ class ValuePositionAbsentColumnDecidesTest
     @DisplayName("X != substring(ABSENT, 1, 2) likewise fires on every row")
     void substringOverAbsentColumnDecides()
     {
-        // substring("", 1, 2) is "", and TSPARMCD differs from "" on both rows.
+        // substring("", 1, 2) is "" (SVY OQ1, 2026-10-16 — until then it was the computed MIS,
+        // and this comment was wrong), and TSPARMCD differs from "" on both rows.
         assertEquals(2, eval("TSPARMCD != substring(TSVALREF, 1, 2)", absent()).cardinality(),
                 "the absent column is the present empty string, so every row fires");
+        // The equality direction tells the two answers apart: "" == "" fires on every row, where
+        // "" == MIS would fire on none.
+        assertEquals(2, eval("\"\" == substring(TSVALREF, 1, 2)", absent()).cardinality(),
+                "the slice of an absent column is the present \"\" (SVY OQ1)");
     }
 
 

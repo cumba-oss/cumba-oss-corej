@@ -205,8 +205,11 @@ class ContainsAnyTest
         IDataTable ae = MockTable.of().col("AETERM", "HEADACHE", "HEADACHE", "HEADACHE")
                 .col("TOKENS", "ACHE;X", "Y;Z", "").name("AE").build();
         Rule rule = load("contains_any(AETERM, split_by(TOKENS, \";\"))");
-        // the third row: split_by("") is the computed MIS — a missing list ⇒ false
-        assertEquals(List.of(1L), firingRows(rule, ae));
+        // the third row: split_by("") is the one-token list [""] (SVY OQ2, 2026-10-16), and a
+        // present subject contains the needle "" (D13 / D96c) — so the row fires. A rule that
+        // means "no tokens ⇒ no finding" guards the list with `not empty(TOKENS)`, as every
+        // corpus split_by site does (B5 T2).
+        assertEquals(List.of(1L, 3L), firingRows(rule, ae));
     }
 
 

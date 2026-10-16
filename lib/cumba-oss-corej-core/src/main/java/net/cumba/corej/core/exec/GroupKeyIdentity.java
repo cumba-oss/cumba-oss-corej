@@ -172,7 +172,11 @@ public final class GroupKeyIdentity
      * {@code aGroupedCols} may be read from {@code aEvaluated} over {@code aEvaluatedCols} only
      * when every column pair agrees in kind (numeric / character); a mismatch ERRORs the rule
      * ({@link JoinKeyTypeMismatchException}) instead of silently matching no row. A column absent
-     * on either side is not judged.
+     * on either side is not judged, and neither is a column <b>blank in every row</b>
+     * ({@code SVY OQ11}, owner 2026-10-16: <i>"exempt in every key-kind check"</i>;
+     * {@link #isBlank}): its type is the provider's guess (CSV types an all-blank column Char, XLSX
+     * Num), not a property of the data — {@code RowMax}'s precedent. The scan is lazy: only a pair
+     * whose kinds already disagree is asked.
      *
      * @param aGrouped
      *            the grouped (foreign or primary) table
@@ -192,7 +196,9 @@ public final class GroupKeyIdentity
         {
             ColumnTypeGate.Kind grouped = kindOf(groupedMeta, aGroupedCols.get(i));
             ColumnTypeGate.Kind evaluated = kindOf(evaluatedMeta, aEvaluatedCols.get(i));
-            if (grouped != null && evaluated != null && grouped != evaluated)
+            if (grouped != null && evaluated != null && grouped != evaluated
+                    && !isBlank(aGrouped, aGroupedCols.get(i))
+                    && !isBlank(aEvaluated, aEvaluatedCols.get(i)))
             {
                 throw JoinKeyTypeMismatchException.forGroupedLookup(aGroupedCols.get(i),
                         String.valueOf(groupedMeta.getName()), grouped, aEvaluatedCols.get(i),
@@ -205,7 +211,11 @@ public final class GroupKeyIdentity
     /**
      * GKI Q2 for ONE qualified member (C2 of {@code PLAN-rprfdy-offset-tp-join}): the grouped
      * column's kind against the SOURCE column's declared type — the record side of
-     * {@code DM.RPATHCD} lives in DM, read through the join, not in the evaluated table.
+     * {@code DM.RPATHCD} lives in DM, read through the join, not in the evaluated table. The
+     * {@code SVY OQ11} exemption asks the <b>source</b> column's content ({@code aSourceBlank},
+     * {@link JoinLookup#sourceColumnIsBlank}), never the merged column the record side reads: an
+     * unmatched merged row carries the type default (D72a-1), so a populated source column with no
+     * matched row would read blank there and be wrongly exempt (B5 T7 / M2).
      *
      * @param aGrouped
      *            the grouped table
@@ -215,18 +225,35 @@ public final class GroupKeyIdentity
      *            the source entry's name, for the message
      * @param aSourceType
      *            the source column's declared type ({@code MISSING} when unknown — not judged)
+     * @param aSourceBlank
+     *            whether the source column is blank in every row (then not judged)
      */
     static void requireCompatibleKeyColumn(IDataTable aGrouped, String aGroupedCol, String aSource,
-            net.cumba.datatable.values.DataValueType aSourceType)
+            net.cumba.datatable.values.DataValueType aSourceType, boolean aSourceBlank)
     {
         DataTableMeta groupedMeta = aGrouped.getMetaData();
         ColumnTypeGate.Kind grouped = kindOf(groupedMeta, aGroupedCol);
         ColumnTypeGate.Kind source = ColumnTypeGate.kindOf(aSourceType);
-        if (grouped != null && source != null && grouped != source)
+        if (grouped != null && source != null && grouped != source && !aSourceBlank
+                && !isBlank(aGrouped, aGroupedCol))
         {
             throw JoinKeyTypeMismatchException.forGroupedLookup(aGroupedCol,
                     String.valueOf(groupedMeta.getName()), grouped, aGroupedCol, aSource, source);
         }
+    }
+
+
+    /**
+     * Whether {@code aColumn} of {@code aTable} holds no value in any row — every cell missing or
+     * {@code ""} ({@link net.cumba.datatable.ColumnContent#isBlank()}, the one predicate every
+     * key-kind check, {@code RowMax} and the column-type gate share; a 0-row table counts as blank,
+     * harmlessly — it groups nothing). An absent column answers {@code false}: it has no content to
+     * be blank, and is not judged anyway.
+     */
+    static boolean isBlank(IDataTable aTable, String aColumn)
+    {
+        int idx = aTable.getMetaData().getColumnIndex(aColumn);
+        return idx >= 0 && aTable.getColumnContent(idx).isBlank();
     }
 
 
