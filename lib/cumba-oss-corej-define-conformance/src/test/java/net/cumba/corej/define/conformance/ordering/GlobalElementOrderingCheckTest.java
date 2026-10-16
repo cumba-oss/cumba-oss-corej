@@ -73,7 +73,7 @@ class GlobalElementOrderingCheckTest
 
         ConformanceFinding pmda = aPair.get(1);
         assertEquals(GlobalElementOrderingCheck.PMDA_RULE_ID, pmda.getRuleId());
-        assertEquals(Category.PMDA, pmda.getCategory());
+        assertEquals(Category.of("PMDA"), pmda.getCategory());
         assertEquals(Severity.ERROR, pmda.getSeverity());
         assertEquals(aElement, pmda.getElement());
         assertEquals(aParentXpath, pmda.getXpath());

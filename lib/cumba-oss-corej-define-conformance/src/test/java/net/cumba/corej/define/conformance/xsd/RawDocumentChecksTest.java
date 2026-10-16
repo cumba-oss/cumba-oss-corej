@@ -101,7 +101,7 @@ class RawDocumentChecksTest
                 .orElseThrow();
         assertEquals("PMDA-OD0011", finding.getRuleId());
         assertEquals(Severity.WARNING, finding.getSeverity());
-        assertEquals(Category.PMDA, finding.getCategory());
+        assertEquals(Category.of("PMDA"), finding.getCategory());
         assertTrue(finding.getMessage().contains("Shift_JIS"), finding.getMessage());
     }
 
@@ -111,7 +111,7 @@ class RawDocumentChecksTest
     {
         ConformanceFinding finding = RawDocumentChecks.xmlDeclaration(utf8("<ODM/>")).orElseThrow();
         assertEquals("PMDA-OD0010", finding.getRuleId());
-        assertEquals(Category.PMDA, finding.getCategory());
+        assertEquals(Category.of("PMDA"), finding.getCategory());
         assertEquals(Severity.REJECT, finding.getSeverity());
     }
 
@@ -146,7 +146,7 @@ class RawDocumentChecksTest
         for (ConformanceFinding finding : findings)
         {
             assertEquals("PMDA-DD0002", finding.getRuleId());
-            assertEquals(Category.PMDA, finding.getCategory());
+            assertEquals(Category.of("PMDA"), finding.getCategory());
             assertEquals(Severity.REJECT, finding.getSeverity());
             assertEquals("ODM", finding.getElement());
         }

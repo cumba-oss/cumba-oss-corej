@@ -2,6 +2,8 @@ package net.cumba.corej.define.conformance.eval;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -174,7 +176,7 @@ class RuleEvaluatorKindsTest
         assertEquals(1, result.findings().size());
         ConformanceFinding finding = result.findings().get(0);
         assertEquals("File [missing.xpt] not found.", finding.getMessage());
-        assertEquals(Category.PMDA, finding.getCategory());
+        assertEquals(Category.of("PMDA"), finding.getCategory());
         // PMDA rule without a Severity column defaults to ERROR.
         assertEquals(Severity.ERROR, finding.getSeverity());
 
@@ -478,8 +480,84 @@ class RuleEvaluatorKindsTest
                   target: "@StudyName"
                 """, context);
         ConformanceFinding finding = result.findings().get(0);
-        assertEquals(Category.PMDA, finding.getCategory());
+        assertEquals(Category.of("PMDA"), finding.getCategory());
         assertEquals(Severity.REJECT, finding.getSeverity());
+    }
+
+    // ---- category is data (PLAN-define-families-from-packages, DF1 (a)) ------------------------
+
+
+    /**
+     * A firing rule of family {@code aFamily} ({@code null} ⇒ no Rule_Set) with an optional
+     * Source_Type.
+     */
+    private static String familyRule(@Nullable String aFamily, @Nullable String aSourceType)
+    {
+        return "Rule_Id: \"X-0001\"\nSheet_Rule_Identifier: \"1\"\n"
+                + (aFamily == null ? "" : "Rule_Set: \"" + aFamily + "\"\n")
+                + "Element: \"Study\"\nApplicable_Versions: [\"2.1\"]\n"
+                + (aSourceType == null ? "" : "Source_Type: \"" + aSourceType + "\"\n")
+                + "Plain_Text_Rule: \"Test rule.\"\nMessage: \"Missing StudyName.\"\n"
+                + "Check:\n  kind: \"exists\"\n  target: \"@StudyName\"\n";
+    }
+
+
+    private static Category categoryOf(String aRuleYaml)
+    {
+        return evaluate(aRuleYaml, context("<ODM><Study OID=\"ST.1\"/></ODM>")).findings().get(0)
+                .getCategory();
+    }
+
+
+    @Test
+    void aRuleWithoutSourceTypeReportsUnderItsFamily()
+    {
+        // No family name in engine code: a family the engine has never heard of is its own
+        // category.
+        assertEquals(Category.of("FDA"), categoryOf(familyRule("FDA", null)));
+        assertEquals("FDA", categoryOf(familyRule("FDA", null)).name());
+    }
+
+
+    @Test
+    void aRuleWithNeitherFieldKeepsSpecification()
+    {
+        assertEquals(Category.SPECIFICATION, categoryOf(familyRule(null, null)));
+    }
+
+
+    /**
+     * A-11: Source_Type wins over the family — a PMDA rule carrying one reports as the sheet says.
+     */
+    @Test
+    void sourceTypeWinsOverTheFamily()
+    {
+        assertEquals(Category.SCHEMA, categoryOf(familyRule("PMDA", "Schema")));
+        assertEquals(Category.SPECIFICATION, categoryOf(familyRule("PMDA", "Specification")));
+        assertEquals(Category.SCHEMA, categoryOf(familyRule("FDA", "schema")));
+    }
+
+
+    /** A-3: one rule for case — the category normalises, so "Pmda" and "PMDA" are one key. */
+    @Test
+    void aCaseVariantOfTheFamilyReportsUnderTheNormalisedCategory()
+    {
+        assertEquals(Category.of("PMDA"), categoryOf(familyRule("Pmda", null)));
+        assertEquals(Category.of("PMDA"), Category.of("  pmda "));
+        assertEquals("PMDA", Category.of("  pmda ").name());
+    }
+
+
+    @Test
+    void categoryPrintsItsNameAloneAndInternsTheEngineConstants()
+    {
+        // A-14: the former enum printed its name; Lombok toStrings and log lines rely on that.
+        assertEquals("PMDA", Category.of("PMDA").toString());
+        assertEquals("SCHEMA", Category.SCHEMA.toString());
+        assertSame(Category.SCHEMA, Category.of("schema"), "engine names resolve to the constant");
+        assertTrue(Category.isEngineCategoryName(" xsd "));
+        assertFalse(Category.isEngineCategoryName("PMDA"));
+        assertThrows(IllegalArgumentException.class, () -> Category.of("  "));
     }
 
 }

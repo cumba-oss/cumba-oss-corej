@@ -36,14 +36,28 @@ import org.w3c.dom.Document;
  * </ul>
  *
  * <p>
- * Category choice: these findings carry {@link Category#PMDA}, not {@code XSD} — they are
- * PMDA-sheet rules ({@code DD0002}/{@code OD0010}) implemented as raw/DOM checks, whereas
- * {@code Category.XSD} marks findings produced by schema validation itself (plan §3.5 step 3).
- * Source-true: the category mirrors the rule's sheet, the pre-pass is just the transport.
+ * Category choice: these findings carry {@code PMDA}, not {@code XSD} — they are PMDA-sheet rules
+ * ({@code DD0002}/{@code OD0010}) implemented as raw/DOM checks, whereas {@code Category.XSD} marks
+ * findings produced by schema validation itself (plan §3.5 step 3). Source-true: the category
+ * mirrors the rule's sheet, the pre-pass is just the transport.
+ * </p>
+ *
+ * <p>
+ * <b>Family-independent by design</b> (PLAN-define-families-from-packages, DF4 (a)): these checks
+ * run on every document whatever rule families the run selected — a CDISC-only run still reports
+ * {@code PMDA-OD0010} / {@code PMDA-OD0011} / {@code PMDA-DD0002}. They are implemented in Java,
+ * not selected from a package, so the family selection has nothing to filter them by.
  * </p>
  */
 public final class RawDocumentChecks
 {
+
+    /**
+     * The PMDA sheet's findings category. Named here because these ARE PMDA-sheet rules,
+     * implemented in Java; the declarative rules derive their category from their own
+     * {@code Rule_Set}.
+     */
+    private static final Category PMDA_SHEET = Category.of("PMDA");
 
     private static final String ODM_NS_13 = "http://www.cdisc.org/ns/odm/v1.3";
 
@@ -75,7 +89,7 @@ public final class RawDocumentChecks
         }
         return Optional.of(ConformanceFinding.builder() //
                 .ruleId("PMDA-OD0010") //
-                .category(Category.PMDA) //
+                .category(PMDA_SHEET) //
                 .severity(Severity.REJECT) //
                 .message("Missing XML declaration: Define.xml must start with an XML declaration.") //
                 .build());
@@ -104,7 +118,7 @@ public final class RawDocumentChecks
         }
         return Optional.of(ConformanceFinding.builder() //
                 .ruleId("PMDA-OD0011") //
-                .category(Category.PMDA) //
+                .category(PMDA_SHEET) //
                 .severity(Severity.WARNING) //
                 .message("Invalid XML encoding [" + encoding + "]: Define.xml must use UTF-8, "
                         + "UTF-16, or ISO-8859-1 encoding.") //
@@ -186,7 +200,7 @@ public final class RawDocumentChecks
     {
         return ConformanceFinding.builder() //
                 .ruleId("PMDA-DD0002") //
-                .category(Category.PMDA) //
+                .category(PMDA_SHEET) //
                 .severity(Severity.REJECT) //
                 .element("ODM") //
                 .message("Missing or invalid " + aName + " namespace reference: Define.xml must "

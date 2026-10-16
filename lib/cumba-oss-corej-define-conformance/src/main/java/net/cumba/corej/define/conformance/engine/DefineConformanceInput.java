@@ -1,12 +1,12 @@
 package net.cumba.corej.define.conformance.engine;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import net.cumba.corej.define.conformance.ct.CtProvider;
 import net.cumba.corej.define.conformance.library.LibraryProvider;
-import net.cumba.corej.define.conformance.rule.RuleSet;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -26,11 +26,22 @@ import org.jspecify.annotations.Nullable;
  * <li>{@code versionOverride} ({@code "2.0"}/{@code "2.1"}) forces the applicable-version gate;
  * absent ⇒ the pre-pass detected version is used.</li>
  * </ul>
+ *
+ * <p>
+ * <b>Families are strings, resolved against the corpus</b> (PLAN-define-families-from-packages):
+ * {@link #families()} names the rule families to run, in whatever spelling the caller used; the
+ * engine resolves each against the loaded {@code packages.json}, ignoring case, and refuses one the
+ * manifest does not publish. {@link #everyPublishedFamily()} is the explicit alternative — run
+ * every family the corpus publishes for the document's version (a family without a package at that
+ * version is skipped and logged, DF3). An empty family list without that mode is a refusal: there
+ * is deliberately no default. Both at once is ambiguous and refused at construction.
+ * </p>
  */
 public record DefineConformanceInput(Path defineXml, @Nullable CtProvider ctProvider,
         @Nullable Path submissionFolder, boolean useDefaultSubmissionFolder,
         @Nullable String versionOverride, @Nullable LibraryProvider libraryProvider,
-        @Nullable Path rulesDir, List<RuleSet> families, List<Path> rulesFiles)
+        @Nullable Path rulesDir, List<String> families, boolean everyPublishedFamily,
+        List<Path> rulesFiles)
 {
 
     public DefineConformanceInput
@@ -38,6 +49,11 @@ public record DefineConformanceInput(Path defineXml, @Nullable CtProvider ctProv
         Objects.requireNonNull(defineXml, "defineXml");
         families = families == null ? List.of() : List.copyOf(families);
         rulesFiles = rulesFiles == null ? List.of() : List.copyOf(rulesFiles);
+        if (everyPublishedFamily && !families.isEmpty())
+        {
+            throw new IllegalStateException("ambiguous Define-XML family selection: " + families
+                    + " named AND every published family requested — choose one");
+        }
     }
 
 
@@ -83,7 +99,9 @@ public record DefineConformanceInput(Path defineXml, @Nullable CtProvider ctProv
 
         private @Nullable Path rulesDir;
 
-        private List<RuleSet> families = List.of();
+        private List<String> families = List.of();
+
+        private boolean everyPublishedFamily;
 
         private List<Path> rulesFiles = List.of();
 
@@ -141,18 +159,45 @@ public record DefineConformanceInput(Path defineXml, @Nullable CtProvider ctProv
 
 
         /**
-         * Which rule sheets to validate against. <b>Mandatory</b> for an engine that resolves its
-         * own rules, and deliberately so: before 2026-09-01 an unspecified selection silently meant
-         * "all 409 rules", which is a decision no caller had actually made. Several may be named —
-         * their ids are disjoint, so CDISC and PMDA load together cleanly.
+         * Which rule families to validate against, by name — the values the corpus's
+         * {@code packages.json} publishes (the shipped corpus: {@code CDISC}, {@code PMDA}),
+         * matched ignoring case. <b>Mandatory</b> for an engine that resolves its own rules unless
+         * {@link #everyPublishedFamily()} is chosen, and deliberately so: before 2026-09-01 an
+         * unspecified selection silently meant "all rules", which is a decision no caller had
+         * actually made. Several may be named — their ids are disjoint, so CDISC and PMDA load
+         * together cleanly.
          */
-        public Builder families(List<RuleSet> aFamilies)
+        public Builder families(List<String> aFamilies)
         {
-            // Distinct: naming a family twice would select its package twice, and loadPackages
-            // would then report "duplicate Rule_Id" — a corpus-corruption message for what is
-            // only a caller slip. The CLI already dedupes; the Java API must too.
-            families = aFamilies == null ? List.of()
-                    : List.copyOf(new java.util.LinkedHashSet<>(aFamilies));
+            // Distinct, ignoring case, first spelling kept: naming a family twice would select its
+            // package twice, and the duplicate-id check would then report "duplicate Rule_Id" — a
+            // corpus-corruption message for what is only a caller slip. The CLI already dedupes;
+            // the Java API must too.
+            List<String> distinct = new ArrayList<>();
+            if (aFamilies != null)
+            {
+                for (String family : aFamilies)
+                {
+                    if (distinct.stream().noneMatch(f -> f.equalsIgnoreCase(family)))
+                    {
+                        distinct.add(family);
+                    }
+                }
+            }
+            families = List.copyOf(distinct);
+            return this;
+        }
+
+
+        /**
+         * Run every family the corpus publishes for the document's Define-XML version (DF3): a
+         * family with no package at that version is skipped and logged, never refused; a version no
+         * family publishes is refused. This is the data browser's blank-selection mode. It is an
+         * explicit mode, not the meaning of an empty {@link #families} list — that stays a refusal.
+         */
+        public Builder everyPublishedFamily()
+        {
+            everyPublishedFamily = true;
             return this;
         }
 
@@ -165,11 +210,17 @@ public record DefineConformanceInput(Path defineXml, @Nullable CtProvider ctProv
         }
 
 
+        /**
+         * Builds the input.
+         *
+         * @throws IllegalStateException
+         *             if families were named and every published family was requested too
+         */
         public DefineConformanceInput build()
         {
             return new DefineConformanceInput(defineXml, ctProvider, submissionFolder,
                     useDefaultSubmissionFolder, versionOverride, libraryProvider, rulesDir,
-                    families, rulesFiles);
+                    families, everyPublishedFamily, rulesFiles);
         }
 
     }

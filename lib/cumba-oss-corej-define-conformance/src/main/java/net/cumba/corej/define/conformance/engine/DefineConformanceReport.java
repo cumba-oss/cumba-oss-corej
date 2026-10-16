@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import net.cumba.corej.define.conformance.report.Category;
 import net.cumba.corej.define.conformance.report.ConformanceFinding;
 import net.cumba.corej.define.conformance.report.ExecutionStatus;
@@ -45,10 +46,16 @@ public record DefineConformanceReport(String defineXml, String defineVersion, In
     }
 
 
-    /** Finding counts keyed by category, then severity (only non-zero cells present). */
+    /**
+     * Finding counts keyed by category, then severity (only non-zero cells present). Categories
+     * iterate in {@link Category}'s order — the engine categories first, then rule families by name
+     * — which {@code JsonReportWriter} writes into the report's {@code findingsByCategory} block;
+     * on the shipped corpus that is {@code XSD, SCHEMA, SPECIFICATION, PMDA}, the former enum's
+     * order.
+     */
     public Map<Category, Map<Severity, Long>> findingsByCategory()
     {
-        Map<Category, Map<Severity, Long>> out = new EnumMap<>(Category.class);
+        Map<Category, Map<Severity, Long>> out = new TreeMap<>();
         for (ConformanceFinding finding : findings)
         {
             out.computeIfAbsent(finding.getCategory(), _ -> new EnumMap<>(Severity.class))

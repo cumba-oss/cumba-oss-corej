@@ -20,10 +20,11 @@ import net.cumba.corej.define.conformance.report.ConformanceFinding;
 import net.cumba.corej.define.conformance.report.RuleExecution;
 import net.cumba.corej.define.conformance.report.Severity;
 import net.cumba.corej.define.conformance.rule.ConformanceRule;
+import net.cumba.corej.define.conformance.rule.DefineFamilySelectionException;
+import net.cumba.corej.define.conformance.rule.DefineRulePackage;
 import net.cumba.corej.define.conformance.rule.DefineRulePackageManifest;
 import net.cumba.corej.define.conformance.rule.DefineRuleSelectionException;
 import net.cumba.corej.define.conformance.rule.RuleRepository;
-import net.cumba.corej.define.conformance.rule.RuleSet;
 import net.cumba.corej.define.conformance.tree.ElementNode;
 import net.cumba.corej.define.conformance.tree.ElementNodeBuilder;
 import net.cumba.corej.define.conformance.xsd.DefinePrePass;
@@ -68,6 +69,9 @@ public final class DefineConformanceEngine
      * finding.
      */
     private static final String XSD_FALLBACK_RULE_ID = "DEFINE-XML-XSD";
+
+    private static final System.Logger LOGGER = System
+            .getLogger(DefineConformanceEngine.class.getName());
 
     /**
      * The corpus, when the caller supplied one. {@code null} means this engine resolves its own
@@ -249,23 +253,28 @@ public final class DefineConformanceEngine
     /** A pre-pass finding that already reports the fatal well-formedness / schema failure. */
     private static boolean isXsdFatal(ConformanceFinding aFinding)
     {
-        return aFinding.getCategory() == Category.XSD || "PMDA-OD0001".equals(aFinding.getRuleId())
+        return Category.XSD.equals(aFinding.getCategory())
+                || "PMDA-OD0001".equals(aFinding.getRuleId())
                 || XSD_FALLBACK_RULE_ID.equals(aFinding.getRuleId());
     }
 
 
     /**
-     * Resolves the rule packages for this run: one per requested family, at the document's
-     * Define-XML version, plus any additive {@code --rules-file}.
+     * Resolves the rule packages for this run: one per requested family (or per published family in
+     * every-published mode, DF3), at the document's Define-XML version, plus any additive
+     * {@code --define-rules-file} site package. Family names are data: each is resolved against the
+     * loaded {@code packages.json} ignoring case, an unknown one is refused naming what the
+     * manifest publishes, and a manifest-resolved package is held to its entry (guard 1) while a
+     * site package is held only to published names (guard 1a).
      *
      * <p>
      * Two things are hard errors here rather than defaults, both because a wrong answer would be
      * silent:
      * </p>
      * <ul>
-     * <li><b>No family named.</b> Before 2026-09-01 an unspecified selection meant "load every rule
-     * of both sheets" — a decision no caller had made, and one that quietly changed meaning as the
-     * corpus grew.</li>
+     * <li><b>No family named</b> and every-published mode not chosen. Before 2026-09-01 an
+     * unspecified selection meant "load every rule of both sheets" — a decision no caller had made,
+     * and one that quietly changed meaning as the corpus grew.</li>
      * <li><b>No version known.</b> The old code fell back to {@code "2.1"} for an undetectable
      * document. That was survivable when the version only drove a per-rule gate; now it picks the
      * <em>package</em>, so an undetectable document would be validated against a version nobody
@@ -275,13 +284,14 @@ public final class DefineConformanceEngine
     private static List<ConformanceRule> selectRules(DefineConformanceInput aInput, String aVersion,
             DefineXmlConverter.@Nullable Version aDetected)
     {
-        if (aInput.families().isEmpty())
+        if (aInput.families().isEmpty() && !aInput.everyPublishedFamily())
         {
             throw new DefineRuleSelectionException(
-                    "no Define-XML rule family selected — name at least" + " one of "
-                            + java.util.Arrays.toString(RuleSet.values())
-                            + " (CLI: --define-family). There is deliberately no default: running every"
-                            + " sheet is a choice, not an absence of one.");
+                    "no Define-XML rule family selected — name at least one family the corpus"
+                            + " publishes (CLI: --define-family)"
+                            + publishedFamiliesBestEffort(aInput)
+                            + ". There is deliberately no default: running every"
+                            + " family is a choice, not an absence of one.");
         }
         // Blank-aware, matching resolveVersion: it treats a blank override as absent, so
         // testing only for null here let "" past the refusal and straight into the 2.1
@@ -315,12 +325,20 @@ public final class DefineConformanceEngine
                     "cannot read the Define-XML rule manifest in " + dir, e);
         }
 
-        List<Path> files = new ArrayList<>();
+        List<DefineRulePackage> packages = new ArrayList<>();
+        List<Path> sources = new ArrayList<>();
         int counted = 0;
-        for (RuleSet family : aInput.families())
+        for (String requested : selectFamilies(aInput, manifest, aVersion, dir).run())
         {
+            // Names are resolved against the loaded packages.json, ignoring case: the manifest's
+            // own spelling is what find/versionsFor and the messages use. An unknown name is a
+            // selection fault naming what IS published, as the data side's unknown-package error.
+            String family = manifest.canonicalFamily(requested).orElseThrow(
+                    () -> new DefineFamilySelectionException("unknown Define-XML rule family \""
+                            + requested + "\" — " + dir.resolve(DefineRulePackageManifest.FILE_NAME)
+                            + " publishes: " + String.join(", ", manifest.families())));
             DefineRulePackageManifest.Entry entry = manifest.find(family, aVersion)
-                    .orElseThrow(() -> new DefineRuleSelectionException(
+                    .orElseThrow(() -> new DefineFamilySelectionException(
                             "no " + family + " rule package published for Define-XML " + aVersion
                                     + " in " + dir + " (published for that family: "
                                     + manifest.versionsFor(family) + ")"));
@@ -331,11 +349,22 @@ public final class DefineConformanceEngine
                         + entry.file()
                         + ", which is not there — the corpus is inconsistent with its index");
             }
-            files.add(file);
+            DefineRulePackage pkg = RuleRepository.loadPackage(file);
+            requireFamily(pkg, entry, file);
+            packages.add(pkg);
+            sources.add(file);
             counted += entry.ruleCount();
         }
-        files.addAll(aInput.rulesFiles());
-        List<ConformanceRule> selected = RuleRepository.loadPackages(files);
+        for (Path site : aInput.rulesFiles())
+        {
+            // Additive site packages have no manifest entry to match; only a PRESENT family or
+            // Rule_Set that no published family matches is refused — what the closed enum refused.
+            DefineRulePackage pkg = RuleRepository.loadPackage(site);
+            requirePublished(pkg, manifest, site);
+            packages.add(pkg);
+            sources.add(site);
+        }
+        List<ConformanceRule> selected = RuleRepository.combine(packages, sources);
         // packages.json documents ruleCount as a cheap corruption check; until now nothing in
         // production read it. A package truncated after the manifest was written loads fewer
         // rules than the index claims, and every rule it lost simply stops firing.
@@ -353,6 +382,170 @@ public final class DefineConformanceEngine
                     + ". If you edited a package by hand, update its ruleCount in packages.json.");
         }
         return selected;
+    }
+
+    /**
+     * Which families this run resolves packages for.
+     *
+     * @param run
+     *            the families to resolve, in the caller's spelling (explicit mode) or the
+     *            manifest's (every-published mode)
+     * @param skipped
+     *            every-published mode only: published families without a package at the document's
+     *            version, logged and left out (DF3 (a))
+     */
+    record FamilySelection(List<String> run, List<String> skipped)
+    {
+    }
+
+    /**
+     * The families a run covers. Explicit mode hands the named families through unchanged — each is
+     * then resolved and refused if the manifest does not publish it at the document's version, as
+     * on the CLI. Every-published mode (DF3 (a)) takes the manifest's families that publish
+     * {@code aVersion}, logs the ones that do not, and refuses only when none does.
+     *
+     * <p>
+     * Package-private for {@code DefineConformanceSelectionTest}.
+     * </p>
+     */
+    static FamilySelection selectFamilies(DefineConformanceInput aInput,
+            DefineRulePackageManifest aManifest, String aVersion, Path aDir)
+    {
+        if (!aInput.everyPublishedFamily())
+        {
+            return new FamilySelection(aInput.families(), List.of());
+        }
+        List<String> run = new ArrayList<>();
+        List<String> skipped = new ArrayList<>();
+        for (String family : aManifest.families())
+        {
+            (aManifest.find(family, aVersion).isPresent() ? run : skipped).add(family);
+        }
+        if (run.isEmpty())
+        {
+            throw new DefineFamilySelectionException("no Define-XML rule family publishes version "
+                    + aVersion + " in " + aDir + " (published: " + aManifest.families() + " at "
+                    + aManifest.packages().stream().map(DefineRulePackageManifest.Entry::version)
+                            .distinct().toList()
+                    + ")");
+        }
+        // Written only in every-published mode, so the CLI — which keeps its mandatory
+        // --define-family — logs exactly what it logged before this mode existed.
+        LOGGER.log(System.Logger.Level.INFO,
+                "Define-XML rule families run for " + aVersion + ": " + run
+                        + (skipped.isEmpty() ? ""
+                                : "; skipped (no package for " + aVersion + "): " + skipped));
+        return new FamilySelection(List.copyOf(run), List.copyOf(skipped));
+    }
+
+
+    /**
+     * Guard 1 (PLAN-define-families-from-packages §5.5): a package the manifest resolved must carry
+     * the family its entry names, and every rule in it must carry that family as its
+     * {@code Rule_Set}. With an open family set this is what the closed enum used to catch for free
+     * — a typo in the manifest, the package or a rule would otherwise mint a family of its own and
+     * report under it. Compared ignoring case; the refusal names the file, the rule and both
+     * values. Site packages are NOT held to this (they have no entry), see
+     * {@link #requirePublished}.
+     */
+    private static void requireFamily(DefineRulePackage aPackage,
+            DefineRulePackageManifest.Entry aEntry, Path aFile)
+    {
+        String expected = aEntry.family();
+        String family = aPackage.family();
+        if (family == null || family.isBlank())
+        {
+            throw new DefineRuleSelectionException("rule package " + aFile
+                    + " declares no family, but packages.json lists it under \"" + expected
+                    + "\" — the corpus is inconsistent with its index");
+        }
+        if (!family.equalsIgnoreCase(expected))
+        {
+            throw new DefineRuleSelectionException("rule package " + aFile + " declares family \""
+                    + family + "\", but packages.json lists it under \"" + expected
+                    + "\" — the corpus is inconsistent with its index");
+        }
+        for (ConformanceRule rule : aPackage.rules().values())
+        {
+            String ruleSet = rule.ruleSet();
+            if (ruleSet == null || ruleSet.isBlank())
+            {
+                throw new DefineRuleSelectionException("rule " + rule.ruleId() + " in " + aFile
+                        + " has no Rule_Set, but its package's family is \"" + family + "\"");
+            }
+            if (!ruleSet.equalsIgnoreCase(family))
+            {
+                throw new DefineRuleSelectionException(
+                        "rule " + rule.ruleId() + " in " + aFile + " has Rule_Set \"" + ruleSet
+                                + "\", but its package's family is \"" + family + "\"");
+            }
+        }
+    }
+
+
+    /**
+     * Guard 1a (PLAN-define-families-from-packages §5.5, M-1): a site package
+     * ({@code --define-rules-file}) may omit its {@code family} and its rules' {@code Rule_Set},
+     * and a rule may name a family other than its package's — but a value that IS present must name
+     * a family the manifest publishes (ignoring case), because an unpublished string would silently
+     * mint a family and a finding category of its own. That is exactly what the closed enum
+     * refused, so everything the enum loaded still loads.
+     */
+    private static void requirePublished(DefineRulePackage aPackage,
+            DefineRulePackageManifest aManifest, Path aFile)
+    {
+        String family = aPackage.family();
+        if (family != null && !family.isBlank() && aManifest.canonicalFamily(family).isEmpty())
+        {
+            throw new DefineRuleSelectionException("rule package " + aFile + " declares family \""
+                    + family + "\", which the loaded packages.json does not publish (published: "
+                    + String.join(", ", aManifest.families()) + ")");
+        }
+        for (ConformanceRule rule : aPackage.rules().values())
+        {
+            String ruleSet = rule.ruleSet();
+            if (ruleSet != null && !ruleSet.isBlank()
+                    && aManifest.canonicalFamily(ruleSet).isEmpty())
+            {
+                throw new DefineRuleSelectionException(
+                        "rule " + rule.ruleId() + " in " + aFile + " has Rule_Set \"" + ruleSet
+                                + "\", which the loaded packages.json does not publish (published: "
+                                + String.join(", ", aManifest.families()) + ")");
+            }
+        }
+    }
+
+
+    /**
+     * For the "no family selected" refusal: the families the corpus publishes, when the directory
+     * resolves and its manifest reads — best effort, so the refusal keeps its place before the
+     * version and directory checks and any fault there surfaces through them, not here.
+     */
+    private static String publishedFamiliesBestEffort(DefineConformanceInput aInput)
+    {
+        try
+        {
+            return RuleRepository.resolveRulesDir(
+                    aInput.rulesDir() == null ? null : aInput.rulesDir().toString(),
+                    System.getenv(RuleRepository.ENV_RULES_DIR),
+                    System.getProperty(RuleRepository.SP_RULES_DIR)).map(dir ->
+                    {
+                        try
+                        {
+                            return "; " + dir.resolve(DefineRulePackageManifest.FILE_NAME)
+                                    + " publishes: " + String.join(", ",
+                                            DefineRulePackageManifest.load(dir).families());
+                        }
+                        catch (IOException | IllegalStateException _)
+                        {
+                            return "";
+                        }
+                    }).orElse("");
+        }
+        catch (IllegalStateException _)
+        {
+            return "";
+        }
     }
 
 

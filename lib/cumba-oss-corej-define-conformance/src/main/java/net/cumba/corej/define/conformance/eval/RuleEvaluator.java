@@ -29,7 +29,6 @@ import net.cumba.corej.define.conformance.rule.ConformanceRule;
 import net.cumba.corej.define.conformance.rule.PathResolver;
 import net.cumba.corej.define.conformance.rule.RegexFormats;
 import net.cumba.corej.define.conformance.rule.Requires;
-import net.cumba.corej.define.conformance.rule.RuleSet;
 import net.cumba.corej.define.conformance.tree.ElementNode;
 import org.jspecify.annotations.Nullable;
 
@@ -1642,15 +1641,23 @@ public final class RuleEvaluator
     }
 
 
+    /**
+     * A finding's category is the rule's own data (PLAN-define-families-from-packages, DF1 (a)):
+     * {@code Source_Type} decides when present ({@code Schema} ⇒ {@link Category#SCHEMA}, else
+     * {@link Category#SPECIFICATION}, as the CDISC sheet is read); otherwise the rule's family is
+     * the category ({@code PMDA} for the PMDA sheet, whose rules carry no {@code Source_Type}); a
+     * rule with neither — only a site rule can be one — keeps {@code SPECIFICATION}. No family name
+     * appears in engine code, so a new family reports under its own name without a code change.
+     */
     private static Category categoryOf(ConformanceRule aRule)
     {
-        if (aRule.ruleSet() == RuleSet.PMDA)
-        {
-            return Category.PMDA;
-        }
         String sourceType = aRule.sourceType();
-        return sourceType != null && sourceType.equalsIgnoreCase("Schema") ? Category.SCHEMA
-                : Category.SPECIFICATION;
+        if (sourceType != null)
+        {
+            return sourceType.equalsIgnoreCase("Schema") ? Category.SCHEMA : Category.SPECIFICATION;
+        }
+        String family = aRule.ruleSet();
+        return family == null || family.isBlank() ? Category.SPECIFICATION : Category.of(family);
     }
 
 }

@@ -130,7 +130,7 @@ public final class RuleRepository
      *
      * @return the resolved directory, or empty when nothing is configured and the conventional
      *         directory is absent
-     * @throws IllegalStateException
+     * @throws DefineRuleSelectionException
      *             if an explicit / env / sysprop value names a non-directory
      */
     public static Optional<Path> resolveRulesDir(@Nullable String aArg, @Nullable String aEnv,
@@ -185,6 +185,15 @@ public final class RuleRepository
      * The package format is defined once, by {@link DefineRulePackage}; this reader and the offline
      * generator both go through it, so they cannot drift.
      * </p>
+     *
+     * <p>
+     * It applies <b>no</b> family check: a package's {@code family} and its rules' {@code Rule_Set}
+     * are read as data. The engine guards them where it knows what to compare against — a package
+     * resolved through {@code packages.json} must match its entry, a site package
+     * ({@code --define-rules-file}) must only name published families
+     * (PLAN-define-families-from-packages §5.5). This reader serves both kinds, so a guard here
+     * would refuse site packages that are meant to load.
+     * </p>
      */
     public static DefineRulePackage loadPackage(Path aFile)
     {
@@ -218,10 +227,33 @@ public final class RuleRepository
      */
     public static List<ConformanceRule> loadPackages(List<Path> aFiles)
     {
-        List<ConformanceRule> rules = new ArrayList<>();
+        List<DefineRulePackage> packages = new ArrayList<>(aFiles.size());
         for (Path file : aFiles)
         {
-            rules.addAll(loadPackage(file).ruleList());
+            packages.add(loadPackage(file));
+        }
+        return combine(packages, aFiles);
+    }
+
+
+    /**
+     * Combines already-read packages into one corpus: the empty-corpus refusal and the duplicate
+     * {@code Rule_Id} check of {@link #loadPackages}, for a caller that has to inspect each package
+     * between reading and combining (the engine checks a package's family against its manifest
+     * entry) and must not read it twice.
+     *
+     * @param aPackages
+     *            the packages, in load order
+     * @param aSources
+     *            the files they were read from, for the empty-corpus message
+     */
+    public static List<ConformanceRule> combine(List<DefineRulePackage> aPackages,
+            List<Path> aSources)
+    {
+        List<ConformanceRule> rules = new ArrayList<>();
+        for (DefineRulePackage pkg : aPackages)
+        {
+            rules.addAll(pkg.ruleList());
         }
         if (rules.isEmpty())
         {
@@ -229,7 +261,7 @@ public final class RuleRepository
             // that actually runs. Without it a truncated or emptied package -- a partial cp into
             // the container's writable rules dir, a failed edit, a full disk -- loads zero rules
             // and the run reports the document conformant, with exit code 0.
-            throw new DefineRuleSelectionException("no Define-XML rules loaded from " + aFiles
+            throw new DefineRuleSelectionException("no Define-XML rules loaded from " + aSources
                     + " — refusing to validate against an empty corpus, because a clean report"
                     + " over no rules is indistinguishable from a clean document");
         }

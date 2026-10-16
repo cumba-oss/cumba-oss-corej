@@ -42,7 +42,7 @@ class DefineRulePackageTest
     }
 
 
-    private static Path writePackage(Path aDir, String aFile, RuleSet aFamily, String aVersion,
+    private static Path writePackage(Path aDir, String aFile, String aFamily, String aVersion,
             String... aRules)
         throws IOException
     {
@@ -67,9 +67,9 @@ class DefineRulePackageTest
     void packageFileNameIsFamilyLowercasedAndVersionDashed()
     {
         assertEquals("rules-define-cdisc-2-1.json",
-                DefineRulePackageManifest.packageFileName(RuleSet.CDISC, "2.1"));
+                DefineRulePackageManifest.packageFileName("CDISC", "2.1"));
         assertEquals("rules-define-pmda-2-0.json",
-                DefineRulePackageManifest.packageFileName(RuleSet.PMDA, "2.0"));
+                DefineRulePackageManifest.packageFileName("PMDA", "2.0"));
     }
 
     // ---- package reading ----------------------------------------------------------------------
@@ -78,12 +78,12 @@ class DefineRulePackageTest
     @Test
     void aPackageRoundTripsItsFamilyVersionAndRules(@TempDir Path aDir) throws IOException
     {
-        Path file = writePackage(aDir, "p.json", RuleSet.CDISC, "2.1",
-                rule("DEFINE-XML-0001", "2.1"), rule("DEFINE-XML-0002", "2.1"));
+        Path file = writePackage(aDir, "p.json", "CDISC", "2.1", rule("DEFINE-XML-0001", "2.1"),
+                rule("DEFINE-XML-0002", "2.1"));
 
         DefineRulePackage pkg = RuleRepository.loadPackage(file);
 
-        assertEquals(RuleSet.CDISC, pkg.family());
+        assertEquals("CDISC", pkg.family());
         assertEquals("2.1", pkg.version());
         assertEquals(List.of("DEFINE-XML-0001", "DEFINE-XML-0002"),
                 List.copyOf(pkg.rules().keySet()));
@@ -127,9 +127,8 @@ class DefineRulePackageTest
     @Test
     void twoFamiliesLoadTogetherBecauseTheirIdsAreDisjoint(@TempDir Path aDir) throws IOException
     {
-        Path cdisc = writePackage(aDir, "c.json", RuleSet.CDISC, "2.1",
-                rule("DEFINE-XML-0001", "2.1"));
-        Path pmda = writePackage(aDir, "p.json", RuleSet.PMDA, "2.1", rule("PMDA-DD0012", "2.1"));
+        Path cdisc = writePackage(aDir, "c.json", "CDISC", "2.1", rule("DEFINE-XML-0001", "2.1"));
+        Path pmda = writePackage(aDir, "p.json", "PMDA", "2.1", rule("PMDA-DD0012", "2.1"));
 
         List<ConformanceRule> rules = RuleRepository.loadPackages(List.of(cdisc, pmda));
 
@@ -143,9 +142,9 @@ class DefineRulePackageTest
         // A rule applying to both versions is published in BOTH packages, so loading two versions
         // together would silently double it. The duplicate guard is what makes "exactly one
         // version at a time" enforceable rather than merely documented.
-        Path v20 = writePackage(aDir, "v20.json", RuleSet.CDISC, "2.0",
+        Path v20 = writePackage(aDir, "v20.json", "CDISC", "2.0",
                 rule("DEFINE-XML-0001", "2.0", "2.1"));
-        Path v21 = writePackage(aDir, "v21.json", RuleSet.CDISC, "2.1",
+        Path v21 = writePackage(aDir, "v21.json", "CDISC", "2.1",
                 rule("DEFINE-XML-0001", "2.0", "2.1"));
 
         IllegalStateException e = assertThrows(IllegalStateException.class,
@@ -178,11 +177,11 @@ class DefineRulePackageTest
         assertEquals("test", manifest.generatedFrom());
         assertEquals(3, manifest.packages().size());
         assertEquals("rules-define-cdisc-2-1.json",
-                manifest.find(RuleSet.CDISC, "2.1").orElseThrow().file());
-        assertEquals(2, manifest.find(RuleSet.CDISC, "2.1").orElseThrow().ruleCount());
-        assertEquals(Optional.empty(), manifest.find(RuleSet.PMDA, "2.0"));
-        assertEquals(List.of("2.0", "2.1"), manifest.versionsFor(RuleSet.CDISC));
-        assertEquals(List.of("2.1"), manifest.versionsFor(RuleSet.PMDA));
+                manifest.find("CDISC", "2.1").orElseThrow().file());
+        assertEquals(2, manifest.find("CDISC", "2.1").orElseThrow().ruleCount());
+        assertEquals(Optional.empty(), manifest.find("PMDA", "2.0"));
+        assertEquals(List.of("2.0", "2.1"), manifest.versionsFor("CDISC"));
+        assertEquals(List.of("2.1"), manifest.versionsFor("PMDA"));
     }
 
 
@@ -191,6 +190,173 @@ class DefineRulePackageTest
     {
         IOException e = assertThrows(IOException.class, () -> DefineRulePackageManifest.load(aDir));
         assertTrue(e.getMessage().contains(DefineRulePackageManifest.FILE_NAME), e.getMessage());
+    }
+
+    // ---- open family set (PLAN-define-families-from-packages) ---------------------------------
+
+
+    private static void writeManifest(Path aDir, String aJson) throws IOException
+    {
+        Files.writeString(aDir.resolve(DefineRulePackageManifest.FILE_NAME), aJson,
+                StandardCharsets.UTF_8);
+    }
+
+
+    /**
+     * The family set is whatever {@code packages.json} publishes: a third family the engine has
+     * never heard of loads. Red-first: under the closed {@code RuleSet} enum Jackson could not bind
+     * {@code "FDA"} and the load threw.
+     */
+    @Test
+    void aManifestMayPublishAFamilyTheEngineHasNeverHeardOf(@TempDir Path aDir) throws IOException
+    {
+        writeManifest(aDir, """
+                {
+                  "generatedFrom" : "test",
+                  "packages" : [
+                    { "file" : "rules-define-cdisc-2-1.json", "family" : "CDISC",
+                      "version" : "2.1", "ruleCount" : 1 },
+                    { "file" : "rules-define-fda-2-1.json", "family" : "FDA",
+                      "version" : "2.1", "ruleCount" : 2 }
+                  ]
+                }
+                """);
+
+        DefineRulePackageManifest manifest = DefineRulePackageManifest.load(aDir);
+
+        assertEquals(2, manifest.packages().size());
+        assertEquals("FDA", manifest.packages().get(1).family());
+    }
+
+
+    /**
+     * A newer corpus may carry a manifest field this engine does not know; the reader must ignore
+     * it, as the data side's {@code RulePackageManifest} does. Red-first: the strict mapper threw
+     * on the unknown property.
+     */
+    @Test
+    void theManifestReaderIgnoresAnUnknownProperty(@TempDir Path aDir) throws IOException
+    {
+        writeManifest(aDir, """
+                {
+                  "generatedFrom" : "test",
+                  "schemaVersion" : 2,
+                  "packages" : [
+                    { "file" : "rules-define-cdisc-2-1.json", "family" : "CDISC",
+                      "version" : "2.1", "ruleCount" : 1, "label" : "CDISC Define-XML 2.1" }
+                  ]
+                }
+                """);
+
+        DefineRulePackageManifest manifest = DefineRulePackageManifest.load(aDir);
+
+        assertEquals(1, manifest.packages().size());
+    }
+
+
+    @Test
+    void familiesAreListedOnceEachInManifestOrderAndResolvedIgnoringCase(@TempDir Path aDir)
+        throws IOException
+    {
+        writeManifest(aDir, """
+                {
+                  "generatedFrom" : "test",
+                  "packages" : [
+                    { "file" : "rules-define-pmda-2-0.json", "family" : "PMDA",
+                      "version" : "2.0", "ruleCount" : 1 },
+                    { "file" : "rules-define-cdisc-2-0.json", "family" : "CDISC",
+                      "version" : "2.0", "ruleCount" : 1 },
+                    { "file" : "rules-define-cdisc-2-1.json", "family" : "CDISC",
+                      "version" : "2.1", "ruleCount" : 1 }
+                  ]
+                }
+                """);
+
+        DefineRulePackageManifest manifest = DefineRulePackageManifest.load(aDir);
+
+        assertEquals(List.of("PMDA", "CDISC"), manifest.families());
+        assertEquals(Optional.of("CDISC"), manifest.canonicalFamily(" cdisc "));
+        assertEquals(Optional.of("PMDA"), manifest.canonicalFamily("Pmda"));
+        assertEquals(Optional.empty(), manifest.canonicalFamily("PMAD"));
+        assertEquals(Optional.empty(), manifest.canonicalFamily(null));
+        assertEquals(Optional.empty(), manifest.canonicalFamily("  "));
+        assertEquals("rules-define-cdisc-2-1.json",
+                manifest.find("cdisc", "2.1").orElseThrow().file());
+        assertEquals(List.of("2.0", "2.1"), manifest.versionsFor("Cdisc"));
+    }
+
+
+    @Test
+    void aManifestEntryWithoutAFamilyIsRefused(@TempDir Path aDir) throws IOException
+    {
+        writeManifest(aDir, """
+                {
+                  "generatedFrom" : "test",
+                  "packages" : [
+                    { "file" : "rules-define-x-2-1.json", "version" : "2.1", "ruleCount" : 1 }
+                  ]
+                }
+                """);
+
+        DefineRuleSelectionException e = assertThrows(DefineRuleSelectionException.class,
+                () -> DefineRulePackageManifest.load(aDir));
+        assertTrue(e.getMessage().contains("names no family"), e.getMessage());
+        assertTrue(e.getMessage().contains(DefineRulePackageManifest.FILE_NAME), e.getMessage());
+
+        writeManifest(aDir, """
+                {
+                  "generatedFrom" : "test",
+                  "packages" : [
+                    { "file" : "rules-define-x-2-1.json", "family" : "  ", "version" : "2.1",
+                      "ruleCount" : 1 }
+                  ]
+                }
+                """);
+        assertThrows(DefineRuleSelectionException.class,
+                () -> DefineRulePackageManifest.load(aDir));
+    }
+
+
+    /** A family spelled like an engine category would merge its findings into that category. */
+    @Test
+    void aFamilySpelledLikeAnEngineCategoryIsRefused(@TempDir Path aDir) throws IOException
+    {
+        writeManifest(aDir, """
+                {
+                  "generatedFrom" : "test",
+                  "packages" : [
+                    { "file" : "rules-define-schema-2-1.json", "family" : "schema",
+                      "version" : "2.1", "ruleCount" : 1 }
+                  ]
+                }
+                """);
+
+        DefineRuleSelectionException e = assertThrows(DefineRuleSelectionException.class,
+                () -> DefineRulePackageManifest.load(aDir));
+        assertTrue(e.getMessage().contains("\"schema\""), e.getMessage());
+        assertTrue(e.getMessage().contains("category"), e.getMessage());
+    }
+
+
+    /** One spelling per family, so {@code canonicalFamily} has exactly one answer. */
+    @Test
+    void twoFamiliesDifferingOnlyInCaseAreRefused(@TempDir Path aDir) throws IOException
+    {
+        writeManifest(aDir, """
+                {
+                  "generatedFrom" : "test",
+                  "packages" : [
+                    { "file" : "rules-define-pmda-2-0.json", "family" : "PMDA",
+                      "version" : "2.0", "ruleCount" : 1 },
+                    { "file" : "rules-define-pmda-2-1.json", "family" : "Pmda",
+                      "version" : "2.1", "ruleCount" : 1 }
+                  ]
+                }
+                """);
+
+        DefineRuleSelectionException e = assertThrows(DefineRuleSelectionException.class,
+                () -> DefineRulePackageManifest.load(aDir));
+        assertTrue(e.getMessage().contains("differ only in case"), e.getMessage());
     }
 
 }

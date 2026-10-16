@@ -154,7 +154,7 @@ class DefinePrePassTest
     {
         ConformanceFinding finding = sole(run("xsd-no-xml-declaration-21.xml"));
         assertEquals("PMDA-OD0010", finding.getRuleId());
-        assertEquals(Category.PMDA, finding.getCategory());
+        assertEquals(Category.of("PMDA"), finding.getCategory());
         assertEquals(Severity.REJECT, finding.getSeverity());
         assertNull(finding.getLine());
     }
@@ -168,7 +168,7 @@ class DefinePrePassTest
         List<ConformanceFinding> dd0002 = result.findings().stream()
                 .filter(finding -> finding.getRuleId().equals("PMDA-DD0002")).toList();
         assertEquals(1, dd0002.size(), () -> "findings: " + result.findings());
-        assertEquals(Category.PMDA, dd0002.get(0).getCategory());
+        assertEquals(Category.of("PMDA"), dd0002.get(0).getCategory());
         assertEquals(Severity.REJECT, dd0002.get(0).getSeverity());
         assertEquals("ODM", dd0002.get(0).getElement());
         assertTrue(dd0002.get(0).getMessage().contains("http://www.cdisc.org/ns/def/v2.1"),

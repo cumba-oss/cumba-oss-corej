@@ -14,7 +14,12 @@ import org.jspecify.annotations.Nullable;
  * @param sheetRuleIdentifier
  *            the source sheet's own id, verbatim ({@code "65"} / {@code "DD0024"})
  * @param ruleSet
- *            which sheet this mirrors
+ *            the rule family this rule belongs to ({@code CDISC} / {@code PMDA} / whatever the
+ *            corpus's {@code packages.json} publishes) — a free token, not a closed set. Inside a
+ *            package the manifest resolves it must equal the package's {@code family} (the engine
+ *            refuses otherwise, PLAN-define-families-from-packages guard 1); a site package passed
+ *            as {@code --define-rules-file} may omit it. It is also the finding category of a rule
+ *            without {@code Source_Type}
  * @param element
  *            the scoped element selector: a bare local name ({@code ItemRef}), a parent-qualified
  *            form ({@code ValueListDef/ItemRef} — the last segment scoped to elements whose
@@ -41,7 +46,7 @@ import org.jspecify.annotations.Nullable;
 public record ConformanceRule(//
         @JsonProperty("Rule_Id") String ruleId, //
         @JsonProperty("Sheet_Rule_Identifier") String sheetRuleIdentifier, //
-        @JsonProperty("Rule_Set") RuleSet ruleSet, //
+        @JsonProperty("Rule_Set") @Nullable String ruleSet, //
         @JsonProperty("Element") String element, //
         @JsonProperty("Attribute") @Nullable String attribute, //
         @JsonProperty("Applicable_Versions") List<String> applicableVersions, //

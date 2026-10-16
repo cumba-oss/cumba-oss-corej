@@ -342,7 +342,7 @@ class CheckDefinitionTest
                 """, "test");
         assertInstanceOf(CheckDefinition.ReferencedFileExists.class, rule.check());
         assertEquals(Requires.FOLDER, rule.requires());
-        assertEquals(RuleSet.PMDA, rule.ruleSet());
+        assertEquals("PMDA", rule.ruleSet());
         assertEquals(Severity.WARNING, rule.effectiveSeverity());
     }
 
@@ -354,7 +354,7 @@ class CheckDefinitionTest
     private static ConformanceRule ruleWith(String aRuleId, String aElement, String aMessage,
             String aVersions)
     {
-        return new ConformanceRule(aRuleId, "1", RuleSet.CDISC, aElement, null,
+        return new ConformanceRule(aRuleId, "1", "CDISC", aElement, null,
                 aVersions.isEmpty() ? List.of() : List.of(aVersions), "Specification", null, null,
                 "Plain text.", aMessage, new CheckDefinition.Exists("@ItemOID", null));
     }

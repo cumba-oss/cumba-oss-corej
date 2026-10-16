@@ -1,6 +1,7 @@
 package net.cumba.corej.define.conformance.engine;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -11,7 +12,6 @@ import java.util.List;
 import java.util.Optional;
 import net.cumba.corej.define.conformance.ct.StubCtProvider;
 import net.cumba.corej.define.conformance.library.StubLibraryProvider;
-import net.cumba.corej.define.conformance.rule.RuleSet;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -61,11 +61,11 @@ class DefineConformanceInputTest
         assertSame(builder, builder.libraryProvider(library));
         assertSame(builder, builder.submissionFolder(Path.of("/x")));
         assertSame(builder, builder.rulesFiles(List.of(Path.of("/site.json"))));
-        DefineConformanceInput input = builder.families(List.of(RuleSet.CDISC)).build();
+        DefineConformanceInput input = builder.families(List.of("CDISC")).build();
         assertSame(ct, input.ctProvider());
         assertSame(library, input.libraryProvider());
         assertEquals(List.of(Path.of("/site.json")), input.rulesFiles());
-        assertEquals(List.of(RuleSet.CDISC), input.families());
+        assertEquals(List.of("CDISC"), input.families());
     }
 
 
@@ -81,11 +81,36 @@ class DefineConformanceInputTest
                 () -> input.rulesFiles().add(Path.of("/c.json")));
         // A null families/rulesFiles becomes an empty list rather than an NPE at use site.
         DefineConformanceInput nulls = new DefineConformanceInput(DEFINE, null, null, false, null,
-                null, null, null, null);
+                null, null, null, false, null);
         assertTrue(nulls.families().isEmpty());
         assertTrue(nulls.rulesFiles().isEmpty());
         assertThrows(NullPointerException.class, () -> new DefineConformanceInput(null, null, null,
-                false, null, null, null, null, null));
+                false, null, null, null, null, false, null));
+    }
+
+
+    /**
+     * Families are strings resolved later against the corpus; a repeat differing in case is one.
+     */
+    @Test
+    void theBuilderDedupesFamiliesIgnoringCaseAndKeepsTheFirstSpelling()
+    {
+        DefineConformanceInput input = DefineConformanceInput.builder(DEFINE)
+                .families(List.of("cdisc", "CDISC", "PMDA", "Cdisc")).build();
+
+        assertEquals(List.of("cdisc", "PMDA"), input.families());
+        assertFalse(input.everyPublishedFamily());
+    }
+
+
+    @Test
+    void everyPublishedFamilyIsAnExplicitModeOnAnEmptyList()
+    {
+        DefineConformanceInput input = DefineConformanceInput.builder(DEFINE).everyPublishedFamily()
+                .build();
+
+        assertTrue(input.everyPublishedFamily());
+        assertTrue(input.families().isEmpty());
     }
 
 }

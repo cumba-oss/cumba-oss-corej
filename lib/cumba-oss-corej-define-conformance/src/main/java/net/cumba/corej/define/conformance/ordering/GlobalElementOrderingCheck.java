@@ -73,10 +73,18 @@ import net.cumba.corej.define.conformance.tree.ElementNode;
  * <p>
  * <b>Dual-id emission</b> (plan §5 step 3): every defect yields TWO findings — CDISC sheet row 1 as
  * {@code DEFINE-XML-0001} ({@link Category#SCHEMA}, {@link Severity#ERROR}) and PMDA sheet
- * {@code DD0008} as {@code PMDA-DD0008} ({@link Category#PMDA}, {@link Severity#ERROR}, sheet
- * message "Element in wrong position within Define.xml") — so both rule sets' report coverage stays
+ * {@code DD0008} as {@code PMDA-DD0008} ({@code PMDA}, {@link Severity#ERROR}, sheet message
+ * "Element in wrong position within Define.xml") — so both rule sets' report coverage stays
  * complete. Both findings carry the parent's xpath in {@code xpath()} and the offending child's
  * local name in {@code element()}, and both messages repeat that location detail.
+ * </p>
+ *
+ * <p>
+ * <b>Family-independent by design</b> (PLAN-define-families-from-packages, DF4 (a)): both findings
+ * are emitted whatever rule families the run selected — a CDISC-only run still reports
+ * {@code PMDA-DD0008}, a PMDA-only run still reports {@code DEFINE-XML-0001}. The check is
+ * implemented in Java, not selected from a package, so the family selection has nothing to filter
+ * it by.
  * </p>
  */
 public final class GlobalElementOrderingCheck
@@ -87,6 +95,13 @@ public final class GlobalElementOrderingCheck
 
     /** PMDA Validation Rules v6.0, Define-XML sheet id DD0008 (applies to 2.0 and 2.1). */
     public static final String PMDA_RULE_ID = "PMDA-DD0008";
+
+    /**
+     * The PMDA sheet's findings category for {@link #PMDA_RULE_ID}: a PMDA-sheet rule implemented
+     * in Java names its sheet here; the declarative rules derive theirs from their own
+     * {@code Rule_Set}.
+     */
+    private static final Category PMDA_SHEET = Category.of("PMDA");
 
     /**
      * Parent bare local name → child bare local names in schema sequence order.
@@ -274,7 +289,7 @@ public final class GlobalElementOrderingCheck
                 .element(aChild.localName()) //
                 .xpath(aParent.xpath()) //
                 .message("Element in wrong position within Define.xml: " + location) //
-                .category(Category.PMDA) //
+                .category(PMDA_SHEET) //
                 .severity(Severity.ERROR) //
                 .build());
     }

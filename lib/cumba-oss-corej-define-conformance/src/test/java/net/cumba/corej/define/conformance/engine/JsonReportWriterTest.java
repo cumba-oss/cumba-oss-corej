@@ -95,6 +95,38 @@ class JsonReportWriterTest
     }
 
 
+    /**
+     * The summary's category order is {@link Category}'s: the engine categories first, in the
+     * former enum's order, then rule families by name — so the shipped corpus's block stays
+     * {@code XSD, SCHEMA, SPECIFICATION, PMDA} byte for byte, and a future family sorts in by name.
+     */
+    @Test
+    void findingsByCategoryKeepsTheEngineOrderThenFamiliesByName(@TempDir Path dir)
+        throws IOException
+    {
+        List<ConformanceFinding> findings = List.of(finding("PMDA-DD0001", Category.of("PMDA")),
+                finding("FDA-DX0001", Category.of("FDA")),
+                finding("DEFINE-XML-0002", Category.SPECIFICATION),
+                finding("DEFINE-XML-0001", Category.SCHEMA), finding("PMDA-OD0001", Category.XSD));
+        DefineConformanceReport report = new DefineConformanceReport("/tmp/define.xml", "2.1",
+                Instant.parse("2026-07-03T12:00:00Z"), findings, List.of());
+
+        JsonNode byCategory = written(report, dir).get("summary").get("findingsByCategory");
+
+        List<String> order = new java.util.ArrayList<>();
+        byCategory.fieldNames().forEachRemaining(order::add);
+        assertEquals(List.of("XSD", "SCHEMA", "SPECIFICATION", "FDA", "PMDA"), order);
+        assertEquals("FDA", written(report, dir).get("findings").get(1).get("category").asText());
+    }
+
+
+    private static ConformanceFinding finding(String aRuleId, Category aCategory)
+    {
+        return ConformanceFinding.builder().ruleId(aRuleId).message("m").category(aCategory)
+                .severity(Severity.ERROR).build();
+    }
+
+
     /** The report as the file writer renders it, read back — the only writer left (U7). */
     private static JsonNode written(DefineConformanceReport aReport, Path aDir) throws IOException
     {

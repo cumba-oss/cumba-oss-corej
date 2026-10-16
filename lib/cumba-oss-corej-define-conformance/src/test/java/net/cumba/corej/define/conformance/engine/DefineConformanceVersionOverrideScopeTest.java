@@ -12,7 +12,6 @@ import net.cumba.corej.define.conformance.report.Category;
 import net.cumba.corej.define.conformance.report.ConformanceFinding;
 import net.cumba.corej.define.conformance.report.Severity;
 import net.cumba.corej.define.conformance.rule.DefineRulePackageManifest;
-import net.cumba.corej.define.conformance.rule.RuleSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -101,7 +100,7 @@ class DefineConformanceVersionOverrideScopeTest
     {
         DefineConformanceInput.Builder builder = DefineConformanceInput
                 .builder(define(aDir, DEFINE_10)).useDefaultSubmissionFolder(false)
-                .rulesDir(corpus(aDir)).families(List.of(RuleSet.CDISC));
+                .rulesDir(corpus(aDir)).families(List.of("CDISC"));
         if (aOverride != null)
         {
             builder.versionOverride(aOverride);
@@ -179,7 +178,7 @@ class DefineConformanceVersionOverrideScopeTest
     {
         DefineConformanceInput input = DefineConformanceInput.builder(define(aDir, DEFINE_21))
                 .useDefaultSubmissionFolder(false).versionOverride("").rulesDir(corpus(aDir))
-                .families(List.of(RuleSet.CDISC)).build();
+                .families(List.of("CDISC")).build();
         DefineConformanceReport report = new DefineConformanceEngine().validate(input);
         assertEquals("2.1", report.defineVersion());
         assertEquals(1, report.executions().size());

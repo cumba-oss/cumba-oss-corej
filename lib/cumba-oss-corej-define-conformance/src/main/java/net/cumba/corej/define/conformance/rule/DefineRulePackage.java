@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.SequencedMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One generated Define-XML rule package: every rule of a single {@code (family, version)} pair,
@@ -29,13 +30,17 @@ import java.util.SequencedMap;
  * </p>
  *
  * @param family
- *            which source sheet these rules mirror
+ *            the rule family these rules belong to — data, not an enum: the corpus's
+ *            {@code packages.json} defines the valid values (PLAN-define-families-from-packages). A
+ *            package the manifest resolves must carry the family its entry names, and every rule's
+ *            {@code Rule_Set} must equal it (the engine refuses otherwise); a site package
+ *            ({@code --define-rules-file}) may omit it, hence nullable
  * @param version
  *            the Define-XML version the package is scoped to, e.g. {@code 2.1}
  * @param rules
  *            the rules, keyed by {@code Rule_Id}, in ascending id order
  */
-public record DefineRulePackage(@JsonProperty("family") RuleSet family,
+public record DefineRulePackage(@JsonProperty("family") @Nullable String family,
         @JsonProperty("version") String version,
         @JsonProperty("rules") SequencedMap<String, ConformanceRule> rules)
 {
@@ -64,7 +69,7 @@ public record DefineRulePackage(@JsonProperty("family") RuleSet family,
 
 
     /** Builds a package from a rule list, keyed and ordered by {@code Rule_Id}. */
-    public static DefineRulePackage of(RuleSet aFamily, String aVersion,
+    public static DefineRulePackage of(String aFamily, String aVersion,
             List<ConformanceRule> aRules)
     {
         SequencedMap<String, ConformanceRule> keyed = new LinkedHashMap<>();
