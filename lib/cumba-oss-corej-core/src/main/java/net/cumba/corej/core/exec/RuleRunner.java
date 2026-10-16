@@ -20,6 +20,7 @@ import net.cumba.corej.core.expr.eval.BindingProgram;
 import net.cumba.corej.core.expr.eval.Domain;
 import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.ExprCompiler;
+import net.cumba.corej.core.expr.eval.MetadataAttribute;
 import net.cumba.corej.core.expr.eval.MetadataExprScan;
 import net.cumba.corej.core.expr.eval.MetadataNormalizer;
 import net.cumba.corej.core.expr.eval.MetadataNormalizer.Normalization;
@@ -3593,17 +3594,37 @@ public final class RuleRunner
     private static final String VARIABLE_VALUE = OutputEntryKind.VARIABLE_VALUE;
 
     /**
+     * The provider keys of the list-valued define attributes ({@link MetadataAttribute#isList()}),
+     * derived once so a new list accessor cannot be missed by {@link #formatDefineOutput}
+     * ({@code PLAN-vlm-origin-value-accessor} C14 — the roster was three literals kept by hand).
+     */
+    private static final Set<String> LIST_DEFINE_KEYS = listDefineKeys();
+
+    private static Set<String> listDefineKeys()
+    {
+        Set<String> keys = new LinkedHashSet<>();
+        for (MetadataAttribute attribute : MetadataAttribute.values())
+        {
+            if (attribute.isList())
+            {
+                keys.add(attribute.providerKey());
+            }
+        }
+        return Set.copyOf(keys);
+    }
+
+
+    /**
      * Formats a define-variable attribute value for the violation output. A list-valued attribute
-     * ({@code codelist_coded_codes} / {@code codelist_coded_values}) is carried JSON-encoded
-     * through the provider channel; emit it instead in the canonical {@code [a, b, c]} form —
-     * sorted, no inner quotes — matching the Python reference engine's list stringification (see
-     * {@code engine_adapter._engine_value_to_str}, which mirrors {@code java.util.List.toString()}
-     * and sorts). Scalar values pass through.
+     * ({@link #LIST_DEFINE_KEYS}: {@code codelist_coded_codes}, {@code vlm_origin_types}, …) is
+     * carried JSON-encoded through the provider channel; emit it instead in the canonical
+     * {@code [a, b, c]} form — sorted, no inner quotes — matching the Python reference engine's
+     * list stringification (see {@code engine_adapter._engine_value_to_str}, which mirrors
+     * {@code java.util.List.toString()} and sorts). Scalar values pass through.
      */
     private static @Nullable String formatDefineOutput(String key, @Nullable String value)
     {
-        if (value == null || !("codelist_coded_codes".equals(key)
-                || "codelist_coded_values".equals(key) || "codelist_extended_values".equals(key)))
+        if (value == null || !LIST_DEFINE_KEYS.contains(key))
         {
             return value;
         }

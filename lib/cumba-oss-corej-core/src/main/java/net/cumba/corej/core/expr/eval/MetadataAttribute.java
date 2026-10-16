@@ -170,6 +170,16 @@ public enum MetadataAttribute
      */
     VAR_VLM_HAS_ORIGIN("var_vlm_has_origin", Scope.VARIABLE, "vlm_has_origin", Normalization.BOOLEAN, DEFINE),
     /**
+     * DEFINE-only: the distinct origin types of the variable's value-level entries, in value-list
+     * order — an entry without an origin, or whose value-level {@code ItemDef} does not resolve,
+     * contributes {@code ""}. {@code []} without a (non-empty, resolvable) value list, and
+     * {@code []} for a variable the define does not declare (a list attribute decodes a null to
+     * {@code []}; guard with {@code not empty(var_name("DEFINE"))}). With
+     * {@link #VAR_VLM_HAS_ORIGIN} it answers "every value-level origin is X"
+     * ({@code PLAN-vlm-origin-value-accessor} VO1).
+     */
+    VAR_VLM_ORIGIN_TYPES("var_vlm_origin_types", Scope.VARIABLE, "vlm_origin_types", Normalization.RAW, DEFINE),
+    /**
      * DEFINE-only external-dictionary name of the variable's bound codelist (Define-XML
      * {@code CodeList/ExternalCodeList/@Dictionary}). Backs
      * {@code define_variable_external_dictionary}; empty when the variable's codelist declares no
@@ -335,7 +345,7 @@ public enum MetadataAttribute
     public boolean isList()
     {
         return this == VAR_CODELIST_CODED_CODES || this == VAR_CODELIST_CODED_VALUES
-                || this == VAR_CODELIST_EXTENDED_VALUES;
+                || this == VAR_CODELIST_EXTENDED_VALUES || this == VAR_VLM_ORIGIN_TYPES;
     }
 
 

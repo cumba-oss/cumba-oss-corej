@@ -10,6 +10,16 @@
        LBMETHOD  a value list without any ItemRef                               -> false false false
        LBNAM     one entry whose ItemOID resolves to no ItemDef (documented
                  on the ItemRef side by a MethodOID)                            -> false false false
+     PLAN-vlm-origin-value-accessor VO1: var_vlm_origin_types ("DEFINE"), the distinct origin types
+     of the entries in value-list order ("" for an entry without an origin or whose ItemDef does
+     not resolve):
+       LBSTRESC  [Derived, Collected]   LBORRES [Collected, ""]   LBSTAT [""]   LBNAM [""]
+       LBTESTCD / LBSPEC / LBMETHOD  []
+       LBSTNRC   two entries, both def:Origin Collected, no variable-level origin -> [Collected]
+       LBORNRLO  def:Origin Collected + the v2.0 @Origin="CRF", no variable level -> [Collected, CRF]
+       LBSTNRU   variable-level def:Origin Derived, VL.COLLECTED                  -> [Collected]
+     The three VO1 variables' entries carry a comment (and LBSTNRC/LBORNRLO/LBSTNRU are not in the
+     SR1 tests' data), so the SR1 comment tests do not see them.
      The comment is written as def:CommentOID on one entry and as CommentOID on another, and the
      origin as the 2.1 def:Origin element on one and the v2.0 @Origin attribute on another, so
      both spellings the provider reads at variable level count at value level too. -->
@@ -28,6 +38,9 @@
         <ItemRef ItemOID="IT.LB.LBSPEC" OrderNumber="5" Mandatory="No" Role="Record Qualifier"/>
         <ItemRef ItemOID="IT.LB.LBMETHOD" OrderNumber="6" Mandatory="No" Role="Record Qualifier"/>
         <ItemRef ItemOID="IT.LB.LBNAM" OrderNumber="7" Mandatory="No" Role="Record Qualifier"/>
+        <ItemRef ItemOID="IT.LB.LBSTNRC" OrderNumber="8" Mandatory="No" Role="Variable Qualifier"/>
+        <ItemRef ItemOID="IT.LB.LBORNRLO" OrderNumber="9" Mandatory="No" Role="Variable Qualifier"/>
+        <ItemRef ItemOID="IT.LB.LBSTNRU" OrderNumber="10" Mandatory="No" Role="Variable Qualifier"/>
       </ItemGroupDef>
 
       <ItemDef OID="IT.LB.LBTESTCD" Name="LBTESTCD" DataType="text" Length="8">
@@ -57,6 +70,19 @@
         <Description><TranslatedText xml:lang="en">Vendor Name</TranslatedText></Description>
         <def:ValueListRef ValueListOID="VL.DANGLING_ITEM"/>
       </ItemDef>
+      <ItemDef OID="IT.LB.LBSTNRC" Name="LBSTNRC" DataType="text" Length="20">
+        <Description><TranslatedText xml:lang="en">Normal Range for Character Results</TranslatedText></Description>
+        <def:ValueListRef ValueListOID="VL.COLLECTED"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBORNRLO" Name="LBORNRLO" DataType="text" Length="20">
+        <Description><TranslatedText xml:lang="en">Reference Range Lower Limit in Orig Unit</TranslatedText></Description>
+        <def:ValueListRef ValueListOID="VL.COLLECTED_CRF"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBSTNRU" Name="LBSTNRU" DataType="text" Length="20">
+        <Description><TranslatedText xml:lang="en">Normal Range Unit</TranslatedText></Description>
+        <def:Origin Type="Derived"/>
+        <def:ValueListRef ValueListOID="VL.COLLECTED"/>
+      </ItemDef>
 
       <!-- VL.FULL: every entry documented three ways -->
       <ItemDef OID="IT.LB.LBSTRESC.GLUC" Name="LBSTRESC_GLUC" DataType="float" Length="5"
@@ -84,6 +110,27 @@
       <ItemDef OID="IT.LB.LBSTAT.HGB" Name="LBSTAT_HGB" DataType="text" Length="8">
         <Description><TranslatedText xml:lang="en">Haemoglobin status</TranslatedText></Description>
       </ItemDef>
+      <!-- VL.COLLECTED: both entries Collected (VO1) -->
+      <ItemDef OID="IT.LB.COLL.GLUC" Name="COLL_GLUC" DataType="text" Length="20"
+               def:CommentOID="COM.GLUC">
+        <Description><TranslatedText xml:lang="en">Glucose collected</TranslatedText></Description>
+        <def:Origin Type="Collected"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.COLL.HGB" Name="COLL_HGB" DataType="text" Length="20"
+               def:CommentOID="COM.HGB">
+        <Description><TranslatedText xml:lang="en">Haemoglobin collected</TranslatedText></Description>
+        <def:Origin Type="Collected"/>
+      </ItemDef>
+      <!-- VL.COLLECTED_CRF: the 2.1 element Collected, then the v2.0 attribute CRF (VO1) -->
+      <ItemDef OID="IT.LB.CRF.GLUC" Name="CRF_GLUC" DataType="text" Length="20"
+               def:CommentOID="COM.GLUC">
+        <Description><TranslatedText xml:lang="en">Glucose lower limit</TranslatedText></Description>
+        <def:Origin Type="Collected"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.CRF.HGB" Name="CRF_HGB" DataType="text" Length="20"
+               CommentOID="COM.HGB" Origin="CRF">
+        <Description><TranslatedText xml:lang="en">Haemoglobin lower limit</TranslatedText></Description>
+      </ItemDef>
 
       <def:ValueListDef OID="VL.FULL">
         <ItemRef ItemOID="IT.LB.LBSTRESC.GLUC" OrderNumber="1" Mandatory="No" MethodOID="MT.GLUC">
@@ -106,6 +153,22 @@
           <def:WhereClauseRef WhereClauseOID="WC.GLUC"/>
         </ItemRef>
         <ItemRef ItemOID="IT.LB.LBSTAT.HGB" OrderNumber="2" Mandatory="No" MethodOID="MT.HGB">
+          <def:WhereClauseRef WhereClauseOID="WC.HGB"/>
+        </ItemRef>
+      </def:ValueListDef>
+      <def:ValueListDef OID="VL.COLLECTED">
+        <ItemRef ItemOID="IT.LB.COLL.GLUC" OrderNumber="1" Mandatory="No">
+          <def:WhereClauseRef WhereClauseOID="WC.GLUC"/>
+        </ItemRef>
+        <ItemRef ItemOID="IT.LB.COLL.HGB" OrderNumber="2" Mandatory="No">
+          <def:WhereClauseRef WhereClauseOID="WC.HGB"/>
+        </ItemRef>
+      </def:ValueListDef>
+      <def:ValueListDef OID="VL.COLLECTED_CRF">
+        <ItemRef ItemOID="IT.LB.CRF.GLUC" OrderNumber="1" Mandatory="No">
+          <def:WhereClauseRef WhereClauseOID="WC.GLUC"/>
+        </ItemRef>
+        <ItemRef ItemOID="IT.LB.CRF.HGB" OrderNumber="2" Mandatory="No">
           <def:WhereClauseRef WhereClauseOID="WC.HGB"/>
         </ItemRef>
       </def:ValueListDef>

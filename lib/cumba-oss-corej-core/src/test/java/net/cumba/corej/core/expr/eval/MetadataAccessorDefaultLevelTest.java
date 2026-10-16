@@ -142,9 +142,11 @@ class MetadataAccessorDefaultLevelTest
         }
         assertEquals(new TreeSet<>(DATA_ACCESSORS), data);
         // 18 + the three DEFINE-only var_vlm_has_* coverage accessors
-        // (PLAN-stopped-rule-engine-fixes SR1)
-        assertEquals(21, nonData.size(), nonData.toString());
-        assertEquals(31, MetadataAttribute.values().length);
+        // (PLAN-stopped-rule-engine-fixes SR1) + var_vlm_origin_types
+        // (PLAN-vlm-origin-value-accessor
+        // VO1)
+        assertEquals(22, nonData.size(), nonData.toString());
+        assertEquals(32, MetadataAttribute.values().length);
     }
 
 
@@ -231,7 +233,8 @@ class MetadataAccessorDefaultLevelTest
                 assertTrue(named.get(0).contains(fn + "(\"AETERM\", \""), named.get(0));
             }
         }
-        assertEquals(21, checked, "every non-DATA accessor probed (18 + the three var_vlm_has_*)");
+        assertEquals(22, checked,
+                "every non-DATA accessor probed (18 + the three var_vlm_has_* + var_vlm_origin_types)");
     }
 
 

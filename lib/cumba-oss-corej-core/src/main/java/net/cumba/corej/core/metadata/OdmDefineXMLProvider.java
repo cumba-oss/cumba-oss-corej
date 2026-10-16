@@ -2,8 +2,10 @@ package net.cumba.corej.core.metadata;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.cumba.cdisc.define.Alias;
 import net.cumba.cdisc.define.CodeList;
 import net.cumba.cdisc.define.CodeListItem;
@@ -119,13 +121,17 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
      * variable-level reading of Define-XML 2.1 §5.3.12.3 ("each ItemDef element referenced in the
      * corresponding def:ValueListDef includes a def:Origin element"), backing
      * {@code var_vlm_has_method} / {@code var_vlm_has_comment} / {@code var_vlm_has_origin}
-     * ({@code PLAN-stopped-rule-engine-fixes} SR1 / T1). {@link #NONE} for a variable without a
-     * value list, a value list that does not resolve or holds no entry.
+     * ({@code PLAN-stopped-rule-engine-fixes} SR1 / T1) — plus the distinct origin types of the
+     * entries in value-list order ({@code ""} for an entry without an origin or whose
+     * {@code ItemDef} does not resolve), backing {@code var_vlm_origin_types}
+     * ({@code PLAN-vlm-origin-value-accessor} VO1). {@link #NONE} for a variable without a value
+     * list, a value list that does not resolve or holds no entry.
      */
-    private record VlmCoverage(boolean method, boolean comment, boolean origin)
+    private record VlmCoverage(boolean method, boolean comment, boolean origin,
+            List<String> originTypes)
     {
 
-        static final VlmCoverage NONE = new VlmCoverage(false, false, false);
+        static final VlmCoverage NONE = new VlmCoverage(false, false, false, List.of());
     }
 
     /**
@@ -146,14 +152,17 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
         boolean method = true;
         boolean comment = true;
         boolean origin = true;
+        Set<String> originTypes = new LinkedHashSet<>();
         for (ItemRef r : vl.getItemRefs())
         {
             ItemDef vd = defs.get(r.getItemOID());
+            String type = vd == null ? "" : originType(vd);
             method &= vd != null && r.getMethodOID() != null;
             comment &= vd != null && vd.getCommentOID() != null;
-            origin &= vd != null && !originType(vd).isEmpty();
+            origin &= !type.isEmpty();
+            originTypes.add(type);
         }
-        return new VlmCoverage(method, comment, origin);
+        return new VlmCoverage(method, comment, origin, List.copyOf(originTypes));
     }
 
 
@@ -507,6 +516,9 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
             v.put("vlm_has_method", boolStr(cov.method()));
             v.put("vlm_has_comment", boolStr(cov.comment()));
             v.put("vlm_has_origin", boolStr(cov.origin()));
+            // PLAN-vlm-origin-value-accessor VO1: the value-level origin types, a list attribute
+            // (DefineMetadataListCodec), backing var_vlm_origin_types("DEFINE")
+            v.put("vlm_origin_types", DefineMetadataListCodec.encode(cov.originTypes()));
             v.put("external_dictionary", externalDictionary);
             v.put("external_dictionary_version", externalDictionaryVersion);
             out.add(v);
