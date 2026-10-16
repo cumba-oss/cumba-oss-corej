@@ -14,6 +14,7 @@ import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.CachedDataTableColumn;
 import net.cumba.datatable.impl.ColumnCachedDataTable;
 import net.cumba.datatable.values.DataValueType;
+import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -253,8 +254,10 @@ class GroupedLookupKeyTypeTest
     @Test
     void anAllBlankKeyColumnIsExemptFromTheKindCheck()
     {
-        IDataTable blankNum = RealTables.of("DM").dbl("USUBJID", (Double) null, (Double) null)
-                .build();
+        // MIS_UNKNOWN.asDouble(), never a raw null: the OSS datatable's DOUBLE buffer refuses a
+        // null (a recorded twin divergence), and the fixture must stay byte-identical
+        IDataTable blankNum = RealTables.of("DM").dbl("USUBJID",
+                MissingValue.MIS_UNKNOWN.asDouble(), MissingValue.MIS_UNKNOWN.asDouble()).build();
         IDataTable blankChar = RealTables.of("AE").str("USUBJID", "", "").build();
         IDataTable charTable = RealTables.of("AE").str("USUBJID", "1", "2").build();
         IDataTable numTable = RealTables.of("DM").dbl("USUBJID", 1.0, 2.0).build();
