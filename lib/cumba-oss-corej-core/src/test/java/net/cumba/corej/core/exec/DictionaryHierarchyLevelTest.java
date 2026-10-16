@@ -280,6 +280,92 @@ class DictionaryHierarchyLevelTest
                 .getLoadError(), "the CG0460 shape names two levels and loads");
     }
 
+
+    /**
+     * {@code PLAN-w4-parked-engine-refusals} F1 (RF2 (a)): a name level paired with a code level is
+     * off-path on every row — the level-scoped sections key names to names and codes to codes — so
+     * it is the rule's load error, in a binding and inline in a Check.
+     */
+    @Test
+    void aNameLevelPairedWithACodeLevelIsALoadError() throws IOException
+    {
+        String head = "valid_external_dictionary_hierarchy pairs a name level with a code level (";
+        String tail = ") \u2014 it is off-path on every row; read names with names, codes with codes";
+        assertEquals(head + "AEDECOD is PT, AESOCCD is SOCCD" + tail,
+                loadError(binding("AEDECOD, AESOCCD")));
+        assertEquals(head + "AEPTCD is PTCD, AESOC is SOC" + tail,
+                loadError(binding("AEPTCD, AESOC")));
+        String inline = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"F1\"},\"Sensitivity\":\"Record\","
+                + "\"Check\":{\"expression\":\"not valid_external_dictionary_hierarchy(AEHLT,"
+                + " dictionary_parent=AESOCCD, external_dictionary_type=\\\"meddra\\\")\"},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}";
+        assertEquals(head + "AEHLT is HLT, AESOCCD is SOCCD" + tail, loadError(inline));
+    }
+
+
+    /**
+     * {@code PLAN-w4-parked-engine-refusals} F3 (RF2 (a)): a parent not strictly above its child
+     * (LLT &lt; PT &lt; HLT &lt; HLGT &lt; SOC; a code level shares its name's rank) is off-path on
+     * every row — below it and at the same level alike — so it is the rule's load error.
+     */
+    @Test
+    void aParentNotAboveItsChildIsALoadError() throws IOException
+    {
+        String head = "valid_external_dictionary_hierarchy reads a parent that is not above its child (";
+        String tail = ") \u2014 the MedDRA order is LLT < PT < HLT < HLGT < SOC";
+        assertEquals(head + "AESOC is SOC \u2192 AEHLT is HLT" + tail,
+                loadError(binding("AESOC, AEHLT")));
+        assertEquals(head + "AEHLT is HLT \u2192 AEHLT is HLT" + tail,
+                loadError(binding("AEHLT, AEHLT")));
+        assertEquals(head + "AEPTCD is PTCD \u2192 AEPTCD is PTCD" + tail,
+                loadError(binding("AEPTCD, AEPTCD")));
+        assertEquals(head + "AEHLGTCD is HLGTCD \u2192 AELLTCD is LLTCD" + tail,
+                loadError(binding("AEHLGTCD, AELLTCD")));
+    }
+
+
+    /**
+     * F1 / F3 controls: a name pair and a code pair with the parent above the child load (the
+     * {@code (AEDECOD, AESOC)} control is what an {@code endsWith("C")} F1 test would refuse —
+     * {@code SOC} ends in {@code C}); on any other dictionary type every pair loads as before (the
+     * level scoping is MedDRA's only).
+     */
+    @Test
+    void aSameKindPairWithTheParentAboveLoads() throws IOException
+    {
+        for (String arguments : List.of("AEDECOD, AESOC", "AEPTCD, AESOCCD", "AEHLT, AEHLGT",
+                "AELLT, AEDECOD", "--HLGT, --SOC", "AELLTCD, AEHLGTCD"))
+        {
+            assertEquals("null", loadError(binding(arguments)), arguments);
+        }
+        for (String arguments : List.of("AESOC, AEHLT", "AEDECOD, AESOCCD", "AEHLT, AEHLT"))
+        {
+            String pkg = binding(arguments).replace("\\\"meddra\\\"", "\\\"whodrug\\\"");
+            assertTrue(pkg.contains("whodrug"), pkg);
+            assertEquals("null", loadError(pkg), arguments);
+        }
+    }
+
+
+    /**
+     * F3's rank table cannot disarm itself (T2, review M2): the levels come from the shared
+     * {@code dictionary-levels.properties}, the ranks are engine-local — the two must name exactly
+     * the same base levels, so a level added there without a rank reds here (and fails closed at
+     * load).
+     */
+    @Test
+    void everyHierarchyLevelHasARank()
+    {
+        java.util.Set<String> bases = new java.util.TreeSet<>();
+        DictionaryFunctions.hierarchyLevels()
+                .forEach(l -> bases.add(DictionaryFunctions.baseLevel(l)));
+        assertEquals(java.util.Set.of("LLT", "PT", "HLT", "HLGT", "SOC"), bases,
+                "the shared MedDRA levels (not vacuous)");
+        assertEquals(bases, DictionaryFunctions.rankedLevels());
+        assertTrue(DictionaryFunctions.hierarchyLevels().contains("SOCCD"),
+                DictionaryFunctions.hierarchyLevels().toString());
+    }
+
     // ------------------------------------------------------------------ the stale house file
 
 

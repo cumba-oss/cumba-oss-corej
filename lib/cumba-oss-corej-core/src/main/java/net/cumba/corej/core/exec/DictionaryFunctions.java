@@ -111,6 +111,16 @@ public final class DictionaryFunctions
             .filter(row -> !HIERARCHY_EXCLUDED_SUFFIXES.contains(row.getKey())).toList();
 
     /**
+     * {@code PLAN-w4-parked-engine-refusals} F3 (T2): the MedDRA rank of each base level, child
+     * below parent — LLT &lt; PT &lt; HLT &lt; HLGT &lt; SOC; a code level ({@code …CD}) takes its
+     * base's rank ({@link #baseLevel}). Engine-local: the shared level table carries suffix rows,
+     * no ranks; a level it gains without a rank here fails closed in {@link #checkLevels}, and the
+     * roster test pins that both name the same levels.
+     */
+    private static final Map<String, Integer> RANK = Map.of("LLT", 0, "PT", 1, "HLT", 2, "HLGT", 3,
+            "SOC", 4);
+
+    /**
      * The function {@code valid_external_dictionary_hierarchy}'s descriptor publishes (runbook W2
      * fold, R5 PB-L3): the levels the call's two columns read (DI1, {@link #hierarchyLevelOf}) are
      * bound INTO it at load by {@link #atLevels} — the compiler dispatches through the descriptor's
@@ -226,14 +236,17 @@ public final class DictionaryFunctions
      * carry a secondary SOC), a {@code $} binding or a computed operand has no level to read the
      * dictionary at; it is the rule's load error, never a silent all-rows answer. A call that does
      * not bind, and a literal where a column belongs, are left to the generic seam and stage A,
-     * which name their own cause. ⚑ Not checked here (backlog, O11): a name level paired with a
-     * code level, and a parent not above its child — both are off-path on every row (forms F1 / F3,
-     * 0 carriers).
+     * which name their own cause. {@code PLAN-w4-parked-engine-refusals} F1 / F3 (RF2 (a)): a name
+     * level paired with a code level, and a parent not strictly above its child ({@code RANK}), are
+     * off-path on every row — the level-scoped sections key names to names and codes to codes,
+     * child to ancestor — so both are load errors too; a level without a rank fails closed.
      *
      * @param aCall
      *            the call, as written (name-form bindings inlined)
      * @throws ExpressionException
-     *             if the child or the parent names no MedDRA level
+     *             if the child or the parent names no MedDRA level, if one names a name level and
+     *             the other a code level, if the parent is not above the child, or if a level has
+     *             no rank
      */
     public static void checkLevels(Expr.Call aCall)
     {
@@ -274,6 +287,80 @@ public final class DictionaryFunctions
                         + " --HLGT/--HLGTCD or --SOC/--SOCCD column)");
             }
         }
+        if (bound.size() >= 2)
+        {
+            checkPairing(bound.get(0), bound.get(1));
+        }
+    }
+
+
+    /**
+     * F1 / F3 of {@link #checkLevels}: the child's and the parent's levels are of one kind (names
+     * or codes) and the parent ranks strictly above the child. A side that names no level is
+     * {@link #checkLevels}' F2 or another seam's.
+     */
+    private static void checkPairing(@Nullable Expr aChild, @Nullable Expr aParent)
+    {
+        if (aChild == null || aParent == null)
+        {
+            return;
+        }
+        String child = hierarchyLevelOfArgument(aChild);
+        String parent = hierarchyLevelOfArgument(aParent);
+        if (child == null || parent == null)
+        {
+            return;
+        }
+        if (child.endsWith("CD") != parent.endsWith("CD"))
+        {
+            throw new ExpressionException(HIERARCHY + " pairs a name level with a code level ("
+                    + ExpressionPrinter.print(aChild) + " is " + child + ", "
+                    + ExpressionPrinter.print(aParent) + " is " + parent
+                    + ") \u2014 it is off-path on every row; read names with names, codes with codes");
+        }
+        Integer childRank = RANK.get(baseLevel(child));
+        Integer parentRank = RANK.get(baseLevel(parent));
+        if (childRank == null || parentRank == null)
+        {
+            // T2 (review M2): a level the shared table gained without a rank here fails closed
+            throw new ExpressionException(HIERARCHY + " has no MedDRA rank for level "
+                    + (childRank == null ? child : parent)
+                    + " \u2014 DictionaryFunctions.RANK must name every level");
+        }
+        if (parentRank <= childRank)
+        {
+            throw new ExpressionException(
+                    HIERARCHY + " reads a parent that is not above its child ("
+                            + ExpressionPrinter.print(aChild) + " is " + child + " \u2192 "
+                            + ExpressionPrinter.print(aParent) + " is " + parent
+                            + ") \u2014 the MedDRA order is LLT < PT < HLT < HLGT < SOC");
+        }
+    }
+
+
+    /**
+     * The base level of a house-format level: a code level ({@code SOCCD}) is its name level's
+     * ({@code SOC}); a name level is itself.
+     */
+    static String baseLevel(String aLevel)
+    {
+        return aLevel.endsWith("CD") ? aLevel.substring(0, aLevel.length() - 2) : aLevel;
+    }
+
+
+    /** The levels {@link #hierarchyLevelOf} answers, read-only — the roster test's view. */
+    static Set<String> hierarchyLevels()
+    {
+        Set<String> levels = new java.util.TreeSet<>();
+        HIERARCHY_LEVEL_SUFFIXES.forEach(row -> levels.add(row.getValue()));
+        return java.util.Collections.unmodifiableSet(levels);
+    }
+
+
+    /** The base levels {@link #RANK} ranks, read-only — the roster test's view. */
+    static Set<String> rankedLevels()
+    {
+        return RANK.keySet();
     }
 
 

@@ -1210,6 +1210,8 @@ public class RulePackageLoader
      * never reads the disposition, so it would have no effect (PACK 6: a silently ignored argument
      * is refused). The compiler's arm refuses the same call ({@code ExprCompiler}, defence in
      * depth), which alone would only degrade an inline Check.
+     * {@code PLAN-w4-parked-engine-refusals} KM-S: the same refusal on {@code is_sorted_by} without
+     * {@code within=}.
      */
     private static void rejectKeepMissingsWithoutWithin(
             net.cumba.corej.core.expr.ast.Expr.Call call)

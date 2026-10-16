@@ -4226,13 +4226,24 @@ public final class ExprCompiler
      * target, the ordered sort keys of {@code by=} — each with its direction and its {@code nulls=}
      * placement (runbook W2 SB1; a blank or missing key first unless {@code nulls="last"}) — and
      * the optional single {@code within} column, then delegates to the shared
-     * {@link GroupSemantics#targetIsNotSortedByViolations}.
+     * {@link GroupSemantics#targetIsNotSortedByViolations}. {@code keep_missings=} without
+     * {@code within=} is refused ({@link #rejectKeepMissingsWithoutWithin},
+     * {@code PLAN-w4-parked-engine-refusals} KM-S): the verdict reads the disposition only through
+     * the within key.
      */
     private static ExprProgram.BoolPlan compileTargetIsNotSortedBy(Expr.Call c)
     {
         if (c.args().isEmpty())
         {
             throw unsupported("is_sorted_by requires the target column");
+        }
+        try
+        {
+            rejectKeepMissingsWithoutWithin(c);
+        }
+        catch (ExpressionException ex)
+        {
+            throw unsupported(messageOf(ex));
         }
         String rawTarget = groupOperandName(c.args().get(0));
         Expr by = c.kwargs().get("by");
@@ -5052,21 +5063,33 @@ public final class ExprCompiler
         return null;
     }
 
+    /**
+     * The operators whose {@code keep_missings=} is read only through their {@code within=} key —
+     * without one the argument has no effect ({@link #rejectKeepMissingsWithoutWithin}).
+     */
+    private static final Set<String> KEEP_MISSINGS_NEEDS_WITHIN = Set.of("has_multiple_values_for",
+            "is_sorted_by");
 
     /**
      * Runbook W4 KM (§3 table B, coordinator W4-D4): {@code keep_missings=} on
      * {@code has_multiple_values_for} without {@code within=} — the ungrouped arm never reads the
      * disposition, so it would have no effect; the loader raises it as the rule's load error
      * ({@code RulePackageLoader}), {@link #compileHasMultipleValuesFor} refuses the same call.
+     * {@code PLAN-w4-parked-engine-refusals} KM-S: the same on {@code is_sorted_by}, whose ordering
+     * verdict reads the disposition only through its {@code within=} key (with none every row is in
+     * one group); {@link #compileTargetIsNotSortedBy} refuses the same call.
      *
      * @param c
      *            a call
      * @throws ExpressionException
-     *             for {@code has_multiple_values_for(…, keep_missings=…)} without {@code within=},
-     *             or with the empty {@code within=[]} (W4 fold, R5 P1-L2)
+     *             for {@code has_multiple_values_for(…, keep_missings=…)} or
+     *             {@code is_sorted_by(…, keep_missings=…)} without {@code within=}, or with the
+     *             empty {@code within=[]} (W4 fold, R5 P1-L2)
      */
     public static void rejectKeepMissingsWithoutWithin(Expr.Call c)
     {
+        // (only has_multiple_values_for takes a positional within — its third positional; on
+        // is_sorted_by a positional within is refused on its own, rejectPositionalKeywordOnly)
         // (a positional within — a third positional — is refused on its own, naming the keyword:
         // rejectPositionalKeywordOnly)
         // W4 fold (R5 P1-L2): an empty within=[] groups by nothing (the ungrouped arm), so it is
@@ -5074,8 +5097,8 @@ public final class ExprCompiler
         Expr within = c.kwargs().get("within");
         boolean noWithin = within == null || (within instanceof Expr.Lit lit
                 && lit.kind() == Expr.LitKind.LIST && ((List<?>) lit.value()).isEmpty());
-        if ("has_multiple_values_for".equals(c.name()) && c.kwargs().containsKey("keep_missings")
-                && noWithin && c.args().size() < 3)
+        if (KEEP_MISSINGS_NEEDS_WITHIN.contains(c.name()) && c.kwargs().containsKey("keep_missings")
+                && noWithin && (!"has_multiple_values_for".equals(c.name()) || c.args().size() < 3))
         {
             throw new ExpressionException("`keep_missings` on " + c.name()
                     + " requires `within=`; with no grouping key it would have no effect");
