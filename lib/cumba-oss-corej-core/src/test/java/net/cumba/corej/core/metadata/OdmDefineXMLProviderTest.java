@@ -110,6 +110,9 @@ class OdmDefineXMLProviderTest
         assertEquals("false", age.get("vlm_has_origin"));
         // PLAN-vlm-origin-value-accessor VO1: no value list -> the origin types are the empty list
         assertEquals("[]", age.get("vlm_origin_types"), "no value list -> vlm_origin_types []");
+        // PLAN-vlm-unmethoded-origin-accessor VU1: and so are the types without a method
+        assertEquals("[]", age.get("vlm_origin_types_without_method"),
+                "no value list -> vlm_origin_types_without_method []");
         assertEquals("", age.get("external_dictionary"));
         assertEquals("", age.get("external_dictionary_version"));
 

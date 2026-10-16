@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import net.cumba.cdisc.define.DefineXmlParser;
@@ -54,6 +55,13 @@ import org.junit.jupiter.api.Test;
  * value-list order ({@code ""} for an entry without an origin or whose {@code ItemDef} does not
  * resolve), {@code []} without a value list and for an undeclared variable — and
  * {@code CDISC-SEND-0111}'s exact {@code Bindings:} + {@code Check} over it.
+ * </p>
+ *
+ * <p>
+ * {@code PLAN-vlm-unmethoded-origin-accessor} VU1-VU3: the list accessor
+ * {@code var_vlm_origin_types_without_method("DEFINE")} — the same list restricted to the entries
+ * whose {@code ItemRef} carries no {@code MethodOID} (T3 / T4) — and the exact {@code Bindings:} +
+ * {@code Check} of {@code CDISC-SEND-0112.1} / {@code -0129.1} over it.
  * </p>
  */
 class VarVlmCoverageAccessorTest
@@ -429,6 +437,201 @@ class VarVlmCoverageAccessorTest
                     v.getValues().get("define_variable_vlm_origin_types"));
         }
         assertEquals(Map.of("LBSTRESC", "[Collected, Derived]", "LBSTNRC", "[Collected]",
-                "LBORNRLO", "[CRF, Collected]", "LBSTNRU", "[Collected]"), byName);
+                "LBORNRLO", "[CRF, Collected]", "LBSTNRU", "[Collected]", "LBSTRESU", "[Derived]",
+                "LBORRESU", "[Collected, Derived]", "LBSTREFN", "[Assigned, Derived]", "LBREFID",
+                "[Assigned, Derived]", "LBSTREFC", "[Derived]"), byName);
+    }
+
+    // ------------------------------------------------------ var_vlm_origin_types_without_method
+
+
+    private static List<String> withoutMethod(String variable)
+    {
+        String raw = define.getVariableMetadata("LB", variable)
+                .get("vlm_origin_types_without_method");
+        assertNotNull(raw, variable
+                + ": vlm_origin_types_without_method is served under the function's suffix");
+        return DefineMetadataListCodec.decode(raw);
+    }
+
+
+    @Test
+    void theTypesWithoutAMethodAreThoseOfTheEntriesWithoutAMethodInValueListOrder()
+    {
+        // LBORNRHI: Derived+M, Collected, Collected, no origin — the methoded Derived is dropped
+        assertEquals(List.of("Derived", "Collected", ""), originTypes("LBORNRHI"));
+        assertEquals(List.of("Collected", ""), withoutMethod("LBORNRHI"),
+                "only the entries without a method, distinct, in order");
+        assertEquals(List.of("Derived"), withoutMethod("LBSTRESU"), "M1: Derived+M, Derived");
+        assertEquals(List.of("Collected", "Derived"), withoutMethod("LBORRESU"),
+                "M4: Collected, Derived");
+        assertEquals(List.of("Derived", "Assigned"), withoutMethod("LBSTREFN"),
+                "M2: Derived, Assigned");
+        assertEquals(List.of("Collected"), withoutMethod("LBSTNRC"), "no entry has a method");
+        assertEquals(List.of("Collected", "CRF"), withoutMethod("LBORNRLO"));
+        // the variable-level method and origin do not enter the value-level list
+        assertEquals(List.of("Derived", "Assigned"), withoutMethod("LBREFID"));
+        assertEquals(List.of("Derived"), withoutMethod("LBSTREFC"));
+    }
+
+
+    @Test
+    void everyEntryWithAMethodGivesTheEmptyList()
+    {
+        assertEquals(List.of(), withoutMethod("LBSTRESC"), "Derived+M, Collected+M");
+        assertEquals(List.of(), withoutMethod("LBSTAT"), "two entries with a method only");
+        assertEquals(List.of("Derived", "Collected"), originTypes("LBSTRESC"),
+                "the sibling list still sees both");
+    }
+
+
+    @Test
+    void theMethodIsReadOnTheItemRefAloneAndAnUnresolvedItemDefContributesTheEmptyString()
+    {
+        // VU2 (a): a dangling ItemOID without a MethodOID contributes "" (its Collected+M sibling
+        // contributes nothing)
+        assertEquals(List.of("", "Collected"), originTypes("LBSTRESN"));
+        assertEquals(List.of(""), withoutMethod("LBSTRESN"));
+        // T3 / T4: a dangling ItemOID WITH a MethodOID has a method — not in the list
+        assertEquals(List.of(""), originTypes("LBNAM"));
+        assertEquals(List.of(), withoutMethod("LBNAM"));
+        // an entry without an origin and without a method contributes ""
+        assertEquals(List.of(""), withoutMethod("LBORRES"));
+    }
+
+
+    @Test
+    void withoutAUsableValueListAndForAnUndeclaredVariableTheTypesWithoutAMethodAreEmpty()
+    {
+        assertEquals(List.of(), withoutMethod("LBTESTCD"), "no def:ValueListRef");
+        assertEquals(List.of(), withoutMethod("LBSPEC"), "a ValueListOID the define lacks");
+        assertEquals(List.of(), withoutMethod("LBMETHOD"), "a value list without an ItemRef");
+        assertNull(define.getVariableMetadata("LB", "NOPE").get("vlm_origin_types_without_method"));
+        assertTrue(MetadataAttribute.VAR_VLM_ORIGIN_TYPES_WITHOUT_METHOD.isList());
+    }
+
+    // ---------------------------------------------- CDISC-SEND-0112.1 / -0129.1 through the rule
+
+    /** The variables the two rules' Checks are pointed at (two records each). */
+    private static final List<String> VLM_VARS = List.of("LBORNRHI", "LBSTRESN", "LBSTRESU",
+            "LBORRESU", "LBSTREFN", "LBREFID", "LBSTREFC", "LBSTNRC", "LBSTRESC", "LBSTNRU");
+
+    private static IDataTable lbVlm()
+    {
+        MockTable b = MockTable.of().name("LB");
+        for (String v : VLM_VARS)
+        {
+            b.col(v, "x", "y");
+        }
+        return b.build();
+    }
+
+    /** {@code CDISC-SEND-0112.1}'s Bindings, verbatim from the written YAML. */
+    private static final String SEND0112_BINDINGS = "\"Bindings\":[{\"name\":\"$derived\","
+            + "\"expression\":\"[\\\"Derived\\\"]\"}]";
+
+    /** {@code CDISC-SEND-0112.1}'s Check, verbatim from the written YAML (C7). */
+    private static final String SEND0112_CHECK = "upper(varname()) in [\"AGE\", \"AGEU\"] and"
+            + " not empty(var_name(\"DEFINE\")) and var_has_method(\"DEFINE\") == false and"
+            + " (var_origin_type(\"DEFINE\") == \"Derived\" and"
+            + " var_vlm_has_method(\"DEFINE\") != true or empty(var_origin_type(\"DEFINE\")) and"
+            + " contains_all(var_vlm_origin_types_without_method(\"DEFINE\"), $derived))";
+
+    /** Today's (pre-VU1) {@code CDISC-SEND-0112.1} Check. */
+    private static final String SEND0112_OLD_CHECK = "upper(varname()) in [\"AGE\", \"AGEU\"]"
+            + " and not empty(var_name(\"DEFINE\")) and var_origin_type(\"DEFINE\") == \"Derived\""
+            + " and var_has_method(\"DEFINE\") == false and var_vlm_has_method(\"DEFINE\") != true";
+
+    /** {@code CDISC-SEND-0129.1}'s Bindings, verbatim from the written YAML. */
+    private static final String SEND0129_BINDINGS = "\"Bindings\":[{\"name\":\"$collected_blank\","
+            + "\"expression\":\"[\\\"Collected\\\", \\\"CRF\\\", \\\"\\\"]\"}]";
+
+    /** VU3 sensitivity: {@code $collected_blank} without its {@code ""} member. */
+    private static final String SEND0129_BINDINGS_NO_BLANK = "\"Bindings\":[{\"name\":"
+            + "\"$collected_blank\",\"expression\":\"[\\\"Collected\\\", \\\"CRF\\\"]\"}]";
+
+    /** {@code CDISC-SEND-0129.1}'s Check, verbatim from the written YAML (C8). */
+    private static final String SEND0129_CHECK = "equalsIgnoreCase(varname(), \"SESTDTC\") and"
+            + " not empty(var_name(\"DEFINE\")) and var_has_method(\"DEFINE\") == false and"
+            + " (not empty(var_origin_type(\"DEFINE\")) and"
+            + " var_origin_type(\"DEFINE\") not in [\"Collected\", \"CRF\"] and"
+            + " var_vlm_has_method(\"DEFINE\") != true or empty(var_origin_type(\"DEFINE\")) and"
+            + " not contains_all($collected_blank, var_vlm_origin_types_without_method(\"DEFINE\")))";
+
+    /** Today's (pre-VU1) {@code CDISC-SEND-0129.1} Check. */
+    private static final String SEND0129_OLD_CHECK = "equalsIgnoreCase(varname(), \"SESTDTC\") and"
+            + " not empty(var_name(\"DEFINE\")) and not empty(var_origin_type(\"DEFINE\")) and"
+            + " var_origin_type(\"DEFINE\") not in [\"Collected\", \"CRF\"] and"
+            + " var_has_method(\"DEFINE\") == false and var_vlm_has_method(\"DEFINE\") != true";
+
+    /**
+     * Runs a Check with its variable selector ({@code selector}, which must occur verbatim) pointed
+     * at {@link #VLM_VARS}; answers the variables that fired, asserting each fired once.
+     */
+    private static Set<String> fired(String bindings, String check, String selector)
+        throws Exception
+    {
+        assertTrue(check.contains(selector), "the selector is in the Check: " + selector);
+        StringBuilder list = new StringBuilder("upper(varname()) in [");
+        for (int i = 0; i < VLM_VARS.size(); i++)
+        {
+            list.append(i == 0 ? "" : ", ").append('"').append(VLM_VARS.get(i)).append('"');
+        }
+        String pointed = check.replace(selector, list.append(']').toString());
+        Rule rule = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Record\"," + bindings
+                + ",\"Check\":{\"expression\": \"" + pointed.replace("\"", "\\\"")
+                + "\"},\"Outcome\":{\"Message\":\"m\"}}");
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, lbVlm(), _ -> null, "LB", null,
+                null, define);
+        assertEquals("EXECUTED", result.getStatus().name(), result.getStatusMessage());
+        TreeSet<String> names = new TreeSet<>();
+        for (Violation v : result.getViolations())
+        {
+            names.add(v.getValues().get("variable_name"));
+        }
+        assertEquals(names.size(), result.getViolationCount(),
+                "once per variable, never per record: " + result.getViolations());
+        return names;
+    }
+
+    private static final String SEL_0112 = "upper(varname()) in [\"AGE\", \"AGEU\"]";
+
+    private static final String SEL_0129 = "equalsIgnoreCase(varname(), \"SESTDTC\")";
+
+    /**
+     * {@code CDISC-SEND-0112.1}: M1 (LBSTRESU), M2 (LBSTREFN) and M4 (LBORRESU) fire once each; M3
+     * (LBORNRHI, LBSTNRC), M5 (LBSTRESC), M6 (LBREFID, a variable-level method, T2) and M8
+     * (LBSTREFC, a variable-level origin, T1) stay silent; the variable-level arm still fires
+     * (LBSTNRU). Today's Check reports only LBSTNRU.
+     */
+    @Test
+    void send0112FiresForAValueLevelOnlyDerivedOriginWithoutAMethod() throws Exception
+    {
+        assertEquals(new TreeSet<>(List.of("LBSTNRU")),
+                fired(SEND0112_BINDINGS, SEND0112_OLD_CHECK, SEL_0112),
+                "today's rule misses every value-level-only case (the bug)");
+        assertEquals(new TreeSet<>(List.of("LBORRESU", "LBSTNRU", "LBSTREFN", "LBSTRESU")),
+                fired(SEND0112_BINDINGS, SEND0112_CHECK, SEL_0112));
+    }
+
+
+    /**
+     * {@code CDISC-SEND-0129.1}: the same cases as 0112.1; LBORNRHI (Collected + an entry without
+     * an origin, both without a method) and LBSTRESN (a dangling entry) stay silent because
+     * {@code ""} is exempt (VU3 (a)) — without the {@code ""} member they fire (sensitivity).
+     */
+    @Test
+    void send0129FiresForAValueLevelOnlyNonCollectedOriginWithoutAMethod() throws Exception
+    {
+        assertEquals(new TreeSet<>(List.of("LBSTNRU")),
+                fired(SEND0129_BINDINGS, SEND0129_OLD_CHECK, SEL_0129),
+                "today's rule misses every value-level-only case (the bug)");
+        assertEquals(new TreeSet<>(List.of("LBORRESU", "LBSTNRU", "LBSTREFN", "LBSTRESU")),
+                fired(SEND0129_BINDINGS, SEND0129_CHECK, SEL_0129));
+        assertEquals(
+                new TreeSet<>(List.of("LBORNRHI", "LBORRESU", "LBSTNRU", "LBSTREFN", "LBSTRESN",
+                        "LBSTRESU")),
+                fired(SEND0129_BINDINGS_NO_BLANK, SEND0129_CHECK, SEL_0129),
+                "VU3 sensitivity: without \"\" an entry without an origin fires");
     }
 }

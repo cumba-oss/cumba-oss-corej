@@ -224,6 +224,7 @@ var_vlm_has_comment scope=variable levels=DEFINE result=boolean
 var_vlm_has_method scope=variable levels=DEFINE result=boolean
 var_vlm_has_origin scope=variable levels=DEFINE result=boolean
 var_vlm_origin_types scope=variable levels=DEFINE result=list<string>
+var_vlm_origin_types_without_method scope=variable levels=DEFINE result=list<string>
 operators: ! != !~ && * + - / < <= = == =~ > >= || ~
 markers: date date_part duration num time time_part
 keywords: and,false,in,not,or,true (any letter case)

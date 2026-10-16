@@ -121,6 +121,11 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
         // PLAN-vlm-origin-value-accessor VO1: the value-level origin types (a list attribute),
         // backing var_vlm_origin_types("DEFINE")
         putIfPresent(out, "vlm_origin_types", genVar.get("vlm_origin_types"));
+        // PLAN-vlm-unmethoded-origin-accessor VU1: the origin types of the value-level entries
+        // without a method (a list attribute), backing
+        // var_vlm_origin_types_without_method("DEFINE")
+        putIfPresent(out, "vlm_origin_types_without_method",
+                genVar.get("vlm_origin_types_without_method"));
         putIfPresent(out, "external_dictionary", genVar.get("external_dictionary"));
         putIfPresent(out, "external_dictionary_version", genVar.get("external_dictionary_version"));
         // EC-19 (Value Check against Define XML Variable): the variable-level ItemDef codelist

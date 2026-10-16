@@ -18,6 +18,21 @@
        LBSTNRC   two entries, both def:Origin Collected, no variable-level origin -> [Collected]
        LBORNRLO  def:Origin Collected + the v2.0 @Origin="CRF", no variable level -> [Collected, CRF]
        LBSTNRU   variable-level def:Origin Derived, VL.COLLECTED                  -> [Collected]
+     PLAN-vlm-unmethoded-origin-accessor (VU1-VU3, T3/T4): var_vlm_origin_types_without_method
+     ("DEFINE"), the same list restricted to the entries whose ItemRef carries NO MethodOID ("" for
+     such an entry without an origin or whose ItemDef does not resolve; an entry WITH a MethodOID
+     contributes nothing, resolvable ItemDef or not):
+       LBSTRESC / LBSTAT [] (every entry methoded)   LBORRES [""]   LBNAM [] (dangling, MethodOID)
+       LBSTNRC [Collected]   LBORNRLO [Collected, CRF]   LBSTNRU [Collected]
+       LBTESTCD / LBSPEC / LBMETHOD  []
+       LBORNRHI  Derived+M, Collected, Collected, no origin (M3/M7 shape) -> [Collected, ""]
+       LBSTRESN  a dangling ItemOID without a MethodOID, then Collected+M -> [""]
+       LBSTRESU  Derived+M, Derived (M1)                                  -> [Derived]
+       LBORRESU  Collected, Derived (M4)                                  -> [Collected, Derived]
+       LBSTREFN  Derived, Assigned, no method (M2)                        -> [Derived, Assigned]
+       LBREFID   M2's value list + a variable-level MethodOID (M6, T2)    -> [Derived, Assigned]
+       LBSTREFC  variable-level origin Collected + M1's value list (M8, T1) -> [Derived]
+     These seven carry a variable-level def:CommentOID, so the SR1 comment tests do not see them.
      The three VO1 variables' entries carry a comment (and LBSTNRC/LBORNRLO/LBSTNRU are not in the
      SR1 tests' data), so the SR1 comment tests do not see them.
      The comment is written as def:CommentOID on one entry and as CommentOID on another, and the
@@ -41,6 +56,14 @@
         <ItemRef ItemOID="IT.LB.LBSTNRC" OrderNumber="8" Mandatory="No" Role="Variable Qualifier"/>
         <ItemRef ItemOID="IT.LB.LBORNRLO" OrderNumber="9" Mandatory="No" Role="Variable Qualifier"/>
         <ItemRef ItemOID="IT.LB.LBSTNRU" OrderNumber="10" Mandatory="No" Role="Variable Qualifier"/>
+        <ItemRef ItemOID="IT.LB.LBORNRHI" OrderNumber="11" Mandatory="No" Role="Variable Qualifier"/>
+        <ItemRef ItemOID="IT.LB.LBSTRESN" OrderNumber="12" Mandatory="No" Role="Result Qualifier"/>
+        <ItemRef ItemOID="IT.LB.LBSTRESU" OrderNumber="13" Mandatory="No" Role="Variable Qualifier"/>
+        <ItemRef ItemOID="IT.LB.LBORRESU" OrderNumber="14" Mandatory="No" Role="Variable Qualifier"/>
+        <ItemRef ItemOID="IT.LB.LBSTREFN" OrderNumber="15" Mandatory="No" Role="Result Qualifier"/>
+        <ItemRef ItemOID="IT.LB.LBREFID" OrderNumber="16" Mandatory="No" Role="Identifier"
+                 MethodOID="MT.GLUC"/>
+        <ItemRef ItemOID="IT.LB.LBSTREFC" OrderNumber="17" Mandatory="No" Role="Result Qualifier"/>
       </ItemGroupDef>
 
       <ItemDef OID="IT.LB.LBTESTCD" Name="LBTESTCD" DataType="text" Length="8">
@@ -82,6 +105,45 @@
         <Description><TranslatedText xml:lang="en">Normal Range Unit</TranslatedText></Description>
         <def:Origin Type="Derived"/>
         <def:ValueListRef ValueListOID="VL.COLLECTED"/>
+      </ItemDef>
+
+      <!-- PLAN-vlm-unmethoded-origin-accessor: seven variables, each with a variable-level
+           comment and (but LBSTREFC) no variable-level origin -->
+      <ItemDef OID="IT.LB.LBORNRHI" Name="LBORNRHI" DataType="text" Length="20"
+               def:CommentOID="COM.GLUC">
+        <Description><TranslatedText xml:lang="en">Reference Range Upper Limit in Orig Unit</TranslatedText></Description>
+        <def:ValueListRef ValueListOID="VL.MIXED_METHOD"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBSTRESN" Name="LBSTRESN" DataType="float" Length="8"
+               def:CommentOID="COM.GLUC">
+        <Description><TranslatedText xml:lang="en">Numeric Result/Finding in Standard Units</TranslatedText></Description>
+        <def:ValueListRef ValueListOID="VL.DANGLING_NO_METHOD"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBSTRESU" Name="LBSTRESU" DataType="text" Length="20"
+               def:CommentOID="COM.GLUC">
+        <Description><TranslatedText xml:lang="en">Standard Units</TranslatedText></Description>
+        <def:ValueListRef ValueListOID="VL.M1"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBORRESU" Name="LBORRESU" DataType="text" Length="20"
+               def:CommentOID="COM.GLUC">
+        <Description><TranslatedText xml:lang="en">Original Units</TranslatedText></Description>
+        <def:ValueListRef ValueListOID="VL.M4"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBSTREFN" Name="LBSTREFN" DataType="text" Length="20"
+               def:CommentOID="COM.GLUC">
+        <Description><TranslatedText xml:lang="en">Reference Result in Standard Units</TranslatedText></Description>
+        <def:ValueListRef ValueListOID="VL.M2"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBREFID" Name="LBREFID" DataType="text" Length="20"
+               def:CommentOID="COM.GLUC">
+        <Description><TranslatedText xml:lang="en">Specimen ID</TranslatedText></Description>
+        <def:ValueListRef ValueListOID="VL.M2"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBSTREFC" Name="LBSTREFC" DataType="text" Length="20"
+               def:CommentOID="COM.GLUC">
+        <Description><TranslatedText xml:lang="en">Reference Result in Std Format</TranslatedText></Description>
+        <def:Origin Type="Collected"/>
+        <def:ValueListRef ValueListOID="VL.M1"/>
       </ItemDef>
 
       <!-- VL.FULL: every entry documented three ways -->
@@ -131,6 +193,23 @@
                CommentOID="COM.HGB" Origin="CRF">
         <Description><TranslatedText xml:lang="en">Haemoglobin lower limit</TranslatedText></Description>
       </ItemDef>
+      <!-- PLAN-vlm-unmethoded-origin-accessor: Derived / Assigned entries and one without an
+           origin -->
+      <ItemDef OID="IT.LB.DER.GLUC" Name="DER_GLUC" DataType="text" Length="20">
+        <Description><TranslatedText xml:lang="en">Glucose derived</TranslatedText></Description>
+        <def:Origin Type="Derived"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.DER.HGB" Name="DER_HGB" DataType="text" Length="20">
+        <Description><TranslatedText xml:lang="en">Haemoglobin derived</TranslatedText></Description>
+        <def:Origin Type="Derived"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.ASG.HGB" Name="ASG_HGB" DataType="text" Length="20">
+        <Description><TranslatedText xml:lang="en">Haemoglobin assigned</TranslatedText></Description>
+        <def:Origin Type="Assigned"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.NOORIG.SODIUM" Name="NOORIG_SODIUM" DataType="text" Length="20">
+        <Description><TranslatedText xml:lang="en">Sodium, no origin</TranslatedText></Description>
+      </ItemDef>
 
       <def:ValueListDef OID="VL.FULL">
         <ItemRef ItemOID="IT.LB.LBSTRESC.GLUC" OrderNumber="1" Mandatory="No" MethodOID="MT.GLUC">
@@ -169,6 +248,52 @@
           <def:WhereClauseRef WhereClauseOID="WC.GLUC"/>
         </ItemRef>
         <ItemRef ItemOID="IT.LB.CRF.HGB" OrderNumber="2" Mandatory="No">
+          <def:WhereClauseRef WhereClauseOID="WC.HGB"/>
+        </ItemRef>
+      </def:ValueListDef>
+      <def:ValueListDef OID="VL.MIXED_METHOD">
+        <ItemRef ItemOID="IT.LB.LBSTRESC.GLUC" OrderNumber="1" Mandatory="No" MethodOID="MT.GLUC">
+          <def:WhereClauseRef WhereClauseOID="WC.GLUC"/>
+        </ItemRef>
+        <ItemRef ItemOID="IT.LB.COLL.GLUC" OrderNumber="2" Mandatory="No">
+          <def:WhereClauseRef WhereClauseOID="WC.GLUC"/>
+        </ItemRef>
+        <ItemRef ItemOID="IT.LB.COLL.HGB" OrderNumber="3" Mandatory="No">
+          <def:WhereClauseRef WhereClauseOID="WC.HGB"/>
+        </ItemRef>
+        <ItemRef ItemOID="IT.LB.NOORIG.SODIUM" OrderNumber="4" Mandatory="No">
+          <def:WhereClauseRef WhereClauseOID="WC.HGB"/>
+        </ItemRef>
+      </def:ValueListDef>
+      <def:ValueListDef OID="VL.DANGLING_NO_METHOD">
+        <ItemRef ItemOID="IT.LB.LBSTRESN.NOWHERE" OrderNumber="1" Mandatory="No">
+          <def:WhereClauseRef WhereClauseOID="WC.GLUC"/>
+        </ItemRef>
+        <ItemRef ItemOID="IT.LB.COLL.HGB" OrderNumber="2" Mandatory="No" MethodOID="MT.HGB">
+          <def:WhereClauseRef WhereClauseOID="WC.HGB"/>
+        </ItemRef>
+      </def:ValueListDef>
+      <def:ValueListDef OID="VL.M1">
+        <ItemRef ItemOID="IT.LB.LBSTRESC.GLUC" OrderNumber="1" Mandatory="No" MethodOID="MT.GLUC">
+          <def:WhereClauseRef WhereClauseOID="WC.GLUC"/>
+        </ItemRef>
+        <ItemRef ItemOID="IT.LB.DER.HGB" OrderNumber="2" Mandatory="No">
+          <def:WhereClauseRef WhereClauseOID="WC.HGB"/>
+        </ItemRef>
+      </def:ValueListDef>
+      <def:ValueListDef OID="VL.M4">
+        <ItemRef ItemOID="IT.LB.COLL.GLUC" OrderNumber="1" Mandatory="No">
+          <def:WhereClauseRef WhereClauseOID="WC.GLUC"/>
+        </ItemRef>
+        <ItemRef ItemOID="IT.LB.DER.HGB" OrderNumber="2" Mandatory="No">
+          <def:WhereClauseRef WhereClauseOID="WC.HGB"/>
+        </ItemRef>
+      </def:ValueListDef>
+      <def:ValueListDef OID="VL.M2">
+        <ItemRef ItemOID="IT.LB.DER.GLUC" OrderNumber="1" Mandatory="No">
+          <def:WhereClauseRef WhereClauseOID="WC.GLUC"/>
+        </ItemRef>
+        <ItemRef ItemOID="IT.LB.ASG.HGB" OrderNumber="2" Mandatory="No">
           <def:WhereClauseRef WhereClauseOID="WC.HGB"/>
         </ItemRef>
       </def:ValueListDef>

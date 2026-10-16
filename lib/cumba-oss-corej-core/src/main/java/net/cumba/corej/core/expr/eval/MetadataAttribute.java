@@ -180,6 +180,17 @@ public enum MetadataAttribute
      */
     VAR_VLM_ORIGIN_TYPES("var_vlm_origin_types", Scope.VARIABLE, "vlm_origin_types", Normalization.RAW, DEFINE),
     /**
+     * DEFINE-only: {@link #VAR_VLM_ORIGIN_TYPES} restricted to the value-level entries WITHOUT a
+     * method — the distinct origin types, in value-list order, of the entries whose {@code ItemRef}
+     * carries no {@code MethodOID}; such an entry without an origin, or whose value-level
+     * {@code ItemDef} does not resolve, contributes {@code ""}; an entry with a {@code MethodOID}
+     * contributes nothing, resolvable {@code ItemDef} or not. {@code []} without a (non-empty,
+     * resolvable) value list, when every entry has a method, and for a variable the define does not
+     * declare. With {@code contains_all} it answers "some entry of origin X has no method"
+     * ({@code PLAN-vlm-unmethoded-origin-accessor} VU1 / T3 / T4).
+     */
+    VAR_VLM_ORIGIN_TYPES_WITHOUT_METHOD("var_vlm_origin_types_without_method", Scope.VARIABLE, "vlm_origin_types_without_method", Normalization.RAW, DEFINE),
+    /**
      * DEFINE-only external-dictionary name of the variable's bound codelist (Define-XML
      * {@code CodeList/ExternalCodeList/@Dictionary}). Backs
      * {@code define_variable_external_dictionary}; empty when the variable's codelist declares no
@@ -345,7 +356,8 @@ public enum MetadataAttribute
     public boolean isList()
     {
         return this == VAR_CODELIST_CODED_CODES || this == VAR_CODELIST_CODED_VALUES
-                || this == VAR_CODELIST_EXTENDED_VALUES || this == VAR_VLM_ORIGIN_TYPES;
+                || this == VAR_CODELIST_EXTENDED_VALUES || this == VAR_VLM_ORIGIN_TYPES
+                || this == VAR_VLM_ORIGIN_TYPES_WITHOUT_METHOD;
     }
 
 

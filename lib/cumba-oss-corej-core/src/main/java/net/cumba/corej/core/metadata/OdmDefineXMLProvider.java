@@ -124,14 +124,17 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
      * ({@code PLAN-stopped-rule-engine-fixes} SR1 / T1) — plus the distinct origin types of the
      * entries in value-list order ({@code ""} for an entry without an origin or whose
      * {@code ItemDef} does not resolve), backing {@code var_vlm_origin_types}
-     * ({@code PLAN-vlm-origin-value-accessor} VO1). {@link #NONE} for a variable without a value
-     * list, a value list that does not resolve or holds no entry.
+     * ({@code PLAN-vlm-origin-value-accessor} VO1) — and the same types of the entries whose
+     * {@code ItemRef} carries no {@code MethodOID}, backing
+     * {@code var_vlm_origin_types_without_method} ({@code PLAN-vlm-unmethoded-origin-accessor} VU1
+     * / T3). {@link #NONE} for a variable without a value list, a value list that does not resolve
+     * or holds no entry.
      */
     private record VlmCoverage(boolean method, boolean comment, boolean origin,
-            List<String> originTypes)
+            List<String> originTypes, List<String> originTypesWithoutMethod)
     {
 
-        static final VlmCoverage NONE = new VlmCoverage(false, false, false, List.of());
+        static final VlmCoverage NONE = new VlmCoverage(false, false, false, List.of(), List.of());
     }
 
     /**
@@ -139,6 +142,10 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
      * {@code ItemRef} of the value list carries the item AND names an {@code ItemDef} that resolves
      * — an entry whose value-level {@code ItemDef} is missing from the define counts as
      * undocumented for all three (T1), the conservative direction for the rules that read them.
+     * "Without a method" for the type list is read on the {@code ItemRef} alone
+     * ({@code PLAN-vlm-unmethoded-origin-accessor} T3 / T4): an entry with a {@code MethodOID}
+     * contributes nothing even when its {@code ItemDef} does not resolve, one without contributes
+     * its type ({@code ""} when the {@code ItemDef} does not resolve).
      */
     private static VlmCoverage vlmCoverage(ItemDef def, Map<String, ItemDef> defs,
             Map<String, ValueListDef> valueLists)
@@ -153,6 +160,7 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
         boolean comment = true;
         boolean origin = true;
         Set<String> originTypes = new LinkedHashSet<>();
+        Set<String> withoutMethod = new LinkedHashSet<>();
         for (ItemRef r : vl.getItemRefs())
         {
             ItemDef vd = defs.get(r.getItemOID());
@@ -161,8 +169,13 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
             comment &= vd != null && vd.getCommentOID() != null;
             origin &= !type.isEmpty();
             originTypes.add(type);
+            if (r.getMethodOID() == null)
+            {
+                withoutMethod.add(type);
+            }
         }
-        return new VlmCoverage(method, comment, origin, List.copyOf(originTypes));
+        return new VlmCoverage(method, comment, origin, List.copyOf(originTypes),
+                List.copyOf(withoutMethod));
     }
 
 
@@ -519,6 +532,10 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
             // PLAN-vlm-origin-value-accessor VO1: the value-level origin types, a list attribute
             // (DefineMetadataListCodec), backing var_vlm_origin_types("DEFINE")
             v.put("vlm_origin_types", DefineMetadataListCodec.encode(cov.originTypes()));
+            // PLAN-vlm-unmethoded-origin-accessor VU1: the same types of the entries without a
+            // method, backing var_vlm_origin_types_without_method("DEFINE")
+            v.put("vlm_origin_types_without_method",
+                    DefineMetadataListCodec.encode(cov.originTypesWithoutMethod()));
             v.put("external_dictionary", externalDictionary);
             v.put("external_dictionary_version", externalDictionaryVersion);
             out.add(v);

@@ -509,6 +509,8 @@ class QualifiedNameUniformityTest
             var_vlm_has_origin | level | - | static level
             var_vlm_origin_types | name | N | X:provider — DEFINE level only ; C4:V:count(var_vlm_origin_types("@S", "DEFINE"))
             var_vlm_origin_types | level | - | static level
+            var_vlm_origin_types_without_method | name | N | X:provider — DEFINE level only ; C4:V:count(var_vlm_origin_types_without_method("@S", "DEFINE"))
+            var_vlm_origin_types_without_method | level | - | static level
             var_external_dictionary | name | N | X:provider — DEFINE level only ; C4:V:var_external_dictionary("@S", "DEFINE")
             var_external_dictionary | level | - | static level
             var_external_dictionary_version | name | N | X:provider — DEFINE level only ; C4:V:var_external_dictionary_version("@S", "DEFINE")
@@ -925,10 +927,11 @@ class QualifiedNameUniformityTest
                         + " ct_class_terms, PLAN-ct-class-exemption-data-rules CC1; + ties on"
                         + " min_date / max_date / earliest_date / latest_date,"
                         + " PLAN-date-extreme-precision-tie DT4 (b))");
-        assertEquals(32, MetadataAttribute.values().length,
+        assertEquals(33, MetadataAttribute.values().length,
                 "metadata accessors (28 + the three var_vlm_has_* coverage accessors,"
                         + " PLAN-stopped-rule-engine-fixes SR1; + var_vlm_origin_types,"
-                        + " PLAN-vlm-origin-value-accessor VO1)");
+                        + " PLAN-vlm-origin-value-accessor VO1; + var_vlm_origin_types_without_method,"
+                        + " PLAN-vlm-unmethoded-origin-accessor VU1)");
         assertEquals(Set.of("date", "date_part", "duration", "num", "time", "time_part"),
                 new TreeSet<>(ExprCompiler.comparisonMarkers()),
                 "comparison markers (+ duration, runbook W1b DO)");
@@ -936,11 +939,13 @@ class QualifiedNameUniformityTest
         List<Row> rows = rows();
         long probed = rows.stream().filter(Row::probed).count();
         long nameClass = rows.stream().filter(Row::name).count();
-        assertEquals(286, nameClass,
+        assertEquals(287, nameClass,
                 "name-bearing parameters in the hand table (265 + ~ left, W1b SX; + sequence's"
                         + " name / filter / group / by and the three by=, W1b RO / SK;"
                         + " + the three var_vlm_has_* names, PLAN-stopped-rule-engine-fixes SR1;"
                         + " + var_vlm_origin_types' name, PLAN-vlm-origin-value-accessor VO1;"
+                        + " + var_vlm_origin_types_without_method's name,"
+                        + " PLAN-vlm-unmethoded-origin-accessor VU1;"
                         + " + is_not_unique_member_set's members / group, W1b SS1; + the seven"
                         + " value-addressed parameters of referenced_record_count /"
                         + " referenced_key_is_unique, W1b VA; - the three ordering= rows, W4 OR2)");
@@ -960,9 +965,11 @@ class QualifiedNameUniformityTest
                 unprobed.add(r.id());
             }
         }
-        assertEquals(57, unprobed.size(), "unprobed name-bearing rows (53 + the three"
+        assertEquals(58, unprobed.size(), "unprobed name-bearing rows (53 + the three"
                 + " provider-backed var_vlm_has_* names, PLAN-stopped-rule-engine-fixes SR1;"
-                + " + var_vlm_origin_types, PLAN-vlm-origin-value-accessor VO1): " + unprobed);
+                + " + var_vlm_origin_types, PLAN-vlm-origin-value-accessor VO1;"
+                + " + var_vlm_origin_types_without_method, PLAN-vlm-unmethoded-origin-accessor"
+                + " VU1): " + unprobed);
         // T2 r2 L5: the non-name class is pinned too — a row that flips to '-' to dodge a probe
         // moves this count. +1 for label_template's stem= keyword (R2-3), a static selector.
         // +4 for the quantifier family (PLAN-cg0218): any / all / none take joined(…), joined
@@ -981,10 +988,13 @@ class QualifiedNameUniformityTest
         // +1 for var_vlm_origin_types' level (PLAN-vlm-origin-value-accessor VO1).
         // +4 for ties on min_date / max_date / earliest_date / latest_date
         // (PLAN-date-extreme-precision-tie DT4 (b)).
-        assertEquals(174, rows.stream().filter(r -> !r.name()).count(),
+        // +1 for var_vlm_origin_types_without_method's level
+        // (PLAN-vlm-unmethoded-origin-accessor VU1).
+        assertEquals(175, rows.stream().filter(r -> !r.name()).count(),
                 "non-name rows (153 + the ~ literal, W1b SX; + 8, W1b RO; + 1, W1b VA;"
                         + " + 3 var_vlm_has_* levels, SR1; + 2 ct_class_terms, CT CC1;"
-                        + " + 1 var_vlm_origin_types level, VO1; + 4 ties, DT4 (b))");
+                        + " + 1 var_vlm_origin_types level, VO1; + 4 ties, DT4 (b);"
+                        + " + 1 var_vlm_origin_types_without_method level, VU1)");
     }
 
     // ------------------------------------------------------------------

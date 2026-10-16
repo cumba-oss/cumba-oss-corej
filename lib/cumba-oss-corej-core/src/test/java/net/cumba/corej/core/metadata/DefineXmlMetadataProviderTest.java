@@ -107,6 +107,7 @@ class DefineXmlMetadataProviderTest
                 v.put("vlm_has_comment", "false");
                 v.put("vlm_has_origin", "true");
                 v.put("vlm_origin_types", "[\"Collected\",\"CRF\"]");
+                v.put("vlm_origin_types_without_method", "[\"CRF\"]");
                 v.put("external_dictionary", "MEDDRA");
                 v.put("external_dictionary_version", "25.0");
                 return List.of(v);
@@ -145,6 +146,8 @@ class DefineXmlMetadataProviderTest
         assertEquals("true", meta.get("vlm_has_origin"));
         // PLAN-vlm-origin-value-accessor VO1: the value-level origin types, a list attribute
         assertEquals("[\"Collected\",\"CRF\"]", meta.get("vlm_origin_types"));
+        // PLAN-vlm-unmethoded-origin-accessor VU1: the types of the entries without a method
+        assertEquals("[\"CRF\"]", meta.get("vlm_origin_types_without_method"));
         assertEquals("MEDDRA", meta.get("external_dictionary"));
         assertEquals("25.0", meta.get("external_dictionary_version"));
     }
