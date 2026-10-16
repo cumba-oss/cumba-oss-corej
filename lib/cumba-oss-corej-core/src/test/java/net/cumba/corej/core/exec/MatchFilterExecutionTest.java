@@ -148,6 +148,30 @@ class MatchFilterExecutionTest
         assertEquals(List.of("P1"), firedSubjects(result, primary));
     }
 
+
+    /**
+     * B5 review ① MED-2 (PACK H fold; coordinator ruling by parity with the same call in a Check,
+     * which {@code eagerCompiledBindingSkip} / {@code available()} turn into SKIPPED — "unservable
+     * rules stay visibly SKIPPED"): a Library call inside a Filter when the run has NO library is
+     * the rule's SKIPPED, worded as the eager binding arm words it. RED before: the
+     * {@code UnusableProviderAnswerException} escaped {@code MergedEvaluation.build} and the
+     * per-rule catch alike.
+     */
+    @Test
+    @DisplayName("a Library call inside a Filter with no library skips the rule")
+    void aFilterReadingTheLibraryWithoutOneSkipsTheRule() throws IOException
+    {
+        Rule r = rule(aeJoin("AEOUT in required_variables()"), "AE._matched_ and DTHFL != \"Y\"");
+        assertNull(r.getLoadError(), "the filter loads: " + r.getLoadError());
+        IDataTable primary = dm();
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, ae())), "DM", null);
+        assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus(), result.getStatusMessage());
+        assertEquals("Rule skipped — library returned no data for required_variables",
+                result.getStatusMessage());
+        assertEquals(0, result.getViolationCount());
+    }
+
     /** A Library answering {@code getRequiredVariables} from a map; everything else is empty. */
     private static final class RequiredVariablesLibrary implements MetadataProvider
     {

@@ -266,13 +266,13 @@ class MissingValueEqualityTotalityTest
         Primitives.MemberSet optOut = Primitives.MemberSet
                 .ofStrings(java.util.Set.of("", "Y", "N"));
         assertEquals(new BitSet(),
-                Primitives.membership(missingVector(MissingValue.MIS), optOut, 1, false, false),
+                Primitives.membership(missingVector(MissingValue.MIS), optOut, 1, false),
                 "«missing» in [\"\",\"Y\",\"N\"] is FALSE (D13)");
         assertEquals(bits(0),
-                Primitives.membership(missingVector(MissingValue.MIS), optOut, 1, true, false),
+                Primitives.membership(missingVector(MissingValue.MIS), optOut, 1, true),
                 "…so is_not_contained_by FIRES on it");
         IDataTable blank = MockTable.of().col("C", "").build();
-        assertEquals(bits(0), Primitives.membership(col(blank, "C"), optOut, 1, false, false),
+        assertEquals(bits(0), Primitives.membership(col(blank, "C"), optOut, 1, false),
                 "a BLANK is a present \"\" and IS a member — the control");
     }
 

@@ -32,8 +32,36 @@ import org.jspecify.annotations.Nullable;
  *            column-type mismatch gate
  */
 public record ColumnVector(@Nullable String name, IDataTableColumn column,
-        DataValueType declaredType) implements Vector
+        DataValueType declaredType, BlankMemo blankMemo) implements Vector
 {
+
+    public ColumnVector(@Nullable String name, IDataTableColumn column, DataValueType declaredType)
+    {
+        this(name, column, declaredType, new BlankMemo());
+    }
+
+    /**
+     * The memoised answer of {@link #isBlank()} — a record cannot carry mutable state, so the one
+     * mutable cell is a component created per vector (B5 review MED-1: every gate site of one
+     * compiled vector asks once, and the column is walked once).
+     */
+    public static final class BlankMemo
+    {
+
+        private static final byte UNKNOWN = 0;
+
+        private static final byte BLANK = 1;
+
+        private static final byte FILLED = 2;
+
+        private byte state = UNKNOWN;
+
+        @Override
+        public String toString()
+        {
+            return state == UNKNOWN ? "unscanned" : state == BLANK ? "blank" : "filled";
+        }
+    }
 
     @Override
     public TypedValue value(int row)
@@ -52,20 +80,32 @@ public record ColumnVector(@Nullable String name, IDataTableColumn column,
 
     /**
      * {@inheritDoc} One early-exit scan of the resolved column under the datatable's own blank test
-     * ({@link DataValueSupport#isEmptyOrMissing}, the cell predicate {@code ColumnContentScan}
-     * folds into {@code ColumnContent.isBlank()} — this vector holds the column, not its table), so
+     * ({@link IDataTableColumn#isEmptyOrMissing(long)}, the allocation-free form of
+     * {@link DataValueSupport#isEmptyOrMissing} — the cell predicate {@code ColumnContentScan}
+     * folds into {@code ColumnContent.isBlank()}; this vector holds the column, not its table), so
      * the answer agrees with every other reader of that status; a 0-row column is vacuously blank,
-     * as {@code ColumnContent.NO_ROWS} is. Not memoised: a record cannot carry a cache, and the
-     * gate asks only once per compiled site, after the kinds already disagree — the path that is a
-     * rule ERROR without the exemption.
+     * as {@code ColumnContent.NO_ROWS} is. Memoised in {@link #blankMemo} (B5 review MED-1): the
+     * gate asks once per gate site of a compiled vector, and a vector may meet several, so the
+     * column is walked once however often it is asked.
      */
     @Override
     public boolean isBlank()
     {
+        BlankMemo memo = blankMemo;
+        if (memo.state == BlankMemo.UNKNOWN)
+        {
+            memo.state = scanBlank() ? BlankMemo.BLANK : BlankMemo.FILLED;
+        }
+        return memo.state == BlankMemo.BLANK;
+    }
+
+
+    private boolean scanBlank()
+    {
         long rows = column.getRowCount();
         for (long r = 0; r < rows; r++)
         {
-            if (!DataValueSupport.isEmptyOrMissing(column.getDataValue(r)))
+            if (!column.isEmptyOrMissing(r))
             {
                 return false; // a value: FILLED, decided
             }

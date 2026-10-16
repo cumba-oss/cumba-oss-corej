@@ -38,7 +38,7 @@ class ExtremesTest
 
     private static String extreme(boolean findMax, boolean indeterminate, String... raws)
     {
-        Extremes.DateExtreme extreme = new Extremes.DateExtreme(findMax, indeterminate);
+        Extremes.DateExtreme extreme = new Extremes.DateExtreme(findMax, indeterminate, false);
         for (String raw : raws)
         {
             extreme.add(raw);
@@ -391,6 +391,80 @@ class ExtremesTest
     }
 
 
+    /**
+     * DT review L1 (PACK H fold): an undetermined candidate whose nearest bound only TOUCHES the
+     * refined value cannot beat it — for a min {@code U.lower == R.upper} means {@code U >= R}, so
+     * at point equality it does not block; one second closer and it could be the extreme, and the
+     * hull answer stands. The hulls are hand-built: the real bounds never put a determined atom's
+     * upper exactly on another candidate's lower.
+     */
+    @Test
+    void anUndeterminedCandidateTouchingTheRefinedValueDoesNotBlock()
+    {
+        Extremes.DateExtreme min = new Extremes.DateExtreme(false, false, true);
+        min.add("W", new IsoDateBounds.Hull("2020-01-01T00:00:00", "2020-01-01T23:59:59", true));
+        min.add("R", new IsoDateBounds.Hull("2020-01-01T08:00:00", "2020-01-01T08:00:00", true));
+        min.add("U", new IsoDateBounds.Hull("2020-01-01T08:00:00", "2020-01-01T08:59:59", false));
+        assertEquals("R", min.result(), "U is at or after R: it cannot be the min");
+        Extremes.DateExtreme blockedMin = new Extremes.DateExtreme(false, false, true);
+        blockedMin.add("W",
+                new IsoDateBounds.Hull("2020-01-01T00:00:00", "2020-01-01T23:59:59", true));
+        blockedMin.add("R",
+                new IsoDateBounds.Hull("2020-01-01T08:00:00", "2020-01-01T08:00:00", true));
+        blockedMin.add("U",
+                new IsoDateBounds.Hull("2020-01-01T07:59:59", "2020-01-01T08:59:59", false));
+        assertEquals("W", blockedMin.result(), "U could be 07:59:59, before R");
+
+        Extremes.DateExtreme max = new Extremes.DateExtreme(true, false, true);
+        max.add("W", new IsoDateBounds.Hull("2020-01-01T00:00:00", "2020-01-01T23:59:59", true));
+        max.add("R", new IsoDateBounds.Hull("2020-01-01T20:00:00", "2020-01-01T20:00:00", true));
+        max.add("U", new IsoDateBounds.Hull("2020-01-01T19:00:00", "2020-01-01T20:00:00", false));
+        assertEquals("R", max.result(), "U is at or before R: it cannot be the max");
+        Extremes.DateExtreme blockedMax = new Extremes.DateExtreme(true, false, true);
+        blockedMax.add("W",
+                new IsoDateBounds.Hull("2020-01-01T00:00:00", "2020-01-01T23:59:59", true));
+        blockedMax.add("R",
+                new IsoDateBounds.Hull("2020-01-01T20:00:00", "2020-01-01T20:00:00", true));
+        blockedMax.add("U",
+                new IsoDateBounds.Hull("2020-01-01T19:00:00", "2020-01-01T20:00:01", false));
+        assertEquals("W", blockedMax.result(), "U could be 20:00:01, after R");
+    }
+
+
+    /**
+     * DT review M1 (PACK H fold): the blocking test is decided from O(1) state — the undetermined
+     * candidates' best primary bound, the best secondary bound among those sharing it, and the
+     * second-best primary — never from a list of hulls. These cases exercise each piece: a
+     * candidate sharing the winner's lower that does not contain the winner ({@code T00}), one that
+     * contains it beside a second-best that reaches ({@code 2020} + {@code T07}), and the same
+     * second-best out of reach ({@code T09}); the max arm mirrors them.
+     */
+    @Test
+    void theUndeterminedBlockIsDecidedFromTheBestAndSecondBestBounds()
+    {
+        // lower == the winner's lower, upper inside the day: it could be 00:30, before 08:00
+        assertPreciseMin("2020-01-01", "2020-01-01", "2020-01-01T00", "2020-01-01T08:00");
+        // the year contains the day (no block of its own); T07 is the second-best lower and reaches
+        assertPreciseMin("2020-01-01", "2020", "2020-01-01", "2020-01-01T07", "2020-01-01T08:00");
+        // ... and T09 cannot reach 08:00
+        assertPreciseMin("2020-01-01T08:00", "2020", "2020-01-01", "2020-01-01T09",
+                "2020-01-01T08:00");
+        // two sharing the winner's lower: the smaller upper decides (T00 does not contain the day)
+        assertPreciseMin("2020-01-01", "2020-01", "2020-01-01", "2020-01-01T00",
+                "2020-01-01T08:00");
+        // the mirror: upper == the winner's upper, lower inside the day (the containing partial
+        // is the MONTH of the month's LAST day — a year's upper would be later than the day's,
+        // and the day could not reach the limit: indeterminate, EC-46)
+        assertPreciseMax("2020-01-31", "2020-01-31", "2020-01-31T23", "2020-01-31T20:00");
+        assertPreciseMax("2020-01-31", "2020-01", "2020-01-31", "2020-01-31T21",
+                "2020-01-31T20:00");
+        assertPreciseMax("2020-01-31T20:00", "2020-01", "2020-01-31", "2020-01-31T19",
+                "2020-01-31T20:00");
+        assertPreciseMax("2020-01-31", "2020-01", "2020-01-31", "2020-01-31T23",
+                "2020-01-31T20:00");
+    }
+
+
     /** T3: indeterminate short-circuits before any tie-break, in both modes. */
     @Test
     void t3_anIndeterminateMissingWinsOverATie()
@@ -464,18 +538,18 @@ class ExtremesTest
     @Test
     void ec51_aMissingCellIsSkippedByDefaultAndUndeterminableWhenDeclared()
     {
-        Extremes.DateExtreme skip = new Extremes.DateExtreme(false, false);
+        Extremes.DateExtreme skip = new Extremes.DateExtreme(false, false, false);
         skip.addCell(cell(""));
         skip.addCell(cell("2024-06-01"));
         skip.addCell(cell("   "));
         assertEquals("2024-06-01", skip.result(), "a blank must not make the min indeterminate");
 
-        Extremes.DateExtreme indeterminate = new Extremes.DateExtreme(false, true);
+        Extremes.DateExtreme indeterminate = new Extremes.DateExtreme(false, true, false);
         indeterminate.addCell(cell(""));
         indeterminate.addCell(cell("2024-06-01"));
         assertNull(indeterminate.result(), "EC-51 Half B: the blank makes the min undeterminable");
 
-        Extremes.DateExtreme none = new Extremes.DateExtreme(true, false);
+        Extremes.DateExtreme none = new Extremes.DateExtreme(true, false, false);
         none.addCell(cell(" "));
         none.addCell(cell("\t"));
         assertNull(none.result(), "no candidate at all");

@@ -357,8 +357,10 @@ public final class RealRowAggregates
     /**
      * T4 (i): a dynamic read whose column arguments are <b>string literals naming unqualified
      * columns</b> ({@code colref("CMTRT")}) reads exactly those columns — collected by name. A
-     * qualified literal ({@code colref("CM.CMTRT")}), a template or a non-literal argument keeps
-     * the read dynamic (merged), as before (T2 review MED-2).
+     * qualified literal ({@code colref("CM.CMTRT")}), a template or a non-literal argument — a
+     * column reference ({@code colref(VARCOL)}, whose VALUES name the columns read) or a {@code $}
+     * binding — keeps the read dynamic (merged), as before (T2 review MED-2; B3 review MED-1: a
+     * reference used to be collected as the column it NAMES, which is not the column it reads).
      */
     private static boolean collectDynamicRead(Expr.Call call, Names out)
     {
@@ -371,7 +373,7 @@ public final class RealRowAggregates
             {
                 out.columns.add(name);
             }
-            else if (!(operand instanceof Expr.Ref r && collectRef(r, out)))
+            else
             {
                 return false;
             }

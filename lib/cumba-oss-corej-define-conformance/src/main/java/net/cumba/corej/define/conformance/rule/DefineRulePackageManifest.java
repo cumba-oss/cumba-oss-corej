@@ -126,6 +126,19 @@ public record DefineRulePackageManifest(@JsonProperty("generatedFrom") String ge
         for (Entry entry : packages)
         {
             String family = entry.family();
+            // DF review L5: an entry without a file or a version can never be selected or
+            // resolved — it would reach find / versionsFor as null and the package load as "no
+            // such file" — so it is refused here like an entry without a family.
+            if (entry.file() == null || entry.file().isBlank())
+            {
+                throw new DefineRuleSelectionException("invalid " + aFile + ": an entry (family "
+                        + family + ", version " + entry.version() + ") names no file");
+            }
+            if (entry.version() == null || entry.version().isBlank())
+            {
+                throw new DefineRuleSelectionException("invalid " + aFile + ": the entry for "
+                        + entry.file() + " names no version");
+            }
             if (family == null || family.isBlank())
             {
                 throw new DefineRuleSelectionException("invalid " + aFile + ": the entry for "

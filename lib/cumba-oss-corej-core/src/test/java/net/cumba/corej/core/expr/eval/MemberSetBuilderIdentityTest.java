@@ -91,7 +91,7 @@ class MemberSetBuilderIdentityTest
     @Test
     void toSetClassifiesAMissingElementInsteadOfRenderingIt()
     {
-        Primitives.MemberSet set = ExprCompiler.toSet(List.of("A", MissingValue.MIS), false);
+        Primitives.MemberSet set = ExprCompiler.toSet(List.of("A", MissingValue.MIS));
         assertEquals(Set.of(MissingValue.MIS), set.missing(), "the missing keeps its identity");
         assertEquals(Set.of("A"), set.present(),
                 "and is NOT rendered into the present members — a '.' here is the old rendering");
@@ -101,7 +101,7 @@ class MemberSetBuilderIdentityTest
     @Test
     void toSetClassifiesAMissingScalar()
     {
-        Primitives.MemberSet set = ExprCompiler.toSet(MissingValue.MIS_A, false);
+        Primitives.MemberSet set = ExprCompiler.toSet(MissingValue.MIS_A);
         assertEquals(Set.of(MissingValue.MIS_A), set.missing(),
                 "a scalar result is a singleton, and a missing scalar keeps its identity too");
         assertTrue(set.present().isEmpty(), "no '.A' text may appear among the present members");
@@ -111,11 +111,12 @@ class MemberSetBuilderIdentityTest
     @Test
     void toSetKeepsItsOtherContractsUnchanged()
     {
-        assertEquals(Set.of("ABC"), ExprCompiler.toSet(List.of("abc"), true).present(),
-                "the case-insensitive surface still upper-cases present members");
-        assertEquals(Set.of("7"), ExprCompiler.toSet(7L, false).present(),
+        assertEquals(Set.of("abc"), ExprCompiler.toSet(List.of("abc")).present(),
+                "present members are kept as written: a case fold is the author's, on both sides"
+                        + " (SVY OQ6; the dead flag went with B5 review ② L3)");
+        assertEquals(Set.of("7"), ExprCompiler.toSet(7L).present(),
                 "a present scalar is a singleton of its text");
-        assertTrue(ExprCompiler.toSet(null, false).present().isEmpty(), "null is the empty set");
+        assertTrue(ExprCompiler.toSet(null).present().isEmpty(), "null is the empty set");
     }
 
 
@@ -172,7 +173,7 @@ class MemberSetBuilderIdentityTest
     void listAccessorSetClassifiesAMissingElement()
     {
         ExprCompiler.ValuePlan plan = _ -> ConstVector.of(List.of("A", MissingValue.MIS));
-        Primitives.MemberSet set = ExprCompiler.listAccessorSet(plan, EvalRun.ofRowCount(1), false);
+        Primitives.MemberSet set = ExprCompiler.listAccessorSet(plan, EvalRun.ofRowCount(1));
         assertEquals(Set.of(MissingValue.MIS), set.missing(), "the missing keeps its identity");
         assertEquals(Set.of("A"), set.present(), "no '.' among the present members");
     }
@@ -182,14 +183,14 @@ class MemberSetBuilderIdentityTest
     void listAccessorSetKeepsItsEmptyContracts()
     {
         ExprCompiler.ValuePlan list = _ -> ConstVector.of(List.of("A"));
-        assertTrue(ExprCompiler.listAccessorSet(list, EvalRun.ofRowCount(0), false).present()
-                .isEmpty(), "no row to read ⇒ the empty set");
+        assertTrue(ExprCompiler.listAccessorSet(list, EvalRun.ofRowCount(0)).present().isEmpty(),
+                "no row to read ⇒ the empty set");
         ExprCompiler.ValuePlan scalar = _ -> ConstVector.of("A");
-        assertTrue(ExprCompiler.listAccessorSet(scalar, EvalRun.ofRowCount(1), false).present()
-                .isEmpty(), "a non-list cell ⇒ the empty set");
+        assertTrue(ExprCompiler.listAccessorSet(scalar, EvalRun.ofRowCount(1)).present().isEmpty(),
+                "a non-list cell ⇒ the empty set");
         ExprCompiler.ValuePlan none = _ -> null;
-        assertTrue(ExprCompiler.listAccessorSet(none, EvalRun.ofRowCount(1), false).present()
-                .isEmpty(), "an absent vector ⇒ the empty set");
+        assertTrue(ExprCompiler.listAccessorSet(none, EvalRun.ofRowCount(1)).present().isEmpty(),
+                "an absent vector ⇒ the empty set");
     }
 
     // ---- vlmListMembership: the per-row VLM accessor set
@@ -231,12 +232,12 @@ class MemberSetBuilderIdentityTest
     void listMembershipIgnoresAMissingMemberButMatchesAPresentOne()
     {
         ConstVector lhs = ConstVector.of(List.of("."));
-        assertEquals(bits(),
-                Primitives.listMembership(lhs,
-                        Primitives.MemberSet.of(List.of(MissingValue.MIS), false), 1, false, false),
+        assertEquals(
+                bits(), Primitives.listMembership(lhs,
+                        Primitives.MemberSet.of(List.of(MissingValue.MIS)), 1, false),
                 "a list item '.' is a string, never the missing MIS");
         assertEquals(bits(0), Primitives.listMembership(lhs,
-                Primitives.MemberSet.ofStrings(Set.of(".")), 1, false, false),
+                Primitives.MemberSet.ofStrings(Set.of(".")), 1, false),
                 "control: the same item matches a present '.' member");
     }
 
@@ -250,23 +251,24 @@ class MemberSetBuilderIdentityTest
     void listMembershipComparesAMissingLeftItemByIdentity()
     {
         ConstVector lhs = ConstVector.of(List.of(MissingValue.MIS));
-        assertEquals(bits(0),
-                Primitives.listMembership(lhs,
-                        Primitives.MemberSet.of(List.of(MissingValue.MIS), false), 1, false, false),
+        assertEquals(
+                bits(0), Primitives.listMembership(lhs,
+                        Primitives.MemberSet.of(List.of(MissingValue.MIS)), 1, false),
                 "MIS in {MIS}");
-        assertEquals(bits(), Primitives.listMembership(lhs,
-                Primitives.MemberSet.of(List.of(MissingValue.MIS_A), false), 1, false, false),
+        assertEquals(
+                bits(), Primitives.listMembership(lhs,
+                        Primitives.MemberSet.of(List.of(MissingValue.MIS_A)), 1, false),
                 "MIS is not .A");
         assertEquals(bits(),
                 Primitives.listMembership(lhs, Primitives.MemberSet.ofStrings(Set.of(".")), 1,
-                        false, false),
+                        false),
                 "a missing left item is not the text '.' — it matched until 2026-09-26");
         IDataTable t = probeTable();
         ConstVector cellLhs = ConstVector
                 .of(List.of(t.getColumn(t.getMetaData().getColumnIndex("X")).getDataValue(2L)));
         assertEquals(bits(0),
                 Primitives.listMembership(cellLhs,
-                        Primitives.MemberSet.of(List.of(MissingValue.MIS), false), 1, false, false),
+                        Primitives.MemberSet.of(List.of(MissingValue.MIS)), 1, false),
                 "a missing CELL as a left item is classified the same way");
     }
 
@@ -278,7 +280,7 @@ class MemberSetBuilderIdentityTest
         IDataTable t = probeTable();
         int x = t.getMetaData().getColumnIndex("X");
         Primitives.MemberSet set = Primitives.MemberSet
-                .of(List.of(t.getColumn(x).getDataValue(2L), "A"), false);
+                .of(List.of(t.getColumn(x).getDataValue(2L), "A"));
         assertEquals(Set.of(MissingValue.MIS), set.missing(),
                 "a missing IDataValue member is classified by its identity");
         assertEquals(Set.of("A"), set.present(), "and is not rendered among the present members");
@@ -336,7 +338,7 @@ class MemberSetBuilderIdentityTest
     void notContainsAllAccessorSourceIsNotSatisfiedByADotToken()
     {
         ExprCompiler.ValuePlan plan = _ -> ConstVector.of(List.of(MissingValue.MIS, "A"));
-        Set<Object> allowed = ExprCompiler.listAccessorSet(plan, EvalRun.ofRowCount(1), false)
+        Set<Object> allowed = ExprCompiler.listAccessorSet(plan, EvalRun.ofRowCount(1))
                 .asComponents();
         assertEquals(bits(0),
                 Primitives.notContainsAllTokens(ConstVector.of(List.of("A", ".")), allowed, 1),

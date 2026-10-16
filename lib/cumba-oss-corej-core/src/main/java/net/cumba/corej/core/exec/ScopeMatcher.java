@@ -16,6 +16,7 @@ import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.Scope;
 import net.cumba.corej.core.model.VariableRequirement;
 import net.cumba.datatable.DataTableMeta;
+import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.values.DataValueType;
 import org.jspecify.annotations.Nullable;
 
@@ -1190,14 +1191,16 @@ public final class ScopeMatcher
             else if (anyHasColumn(metas, entry.variable()))
             {
                 // ⭐ D8: the type a JOIN would define for this qualifier. For a split domain that
-                // is the UNIONED type, so every member carrying the column must agree —
-                // agreedKind reproduces UnionDataTable's own comparison without calling
+                // is the UNIONED type — asked of UnionDataTable's own resolution over the member
+                // tables (resolvedColumnType, ECT-Q7: a member holding no value in the column
+                // defers to the valued members) without calling
                 // SplitDomainResolution.resolveTableOrThrow, which THROWS and which this gate
-                // must not (the constraint JoinLookup.declaredTypeOf's decision D1 records).
-                // Disagreement therefore yields null = undecidable, the entry does not block, and
-                // the domain's own InvalidJoinedDomainException keeps reporting the clash.
+                // must not (the constraint JoinLookup.declaredTypeOf's decision D1 records). A
+                // clash of valued members therefore yields null = undecidable, the entry does not
+                // block, and the domain's own InvalidJoinedDomainException keeps reporting it.
                 return asTypeMismatch(typeMismatch(facet, varName, required,
-                        agreedKind(metas, entry.variable()), " in dataset " + dataset));
+                        agreedKind(foreign.tablesOf(qualifier), entry.variable()),
+                        " in dataset " + dataset));
             }
             else if (foreign.existsViaSuppQnam(qualifier, entry.variable()))
             {
@@ -1361,54 +1364,28 @@ public final class ScopeMatcher
 
 
     /**
-     * Ruling <b>D8</b> — the kind every member of a (possibly split) qualifier agrees on, or
-     * {@code null} when they disagree, when no member carries the column, or when the agreed type
-     * is one {@link ColumnTypeGate#kindOf} does not classify.
+     * Ruling <b>D8</b> — the kind the union of a (possibly split) qualifier's members resolves for
+     * the column, or {@code null} when the valued members disagree, when no member carries the
+     * column, or when the resolved type is one {@link ColumnTypeGate#kindOf} does not classify.
      *
      * <p>
-     * ⚠ The comparison is on the raw {@link DataValueType}, not on the kind, because that is what
-     * {@code UnionDataTable}'s split constructor compares before refusing to union — <i>"a type
-     * clash is a submission defect the sponsor must see"</i>. Comparing kinds instead would let
-     * {@code LONG} and {@code DOUBLE} members union here while the engine refuses them.
+     * ⚠ Asked of {@code UnionDataTable.resolvedColumnType} over the member TABLES — the comparison
+     * the split constructor itself makes before refusing to union (<i>"a type clash is a submission
+     * defect the sponsor must see"</i>), on the raw {@link DataValueType} and, since ECT-Q7,
+     * deferring a member that holds no value in the column to the valued members — so adding an
+     * empty member never changes a verdict the union would not change (confirmation look MED-1:
+     * comparing declared types alone made such a member "undecidable"). Comparing kinds instead
+     * would let {@code LONG} and {@code DOUBLE} members union here while the engine refuses them.
      * </p>
      */
-    private static ColumnTypeGate.@Nullable Kind agreedKind(List<DataTableMeta> metas,
-            String column)
+    private static ColumnTypeGate.@Nullable Kind agreedKind(List<IDataTable> members, String column)
     {
-        DataValueType agreed = null;
-        for (DataTableMeta meta : metas)
+        if (members.isEmpty())
         {
-            int idx = meta.getColumnIndex(column);
-            if (idx < 0)
-            {
-                continue;
-            }
-            DataValueType type = meta.getColumn(idx).getType();
-            // ⚠ Review round 1, finding 3: a member whose declared type is null used to leave
-            // `agreed` null, so the NEXT member's type was adopted as "agreed" and the null member
-            // dropped silently out of the comparison — where UnionDataTable compares against the
-            // first occurrence unconditionally and would refuse the union. THIS early return is
-            // what keeps "no member carries it" and "a member has no type" apart.
-            // ⚑ Round 2's nit: a `seen` flag was added alongside and was dead state — with the
-            // early return, `agreed == null` and `!seen` coincide everywhere. Removed, because two
-            // mechanisms claiming one mechanism's job is what later invites simplifying the wrong
-            // half.
-            // ⚑ DataTableColumnMeta.type is not @Nullable, so this is a contract-defensive branch,
-            // not a demonstrated input — but ScopeVariableSource.suppQvalType already guards the
-            // same field, and the two must not hold different beliefs about it.
-            if (type == null)
-            {
-                return null;
-            }
-            if (agreed == null)
-            {
-                agreed = type;
-            }
-            else if (agreed != type)
-            {
-                return null;
-            }
+            return null;
         }
+        DataValueType agreed = net.cumba.datatable.impl.view.UnionDataTable
+                .resolvedColumnType(members.toArray(IDataTable[]::new), column);
         return agreed == null ? null : ColumnTypeGate.kindOf(agreed);
     }
 

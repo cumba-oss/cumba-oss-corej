@@ -430,6 +430,61 @@ class ScopeMatcherTypeRequirementTest
 
 
         /**
+         * ECT-Q7 (confirmation look MED-1, PACK H fold): a member of ANOTHER declared type that
+         * holds no value defers to the valued members — the type the union itself resolves
+         * ({@code UnionDataTable.resolvedColumnType}) — so adding an empty member never changes a
+         * scope verdict the union would not change. RED before: {@code agreedKind} compared the
+         * declared types only, the blank STRING member made LBSTRESN "undecidable", and the
+         * {@code :C} requirement stopped blocking.
+         */
+        @Test
+        void aBlankMemberOfAnotherTypeDefersToTheValuedMembers()
+        {
+            IDataTable lb1 = MockTable.of().name("lbch").col("DOMAIN", "LB").colLong("LBSTRESN", 1L)
+                    .build();
+            IDataTable blank = MockTable.of().name("lbhe").col("DOMAIN", "LB").col("LBSTRESN", "")
+                    .build();
+            Map<String, IDataTable> split = map("lbch", lb1, "lbhe", blank);
+            assertNull(describeWith(ruleAll("LB.LBSTRESN:N"), split));
+            String reason = describeWith(ruleAll("LB.LBSTRESN:C"), split);
+            assertNotNull(reason,
+                    "as without the blank member: the Numeric column is out of scope");
+            assertTrue(reason.contains("required to be Character but is Numeric"), reason);
+            // the order of the members does not matter, and the verdict is the valued member's own
+            assertNotNull(describeWith(ruleAll("LB.LBSTRESN:C"), map("lbhe", blank, "lbch", lb1)));
+            assertNotNull(describeWith(ruleAll("LB.LBSTRESN:C"), map("lbch", lb1)));
+            // control: two VALUED members of different types stay undecidable (the test above)
+            IDataTable valued = MockTable.of().name("lbhe").col("DOMAIN", "LB")
+                    .col("LBSTRESN", "POS").build();
+            assertNull(describeWith(ruleAll("LB.LBSTRESN:C"), map("lbch", lb1, "lbhe", valued)));
+        }
+
+
+        /**
+         * ECT-Q7 for the SUPP-QNAM delivery (D9): the QVAL type is the type the union of the
+         * qualifier's SUPP sources resolves, so an all-blank QVAL member of another type defers to
+         * the valued one. RED before: the members "disagreed" and the entry was undecidable.
+         */
+        @Test
+        void aBlankQvalMemberOfAnotherTypeDefersToTheValuedSuppMembers()
+        {
+            IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").build();
+            IDataTable suppae1 = RealTables.of("SUPPAE1").str("RDOMAIN", "AE").str("USUBJID", "S1")
+                    .str("QNAM", "AETRTEM").str("QVAL", "Y").build();
+            IDataTable suppae2 = RealTables.of("SUPPAE2").str("RDOMAIN", "AE").str("USUBJID", "S1")
+                    .str("QNAM", "AEX").lng("QVAL", new Long[]
+                    {
+                            null
+                    }).build();
+            Map<String, IDataTable> study = map("AE", ae, "SUPPAE1", suppae1, "SUPPAE2", suppae2);
+            assertNull(describeWith(ruleAll("AE.AETRTEM:C"), study), "QVAL resolves to character");
+            String reason = describeWith(ruleAll("AE.AETRTEM:N"), study);
+            assertNotNull(reason);
+            assertTrue(reason.contains("delivered as a supplemental qualifier"), reason);
+        }
+
+
+        /**
          * ⭐ Ruling D9: AE has no AETRTEM column, but SUPPAE delivers it as a QNAM row. Its values
          * come through QVAL, so QVAL's type decides — {@code :C} passes, {@code :N} does not.
          */

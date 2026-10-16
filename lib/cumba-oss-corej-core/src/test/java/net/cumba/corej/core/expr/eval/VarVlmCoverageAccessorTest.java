@@ -252,7 +252,7 @@ class VarVlmCoverageAccessorTest
         {
             names.add(v.getValues().get("define_variable_name"));
         }
-        // seven ItemDefs, LBSTRESC exempt — one finding each, absent from the data or not
+        // ten ItemDefs, LBSTRESC exempt — one finding each, absent from the data or not
         assertEquals(
                 new TreeSet<>(
                         List.of("LBMETHOD", "LBNAM", "LBORRES", "LBSPEC", "LBSTAT", "LBTESTCD")),
@@ -277,7 +277,7 @@ class VarVlmCoverageAccessorTest
         assertEquals(List.of("Collected"), originTypes("LBSTNRC"),
                 "two Collected entries, distinct");
         assertEquals(List.of("Collected", "CRF"), originTypes("LBORNRLO"),
-                "the 2.1 element and the v2.0 attribute both count");
+                "the 2.1 element and the v1.0 attribute both count");
         assertEquals(List.of("Derived", "Collected"), originTypes("LBSTRESC"), "mixed, in order");
         assertEquals(List.of("Collected"), originTypes("LBSTNRU"),
                 "the variable level does not leak into the value-level list");
@@ -315,11 +315,18 @@ class VarVlmCoverageAccessorTest
                 .col("LBSTNRU", "u", "u").col("LBSTAT", "x", "y").build();
     }
 
-    /** {@code CDISC-SEND-0111}'s Bindings, verbatim (PLAN-vlm-origin-value-accessor §4). */
+    /**
+     * {@code CDISC-SEND-0111}'s Bindings as written at {@code cumba-corej-rules} {@code b94cbd2c}
+     * (PLAN-vlm-origin-value-accessor §4); the {@code S/CDISC-SEND-0111} scenarios guard the
+     * shipped text.
+     */
     private static final String SEND0111_BINDINGS = "\"Bindings\":[{\"name\":\"$origin_ok\","
             + "\"expression\":\"[\\\"Collected\\\", \\\"CRF\\\"]\"}]";
 
-    /** {@code CDISC-SEND-0111}'s Check, verbatim but for the variable name (§4). */
+    /**
+     * {@code CDISC-SEND-0111}'s Check as written at {@code cumba-corej-rules} {@code b94cbd2c}, but
+     * for the variable name (§4); the {@code S/CDISC-SEND-0111} scenarios guard the shipped text.
+     */
     private static final String SEND0111_CHECK = "equalsIgnoreCase(varname(), \"%s\") and"
             + " not empty(var_name(\"DEFINE\")) and max_value_length(variable_name) > 0 and"
             + " var_origin_type(\"DEFINE\") not in [\"Collected\", \"CRF\"] and"
@@ -365,7 +372,7 @@ class VarVlmCoverageAccessorTest
         assertEquals(0, runSend0111(SEND0111_CHECK, "LBSTNRC").getViolationCount(),
                 "every value-level entry Collected");
         assertEquals(0, runSend0111(SEND0111_CHECK, "LBORNRLO").getViolationCount(),
-                "Collected + the v2.0 CRF");
+                "Collected + the v1.0 CRF");
         // sensitivity: the swapped spelling asks "the entry types include both" and reports it
         assertEquals(1, runSend0111(SEND0111_SWAPPED_CHECK, "LBSTNRC").getViolationCount(),
                 "swapped operands must not exempt [Collected]");
@@ -409,8 +416,11 @@ class VarVlmCoverageAccessorTest
                 null, null, define);
         assertEquals("EXECUTED", result.getStatus().name(), result.getStatusMessage());
         assertEquals(1, result.getViolationCount(), result.getViolations().toString());
-        assertEquals(List.of("Collected", "CRF"), DefineMetadataListCodec.decode(
-                result.getViolations().get(0).getValues().get("define_variable_vlm_origin_types")));
+        // VLM review MED-1 (PACK H fold): the DATA-universe per-variable path reports the list in
+        // C14's canonical sorted form too — SEND-0111 runs on the data universe, so its findings
+        // used to carry the raw JSON encoding (["Collected","CRF"])
+        assertEquals("[CRF, Collected]",
+                result.getViolations().get(0).getValues().get("define_variable_vlm_origin_types"));
     }
 
 
@@ -526,11 +536,17 @@ class VarVlmCoverageAccessorTest
         return b.build();
     }
 
-    /** {@code CDISC-SEND-0112.1}'s Bindings, verbatim from the written YAML. */
+    /**
+     * {@code CDISC-SEND-0112.1}'s Bindings as written at {@code cumba-corej-rules}
+     * {@code df33f409}; the {@code S/CDISC-SEND-0112.1} scenarios guard the shipped text.
+     */
     private static final String SEND0112_BINDINGS = "\"Bindings\":[{\"name\":\"$derived\","
             + "\"expression\":\"[\\\"Derived\\\"]\"}]";
 
-    /** {@code CDISC-SEND-0112.1}'s Check, verbatim from the written YAML (C7). */
+    /**
+     * {@code CDISC-SEND-0112.1}'s Check as written at {@code cumba-corej-rules} {@code df33f409}
+     * (C7); the {@code S/CDISC-SEND-0112.1} scenarios guard the shipped text.
+     */
     private static final String SEND0112_CHECK = "upper(varname()) in [\"AGE\", \"AGEU\"] and"
             + " not empty(var_name(\"DEFINE\")) and var_has_method(\"DEFINE\") == false and"
             + " (var_origin_type(\"DEFINE\") == \"Derived\" and"
@@ -542,7 +558,10 @@ class VarVlmCoverageAccessorTest
             + " and not empty(var_name(\"DEFINE\")) and var_origin_type(\"DEFINE\") == \"Derived\""
             + " and var_has_method(\"DEFINE\") == false and var_vlm_has_method(\"DEFINE\") != true";
 
-    /** {@code CDISC-SEND-0129.1}'s Bindings, verbatim from the written YAML. */
+    /**
+     * {@code CDISC-SEND-0129.1}'s Bindings as written at {@code cumba-corej-rules}
+     * {@code df33f409}; the {@code S/CDISC-SEND-0129.1} scenarios guard the shipped text.
+     */
     private static final String SEND0129_BINDINGS = "\"Bindings\":[{\"name\":\"$collected_blank\","
             + "\"expression\":\"[\\\"Collected\\\", \\\"CRF\\\", \\\"\\\"]\"}]";
 
@@ -550,7 +569,10 @@ class VarVlmCoverageAccessorTest
     private static final String SEND0129_BINDINGS_NO_BLANK = "\"Bindings\":[{\"name\":"
             + "\"$collected_blank\",\"expression\":\"[\\\"Collected\\\", \\\"CRF\\\"]\"}]";
 
-    /** {@code CDISC-SEND-0129.1}'s Check, verbatim from the written YAML (C8). */
+    /**
+     * {@code CDISC-SEND-0129.1}'s Check as written at {@code cumba-corej-rules} {@code df33f409}
+     * (C8); the {@code S/CDISC-SEND-0129.1} scenarios guard the shipped text.
+     */
     private static final String SEND0129_CHECK = "equalsIgnoreCase(varname(), \"SESTDTC\") and"
             + " not empty(var_name(\"DEFINE\")) and var_has_method(\"DEFINE\") == false and"
             + " (not empty(var_origin_type(\"DEFINE\")) and"
@@ -612,6 +634,29 @@ class VarVlmCoverageAccessorTest
                 "today's rule misses every value-level-only case (the bug)");
         assertEquals(new TreeSet<>(List.of("LBORRESU", "LBSTNRU", "LBSTREFN", "LBSTRESU")),
                 fired(SEND0112_BINDINGS, SEND0112_CHECK, SEL_0112));
+    }
+
+
+    /**
+     * H13 review LOW-2: a fired variable's report carries the provider's list under the accessor's
+     * {@code define_variable_} key — LBSTRESU (M1: Derived+M, Derived) reports {@code [Derived]},
+     * in the canonical sorted form the DATA-universe path renders since the VLM fold (MED-1).
+     */
+    @Test
+    void aFiredVariableReportsTheProvidersListUnderTheAccessorsKey() throws Exception
+    {
+        String pointed = SEND0112_CHECK.replace(SEL_0112, "upper(varname()) in [\"LBSTRESU\"]");
+        Rule rule = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Record\"," + SEND0112_BINDINGS
+                + ",\"Check\":{\"expression\": \"" + pointed.replace("\"", "\\\"")
+                + "\"},\"Outcome\":{\"Message\":\"m\"}}");
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, lbVlm(), _ -> null, "LB", null,
+                null, define);
+        assertEquals("EXECUTED", result.getStatus().name(), result.getStatusMessage());
+        assertEquals(1, result.getViolationCount(), result.getViolations().toString());
+        Map<String, String> values = result.getViolations().get(0).getValues();
+        assertEquals("LBSTRESU", values.get("variable_name"));
+        assertEquals("[Derived]", values.get("define_variable_vlm_origin_types_without_method"),
+                values.toString());
     }
 
 

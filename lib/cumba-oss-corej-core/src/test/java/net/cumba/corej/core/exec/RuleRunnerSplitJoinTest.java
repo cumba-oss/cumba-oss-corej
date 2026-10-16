@@ -233,6 +233,68 @@ class RuleRunnerSplitJoinTest
         assertEquals(List.of(0L, 1L), firedOnSplitPartner("empty(LB.LBSPEC)"));
     }
 
+
+    private static List<Long> firedOnSplitPartner(String aCheck, IDataTable... aMembers)
+    {
+        IDataTable[] all = new IDataTable[aMembers.length + 1];
+        all[0] = adlbBoth();
+        System.arraycopy(aMembers, 0, all, 1, aMembers.length);
+        RuleExecutionResult res = RuleRunnerCalls.execute(onSplitPartner("TEST-U4", aCheck),
+                adlbBoth(), RealTables.inventoryOf(all), null, null);
+        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(), aCheck);
+        return rows(res);
+    }
+
+
+    private static IDataTable lbMember(String aName, String aSubject, String aSeq,
+            @org.jspecify.annotations.Nullable String aEncoding)
+    {
+        net.cumba.datatable.testkit.MockTable t = net.cumba.datatable.testkit.MockTable.of()
+                .name(aName).col("DOMAIN", "LB").col("USUBJID", aSubject).col("LBSEQ", aSeq)
+                .col("LBORRES", "µ");
+        // the pair the union agrees on: Encoding + EncodingSource (DataTableMetaSupport
+        // .putAgreedEncoding reads both; a member without the pair declares none)
+        return (aEncoding == null ? t
+                : t.metaValue("Encoding", aEncoding).metaValue("EncodingSource", "DECLARED"))
+                        .build();
+    }
+
+
+    /**
+     * B2 ① review L2 — U4 ({@code PLAN-bugfix-datatable-readers-views}, owner B2-Q4 ⓐ): the
+     * split-domain union carries its members' AGREED {@code Encoding}, so a byte count over a split
+     * partner's column — {@code J.X} measures J's bytes in J's declared charset (JB T14) — counts
+     * in the members' charset ({@code µ}: 1 windows-1252 byte, 2 UTF-8 bytes); members declaring
+     * different charsets give {@code MIXED}, a member declaring none gives none, and both are a
+     * missing byte count. RED on a datatable jar before U4 (the union carried no {@code Encoding}):
+     * every arm answered missing.
+     */
+    @Test
+    void aSplitPartnersByteLengthCountsInTheMembersAgreedEncoding()
+    {
+        String counted = "max_value_length(LB.LBORRES, unit=\"bytes\") == 1"
+                + " and len(LB.LBORRES, unit=\"bytes\") == 1";
+        String missing = "empty(max_value_length(LB.LBORRES, unit=\"bytes\"))"
+                + " and empty(len(LB.LBORRES, unit=\"bytes\"))";
+        assertEquals(List.of(0L, 1L),
+                firedOnSplitPartner(counted, lbMember("lbch", "U1", "1", "windows-1252"),
+                        lbMember("lbhe", "U2", "9", "windows-1252")),
+                "agreed windows-1252: 1 byte");
+        assertEquals(List.of(0L, 1L),
+                firedOnSplitPartner(missing, lbMember("lbch", "U1", "1", "windows-1252"),
+                        lbMember("lbhe", "U2", "9", "UTF-8")),
+                "differing charsets: MIXED, no byte count");
+        assertEquals(List.of(0L, 1L),
+                firedOnSplitPartner(missing, lbMember("lbch", "U1", "1", "windows-1252"),
+                        lbMember("lbhe", "U2", "9", null)),
+                "a member without an Encoding: none agreed, no byte count");
+        // a written encoding= answers regardless of the members' declarations
+        assertEquals(List.of(0L, 1L),
+                firedOnSplitPartner("len(LB.LBORRES, unit=\"bytes\", encoding=\"UTF-8\") == 2",
+                        lbMember("lbch", "U1", "1", "windows-1252"),
+                        lbMember("lbhe", "U2", "9", null)));
+    }
+
     // --------------------------------------------------------------- exact path byte-identical
 
 

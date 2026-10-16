@@ -457,6 +457,9 @@ public final class SortKeys
     public static void checkSingleKeyCall(Expr.Call call)
     {
         rejectRetiredOrdering(call);
+        // W4 review LOW-1 (PACK H fold): has_next_corresponding_record's single-column within=
+        // is refused at load on every path (a no-op for the readers without a within=)
+        net.cumba.corej.core.expr.eval.ExprCompiler.rejectSingleColumnWithinSize(call);
         Expr by = boundBy(call);
         if (by != null && KEYWORD_ONLY_READERS.contains(call.name())
                 && !call.kwargs().containsKey(PARAMETER))
@@ -484,6 +487,12 @@ public final class SortKeys
      */
     public static void checkSortKeyCall(Expr.Call call)
     {
+        // W4 review LOW-1 (PACK H fold): the within= size refusal reaches an inline Check only
+        // through this seam (the compiler's refusal would only degrade it) — after the
+        // keep_missings refusal, in the compiler arm's order, so `within=[], keep_missings=`
+        // keeps naming keep_missings (KeepMissingsWithinLoadTest)
+        net.cumba.corej.core.expr.eval.ExprCompiler.rejectKeepMissingsWithoutWithin(call);
+        net.cumba.corej.core.expr.eval.ExprCompiler.rejectIsSortedByWithinSize(call);
         Expr by = boundBy(call);
         if (by != null && !call.kwargs().containsKey(PARAMETER))
         {

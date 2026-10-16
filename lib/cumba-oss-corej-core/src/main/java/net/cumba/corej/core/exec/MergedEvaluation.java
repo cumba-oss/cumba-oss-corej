@@ -668,14 +668,40 @@ public final class MergedEvaluation
             if (part.kind() == MergeKind.KEYED || part.kind() == MergeKind.CHILD
                     || part.kind() == MergeKind.RELREC)
             {
+                // a keyed partner is held; a Child parent / RELREC domain is resolved on first
+                // use through the run's resolver (B5 review L2) — a type-clashing split domain's
+                // refusal is the merge's own ERROR where the merge reads it, never this lookup's
+                IDataTable held = partners.get(part.source());
+                String sourceName = part.source();
+                java.util.function.Supplier<@Nullable IDataTable> source = held != null ? () -> held
+                        : () -> resolveQuietly(datasets, sourceName);
                 lookups.put(part.qualifier(),
                         new MergedViewLookup(view, part, partOf, plant == part.kind(),
                                 Collections.unmodifiableMap(flagged), encodings.get(part.source()),
-                                partners.get(part.source())));
+                                source));
             }
         }
         return new Built(view, table, lookups, flat, suppQnams, flagged, plant == MergeKind.SUPP,
                 shared, relrec != null, child != null);
+    }
+
+
+    /**
+     * A part's source table through the run's resolver, or {@code null} when it cannot be resolved
+     * — the invalid-split refusal ({@code InvalidJoinedDomainException}) and any other refusal of
+     * the resolver are the merge's to raise where the merge reads the table, not a lookup's.
+     */
+    private static @Nullable IDataTable resolveQuietly(
+            net.cumba.datatable.merge.DatasetResolver datasets, String name)
+    {
+        try
+        {
+            return datasets.resolve(name);
+        }
+        catch (RuntimeException _)
+        {
+            return null;
+        }
     }
 
 

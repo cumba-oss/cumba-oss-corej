@@ -173,11 +173,14 @@ public record DefineConformanceInput(Path defineXml, @Nullable CtProvider ctProv
             // package twice, and the duplicate-id check would then report "duplicate Rule_Id" — a
             // corpus-corruption message for what is only a caller slip. The CLI already dedupes;
             // the Java API must too.
+            // Trimmed first (DF review L6): the manifest's canonicalFamily compares the trimmed
+            // spelling, so " CDISC" and "cdisc" name one family and must select one package.
             List<String> distinct = new ArrayList<>();
             if (aFamilies != null)
             {
-                for (String family : aFamilies)
+                for (String spelled : aFamilies)
                 {
+                    String family = spelled.trim();
                     if (distinct.stream().noneMatch(f -> f.equalsIgnoreCase(family)))
                     {
                         distinct.add(family);

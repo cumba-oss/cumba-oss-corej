@@ -113,6 +113,65 @@ class StrictColumnOperandTest
     }
 
 
+    /**
+     * W4 review LOW-1 (PACK H fold): the two {@code within=} size refusals above reach an INLINE
+     * Check too. Stage A compiles a binding and reports the compiler's refusal as the load error,
+     * but an inline Check's compiler refusal only DEGRADES the rule, so until the fold
+     * {@code is_sorted_by(…, within=[])} and a two-column {@code within=} loaded clean inline and
+     * ran ungrouped; the tailored reader ({@code SortKeys.checkSortKeyCall}) now refuses them with
+     * the compiler's message on every path.
+     */
+    @Test
+    void anEmptyOrMultiColumnWithinOnIsSortedByIsALoadErrorInAnInlineCheck() throws Exception
+    {
+        for (String check : List.of("not is_sorted_by(SEQ, by=[asc(STDTC)], within=[])",
+                "not is_sorted_by(SEQ, by=[asc(STDTC)], within=[STUDYID, USUBJID])"))
+        {
+            Rule rule = loadInline(check);
+            assertNotNull(rule.getLoadError(), check + " must not load inline either");
+            assertTrue(rule.getLoadError().contains("is_sorted_by's within= takes one column"),
+                    rule.getLoadError());
+        }
+        // the control: the one-column spellings load inline as they do in a binding
+        for (String check : List.of("not is_sorted_by(SEQ, by=[asc(STDTC)], within=USUBJID)",
+                "not is_sorted_by(SEQ, by=[asc(STDTC)], within=[USUBJID])"))
+        {
+            assertNull(loadInline(check).getLoadError(), check);
+        }
+    }
+
+
+    /**
+     * W4 review LOW-1, the sibling measurement: the two other single-column {@code within=} readers
+     * refuse a two-column list in the compiler only ({@code singleColumnMembers}); their tailored
+     * reader ({@code SortKeys.checkSingleKeyCall}) reads {@code by=}. Measured here inline.
+     */
+    @Test
+    void theSiblingSingleColumnWithinReadersRefuseAListInlineToo() throws Exception
+    {
+        for (String check : List.of(
+                "present_on_multiple_rows_within(AETERM, within=[STUDYID, USUBJID])",
+                "not has_next_corresponding_record(AEENDTC, AESTDTC, by=AESEQ, within=[STUDYID, USUBJID])"))
+        {
+            Rule rule = loadInline(check);
+            assertNotNull(rule.getLoadError(), check + " must not load inline");
+            assertTrue(rule.getLoadError().contains("requires a single within column"),
+                    rule.getLoadError());
+        }
+    }
+
+
+    private static Rule loadInline(String check) throws Exception
+    {
+        String pkg = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"W8-STRICT\"},\"Sensitivity\":\"Record\","
+                + "\"Check\":{\"expression\":\"" + check + "\"},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}";
+        Rule rule = RulePackageLoader.loadFromString(pkg).getRules().get("x");
+        assertNotNull(rule, "the rule parses");
+        return rule;
+    }
+
+
     private static Rule load(String check) throws Exception
     {
         String pkg = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"W8-STRICT\"},"

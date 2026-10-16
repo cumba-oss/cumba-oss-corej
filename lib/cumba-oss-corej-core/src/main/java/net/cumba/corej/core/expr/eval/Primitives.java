@@ -1444,9 +1444,10 @@ public final class Primitives
      * Deliberately CONTAINS-only: {@code starts_with} / {@code ends_with} have no list branch in
      * the Python operator either, so they keep the rendered-string behaviour. A collection reaches
      * this path from a {@code $}-operation reference materialised by
-     * {@code ExprCompiler.variableVector}; case folding, when the case-insensitive surface is in
-     * play, has already been applied element-wise by {@code BuiltinFunctions.caseFold}, so a plain
-     * {@code equals} against the (likewise folded) needle is the whole comparison.
+     * {@code ExprCompiler.variableVector}; a case-insensitive comparison is written by the author
+     * on both sides ({@code upper(X) in upper($v)}, SVY OQ6), each fold applied element-wise by
+     * {@code BuiltinFunctions.caseFold} before the values meet here, so a plain {@code equals}
+     * against the needle is the whole comparison.
      * </p>
      *
      * @return the collection to test membership against, or {@code null} when this row's operand is
@@ -1640,10 +1641,10 @@ public final class Primitives
      * same member.
      *
      * <p>
-     * For the case-insensitive variant ({@code upper(X) in […]} — D81d(ii) resolved as a
-     * case-insensitive {@code ==}), {@code set} must already hold upper-cased
-     * ({@link java.util.Locale#ROOT}) entries and {@code caseInsensitive} must be {@code true};
-     * numbers have no case, so the numeric arm never runs there.
+     * A case-insensitive membership is the author's (D81d(ii) after SVY OQ6): a fold written on
+     * both sides, {@code upper(X) in upper($v)}, each a plain function evaluated before the values
+     * meet here — the comparison itself is exact (B5 review ② L3 retired the dead
+     * {@code caseInsensitive} flag every caller passed as {@code false}).
      * </p>
      *
      * <p>
@@ -1665,10 +1666,9 @@ public final class Primitives
      * argument that keeps membership correct.
      * </p>
      */
-    public static BitSet membership(Vector v, MemberSet set, int rowCount, boolean negate,
-            boolean caseInsensitive)
+    public static BitSet membership(Vector v, MemberSet set, int rowCount, boolean negate)
     {
-        return scan(v, rowCount, (dv, _) -> negate != isMember(dv, set, caseInsensitive));
+        return scan(v, rowCount, (dv, _) -> negate != isMember(dv, set));
     }
 
     /**
@@ -1802,11 +1802,9 @@ public final class Primitives
          *
          * @param items
          *            the raw members (an operation result, a resolved list, a grouped row's values)
-         * @param caseInsensitive
-         *            whether to upper-case the present members, as the comparison will
          * @return the classified set
          */
-        public static MemberSet of(Iterable<?> items, boolean caseInsensitive)
+        public static MemberSet of(Iterable<?> items)
         {
             // ⚠ HashSet, not LinkedHashSet: the canonical constructor copies through Set.copyOf,
             // which discards insertion order anyway, and nothing here depends on it — `contains`
@@ -1825,8 +1823,7 @@ public final class Primitives
                     continue;
                 }
                 // Never null (NNL §1) — the list passed the ListValueGuard at its birth site.
-                String s = item.toString();
-                present.add(caseInsensitive ? s.toUpperCase(java.util.Locale.ROOT) : s);
+                present.add(item.toString());
             }
             return new MemberSet(present, missing);
         }
@@ -1912,18 +1909,16 @@ public final class Primitives
      *            the probe cell
      * @param set
      *            the classified member set
-     * @param caseInsensitive
-     *            whether the comparison folds case — applies to the present members only
      * @return whether the probe is a member
      */
-    public static boolean isMember(IDataValue dv, MemberSet set, boolean caseInsensitive)
+    public static boolean isMember(IDataValue dv, MemberSet set)
     {
         MissingValue identity = TypedValue.missingIdentityOf(dv);
         if (identity != null)
         {
             return set.missing().contains(identity);
         }
-        return isMember(dv, set.present(), caseInsensitive);
+        return isMember(dv, set.present());
     }
 
 
@@ -1959,7 +1954,7 @@ public final class Primitives
      * pinned member-by-member against {@link #equality} by {@code InLowersIntoEqualityTest}.
      * </p>
      */
-    public static boolean isMember(IDataValue dv, Set<String> set, boolean caseInsensitive)
+    public static boolean isMember(IDataValue dv, Set<String> set)
     {
         if (TypedValue.missingIdentityOf(dv) != null)
         {
@@ -1982,17 +1977,16 @@ public final class Primitives
             // semantic.
             //
             // ⇒ where a member set CAN hold a missing, callers use
-            // {@link #isMember(IDataValue, MemberSet, boolean)}, which applies the ruled equality.
+            // {@link #isMember(IDataValue, MemberSet)}, which applies the ruled equality.
             return false;
         }
         boolean missing = ScalarSemantics.isMissing(dv);
-        String s = missing ? "" : dv.getValueAsString();
-        String probe = caseInsensitive ? s.toUpperCase(java.util.Locale.ROOT) : s;
+        String probe = missing ? "" : dv.getValueAsString();
         if (set.contains(probe))
         {
             return true;
         }
-        if (!caseInsensitive && !missing && isNumericTypedCell(dv))
+        if (!missing && isNumericTypedCell(dv))
         {
             double lhs = dv.getValueAsDouble();
             if (!Double.isNaN(lhs))
@@ -2243,11 +2237,9 @@ public final class Primitives
      * whether ANY element is contained in {@code set}; {@code is_contained_by} fires on it,
      * {@code is_not_contained_by} ({@code negate}) on its negation. An empty or absent list
      * contains nothing — so {@code is_not_contained_by} fires (Python: {@code any([])} is
-     * {@code False}). {@code set} must already be upper-cased when {@code caseInsensitive} is
-     * {@code true}.
+     * {@code False}).
      */
-    public static BitSet listMembership(Vector v, MemberSet set, int rowCount, boolean negate,
-            boolean caseInsensitive)
+    public static BitSet listMembership(Vector v, MemberSet set, int rowCount, boolean negate)
     {
         // ⭐ The member set arrives classified (PLAN-member-set-identity-hardening), and anyInSet
         // compares each left item by the same identity: a present item against the present members
@@ -2259,7 +2251,7 @@ public final class Primitives
         BitSet result = new BitSet(rowCount);
         for (int r = 0; r < rowCount; r++)
         {
-            if (negate != anyInSet(v.value(r).resolved(), set, caseInsensitive))
+            if (negate != anyInSet(v.value(r).resolved(), set))
             {
                 result.set(r);
             }
@@ -2307,7 +2299,7 @@ public final class Primitives
 
 
     // Package-private (was private) for ExprCompiler.boundMembership's per-row list-LHS arm.
-    static boolean anyInSet(@Nullable Object value, MemberSet set, boolean caseInsensitive)
+    static boolean anyInSet(@Nullable Object value, MemberSet set)
     {
         if (!(value instanceof List<?> list))
         {
@@ -2326,9 +2318,7 @@ public final class Primitives
                 }
                 continue;
             }
-            String s = caseInsensitive ? item.toString().toUpperCase(java.util.Locale.ROOT)
-                    : item.toString();
-            if (set.present().contains(s))
+            if (set.present().contains(item.toString()))
             {
                 return true;
             }

@@ -65,6 +65,39 @@ class JoinedByteLengthEncodingTest
     }
 
 
+    /**
+     * B3 review LOW-1 (PACK H fold, coordinator ruling by precedent D72 / BL1: a column with no
+     * declared {@code Encoding} gives a missing byte count): J present but declaring no
+     * {@code Encoding} — the joined column's bytes are not knowable, so the count is missing; the
+     * primary's charset is never borrowed. RED before: {@code encodingFor} fell back to the
+     * evaluated table's windows-1252 and answered 1.
+     */
+    @Test
+    void aJoinedTableWithoutAnEncodingGivesAMissingByteCount()
+    {
+        IDataTable p = primary("windows-1252");
+        IDataTable j = MockTable.of().col("K", "k1").col("S", E_ACUTE).name("J").build();
+        Rule missing = loadClean(
+                ruleJson("Record", MATCH + ","
+                        + check("empty(max_value_length(J.S, unit=\"bytes\"))"
+                                + " and empty(len(J.S, unit=\"bytes\"))"
+                                + " and empty(length(J.S, unit=\"bytes\"))")
+                        + "," + outcome("K")),
+                true);
+        assertEquals(List.of(1L),
+                QualifiedNameFixture.rows(executed(missing, p, exactInventory(p, j))));
+        // the primary's own count stands, and a written encoding= still answers for J
+        Rule own = loadClean(ruleJson("Record",
+                MATCH + ","
+                        + check("max_value_length(S, unit=\"bytes\") == 1"
+                                + " and len(J.S, unit=\"bytes\", encoding=\"UTF-8\") == 2")
+                        + "," + outcome("K")),
+                true);
+        assertEquals(List.of(1L),
+                QualifiedNameFixture.rows(executed(own, p, exactInventory(p, j))));
+    }
+
+
     @Test
     void theControls()
     {

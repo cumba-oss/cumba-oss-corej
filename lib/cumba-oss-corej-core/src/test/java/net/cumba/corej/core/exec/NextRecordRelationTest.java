@@ -297,6 +297,30 @@ class NextRecordRelationTest
                 "missing vs value fires on every arm (D-3)");
     }
 
+
+    /**
+     * B5 review ① L1 (PACK H fold): a KINDLESS operand ({@code BOOLEAN}, the shape an all-NA R
+     * logical used to arrive as; {@code MISSING}) takes the identity arm outright — T4 and the
+     * javadoc say a comparing relation widens a numeric pair or a character pair, and a kindless
+     * side is neither. Before the fold the other side's kind chose the arm. The verdict on this
+     * data is the identity arm's on both paths (a missing end never corresponds, D-3), so this pins
+     * the arm choice as a non-ERROR and the D-3 verdict, not a movement.
+     */
+    @Test
+    void aKindlessOperandTakesTheIdentityArm()
+    {
+        IDataTable kindless = RealTables.of("SJ").str("USUBJID", "R-001", "R-001")
+                .str("SJSEQ", "1", "2").str("SJSTDTC", "2019-12-01", "2020-01-15")
+                .typed("SJENDTC", net.cumba.datatable.values.DataValueType.BOOLEAN, null, null)
+                .build();
+        RuleExecutionResult res = result(rule(", relation=\"<=\""), kindless);
+        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(), res.getStatusMessage());
+        assertEquals(firedRows(rule(""), kindless), firedRows(rule(", relation=\"<=\""), kindless),
+                "a kindless pair answers as the identity arm does");
+        assertEquals(Set.of(1L), firedRows(rule(", relation=\"<=\""), kindless),
+                "missing vs value fires (D-3)");
+    }
+
     // ---------------------------------------------------------------- GroupSemantics level
 
 

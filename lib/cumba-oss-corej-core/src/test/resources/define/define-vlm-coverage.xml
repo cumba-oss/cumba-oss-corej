@@ -16,7 +16,7 @@
        LBSTRESC  [Derived, Collected]   LBORRES [Collected, ""]   LBSTAT [""]   LBNAM [""]
        LBTESTCD / LBSPEC / LBMETHOD  []
        LBSTNRC   two entries, both def:Origin Collected, no variable-level origin -> [Collected]
-       LBORNRLO  def:Origin Collected + the v2.0 @Origin="CRF", no variable level -> [Collected, CRF]
+       LBORNRLO  def:Origin Collected + the v1.0 @Origin="CRF", no variable level -> [Collected, CRF]
        LBSTNRU   variable-level def:Origin Derived, VL.COLLECTED                  -> [Collected]
      PLAN-vlm-unmethoded-origin-accessor (VU1-VU3, T3/T4): var_vlm_origin_types_without_method
      ("DEFINE"), the same list restricted to the entries whose ItemRef carries NO MethodOID ("" for
@@ -36,7 +36,7 @@
      The three VO1 variables' entries carry a comment (and LBSTNRC/LBORNRLO/LBSTNRU are not in the
      SR1 tests' data), so the SR1 comment tests do not see them.
      The comment is written as def:CommentOID on one entry and as CommentOID on another, and the
-     origin as the 2.1 def:Origin element on one and the v2.0 @Origin attribute on another, so
+     origin as the 2.1 def:Origin element on one and the v1.0 @Origin attribute on another, so
      both spellings the provider reads at variable level count at value level too. -->
 <ODM xmlns:def="http://www.cdisc.org/ns/def/v2.1" ODMVersion="1.3.2" FileType="Snapshot"
      FileOID="DEF.VLM.COVERAGE" CreationDateTime="2026-01-01T00:00:00">

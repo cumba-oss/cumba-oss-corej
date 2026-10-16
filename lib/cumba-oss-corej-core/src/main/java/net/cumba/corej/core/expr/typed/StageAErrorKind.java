@@ -331,9 +331,9 @@ public enum StageAErrorKind
      * for the upper folds and the lower-case twin for the lower folds — the locale {@code caseFold}
      * itself uses — so a literal with no cased character passes and {@code "ß"} (upper-cases to
      * {@code "SS"}) errors. Armed: the corpus census of 2026-10-16 found no literal compared to a
-     * fold probe in the other case (291 fold-probe comparisons, both corpora), so no shipped rule
-     * parks; the kind exists because until SVY OQ6 the surface folded the members too, and a rule
-     * written for that surface would otherwise go silent.
+     * fold probe in the other case (both corpora), so no shipped rule parks; the kind exists
+     * because until SVY OQ6 the surface folded the members too, and a rule written for that surface
+     * would otherwise go silent.
      */
     FOLD_PROBE_LITERAL_CASE(true),
 

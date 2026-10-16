@@ -104,6 +104,18 @@ class FoldProbePlainFunctionTest
 
 
     @Test
+    @DisplayName("a fold inside a list member is evaluated, not read as a probe")
+    void aFoldInsideAListMemberIsEvaluated()
+    {
+        // B5 review ② L4: the member upper("abc") is the value "ABC" — it matches the upper-case
+        // cell and not the lower-case one (the surface used to fold the members too, SVY OQ6)
+        IDataTable cased = MockTable.of().col("X", "ABC", "abc").build();
+        assertEquals(bits(0), eval("X in [upper(\"abc\")]", cased), "upper(\"abc\") is \"ABC\"");
+        assertEquals(bits(1), eval("X not in [upper(\"abc\")]", cased));
+    }
+
+
+    @Test
     @DisplayName("(2) a missing-identity probe stays its missing through the fold")
     void aMissingIdentityProbeKeepsItsIdentity()
     {

@@ -837,6 +837,15 @@ public final class RuleRunner
             logKeyDropWarnings(keyDropWarnings);
             throw e;
         }
+        catch (net.cumba.corej.core.expr.eval.UnusableProviderAnswerException unusable)
+        {
+            // B5 review MED-2 (coordinator ruling, parity with the same call in a Check — the
+            // eager binding arm below): a Match_Datasets Filter whose Library / Define / dictionary
+            // call has no usable data skips the rule, visibly, with the same wording; it used to
+            // escape the per-rule catch as an exception
+            logKeyDropWarnings(keyDropWarnings);
+            return unusableProviderSkip(unusable, libraryProvider, ruleId, message, table);
+        }
         catch (RuntimeException e)
         {
             // any other refusal of the view build (an InvalidJoinedDomainException of a later
@@ -1176,24 +1185,38 @@ public final class RuleRunner
             }
             catch (net.cumba.corej.core.expr.eval.UnusableProviderAnswerException unusable)
             {
-                String statusMessage = switch (unusable.kind())
-                {
-                case LIBRARY -> libraryProvider != null && libraryProvider.isLibraryUnavailable()
-                        ? "Rule skipped — the CDISC Library could not be consulted for this run,"
-                                + " and " + unusable.function()
-                                + " may not be answered from a non-library source"
-                        : "Rule skipped — library returned no data for " + unusable.function();
-                case DEFINE -> "Rule skipped — Define-XML returned no data for "
-                        + unusable.function();
-                case DICTIONARY -> "Rule skipped — the external dictionary returned no data for "
-                        + unusable.function();
-                };
-                return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                        .violations(List.of()).totalRows(RealRows.count(ctx.getTable()))
-                        .status(RuleExecutionStatus.SKIPPED).statusMessage(statusMessage).build();
+                return unusableProviderSkip(unusable, libraryProvider, ruleId, message,
+                        ctx.getTable());
             }
         }
         return null;
+    }
+
+
+    /**
+     * The SKIPPED result of an "answered but unusable" provider read, worded per provider kind —
+     * shared by the eager binding arm ({@link #eagerCompiledBindingSkip}) and the
+     * {@code Match_Datasets} Filter (B5 review MED-2), so a Library call skips the rule with one
+     * wording wherever it stands.
+     */
+    private static RuleExecutionResult unusableProviderSkip(
+            net.cumba.corej.core.expr.eval.UnusableProviderAnswerException unusable,
+            @Nullable MetadataProvider libraryProvider, @Nullable String ruleId,
+            @Nullable String message, IDataTable table)
+    {
+        String statusMessage = switch (unusable.kind())
+        {
+        case LIBRARY -> libraryProvider != null && libraryProvider.isLibraryUnavailable()
+                ? "Rule skipped — the CDISC Library could not be consulted for this run, and "
+                        + unusable.function() + " may not be answered from a non-library source"
+                : "Rule skipped — library returned no data for " + unusable.function();
+        case DEFINE -> "Rule skipped — Define-XML returned no data for " + unusable.function();
+        case DICTIONARY -> "Rule skipped — the external dictionary returned no data for "
+                + unusable.function();
+        };
+        return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(List.of())
+                .totalRows(RealRows.count(table)).status(RuleExecutionStatus.SKIPPED)
+                .statusMessage(statusMessage).build();
     }
 
 
@@ -3201,7 +3224,10 @@ public final class RuleRunner
                 for (Map.Entry<String, String> e : dfMeta.entrySet())
                 {
                     String key = "define_variable_" + e.getKey();
-                    values.put(key, reportedMeta(key, e.getValue()));
+                    // C14 on the DATA universe too (VLM review MED-1): a list attribute reports
+                    // in the canonical sorted form, as buildDefineVariableViolation renders it
+                    values.put(key,
+                            reportedMeta(key, formatDefineOutput(e.getKey(), e.getValue())));
                 }
             }
         }
@@ -3217,8 +3243,19 @@ public final class RuleRunner
                 if (varMeta.containsKey(ov))
                 {
                     Object val = varMeta.get(ov);
-                    filtered.put(ov,
-                            val != null ? val.toString() : OutputEntryKind.of(ov).defaultValue());
+                    String text = val != null ? val.toString()
+                            : OutputEntryKind.of(ov).defaultValue();
+                    if (val != null && ov.startsWith(DEFINE_VARIABLE_PREFIX))
+                    {
+                        // C14 on the DATA universe too (VLM review MED-1): varMeta carries the
+                        // provider's JSON encoding of a list attribute for the EVALUATION; the
+                        // report renders it in the canonical sorted form, as the define universe
+                        // does (buildDefineVariableViolation) — the effective Output_Variables of
+                        // a rule reading var_vlm_origin_types land here
+                        text = reportedMeta(ov, formatDefineOutput(
+                                ov.substring(DEFINE_VARIABLE_PREFIX.length()), text));
+                    }
+                    filtered.put(ov, text);
                 }
                 else if (ov.startsWith("$") && contextVariables != null
                         && contextVariables.containsKey(ov))
@@ -3592,6 +3629,9 @@ public final class RuleRunner
 
     /** {@link OutputEntryKind#VARIABLE_VALUE}. */
     private static final String VARIABLE_VALUE = OutputEntryKind.VARIABLE_VALUE;
+
+    /** The report key prefix of a define-variable attribute ({@code define_variable_<key>}). */
+    private static final String DEFINE_VARIABLE_PREFIX = "define_variable_";
 
     /**
      * The provider keys of the list-valued define attributes ({@link MetadataAttribute#isList()}),

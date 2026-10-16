@@ -599,12 +599,12 @@ class QualifiedNameUniformityTest
             // with and without the join. Their sensitivity (a partner's SUPP qualifier the
             // inventory table lacks) is QualifiedNamePhase3FixesTest's MQ9 case.
             "var_exists/name", "var_not_exists/name",
-            // Since SVY OQ2 (2026-10-16, B5 S2) split_by("") is the one-token list [""] — so over
-            // this fixture's one-token S values a split through the join and the split of the
-            // absent default "" are both one-element lists, and a count / size / contains_any over
-            // them cannot tell the join from its absence. Their sensitivity is a multi-token
-            // fixture value (not this one's) or a missing cell (a scalar, never a list).
-            "contains_any/list", "count/x", "size/x",
+            // Since SVY OQ2 (2026-10-16, B5 S2) split_by("") is the one-token list [""]. Row 6's
+            // S value "c,d" (B5 review ① L3) is the multi-token value that lets count / size — and
+            // the contains_all probes below — tell the join's split from the split of the absent
+            // default ""; contains_any(#S, split_by(@S, ",")) stays blind because the twin columns
+            // carry the SAME value: "c,d" is a member neither of ["c", "d"] nor of [""].
+            "contains_any/list",
             // The strict predicate (register D50, owner 2026-10-05) is true only for a
             // MissingValue, and the probed character column S carries none ("" is a present
             // value): through the join every row reads FALSE, and with the join unreachable the
@@ -633,7 +633,7 @@ class QualifiedNameUniformityTest
             // with J.X resolving nowhere — the operator's absent-column bail. Their sensitivity
             // is MergedColumnKeyReadersTest's JOINED arm and its KEYED plant (W3c), on data
             // built to discriminate.
-            "contains_all/source", "not_contains_all/source", "empty_within_except_last_row/group",
+            "empty_within_except_last_row/group",
             "has_mixed_emptiness_within_group/qualifying_any_populated",
             "has_multiple_values_for/key", "has_multiple_values_for/name",
             "has_multiple_values_for/within", "has_same_values/name",
@@ -1058,7 +1058,7 @@ class QualifiedNameUniformityTest
         List<Col> all = List.of(new Col(KEY, DataValueType.STRING, new Object[]
         {
                 "i1", "i2", "i3", "i4", "i5", "i6"
-        }), col('K', "k1", "k2", "k3", "k4", "k5", "k6"), col('S', "a", "b", "", "A", "b", "c"),
+        }), col('K', "k1", "k2", "k3", "k4", "k5", "k6"), col('S', "a", "b", "", "A", "b", "c,d"),
                 col('N', 1.0, 2.5, MissingValue.MIS_UNKNOWN.asDouble(),
                         MissingValue.MIS_A.asDouble(), 1.0, 3.0),
                 col('L', 1L, 2L, null, 3L, 1L, 2L),

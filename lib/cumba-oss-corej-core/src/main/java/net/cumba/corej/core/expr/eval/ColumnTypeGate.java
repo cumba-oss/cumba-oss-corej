@@ -35,13 +35,14 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * <b>Deliberately not gated</b> (recorded so absence is not mistaken for coverage): the
- * {@code str()==str()} type-insensitive surface and the {@code upper}/{@code lowcase}
- * case-insensitive surfaces (explicit string modes); the {@code date}/{@code date_part}/
- * {@code time_part} families (their polymorphic numeric-vs-ISO dispatch is type-directed by
- * design); character-function <em>subjects</em> ({@code len}/{@code prefix}/{@code substring}/…
- * over a Num column — 0 corpus instances measured 2026-09-13, and gating them would need a coercion
- * semantics with no demand); and dynamic membership sets ({@code $}-lists, accessors, grouped
- * results — their member types are not statically known).
+ * {@code str()==str()} type-insensitive surface and the {@code upper}/{@code lowcase} folds the
+ * author writes on both sides ({@code upper(X) in upper($v)}, SVY OQ6 — explicit string modes); the
+ * {@code date}/{@code date_part}/ {@code time_part} families (their polymorphic numeric-vs-ISO
+ * dispatch is type-directed by design); character-function <em>subjects</em>
+ * ({@code len}/{@code prefix}/{@code substring}/… over a Num column — 0 corpus instances measured
+ * 2026-09-13, and gating them would need a coercion semantics with no demand); and dynamic
+ * membership sets ({@code $}-lists, accessors, grouped results — their member types are not
+ * statically known).
  * </p>
  *
  * <p>

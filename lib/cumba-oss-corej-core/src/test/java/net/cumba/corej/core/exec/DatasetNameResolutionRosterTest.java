@@ -117,6 +117,11 @@ class DatasetNameResolutionRosterTest
                     "C19 the primary's SUPP sources"),
             Map.entry("exec/MergedEvaluation#build:SplitDomainResolution.resolveTableOrThrow",
                     "C19 the D11 callback: every non-chosen name through the widened seam"),
+            Map.entry("exec/MergedEvaluation#resolveQuietly:datasets.resolve",
+                    "§9 the lazy source of a Child parent / RELREC part's lookup (B5 review L2): the D11"
+                            + " callback's own seam, reached only once the merged view exists; a refusal"
+                            + " (a type-clashing split domain) is swallowed because the merge raises it"
+                            + " where it reads the table"),
             Map.entry("exec/MergedEvaluation#keyedSpecs:DatasetIdentity.resolveDatasetWildcard",
                     "C18 non-Child Match_Datasets SUPP--"),
             Map.entry("exec/MergedEvaluation#keyedSpecs:SplitDomainResolution.resolveTableOrThrow",
@@ -139,14 +144,14 @@ class DatasetNameResolutionRosterTest
                     "exec/ScopeVariableSource#resolveQualifierName:DatasetIdentity.resolveDatasetWildcard",
                     "C18 a qualified SUPP--.QNAM entry"),
             Map.entry("exec/ScopeVariableSource#resolveIgnoringCase:SplitDomainResolution.byName",
-                    "§9 the exact lookup of a qualified entry's dataset (its family leg runs first in resolveMetas)"),
+                    "§9 the exact lookup of a qualified entry's dataset (its family leg runs first in resolveTables)"),
             Map.entry(
-                    "exec/ScopeVariableSource#resolveMetas:SplitDomainResolution.isSuppFamilyName",
-                    "C18 qualified Requirements.Variables (metasOf)"),
+                    "exec/ScopeVariableSource#resolveTables:SplitDomainResolution.isSuppFamilyName",
+                    "C18 qualified Requirements.Variables (metasOf / tablesOf)"),
             Map.entry(
-                    "exec/ScopeVariableSource#resolveMetas:SplitDomainResolution.suppFamilyMembers",
-                    "C18 qualified Requirements.Variables (metasOf)"),
-            Map.entry("exec/ScopeVariableSource#resolveMetas:SplitDomainResolution.membersOf",
+                    "exec/ScopeVariableSource#resolveTables:SplitDomainResolution.suppFamilyMembers",
+                    "C18 qualified Requirements.Variables (metasOf / tablesOf)"),
+            Map.entry("exec/ScopeVariableSource#resolveTables:SplitDomainResolution.membersOf",
                     "C18 side (a): a throwing unrelated dataset beside a split-LB entry"),
             // ---- the string channels (C18)
             Map.entry(

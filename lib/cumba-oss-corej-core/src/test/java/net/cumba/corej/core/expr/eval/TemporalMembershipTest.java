@@ -112,7 +112,7 @@ class TemporalMembershipTest
         Vector col = dates();
         assertTrue(Primitives.isTemporalMember(col.value(0).cell(), Set.of("2020-01-01T09:15")),
                 "2020-01-01 is the same point as 2020-01-01T09:15 at day precision");
-        assertFalse(Primitives.isMember(col.value(0).cell(), Set.of("2020-01-01T09:15"), false),
+        assertFalse(Primitives.isMember(col.value(0).cell(), Set.of("2020-01-01T09:15")),
                 "⚠ the TEXTUAL arm must still answer false — otherwise this test is not measuring"
                         + " the temporal arm at all");
     }

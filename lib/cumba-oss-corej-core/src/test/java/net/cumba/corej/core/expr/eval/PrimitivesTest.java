@@ -446,12 +446,14 @@ class PrimitivesTest
         IDataTable t = MockTable.of().col("X", "A", "B", "C").build();
         ColumnVector x = col(t, "X");
         Primitives.MemberSet set = Primitives.MemberSet.ofStrings(Set.of("A", "C"));
-        assertEquals(bits(0, 2), Primitives.membership(x, set, 3, false, false));
-        assertEquals(bits(1), Primitives.membership(x, set, 3, true, false));
+        assertEquals(bits(0, 2), Primitives.membership(x, set, 3, false));
+        assertEquals(bits(1), Primitives.membership(x, set, 3, true));
 
+        // exact: a case-insensitive membership is the author's fold on both sides (SVY OQ6; the
+        // primitive's flag went with B5 review ② L3)
         IDataTable ci = MockTable.of().col("X", "a", "b").build();
-        assertEquals(bits(0), Primitives.membership(col(ci, "X"),
-                Primitives.MemberSet.ofStrings(Set.of("A")), 2, false, true));
+        assertEquals(bits(), Primitives.membership(col(ci, "X"),
+                Primitives.MemberSet.ofStrings(Set.of("A")), 2, false));
     }
 
 
@@ -463,16 +465,16 @@ class PrimitivesTest
         IDataTable t = MockTable.of().col("X", "Y", "X", "", (String) null).build();
         ColumnVector x = col(t, "X");
         Primitives.MemberSet yn = Primitives.MemberSet.ofStrings(Set.of("Y", "N"));
-        assertEquals(bits(0), Primitives.membership(x, yn, 4, false, false)); // is_contained_by
-        assertEquals(bits(1, 2, 3), Primitives.membership(x, yn, 4, true, false)); // is_not_...
+        assertEquals(bits(0), Primitives.membership(x, yn, 4, false)); // is_contained_by
+        assertEquals(bits(1, 2, 3), Primitives.membership(x, yn, 4, true)); // is_not_...
         // ⭐ D13: an explicit opt-out list ["","Y","N"] permits the BLANK row (2) — "" is a present
         // value (D34 #1) — but NOT the missing row (3), which is a member of no list, "" included.
         // That is the one row this ruling moved, and it moved because `== ""` moved with it (D12);
         // D81 makes `in` a disjunction of `==`, so the two could not answer differently.
         // ⚑ Vacuous on the authored corpus: no authored membership list carries "" (D81b).
         Primitives.MemberSet optOut = Primitives.MemberSet.ofStrings(Set.of("", "Y", "N"));
-        assertEquals(bits(0, 2), Primitives.membership(x, optOut, 4, false, false));
-        assertEquals(bits(1, 3), Primitives.membership(x, optOut, 4, true, false));
+        assertEquals(bits(0, 2), Primitives.membership(x, optOut, 4, false));
+        assertEquals(bits(1, 3), Primitives.membership(x, optOut, 4, true));
     }
 
 

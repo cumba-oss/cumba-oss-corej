@@ -1419,12 +1419,11 @@ public final class BuiltinFunctions implements FunctionProvider
      */
     private static @Nullable Integer integral(Vector v, int row)
     {
-        // ⚠ integral() is itself per-row; its callers (affixValue, the substring descriptor) hoist
-        // the gate to vector construction, which is what makes it data-independent. Kept here as
-        // a belt-and-braces raise for any future caller that forgets — requireNumericRead is
-        // idempotent.
-        net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(v,
-                "a numeric function operand");
+        // ⚠ integral() is itself per-row; its callers (affixValue, the substring descriptor) gate
+        // the operand ONCE at vector construction — the gate is a function of the vector, not of
+        // a row — and a new caller must do the same. A per-row "belt-and-braces" gate stood here
+        // until B5 review MED-1: on a Char length column of "" cells (present values, blank to
+        // the gate) its blank scan re-walked the column for every row — n scans of n cells.
         Double d = numeric(v, row);
         if (d == null || Double.compare(d, Math.rint(d)) != 0 || Double.isInfinite(d))
         {

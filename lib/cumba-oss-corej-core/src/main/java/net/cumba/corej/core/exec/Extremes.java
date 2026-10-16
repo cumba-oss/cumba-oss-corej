@@ -1,6 +1,5 @@
 package net.cumba.corej.core.exec;
 
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import net.cumba.corej.core.expr.eval.IsoDateBounds;
@@ -178,10 +177,16 @@ public final class Extremes
      * {@code …T09:15}. Answering the earliest <i>determined</i> atom would then answer a value that
      * is provably not the extreme, so the precise mode keeps the hull answer {@code W} whenever an
      * undetermined candidate that does not contain {@code W} could reach the refined value (for a
-     * min: its lower bound is at or before the refined value's upper; for a max: its upper at or
-     * after the refined lower). A candidate containing {@code W} ({@code min{2020-01, 2020-01-01,
-     * …T08:00}}: the month) does not block — the day pins it, which is DT2 (a)'s ruled consequence.
-     * Only the precise mode keeps the undetermined hulls, and only those (no candidate list).
+     * min: its lower bound is strictly before the refined value's upper; for a max: its upper
+     * strictly after the refined lower — at point equality the candidate is at best a tie with the
+     * refined value and cannot beat it). A candidate containing {@code W} ({@code min{2020-01,
+     * 2020-01-01, …T08:00}}: the month) does not block — the day pins it, which is DT2 (a)'s ruled
+     * consequence. Only the precise mode tracks the undetermined candidates, and it keeps O(1)
+     * state, never a list of hulls: their best primary bound (the smallest lower for a min), the
+     * best secondary bound among those sharing it (the smallest upper — the one that decides
+     * whether some such candidate fails to contain {@code W}) and the second-best primary bound
+     * (the smallest lower strictly after the best — the nearest candidate that cannot contain
+     * {@code W}); the block test reads those three.
      * </p>
      *
      * <p>
@@ -235,14 +240,24 @@ public final class Extremes
         /** {@code refined}'s hull. */
         private IsoDateBounds.@Nullable Hull refinedHull;
 
-        /** Precise mode only (T11): the undetermined candidates' hulls; usually never allocated. */
-        private @Nullable List<IsoDateBounds.Hull> undetermined;
+        /**
+         * Precise mode only (T11): the undetermined candidates' best primary bound — the smallest
+         * lower for a min, the largest upper for a max — or {@code null} while none was seen.
+         */
+        private @Nullable String undeterminedPrimary;
 
-        DateExtreme(boolean findMax, boolean missingIsIndeterminate)
-        {
-            this(findMax, missingIsIndeterminate, false);
-        }
+        /**
+         * The best secondary bound — the smallest upper for a min, the largest lower for a max —
+         * among the undetermined candidates whose primary bound equals
+         * {@link #undeterminedPrimary}.
+         */
+        private @Nullable String undeterminedSecondary;
 
+        /**
+         * The best primary bound among the undetermined candidates strictly worse than
+         * {@link #undeterminedPrimary}, or {@code null}.
+         */
+        private @Nullable String undeterminedSecondBest;
 
         DateExtreme(boolean findMax, boolean missingIsIndeterminate, boolean precise)
         {
@@ -299,13 +314,7 @@ public final class Extremes
             {
                 if (precise)
                 {
-                    List<IsoDateBounds.Hull> u = undetermined;
-                    if (u == null)
-                    {
-                        u = new ArrayList<>(2);
-                        undetermined = u;
-                    }
-                    u.add(hull);
+                    noteUndetermined(hull);
                 }
                 return;
             }
@@ -351,29 +360,71 @@ public final class Extremes
 
 
         /**
+         * T11 (the class comment): folds an undetermined candidate into the O(1) state — the best
+         * primary bound, the best secondary bound among the candidates sharing it, and the
+         * second-best primary bound.
+         */
+        private void noteUndetermined(IsoDateBounds.Hull hull)
+        {
+            String p = primary(hull);
+            String s = secondary(hull);
+            String best = undeterminedPrimary;
+            if (best == null || beats(p, best))
+            {
+                // the former best is now the best among those strictly worse than p
+                undeterminedSecondBest = best;
+                undeterminedPrimary = p;
+                undeterminedSecondary = s;
+            }
+            else if (p.equals(best))
+            {
+                String bestSecondary = undeterminedSecondary;
+                if (bestSecondary == null || beats(s, bestSecondary))
+                {
+                    undeterminedSecondary = s;
+                }
+            }
+            else if (undeterminedSecondBest == null || beats(p, undeterminedSecondBest))
+            {
+                undeterminedSecondBest = p;
+            }
+        }
+
+
+        /**
          * T11 (the class comment): whether an undetermined candidate that does not contain the hull
-         * winner could reach the refined value.
+         * winner could reach the refined value — strictly beat its far bound (DT review L1: at
+         * point equality the candidate is at best a tie and cannot be the extreme). Decided from
+         * the three tracked bounds: a candidate sharing the winner's primary bound fails to contain
+         * the winner exactly when its secondary bound stops short of the winner's, and every
+         * candidate with a strictly worse primary bound fails to contain it; the best of each kind
+         * reaches furthest.
          */
         private boolean blockedByUndetermined(IsoDateBounds.Hull winner,
                 IsoDateBounds.Hull refinedOne)
         {
-            List<IsoDateBounds.Hull> u = undetermined;
-            if (u == null)
+            String best = undeterminedPrimary;
+            String bestSecondary = undeterminedSecondary;
+            if (best == null || bestSecondary == null)
             {
                 return false;
             }
-            for (IsoDateBounds.Hull h : u)
+            String winnerPrimary = primary(winner);
+            String reach = secondary(refinedOne);
+            if (beats(best, winnerPrimary))
             {
-                boolean containsWinner = h.lower().compareTo(winner.lower()) <= 0
-                        && h.upper().compareTo(winner.upper()) >= 0;
-                boolean reaches = findMax ? h.upper().compareTo(refinedOne.lower()) >= 0
-                        : h.lower().compareTo(refinedOne.upper()) <= 0;
-                if (!containsWinner && reaches)
-                {
-                    return true;
-                }
+                // unreachable once result() has matched the winner to the limit the undetermined
+                // candidates contributed to; conservative all the same
+                return true;
             }
-            return false;
+            if (best.equals(winnerPrimary))
+            {
+                boolean oneDoesNotContainTheWinner = beats(bestSecondary, secondary(winner));
+                String secondBest = undeterminedSecondBest;
+                return (oneDoesNotContainTheWinner && beats(best, reach))
+                        || (secondBest != null && beats(secondBest, reach));
+            }
+            return beats(best, reach);
         }
 
 
@@ -381,6 +432,13 @@ public final class Extremes
         private String primary(IsoDateBounds.Hull hull)
         {
             return findMax ? hull.upper() : hull.lower();
+        }
+
+
+        /** The other bound: lower for a max, upper for a min. */
+        private String secondary(IsoDateBounds.Hull hull)
+        {
+            return findMax ? hull.lower() : hull.upper();
         }
 
 

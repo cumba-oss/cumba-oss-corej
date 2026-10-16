@@ -225,6 +225,38 @@ class RealRowAggregatesTest
 
 
     /**
+     * B3 review MED-1 (PACK H fold): only a STRING LITERAL names a column for the classifier (T4
+     * (i)); a column REFERENCE as the {@code colref} argument keeps the read dynamic — its VALUES
+     * name the columns read, so it cannot be collected as the column it spells — and the merged
+     * rows are counted, as the javadoc always said. RED before: {@code colref(N)} was collected as
+     * {@code N} and counted real rows (group g: 2, not its 3 merged rows). A {@code $} binding
+     * holding a constant string is inlined to that literal before the classifier runs, so
+     * {@code colref($b)} with {@code $b: "K"} IS the literal spelling and keeps the real-row read
+     * (the test above); a binding over a column cannot stand in a {@code filter=} (a per-row
+     * binding is its load error), so the reference is the one dynamic shape here.
+     */
+    @Test
+    @DisplayName("a colref with a column-reference argument stays a merged read")
+    void aColrefWithANonLiteralArgumentStaysAMergedRead()
+    {
+        IDataTable named = RealTables.of("P").str("K", "k1", "k2", "k3").str("G", "g", "g", "h")
+                .str("N", "K", "K", "K").build();
+        RuleExecutionResult reference = run(match("J", "K", "inner"),
+                "record_count(group=[G], filter=(colref(N) != \"\")) == 3", named, j(), "K");
+        assertEquals(List.of("k1", "k2"), keys(reference),
+                "group g holds three merged rows: " + QualifiedNameFixture.values(reference));
+        // the control: the literal spelling of the same read counts each record once
+        assertEquals(List.of("k1", "k2"), keys(run(match("J", "K", "inner"),
+                "record_count(group=[G], filter=(colref(\"K\") != \"\")) == 2", named, j(), "K")));
+        // a constant binding is the literal, inlined: the same real-row read
+        RuleExecutionResult bound = runBound(match("J", "K", "inner"), bindings("$b", "\\\"K\\\""),
+                "record_count(group=[G], filter=(colref($b) != \"\")) == 2", named, j(), "K");
+        assertEquals(List.of("k1", "k2"), keys(bound),
+                "colref($b), $b a constant: " + QualifiedNameFixture.values(bound));
+    }
+
+
+    /**
      * T4 (ii): a {@code $} binding whose expression reads only unqualified primary columns is
      * collected as those names — the operator counts each record once. RED before: a {@code $}
      * reference was "never a primary column", so the ECHO record expanded twice by TM read as a

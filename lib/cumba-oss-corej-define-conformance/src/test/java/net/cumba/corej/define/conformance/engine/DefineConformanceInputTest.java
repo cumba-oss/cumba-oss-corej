@@ -103,6 +103,21 @@ class DefineConformanceInputTest
     }
 
 
+    /**
+     * DF review L6 (PACK H fold): a family is trimmed before the case-insensitive dedupe — the
+     * manifest's {@code canonicalFamily} compares the trimmed spelling, so {@code " CDISC"} and
+     * {@code "cdisc"} name one family and must select one package, not two.
+     */
+    @Test
+    void theBuilderTrimsFamiliesBeforeDedupingThem()
+    {
+        DefineConformanceInput input = DefineConformanceInput.builder(DEFINE)
+                .families(List.of(" cdisc", "CDISC ", "PMDA", "\tpmda")).build();
+
+        assertEquals(List.of("cdisc", "PMDA"), input.families());
+    }
+
+
     @Test
     void everyPublishedFamilyIsAnExplicitModeOnAnEmptyList()
     {

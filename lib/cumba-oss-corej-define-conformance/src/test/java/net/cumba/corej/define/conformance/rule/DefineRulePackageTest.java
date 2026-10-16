@@ -359,4 +359,55 @@ class DefineRulePackageTest
         assertTrue(e.getMessage().contains("differ only in case"), e.getMessage());
     }
 
+
+    /**
+     * DF review L5 (PACK H fold): an entry without a file or without a version can never be
+     * selected or resolved — it would reach {@code find} / {@code versionsFor} as {@code null} and
+     * the package load as "no such file" — so it is refused at load like an entry without a family,
+     * naming {@code packages.json}.
+     */
+    @Test
+    void aManifestEntryWithABlankFileOrVersionIsRefused(@TempDir Path aDir) throws IOException
+    {
+        writeManifest(aDir, """
+                {
+                  "generatedFrom" : "test",
+                  "packages" : [
+                    { "file" : " ", "family" : "CDISC", "version" : "2.1", "ruleCount" : 1 }
+                  ]
+                }
+                """);
+        DefineRuleSelectionException file = assertThrows(DefineRuleSelectionException.class,
+                () -> DefineRulePackageManifest.load(aDir));
+        assertTrue(file.getMessage().contains("names no file"), file.getMessage());
+        assertTrue(file.getMessage().contains(DefineRulePackageManifest.FILE_NAME),
+                file.getMessage());
+
+        writeManifest(aDir, """
+                {
+                  "generatedFrom" : "test",
+                  "packages" : [
+                    { "file" : "rules-define-cdisc-2-1.json", "family" : "CDISC",
+                      "version" : "", "ruleCount" : 1 }
+                  ]
+                }
+                """);
+        DefineRuleSelectionException version = assertThrows(DefineRuleSelectionException.class,
+                () -> DefineRulePackageManifest.load(aDir));
+        assertTrue(version.getMessage().contains("names no version"), version.getMessage());
+        assertTrue(version.getMessage().contains("rules-define-cdisc-2-1.json"),
+                version.getMessage());
+
+        writeManifest(aDir, """
+                {
+                  "generatedFrom" : "test",
+                  "packages" : [
+                    { "file" : "rules-define-cdisc-2-1.json", "family" : "CDISC", "ruleCount" : 1 }
+                  ]
+                }
+                """);
+        assertThrows(DefineRuleSelectionException.class, () -> DefineRulePackageManifest.load(aDir),
+                "an absent version is a null version");
+    }
+
 }

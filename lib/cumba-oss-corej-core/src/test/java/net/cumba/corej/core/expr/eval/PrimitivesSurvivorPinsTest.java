@@ -329,9 +329,9 @@ class PrimitivesSurvivorPinsTest
     {
         ConstVector scalar = ConstVector.of("Y");
         assertEquals(bits(), Primitives.listMembership(scalar,
-                Primitives.MemberSet.ofStrings(Set.of("Y")), 2, false, false));
+                Primitives.MemberSet.ofStrings(Set.of("Y")), 2, false));
         assertEquals(bits(0, 1), Primitives.listMembership(scalar,
-                Primitives.MemberSet.ofStrings(Set.of("Y")), 2, true, false));
+                Primitives.MemberSet.ofStrings(Set.of("Y")), 2, true));
     }
 
 
@@ -339,16 +339,17 @@ class PrimitivesSurvivorPinsTest
      * The null-skip pin that stood here ({@code listMembershipSkipsNullElementsAndMatchesTheRest})
      * is retired: its mutant's code — {@code anyInSet}'s {@code item == null} skip — is gone with
      * register {@code NNL §1} (no list element is null; {@code ConstVector.of} rejects one). The
-     * case-insensitive rows it also carried keep their pin here.
+     * case-insensitive row it also carried went with the primitive's dead flag (B5 review ② L3):
+     * the comparison is exact, a case fold is the author's on both sides (SVY OQ6).
      */
     @Test
-    void listMembershipCaseInsensitiveFoldsTheElementNotTheSet()
+    void listMembershipComparesTheElementsExactly()
     {
         ConstVector lower = ConstVector.of(List.of("y"));
-        assertEquals(bits(0), Primitives.listMembership(lower,
-                Primitives.MemberSet.ofStrings(Set.of("Y")), 1, false, true));
         assertEquals(bits(), Primitives.listMembership(lower,
-                Primitives.MemberSet.ofStrings(Set.of("Y")), 1, false, false));
+                Primitives.MemberSet.ofStrings(Set.of("Y")), 1, false));
+        assertEquals(bits(0), Primitives.listMembership(ConstVector.of(List.of("Y")),
+                Primitives.MemberSet.ofStrings(Set.of("Y")), 1, false));
     }
 
     // -------------------------------------------------------------------------

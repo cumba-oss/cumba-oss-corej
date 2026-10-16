@@ -1390,6 +1390,10 @@ public class RulePackageLoader
                             net.cumba.corej.core.exec.SortKeys::checkSingleKeyCall),
                     Map.entry("has_next_corresponding_record",
                             net.cumba.corej.core.exec.SortKeys::checkSingleKeyCall),
+                    // W4 review LOW-1 (PACK H fold): a two-column within= is the load error
+                    // inline too (the compiler's refusal would only degrade an inline Check)
+                    Map.entry("present_on_multiple_rows_within",
+                            net.cumba.corej.core.expr.eval.ExprCompiler::rejectSingleColumnWithinSize),
                     // runbook W4 SB3: is_sorted_by's by= meets the one sort-key reader at load (an
                     // unknown nulls= value or descriptor keyword); the compiler's refusal would
                     // only degrade an inline Check
@@ -1712,8 +1716,7 @@ public class RulePackageLoader
             "has_multiple_values_for", "is_inconsistent_across_dataset", "is_not_unique_set",
             "is_unique_set", "present_on_multiple_rows_within",
             "not_present_on_multiple_rows_within", "does_not_have_next_corresponding_record",
-            "has_next_corresponding_record", "empty_within_except_last_row",
-            "target_is_not_sorted_by", "is_sorted_by",
+            "has_next_corresponding_record", "empty_within_except_last_row", "is_sorted_by",
             // wave 1 (PLAN-function-surface-wave1 D-W1-4): the two grouped callables ported from
             // the Operation surface consume keep_missings= as registry functions now.
             "is_last_in_group", "has_mixed_emptiness_within_group",

@@ -41,7 +41,7 @@ class InLowersIntoEqualityTest
                         false);
                 for (int row = 0; row < 5; row++)
                 {
-                    boolean in = Primitives.isMember(col.value(row).cell(), Set.of(member), false);
+                    boolean in = Primitives.isMember(col.value(row).cell(), Set.of(member));
                     assertEquals(eq.get(row), in, colName + "[" + row + "] vs \"" + member + "\"");
                 }
             }
@@ -59,11 +59,10 @@ class InLowersIntoEqualityTest
     void numericModeAndToleranceReachMembership()
     {
         Vector n = VectorLayerTest.col(T, "N");
-        assertTrue(Primitives.isMember(n.value(0).cell(), Set.of("010"), false),
+        assertTrue(Primitives.isMember(n.value(0).cell(), Set.of("010")),
                 "LONG 10 in [\"010\"] — the numeric arm");
-        assertTrue(Primitives.isMember(n.value(1).cell(), Set.of("17.0"), false),
-                "LONG 17 in [\"17.0\"]");
-        assertFalse(Primitives.isMember(n.value(3).cell(), Set.of("10"), false), "3 not in [10]");
+        assertTrue(Primitives.isMember(n.value(1).cell(), Set.of("17.0")), "LONG 17 in [\"17.0\"]");
+        assertFalse(Primitives.isMember(n.value(3).cell(), Set.of("10")), "3 not in [10]");
     }
 
 
@@ -80,25 +79,29 @@ class InLowersIntoEqualityTest
     void missingIsAMemberOfNoListAndBlankStillIs()
     {
         Vector c = VectorLayerTest.col(T, "C");
-        assertFalse(Primitives.isMember(c.value(2).cell(), Set.of(""), false),
+        assertFalse(Primitives.isMember(c.value(2).cell(), Set.of("")),
                 "missing in [\"\"] is FALSE (D13) — and == \"\" is false for it too (D12)");
-        assertFalse(Primitives.isMember(c.value(2).cell(), Set.of("Y", "N"), false));
-        assertTrue(Primitives.isMember(c.value(1).cell(), Set.of(""), false),
+        assertFalse(Primitives.isMember(c.value(2).cell(), Set.of("Y", "N")));
+        assertTrue(Primitives.isMember(c.value(1).cell(), Set.of("")),
                 "a BLANK cell is a present \"\" (D34 #1) and IS a member of [\"\"]");
     }
 
 
-    /** D81d(ii): case-insensitive membership is a case-insensitive {@code ==} per member. */
+    /**
+     * D81d(ii) after SVY OQ6: a case-insensitive membership is the author's fold on both sides
+     * ({@code upper(X) in upper($v)}), so the primitive compares exactly — it carries no
+     * case-insensitive flag any more (B5 review ② L3 retired the dead parameter).
+     */
     @Test
-    void caseInsensitiveMembershipIsCaseInsensitiveEquality()
+    void membershipComparesExactlyAndTheAuthorFoldsBothSides()
     {
-        IDataTable t = MockTable.of().col("X", "yes", "No", "").build();
+        IDataTable t = MockTable.of().col("X", "yes", "No", "", "YES").build();
         Vector x = VectorLayerTest.col(t, "X");
-        // the primitive's flag, the set pre-upper-cased: the compiler no longer passes true (SVY
-        // OQ6 retired the upper(X)-membership surface); the primitive keeps the parameter
-        assertTrue(Primitives.isMember(x.value(0).cell(), Set.of("YES"), true));
-        assertTrue(Primitives.isMember(x.value(1).cell(), Set.of("NO"), true));
-        assertFalse(Primitives.isMember(x.value(2).cell(), Set.of("YES"), true));
+        assertFalse(Primitives.isMember(x.value(0).cell(), Set.of("YES")), "exact: yes is not YES");
+        assertTrue(Primitives.isMember(x.value(0).cell(), Set.of("yes")));
+        assertFalse(Primitives.isMember(x.value(2).cell(), Set.of("YES")));
+        assertTrue(Primitives.isMember(x.value(3).cell(), Set.of("YES")),
+                "the author's fold puts the upper-cased cell against the upper-cased member");
     }
 
 }

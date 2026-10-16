@@ -81,8 +81,8 @@ signed release assets.
 ### Engine and corpus compatibility
 
 The engine and the corpus each carry a **rule-language level**: `RuleLanguage.LEVEL` in
-`cumba-oss-corej-core` and `rules-src/LANGUAGE-LEVEL` in `cumba-oss-corej-rules` (both `5`
-on `main`). The corpus's build asserts that its level equals the level of the engine it is
+`cumba-oss-corej-core` and `rules-src/LANGUAGE-LEVEL` in `cumba-oss-corej-rules` (equal on
+`main`). The corpus's build asserts that its level equals the level of the engine it is
 built against, and the rule editor shows both. ⚠ The engine does **not** read the level at
 run time, so a mismatched corpus is not refused when it loads — it is simply unsupported.
 Run a corpus release built against your engine (its `pom.xml` names it as

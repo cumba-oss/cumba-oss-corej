@@ -29,7 +29,10 @@ import org.jspecify.annotations.Nullable;
  * supplemental family name ({@code SUPPAE}, {@code SQAPMH}; {@code PLAN-split-supp-resolution} D2)
  * — the family's members ({@link SplitDomainResolution#suppFamilyMembers}: {@code SUPPAE1} +
  * {@code SUPPAE2}, the exact {@code SUPPAE} among them), so the entry resolves to its members'
- * columns, never the union — a type question is {@code ScopeMatcher}'s {@code agreedKind};</li>
+ * columns, never a built union — a type question ({@code ScopeMatcher}'s {@code agreedKind},
+ * {@link #suppQvalType}) is answered as the union itself would answer it
+ * ({@code UnionDataTable.resolvedColumnType}: a member holding no value in the column defers to the
+ * valued members, ECT-Q7);</li>
  * <li>for a <em>literal</em> variable, a SUPP-pivot fallback over the qualifier's SUPP sources (the
  * one chooser's members, {@link SplitDomainResolution#suppMergeSources}) for a row with
  * {@code QNAM == <variable>} (Fix #39 parity, shared implementation with
@@ -82,7 +85,7 @@ public final class ScopeVariableSource
      */
     private final JoinCache.@Nullable SharedIndexCache sharedIndex;
 
-    private final Map<String, List<DataTableMeta>> metaMemo = new ConcurrentHashMap<>();
+    private final Map<String, List<IDataTable>> tableMemo = new ConcurrentHashMap<>();
 
     private final Map<String, Boolean> suppMemo = new ConcurrentHashMap<>();
 
@@ -209,7 +212,22 @@ public final class ScopeVariableSource
      */
     public List<DataTableMeta> metasOf(String qualifier)
     {
-        return metaMemo.computeIfAbsent(qualifier, this::resolveMetas);
+        return metasOf(tablesOf(qualifier));
+    }
+
+
+    /**
+     * The tables behind {@link #metasOf}: the dataset the qualifier names, or the members of the
+     * split domain / supplemental family it names — for the type question, which the union's own
+     * resolution answers from the members' CONTENT, not their declared types alone (ECT-Q7).
+     *
+     * @param qualifier
+     *            the dataset or domain named by a qualified scope entry
+     * @return the backing tables, empty when the dataset is not available
+     */
+    public List<IDataTable> tablesOf(String qualifier)
+    {
+        return tableMemo.computeIfAbsent(qualifier, this::resolveTables);
     }
 
 
@@ -312,15 +330,17 @@ public final class ScopeVariableSource
      * <p>
      * The SUPP tables read are the qualifier's SUPP sources (the one chooser's members,
      * {@link SplitDomainResolution#suppMergeSources}; {@code PLAN-split-supp-resolution} C5): the
-     * type every member's {@code QVAL} agrees on; members that disagree, or no member with a
+     * type the union of those members resolves for {@code QVAL}
+     * ({@code UnionDataTable.resolvedColumnType}, ECT-Q7: a member holding no value in the column
+     * defers to the valued members); members holding values that disagree, or no member with a
      * {@code QVAL} column, answer {@link DataValueType#MISSING}.
      * </p>
      *
      * @param qualifier
      *            the qualifier half of the entry, {@code --} not yet resolved
-     * @return {@code QVAL}'s declared type, or {@link DataValueType#MISSING} when no SUPP table or
-     *         {@code QVAL} column is there, or the members disagree — i.e. "unknown", which does
-     *         not block (D2)
+     * @return {@code QVAL}'s resolved type, or {@link DataValueType#MISSING} when no SUPP table or
+     *         {@code QVAL} column is there, or the valued members disagree — i.e. "unknown", which
+     *         does not block (D2)
      */
     public DataValueType suppQvalType(String qualifier)
     {
@@ -330,24 +350,12 @@ public final class ScopeVariableSource
             IDataTable foreign = resolveIgnoringCase(name);
             String domain = java.util.Objects
                     .requireNonNullElse(DatasetIdentity.domainOfDataset(name, resolver), name);
-            DataValueType agreed = null;
-            for (IDataTable supp : SplitDomainResolution.suppMergeSources(resolver, foreign, name,
-                    domain, null))
-            {
-                DataTableMeta meta = supp.getMetaData();
-                int idx = meta.getColumnIndex("QVAL");
-                DataValueType type = idx < 0 ? null : meta.getColumn(idx).getType();
-                if (type == null)
-                {
-                    return DataValueType.MISSING;
-                }
-                if (agreed != null && agreed != type)
-                {
-                    return DataValueType.MISSING; // the members disagree: unknown
-                }
-                agreed = type;
-            }
-            return agreed == null ? DataValueType.MISSING : agreed;
+            List<IDataTable> sources = SplitDomainResolution.suppMergeSources(resolver, foreign,
+                    name, domain, null);
+            DataValueType type = sources.isEmpty() ? null
+                    : net.cumba.datatable.impl.view.UnionDataTable
+                            .resolvedColumnType(sources.toArray(IDataTable[]::new), "QVAL");
+            return type == null ? DataValueType.MISSING : type;
         });
     }
 
@@ -392,19 +400,19 @@ public final class ScopeVariableSource
     private static final int DOMAIN_CODE_LENGTH = 2;
 
     /** Uncached resolution — see the class javadoc for the ordering and why it matters. */
-    private List<DataTableMeta> resolveMetas(String qualifier)
+    private List<IDataTable> resolveTables(String qualifier)
     {
         String name = resolveQualifierName(qualifier);
         if (SplitDomainResolution.isSuppFamilyName(name))
         {
             // PLAN-split-supp-resolution D2 / D3 (PG-H1): a supplemental family name answers its
-            // members' metas — the exactly-named table among them — never the union
-            return metasOf(SplitDomainResolution.suppFamilyMembers(resolver, name, null));
+            // members — the exactly-named table among them — never the union
+            return List.copyOf(SplitDomainResolution.suppFamilyMembers(resolver, name, null));
         }
         IDataTable exact = resolveIgnoringCase(name);
         if (exact != null)
         {
-            return List.of(exact.getMetaData());
+            return List.of(exact);
         }
         // No dataset by that name: the qualifier may be an SDTM domain split across members
         // (LB -> lbch/lbhe/lbur) — the seam's own member walk (SplitDomainResolution.membersOf:
@@ -422,7 +430,7 @@ public final class ScopeVariableSource
         {
             return List.of();
         }
-        return metasOf(SplitDomainResolution.membersOf(resolver, name, null));
+        return List.copyOf(SplitDomainResolution.membersOf(resolver, name, null));
     }
 
 

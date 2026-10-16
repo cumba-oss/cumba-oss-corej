@@ -23,8 +23,8 @@ import org.junit.jupiter.api.Test;
  * </p>
  *
  * <p>
- * ⛔⛔ <b>What this class replaces.</b> {@link Primitives#isMember(IDataValue, Set, boolean)} carried
- * a blanket early return for any missing probe, commented <i>"a genuine MissingValue is a member of
+ * ⛔⛔ <b>What this class replaces.</b> {@link Primitives#isMember(IDataValue, Set)} carried a
+ * blanket early return for any missing probe, commented <i>"a genuine MissingValue is a member of
  * no list, "" included. Same arm as equalsTypedAware's"</i>. Both halves were false: {@code ==}
  * delegates to {@link Primitives#equalsWithMissing}, where the same missing IS equal, and
  * {@code D13} says a missing equals no <b>string literal</b> — never that it is a member of no
@@ -89,8 +89,8 @@ class MissingAsMemberTest
     @Test
     void aMissingIsAMemberOfAListContainingTheSameMissing()
     {
-        Primitives.MemberSet set = Primitives.MemberSet.of(List.of(MissingValue.MIS), false);
-        assertTrue(Primitives.isMember(missingCell(), set, false),
+        Primitives.MemberSet set = Primitives.MemberSet.of(List.of(MissingValue.MIS));
+        assertTrue(Primitives.isMember(missingCell(), set),
                 "D81 + D34 #5-2: `MIS in [MIS]` is `MIS == MIS`, which is true. A false here is the"
                         + " retired blanket early return");
     }
@@ -100,8 +100,8 @@ class MissingAsMemberTest
     @Test
     void aMissingIsNotAMemberOfAListContainingADifferentMissing()
     {
-        Primitives.MemberSet set = Primitives.MemberSet.of(List.of(MissingValue.MIS_A), false);
-        assertFalse(Primitives.isMember(missingCell(), set, false),
+        Primitives.MemberSet set = Primitives.MemberSet.of(List.of(MissingValue.MIS_A));
+        assertFalse(Primitives.isMember(missingCell(), set),
                 "two DIFFERENT markers are different values — .A is not the generic missing");
     }
 
@@ -114,9 +114,9 @@ class MissingAsMemberTest
     @Test
     void aMissingIsNotAMemberOfAListContainingAPresentDot()
     {
-        Primitives.MemberSet set = Primitives.MemberSet.of(List.of("."), false);
+        Primitives.MemberSet set = Primitives.MemberSet.of(List.of("."));
         assertTrue(set.missing().isEmpty(), "control: the '.' member must be classified PRESENT");
-        assertFalse(Primitives.isMember(missingCell(), set, false),
+        assertFalse(Primitives.isMember(missingCell(), set),
                 "a MissingValue is not the text '.'. A true here means the member set rendered the"
                         + " missing instead of keeping its identity — the JKM R5 collision class");
     }
@@ -126,8 +126,8 @@ class MissingAsMemberTest
     @Test
     void aMissingIsNotAMemberOfAListContainingTheEmptyString()
     {
-        Primitives.MemberSet set = Primitives.MemberSet.of(List.of(""), false);
-        assertFalse(Primitives.isMember(missingCell(), set, false),
+        Primitives.MemberSet set = Primitives.MemberSet.of(List.of(""));
+        assertFalse(Primitives.isMember(missingCell(), set),
                 "D13 keeps this arm: a missing equals no string literal, \"\" included");
     }
 
@@ -136,8 +136,8 @@ class MissingAsMemberTest
     @Test
     void aPresentEmptyStringIsStillAMemberOfAListContainingIt()
     {
-        Primitives.MemberSet set = Primitives.MemberSet.of(List.of(""), false);
-        assertTrue(Primitives.isMember(presentCell(""), set, false),
+        Primitives.MemberSet set = Primitives.MemberSet.of(List.of(""));
+        assertTrue(Primitives.isMember(presentCell(""), set),
                 "a stored empty string is a PRESENT value (D34 #1/#3) and matches an empty member");
     }
 
@@ -146,10 +146,11 @@ class MissingAsMemberTest
     @Test
     void nothingIsAMemberOfAnEmptySet()
     {
-        assertFalse(Primitives.isMember(missingCell(), new Primitives.MemberSet(Set.of(), Set.of()),
-                false), "an empty set has no members at all");
-        assertFalse(Primitives.isMember(presentCell("A"),
-                new Primitives.MemberSet(Set.of(), Set.of()), false),
+        assertFalse(
+                Primitives.isMember(missingCell(), new Primitives.MemberSet(Set.of(), Set.of())),
+                "an empty set has no members at all");
+        assertFalse(
+                Primitives.isMember(presentCell("A"), new Primitives.MemberSet(Set.of(), Set.of())),
                 "control: the same holds for a present value");
     }
 
@@ -162,7 +163,7 @@ class MissingAsMemberTest
     @Test
     void theStringOnlyOverloadStillAnswersFalseBecauseNoStringMemberCanBeAMissing()
     {
-        assertFalse(Primitives.isMember(missingCell(), Set.of(".", ""), false),
+        assertFalse(Primitives.isMember(missingCell(), Set.of(".", "")),
                 "a Set<String> cannot carry a MissingValue member, so a missing probe matches"
                         + " nothing — D13's actual scope");
     }

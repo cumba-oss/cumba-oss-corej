@@ -259,6 +259,14 @@ class StoreErrataRealCorpusTest
                         .filter(s -> "Timing".equals(s.name())).findFirst().orElseThrow()
                         .variables(), "--STDY").label(),
                 "284.1 without the asterisk");
+        // 282.35 (owner ruling 2026-10-16, B3 SE AOCCzzFL (a)): the OCCDS 1.0 / 1.1 / TIG spelling
+        // with the IG's three-dot placeholder, so the label template no longer demands a trailing
+        // "." of the column's label
+        assertEquals("1st Occurrence of ...",
+                variable(structure("standards/adam/adam-adae-1-0", "ADAE").variableSets().stream()
+                        .filter(s -> "Occurrence Flag Variables".equals(s.name())).findFirst()
+                        .orElseThrow().variables(), "AOCCzzFL").label(),
+                "282.35: three dots, as OCCDS prints it");
     }
 
 

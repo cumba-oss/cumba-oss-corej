@@ -895,6 +895,11 @@ class GroupedAggregateFunctionsTest
                 .build();
         RuleExecutionResult result = run(POOL_FIRST, "empty($v)", sendDm(), ex, pooldef);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        // B5 review ① L5: the rule EXECUTES and fires — the pool read matches nothing, so $v is
+        // missing for every DM subject (S1..S4), not only for the one in POOLDEF
+        assertEquals(List.of(0L, 1L, 2L, 3L),
+                result.getViolations().stream().map(Violation::getRow).sorted().toList(),
+                result.getViolations().toString());
         // control (GKI Q2 kept): a POPULATED Char EX.POOLID beside the Num POOLDEF.POOLID is a
         // key pair that differs in kind — the rule ERRORs, naming the column
         IDataTable pooledEx = RealTableFixture.of("EX").str("USUBJID", "S1").str("POOLID", "P1")

@@ -166,7 +166,7 @@ public enum MetadataAttribute
     /**
      * DEFINE-only: every value-level {@code ItemDef} of the variable's value list has an origin (a
      * non-empty {@code OdmDefineXMLProvider.originType}: the {@code def:Origin/@Type} element or
-     * the v2.0 {@code @Origin} attribute); otherwise as {@link #VAR_VLM_HAS_METHOD}.
+     * the v1.0 {@code @Origin} attribute); otherwise as {@link #VAR_VLM_HAS_METHOD}.
      */
     VAR_VLM_HAS_ORIGIN("var_vlm_has_origin", Scope.VARIABLE, "vlm_has_origin", Normalization.BOOLEAN, DEFINE),
     /**

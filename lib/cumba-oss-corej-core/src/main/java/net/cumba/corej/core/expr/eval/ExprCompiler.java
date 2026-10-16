@@ -1491,8 +1491,8 @@ public final class ExprCompiler
                 {
                     return new BitSet();
                 }
-                return Primitives.membership(v, listAccessorSet(rightP, run, false), run.rowCount(),
-                        negate, false);
+                return Primitives.membership(v, listAccessorSet(rightP, run), run.rowCount(),
+                        negate);
             };
         }
         // Phase 9b (decision D2): an ALL-NUMERIC list LITERAL runs membership numerically — the
@@ -1711,8 +1711,8 @@ public final class ExprCompiler
                 }
             }
             Primitives.MemberSet set = buildSet(run, right);
-            return listLhs ? Primitives.listMembership(v, set, run.rowCount(), negate, false)
-                    : Primitives.membership(v, set, run.rowCount(), negate, false);
+            return listLhs ? Primitives.listMembership(v, set, run.rowCount(), negate)
+                    : Primitives.membership(v, set, run.rowCount(), negate);
         };
     }
 
@@ -1882,8 +1882,8 @@ public final class ExprCompiler
             }
             if (listLhs)
             {
-                Primitives.MemberSet set = Primitives.MemberSet.of(list, false);
-                if (negate != Primitives.anyInSet(probe.value(r).resolved(), set, false))
+                Primitives.MemberSet set = Primitives.MemberSet.of(list);
+                if (negate != Primitives.anyInSet(probe.value(r).resolved(), set))
                 {
                     out.set(r);
                 }
@@ -1897,9 +1897,9 @@ public final class ExprCompiler
             // ⭐ PLAN-member-set-identity-hardening: classified, never rendered — a MissingValue
             // member keeps its identity. No element is null: the VLM list is built null-free by
             // VlmResolver (register NNL §1).
-            Primitives.MemberSet set = Primitives.MemberSet.of(list, false);
+            Primitives.MemberSet set = Primitives.MemberSet.of(list);
             // D81 (phase 6b): the probe is =='s own per-member decision tree.
-            if (negate != Primitives.isMember(dv, set, false))
+            if (negate != Primitives.isMember(dv, set))
             {
                 out.set(r);
             }
@@ -1918,8 +1918,7 @@ public final class ExprCompiler
      * {@code MissingValue} element would keep its identity; package-private for
      * {@code MemberSetBuilderIdentityTest}.
      */
-    static Primitives.MemberSet listAccessorSet(ValuePlan rightP, EvalRun run,
-            boolean caseInsensitive)
+    static Primitives.MemberSet listAccessorSet(ValuePlan rightP, EvalRun run)
     {
         Vector rv = rightP.eval(run);
         if (rv != null && run.rowCount() > 0 && rv.value(0).resolved() instanceof List<?> list)
@@ -1927,7 +1926,7 @@ public final class ExprCompiler
             // ⭐ PLAN-member-set-identity-hardening: classified, never rendered — a MissingValue
             // member keeps its identity. No element is null: the accessor's ConstVector passed the
             // ListValueGuard at construction (register NNL §1).
-            return Primitives.MemberSet.of(list, caseInsensitive);
+            return Primitives.MemberSet.of(list);
         }
         return EMPTY_MEMBERS;
     }
@@ -1959,9 +1958,9 @@ public final class ExprCompiler
     {
         if (bound instanceof ConstVector constant)
         {
-            Primitives.MemberSet set = toSet(constant.memberValue(), false);
-            return listLhs ? Primitives.listMembership(v, set, rowCount, negate, false)
-                    : Primitives.membership(v, set, rowCount, negate, false);
+            Primitives.MemberSet set = toSet(constant.memberValue());
+            return listLhs ? Primitives.listMembership(v, set, rowCount, negate)
+                    : Primitives.membership(v, set, rowCount, negate);
         }
         Object lastList = null;
         Primitives.MemberSet lastSet = null;
@@ -1976,7 +1975,7 @@ public final class ExprCompiler
             }
             else
             {
-                set = toSet(cell, false);
+                set = toSet(cell);
                 if (cell instanceof Collection<?>)
                 {
                     lastList = cell;
@@ -1985,8 +1984,8 @@ public final class ExprCompiler
             }
             // The same per-row decisions Primitives.listMembership / Primitives.membership make,
             // one row at a time because the set is the row's own.
-            boolean member = listLhs ? Primitives.anyInSet(v.value(r).resolved(), set, false)
-                    : Primitives.isMember(v.value(r).cell(), set, false);
+            boolean member = listLhs ? Primitives.anyInSet(v.value(r).resolved(), set)
+                    : Primitives.isMember(v.value(r).cell(), set);
             if (negate != member)
             {
                 out.set(r);
@@ -2042,7 +2041,7 @@ public final class ExprCompiler
                 members = boundVector(run, name);
                 if (members == null)
                 {
-                    Set<String> set = toSet(run.ctx().resolveVariable(name), false).present();
+                    Set<String> set = toSet(run.ctx().resolveVariable(name)).present();
                     return time ? Primitives.timeMembership(v, set, run.rowCount(), negate)
                             : Primitives.temporalMembership(v, set, run.rowCount(), negate);
                 }
@@ -2070,7 +2069,7 @@ public final class ExprCompiler
     {
         if (bound instanceof ConstVector constant)
         {
-            Set<String> set = toSet(constant.memberValue(), false).present();
+            Set<String> set = toSet(constant.memberValue()).present();
             return time ? Primitives.timeMembership(v, set, rowCount, negate)
                     : Primitives.temporalMembership(v, set, rowCount, negate);
         }
@@ -2127,7 +2126,7 @@ public final class ExprCompiler
                 if (members == null)
                 {
                     Primitives.TemporalMembers set = Primitives.TemporalMembers
-                            .of(toSet(run.ctx().resolveVariable(name), false).present(), time);
+                            .of(toSet(run.ctx().resolveVariable(name)).present(), time);
                     return anyElementMembership(v, rows, negate, set::contains);
                 }
             }
@@ -2139,7 +2138,7 @@ public final class ExprCompiler
             if (bound instanceof ConstVector constant)
             {
                 Primitives.TemporalMembers set = Primitives.TemporalMembers
-                        .of(toSet(constant.memberValue(), false).present(), time);
+                        .of(toSet(constant.memberValue()).present(), time);
                 return anyElementMembership(v, rows, negate, set::contains);
             }
             RowMembers perRow = new RowMembers(bound, time);
@@ -2179,8 +2178,8 @@ public final class ExprCompiler
             {
                 return cached;
             }
-            Primitives.TemporalMembers set = Primitives.TemporalMembers
-                    .of(toSet(cell, false).present(), time);
+            Primitives.TemporalMembers set = Primitives.TemporalMembers.of(toSet(cell).present(),
+                    time);
             if (cell instanceof Collection<?>)
             {
                 lastList = cell;
@@ -2292,9 +2291,9 @@ public final class ExprCompiler
     /**
      * Per-row {@code ${*}} membership plan. For each row the matching foreign/local column values
      * are collected (via {@code ValueResolver.resolveWildcardValues}) into a set, then the
-     * name-side cell is tested for membership — per {@code evalIsContainedBy[CaseInsensitive]}: a
-     * missing name never fires, the probe is upper-cased (and the set built upper-cased) only for
-     * the case-insensitive surface.
+     * name-side cell is tested for membership — per {@code evalIsContainedBy}: a missing name never
+     * fires; a case-insensitive comparison is the author's, written as a fold on both sides
+     * ({@code upper(X) in upper($v)}, SVY OQ6), never a mode of this plan.
      *
      * <p>
      * A driver-free wildcard compiles its column-name pattern once (invariant across rows); a
@@ -2324,9 +2323,9 @@ public final class ExprCompiler
                 // ⭐ phase 0 + §2a: MemberSet classifies, so a MissingValue member keeps its
                 // IDENTITY (the hand-rolled upper-casing loop that stood here could only carry
                 // strings; the case fold it served went with the SVY OQ6 surface).
-                Primitives.MemberSet set = Primitives.MemberSet.of(values, false);
+                Primitives.MemberSet set = Primitives.MemberSet.of(values);
                 // D81 (phase 6b): the probe is =='s own per-member decision tree.
-                return negate != Primitives.isMember(dv, set, false);
+                return negate != Primitives.isMember(dv, set);
             });
         };
     }
@@ -2981,20 +2980,24 @@ public final class ExprCompiler
 
 
     /**
-     * The default charset of a byte count: the joined dataset's declared {@code Encoding} for a
-     * qualified operand whose join is present and declares one
-     * ({@link JoinLookup#declaredEncoding}, {@code PLAN-bugfix-engine-define} JB), else the
-     * evaluated table's ({@link #tableEncoding}).
+     * The default charset of a byte count: for a qualified operand whose join is present, the
+     * joined dataset's declared {@code Encoding} ({@link JoinLookup#declaredEncoding},
+     * {@code PLAN-bugfix-engine-define} JB) — {@code null}, a missing byte count, when it declares
+     * none (B3 review LOW-1, the coordinator's ruling by precedent D72 / BL1: a column with no
+     * declared charset gives a missing byte count; the primary's charset is never borrowed for
+     * another file's bytes); a Child parent or RELREC domain answers its own table's declared
+     * {@code Encoding} where the view can reach it. For an unqualified operand, or a qualifier that
+     * is not a join of the view (a {@code domain=} naming the primary's own domain), the evaluated
+     * table's ({@link #tableEncoding}).
      */
     static @Nullable String encodingFor(EvaluationContext ctx, @Nullable String qualifier)
     {
         if (qualifier != null)
         {
             JoinLookup lookup = ctx.joins().get(qualifier);
-            String joined = lookup == null ? null : lookup.declaredEncoding();
-            if (joined != null)
+            if (lookup != null)
             {
-                return joined;
+                return lookup.declaredEncoding();
             }
         }
         return tableEncoding(ctx);
@@ -4243,7 +4246,14 @@ public final class ExprCompiler
             ColumnTypeGate.Kind nameKind = ColumnTypeGate.kindOf(meta.getColumn(nameIdx).getType());
             ColumnTypeGate.Kind valueKind = ColumnTypeGate
                     .kindOf(meta.getColumn(valueIdx).getType());
-            if (nameKind != null && valueKind != null && nameKind != valueKind)
+            if (nameKind == null || valueKind == null)
+            {
+                // B5 review L1: a kindless side (BOOLEAN, MISSING — D4-R6a) is neither a numeric
+                // nor a character pair, so the relation does not widen (T4): identity alone,
+                // decided before the blank exemption, which is for two DECLARED kinds
+                return GroupSemantics::identityCorresponds;
+            }
+            if (nameKind != valueKind)
             {
                 // T5: the exemption is decided lazily — a scan only when the kinds disagree
                 boolean nameBlank = table.getColumnContent(nameIdx).isBlank();
@@ -4361,6 +4371,7 @@ public final class ExprCompiler
         try
         {
             rejectKeepMissingsWithoutWithin(c);
+            rejectIsSortedByWithinSize(c);
         }
         catch (ExpressionException ex)
         {
@@ -4386,15 +4397,7 @@ public final class ExprCompiler
         }
         Expr withinArg = c.kwargs().get("within");
         List<net.cumba.corej.core.exec.GroupSplice.Member> within = withinColumns(withinArg);
-        if (withinArg != null && within.size() != 1)
-        {
-            // Combined review of runbook W2–W8, round 2 (corpus M4): the ordering plan partitions
-            // by ONE column, and a longer list used to compile to "no within" — the call loaded
-            // and ran UNGROUPED, silently. An empty `within=[]` did the same (confirmation look
-            // L-b); as in the two other single-column readers, present means exactly one.
-            throw unsupported("is_sorted_by's within= takes one column (or a one-element list),"
-                    + " not " + within);
-        }
+        // (a present within= of any size but one was refused above, rejectIsSortedByWithinSize)
         // ⚠ FOLD_BLANK_KEYS is this operator's SHIPPED default, and it is the questionable one for
         // an ordering operator — keeping blank keys chains one subject's last row to another's
         // first within each blank kind ("" its own bucket, each missing marker its own since
@@ -4893,7 +4896,7 @@ public final class ExprCompiler
                 // the same missing token and never by a present "." (D34 #5-2, W38-A1 part 4).
                 // Before, a missing member rendered "." and satisfied a "." token.
                 return Primitives.notContainsAllTokens(tokens,
-                        listAccessorSet(sourceP, run, false).asComponents(), run.rowCount());
+                        listAccessorSet(sourceP, run).asComponents(), run.rowCount());
             };
         }
         if (c.args().isEmpty() || !(c.args().get(0) instanceof Expr.Ref nameRef))
@@ -5209,12 +5212,11 @@ public final class ExprCompiler
      */
     public static void rejectKeepMissingsWithoutWithin(Expr.Call c)
     {
-        // (only has_multiple_values_for takes a positional within — its third positional; on
-        // is_sorted_by a positional within is refused on its own, rejectPositionalKeywordOnly)
-        // (a positional within — a third positional — is refused on its own, naming the keyword:
-        // rejectPositionalKeywordOnly)
-        // W4 fold (R5 P1-L2): an empty within=[] groups by nothing (the ungrouped arm), so it is
-        // no within= — the non-empty check is_last_in_group's group= has
+        // Only has_multiple_values_for takes a positional within (its third positional, counted
+        // below); on is_sorted_by a positional within is refused on its own, naming the keyword
+        // (rejectPositionalKeywordOnly). W4 fold (R5 P1-L2): an empty within=[] groups by nothing
+        // (the ungrouped arm), so it counts as no within= — the non-empty check
+        // is_last_in_group's group= has.
         Expr within = c.kwargs().get("within");
         boolean noWithin = within == null || (within instanceof Expr.Lit lit
                 && lit.kind() == Expr.LitKind.LIST && ((List<?>) lit.value()).isEmpty());
@@ -5223,6 +5225,61 @@ public final class ExprCompiler
         {
             throw new ExpressionException("`keep_missings` on " + c.name()
                     + " requires `within=`; with no grouping key it would have no effect");
+        }
+    }
+
+
+    /**
+     * W4 review LOW-1 (PACK H fold): {@code is_sorted_by}'s {@code within=}, when present, is
+     * exactly one column (a single reference or a one-element list) — the ordering plan partitions
+     * by ONE column, and a longer list used to compile to "no within" while an empty
+     * {@code within=[]} did the same (combined review of runbook W2–W8, round 2 (corpus M4);
+     * confirmation look L-b): the call loaded and ran UNGROUPED, silently. Shared by the compiler
+     * arm ({@link #compileTargetIsNotSortedBy}) and the loader's tailored reader
+     * ({@code SortKeys.checkSortKeyCall}), because the compiler's refusal only degrades an INLINE
+     * Check — a binding reports it as the load error, an inline Check does not.
+     *
+     * @param c
+     *            a call
+     * @throws ExpressionException
+     *             for a present {@code within=} of any size but one
+     */
+    public static void rejectIsSortedByWithinSize(Expr.Call c)
+    {
+        Expr withinArg = c.kwargs().get("within");
+        if (withinArg == null)
+        {
+            return;
+        }
+        List<net.cumba.corej.core.exec.GroupSplice.Member> within = withinColumns(withinArg);
+        if (within.size() != 1)
+        {
+            throw new ExpressionException(
+                    "is_sorted_by's within= takes one column (or a one-element list), not "
+                            + within);
+        }
+    }
+
+
+    /**
+     * W4 review LOW-1, the siblings: the single-column {@code within=} of
+     * {@code present_on_multiple_rows_within} and {@code has_next_corresponding_record} — refused
+     * by {@link #singleColumnMembers} in the compiler arm, which only degrades an inline Check; the
+     * loader's tailored readers call this so a two-column list is the load error on every path,
+     * with the compiler's message. A present {@code within=} of one column (a reference or a
+     * one-element list) passes; an absent one is the compiler arm's own refusal.
+     *
+     * @param c
+     *            a call
+     * @throws ExpressionException
+     *             for a present {@code within=} of any size but one
+     */
+    public static void rejectSingleColumnWithinSize(Expr.Call c)
+    {
+        Expr withinArg = c.kwargs().get("within");
+        if (withinArg != null && withinColumns(withinArg).size() != 1)
+        {
+            throw new ExpressionException(c.name() + " requires a single within column");
         }
     }
 
@@ -8295,22 +8352,22 @@ public final class ExprCompiler
     /**
      * Folds a binding's dataset-level value into a membership {@link Set} with the same contract as
      * {@link #buildSet}'s {@code $}-reference branch: a {@link java.util.Collection} contributes
-     * its (case-folded) elements, a scalar a singleton, and a {@code null} / unresolvable result
-     * the empty set. The members are classified through {@link Primitives.MemberSet} — a
-     * {@code MissingValue} keeps its identity instead of rendering to {@code "."} (owner
-     * 2026-09-25, {@code PLAN-member-set-identity-hardening}); no element is {@code null} (register
+     * its elements, a scalar a singleton, and a {@code null} / unresolvable result the empty set.
+     * The members are classified through {@link Primitives.MemberSet} — a {@code MissingValue}
+     * keeps its identity instead of rendering to {@code "."} (owner 2026-09-25,
+     * {@code PLAN-member-set-identity-hardening}); no element is {@code null} (register
      * {@code NNL §1}: the result passed the {@code ListValueGuard} at its birth site).
      * Package-private for {@code MemberSetBuilderIdentityTest}.
      */
-    static Primitives.MemberSet toSet(@Nullable Object result, boolean caseInsensitive)
+    static Primitives.MemberSet toSet(@Nullable Object result)
     {
         if (result instanceof Collection<?> col)
         {
-            return Primitives.MemberSet.of(col, caseInsensitive);
+            return Primitives.MemberSet.of(col);
         }
         if (result != null)
         {
-            return Primitives.MemberSet.of(List.of(result), caseInsensitive);
+            return Primitives.MemberSet.of(List.of(result));
         }
         return EMPTY_MEMBERS;
     }
@@ -10113,9 +10170,9 @@ public final class ExprCompiler
      *
      * <p>
      * "Numeric member" is exactly an {@code Expr.Lit} of kind {@link Expr.LitKind#NUMBER}; "non-
-     * numeric" is any other member (a {@code STRING}/{@code BOOL} literal, or an {@code upper(...)}
-     * wrapper from the case-insensitive surface — though that surface never reaches here). This is
-     * the same classification the retired legacy fold applied over the source JSON-array nodes
+     * numeric" is any other member (a {@code STRING}/{@code BOOL} literal, or a call such as the
+     * {@code upper(...)} of an author-written fold — a plain function since SVY OQ6). This is the
+     * same classification the retired legacy fold applied over the source JSON-array nodes
      * ({@code JsonNode.isNumber()} vs not), kept so the shipped corpus's verdicts (15 all-integer
      * lists) did not move when the fold went.
      * </p>
@@ -10178,7 +10235,7 @@ public final class ExprCompiler
             // table it runs on has no RDOMAIN column.
             // Legacy then runs is_(not_)contained_by against an empty set, and so must the native
             // path. The Collection / scalar / null folding is toSet's.
-            return toSet(var, false);
+            return toSet(var);
         }
         throw unsupported("membership right-hand side must be a list literal or a $-variable list");
     }
