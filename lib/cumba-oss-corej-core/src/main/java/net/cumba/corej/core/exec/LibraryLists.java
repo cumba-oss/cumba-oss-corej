@@ -259,11 +259,15 @@ public final class LibraryLists
      * <ol>
      * <li>a {@code --} name ({@code --SEQ}, {@code --TERM}: an OCCDS structure's "copied from the
      * SDTM domain XX" variables) resolves to the dataset's domain when there is exactly one
-     * ({@link AdamSourceDomain#singleDomainOf}) and is then demanded, present or not — an
+     * ({@link AdamSourceDomain#singleDomainOf}; one {@code --SEQ} prefix outranks copied topic
+     * columns, {@code PLAN-bugfix-engine-define} BD2 (a)) and is then demanded, present or not — an
      * {@code ADAE} with {@code AETERM} and no {@code AESEQ} is asked for {@code AESEQ} (D2); with
      * several domains (a multi-domain OCCDS, D3) or none (D4) it is <b>not demanded</b> — the
-     * engine cannot name one concrete variable, so it cannot report it missing as
-     * {@code --SEQ};</li>
+     * engine cannot name one concrete variable, so it cannot report it missing as {@code --SEQ}.
+     * The class-bound topic templates follow the domain's class (BD4 (a), the class from the
+     * evidence suffix, BD8 (a)): {@code --TERM} is not demanded of an Interventions domain
+     * ({@code ADCM} with {@code CMTRT} is not asked for {@code CMTERM}), {@code --TRT} not of an
+     * Events domain ({@link AdamSourceDomain#topicTemplateApplies});</li>
      * <li>a name carrying an SDTM domain's prefix ({@link AdamSourceDomain#carriedDomainOf}:
      * {@code CMTRT} is {@code CM.CMTRT}, {@code AESER} is {@code AE.AESER} in the base OCCDS 1.0)
      * is not demanded only of a dataset whose occurrence variables name other domains and not this
@@ -278,15 +282,18 @@ public final class LibraryLists
     static List<String> resolvePublishedNames(List<String> published, IDataTable table,
             MetadataProvider provider, List<String> structures, List<String> subclasses)
     {
-        Set<String> sources = AdamSourceDomain.domainsOf(table);
+        AdamSourceDomain.SourceDomains sources = AdamSourceDomain.domainsOf(table);
         String source = AdamSourceDomain.singleDomainOf(sources);
+        // BD4 (a) / BD8 (a): the source domain's class, from the evidence suffix that named it
+        String sourceClass = source == null ? null
+                : AdamSourceDomain.observationClassOf(sources, source);
         String domain = CdiscDomainResolver.cdiscDomainOf(table);
         List<String> resolved = new ArrayList<>(published.size());
         for (String name : published)
         {
             if (name.contains("--"))
             {
-                if (source != null)
+                if (source != null && AdamSourceDomain.topicTemplateApplies(name, sourceClass))
                 {
                     resolved.add(name.replace("--", source));
                 }

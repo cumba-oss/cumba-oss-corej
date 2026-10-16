@@ -73,8 +73,13 @@ final class MergedViewLookup implements JoinLookup
     /** Merged column name → its {@code MERGE_ERROR} flag (OD-7), CHILD columns excluded (OD-1). */
     private final Map<String, String> flagged;
 
+    /**
+     * The partner table's declared {@code Encoding}, or {@code null} ({@link #declaredEncoding}).
+     */
+    private final @Nullable String encoding;
+
     MergedViewLookup(MergedTable aView, MergedPart aPart, IntFunction<@Nullable MergedPart> aPartOf,
-            boolean aShifted, Map<String, String> aFlagged)
+            boolean aShifted, Map<String, String> aFlagged, @Nullable String aEncoding)
     {
         view = aView;
         part = aPart;
@@ -82,6 +87,14 @@ final class MergedViewLookup implements JoinLookup
         meta = aView.getMetaData();
         shifted = aShifted;
         flagged = aFlagged;
+        encoding = aEncoding;
+    }
+
+
+    @Override
+    public @Nullable String declaredEncoding()
+    {
+        return encoding;
     }
 
 

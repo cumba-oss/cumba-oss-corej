@@ -187,7 +187,9 @@ class AdamTemplateRealStoreTest
      * D10-inferred OCCDS 1.0 names the AE variables ({@code --SEQ} → {@code AESEQ}, {@code --TERM}
      * → {@code AETERM}, {@code AESER} carrying {@code AE.AESER}) and not {@code CMTRT} (the store's
      * {@code CM.CMTRT}); the P5 stop reported {@code [--SEQ, --TERM, CMTRT]} missing here. The same
-     * walk on an {@code ADCM} demands {@code CMTRT} and not {@code AESER}.
+     * walk on an {@code ADCM} demands {@code CMTRT} and not {@code AESER} — nor {@code CMTERM}:
+     * {@code CMTRT} names the Interventions class, whose topic variable is not {@code --TERM}
+     * ({@code PLAN-bugfix-engine-define} BD4 (a) with BD8 (a)).
      */
     @Test
     void requiredVariablesOfAdaeUnderTheInferredOccdsAreTheAeVariablesAndNeverCmtrt()
@@ -201,8 +203,11 @@ class AdamTemplateRealStoreTest
                 "AESEQ / AETERM name AE");
         IDataTable adcm = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1").col("CMSEQ", "1")
                 .col("CMTRT", "ASPIRIN").col("CMDECOD", "ASPIRIN").name("ADCM").build();
-        assertEquals(List.of("STUDYID", "USUBJID", "CMSEQ", "CMTERM", "CMTRT"), required(p, adcm),
-                "CMSEQ / CMTRT name CM: CMTRT demanded, AESER not");
+        assertEquals(List.of("STUDYID", "USUBJID", "CMSEQ", "CMTRT"), required(p, adcm),
+                "CMSEQ / CMTRT name CM: CMTRT demanded, AESER not — and CMTRT names the Interventions"
+                        + " class, so the Req --TERM is not demanded as CMTERM, which SDTM CM does"
+                        + " not define (PLAN-bugfix-engine-define BD4 (a) / BD8 (a); the pinned gap"
+                        + " L5 this assertion carried until 2026-10-16)");
         IDataTable unconfirmed = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1")
                 .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").name("ADAE").build();
         assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER"),

@@ -243,11 +243,12 @@ class ListFunctionsTest
     void theAdamCoreWalkResolvesTheSourceDomainAndDemandsOnlyItsOwnDomainsPrefixedNames()
     {
         StructureLibrary lib = new StructureLibrary();
-        lib.published.put("OCCURRENCE DATA STRUCTURE",
-                List.of("STUDYID", "USUBJID", "--SEQ", "--TERM", "CMTRT", "AESER", "AOCCzzFL"));
+        lib.published.put("OCCURRENCE DATA STRUCTURE", List.of("STUDYID", "USUBJID", "--SEQ",
+                "--TERM", "CMTRT", "AESER", "EXDOSE", "AOCCzzFL"));
         lib.attributes.put("--SEQ", Map.of("description", "XX.--SEQ This would be copied"));
         lib.attributes.put("CMTRT", Map.of("description", "CM.CMTRT"));
         lib.attributes.put("AESER", Map.of("description", "AE.AESER"));
+        lib.attributes.put("EXDOSE", Map.of("description", "EX.EXDOSE"));
         lib.attributes.put("STUDYID", Map.of("description", "XX.STUDYID"));
         IDataTable adae = MockTable.of().col("STUDYID", "S").col("USUBJID", "1").col("AESEQ", "1")
                 .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").col("AESER", "N")
@@ -267,9 +268,40 @@ class ListFunctionsTest
                         + " column matches stays verbatim, as substituteNamingTemplates keeps it)");
         IDataTable adcm = MockTable.of().col("STUDYID", "S").col("USUBJID", "1").col("CMSEQ", "1")
                 .col("CMTRT", "ASPIRIN").col("CMDECOD", "ASPIRIN").name("ADCM").build();
-        assertEquals(List.of("STUDYID", "USUBJID", "CMSEQ", "CMTERM", "CMTRT", "AOCCzzFL"),
+        assertEquals(List.of("STUDYID", "USUBJID", "CMSEQ", "CMTRT", "AOCCzzFL"),
                 list(LibraryLists.requiredVariables(run(adcm, lib), List.of())),
-                "CMSEQ + CMTRT name CM: CMTRT is demanded, AESER (AE) is not");
+                "CMSEQ + CMTRT name CM: CMTRT is demanded, AESER (AE) is not — and CMTRT names the"
+                        + " Interventions class, so --TERM is not demanded as CMTERM, which SDTM"
+                        + " CM does not define (PLAN-bugfix-engine-define BD4 (a) / BD8 (a))");
+        IDataTable adcmSeqOnly = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
+                .col("CMSEQ", "1").col("CMDECOD", "ASPIRIN").name("ADCM").build();
+        assertEquals(List.of("STUDYID", "USUBJID", "CMSEQ", "CMTERM", "CMTRT", "AOCCzzFL"),
+                list(LibraryLists.requiredVariables(run(adcmSeqOnly, lib), List.of())),
+                "the BD8 (a) control: CMSEQ alone names no class, so both templates are demanded"
+                        + " as before (the pinned gap for that case)");
+        // PLAN-bugfix-engine-define BD2 (a): one --SEQ outranks a copied topic column
+        IDataTable copiedExtrt = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
+                .col("AESEQ", "1").col("AETERM", "HEADACHE").col("EXTRT", "DRUG").col("AESER", "N")
+                .name("ADAE").build();
+        assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER", "AOCCzzFL"),
+                list(LibraryLists.requiredVariables(run(copiedExtrt, lib), List.of())),
+                "AESEQ is the one --SEQ: the copied EXTRT does not make the dataset multi-domain,"
+                        + " so the AE -- names are demanded and EX's carried EXDOSE is not");
+        // T16: the same domain set feeds predicate (ii) — a copied AETERM beside CMSEQ is {CM}
+        IDataTable cmWithCopiedAeterm = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
+                .col("CMSEQ", "1").col("AETERM", "HEADACHE").name("ADCM").build();
+        assertEquals(List.of("STUDYID", "USUBJID", "CMSEQ", "CMTERM", "CMTRT", "AOCCzzFL"),
+                list(LibraryLists.requiredVariables(run(cmWithCopiedAeterm, lib), List.of())),
+                "CMSEQ + a copied AETERM is {CM}: the published AESER (a carried AE name) is"
+                        + " dropped where the two-domain set demanded it; CMSEQ names no class, so"
+                        + " CMTERM is demanded");
+        // the multi-domain control: two --SEQ prefixes keep every evidenced domain's carried names
+        IDataTable twoSeq = MockTable.of().col("STUDYID", "S").col("USUBJID", "1").col("AESEQ", "1")
+                .col("CMSEQ", "1").col("EXTRT", "DRUG").name("ADAE").build();
+        assertEquals(List.of("STUDYID", "USUBJID", "CMTRT", "AESER", "EXDOSE", "AOCCzzFL"),
+                list(LibraryLists.requiredVariables(run(twoSeq, lib), List.of())),
+                "AESEQ + CMSEQ (+ EXTRT) is multi-domain {AE, CM, EX}: no -- name is demanded,"
+                        + " every carried name of an evidenced domain is, as today");
         IDataTable unconfirmed = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
                 .col("AETERM", "HEADACHE").col("AEDECOD", "HEADACHE").name("ADAE").build();
         assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM", "AESER", "AOCCzzFL"),
@@ -306,14 +338,14 @@ class ListFunctionsTest
                         + " {AE, DC} before, D3 demanded no -- name and AESEQ went unreported)");
         IDataTable dcDecodOnly = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
                 .col("AESER", "N").col("DCDECOD", "COMPLETED").name("ADAE").build();
-        assertEquals(List.of("STUDYID", "USUBJID", "CMTRT", "AESER", "AOCCzzFL"),
+        assertEquals(List.of("STUDYID", "USUBJID", "CMTRT", "AESER", "EXDOSE", "AOCCzzFL"),
                 list(LibraryLists.requiredVariables(run(dcDecodOnly, lib), List.of())),
                 "MED-1 (a): DCDECOD alone is no evidence, so the set is empty — -- is not"
                         + " demanded (D4) and no carried name is dropped (review H1); read as {DC}"
                         + " before, -- became DCSEQ / DCTERM and AESER was dropped");
         IDataTable aeDecodOnly = MockTable.of().col("STUDYID", "S").col("USUBJID", "1")
                 .col("AEDECOD", "HEADACHE").col("AESER", "N").name("ADAE").build();
-        assertEquals(List.of("STUDYID", "USUBJID", "CMTRT", "AESER", "AOCCzzFL"),
+        assertEquals(List.of("STUDYID", "USUBJID", "CMTRT", "AESER", "EXDOSE", "AOCCzzFL"),
                 list(LibraryLists.requiredVariables(run(aeDecodOnly, lib), List.of())),
                 "MED-1 (a): AEDECOD alone names no domain either — the same empty-evidence"
                         + " answer, so -- is not resolved to AE");
@@ -322,7 +354,7 @@ class ListFunctionsTest
         // No occurrence column, so no column heuristic: the define declares the structure.
         StubMetadataProvider define = new StubMetadataProvider().declares("ADAE",
                 "OCCURRENCE DATA STRUCTURE");
-        assertEquals(List.of("STUDYID", "USUBJID", "CMTRT", "AESER", "AOCCzzFL"),
+        assertEquals(List.of("STUDYID", "USUBJID", "CMTRT", "AESER", "EXDOSE", "AOCCzzFL"),
                 list(LibraryLists.requiredVariables(run(noEvidence, lib, define, NO_INVENTORY),
                         List.of())),
                 "D4 as sharpened (review H1): no occurrence variable — -- stays unresolved and"

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Set;
+import net.cumba.corej.core.exec.BindingValue;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.GroupReadTable;
 import net.cumba.corej.core.exec.RealRows;
@@ -59,9 +60,18 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * The {@code $} / {@code *} / {@code **} operands are the gap OD-6 cannot close statically (the
- * operator then counts merged rows): the stage-A lint {@code AGGREGATE_OVER_REPEATED_ROWS}
- * (observe-only) reports them on a rule whose view can repeat a record.
+ * <b>Three shapes classified since {@code PLAN-bugfix-engine-define} AG (T4):</b> (i) a dynamic
+ * read whose column arguments are string literals naming unqualified columns
+ * ({@code colref("CMTRT")}) is collected as those names; a qualified literal or a non-literal stays
+ * merged. (ii) A {@code $} reference is collected as the names its binding's expression reads,
+ * recursively through binding chains, resolved per evaluation against the run's bindings
+ * ({@link #namesAt}); a binding the walk cannot see through stays merged. (iii) A {@code *} /
+ * {@code **} column-enumeration pattern never reaches evaluation: {@code WildcardExpander} expands
+ * it to concrete rules at load, whose operands are plain column refs, and the compiler rejects a
+ * residual pattern as unsupported — so it is classified by the expansion, not here. What stays
+ * unclassifiable (a qualified or dynamic binding, a {@code ${*}} set) is what the stage-A lint
+ * {@code AGGREGATE_OVER_REPEATED_ROWS} (observe-only) reports on a rule whose view can repeat a
+ * record ({@link #readsOnlyPrimaryColumns} is its view of (ii)).
  * </p>
  *
  * <p>
@@ -70,7 +80,7 @@ import org.jspecify.annotations.Nullable;
  * one; the hand-back is one pass over the merged rows (a bit per row, or one lazily mapped vector).
  * </p>
  */
-final class RealRowAggregates
+public final class RealRowAggregates
 {
 
     /**
@@ -105,7 +115,7 @@ final class RealRowAggregates
     static ExprProgram.BoolPlan bool(Expr.Call c, ExprProgram.BoolPlan inner)
     {
         @Nullable
-        List<String> names = primaryNames(c);
+        Names names = primaryNames(c);
         if (names == null)
         {
             return inner;
@@ -143,7 +153,7 @@ final class RealRowAggregates
     static ExprCompiler.ValuePlan value(Expr.Call c, ExprCompiler.ValuePlan inner)
     {
         @Nullable
-        List<String> names = primaryNames(c);
+        Names names = primaryNames(c);
         if (names == null)
         {
             return inner;
@@ -182,7 +192,7 @@ final class RealRowAggregates
      * The projection when this evaluation can count by real row: the table repeats a real row and
      * every name the call reads is a column of the primary or resolves nowhere; else {@code null}.
      */
-    private static @Nullable RealRows reducible(EvalRun run, List<String> names)
+    private static @Nullable RealRows reducible(EvalRun run, Names names)
     {
         EvaluationContext ctx = run.ctx();
         RealRows real = RealRows.ofRepeating(ctx.getTable());
@@ -190,35 +200,137 @@ final class RealRowAggregates
         {
             return null;
         }
-        return GroupReadTable.readsOnlyItsOwnColumns(ctx, names) ? real : null;
+        List<String> resolved = namesAt(run, names);
+        return resolved != null && GroupReadTable.readsOnlyItsOwnColumns(ctx, resolved) ? real
+                : null;
     }
 
 
     /**
-     * The bare column names the call reads, or {@code null} when it reads something that is never a
-     * primary column (a qualified or {@code _matched_} reference, a {@code $} reference, a pattern)
-     * or names another dataset ({@code domain=}).
+     * The names the call reads — a static part (bare column refs, dynamic-read literals) and the
+     * {@code $} references, resolved per evaluation against the run's bindings ({@link #namesAt});
+     * or {@code null} when the call reads something that is never a primary column (a qualified or
+     * {@code _matched_} reference, a pattern, a dynamic read of a non-literal) or names another
+     * dataset ({@code domain=}).
      */
-    private static @Nullable List<String> primaryNames(Expr.Call c)
+    private static @Nullable Names primaryNames(Expr.Call c)
     {
         if (c.kwargs().containsKey("domain"))
         {
             return null;
         }
-        List<String> out = new ArrayList<>();
-        return collect(c, out) ? List.copyOf(out) : null;
+        Names out = new Names();
+        return collect(c, out) ? out : null;
+    }
+
+    /**
+     * The names a call reads: the static column names plus the {@code $} bindings whose reads are
+     * resolved per evaluation ({@code PLAN-bugfix-engine-define} AG, T4 (ii)).
+     */
+    private static final class Names
+    {
+
+        final List<String> columns = new ArrayList<>();
+
+        final List<String> bindings = new ArrayList<>();
+    }
+
+    /**
+     * The concrete names the call reads in this evaluation: the static names plus every column a
+     * referenced {@code $} binding's expression reads, recursively through binding chains; or
+     * {@code null} when a binding the walk cannot see through is read (a binding over a qualified
+     * column, a dynamic read, a pattern) — the operator then counts merged rows. A variable that is
+     * not a compiled binding (a dataset-level constant) reads no column and contributes nothing.
+     */
+    private static @Nullable List<String> namesAt(EvalRun run, Names names)
+    {
+        if (names.bindings.isEmpty())
+        {
+            return names.columns;
+        }
+        Names resolved = new Names();
+        resolved.columns.addAll(names.columns);
+        Set<String> visited = new java.util.HashSet<>();
+        java.util.ArrayDeque<String> pending = new java.util.ArrayDeque<>(names.bindings);
+        while (!pending.isEmpty())
+        {
+            String id = pending.poll();
+            if (!visited.add(id))
+            {
+                continue;
+            }
+            Object raw = run.ctx().getVariables().get(id);
+            if (!(raw instanceof BindingValue compiled))
+            {
+                continue; // a dataset-level constant: no column read
+            }
+            Names inner = new Names();
+            if (!collect(compiled.binding().expression(), inner))
+            {
+                return null;
+            }
+            resolved.columns.addAll(inner.columns);
+            pending.addAll(inner.bindings);
+        }
+        return resolved.columns;
     }
 
 
-    private static boolean collect(Expr e, List<String> out)
+    /**
+     * Whether {@code expr} reads only unqualified primary columns, with every {@code $} reference
+     * resolved statically through {@code bindingOf} ({@code null} for an unknown binding, which is
+     * then unclassifiable) — the stage-A lint's view of T4 (ii)
+     * ({@code AGGREGATE_OVER_REPEATED_ROWS} reports only what stays unclassifiable).
+     *
+     * @param expr
+     *            an operand expression
+     * @param bindingOf
+     *            the compiled expression of a {@code $} binding by id, or {@code null}
+     * @return whether every read is an unqualified column of the evaluation dataset
+     */
+    public static boolean readsOnlyPrimaryColumns(Expr expr,
+            java.util.function.Function<String, @Nullable Expr> bindingOf)
+    {
+        Names names = new Names();
+        if (!collect(expr, names))
+        {
+            return false;
+        }
+        Set<String> visited = new java.util.HashSet<>();
+        java.util.ArrayDeque<String> pending = new java.util.ArrayDeque<>(names.bindings);
+        while (!pending.isEmpty())
+        {
+            String id = pending.poll();
+            if (!visited.add(id))
+            {
+                continue;
+            }
+            Expr bound = bindingOf.apply(id);
+            if (bound == null)
+            {
+                return false;
+            }
+            Names inner = new Names();
+            if (!collect(bound, inner))
+            {
+                return false;
+            }
+            pending.addAll(inner.bindings);
+        }
+        return true;
+    }
+
+
+    private static boolean collect(Expr e, Names out)
     {
         return switch (e)
         {
         case Expr.Ref r -> collectRef(r, out);
         case Expr.Lit lit -> collectLiteral(lit, out);
-        case Expr.Call call -> !call.kwargs().containsKey("domain") && !readsDynamically(call)
-                && call.args().stream().allMatch(a -> collect(a, out))
-                && call.kwargs().values().stream().allMatch(a -> collect(a, out));
+        case Expr.Call call -> !call.kwargs().containsKey("domain")
+                && (readsDynamically(call) ? collectDynamicRead(call, out)
+                        : call.args().stream().allMatch(a -> collect(a, out))
+                                && call.kwargs().values().stream().allMatch(a -> collect(a, out)));
         case Expr.Binary b -> collect(b.left(), out) && collect(b.right(), out);
         case Expr.And a -> a.parts().stream().allMatch(p -> collect(p, out));
         case Expr.Or o -> o.parts().stream().allMatch(p -> collect(p, out));
@@ -238,13 +350,49 @@ final class RealRowAggregates
         return descriptor != null && descriptor.perRow();
     }
 
+    /** A plain, unqualified column name: no qualifier dot, no {@code ${…}} template, no pattern. */
+    private static final java.util.regex.Pattern PLAIN_NAME = java.util.regex.Pattern
+            .compile("[A-Za-z_][A-Za-z0-9_]*");
 
-    private static boolean collectRef(Expr.Ref r, List<String> out)
+    /**
+     * T4 (i): a dynamic read whose column arguments are <b>string literals naming unqualified
+     * columns</b> ({@code colref("CMTRT")}) reads exactly those columns — collected by name. A
+     * qualified literal ({@code colref("CM.CMTRT")}), a template or a non-literal argument keeps
+     * the read dynamic (merged), as before (T2 review MED-2).
+     */
+    private static boolean collectDynamicRead(Expr.Call call, Names out)
+    {
+        List<Expr> operands = new ArrayList<>(call.args());
+        operands.addAll(call.kwargs().values());
+        for (Expr operand : operands)
+        {
+            if (operand instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING
+                    && lit.value() instanceof String name && PLAIN_NAME.matcher(name).matches())
+            {
+                out.columns.add(name);
+            }
+            else if (!(operand instanceof Expr.Ref r && collectRef(r, out)))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+
+    private static boolean collectRef(Expr.Ref r, Names out)
     {
         OperandKind kind = r.kind();
         if (kind == OperandKind.COLUMN)
         {
-            out.add(r.name());
+            out.columns.add(r.name());
+            return true;
+        }
+        if (kind == OperandKind.OPERATION_REF && r.name().startsWith("$"))
+        {
+            // T4 (ii): resolved against the binding's expression at evaluation (namesAt) or
+            // statically (readsOnlyPrimaryColumns)
+            out.bindings.add(r.name());
             return true;
         }
         // A built-in (variable_name, a dataset fact) reads no column of either side.
@@ -252,7 +400,7 @@ final class RealRowAggregates
     }
 
 
-    private static boolean collectLiteral(Expr.Lit lit, List<String> out)
+    private static boolean collectLiteral(Expr.Lit lit, Names out)
     {
         if (lit.kind() != Expr.LitKind.LIST)
         {

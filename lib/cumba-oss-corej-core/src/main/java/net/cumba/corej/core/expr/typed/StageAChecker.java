@@ -3395,12 +3395,14 @@ public final class StageAChecker
      * {@link StageAErrorKind#AGGREGATE_OVER_REPEATED_ROWS} (observe-only, T2 review lane 3): on a
      * rule whose merged view can repeat a record's row ({@link #repeatingEntry}), a counting
      * operator ({@code GroupReadTable.REAL_ROW_OPERATORS}) whose operands include a {@code $}
-     * reference, a {@code ${…}} splice or a {@code *} / {@code **} pattern — the operands OD-6
-     * never judges primary-only, so the operator counts merged rows. A call carrying
-     * {@code domain=} reads another dataset and is not judged; its operands are not this view's.
-     * One finding per (operator, operand) over all of {@code roots} — the Check roots, the
-     * Precondition and the bindings in one call — so an operand read in both a binding and the
-     * Check is reported once ({@code PLAN-merge-followups} item 4).
+     * reference the classifier cannot see through (its binding reads a qualified column, a dynamic
+     * read or a pattern — a binding over unqualified primary columns is counted once per record
+     * since {@code PLAN-bugfix-engine-define} AG, T4 (ii)), a {@code ${…}} splice or a {@code *} /
+     * {@code **} pattern — the operands OD-6 cannot judge primary-only, so the operator counts
+     * merged rows. A call carrying {@code domain=} reads another dataset and is not judged; its
+     * operands are not this view's. One finding per (operator, operand) over all of {@code roots} —
+     * the Check roots, the Precondition and the bindings in one call — so an operand read in both a
+     * binding and the Check is reported once ({@code PLAN-merge-followups} item 4).
      */
     private void checkAggregatesOverRepeatedRows(java.util.Collection<Expr> roots)
     {
@@ -3410,9 +3412,14 @@ public final class StageAChecker
             return;
         }
         Set<String> reported = new LinkedHashSet<>();
+        java.util.function.Function<String, @Nullable Expr> bindingOf = id ->
+        {
+            CompiledBinding bound = rule.compiledBinding(id);
+            return bound == null ? null : bound.expression();
+        };
         for (Expr root : roots)
         {
-            collectAggregatesOverRepeatedRows(root, null, reported);
+            collectAggregatesOverRepeatedRows(root, null, reported, bindingOf);
         }
         for (String finding : reported)
         {
@@ -3428,15 +3435,26 @@ public final class StageAChecker
      * {@code null}.
      */
     private static void collectAggregatesOverRepeatedRows(Expr e, @Nullable String operator,
-            Set<String> out)
+            Set<String> out, java.util.function.Function<String, @Nullable Expr> bindingOf)
     {
         switch (e)
         {
         case Expr.Ref r ->
         {
             String name = r.name();
-            if (operator != null
-                    && (name.startsWith("$") || name.contains("*") || name.contains("${")))
+            if (operator != null && name.startsWith("$"))
+            {
+                // PLAN-bugfix-engine-define AG (T4 (ii)): a binding whose expression reads only
+                // unqualified primary columns is classified by RealRowAggregates at evaluation
+                // (counted once per record), so only a binding the walk cannot see through — a
+                // qualified column, a dynamic read, a pattern — stays reported
+                if (!net.cumba.corej.core.expr.eval.RealRowAggregates.readsOnlyPrimaryColumns(r,
+                        bindingOf))
+                {
+                    out.add(operator + "(…) reads " + name);
+                }
+            }
+            else if (operator != null && (name.contains("*") || name.contains("${")))
             {
                 out.add(operator + "(…) reads " + name);
             }
@@ -3449,7 +3467,7 @@ public final class StageAChecker
                 {
                     if (item instanceof Expr x)
                     {
-                        collectAggregatesOverRepeatedRows(x, operator, out);
+                        collectAggregatesOverRepeatedRows(x, operator, out, bindingOf);
                     }
                 }
             }
@@ -3462,19 +3480,20 @@ public final class StageAChecker
             }
             String inner = net.cumba.corej.core.exec.GroupReadTable.REAL_ROW_OPERATORS
                     .contains(c.name()) ? c.name() : operator;
-            c.args().forEach(a -> collectAggregatesOverRepeatedRows(a, inner, out));
-            c.kwargs().values().forEach(v -> collectAggregatesOverRepeatedRows(v, inner, out));
+            c.args().forEach(a -> collectAggregatesOverRepeatedRows(a, inner, out, bindingOf));
+            c.kwargs().values()
+                    .forEach(v -> collectAggregatesOverRepeatedRows(v, inner, out, bindingOf));
         }
         case Expr.Binary b ->
         {
-            collectAggregatesOverRepeatedRows(b.left(), operator, out);
-            collectAggregatesOverRepeatedRows(b.right(), operator, out);
+            collectAggregatesOverRepeatedRows(b.left(), operator, out, bindingOf);
+            collectAggregatesOverRepeatedRows(b.right(), operator, out, bindingOf);
         }
         case Expr.And a -> a.parts()
-                .forEach(p -> collectAggregatesOverRepeatedRows(p, operator, out));
+                .forEach(p -> collectAggregatesOverRepeatedRows(p, operator, out, bindingOf));
         case Expr.Or o -> o.parts()
-                .forEach(p -> collectAggregatesOverRepeatedRows(p, operator, out));
-        case Expr.Not n -> collectAggregatesOverRepeatedRows(n.inner(), operator, out);
+                .forEach(p -> collectAggregatesOverRepeatedRows(p, operator, out, bindingOf));
+        case Expr.Not n -> collectAggregatesOverRepeatedRows(n.inner(), operator, out, bindingOf);
         }
     }
 

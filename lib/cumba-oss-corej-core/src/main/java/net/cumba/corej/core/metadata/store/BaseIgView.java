@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -37,9 +38,17 @@ import org.jspecify.annotations.Nullable;
  * the run's own model (SENDIG-AR §1.4: "based on the versions of the standards noted above").</li>
  * <li><b>Scope</b> ({@code B-SCOPE}): exactly the three products of {@link #BASE_IG}. The store is
  * not changed ({@code B-WHERE}): the view is composed at run time, once per provider.</li>
+ * <li><b>One seam, three readers</b> ({@code PLAN-bugfix-engine-define} SV, T1). Every reader of a
+ * stored IG product composes through this class: the data side
+ * ({@code StoreMetadataProviderFactory.withBaseIgView}, which calls {@link #compose} itself because
+ * it logs the {@link Composition}'s added datasets), the Define-XML side
+ * ({@code StoreLibraryProvider}, through {@link #productOf}) and the rule editor's scope universe
+ * ({@code RuleInsight.scopeUniverse}, through {@link #productOf}). Before 2026-10-16 only the data
+ * side composed, so a define binding {@code LB} to SENDIG-AR 1.0 asked the library for a dataset
+ * the raw product does not print and got empty answers.</li>
  * </ul>
  */
-final class BaseIgView
+public final class BaseIgView
 {
 
     /**
@@ -82,6 +91,33 @@ final class BaseIgView
     static @Nullable String baseKeyFor(@Nullable String aIgKey)
     {
         return aIgKey == null ? null : BASE_IG.get(aIgKey);
+    }
+
+
+    /**
+     * The stored product under {@code aKey}, composed with its base when {@code aKey} is a
+     * {@link #BASE_IG} run IG and the store holds the base; the stored product as is when the key
+     * is outside {@code B-SCOPE} or the base is missing (the data side logs that case; a reader
+     * that needs to record it asks {@link #baseKeyFor} itself); empty when the store lacks
+     * {@code aKey}. The one seam for readers that need only the product
+     * ({@code PLAN-bugfix-engine-define} SV).
+     *
+     * @param aStore
+     *            the metadata store
+     * @param aKey
+     *            a product key ({@code standards/sendig/ar-1-0})
+     * @return the composed or stored product, or empty
+     */
+    public static Optional<StoredProduct> productOf(MetadataStore aStore, String aKey)
+    {
+        Optional<StoredProduct> stored = aStore.product(aKey);
+        String baseKey = baseKeyFor(aKey);
+        if (stored.isEmpty() || baseKey == null)
+        {
+            return stored;
+        }
+        return Optional.of(aStore.product(baseKey)
+                .map(base -> compose(stored.get(), base).product()).orElse(stored.get()));
     }
 
 

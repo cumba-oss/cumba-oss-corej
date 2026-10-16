@@ -229,6 +229,30 @@ class MetadataProviderDecoratorDelegationGuardTest
     private static final String STRING_OF_STRING = "(?<![\\w.])String\\s+%s\\s*"
             + "\\(\\s*String\\s+(\\w+)\\s*\\)";
 
+    /** {@code List<String> name()} — the nullary name lists (PLAN-bugfix-engine-define DX). */
+    private static final String LIST_OF_STRING_NULLARY = "(?<![\\w.])List<String>\\s+%s\\s*"
+            + "\\(\\s*\\)";
+
+    /** {@code List<String> name(String x, String y)}. */
+    private static final String LIST_OF_TWO_STRINGS = "(?<![\\w.])List<String>\\s+%s\\s*"
+            + "\\(\\s*String\\s+(\\w+)\\s*,\\s*String\\s+(\\w+)\\s*\\)";
+
+    /** {@code Map<String, String> name(String x, String y)}. */
+    private static final String MAP_OF_TWO_STRINGS = "(?<![\\w.])Map\\s*<\\s*String\\s*,"
+            + "\\s*String\\s*>\\s+%s\\s*\\(\\s*String\\s+(\\w+)\\s*,\\s*String\\s+(\\w+)\\s*\\)";
+
+    /** The {@code List<Map<String, String>>} return type, whitespace-tolerant. */
+    private static final String LIST_OF_MAPS = "(?<![\\w.])List\\s*<\\s*Map\\s*<\\s*String\\s*,"
+            + "\\s*String\\s*>\\s*>";
+
+    /** {@code List<Map<String, String>> name(String x)}. */
+    private static final String LIST_OF_MAPS_OF_STRING = LIST_OF_MAPS
+            + "\\s+%s\\s*\\(\\s*String\\s+(\\w+)\\s*\\)";
+
+    /** {@code List<Map<String, String>> name(IDataTable t, DatasetResolver r)}. */
+    private static final String LIST_OF_MAPS_OF_TABLE_RESOLVER = LIST_OF_MAPS
+            + "\\s+%s\\s*\\(\\s*IDataTable\\s+(\\w+)\\s*,\\s*DatasetResolver\\s+(\\w+)\\s*\\)";
+
     /**
      * {@code Map<String, String> name(IDataTable t, List<String> s, List<String> c, String d,
      * String v)} — the structure-keyed variable read's shape
@@ -357,7 +381,33 @@ class MetadataProviderDecoratorDelegationGuardTest
             // as if the IG allowed nothing, with nothing red. Every decorator forwards it.
             capability("getCodelistsOfClass(String, String)",
                     "(?<![\\w.])List<(?:[\\w.]+\\.)?ICodeList>\\s+%s\\s*\\(\\s*String\\s+(\\w+)"
-                            + "\\s*,\\s*String\\s+(\\w+)\\s*\\)"));
+                            + "\\s*,\\s*String\\s+(\\w+)\\s*\\)"),
+            // PLAN-bugfix-engine-define DX (BD5 (a)): the 13 Library-flavoured accessors the
+            // ledger below carried as NOT_YET_ENFORCED until 2026-10-16. Each default answers a
+            // constant "unknown" (null / empty), so a decorator inheriting one speaks for a
+            // fallback that may hold the answer — the getCodelistCodeMap row was the measured
+            // LIVE gap (MetadataLibraryProvider implements it). All three decorators forward them.
+            capability("getDatasetClass(String)", STRING_OF_STRING),
+            capability("getCodelistCodeMap(String, String)", MAP_OF_TWO_STRINGS),
+            capability("getStandardVariableNames()", LIST_OF_STRING_NULLARY),
+            capability("getStandardDatasetNames()", LIST_OF_STRING_NULLARY),
+            capability("getPublishedCtPackages()", LIST_OF_STRING_NULLARY),
+            capability("getCodelistAttribute(String, String)", LIST_OF_TWO_STRINGS),
+            capability("getModelVariables(String)", LIST_OF_MAPS_OF_STRING),
+            capability("getModelVariablesForClass(String)", LIST_OF_MAPS_OF_STRING),
+            capability("getCodelist(String)",
+                    "(?<![\\w.])(?:java\\.util\\.)?Optional<(?:[\\w.]+\\.)?ICodeList>\\s+%s\\s*"
+                            + "\\(\\s*String\\s+(\\w+)\\s*\\)"),
+            capability("getStandardModelVariables(IDataTable, DatasetResolver)",
+                    "(?<![\\w.])List<String>\\s+%s\\s*\\(\\s*IDataTable\\s+(\\w+)\\s*,"
+                            + "\\s*DatasetResolver\\s+(\\w+)\\s*\\)"),
+            capability("getStandardModelVariablesDetailed(IDataTable, DatasetResolver)",
+                    LIST_OF_MAPS_OF_TABLE_RESOLVER),
+            capability("getStandardVariablesDetailed(IDataTable, DatasetResolver)",
+                    LIST_OF_MAPS_OF_TABLE_RESOLVER),
+            capability("getStandardModelVariablesForClass(IDataTable, DatasetResolver, String)",
+                    LIST_OF_MAPS + "\\s+%s\\s*\\(\\s*IDataTable\\s+(\\w+)\\s*,"
+                            + "\\s*DatasetResolver\\s+(\\w+)\\s*,\\s*String\\s+(\\w+)\\s*\\)"));
 
     /**
      * Floor on the capability set itself, so an accidental deletion reds.
@@ -368,7 +418,7 @@ class MetadataProviderDecoratorDelegationGuardTest
      * and carry different values on purpose. Never copy one across.
      * </p>
      */
-    private static final int MIN_CAPABILITIES = 14;
+    private static final int MIN_CAPABILITIES = 27;
 
     /** Floor on the interface's own default count, so a truncated parse cannot pass. */
     private static final int MIN_INTERFACE_DEFAULTS = 26;
@@ -420,18 +470,16 @@ class MetadataProviderDecoratorDelegationGuardTest
      * </p>
      *
      * <p>
-     * ⛔ The {@link Why#NOT_YET_ENFORCED} block is a <b>known, measured gap</b>, not a safety
-     * argument: those defaults all return a constant "unknown", exactly like a capability method.
-     * Every note below was re-derived on 2026-09-08 against the <b>two</b> decorators in this tree,
-     * from whether the class declares a forwarding {@code @Override} — not carried over from the
-     * monorepo's four-decorator measurement, which is how two rows came to be excused by a class
-     * that does not exist here. Every surviving row is now one shape:
-     * {@code DefineXmlMetadataProvider} declaring no override at all and so not passing the
-     * Library-flavoured accessors on to its optional {@code fallback}, while
-     * {@code CompanionDomainsProvider} delegates all of them. Several of those fallbacks
-     * ({@code MetadataLibraryProvider}) really do implement the accessor, so these are live gaps —
-     * but closing one means changing that class, which is a design question for its owner and not
-     * something to settle from inside a test.
+     * ⛔ A {@link Why#NOT_YET_ENFORCED} row is a <b>known, measured gap</b>, not a safety argument:
+     * such a default returns a constant "unknown", exactly like a capability method. Every note
+     * below was re-derived on 2026-09-08 against the decorators in this tree, from whether the
+     * class declares a forwarding {@code @Override} — not carried over from the monorepo's
+     * four-decorator measurement, which is how two rows came to be excused by a class that does not
+     * exist here. Until 2026-10-16 the block held 13 Library-flavoured accessors that
+     * {@code DefineXmlMetadataProvider} did not pass on to its optional {@code fallback};
+     * {@code PLAN-bugfix-engine-define} DX (BD5 (a)) forwarded them and promoted the rows to
+     * {@link #CAPABILITY_METHODS}, so the one row left is the deliberate
+     * {@code getIgAbsentVariableMetadata} exemption.
      * </p>
      */
     private static final List<InheritableDefault> INHERITABLE_DEFAULTS = List.of(//
@@ -442,40 +490,11 @@ class MetadataProviderDecoratorDelegationGuardTest
             inheritable("getDatasetClass(String, String, Set<String>)", Why.SELF_DELEGATING,
                     "the interface body is `return getDatasetClass(aMemberName, aCdiscDomain)`, "
                             + "which chains to the one-arg form"),
-            inheritable("getDatasetClass(String)", Why.NOT_YET_ENFORCED,
-                    "not delegated by DefineXmlMetadataProvider"),
-            inheritable("getCodelistCodeMap(String, String)", Why.NOT_YET_ENFORCED,
-                    "not delegated by DefineXmlMetadataProvider, which declares no override at "
-                            + "all; CompanionDomainsProvider DOES delegate it. A LIVE gap: "
-                            + "MetadataLibraryProvider implements it, so a define provider built "
-                            + "over a library fallback answers Map.of() while the fallback "
-                            + "beneath it holds the map"),
-            inheritable("getStandardVariableNames()", Why.NOT_YET_ENFORCED,
-                    "not delegated by DefineXmlMetadataProvider"),
-            inheritable("getStandardDatasetNames()", Why.NOT_YET_ENFORCED,
-                    "not delegated by DefineXmlMetadataProvider"),
-            inheritable("getModelVariables(String)", Why.NOT_YET_ENFORCED,
-                    "not delegated by DefineXmlMetadataProvider"),
-            inheritable("getModelVariablesForClass(String)", Why.NOT_YET_ENFORCED,
-                    "not delegated by DefineXmlMetadataProvider"),
-            inheritable("getPublishedCtPackages()", Why.NOT_YET_ENFORCED,
-                    "not delegated by DefineXmlMetadataProvider"),
-            inheritable("getCodelistAttribute(String, String)", Why.NOT_YET_ENFORCED,
-                    "not delegated by DefineXmlMetadataProvider"),
-            inheritable("getCodelist(String)", Why.NOT_YET_ENFORCED,
-                    "not delegated by DefineXmlMetadataProvider (same row as its codelist "
-                            + "siblings above); CompanionDomainsProvider DOES delegate it. The "
-                            + "honest-empty default degrades to LIBRARY_NOT_AVAILABLE — a loud "
-                            + "SKIP, never a substituted wrong answer (see the interface "
-                            + "contract)"),
-            inheritable("getStandardModelVariables(IDataTable, DatasetResolver)",
-                    Why.NOT_YET_ENFORCED, "not delegated by DefineXmlMetadataProvider"),
-            inheritable("getStandardModelVariablesDetailed(IDataTable, DatasetResolver)",
-                    Why.NOT_YET_ENFORCED, "not delegated by DefineXmlMetadataProvider"),
-            inheritable("getStandardModelVariablesForClass(IDataTable, DatasetResolver, String)",
-                    Why.NOT_YET_ENFORCED, "not delegated by DefineXmlMetadataProvider"),
-            inheritable("getStandardVariablesDetailed(IDataTable, DatasetResolver)",
-                    Why.NOT_YET_ENFORCED, "not delegated by DefineXmlMetadataProvider"),
+            // PLAN-bugfix-engine-define DX (BD5 (a), owner 2026-10-15): the 13 Library-flavoured
+            // accessors that sat here as NOT_YET_ENFORCED — DefineXmlMetadataProvider declaring no
+            // override — are forwarded now and live in CAPABILITY_METHODS. P0 of that plan traced
+            // every define-slot reader: none calls any of the 13 (they are read on the LIBRARY
+            // provider only), so the forwards move no answer; they make this ledger exact.
             inheritable("getIgAbsentVariableMetadata(IDataTable, DatasetResolver, String, String)",
                     Why.NOT_YET_ENFORCED,
                     "not delegated by DefineXmlMetadataProvider, deliberately: it is only ever the "

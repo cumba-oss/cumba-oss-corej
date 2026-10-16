@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.gen.DefineXMLProvider;
 import net.cumba.datatable.IDataTable;
@@ -39,6 +41,19 @@ import org.jspecify.annotations.Nullable;
  * {@code dataType}&rarr;{@code simpleDatatype} and {@code orderNumber}&rarr;{@code ordinal}. The
  * list-valued {@code codelist_coded_codes} and {@code codelist_coded_values} are carried
  * JSON-encoded (see {@link DefineMetadataListCodec}).
+ * </p>
+ *
+ * <p>
+ * <b>Delegation policy</b> ({@code PLAN-bugfix-engine-define} DX, BD5 (a), owner 2026-10-15): every
+ * {@link MetadataProvider} accessor this class does not answer from the ODM is forwarded to
+ * {@code fallback} — the interface default (empty / {@code null}) only when there is no fallback —
+ * so the decorator never speaks for a fallback that holds the answer. The 13 Library-flavoured
+ * accessors (the standard / model variable lists, the codelist readers, {@code getDatasetClass})
+ * were the measured gap: no define-slot reader asks for them (the engine reads them on the LIBRARY
+ * provider), so forwarding moves no answer, but the delegation guard
+ * ({@code MetadataProviderDecoratorDelegationGuardTest}) is exact again. The one deliberate
+ * exception is {@code getIgAbsentVariableMetadata}: it is the last tier of the LIBRARY variable
+ * read and this class is only ever the DEFINE slot, so a forward would be dead code.
  * </p>
  */
 public final class DefineXmlMetadataProvider implements MetadataProvider
@@ -390,6 +405,110 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
     // "cannot answer", so a wrapper that omits them silently disables structure-keyed resolution
     // for every ADaM run that carries a define.xml.
 
+    // ------------------------------------------------------------------
+    // The 13 Library-flavoured accessors (PLAN-bugfix-engine-define DX, BD5 (a)): forwarded to the
+    // fallback, the interface default when there is none. The Define-XML declares none of these.
+    // ------------------------------------------------------------------
+
+
+    @Override
+    public @Nullable String getDatasetClass(String aDomain)
+    {
+        return fallback != null ? fallback.getDatasetClass(aDomain) : null;
+    }
+
+
+    @Override
+    public Map<String, String> getCodelistCodeMap(String domain, String variable)
+    {
+        return fallback != null ? fallback.getCodelistCodeMap(domain, variable) : Map.of();
+    }
+
+
+    @Override
+    public @Nullable List<String> getStandardVariableNames()
+    {
+        return fallback != null ? fallback.getStandardVariableNames() : null;
+    }
+
+
+    @Override
+    public @Nullable List<String> getStandardDatasetNames()
+    {
+        return fallback != null ? fallback.getStandardDatasetNames() : null;
+    }
+
+
+    @Override
+    public List<Map<String, String>> getModelVariables(String domain)
+    {
+        return fallback != null ? fallback.getModelVariables(domain) : List.of();
+    }
+
+
+    @Override
+    public List<Map<String, String>> getModelVariablesForClass(String aModelClass)
+    {
+        return fallback != null ? fallback.getModelVariablesForClass(aModelClass) : List.of();
+    }
+
+
+    @Override
+    public List<String> getPublishedCtPackages()
+    {
+        return fallback != null ? fallback.getPublishedCtPackages() : List.of();
+    }
+
+
+    @Override
+    public List<String> getCodelistAttribute(String aCtPackageId, String aCtAttribute)
+    {
+        return fallback != null ? fallback.getCodelistAttribute(aCtPackageId, aCtAttribute)
+                : List.of();
+    }
+
+
+    @Override
+    public Optional<ICodeList> getCodelist(String aCodelistName)
+    {
+        return fallback != null ? fallback.getCodelist(aCodelistName) : Optional.empty();
+    }
+
+
+    @Override
+    public @Nullable List<String> getStandardModelVariables(IDataTable aTable,
+            DatasetResolver aResolver)
+    {
+        return fallback != null ? fallback.getStandardModelVariables(aTable, aResolver) : null;
+    }
+
+
+    @Override
+    public @Nullable List<Map<String, String>> getStandardModelVariablesDetailed(IDataTable aTable,
+            DatasetResolver aResolver)
+    {
+        return fallback != null ? fallback.getStandardModelVariablesDetailed(aTable, aResolver)
+                : null;
+    }
+
+
+    @Override
+    public @Nullable List<Map<String, String>> getStandardModelVariablesForClass(IDataTable aTable,
+            DatasetResolver aResolver, String aModelClass)
+    {
+        return fallback != null
+                ? fallback.getStandardModelVariablesForClass(aTable, aResolver, aModelClass)
+                : null;
+    }
+
+
+    @Override
+    public @Nullable List<Map<String, String>> getStandardVariablesDetailed(IDataTable aTable,
+            DatasetResolver aResolver)
+    {
+        return fallback != null ? fallback.getStandardVariablesDetailed(aTable, aResolver) : null;
+    }
+
 
     @Override
     public boolean supportsStructureKeyedVariables()
@@ -467,12 +586,11 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
 
 
     @Override
-    public java.util.Optional<Boolean> isCodelistExtensible(String codelistName)
+    public Optional<Boolean> isCodelistExtensible(String codelistName)
     {
         // No fallback -> unresolvable (empty), matching the F-corej-ct-02 miss contract; the
         // pre-Optional form answered `false` here, which was a third miss behaviour.
-        return fallback != null ? fallback.isCodelistExtensible(codelistName)
-                : java.util.Optional.empty();
+        return fallback != null ? fallback.isCodelistExtensible(codelistName) : Optional.empty();
     }
 
 

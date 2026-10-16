@@ -23,6 +23,7 @@ import net.cumba.corej.core.gen.WildcardExpander;
 import net.cumba.corej.core.metadata.AdamDataStructureDetector;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
 import net.cumba.corej.core.metadata.MetadataProductKeys;
+import net.cumba.corej.core.metadata.store.BaseIgView;
 import net.cumba.corej.core.metadata.store.MetadataStore;
 import net.cumba.corej.core.metadata.store.StoredClass;
 import net.cumba.corej.core.metadata.store.StoredDataStructure;
@@ -413,9 +414,14 @@ public final class RuleInsight
         SequencedSet<String> out = new LinkedHashSet<>();
         for (AuthoredRuleAssembler.StandardVersion sv : aStandards)
         {
-            // Store keys are lower-case (standards/sdtmig/3-4); the authored Name is display-cased.
-            out.add(MetadataProductKeys.standardsKey(sv.name().toLowerCase(Locale.ROOT),
-                    sv.version()));
+            // An SDTM/SEND-family standard maps through the store's D-11 family grammar
+            // (SENDIG-AR 1.0 -> standards/sendig/ar-1-0, never standards/sendig-ar/1-0, which
+            // names no product: PLAN-bugfix-engine-define SV, pre-go H2 — every AR / DART / MD
+            // rule's universe was empty). Store keys are lower-case (standards/sdtmig/3-4); the
+            // authored Name is display-cased, so the ADaM fallback folds it.
+            out.add(MetadataProductKeys.igStoreKey(sv.name(), sv.version())
+                    .orElseGet(() -> MetadataProductKeys
+                            .standardsKey(sv.name().toLowerCase(Locale.ROOT), sv.version())));
         }
         return List.copyOf(out);
     }
@@ -443,7 +449,10 @@ public final class RuleInsight
         List<String> missing = new ArrayList<>();
         for (String key : aProductKeys)
         {
-            Optional<StoredProduct> product = aStore.product(key);
+            // the base-IG view: an AR / DART product plus the base SENDIG datasets it does not
+            // print, as the data and define sides read it (BaseIgView; the model read in modelOf
+            // stays raw — models are never composed)
+            Optional<StoredProduct> product = BaseIgView.productOf(aStore, key);
             if (product.isEmpty())
             {
                 missing.add(key);

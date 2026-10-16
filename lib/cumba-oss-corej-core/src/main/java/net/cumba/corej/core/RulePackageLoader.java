@@ -877,6 +877,9 @@ public class RulePackageLoader
                     rejectKeepMissingsWithoutWithinAnywhere(filter);
                     rejectPerRowPerCallOperands(filter, rule,
                             "the Match_Datasets Filter of '" + match.getName() + "'");
+                    // PLAN-bugfix-engine-define SF, BD6′ (β) (owner 2026-10-16): a dictionary
+                    // call in a Filter can never answer at run time, so it is refused here
+                    rejectDictionaryCallInFilter(rule, match, filter);
                     if (!stageAJudged)
                     {
                         rejectFilterBindingReference(match, filter);
@@ -2749,6 +2752,84 @@ public class RulePackageLoader
             String error = ex.getMessage();
             rule.addLoadError(error);
             return true;
+        }
+    }
+
+
+    /**
+     * {@code PLAN-bugfix-engine-define} SF — BD6′ (β) (owner 2026-10-16: <i>"agree to β"</i>): an
+     * external-dictionary call ({@code valid_external_dictionary_*}, {@code dictionary_has_decode})
+     * inside a {@code Match_Datasets} Filter is a load error naming the call and the entry. The
+     * Filter is evaluated while the merged view is built ({@code MergedEvaluation.build} →
+     * {@code MatchFilter.mask}), in a context that carries no dictionary provider and before every
+     * dictionary skip arm of the runner, so the call threw at run time in <em>every</em> dictionary
+     * state — healthy, stale or not loaded (confirmation look HIGH-1). The W4 precedent (RF1 (a)):
+     * a spelling that cannot do what it says is refused at load; the capability can come back as a
+     * feature when a rule needs it (0 corpus carriers). The same call in a Check level is gated by
+     * the runner's skip arms and stays legal.
+     */
+    private static void rejectDictionaryCallInFilter(Rule rule,
+            net.cumba.corej.core.model.MatchDataset match,
+            net.cumba.corej.core.expr.ast.Expr filter)
+    {
+        List<String> calls = new ArrayList<>();
+        collectDictionaryCalls(filter, calls);
+        if (calls.isEmpty())
+        {
+            return;
+        }
+        appendLoadError(rule, "[" + ruleId(rule) + "] Match_Datasets '" + match.getName()
+                + "': the Filter calls " + String.join(", ", calls)
+                + " — an external-dictionary function is evaluated while the merge is built, before"
+                + " the run's dictionaries are bound, so it can never answer in a Filter; move the"
+                + " call to the Check, or filter on a column");
+    }
+
+
+    /** Every call of {@code e} with a dictionary need ({@code ProviderNeeds.ofCall}), by name. */
+    private static void collectDictionaryCalls(net.cumba.corej.core.expr.ast.Expr e,
+            List<String> out)
+    {
+        switch (e)
+        {
+        case net.cumba.corej.core.expr.ast.Expr.Call c ->
+        {
+            if (net.cumba.corej.core.exec.ProviderNeeds.ofCall(c).dictionary()
+                    && !out.contains(c.name() + "(…)"))
+            {
+                out.add(c.name() + "(…)");
+            }
+            c.args().forEach(a -> collectDictionaryCalls(a, out));
+            c.kwargs().values().forEach(a -> collectDictionaryCalls(a, out));
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Binary b ->
+        {
+            collectDictionaryCalls(b.left(), out);
+            collectDictionaryCalls(b.right(), out);
+        }
+        case net.cumba.corej.core.expr.ast.Expr.And a -> a.parts()
+                .forEach(p -> collectDictionaryCalls(p, out));
+        case net.cumba.corej.core.expr.ast.Expr.Or o -> o.parts()
+                .forEach(p -> collectDictionaryCalls(p, out));
+        case net.cumba.corej.core.expr.ast.Expr.Not n -> collectDictionaryCalls(n.inner(), out);
+        case net.cumba.corej.core.expr.ast.Expr.Lit lit ->
+        {
+            if (lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST
+                    && lit.value() instanceof List<?> items)
+            {
+                for (Object item : items)
+                {
+                    if (item instanceof net.cumba.corej.core.expr.ast.Expr x)
+                    {
+                        collectDictionaryCalls(x, out);
+                    }
+                }
+            }
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Ref _ ->
+        {
+            // a reference reads no dictionary
+        }
         }
     }
 
@@ -6185,6 +6266,13 @@ public class RulePackageLoader
         {
             return;
         }
+        // PLAN-bugfix-engine-define OV (BD1 (a), T13): an authored driver template is refused
+        // before the derivation — on the AUTHORED include entries only, never the effective list.
+        validateOutputVariableDriverTemplates(rule);
+        if (rule.getLoadError() != null)
+        {
+            return;
+        }
         List<String> effective = OutputVariableDeriver.derive(rule);
         // P3 review MED-1: a reported binding with no type source is refused here, on the rule
         // text, before the effective list is installed — never a data-dependent run-time ERROR.
@@ -6386,6 +6474,44 @@ public class RulePackageLoader
 
 
     /**
+     * {@code PLAN-bugfix-engine-define} OV — BD1 (a) (owner 2026-10-15), refined by T13: an
+     * <b>authored</b> {@code Output_Variables} include entry that carries a {@code ${VAR}} driver
+     * ({@code ADSL.PH${APHASEN:%d}SDT}, or a {@code ${*}} wildcard with a driver) is a load error
+     * naming the entry. The driver is resolved per row ({@code OperandSubstitutor}), so the entry
+     * can never name a report column: {@code RuleRunner.expandOutputVarWildcards} kept it verbatim
+     * and the projection dropped it silently (BACKLOG F2) — the W4 RF1 (a) shape, a silently inert
+     * spelling, refused. Judged on the authored entries only (never the effective list): a Check or
+     * a binding may still read a driver template, and {@link OutputVariableDeriver#derivedSet}
+     * derives no driver entry from either route.
+     */
+    static void validateOutputVariableDriverTemplates(@Nullable Rule rule)
+    {
+        if (rule == null || rule.getOutcome() == null
+                || rule.getOutcome().getOutputVariables() == null)
+        {
+            return;
+        }
+        List<String> drivers = new ArrayList<>();
+        for (String entry : net.cumba.corej.core.model.OutputVariableToken
+                .includes(rule.getOutcome().getOutputVariables()))
+        {
+            if (OutputVariableDeriver.isDriverTemplate(entry))
+            {
+                drivers.add(entry);
+            }
+        }
+        if (drivers.isEmpty())
+        {
+            return;
+        }
+        rule.addLoadError("[" + ruleId(rule) + "] Outcome.Output_Variables: "
+                + String.join(", ", drivers) + (drivers.size() == 1 ? " carries" : " carry")
+                + " a ${…} driver, which is resolved per row and cannot name a report column;"
+                + " list the concrete columns");
+    }
+
+
+    /**
      * E-3 of {@code PLAN-authoring-grammar-unique-set-and-output-exclusion} — the load-time
      * validation of {@code !X} exclusion tokens in {@code Outcome.Output_Variables}
      * ({@link net.cumba.corej.core.model.OutputVariableToken}). Five checks, every one a
@@ -6449,6 +6575,15 @@ public class RulePackageLoader
             {
                 errors.add(name + " is both authored and excluded (!" + name
                         + ") — remove one of the two");
+                continue;
+            }
+            if (OutputVariableDeriver.isDriverTemplate(name))
+            {
+                // PLAN-bugfix-engine-define OV (T13, confirmation look LOW-1): a driver template
+                // is never derived, so the exclusion names nothing — said in its own words
+                errors.add("!" + name + " excludes a driver template, which is never derived"
+                        + " (a ${…} driver is resolved per row and cannot name a report column)"
+                        + " — remove the exclusion");
                 continue;
             }
             if (derived == null)

@@ -355,10 +355,16 @@ public final class BroadcastFold
                 || DomainScan.VARNAME_ANCHORED_CALLS.contains(name)
                 || net.cumba.corej.core.exec.RecordCount.NAME.equals(name)
                 || net.cumba.corej.core.exec.Distinct.NAME.equals(name)
-                || net.cumba.corej.core.exec.Sequence.NAME.equals(name))
+                || net.cumba.corej.core.exec.Sequence.NAME.equals(name)
+                || net.cumba.corej.core.exec.JoinedRowFold.isQuantifier(name))
         {
             // (record_count, distinct and sequence keep the level their inline operations had —
-            // runbook W6 D-W6-9 / W7 D-W7-12 / W1b RO: their arguments are parameters, not reads.)
+            // runbook W6 D-W6-9 / W7 D-W7-12 / W1b RO: their arguments are parameters, not reads.
+            // A quantifier — any / all / none over joined(…) — is never a dataset fact: all / none
+            // over a record with no joined rows answer TRUE, over a matched record the condition,
+            // so a condition reading an absent column must not fold the quantifier to one constant
+            // (PLAN-bugfix-engine-define QL, T6 — the exclusion EmptyColumnCollapse.collectLive
+            // already made).)
             return AbsentLeafLevel.ROW;
         }
         AbsentLeafLevel level = AbsentLeafLevel.DATASET;

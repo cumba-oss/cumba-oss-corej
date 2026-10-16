@@ -37,7 +37,7 @@ class StoreErrataDigestPinTest
 
     private static final int PINNED_FORMAT = 5;
 
-    private static final String PINNED_SHA256 = "5cb74dd5bbcb4138a0da588459f0e3985ca66ec8aa74132fd243a904b5e378d6";
+    private static final String PINNED_SHA256 = "bae4da97f5e3b0c2835310eac2f7d108d1371acd2853a3730a1a3147ecb938cf";
 
     @Test
     void theRegisterDigestIsPinnedNextToTheFormatVersion()

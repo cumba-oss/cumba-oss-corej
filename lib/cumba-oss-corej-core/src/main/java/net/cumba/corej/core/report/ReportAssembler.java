@@ -677,6 +677,13 @@ public final class ReportAssembler
         // them (frozen, D66).
         boolean hideUsubjid = loc.isHiddenAnchorIdentity("USUBJID");
         boolean hideSeq = loc.isHiddenAnchorIdentity("SEQ");
+        // PLAN-bugfix-engine-define GK (T3): the key channel is written when the key list is
+        // non-empty OR the location is group-keyed — a Group finding on a dataset with no grouping
+        // column has an EMPTY group key (the model keeps GROUP + [] on purpose, owner Q-A
+        // 2026-10-05) and was the one lossy step: v2 dropped the channel, so the import was not
+        // group-keyed and the hidden anchor read as lost cells. A non-group finding with no key
+        // stays byte-identical (no key field at all).
+        boolean keyed = !keyVars.isEmpty() || loc.isGroupKeyed();
 
         List<Map<String, Object>> rows = new ArrayList<>(slab.rowCount());
         for (int p = 0, rc = slab.rowCount(); p < rc; p++)
@@ -692,9 +699,9 @@ public final class ReportAssembler
             // GROUP VARIABLES (keySource GROUP) — so v2 keys a group finding by the group
             // variables while v1, which never reads this channel, keeps anchoring at the
             // block's first flagged row (D66's deliberate v1 trait).
-            if (!keyVars.isEmpty())
+            if (keyed)
             {
-                rowMap.put("keys", finding.getRowKeys(p));
+                rowMap.put("keys", finding.getRowKeys(p)); // {} for an empty group key
             }
             rowMap.put("values", c.values());
             rows.add(rowMap);
@@ -703,7 +710,7 @@ public final class ReportAssembler
         Map<String, Object> locMap = new LinkedHashMap<>();
         locMap.put("dataset", loc.getDataset());
         locMap.put("variables", loc.getVariableNames());
-        if (!keyVars.isEmpty())
+        if (keyed)
         {
             locMap.put("keyVariables", keyVars);
             locMap.put("keySource", loc.getKeySource());

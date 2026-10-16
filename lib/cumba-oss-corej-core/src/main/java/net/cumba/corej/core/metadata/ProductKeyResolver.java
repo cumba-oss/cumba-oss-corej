@@ -1,12 +1,10 @@
-package net.cumba.corej.core.metadata.pickle;
+package net.cumba.corej.core.metadata;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import net.cumba.corej.core.metadata.MetadataProductCatalogue;
-import net.cumba.corej.core.metadata.MetadataProductKeys;
 
 /**
  * Resolves a user-supplied metadata-product token ({@code --metadata-products} / {@code -mp}) onto
@@ -88,7 +86,8 @@ public final class ProductKeyResolver
      *            the user token (full key, {@code standards/}-prefixed key, or unique suffix;
      *            dotted versions like {@code adamig-1.3} are dash-normalised)
      * @param standardKeys
-     *            the {@link PickleCache#standardKeys()} set; empty when no cache is configured
+     *            the {@link net.cumba.corej.core.metadata.pickle.PickleCache#standardKeys()} set;
+     *            empty when no cache is configured
      * @return the resolution outcome (never {@code null})
      */
     public static Result resolve(String token, Set<String> standardKeys)

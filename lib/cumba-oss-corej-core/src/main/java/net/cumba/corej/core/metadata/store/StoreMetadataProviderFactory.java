@@ -299,7 +299,12 @@ public final class StoreMetadataProviderFactory
      * {@code PLAN-send-base-ig-view} ({@code LVC-F1} (b)) — a SENDIG-AR / SENDIG-DART product gets
      * the base SENDIG's datasets it does not print ({@link BaseIgView}); every other product is
      * returned as stored. A base the store lacks is a WARNING and today's answer (the carried
-     * domains stay on the model tier), never a failed run.
+     * domains stay on the model tier), never a failed run. This is the data side of the one
+     * composition seam ({@code PLAN-bugfix-engine-define} SV): the Define-XML side
+     * ({@code StoreLibraryProvider}) and the rule editor ({@code RuleInsight}) read
+     * {@link BaseIgView#productOf}, which composes the same way; this method calls
+     * {@link BaseIgView#compose} itself because it logs the {@link BaseIgView.Composition}'s added
+     * datasets.
      */
     private StoredProduct withBaseIgView(StoredProduct aIg)
     {

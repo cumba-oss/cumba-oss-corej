@@ -4855,11 +4855,15 @@ public final class RuleRunner
      * combined finding.
      *
      * <p>
-     * Only driver-free wildcards are expanded here — a wildcard that also carries a {@code ${VAR}}
-     * driver is row-dependent and is left untouched for the scalar path. Entries with no
-     * placeholder pass through unchanged. When the foreign dataset is not joined/resolvable the
-     * wildcard entry is dropped (the unresolved-Output_Variables policy). The common case (no
-     * wildcard entry at all) returns the input list without allocating.
+     * Only driver-free wildcards are expanded here. A wildcard that also carries a {@code ${VAR}}
+     * driver — or a scalar driver template — is passed through verbatim, which is a defensive no-op
+     * for a loaded rule: since {@code PLAN-bugfix-engine-define} OV (BD1 (a), T13) an authored
+     * driver entry is a load error and the derivation never derives one, so no driver-bearing entry
+     * reaches this pass (there is no scalar path to resolve it per row — the projection dropped
+     * such an entry silently, BACKLOG F2). Entries with no placeholder pass through unchanged. When
+     * the foreign dataset is not joined/resolvable the wildcard entry is dropped (the
+     * unresolved-Output_Variables policy). The common case (no wildcard entry at all) returns the
+     * input list without allocating.
      * </p>
      */
     private static List<String> expandOutputVarWildcards(List<String> outputVars,
@@ -4887,7 +4891,9 @@ public final class RuleRunner
                 continue;
             }
             OperandSubstitutor.ParsedOperand parsed = OperandSubstitutor.parse(v);
-            // Driver-free ${*} wildcard only; drivers => leave for the scalar path.
+            // Driver-free ${*} wildcard only; a driver-bearing entry is unreachable for a loaded
+            // rule (refused at load / never derived, PLAN-bugfix-engine-define OV) and is passed
+            // through unchanged as a defensive no-op.
             if (!(parsed instanceof OperandSubstitutor.Wildcard w) || w.hasDrivers())
             {
                 expanded.add(v);

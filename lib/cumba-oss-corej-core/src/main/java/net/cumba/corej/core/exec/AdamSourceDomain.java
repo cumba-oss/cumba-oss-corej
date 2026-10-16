@@ -3,8 +3,10 @@ package net.cumba.corej.core.exec;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.SortedSet;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,12 +31,29 @@ import org.jspecify.annotations.Nullable;
  * column named a two-letter prefix plus one of {@link #EVIDENCE_SUFFIXES} — the domain's
  * {@code --SEQ} or its topic variable ({@code AESEQ}, {@code AETERM}, {@code CMTRT}; letter case
  * ignored, the prefix upper-cased) — and the dataset's domains are the set of those prefixes (D1,
- * as narrowed by owner ruling MED-1 (a)):
+ * as narrowed by owner ruling MED-1 (a)), read with the IG's own precedence
+ * ({@code PLAN-bugfix-engine-define} BD2 (a), owner 2026-10-15 — ADaMIG-OCCDS v1.1 §3: <i>"--SEQ
+ * provides all of the row identifier … The 2-letter prefix of the variable name is the SDTM domain
+ * name"</i>, and a multi-domain dataset adds <i>"the --SEQ variable from each domain … or the
+ * variables SRCDOM and SRCSEQ"</i>): exactly <b>one</b> {@code --SEQ} prefix and no {@code SRCDOM}
+ * ⇒ that is the one domain, whatever topic columns are copied beside it ({@code ADAE} with
+ * {@code AESEQ}, {@code AETERM} and a copied {@code EXTRT} is AE); <b>two or more</b> {@code --SEQ}
+ * prefixes <b>or</b> an {@code SRCDOM} column ⇒ multi-domain, with every evidence prefix as its
+ * domains; no {@code --SEQ} and no {@code SRCDOM} ⇒ the topic prefixes decide (several ⇒
+ * multi-domain — the named residual: an {@code ADAE} with no {@code AESEQ} and a copied
+ * {@code EXTRT} stays multi-domain, there is no IG anchor to break the tie):
  * </p>
  * <ul>
  * <li><b>one</b> domain — a {@code --} name resolves to it and is demanded, present or not: an
  * {@code ADAE} carrying {@code AETERM} but no {@code AESEQ} is asked for {@code AESEQ} (D2;
- * {@link #singleDomainOf});</li>
+ * {@link #singleDomainOf}). Except the class-bound topic templates ({@code PLAN-bugfix-engine-define}
+ * BD4 (a) with BD8 (a), owner 2026-10-16): {@code --TERM} is the topic of the Events class only and
+ * {@code --TRT} of Interventions only (Findings About uses {@code --TESTCD} / {@code --OBJ}), and
+ * the evidence suffix that named the domain tells its class — a domain evidenced by
+ * {@code <DD>TRT} is Interventions, so {@code --TERM} is not demanded of it ({@code ADCM} with
+ * {@code CMTRT} is not asked for {@code CMTERM}, which SDTM CM does not define); by {@code <DD>TERM}
+ * Events, so {@code --TRT} is not; by {@code <DD>SEQ} alone it has no class and both templates are
+ * demanded as before ({@link #observationClassOf}, {@link #topicTemplateApplies});</li>
  * <li><b>several</b> — a multi-domain OCCDS, for which the IG offers {@code --SEQ} per domain or
  * {@code SRCDOM} / {@code SRCSEQ}: no {@code --} name is demanded (D3);</li>
  * <li><b>none</b> — the structure came from a {@code def:Class} or the library's declaration, not
@@ -106,8 +125,11 @@ import org.jspecify.annotations.Nullable;
  * ({@code Cond}) of {@code adam-nca-1-0}. No ADaMIG (1.0–1.3), {@code adam-tte}, {@code adam-md} or
  * {@code adam-poppk} name satisfies it, so ADSL, BDS and TTE walks are unchanged. Such a name is
  * not demanded only when the dataset's occurrence variables give evidence of a <b>different</b>
- * domain ({@link #carriesAnotherDomain}): the evidence set is non-empty and does not contain
- * {@code DD}. An <b>empty</b> set never drops it — the name is concrete, so an {@code ADAE} with no
+ * domain ({@link #carriesAnotherDomain}): the domain set is non-empty and does not contain
+ * {@code DD} — the <em>same</em> set predicate (i) resolves against (T16: an OCCDS with
+ * {@code CMSEQ} and a copied {@code AETERM} is {CM}, so a published {@code AESER} is dropped where
+ * it was demanded before the {@code --SEQ} precedence; a multi-domain set keeps every evidenced
+ * domain's carried names). An <b>empty</b> set never drops it — the name is concrete, so an {@code ADAE} with no
  * occurrence variable at all (its structure declared by the define) is still asked for
  * {@code AESEQ}, {@code AETERM}, {@code AEDECOD}: a missing required column must not disarm its own
  * requirement (round-2 T2 review H1; {@code PLAN-occds-source-domain-by-ig} review H1).
@@ -126,7 +148,7 @@ public final class AdamSourceDomain
 
     /** A two-letter prefix plus one evidence suffix, the whole column name, letter case ignored. */
     private static final Pattern EVIDENCE = Pattern.compile(
-            "^([A-Z]{2})(?:" + String.join("|", EVIDENCE_SUFFIXES) + ")$",
+            "^([A-Z]{2})(" + String.join("|", EVIDENCE_SUFFIXES) + ")$",
             Pattern.CASE_INSENSITIVE);
 
     /** The source token a published description opens with: {@code CM.CMTRT}, {@code XX.--SEQ}. */
@@ -140,55 +162,177 @@ public final class AdamSourceDomain
     }
 
 
+    /** The {@code SRCDOM} column of a multi-domain OCCDS dataset (ADaMIG-OCCDS v1.1 §3). */
+    private static final String SRCDOM = "SRCDOM";
+
+    /** The SDTM observation class whose topic variable is {@code --TERM}. */
+    public static final String EVENTS = "EVENTS";
+
+    /** The SDTM observation class whose topic variable is {@code --TRT}. */
+    public static final String INTERVENTIONS = "INTERVENTIONS";
+
     /**
-     * The dataset's SDTM source domains (D1): the upper-cased two-letter prefix of every column named
-     * {@code <DD>SEQ}, {@code <DD>TERM} or {@code <DD>TRT} (letter case ignored). The dataset name is
-     * not read, nor a kept SDTM {@code DOMAIN} cell, nor a {@code <DD>DECOD} column (MED-1 (a)).
+     * The dataset's source domains ({@link #domainsOf}): the domain codes, whether the dataset is
+     * multi-domain (D3 — not a set size: {@code AESEQ} + {@code SRCDOM} has one prefix and is
+     * multi-domain all the same, confirmation look MED-1), and the evidence suffixes each domain
+     * was named by (BD8 (a): the class source).
+     *
+     * @param domains
+     *            the domain codes, sorted
+     * @param multi
+     *            whether the dataset is multi-domain (D3): no {@code --} name is demanded
+     * @param evidence
+     *            domain code → the evidence suffixes ({@code SEQ}, {@code TERM}, {@code TRT}) the
+     *            dataset carries for it
+     */
+    public record SourceDomains(SortedSet<String> domains, boolean multi,
+            Map<String, SortedSet<String>> evidence)
+    {
+
+        /** Defensive, unmodifiable copies. */
+        public SourceDomains
+        {
+            domains = Collections.unmodifiableSortedSet(new TreeSet<>(domains));
+            Map<String, SortedSet<String>> copy = new TreeMap<>();
+            evidence.forEach((d, e) -> copy.put(d, Collections.unmodifiableSortedSet(new TreeSet<>(e))));
+            evidence = Collections.unmodifiableMap(copy);
+        }
+    }
+
+
+    /**
+     * The dataset's SDTM source domains (D1, with BD2 (a)'s {@code --SEQ} precedence): the
+     * upper-cased two-letter prefix of every column named {@code <DD>SEQ}, {@code <DD>TERM} or
+     * {@code <DD>TRT} (letter case ignored), read as the class javadoc says — one {@code --SEQ}
+     * prefix without {@code SRCDOM} is the one domain; two or more {@code --SEQ} prefixes or an
+     * {@code SRCDOM} column make the dataset multi-domain over every evidence prefix; without any
+     * {@code --SEQ} the topic prefixes decide. The dataset name is not read, nor a kept SDTM
+     * {@code DOMAIN} cell, nor a {@code <DD>DECOD} column (MED-1 (a)).
      *
      * @param aTable
      *            the dataset
-     * @return the domain codes in sorted order; empty when the dataset carries no occurrence
-     *         variable
+     * @return the domains, the multi-domain verdict and the evidence per domain; empty domains when
+     *         the dataset carries no occurrence variable
      */
-    public static SortedSet<String> domainsOf(IDataTable aTable)
+    public static SourceDomains domainsOf(IDataTable aTable)
     {
-        SortedSet<String> domains = new TreeSet<>();
+        Map<String, SortedSet<String>> evidence = new TreeMap<>();
+        SortedSet<String> seqPrefixes = new TreeSet<>();
+        boolean srcdom = false;
         for (String column : AdamStructureContext.columnNamesOf(aTable.getMetaData()))
         {
             if (column == null)
             {
                 continue;
             }
+            if (SRCDOM.equalsIgnoreCase(column))
+            {
+                srcdom = true;
+                continue;
+            }
             Matcher m = EVIDENCE.matcher(column);
             if (m.matches())
             {
-                domains.add(m.group(1).toUpperCase(Locale.ROOT));
+                String domain = m.group(1).toUpperCase(Locale.ROOT);
+                String suffix = m.group(2).toUpperCase(Locale.ROOT);
+                evidence.computeIfAbsent(domain, d -> new TreeSet<>()).add(suffix);
+                if ("SEQ".equals(suffix))
+                {
+                    seqPrefixes.add(domain);
+                }
             }
         }
-        return Collections.unmodifiableSortedSet(domains);
+        if (seqPrefixes.size() == 1 && !srcdom)
+        {
+            // BD2 (a): the one --SEQ names the one domain; copied topic columns are left out
+            String domain = seqPrefixes.first();
+            return new SourceDomains(new TreeSet<>(Set.of(domain)), false,
+                    Map.of(domain, evidence.get(domain)));
+        }
+        SortedSet<String> domains = new TreeSet<>(evidence.keySet());
+        boolean multi = seqPrefixes.size() >= 2 || srcdom || domains.size() > 1;
+        return new SourceDomains(domains, multi, evidence);
     }
 
 
     /**
-     * The domain a {@code --} name resolves to: the only one of {@code aDomains} (D2), or
-     * {@code null} when there are several (D3) or none (D4) — then no {@code --} name is demanded.
+     * The domain a {@code --} name resolves to: the only one of {@code aDomains} when the dataset is
+     * not multi-domain (D2), or {@code null} when it is (D3) or when there is none (D4) — then no
+     * {@code --} name is demanded.
      *
      * @param aDomains
      *            the dataset's domains ({@link #domainsOf})
      * @return the single domain code ({@code AE}), or {@code null}
      */
-    public static @Nullable String singleDomainOf(Set<String> aDomains)
+    public static @Nullable String singleDomainOf(SourceDomains aDomains)
     {
-        return aDomains.size() == 1 ? aDomains.iterator().next() : null;
+        return !aDomains.multi() && aDomains.domains().size() == 1 ? aDomains.domains().first()
+                : null;
+    }
+
+
+    /**
+     * The SDTM observation class a source domain's evidence names (BD8 (a), owner 2026-10-16):
+     * {@link #INTERVENTIONS} when the dataset carries {@code <DD>TRT} and no {@code <DD>TERM},
+     * {@link #EVENTS} when {@code <DD>TERM} and no {@code <DD>TRT}, else {@code null} — a domain
+     * evidenced by {@code <DD>SEQ} alone (or, theoretically, by both topic variables) has no class
+     * here and keeps today's answer (both templates demanded: the pinned gap for that case).
+     *
+     * @param aDomains
+     *            the dataset's domains ({@link #domainsOf})
+     * @param aDomain
+     *            a domain code of the set
+     * @return the class, or {@code null}
+     */
+    public static @Nullable String observationClassOf(SourceDomains aDomains, String aDomain)
+    {
+        SortedSet<String> suffixes = aDomains.evidence().get(aDomain);
+        if (suffixes == null)
+        {
+            return null;
+        }
+        boolean trt = suffixes.contains("TRT");
+        boolean term = suffixes.contains("TERM");
+        if (trt && !term)
+        {
+            return INTERVENTIONS;
+        }
+        return term && !trt ? EVENTS : null;
+    }
+
+
+    /**
+     * Whether a published {@code --} template applies to a source domain of the given class (BD4
+     * (a)): {@code --TERM} is the topic variable of Events only, {@code --TRT} of Interventions
+     * only, so the other class's topic template is not demanded of the domain; every other template,
+     * and either template of a domain with no class, applies.
+     *
+     * @param aTemplate
+     *            the published name ({@code --TERM})
+     * @param aObservationClass
+     *            {@link #observationClassOf}, may be {@code null}
+     * @return whether the template is resolved and demanded
+     */
+    public static boolean topicTemplateApplies(String aTemplate, @Nullable String aObservationClass)
+    {
+        if (aObservationClass == null)
+        {
+            return true;
+        }
+        if ("--TERM".equalsIgnoreCase(aTemplate))
+        {
+            return !INTERVENTIONS.equals(aObservationClass);
+        }
+        return !"--TRT".equalsIgnoreCase(aTemplate) || !EVENTS.equals(aObservationClass);
     }
 
 
     /**
      * Whether a published name carrying domain {@code aCarried}'s prefix ({@link #carriedDomainOf})
      * is evidence of a <b>different</b> domain than the dataset's — predicate (ii)'s drop
-     * condition: the dataset's occurrence variables name at least one domain, and not
-     * {@code aCarried}. With no evidence at all the name stays demanded, so a missing required
-     * column cannot disarm its own requirement.
+     * condition: the dataset's domains name at least one domain, and not {@code aCarried}. With no
+     * evidence at all the name stays demanded, so a missing required column cannot disarm its own
+     * requirement. The same domain set predicate (i) resolves against (T16).
      *
      * @param aDomains
      *            the dataset's domains ({@link #domainsOf})
@@ -196,9 +340,9 @@ public final class AdamSourceDomain
      *            the carried domain code ({@code CM})
      * @return {@code true} when the name is to be dropped
      */
-    public static boolean carriesAnotherDomain(Set<String> aDomains, String aCarried)
+    public static boolean carriesAnotherDomain(SourceDomains aDomains, String aCarried)
     {
-        return !aDomains.isEmpty() && !aDomains.contains(aCarried);
+        return !aDomains.domains().isEmpty() && !aDomains.domains().contains(aCarried);
     }
 
 

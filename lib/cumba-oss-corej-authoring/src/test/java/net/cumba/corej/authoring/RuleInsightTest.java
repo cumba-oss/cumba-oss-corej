@@ -297,7 +297,143 @@ class RuleInsightTest
                         List.of(new AuthoredRuleAssembler.StandardVersion("SDTMIG", "3.4"),
                                 new AuthoredRuleAssembler.StandardVersion("ADaMIG", "1.3"),
                                 new AuthoredRuleAssembler.StandardVersion("SDTMIG", "3.4"))));
+        // PLAN-bugfix-engine-define SV (pre-go H2): a variant standard maps through the store's
+        // D-11 family grammar — standards/<family>/<variant>-<version>, never
+        // standards/<name>/<version>, which names no product and left every AR / DART / MD
+        // rule's universe empty.
+        assertEquals(
+                List.of("standards/sendig/ar-1-0", "standards/sendig/dart-1-2",
+                        "standards/sdtmig/md-1-1"),
+                RuleInsight.productKeysOf(
+                        List.of(new AuthoredRuleAssembler.StandardVersion("SENDIG-AR", "1.0"),
+                                new AuthoredRuleAssembler.StandardVersion("SENDIG-DART", "1.2"),
+                                new AuthoredRuleAssembler.StandardVersion("SDTMIG-MD", "1.1"))));
     }
+
+
+    /**
+     * {@code PLAN-bugfix-engine-define} SV: an AR rule's universe goes through
+     * {@link RuleInsight#productKeysOf} to the real store key and reads the base-IG view — the
+     * SENDIG 3.1 datasets AR does not print ({@code LB}) are judged, beside AR's own ({@code AG}).
+     */
+    @Test
+    void anArRulesUniverseReadsTheBaseSendigsDatasets()
+    {
+        AssembledRule assembled = AuthoredRuleAssembler.assemble("""
+                Core:
+                  Id: "CDISC-SEND-9001"
+                  Status: "Published"
+                  Version: "1"
+                Description: "an AR rule over LB"
+                Executability: "Fully Executable"
+                Scope:
+                  Domains:
+                    Include:
+                    - "LB"
+                Check:
+                  expression: 'not empty(LBTEST)'
+                Outcome:
+                  Message: "LBTEST is empty"
+                """, null, List.of(new StandardRef("sendig-ar-1-0", StandardRef.Role.PRIMARY)));
+        Rule rule = assembled.rule();
+        assertNotNull(rule, assembled.diagnostics().toString());
+        ScopeUniverse u = RuleInsight.scopeUniverse(rule, new SendStore(),
+                RuleInsight.productKeysOf(
+                        List.of(new AuthoredRuleAssembler.StandardVersion("SENDIG-AR", "1.0"))));
+        assertEquals(List.of(), u.missingProducts(), "the AR product is held under its store key");
+        Map<String, ScopeEntry> byName = new java.util.HashMap<>();
+        u.entries().forEach(e -> byName.put(e.dataset(), e));
+        assertNotNull(byName.get("LB"), "LB comes from the base SENDIG 3.1: " + byName.keySet());
+        assertTrue(byName.get("LB").inScope(), byName.get("LB").toString());
+        assertNotNull(byName.get("AG"), "AR's own dataset is judged too");
+        assertFalse(byName.get("AG").inScope(), byName.get("AG").toString());
+        assertTrue(u.variableNames().contains("LBTEST"), u.variableNames().toString());
+    }
+
+    /** SENDIG-AR 1.0 (prints AG only) beside its base SENDIG 3.1 (prints LB). */
+    private static final class SendStore implements MetadataStore
+    {
+
+        private static StoredVariable var(String aName)
+        {
+            return StoredVariable.builder().name(aName).build();
+        }
+
+
+        private static StoredDataset ds(String aName, String... aVars)
+        {
+            return new StoredDataset(aName, aName, null, null,
+                    java.util.Arrays.stream(aVars).map(SendStore::var).toList(), null, null);
+        }
+
+
+        private static StoredProduct product(String aKey, String aName, String aClass,
+                StoredDataset aDataset)
+        {
+            StoredClass klass = new StoredClass(aClass, aClass, "1", List.of(), List.of(aDataset),
+                    null, List.of(), List.of(), List.of());
+            return StoredProduct.builder().key(aKey).name(aName).version("1.0")
+                    .classes(List.of(klass)).datasets(List.of(aDataset))
+                    .dataStructures(List.<StoredDataStructure> of()).build();
+        }
+
+
+        @Override
+        public Optional<StoredProduct> product(String aKey)
+        {
+            return switch (aKey)
+            {
+            case "standards/sendig/ar-1-0" -> Optional.of(product(aKey, "SENDIG-AR",
+                    "INTERVENTIONS", ds("AG", "STUDYID", "USUBJID", "AGTRT")));
+            case "standards/sendig/3-1" -> Optional.of(
+                    product(aKey, "SENDIG", "FINDINGS", ds("LB", "STUDYID", "USUBJID", "LBTEST")));
+            default -> Optional.empty();
+            };
+        }
+
+
+        @Override
+        public Optional<StoredCtPackage> ctPackage(String aId)
+        {
+            return Optional.empty();
+        }
+
+
+        @Override
+        public List<String> publishedCtPackages()
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public Presence presence(String aCtPackageId)
+        {
+            return Presence.ABSENT;
+        }
+
+
+        @Override
+        public List<String> productCatalogue()
+        {
+            return List.of("standards/sendig/3-1", "standards/sendig/ar-1-0");
+        }
+
+
+        @Override
+        public StoreManifest manifest()
+        {
+            throw new UnsupportedOperationException("no manifest in the fake");
+        }
+
+
+        @Override
+        public void close()
+        {
+            // nothing to release
+        }
+    }
+
 
     /** Two classes, three datasets, one standard: enough to tell the axes apart. */
     private static final class FakeStore implements MetadataStore

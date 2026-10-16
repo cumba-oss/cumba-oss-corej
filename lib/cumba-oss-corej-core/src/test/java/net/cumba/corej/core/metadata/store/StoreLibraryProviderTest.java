@@ -204,6 +204,88 @@ class StoreLibraryProviderTest
     }
 
 
+    /**
+     * A SENDIG-AR 1.0 store with (or without) the base SENDIG 3.1 the document names: AR prints
+     * {@code AG} only, the base prints {@code LB} ({@code PLAN-bugfix-engine-define} SV).
+     */
+    private MetadataStore arStore(boolean aWithBase) throws IOException
+    {
+        StoredVariable agtrt = StoredVariable.builder().name("AGTRT").label("Name of Agent")
+                .core("Req").build();
+        StoredDataset ag = new StoredDataset("AG", "Procedure Agents", "1", "One record per agent",
+                List.of(agtrt), null, null);
+        StoredProduct ar = StoredProduct.builder().key("standards/sendig/ar-1-0").name("SENDIG-AR")
+                .version("1-0").classes(List.of(new StoredClass("Interventions", null, "1",
+                        List.of(), List.of(ag), null, List.of(), List.of(), List.of())))
+                .build();
+        StoredVariable lbtest = StoredVariable.builder().name("LBTEST")
+                .label("Lab Test or Examination Name").core("Exp").codelistIds(List.of("C65047"))
+                .build();
+        StoredDataset lb = new StoredDataset("LB", "Laboratory Test Results", "1",
+                "One record per lab test", List.of(lbtest), null, null);
+        StoredProduct base = StoredProduct.builder().key("standards/sendig/3-1").name("SENDIG")
+                .version("3-1").classes(List.of(new StoredClass("Findings", null, "1", List.of(),
+                        List.of(lb), null, List.of(), List.of(), List.of())))
+                .build();
+        MetadataStoreWriter writer = new MetadataStoreWriter().addProduct(ar);
+        if (aWithBase)
+        {
+            writer.addProduct(base);
+        }
+        Path file = tempDir.resolve("ar-store.zip");
+        writer.publishedCtPackages(List.of())
+                .productCatalogue(List.of("standards/sendig/3-1", "standards/sendig/ar-1-0"))
+                .write(file);
+        return MetadataStore.open(file);
+    }
+
+
+    /**
+     * {@code PLAN-bugfix-engine-define} SV / {@code PLAN-send-base-ig-view} {@code LVC-F1} (b): the
+     * define side reads the base-IG view too — a SENDIG-AR 1.0 define binding {@code LB} asks the
+     * library for a dataset AR does not print and is answered from the base SENDIG 3.1 (label,
+     * codelist, core, dataset label), exactly as the data side's provider is.
+     */
+    @Test
+    void anArDatasetTheIgDoesNotPrintIsAnsweredFromTheBaseSendig() throws IOException
+    {
+        try (MetadataStore store = arStore(true))
+        {
+            StoreLibraryProvider p = StoreLibraryProvider.over(store);
+            assertEquals(Optional.of("Lab Test or Examination Name"),
+                    p.variableLabel("SENDIG-AR", "1.0", "LB", "LBTEST"), "label from the base");
+            assertEquals(Optional.of("C65047"),
+                    p.variableCodelistCCode("SENDIG-AR", "1.0", "LB", "LBTEST"));
+            assertEquals(Optional.of("Exp"),
+                    p.variableCoreDesignation("SENDIG-AR", "1.0", "LB", "LBTEST"));
+            assertEquals(Optional.of("Laboratory Test Results"),
+                    p.datasetLabel("SENDIG-AR", "1.0", "LB"));
+            assertEquals(Optional.of("Name of Agent"),
+                    p.variableLabel("SENDIG-AR", "1.0", "AG", "AGTRT"), "the IG's own dataset");
+            assertEquals(List.of(), p.missedProducts(), "the base was held: nothing missed");
+        }
+    }
+
+
+    /**
+     * The base the store lacks: the AR product answers as stored (its own datasets), the base's
+     * datasets stay empty, and the base key is recorded for the run's library-basis line (D-14).
+     */
+    @Test
+    void anArWithoutItsBaseAnswersItsOwnDatasetsAndRecordsTheMissingBase() throws IOException
+    {
+        try (MetadataStore store = arStore(false))
+        {
+            StoreLibraryProvider p = StoreLibraryProvider.over(store);
+            assertEquals(Optional.of("Name of Agent"),
+                    p.variableLabel("SENDIG-AR", "1.0", "AG", "AGTRT"));
+            assertEquals(Optional.empty(), p.variableLabel("SENDIG-AR", "1.0", "LB", "LBTEST"));
+            assertEquals(List.of("standards/sendig/3-1"), p.missedProducts(),
+                    "the missing base is a miss the basis line names");
+        }
+    }
+
+
     /** D-11: the key grammar the catalogue really uses. */
     @Test
     void igKeysFoldSpellingsAndMapVariantsToTheirRealKeys()

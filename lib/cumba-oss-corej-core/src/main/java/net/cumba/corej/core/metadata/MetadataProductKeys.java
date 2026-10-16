@@ -2,6 +2,7 @@ package net.cumba.corej.core.metadata;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -98,6 +99,80 @@ public final class MetadataProductKeys
         }
         // Product keys use dash-form versions (e.g. 3-4); callers may pass the dotted form (3.4).
         return "standards/" + standard + "/" + version.replace('.', '-');
+    }
+
+    /**
+     * An SDTM/SEND-family standard name split into its catalogue family and variant suffix — the
+     * D-11 key grammar ({@code PLAN-define-ct-evaluation} §4.4), shared by the Define-XML side's
+     * {@code StoreLibraryProvider} and the rule editor's {@code RuleInsight}
+     * ({@code PLAN-bugfix-engine-define} SV, pre-go H2: the editor built
+     * {@code standards/sendig-ar/1-0}, which names no product).
+     *
+     * @param family
+     *            {@code sdtmig} or {@code sendig}
+     * @param variant
+     *            the lower-cased variant suffix ({@code ar}, {@code dart}, {@code md}, {@code ap},
+     *            {@code genetox}), or {@code ""} for the base IG
+     */
+    public record IgFamily(String family, String variant)
+    {
+
+        /**
+         * {@code SDTMIG} / {@code SDTM-IG} → {@code sdtmig}, {@code SENDIG-AR} / {@code SEND-IG-AR}
+         * → {@code sendig} + {@code ar}; {@code null} for a name outside the two families (an ADaM
+         * standard, a model).
+         *
+         * @param aStandardName
+         *            the document's or the rule's standard name, any hyphenation
+         * @return the family, or {@code null}
+         */
+        public static @Nullable IgFamily of(@Nullable String aStandardName)
+        {
+            if (aStandardName == null)
+            {
+                return null;
+            }
+            String folded = aStandardName.replace("-", "").replace(" ", "")
+                    .toUpperCase(Locale.ROOT);
+            for (String base : new String[]
+            {
+                    "SDTMIG", "SENDIG"
+            })
+            {
+                if (folded.startsWith(base))
+                {
+                    return new IgFamily(base.toLowerCase(Locale.ROOT),
+                            folded.substring(base.length()).toLowerCase(Locale.ROOT));
+                }
+            }
+            return null;
+        }
+    }
+
+    /**
+     * The store key of an SDTM/SEND-family IG standard as the catalogue really spells it (D-11):
+     * {@code SDTMIG 3.4} → {@code standards/sdtmig/3-4}, {@code SENDIG-AR 1.0} →
+     * {@code standards/sendig/ar-1-0}, {@code SDTMIG-MD 1.1} → {@code standards/sdtmig/md-1-1};
+     * empty for a standard outside the two families or a blank version. A caller with a product
+     * outside the families (ADaM) falls back to {@link #standardsKey}.
+     *
+     * @param aStandardName
+     *            the standard name, any hyphenation and letter case
+     * @param aStandardVersion
+     *            the version, dotted or dash form
+     * @return the key, or empty
+     */
+    public static Optional<String> igStoreKey(@Nullable String aStandardName,
+            @Nullable String aStandardVersion)
+    {
+        IgFamily family = IgFamily.of(aStandardName);
+        if (family == null || aStandardVersion == null || aStandardVersion.isBlank())
+        {
+            return Optional.empty();
+        }
+        String version = aStandardVersion.trim().replace('.', '-');
+        String tail = family.variant().isEmpty() ? version : family.variant() + "-" + version;
+        return Optional.of("standards/" + family.family() + "/" + tail);
     }
 
     /**

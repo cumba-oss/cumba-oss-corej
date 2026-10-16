@@ -2,12 +2,12 @@ package net.cumba.corej.core.metadata.store;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
+import net.cumba.corej.core.metadata.MetadataProductKeys;
 import net.cumba.corej.core.metadata.UsageRestrictions;
 import net.cumba.corej.define.conformance.library.LibraryProvider;
 import org.jspecify.annotations.Nullable;
@@ -28,7 +28,11 @@ import org.jspecify.annotations.Nullable;
  * {@link #variableCodelistCCode} its head. <b>Published versions (D-13):</b> from the store's
  * product catalogue, as of the seed. <b>Misses (D-14):</b> a product the store does not hold
  * answers empty AND is recorded, so the run's library-basis line can name it — the store
- * counterpart of the API provider's degraded-lookup list.
+ * counterpart of the API provider's degraded-lookup list. <b>Base-IG view</b>
+ * ({@code PLAN-bugfix-engine-define} SV): a SENDIG-AR / SENDIG-DART product is read through
+ * {@link BaseIgView#productOf}, so the SENDIG domains the document does not print ({@code LB} on an
+ * AR define) are answered from the base SENDIG it names, exactly as the data side reads them; a
+ * base the store lacks is a recorded miss (D-14) and the product answers as stored.
  * </p>
  */
 public final class StoreLibraryProvider implements LibraryProvider
@@ -177,12 +181,12 @@ public final class StoreLibraryProvider implements LibraryProvider
     @Override
     public List<String> publishedStandardVersions(String aStandardName)
     {
-        Family family = Family.of(aStandardName);
+        MetadataProductKeys.IgFamily family = MetadataProductKeys.IgFamily.of(aStandardName);
         if (family == null)
         {
             return List.of();
         }
-        String prefix = STANDARDS + family.family + "/";
+        String prefix = STANDARDS + family.family() + "/";
         List<String> versions = new ArrayList<>();
         for (String key : store.productCatalogue())
         {
@@ -191,16 +195,16 @@ public final class StoreLibraryProvider implements LibraryProvider
                 continue;
             }
             String tail = key.substring(prefix.length());
-            if (family.variant.isEmpty())
+            if (family.variant().isEmpty())
             {
                 if (!tail.isEmpty() && Character.isDigit(tail.charAt(0)) && !tail.contains("/"))
                 {
                     versions.add(tail.replace('-', '.'));
                 }
             }
-            else if (tail.startsWith(family.variant + "-"))
+            else if (tail.startsWith(family.variant() + "-"))
             {
-                versions.add(tail.substring(family.variant.length() + 1).replace('-', '.'));
+                versions.add(tail.substring(family.variant().length() + 1).replace('-', '.'));
             }
         }
         return List.copyOf(versions);
@@ -219,18 +223,12 @@ public final class StoreLibraryProvider implements LibraryProvider
 
     /**
      * The catalogue key for an IG standard the document names, or empty for a standard outside the
-     * SDTM/SEND families (D-10). Package-private for the key-grammar test (D-11).
+     * SDTM/SEND families (D-10) — {@link MetadataProductKeys#igStoreKey}, the one D-11 grammar the
+     * rule editor shares. Package-private for the key-grammar test (D-11).
      */
     static Optional<String> igKey(String aStandardName, String aStandardVersion)
     {
-        Family family = Family.of(aStandardName);
-        if (family == null || aStandardVersion == null || aStandardVersion.isBlank())
-        {
-            return Optional.empty();
-        }
-        String version = aStandardVersion.trim().replace('.', '-');
-        String tail = family.variant.isEmpty() ? version : family.variant + "-" + version;
-        return Optional.of(STANDARDS + family.family + "/" + tail);
+        return MetadataProductKeys.igStoreKey(aStandardName, aStandardVersion);
     }
 
 
@@ -251,14 +249,28 @@ public final class StoreLibraryProvider implements LibraryProvider
     }
 
 
+    /**
+     * The product under {@code aKey}, cached per key: an IG product composed with its base
+     * ({@link BaseIgView#productOf} — {@code PLAN-bugfix-engine-define} SV, T1), a model as stored.
+     * A product the store lacks is a miss (D-14); so is the base of an AR / DART product the store
+     * lacks — the product then answers as stored, and the basis line names the base.
+     */
     private Optional<StoredProduct> product(String aKey)
     {
         return products.computeIfAbsent(aKey, key ->
         {
-            Optional<StoredProduct> held = store.product(key);
+            Optional<StoredProduct> held = aKey.startsWith(STANDARDS)
+                    ? BaseIgView.productOf(store, key)
+                    : store.product(key);
             if (held.isEmpty())
             {
                 missed.add(key);
+                return held;
+            }
+            String baseKey = BaseIgView.baseKeyFor(key);
+            if (baseKey != null && store.product(baseKey).isEmpty())
+            {
+                missed.add(baseKey);
             }
             return held;
         });
@@ -308,31 +320,4 @@ public final class StoreLibraryProvider implements LibraryProvider
         return Optional.empty();
     }
 
-    /** An SDTM/SEND-family standard name, split into its catalogue family and variant suffix. */
-    private record Family(String family, String variant)
-    {
-
-        /** {@code SDTMIG}/{@code SDTM-IG} → sdtmig, {@code SENDIG-AR} → sendig + ar; else null. */
-        static @Nullable Family of(@Nullable String aStandardName)
-        {
-            if (aStandardName == null)
-            {
-                return null;
-            }
-            String folded = aStandardName.replace("-", "").replace(" ", "")
-                    .toUpperCase(Locale.ROOT);
-            for (String base : new String[]
-            {
-                    "SDTMIG", "SENDIG"
-            })
-            {
-                if (folded.startsWith(base))
-                {
-                    return new Family(base.toLowerCase(Locale.ROOT),
-                            folded.substring(base.length()).toLowerCase(Locale.ROOT));
-                }
-            }
-            return null;
-        }
-    }
 }

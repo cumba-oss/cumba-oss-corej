@@ -2955,7 +2955,45 @@ public final class ExprCompiler
         {
             return null; // characters: no encoding needed
         }
-        return run -> ConstVector.of(tableEncoding(run.ctx()));
+        // PLAN-bugfix-engine-define JB (T14): a bare qualified operand J.X measures J's bytes, so
+        // its default charset is J's declared Encoding; a bare primary column or a compound
+        // argument (its bytes are no longer one column's cells) keeps the evaluated table's.
+        String qualifier = !bound.isEmpty() && bound.get(0) instanceof Expr.Ref measured
+                && measured.kind() == OperandKind.DOTTED_REF ? qualifierOf(measured.name()) : null;
+        return run -> ConstVector.of(encodingFor(run.ctx(), qualifier));
+    }
+
+
+    /** The qualifier of a dotted operand name ({@code J.X} → {@code J}), or {@code null}. */
+    private static @Nullable String qualifierOf(@Nullable String name)
+    {
+        if (name == null)
+        {
+            return null;
+        }
+        int dot = name.indexOf('.');
+        return dot > 0 ? name.substring(0, dot) : null;
+    }
+
+
+    /**
+     * The default charset of a byte count: the joined dataset's declared {@code Encoding} for a
+     * qualified operand whose join is present and declares one
+     * ({@link JoinLookup#declaredEncoding}, {@code PLAN-bugfix-engine-define} JB), else the
+     * evaluated table's ({@link #tableEncoding}).
+     */
+    static @Nullable String encodingFor(EvaluationContext ctx, @Nullable String qualifier)
+    {
+        if (qualifier != null)
+        {
+            JoinLookup lookup = ctx.joins().get(qualifier);
+            String joined = lookup == null ? null : lookup.declaredEncoding();
+            if (joined != null)
+            {
+                return joined;
+            }
+        }
+        return tableEncoding(ctx);
     }
 
 
@@ -5843,9 +5881,10 @@ public final class ExprCompiler
             {
                 // BL1: the written charset, else the table's own Encoding; none / MIXED / an
                 // unknown name => missing (the byte count is not knowable)
+                // (JB, T14: a qualified J.X defaults to J's declared Encoding, encodingFor)
                 java.nio.charset.Charset charset = net.cumba.corej.core.expr.eval.spi.BuiltinFunctions
-                        .charsetOf(ConstVector
-                                .of(writtenCharset != null ? writtenCharset : tableEncoding(ctx)));
+                        .charsetOf(ConstVector.of(writtenCharset != null ? writtenCharset
+                                : encodingFor(ctx, qualifierOf(colName))));
                 if (charset == null)
                 {
                     return ConstVector.of(null);

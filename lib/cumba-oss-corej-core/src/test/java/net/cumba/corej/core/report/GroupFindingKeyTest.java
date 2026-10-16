@@ -140,10 +140,14 @@ class GroupFindingKeyTest
 
 
     @Test
-    void aSingleGroupFallbackFindingCarriesNoKeyChannel()
+    void aSingleGroupFallbackFindingIsGroupKeyedWithAnEmptyKey()
     {
         // Grouping column absent -> whole dataset is one group; there is no group key to name,
-        // and the finding must not invent one (D39d's "derive, don't invent", one level up).
+        // and the finding must not invent one (D39d's "derive, don't invent", one level up) —
+        // but it IS a group finding: the model stamps GROUP with an EMPTY key (owner Q-A
+        // 2026-10-05) and since PLAN-bugfix-engine-define GK (T3) the v2 writer says so
+        // (keyVariables [], keySource GROUP, keys {}) instead of dropping the channel, so a reader
+        // can tell the hidden anchor from lost cells. Until 2026-10-16 this test pinned the drop.
         IDataTable table = ae(new String[]
         {
                 "A", "B"
@@ -167,7 +171,45 @@ class GroupFindingKeyTest
         assertEquals(1, findings.size());
         @SuppressWarnings("unchecked")
         Map<String, Object> location = (Map<String, Object>) findings.get(0).get("location");
+        assertEquals(List.of(), location.get("keyVariables"), "group-keyed by an EMPTY key");
+        assertEquals("GROUP", location.get("keySource"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) findings.get(0).get("rows");
+        assertEquals(1, rows.size());
+        assertEquals(Map.of(), rows.get(0).get("keys"), "each row carries the empty key");
+        assertEquals("", rows.get(0).get("USUBJID"), "the anchor identity stays hidden");
+    }
+
+
+    /** C11: a NON-group finding with no key keeps writing no key field at all (byte-identical). */
+    @Test
+    void aRecordFindingWithoutAKeyWritesNoKeyFields()
+    {
+        Rule rule = fatalRule();
+        rule.setSensitivity(Sensitivity.RECORD);
+        rule.setGroupingVariables(null);
+        IDataTable table = ae(new String[]
+        {
+                "A"
+        }, new String[]
+        {
+                "FATAL"
+        }, new String[]
+        {
+                "X"
+        });
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
+        net.cumba.datatable.report.ValidationReport report = new ValidationReportBuilder()
+                .add("AE", "ae.xpt", rule, result).build();
+        Map<String, Object> v2 = new ReportAssembler().report(report).rules(List.of(rule))
+                .sections().toCombinedExportDocument();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> findings = (List<Map<String, Object>>) v2.get("Findings");
+        assertEquals(1, findings.size());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> location = (Map<String, Object>) findings.get(0).get("location");
         assertFalse(location.containsKey("keyVariables"));
+        assertFalse(location.containsKey("keySource"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) findings.get(0).get("rows");
         assertTrue(rows.stream().noneMatch(r -> r.containsKey("keys")));

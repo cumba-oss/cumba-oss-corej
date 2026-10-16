@@ -174,6 +174,93 @@ class RealRowAggregatesTest
         return QualifiedNameFixture.values(r).stream().map(m -> m.get("K")).toList();
     }
 
+    // ------------------------------------------------------------------
+    // PLAN-bugfix-engine-define AG (T4): three operand shapes the classifier gave up on
+    // ------------------------------------------------------------------
+
+
+    private static String bindings(String... nameExpressionPairs)
+    {
+        StringBuilder sb = new StringBuilder("\"Bindings\":[");
+        for (int i = 0; i + 1 < nameExpressionPairs.length; i += 2)
+        {
+            sb.append(i == 0 ? "" : ",").append("{\"name\":\"").append(nameExpressionPairs[i])
+                    .append("\",\"expression\":\"").append(nameExpressionPairs[i + 1])
+                    .append("\"}");
+        }
+        return sb.append(']').toString();
+    }
+
+
+    private static RuleExecutionResult runBound(String match, String bindingsJson,
+            String expression, IDataTable primary, IDataTable partner, String... out)
+    {
+        Rule r = loadClean(
+                ruleJson("Record",
+                        match + "," + bindingsJson + "," + check(expression) + "," + outcome(out)),
+                true);
+        return executed(r, primary, exactInventory(primary, partner));
+    }
+
+
+    /**
+     * T4 (i): a dynamic read whose column argument is a string literal naming an unqualified column
+     * reads the primary's own column — the operator counts each record once, as the authored name
+     * does. RED before: {@code colref("K")} was "a dynamic read", so the merged rows were counted
+     * (group g: 3, not 2).
+     */
+    @Test
+    @DisplayName("a colref string literal naming a primary column counts each record once")
+    void aColrefLiteralOfAPrimaryColumnCountsRealRows()
+    {
+        RuleExecutionResult viaColref = run(match("J", "K", "inner"),
+                "record_count(group=[G], filter=(colref(\"K\") != \"\")) == 2", p(), j(), "K");
+        assertEquals(List.of("k1", "k2"), keys(viaColref),
+                String.valueOf(QualifiedNameFixture.values(viaColref)));
+        // the planted control (unchanged): a qualified literal is a merged read
+        RuleExecutionResult qualified = run(match("J", "K", "inner"),
+                "record_count(group=[G], filter=(colref(\"J.S\") == \"c\")) == 1", p(), j(), "K");
+        assertEquals(List.of("k1", "k2"), keys(qualified));
+    }
+
+
+    /**
+     * T4 (ii): a {@code $} binding whose expression reads only unqualified primary columns is
+     * collected as those names — the operator counts each record once. RED before: a {@code $}
+     * reference was "never a primary column", so the ECHO record expanded twice by TM read as a
+     * duplicate of itself. Control: a binding over a joined column stays a merged read and counts
+     * merged rows (the §6 planted control: a walk answering "primary" for every {@code $} would
+     * evaluate {@code TM.TMRPT} on the projection, where TM is not joined, and the tuple would not
+     * repeat).
+     */
+    @Test
+    @DisplayName("a $ binding over primary columns counts each record once; over a joined column it does not")
+    void aPrimaryBindingCountsRealRowsAndAJoinedBindingDoesNot()
+    {
+        IDataTable sm = RealTables.of("SM").str("USUBJID", "S1", "S1")
+                .str("MIDSTYPE", "ECHO", "MRI").build();
+        RuleExecutionResult primaryBinding = runBound(match("TM", "MIDSTYPE", "inner"),
+                bindings("$k", "MIDSTYPE"), "not is_unique_set([$k, USUBJID])", sm, tm(), "USUBJID",
+                "MIDSTYPE");
+        assertEquals(0, primaryBinding.getViolationCount(),
+                "no SM record repeats ($k = MIDSTYPE, USUBJID): "
+                        + QualifiedNameFixture.values(primaryBinding));
+        // a binding chain resolves to its root's reads
+        RuleExecutionResult chained = runBound(match("TM", "MIDSTYPE", "inner"),
+                bindings("$k", "MIDSTYPE", "$kk", "upper($k)"), "not is_unique_set([$kk, USUBJID])",
+                sm, tm(), "USUBJID", "MIDSTYPE");
+        assertEquals(0, chained.getViolationCount(),
+                String.valueOf(QualifiedNameFixture.values(chained)));
+        // the planted control: a binding over the merged column counts merged rows, as the
+        // authored TM.TMRPT does (anOperatorOverAMergedColumnSeesEveryMergedRow)
+        IDataTable one = RealTables.of("SM").str("USUBJID", "S1").str("MIDSTYPE", "ECHO").build();
+        RuleExecutionResult joinedBinding = runBound(match("TM", "MIDSTYPE", "inner"),
+                bindings("$t", "TM.TMRPT"), "not is_unique_set([MIDSTYPE, $t])", one, tm(),
+                "USUBJID");
+        assertEquals(1, joinedBinding.getViolationCount(),
+                "the binding reads TM.TMRPT: both ECHO rows carry N, the tuple repeats");
+    }
+
 
     @Test
     @DisplayName("is_last_in_group: every copy of the last record is last, no copy of another")

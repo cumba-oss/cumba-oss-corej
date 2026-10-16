@@ -779,6 +779,30 @@ class StudyValidationServiceTest
         assertTrue(ex.getMessage().contains("define.xml not found"));
     }
 
+
+    /**
+     * {@code PLAN-bugfix-engine-define} JZ (T5): a define path the platform cannot even parse
+     * ({@code Path.of} throws {@code InvalidPathException} — a NUL character here, a
+     * {@code jar:file:/…} URI on Windows) gets the same clean "define.xml not found" message as a
+     * missing file, on both define branches, never a {@code RuntimeException} stack trace.
+     */
+    @Test
+    void validate_unparseableDefinePath_isTheCleanNotFoundMessage() throws IOException
+    {
+        IDataTableManager mgr = managerWith(dmTable());
+        String unparseable = tempDir.resolve("define").toString() + "\0.xml";
+        StudyValidationParams withData = StudyValidationParams.builder().manager(mgr)
+                .dataLibrary(tempDir.toString()).defineXmlPath(unparseable).build();
+        IOException ex = assertThrows(IOException.class,
+                () -> new StudyValidationService().validate(withData));
+        assertTrue(ex.getMessage().contains("define.xml not found"), ex.getMessage());
+        StudyValidationParams defineOnly = StudyValidationParams.builder().manager(mgr)
+                .defineXmlPath(unparseable).build();
+        IOException ex2 = assertThrows(IOException.class,
+                () -> new StudyValidationService().validate(defineOnly));
+        assertTrue(ex2.getMessage().contains("define.xml not found"), ex2.getMessage());
+    }
+
     // ------------------------------------------------------------------
     // F-corej-L2-07 — Define_Metadata_Basis; CT-R3 — ctResolutionNote
     // ------------------------------------------------------------------

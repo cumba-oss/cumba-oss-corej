@@ -538,14 +538,26 @@ public final class MergedEvaluation
         // execution without a cache keeps the inference (UNKNOWN)
         MergeStandard standard = joinCache != null ? joinCache.mergeStandard()
                 : MergeStandard.UNKNOWN;
+        // PLAN-bugfix-engine-define JB (T14): each keyed partner's declared Encoding travels with
+        // its lookup, so a byte count over J.X defaults to J's charset (deterministic per partner
+        // table, so the cached view carries the same answer)
+        Map<String, String> encodings = new LinkedHashMap<>();
+        for (Map.Entry<String, IDataTable> partner : partners.entrySet())
+        {
+            Object declared = partner.getValue().getMetaData().getMetaData("Encoding");
+            if (declared != null)
+            {
+                encodings.put(partner.getKey(), declared.toString());
+            }
+        }
         if (joinCache != null && primary == original)
         {
             return joinCache.mergedView(new ViewKey(keyed, supp, suppKeys, child, relrec),
                     () -> construct(primary, keyed, suppSpec, child, relrec, primaryDomain,
-                            standard, datasets, true));
+                            standard, datasets, true, encodings));
         }
         return construct(primary, keyed, suppSpec, child, relrec, primaryDomain, standard, datasets,
-                false);
+                false, encodings);
     }
 
 
@@ -568,7 +580,8 @@ public final class MergedEvaluation
     private static Built construct(IDataTable dataset, List<KeyedMergeSpec> keyed,
             @Nullable SuppMergeSpec supp, @Nullable ChildMergeSpec child,
             @Nullable RelrecPartSpec relrec, @Nullable String primaryDomain, MergeStandard standard,
-            net.cumba.datatable.merge.DatasetResolver datasets, boolean shared)
+            net.cumba.datatable.merge.DatasetResolver datasets, boolean shared,
+            Map<String, String> encodings)
     {
         // J5 (ChildEntries): a Child primary's IDVARVAL reads as the pointer's join token
         IDataTable primary = child == null ? dataset
@@ -645,8 +658,10 @@ public final class MergedEvaluation
             if (part.kind() == MergeKind.KEYED || part.kind() == MergeKind.CHILD
                     || part.kind() == MergeKind.RELREC)
             {
-                lookups.put(part.qualifier(), new MergedViewLookup(view, part, partOf,
-                        plant == part.kind(), Collections.unmodifiableMap(flagged)));
+                lookups.put(part.qualifier(),
+                        new MergedViewLookup(view, part, partOf, plant == part.kind(),
+                                Collections.unmodifiableMap(flagged),
+                                encodings.get(part.source())));
             }
         }
         return new Built(view, table, lookups, flat, suppQnams, flagged, plant == MergeKind.SUPP,

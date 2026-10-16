@@ -1,4 +1,4 @@
-package net.cumba.corej.core.metadata.pickle;
+package net.cumba.corej.core.metadata;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -9,8 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import net.cumba.corej.core.metadata.MetadataProductCatalogue;
-import net.cumba.corej.core.metadata.pickle.ProductKeyResolver.Result;
+import net.cumba.corej.core.metadata.ProductKeyResolver.Result;
 import org.junit.jupiter.api.Test;
 
 /**

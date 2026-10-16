@@ -285,6 +285,13 @@ public final class OutputVariableDeriver
             walk.derived.remove(domain.toUpperCase(Locale.ROOT) + "SEQ");
         }
 
+        // PLAN-bugfix-engine-define OV (T13): a driver template (ADSL.PH${APHASEN:%d}SDT) is
+        // resolved per row and can never name a report column — it was derived from a Check read
+        // (Walk.contribute) and from a compiled binding's target (contributeTarget) and dropped
+        // at run time, silently. Filtered once here, for both routes; an authored one is refused
+        // at load (RulePackageLoader.validateOutputVariableDriverTemplates).
+        walk.derived.removeIf(OutputVariableDeriver::isDriverTemplate);
+
         // D6 — variable-scope virtuals only where a per-variable path can resolve them
         // (dataset-scope virtuals derive unconditionally; Phase 3 resolves them).
         if (!perVariablePath(rule))
@@ -679,6 +686,37 @@ public final class OutputVariableDeriver
         if (name != null && !name.isBlank())
         {
             walk.derived.add(name);
+        }
+    }
+
+
+    /**
+     * Whether an operand text is a <b>driver template</b> — a {@code ${VAR[:fmt]}} scalar
+     * substitution ({@code ADSL.PH${APHASEN:%d}SDT}) or a {@code ${*}} wildcard that also carries a
+     * driver — whose concrete column is resolved per row ({@code OperandSubstitutor}). Such a name
+     * can never name a report column: an authored {@code Output_Variables} entry of that shape is a
+     * load error ({@code RulePackageLoader}, {@code PLAN-bugfix-engine-define} BD1 (a)) and the
+     * derivation never derives one (T13). A driver-free {@code ${*}} wildcard is not one: the
+     * runner expands it to the matching columns. An unparseable text is not one either — the
+     * operand's own parse reports that.
+     *
+     * @param name
+     *            an operand text, may be {@code null}
+     * @return whether it carries a {@code ${VAR}} driver
+     */
+    public static boolean isDriverTemplate(@Nullable String name)
+    {
+        if (!OperandSubstitutor.hasPlaceholder(name))
+        {
+            return false;
+        }
+        try
+        {
+            return OperandSubstitutor.parse(name).hasDrivers();
+        }
+        catch (OperandSubstitutor.OperandParseException e)
+        {
+            return false;
         }
     }
 

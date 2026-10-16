@@ -6,6 +6,7 @@ import java.io.UncheckedIOException;
 import java.lang.ref.SoftReference;
 import java.net.URI;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -204,8 +205,7 @@ public final class StudyValidationService
                         params.dataLibrary());
                 if (params.defineXmlPath() != null)
                 {
-                    Path dxp = Path.of(params.defineXmlPath());
-                    requireExists(dxp);
+                    Path dxp = definePath(params.defineXmlPath());
                     metadataLibrary = manager.getLibraryRef(dxp.toUri(), null);
                     if (metadataLibrary != null)
                     {
@@ -222,8 +222,7 @@ public final class StudyValidationService
             else if (params.defineXmlPath() != null)
             {
                 // Fallback: define.xml alone drives both data and metadata.
-                Path dxp = Path.of(params.defineXmlPath());
-                requireExists(dxp);
+                Path dxp = definePath(params.defineXmlPath());
                 dataLibrary = manager.getLibraryRef(dxp.toUri(), null);
                 if (dataLibrary != null)
                 {
@@ -722,30 +721,51 @@ public final class StudyValidationService
     // ------------------------------------------------------------------
 
 
-    private static void requireExists(Path path) throws IOException
+    /**
+     * The define.xml path as a {@link Path} that exists. One message for both failure modes
+     * ({@code PLAN-bugfix-engine-define} JZ, T5): a path the platform cannot parse —
+     * {@link Path#of} throws {@link InvalidPathException}, a {@code RuntimeException}, for a NUL
+     * character here and for a {@code jar:file:/…} or {@code file://…} URI string on Windows — and
+     * a path that parses but names no file. Either way the caller sees the clean
+     * {@code define.xml not found: <path>}, never a stack trace. (A URI is therefore refused here,
+     * on both define branches of {@link #validate}, before any parse; zipped-define support is a
+     * feature, not a fix.)
+     */
+    private static Path definePath(String aDefineXmlPath) throws IOException
     {
+        Path path;
+        try
+        {
+            path = Path.of(aDefineXmlPath);
+        }
+        catch (InvalidPathException e)
+        {
+            throw new IOException("define.xml not found: " + aDefineXmlPath, e);
+        }
         if (!Files.exists(path))
         {
             throw new IOException("define.xml not found: " + path);
         }
+        return path;
     }
 
 
     /**
-     * Parses the Define-XML at {@code path} into an ODM-backed
-     * {@link net.cumba.corej.core.gen.DefineXMLProvider} for direct define-operand access. A
-     * {@code <scheme>://} string is read as a URI; otherwise as a local file. Returns {@code null}
-     * (and logs a warning) on any parse failure, so the run falls back to the datatable-backed
-     * define metadata rather than aborting.
+     * Parses the Define-XML file at {@code path} into an ODM-backed
+     * {@link net.cumba.corej.core.gen.DefineXMLProvider} for direct define-operand access — always
+     * a local file: both define branches of {@link #validate} go through {@link #definePath} first,
+     * so a URI string never reaches this method ({@code PLAN-bugfix-engine-define} JZ: the former
+     * {@code "://"} URI branch was unreachable and is gone). Returns {@code null} (and logs a
+     * warning) on any parse failure, so the run falls back to the datatable-backed define metadata
+     * rather than aborting.
      */
     private static net.cumba.corej.core.gen.@Nullable DefineXMLProvider parseDefineXmlDirect(
             String path)
     {
         try
         {
-            net.cumba.cdisc.define.ODM odm = path.contains("://")
-                    ? new net.cumba.cdisc.define.DefineXmlParser().parse(URI.create(path))
-                    : new net.cumba.cdisc.define.DefineXmlParser().parse(new File(path));
+            net.cumba.cdisc.define.ODM odm = new net.cumba.cdisc.define.DefineXmlParser()
+                    .parse(new File(path));
             return new net.cumba.corej.core.metadata.OdmDefineXMLProvider(odm);
         }
         catch (IOException | RuntimeException e)
@@ -2397,8 +2417,8 @@ public final class StudyValidationService
         {
             // Review round 2 (M-MP): resolved against the store the RUN reads — the run's own
             // store parameter outranks the ambient configuration here as everywhere else.
-            out.addAll(net.cumba.corej.core.metadata.pickle.ProductKeyResolver
-                    .resolveAllConfigured(ids, params.metadataStore()));
+            out.addAll(net.cumba.corej.core.metadata.ProductKeyResolver.resolveAllConfigured(ids,
+                    params.metadataStore()));
         }
         catch (IllegalArgumentException e)
         {
@@ -2452,8 +2472,8 @@ public final class StudyValidationService
             }
             try
             {
-                net.cumba.corej.core.metadata.pickle.ProductKeyResolver
-                        .resolveAllConfigured(List.of(id), aStore);
+                net.cumba.corej.core.metadata.ProductKeyResolver.resolveAllConfigured(List.of(id),
+                        aStore);
             }
             catch (IllegalArgumentException _)
             {

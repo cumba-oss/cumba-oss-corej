@@ -1498,7 +1498,9 @@ class StageACheckerTest
         assertEquals(List.of(), report.armedFindings(), "observe-only, as on the Check side");
         String message = report.findings().get(0).toString();
         assertTrue(message.contains("Output_Variables entry DM.ARM"), message);
-        // controls: declared; a ${…} / -- qualifier (resolved later); a case-only difference
+        // controls: declared; a ${…} / -- qualifier (an authored ${IDVAR}.X is a driver template,
+        // refused at load by RulePackageLoader.validateOutputVariableDriverTemplates since
+        // PLAN-bugfix-engine-define OV — stage A itself stays silent on it); a case-only difference
         // (resolves ignoring case, P-19 / MET #6 — asserted below); a template entry name
         // (deferred); a per-VARIABLE rule, where the runner reports the entry as its own
         // identifier (Fix #18)

@@ -18,8 +18,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import net.cumba.corej.core.exec.MetadataProvider;
+import net.cumba.corej.core.metadata.ProductKeyResolver;
 import net.cumba.corej.core.metadata.pickle.LocalPickleSource;
-import net.cumba.corej.core.metadata.pickle.ProductKeyResolver;
 import net.cumba.corej.core.metadata.store.MetadataStore;
 import net.cumba.corej.core.metadata.store.MetadataStoreWriter;
 import net.cumba.corej.core.metadata.store.StoreLibraryProvider;
@@ -150,7 +150,11 @@ class SeedRunSupplementTest
             StoreLibraryProvider library = StoreLibraryProvider.over(store);
             assertEquals(Optional.of("Exp"),
                     library.variableCoreDesignation("SENDIG-DART", "1.2", "FX", "FXRESCAT"));
-            assertEquals(List.of(), library.missedProducts(), "no DART 1.2 miss is recorded");
+            // PLAN-bugfix-engine-define SV: the DART product itself is no miss; its base SENDIG
+            // 3.1.1 is absent from this five-product fixture, and a missing base IS recorded
+            // (D-14: the basis line names it, the product answers as stored).
+            assertEquals(List.of("standards/sendig/3-1-1"), library.missedProducts(),
+                    "no DART 1.2 miss is recorded — only its absent base SENDIG 3.1.1");
             assertTrue(library.publishedStandardVersions("SENDIG-DART").contains("1.2"),
                     library.publishedStandardVersions("SENDIG-DART").toString());
 

@@ -60,6 +60,22 @@ public interface JoinLookup
 
 
     /**
+     * The joined dataset's declared decode charset — its table's {@code Encoding} metadata
+     * ({@code PLAN-provider-encoding-metadata}), or {@code null} when it declares none or the
+     * lookup does not know its table. A byte count over a qualified operand {@code J.X} with no
+     * written {@code encoding=} defaults to this, the file the bytes come from, never the evaluated
+     * table's ({@code PLAN-bugfix-engine-define} JB, T14 — D72: a merged column behaves in every
+     * respect like a primary column).
+     *
+     * @return the charset name, or {@code null}
+     */
+    default @Nullable String declaredEncoding()
+    {
+        return null;
+    }
+
+
+    /**
      * The <b>typed</b> sibling of {@link #lookup}: the matched joined cell as an
      * {@link IDataValue}, keeping the joined column's own type instead of rendering it to text —
      * plus the one fact the seam previously could not see, whether the RULE evaluating the operand
