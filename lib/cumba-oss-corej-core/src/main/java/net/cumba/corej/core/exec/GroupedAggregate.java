@@ -118,10 +118,14 @@ public final class GroupedAggregate
     /** {@code max(name, domain=, filter=, group=, keep_missings=)}. */
     public static final String MAX = "max";
 
-    /** {@code max_date(name, domain=, filter=, group=, keep_missings=, missing_values=)}. */
+    /**
+     * {@code max_date(name, domain=, filter=, group=, keep_missings=, missing_values=, ties=)}.
+     */
     public static final String MAX_DATE = "max_date";
 
-    /** {@code min_date(name, domain=, filter=, group=, keep_missings=, missing_values=)}. */
+    /**
+     * {@code min_date(name, domain=, filter=, group=, keep_missings=, missing_values=, ties=)}.
+     */
     public static final String MIN_DATE = "min_date";
 
     /** The three grouped aggregate functions this class implements. */
@@ -150,6 +154,24 @@ public final class GroupedAggregate
 
     /** {@link #MISSING_VALUES_PARAMETER}: a missing candidate makes the extreme undeterminable. */
     public static final String MISSING_VALUES_INDETERMINATE = "indeterminate";
+
+    /**
+     * {@code PLAN-date-extreme-precision-tie} DT4 (b) — the tie-break mode of the date extremes
+     * ({@code max_date} / {@code min_date} here, {@code earliest_date} / {@code latest_date} in
+     * {@link ScalarDateExtremes}).
+     */
+    public static final String TIES_PARAMETER = "ties";
+
+    /**
+     * {@link #TIES_PARAMETER}: the hull order — the wider hull of same-day values (the default).
+     */
+    public static final String TIES_HULL = "hull";
+
+    /** {@link #TIES_PARAMETER}: the more precise of same-day values (DT1 (a)). */
+    public static final String TIES_PRECISE = "precise";
+
+    /** The closed vocabulary of {@link #TIES_PARAMETER}. */
+    public static final Set<String> TIES = Set.of(TIES_HULL, TIES_PRECISE);
 
     private GroupedAggregate()
     {
@@ -216,12 +238,15 @@ public final class GroupedAggregate
      *            the missing-key policy
      * @param missingIsIndeterminate
      *            EC-51 Half B — {@code true} for {@code missing_values="indeterminate"}
+     * @param precise
+     *            DT4 (b) — {@code true} for {@code ties="precise"} ({@code max_date} /
+     *            {@code min_date} only)
      * @param canonical
      *            the canonical call text (the memo key)
      */
     public record Spec(String function, Expr target, @Nullable String dataset,
             @Nullable Expr filter, List<GroupSplice.Member> members, GroupKeyPolicy policy,
-            boolean missingIsIndeterminate, String canonical)
+            boolean missingIsIndeterminate, boolean precise, String canonical)
     {
 
         public Spec
@@ -274,9 +299,9 @@ public final class GroupedAggregate
             {
             case MAX -> (cellAt, rows, keep, _) -> maxOf(cellAt, rows, keep);
             case MAX_DATE -> (cellAt, rows, keep, _) -> dateExtremeOf(cellAt, rows, keep, true,
-                    missingIsIndeterminate);
+                    missingIsIndeterminate, precise);
             case MIN_DATE -> (cellAt, rows, keep, _) -> dateExtremeOf(cellAt, rows, keep, false,
-                    missingIsIndeterminate);
+                    missingIsIndeterminate, precise);
             default -> throw new IllegalStateException("not a grouped aggregate: " + function);
             };
             // Only max is column-typed (its result is its target column's type); max_date /
@@ -324,7 +349,8 @@ public final class GroupedAggregate
         GroupKeyPolicy policy = readPolicy(fn, slot(bound, params, KEEP_MISSINGS_PARAMETER));
         boolean indeterminate = readMissingValues(fn,
                 slot(bound, params, MISSING_VALUES_PARAMETER));
-        return new Spec(fn, target, dataset, filter, members, policy, indeterminate,
+        boolean precise = readTies(fn, slot(bound, params, TIES_PARAMETER));
+        return new Spec(fn, target, dataset, filter, members, policy, indeterminate, precise,
                 ExpressionPrinter.print(c));
     }
 
@@ -332,7 +358,7 @@ public final class GroupedAggregate
     private static void rejectPositionalAfterTarget(String fn, Expr.Call c)
     {
         rejectPositionalAfterTarget(fn, c, "domain=, filter=, group=, keep_missings="
-                + (MAX.equals(fn) ? "" : " and missing_values="));
+                + (MAX.equals(fn) ? "" : ", missing_values= and ties="));
     }
 
 
@@ -1201,6 +1227,32 @@ public final class GroupedAggregate
                 + MISSING_VALUES_INDETERMINATE + "`, got `" + value + "`");
     }
 
+
+    /**
+     * DT4 (b) / T9 — {@code ties=} on {@code max_date} / {@code min_date}: a string literal of
+     * {@link #TIES}, read once at load; absent ⇒ {@link #TIES_HULL}. ({@code max} declares no
+     * {@code ties}, so the binder refuses it there.)
+     */
+    private static boolean readTies(String fn, @Nullable Expr ties)
+    {
+        if (ties == null)
+        {
+            return false;
+        }
+        if (!(ties instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.STRING)
+        {
+            throw new ExpressionException("`" + TIES_PARAMETER + "` on `" + fn + "` must be `"
+                    + TIES_HULL + "` or `" + TIES_PRECISE + "` (a string literal)");
+        }
+        String value = (String) lit.value();
+        if (!TIES.contains(value))
+        {
+            throw new ExpressionException("`" + TIES_PARAMETER + "` must be `" + TIES_HULL
+                    + "` or `" + TIES_PRECISE + "`, got `" + value + "`");
+        }
+        return TIES_PRECISE.equals(value);
+    }
+
     // -----------------------------------------------------------------------
     // The mechanism (evaluation time)
     // -----------------------------------------------------------------------
@@ -1924,13 +1976,15 @@ public final class GroupedAggregate
 
     /**
      * {@code max_date} / {@code min_date}: the EC-46 / EC-51 date accumulator over the block's
-     * candidates; the winning cell.
+     * candidates, in the call's {@code ties} mode; the winning cell (the answer is always one
+     * candidate's own raw text, T4, so the lookup below finds it).
      */
     static IDataValue dateExtremeOf(IntFunction<IDataValue> cellAt, int[] rows,
-            @Nullable BitSet keep, boolean findMax, boolean missingIsIndeterminate)
+            @Nullable BitSet keep, boolean findMax, boolean missingIsIndeterminate, boolean precise)
     {
         MissingScan scan = new MissingScan();
-        Extremes.DateExtreme extreme = new Extremes.DateExtreme(findMax, missingIsIndeterminate);
+        Extremes.DateExtreme extreme = new Extremes.DateExtreme(findMax, missingIsIndeterminate,
+                precise);
         for (int r : rows)
         {
             if (keep != null && !keep.get(r))

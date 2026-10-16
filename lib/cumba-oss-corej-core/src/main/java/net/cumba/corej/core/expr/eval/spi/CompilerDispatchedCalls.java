@@ -362,7 +362,10 @@ public final class CompilerDispatchedCalls implements FunctionProvider
                             net.cumba.corej.core.expr.typed.ExprType.Primitive.DATASET_REFERENCE),
                     opt("filter"),
                     Parameter.required("group", new ListOf(Primitive.COLUMN_REFERENCE)),
-                    keepMissings(), Parameter.optional("missing_values", Primitive.STRING));
+                    keepMissings(), Parameter.optional("missing_values", Primitive.STRING),
+                    // PLAN-date-extreme-precision-tie DT4 (b): the tie-break mode, a literal of
+                    // {hull, precise} read by GroupedAggregate.readTies
+                    Parameter.optional("ties", Primitive.STRING));
         }
         // Runbook W6 (PLAN-record-count-function): record_count ported from the RECORD_COUNT
         // operation onto the same mechanism (RecordCount.spec reads the call). No target (R6:

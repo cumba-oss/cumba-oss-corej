@@ -285,6 +285,58 @@ class ScalarDateExtremesTest
     }
 
 
+    /**
+     * {@code ties="precise"} (PLAN-date-extreme-precision-tie DT1 / DT4 (b)): the twin of the test
+     * above — row 0's same-day pair answers the date-time for both directions; row 1 (no tie, an
+     * offset) is unchanged. A positional third argument binds {@code ties} (D19a).
+     */
+    @Test
+    void tiesPreciseAnswersTheMorePreciseOfASameDayPair()
+    {
+        IDataTable t = pairs(new Object[]
+        {
+                "2020-01-01", "2020-01-01T08:00+02:00"
+        }, new Object[]
+        {
+                "2020-01-01T08:00", "2020-01-01T07:00Z"
+        });
+        Vector e = eval("earliest_date(A, B, ties=\"precise\")", t);
+        Vector l = eval("latest_date(A, B, ties=\"precise\")", t);
+        Vector positional = eval("earliest_date(A, B, \"precise\")", t);
+        Vector hull = eval("latest_date(A, B, ties=\"hull\")", t);
+        assertAll(() -> assertEquals("2020-01-01T08:00", text(e, 0)),
+                () -> assertEquals("2020-01-01T08:00", text(l, 0)),
+                () -> assertEquals("2020-01-01T08:00+02:00", text(e, 1)),
+                () -> assertEquals("2020-01-01T07:00Z", text(l, 1)),
+                () -> assertEquals("2020-01-01T08:00", text(positional, 0)),
+                () -> assertEquals("2020-01-01", text(hull, 0)));
+    }
+
+
+    /** T9: {@code ties} is a string literal of {@code {hull, precise}} — a load error otherwise. */
+    @Test
+    void tiesIsALoadTimeLiteralOfItsClosedVocabulary()
+    {
+        String a = binding("$a", "min_date(EXSTDTC, domain=\\\"EX\\\", group=[USUBJID])");
+        Rule unknown = load(a + "," + binding("$e", "earliest_date($a, $a, ties=\\\"exact\\\")"),
+                "empty($e)");
+        assertNotNull(unknown.getLoadError(), "an unknown word is a load error");
+        assertTrue(
+                unknown.getLoadError().contains("exact") && unknown.getLoadError().contains("hull")
+                        && unknown.getLoadError().contains("precise"),
+                unknown.getLoadError());
+        Rule nonLiteral = load(a + "," + binding("$e", "latest_date($a, $a, ties=USUBJID)"),
+                "empty($e)");
+        assertNotNull(nonLiteral.getLoadError(), "a non-literal is a load error");
+        assertTrue(nonLiteral.getLoadError().contains("static string literal"),
+                nonLiteral.getLoadError());
+        Rule positional = load(a + "," + binding("$e", "latest_date($a, $a, \\\"exact\\\")"),
+                "empty($e)");
+        assertNotNull(positional.getLoadError(), "a positional third argument binds ties");
+        loaded(a + "," + binding("$e", "earliest_date($a, $a, ties=\\\"precise\\\")"), "empty($e)");
+    }
+
+
     @Test
     void aPresentUnpositionableValueMakesTheAnswerUndeterminable()
     {
@@ -408,7 +460,7 @@ class ScalarDateExtremesTest
 
 
     @Test
-    void exactlyTwoArgumentsPositionalOrByName()
+    void twoDatesAndAnOptionalTiesPositionalOrByName()
     {
         IDataTable t = pairs(new Object[]
         {
@@ -421,10 +473,12 @@ class ScalarDateExtremesTest
         assertEquals("2020-01-01", text(eval("earliest_date(A, b=B)", t), 0));
         assertEquals("2020-01-01", text(eval("earliest_date(a=A, b=B)", t), 0));
         assertEquals("2020-01-05", text(eval("latest_date(b=B, a=A)", t), 0));
-        // The binder's errors (D19a) are load errors: one argument, three, a parameter bound twice,
-        // an unknown name.
+        // The binder's errors (D19a) are load errors: one argument, four, a parameter bound twice,
+        // an unknown name — and a third positional binds ties, which must be a literal of its
+        // vocabulary (PLAN-date-extreme-precision-tie T9).
         for (String bad : List.of("earliest_date(A)", "earliest_date(A, B, A)",
-                "earliest_date(A, a=B)", "latest_date(A, c=B)"))
+                "earliest_date(A, B, \\\"hull\\\", A)", "earliest_date(A, a=B)",
+                "latest_date(A, c=B)"))
         {
             Rule rule = load("", "empty(" + bad + ")");
             assertNotNull(rule.getLoadError(), bad + " must not load");
@@ -432,7 +486,9 @@ class ScalarDateExtremesTest
         assertTrue(load("", "empty(earliest_date(A))").getLoadError()
                 .contains("requires argument 'b'"));
         assertTrue(load("", "empty(earliest_date(A, B, A))").getLoadError()
-                .contains("accepts at most 2 argument(s)"));
+                .contains("takes a static string literal"));
+        assertTrue(load("", "empty(earliest_date(A, B, \\\"hull\\\", A))").getLoadError()
+                .contains("accepts at most 3 argument(s)"));
         assertTrue(load("", "empty(earliest_date(A, a=B))").getLoadError()
                 .contains("already bound by position 1"));
         assertTrue(load("", "empty(latest_date(A, c=B))").getLoadError()
@@ -550,12 +606,27 @@ class ScalarDateExtremesTest
     {
             "2020-01-01", "2020-01-02", "2019-12-31", "2020", "2020-01", "2020-02",
             "2020-01-01T08:00", "2020-01-01T00:00", "2020-01-01T23:59", "2020-01-02T00:00",
-            "2020-01-01T08:00+02:00", "2020-01-01T06:00Z", "UNK", "2020-02-30", "", " ", " ",
-            MissingValue.MIS, MissingValue.MIS_A, MissingValue.MIS_B
+            "2020-01-01T08:00+02:00", "2020-01-01T06:00Z", "2020-01-01T08", "2020-01-01T08:00:00.5",
+            "UNK", "2020-02-30", "", " ", " ", MissingValue.MIS, MissingValue.MIS_A,
+            MissingValue.MIS_B
     };
 
     @Test
     void thePairExtremeEqualsTheGroupedExtremeOverATwoRowGroupForEveryOrderedPairOfShapes()
+    {
+        assertPairEqualsGroup("");
+    }
+
+
+    /** The same identity under {@code ties="precise"} (PLAN-date-extreme-precision-tie T1). */
+    @Test
+    void thePreciseModesPairExtremeEqualsItsGroupedExtremeForEveryOrderedPairOfShapes()
+    {
+        assertPairEqualsGroup(", ties=\"precise\"");
+    }
+
+
+    private static void assertPairEqualsGroup(String ties)
     {
         int n = SHAPES.length * SHAPES.length;
         Object[] a = new Object[n];
@@ -585,10 +656,10 @@ class ScalarDateExtremesTest
             put(ex, r, 0, key[r]);
             put(ex, r, 1, x[r]);
         }
-        Vector e = eval(EARLIEST, dm, ex);
-        Vector l = eval(LATEST, dm, ex);
-        Vector min = eval("min_date(X, domain=\"EX\", group=[K])", dm, ex);
-        Vector max = eval("max_date(X, domain=\"EX\", group=[K])", dm, ex);
+        Vector e = eval("earliest_date(A, B" + ties + ")", dm, ex);
+        Vector l = eval("latest_date(A, B" + ties + ")", dm, ex);
+        Vector min = eval("min_date(X, domain=\"EX\", group=[K]" + ties + ")", dm, ex);
+        Vector max = eval("max_date(X, domain=\"EX\", group=[K]" + ties + ")", dm, ex);
         List<String> differences = new ArrayList<>();
         int answered = 0;
         int carried = 0;

@@ -311,6 +311,72 @@ public final class IsoDateBounds
         return bound(s, true);
     }
 
+    /**
+     * One value's hull and determinacy, read from <b>one</b> {@link #core} computation
+     * ({@code PLAN-date-extreme-precision-tie} T10) — what {@link #lower}, {@link #upper} and
+     * {@link #isDetermined} answer for the same value, each of which recomputes the core (trim, the
+     * offset normalisation, the fraction strip).
+     *
+     * @param lower
+     *            the earliest instant the value could denote ({@link #lower})
+     * @param upper
+     *            the latest instant the value could denote ({@link #upper})
+     * @param determined
+     *            {@link #isDetermined}
+     */
+    public record Hull(String lower, String upper, boolean determined)
+    {
+    }
+
+    /**
+     * {@link #lower}, {@link #upper} and {@link #isDetermined} of {@code s} in one pass over its
+     * core — the date extremes' per-candidate read ({@code Extremes.DateExtreme}), which needs both
+     * bounds of a determined candidate to break a tie.
+     *
+     * <p>
+     * &#9873; The two bounds are {@code null} together or not at all (an interval: D7; a scalar:
+     * both read the one core through the one readability guard and the one calendar check — a
+     * masked hull fills its unknown component with a value every month / year holds), so one
+     * {@code null} answer covers "unpositionable". {@code IsoDateBoundsTest} pins the agreement
+     * with the three single-purpose methods over the shape set.
+     * </p>
+     *
+     * @param s
+     *            the raw value
+     * @return the hull and determinacy, or {@code null} when {@code s} cannot be positioned
+     */
+    public static @Nullable Hull hullOf(@Nullable String s)
+    {
+        if (s != null && s.indexOf(SOLIDUS) >= 0)
+        {
+            // An interval is never determined (D5); its bounds keep their own (D1 / D3 / D7) path.
+            String lo = bound(s, false);
+            String hi = bound(s, true);
+            return lo == null || hi == null ? null : new Hull(lo, hi, false);
+        }
+        String core = core(s);
+        if (core == null || !isReadableCore(core))
+        {
+            return null;
+        }
+        if (ScalarSemantics.isMaskedDate(core))
+        {
+            // masked: never a complete date (isReadableCore's javadoc: disjoint lengths)
+            String lo = maskedBound(core, false);
+            String hi = maskedBound(core, true);
+            return lo == null || hi == null ? null : new Hull(lo, hi, false);
+        }
+        if (!CalendarDates.isValidDate(core))
+        {
+            return null;
+        }
+        int precision = ScalarSemantics.detectIsoPrecision(core);
+        // CalendarDates.isCompleteDate(core) == isValidDate(core) && ScalarSemantics
+        // .isCompleteDate(core); the first conjunct holds here
+        return new Hull(truncatedAt(core, precision, false), truncatedAt(core, precision, true),
+                ScalarSemantics.isCompleteDate(core));
+    }
+
 
     /**
      * Invariant 2 — apply any offset instant-preserving BEFORE deriving the hull, reusing the
@@ -620,7 +686,14 @@ public final class IsoDateBounds
         {
             return null;
         }
-        return switch (ScalarSemantics.detectIsoPrecision(core))
+        return truncatedAt(core, ScalarSemantics.detectIsoPrecision(core), high);
+    }
+
+
+    /** {@link #truncatedBound} after its calendar check, at the core's detected precision. */
+    private static String truncatedAt(String core, int precision, boolean high)
+    {
+        return switch (precision)
         {
         case 4 -> core + (high ? "-12-31" + HIGH_TIME : "-01-01" + LOW_TIME);
         case 7 -> core + (high ? "-" + lastDayOfMonth(core) + HIGH_TIME : "-01" + LOW_TIME);

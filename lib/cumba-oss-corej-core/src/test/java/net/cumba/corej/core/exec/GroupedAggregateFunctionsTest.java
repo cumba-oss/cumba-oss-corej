@@ -965,4 +965,77 @@ class GroupedAggregateFunctionsTest
         assertTrue(positive.getLoadError().contains("positive-polarity"), positive.getLoadError());
         assertNull(loadBindings(bindings, "date(RFXENDTC) != $last").getLoadError());
     }
+
+    // -----------------------------------------------------------------------
+    // PLAN-date-extreme-precision-tie — ties= (DT1–DT4, T2, T9)
+    // -----------------------------------------------------------------------
+
+
+    /** DS of one same-day pair per subject: S1 the date first, S2 the date-time first. */
+    private static IDataTable sameDay(String date, String timed)
+    {
+        return RealTableFixture.of("DS").str("DOMAIN", "DS", "DS", "DS", "DS")
+                .str("USUBJID", "S1", "S1", "S2", "S2").str("DSSTDTC", date, timed, timed, date)
+                .build();
+    }
+
+
+    /** The call's answer text for S1 and S2 (both row orders). */
+    private static List<String> answers(String call, IDataTable ds)
+    {
+        EvaluationContext ctx = EvaluationContext.builder().table(dm())
+                .datasetResolver(resolver(dm(), ds)).build();
+        Vector v = vector(call, ctx);
+        return List.of(v.value(0).cell().getValueAsString(), v.value(1).cell().getValueAsString());
+    }
+
+
+    @Test
+    void tiesPreciseAnswersTheMorePreciseOfSameDayValuesInEitherRowOrder()
+    {
+        IDataTable ds = sameDay("2020-01-01", "2020-01-01T08:00");
+        List<String> timed = List.of("2020-01-01T08:00", "2020-01-01T08:00");
+        assertEquals(timed,
+                answers("min_date(DSSTDTC, domain=DS, group=[USUBJID], ties=\"precise\")", ds));
+        assertEquals(timed,
+                answers("max_date(DSSTDTC, domain=DS, group=[USUBJID], ties=\"precise\")", ds));
+        // beside missing_values=
+        assertEquals(timed, answers("max_date(DSSTDTC, domain=DS, group=[USUBJID],"
+                + " missing_values=\"indeterminate\", ties=\"precise\")", ds));
+    }
+
+
+    @Test
+    void theDefaultAndTiesHullAnswerTheWiderHullInEitherRowOrder()
+    {
+        IDataTable ds = sameDay("2020-01-01", "2020-01-01T08:00");
+        List<String> date = List.of("2020-01-01", "2020-01-01");
+        assertEquals(date, answers("min_date(DSSTDTC, domain=DS, group=[USUBJID])", ds));
+        assertEquals(date,
+                answers("min_date(DSSTDTC, domain=DS, group=[USUBJID], ties=\"hull\")", ds));
+        assertEquals(date,
+                answers("max_date(DSSTDTC, domain=DS, group=[USUBJID], ties=\"hull\")", ds));
+        // T2, the nested same-edge pairs: first-seen used to win in one of the two orders
+        assertEquals(date, answers("max_date(DSSTDTC, domain=DS, group=[USUBJID])",
+                sameDay("2020-01-01", "2020-01-01T23:59")));
+        assertEquals(date, answers("min_date(DSSTDTC, domain=DS, group=[USUBJID])",
+                sameDay("2020-01-01", "2020-01-01T00:00")));
+        // ... and the precise mode answers the timed value on the same edge
+        assertEquals(List.of("2020-01-01T23:59", "2020-01-01T23:59"),
+                answers("max_date(DSSTDTC, domain=DS, group=[USUBJID], ties=\"precise\")",
+                        sameDay("2020-01-01", "2020-01-01T23:59")));
+    }
+
+
+    @Test
+    void tiesIsALiteralOfItsClosedVocabularyOnTheTwoDateExtremesOnly()
+    {
+        expectError("min_date(DSSTDTC, group=[USUBJID], ties=\\\"exact\\\")", "got `exact`");
+        expectError("max_date(DSSTDTC, group=[USUBJID], ties=1)", "string literal");
+        expectError("max_date(DSSTDTC, group=[USUBJID], ties=DSDECOD)", "string literal");
+        expectError("max(DSSTDY, group=[USUBJID], ties=\\\"precise\\\")", "ties");
+        expectError("min_date(DSSTDTC, DS, group=[USUBJID])", "ties=");
+        assertNull(load("min_date(DSSTDTC, domain=DS, group=[USUBJID], ties=\\\"hull\\\")",
+                "empty($v)").getLoadError());
+    }
 }

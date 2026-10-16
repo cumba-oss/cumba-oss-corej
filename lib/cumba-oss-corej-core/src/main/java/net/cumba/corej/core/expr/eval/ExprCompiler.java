@@ -10727,50 +10727,65 @@ public final class ExprCompiler
      * ({@code RuleClassifier.scalarDomainOf} reads the domain at load). The open-vocabulary strings
      * this table held until W1a BS1 ({@code extract_metadata} / {@code variable_count}
      * {@code name}, {@code key_value}) take any dataset-level string now
-     * ({@link ListOperandLevel#PER_CALL_PARAMETERS}).
+     * ({@link ListOperandLevel#PER_CALL_PARAMETERS}). {@code earliest_date} / {@code latest_date}'s
+     * {@code ties} ({@code PLAN-date-extreme-precision-tie} T9) is here because the two are plain
+     * {@code VALUE} builtins that see only evaluated vectors — this check is their load-time
+     * validation ({@code max_date} / {@code min_date} read theirs in the grouped reader).
      */
     private static final Map<String, Map<String, @Nullable Set<String>>> STATIC_STRING_VOCABULARIES = Map
-            .of(
+            .ofEntries(
                     // runbook W1b BL1: unit= of the two length functions spells bytes or chars
-                    "len",
-                    map1(net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNIT_PARAMETER,
-                            net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNITS),
-                    "length",
-                    map1(net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNIT_PARAMETER,
-                            net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNITS),
-                    "max_value_length",
-                    map1(net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNIT_PARAMETER,
-                            net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNITS),
-                    net.cumba.corej.core.exec.LibraryLists.CODELIST_TERMS,
-                    map2(net.cumba.corej.core.exec.LibraryLists.LEVEL_PARAMETER,
-                            net.cumba.corej.core.exec.LibraryLists.LEVELS,
-                            net.cumba.corej.core.exec.LibraryLists.RETURNTYPE_PARAMETER,
-                            net.cumba.corej.core.exec.LibraryLists.RETURNTYPES),
+                    Map.entry("len",
+                            map1(net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNIT_PARAMETER,
+                                    net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNITS)),
+                    Map.entry("length",
+                            map1(net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNIT_PARAMETER,
+                                    net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNITS)),
+                    Map.entry("max_value_length",
+                            map1(net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNIT_PARAMETER,
+                                    net.cumba.corej.core.expr.eval.spi.BuiltinFunctions.UNITS)),
+                    Map.entry(net.cumba.corej.core.exec.LibraryLists.CODELIST_TERMS,
+                            map2(net.cumba.corej.core.exec.LibraryLists.LEVEL_PARAMETER,
+                                    net.cumba.corej.core.exec.LibraryLists.LEVELS,
+                                    net.cumba.corej.core.exec.LibraryLists.RETURNTYPE_PARAMETER,
+                                    net.cumba.corej.core.exec.LibraryLists.RETURNTYPES)),
                     // PLAN-ct-class-exemption-data-rules CC1: the QRS class and role
-                    net.cumba.corej.core.exec.LibraryLists.CT_CLASS_TERMS,
-                    map2(net.cumba.corej.core.exec.LibraryLists.CT_CLASS_PARAMETER,
-                            net.cumba.corej.core.exec.LibraryLists.CT_CLASSES,
-                            net.cumba.corej.core.exec.LibraryLists.CT_ROLE_PARAMETER,
-                            net.cumba.corej.core.exec.LibraryLists.CT_ROLES),
-                    net.cumba.corej.core.exec.LibraryLists.GET_DATASET_FILTERED_VARIABLES,
-                    map1(net.cumba.corej.core.exec.LibraryLists.KEY_NAME_PARAMETER,
-                            net.cumba.corej.core.metadata.LibraryVariableAttributes.KEYS),
-                    net.cumba.corej.core.exec.LibraryLists.GET_MODEL_FILTERED_VARIABLES,
-                    map2(net.cumba.corej.core.exec.LibraryLists.KEY_NAME_PARAMETER,
-                            net.cumba.corej.core.metadata.LibraryVariableAttributes.KEYS,
-                            net.cumba.corej.core.exec.LibraryLists.MODEL_CLASS_PARAMETER,
-                            net.cumba.corej.core.metadata.SdtmObservationClasses.MODEL_CLASS_NAMES),
+                    Map.entry(net.cumba.corej.core.exec.LibraryLists.CT_CLASS_TERMS,
+                            map2(net.cumba.corej.core.exec.LibraryLists.CT_CLASS_PARAMETER,
+                                    net.cumba.corej.core.exec.LibraryLists.CT_CLASSES,
+                                    net.cumba.corej.core.exec.LibraryLists.CT_ROLE_PARAMETER,
+                                    net.cumba.corej.core.exec.LibraryLists.CT_ROLES)),
+                    Map.entry(net.cumba.corej.core.exec.LibraryLists.GET_DATASET_FILTERED_VARIABLES,
+                            map1(net.cumba.corej.core.exec.LibraryLists.KEY_NAME_PARAMETER,
+                                    net.cumba.corej.core.metadata.LibraryVariableAttributes.KEYS)),
+                    Map.entry(net.cumba.corej.core.exec.LibraryLists.GET_MODEL_FILTERED_VARIABLES,
+                            map2(net.cumba.corej.core.exec.LibraryLists.KEY_NAME_PARAMETER,
+                                    net.cumba.corej.core.metadata.LibraryVariableAttributes.KEYS,
+                                    net.cumba.corej.core.exec.LibraryLists.MODEL_CLASS_PARAMETER,
+                                    net.cumba.corej.core.metadata.SdtmObservationClasses.MODEL_CLASS_NAMES)),
                     // Wave 4b (PLAN-scalar-metadata-functions D-W4b-6): cross_dataset_variable_
                     // metadata's key has a closed vocabulary (the retired operation answered null
                     // for any other key, silently); its source dataset and column_series_
                     // metadata's base column are name slots.
-                    net.cumba.corej.core.exec.ScalarMetadataFunctions.CROSS_DATASET_VARIABLE_METADATA,
-                    map2(net.cumba.corej.core.exec.ScalarMetadataFunctions.NAME_PARAMETER,
-                            net.cumba.corej.core.exec.ScalarMetadataFunctions.VARIABLE_METADATA_FIELDS,
-                            net.cumba.corej.core.exec.ScalarMetadataFunctions.DOMAIN_PARAMETER,
-                            null),
-                    net.cumba.corej.core.exec.ScalarMetadataFunctions.COLUMN_SERIES_METADATA,
-                    map1(net.cumba.corej.core.exec.ScalarMetadataFunctions.NAME_PARAMETER, null));
+                    Map.entry(
+                            net.cumba.corej.core.exec.ScalarMetadataFunctions.CROSS_DATASET_VARIABLE_METADATA,
+                            map2(net.cumba.corej.core.exec.ScalarMetadataFunctions.NAME_PARAMETER,
+                                    net.cumba.corej.core.exec.ScalarMetadataFunctions.VARIABLE_METADATA_FIELDS,
+                                    net.cumba.corej.core.exec.ScalarMetadataFunctions.DOMAIN_PARAMETER,
+                                    null)),
+                    Map.entry(
+                            net.cumba.corej.core.exec.ScalarMetadataFunctions.COLUMN_SERIES_METADATA,
+                            map1(net.cumba.corej.core.exec.ScalarMetadataFunctions.NAME_PARAMETER,
+                                    null)),
+                    // PLAN-date-extreme-precision-tie DT4 (b) / T9: the pair extremes' tie-break
+                    // mode (max_date / min_date read theirs in GroupedAggregate.readTies). Eleven
+                    // entries: Map.of stops at ten, hence ofEntries.
+                    Map.entry(net.cumba.corej.core.exec.ScalarDateExtremes.EARLIEST,
+                            map1(net.cumba.corej.core.exec.GroupedAggregate.TIES_PARAMETER,
+                                    net.cumba.corej.core.exec.GroupedAggregate.TIES)),
+                    Map.entry(net.cumba.corej.core.exec.ScalarDateExtremes.LATEST,
+                            map1(net.cumba.corej.core.exec.GroupedAggregate.TIES_PARAMETER,
+                                    net.cumba.corej.core.exec.GroupedAggregate.TIES)));
 
     /**
      * Wave 4: the list functions' <b>list</b> parameters. A list literal bound there must hold

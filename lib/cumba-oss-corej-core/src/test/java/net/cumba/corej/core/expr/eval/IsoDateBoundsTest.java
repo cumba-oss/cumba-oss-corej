@@ -871,6 +871,109 @@ class IsoDateBoundsTest
 
     }
 
+
+    @Nested
+    @DisplayName("PLAN-date-extreme-precision-tie T10 — hullOf, one core for both bounds")
+    class HullOf
+    {
+
+        /** The shape set of {@code ScalarDateExtremesTest} plus the plan's §4.2 values. */
+        private static final List<String> SHAPES = List.of("2020-01-01", "2020-01-02", "2019-12-31",
+                "2020", "2020-01", "2020-02", "2020-01-01T08:00", "2020-01-01T00:00",
+                "2020-01-01T23:59", "2020-01-02T00:00", "2020-01-01T08:00+02:00",
+                "2020-01-01T06:00Z", "UNK", "2020-02-30", "", " ", "2020-01-01T08",
+                "2020-01-01T08:30", "2020-01-01T09:15", "2020-01-01T09:00+01:00",
+                "2020-01-01T08:00Z", "2020-01-01T08:00:00.1", "2020-01-01T08:00:00.9",
+                "2020-01-01T23:30-01:00", "2020-01-02T00:30Z", "2020-01-01T07:00/2020-01-01T07:30",
+                "2012-06--", "2012---15", "----06-15", " 2020-01-01T08:00");
+
+        private static List<String> inputs()
+        {
+            List<String> all = new ArrayList<>(SHAPES);
+            all.addAll(IsoDateCorpus.all());
+            return all.stream().distinct().toList();
+        }
+
+
+        @Test
+        void hullOfAgreesWithLowerUpperAndIsDeterminedEverywhere()
+        {
+            List<String> disagreements = new ArrayList<>();
+            int positioned = 0;
+            for (String s : inputs())
+            {
+                IsoDateBounds.Hull h = IsoDateBounds.hullOf(s);
+                String lower = IsoDateBounds.lower(s);
+                String upper = IsoDateBounds.upper(s);
+                boolean agrees = h == null ? lower == null && upper == null
+                        : h.lower().equals(lower) && h.upper().equals(upper)
+                                && h.determined() == IsoDateBounds.isDetermined(s);
+                if (!agrees)
+                {
+                    disagreements.add(s + " -> " + h + " vs [" + lower + ", " + upper + ", "
+                            + IsoDateBounds.isDetermined(s) + "]");
+                }
+                if (h != null)
+                {
+                    positioned++;
+                }
+            }
+            assertEquals(List.of(), disagreements);
+            assertTrue(positioned > 50, "positioned inputs: " + positioned);
+        }
+
+
+        /**
+         * P0 step 4: the determined hulls are laminar — any two nested or disjoint — which is what
+         * makes the precise mode's "earliest atom" one pass ({@code Extremes.DateExtreme}).
+         */
+        @Test
+        void determinedHullsAreLaminar()
+        {
+            List<IsoDateBounds.Hull> determined = new ArrayList<>();
+            for (String s : inputs())
+            {
+                IsoDateBounds.Hull h = IsoDateBounds.hullOf(s);
+                if (h != null && h.determined())
+                {
+                    determined.add(h);
+                }
+            }
+            List<String> crossing = new ArrayList<>();
+            for (IsoDateBounds.Hull a : determined)
+            {
+                for (IsoDateBounds.Hull b : determined)
+                {
+                    boolean disjoint = a.upper().compareTo(b.lower()) < 0
+                            || b.upper().compareTo(a.lower()) < 0;
+                    boolean aInB = a.lower().compareTo(b.lower()) >= 0
+                            && a.upper().compareTo(b.upper()) <= 0;
+                    boolean bInA = b.lower().compareTo(a.lower()) >= 0
+                            && b.upper().compareTo(a.upper()) <= 0;
+                    if (!disjoint && !aInB && !bInA)
+                    {
+                        crossing.add(a + " x " + b);
+                    }
+                }
+            }
+            assertEquals(List.of(), crossing);
+            assertTrue(determined.size() > 20, "determined hulls: " + determined.size());
+        }
+
+
+        @Test
+        void hourPrecisionIsPositionedButNotDetermined()
+        {
+            IsoDateBounds.Hull h = IsoDateBounds.hullOf("2020-01-01T08");
+            assertNotNull(h);
+            assertEquals("2020-01-01T08:00:00", h.lower());
+            assertEquals("2020-01-01T08:59:59", h.upper());
+            assertFalse(h.determined(), "isCompleteDate admits lengths 10 / 16 / 19 only");
+            assertNull(IsoDateBounds.hullOf("UNK"));
+            assertNull(IsoDateBounds.hullOf(null));
+        }
+    }
+
     private static String lowerOf(String s)
     {
         String v = IsoDateBounds.lower(s);

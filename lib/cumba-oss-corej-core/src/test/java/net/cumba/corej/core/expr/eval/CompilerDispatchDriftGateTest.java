@@ -133,14 +133,15 @@ class CompilerDispatchDriftGateTest
                         + " referenced_key_is_unique of runbook W1b VA)");
         int parameters = new CompilerDispatchedCalls().functions().stream()
                 .mapToInt(d -> d.parameters().size()).sum();
-        assertEquals(152, parameters, "declared parameter surfaces across the 63 descriptors (+2"
+        assertEquals(154, parameters, "declared parameter surfaces across the 63 descriptors (+2"
                 + " column-status predicates, PLAN-present-empty-column-fold) —"
                 + " update deliberately when a signature legitimately changes (W2a: read_value's"
                 + " four; W5: read_value's group / keep_missings, max's five, the two date"
                 + " extremes' six each; W6: record_count's five; W7: distinct's five;"
                 + " PLAN-cg0218: one each for any / all / none / joined; W1b SS1:"
                 + " is_not_unique_member_set's three; runbook W4 OR2: -3, ordering= renamed in"
-                + " place to by= on the three single-key readers)");
+                + " place to by= on the three single-key readers; PLAN-date-extreme-precision-tie"
+                + " DT4 (b): +1 ties= on each of max_date / min_date)");
     }
 
 

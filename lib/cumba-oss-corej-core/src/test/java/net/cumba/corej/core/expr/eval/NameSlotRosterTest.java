@@ -194,6 +194,10 @@ class NameSlotRosterTest
         BASE.put("max", "max(NUM, group=[USUBJID])");
         BASE.put("max_date", "max_date(DT, group=[USUBJID])");
         BASE.put("min_date", "min_date(DT, group=[USUBJID])");
+        // PLAN-date-extreme-precision-tie T9: the pair extremes' ties is a static literal of
+        // {hull, precise} — the auto-built call plants a non-literal there and cannot evaluate
+        BASE.put("earliest_date.ties", "earliest_date(DT, DT, ties=\"hull\")");
+        BASE.put("latest_date.ties", "latest_date(DT, DT, ties=\"hull\")");
         BASE.put("read_value", "read_value(X, domain=\"DM\", mode=\"FIRST\")");
         BASE.put("record_count", "record_count()");
         BASE.put("does_not_equal_string_part", "does_not_equal_string_part(X, Y, regex=\"(a)\")");

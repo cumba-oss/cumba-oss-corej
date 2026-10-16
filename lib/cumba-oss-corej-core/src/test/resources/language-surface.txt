@@ -44,7 +44,7 @@ duplicate_label_variables() kind=value aggregate
 duration(x:unknown) kind=value
 duration_between(start:unknown, end:unknown) kind=value
 dy(name:column-reference, reference:column-reference) kind=value
-earliest_date(a:date, b:date) kind=value
+earliest_date(a:date, b:date, ties:string?) kind=value
 earliest_possible(x:unknown) kind=value elementwise
 empty(x:unknown) kind=boolean
 empty_within_except_last_row(name:unknown, group:unknown, by:unknown, keep_missings:boolean?) kind=boolean
@@ -105,7 +105,7 @@ is_valid_duration(x:unknown) kind=boolean elementwise
 is_valid_name(x:unknown) kind=boolean elementwise
 is_valid_testcd(x:unknown) kind=boolean elementwise
 joined(condition:boolean) kind=value
-latest_date(a:date, b:date) kind=value
+latest_date(a:date, b:date, ties:string?) kind=value
 latest_possible(x:unknown) kind=value elementwise
 len(x:unknown, unit:string?, encoding:string?) kind=value elementwise
 length(x:unknown, unit:string?, encoding:string?) kind=value elementwise
@@ -116,9 +116,9 @@ lower(x:unknown) kind=value elementwise
 lpad(x:unknown, width:number, fill:string?) kind=value elementwise
 matches_label_template(label:string, template:string) kind=boolean
 max(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?) kind=value
-max_date(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?, missing_values:string?) kind=value
+max_date(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?, missing_values:string?, ties:string?) kind=value
 max_value_length(name:unknown@name?, unit:string?, encoding:string?) kind=value
-min_date(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?, missing_values:string?) kind=value
+min_date(name:unknown, domain:dataset-reference?, filter:unknown?, group:list<column-reference>, keep_missings:boolean?, missing_values:string?, ties:string?) kind=value
 minus(value:list<unknown>, subtract:list<unknown>) kind=value aggregate
 month(x:unknown) kind=value elementwise
 natural_key_variables() kind=value aggregate provider=library
@@ -353,6 +353,7 @@ cross_dataset_variable_metadata.name: literal {data_type,format,label,length}
 ct_class_terms.ct_class: literal {Clinical Classification,Functional Test,Questionnaire}
 ct_class_terms.ct_role: literal {Category,Character Response,Original Response,Test Code,Test Name}
 distinct.keep_missings: literal boolean plan-build
+earliest_date.ties: literal {hull,precise}
 empty_within_except_last_row.keep_missings: literal boolean plan-build
 get_dataset_filtered_variables.key_name: literal {core,definition,describedValueDomain,description,examples,label,name,notes,ordinal,role,roleDescription,simpleDatatype,usageRestrictions,variableCcode}
 get_model_filtered_variables.key_name: literal {core,definition,describedValueDomain,description,examples,label,name,notes,ordinal,role,roleDescription,simpleDatatype,usageRestrictions,variableCcode}
@@ -366,6 +367,7 @@ is_not_unique_member_set.keep_missings: literal boolean plan-build
 is_not_unique_set.keep_missings: literal boolean plan-build
 is_sorted_by.keep_missings: literal boolean plan-build
 is_unique_set.keep_missings: literal boolean plan-build
+latest_date.ties: literal {hull,precise}
 len.encoding: literal
 len.unit: literal {bytes,chars}
 length.encoding: literal
@@ -386,8 +388,10 @@ variable_count.name_pattern: literal
 parameter-values:
 has_next_corresponding_record.relation: <=,==,>=
 max_date.missing_values: indeterminate,skip
+max_date.ties: hull,precise
 metadata-level: DATA,DEFINE,LIBRARY
 min_date.missing_values: indeterminate,skip
+min_date.ties: hull,precise
 read_value.mode: FIRST,MAX,MIN,ONLY
 sort-keys:
 descriptors: asc(column, nulls=?),desc(column, nulls=?)

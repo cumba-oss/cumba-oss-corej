@@ -1,5 +1,6 @@
 package net.cumba.corej.core.exec;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import net.cumba.corej.core.expr.eval.IsoDateBounds;
@@ -124,7 +125,9 @@ public final class Extremes
 
     /**
      * EC-46 — accumulates date-extreme candidates and yields the extreme <b>only when it is
-     * determinate</b>.
+     * determinate</b>; among the tied determined candidates it selects by the call's {@code ties}
+     * mode ({@code PLAN-date-extreme-precision-tie}, ruling DTB: DT1 (a), DT2 (a), DT3 (a), DT4
+     * (b)).
      *
      * <p>
      * The rule (EC-46 §4.2, verdicts OQ1–OQ3):
@@ -136,9 +139,49 @@ public final class Extremes
      * <p>
      * Operationally: track (a) the best determined candidate by its own bound and (b) the extreme
      * bound over <i>all</i> candidates. The result is the former iff it reaches the latter. Both
-     * accumulations are associative, so the two logical passes run in one loop and the outcome does
-     * not depend on row order — which a running {@code compareTo} fold could not guarantee
-     * ({@code {2012-06-02, 2012-06-01, 2012-06}} mis-answers pairwise).
+     * accumulations run in one loop ({@code {2012-06-02, 2012-06-01, 2012-06}} mis-answers under a
+     * running pairwise {@code compareTo} fold).
+     * </p>
+     *
+     * <p>
+     * <b>The tie-break, and row order.</b> This javadoc used to say that <i>"the outcome does not
+     * depend on row order"</i>. It did — on an <b>equal primary bound</b> the strict comparison
+     * kept the first-seen candidate, so {@code min{2020-01-01, 2020-01-01T00:00}} (both start at
+     * {@code T00:00:00}) answered whichever row came first, and so did an equal hull spelt twice
+     * ({@code …T08:00Z} / {@code …T09:00+01:00}); under D130's text comparison a reader saw which.
+     * Since {@code PLAN-date-extreme-precision-tie} the order among the determined candidates is
+     * total, so the answer is row-order free in both modes:
+     * </p>
+     * <ul>
+     * <li><b>{@code ties="hull"}</b> (the default — an ordering question wants the conservative
+     * hull): the extreme primary bound (lower for a min, upper for a max), then the <b>wider
+     * hull</b> (T2 — the date beside a same-edge {@code …T00:00} / {@code …T23:59}, as the rule
+     * guide states), then the DT3 key.</li>
+     * <li><b>{@code ties="precise"}</b> (a copy check — DT1 (a)): within the hull winner {@code W},
+     * the <b>earliest atom</b> for a min — the determined candidate with the earliest upper bound,
+     * then the latest lower bound, then the DT3 key — and the <b>latest atom</b> for a max (latest
+     * lower, earliest upper, DT3): {@code min/max{2020-01-01, 2020-01-01T08:00}} answer
+     * {@code …T08:00}. Exact in one pass: the refined candidate {@code Y} lies inside {@code W}'s
+     * hull by construction ({@code W} is a candidate of {@code Y}'s search and {@code Y} of
+     * {@code W}'s: for a min {@code Y.upper <= W.upper} and {@code Y.lower >= W.lower}), so the
+     * refinement never crosses the EC-46 decision.</li>
+     * <li><b>The DT3 key</b> (T8), for an equal hull spelt differently: the longer <b>trimmed</b>
+     * text (an explicit offset, a fraction — stripped before bounding), then code-point order,
+     * ascending for a min and descending for a max.</li>
+     * </ul>
+     *
+     * <p>
+     * &#9873; <b>An undetermined candidate inside {@code W} (T11).</b> Hour precision
+     * ({@code …T08}) and an interval are not {@link IsoDateBounds#isDetermined determined}, so they
+     * never win (DT2 (a): EC-46 determinability is unchanged), yet such a value can lie inside the
+     * winning day — {@code min{2020-01-01, …T08, …T09:15}}: {@code …T08} is certainly earlier than
+     * {@code …T09:15}. Answering the earliest <i>determined</i> atom would then answer a value that
+     * is provably not the extreme, so the precise mode keeps the hull answer {@code W} whenever an
+     * undetermined candidate that does not contain {@code W} could reach the refined value (for a
+     * min: its lower bound is at or before the refined value's upper; for a max: its upper at or
+     * after the refined lower). A candidate containing {@code W} ({@code min{2020-01, 2020-01-01,
+     * …T08:00}}: the month) does not block — the day pins it, which is DT2 (a)'s ruled consequence.
+     * Only the precise mode keeps the undetermined hulls, and only those (no candidate list).
      * </p>
      *
      * <p>
@@ -155,7 +198,8 @@ public final class Extremes
      * indeterminate. Inverting that unconditionally would make nearly every group indeterminate,
      * which is why EC-51 Half B (Fix #145) makes it a per-operation <b>declaration</b>
      * ({@code missing_values: indeterminate}) rather than a new default. Both dispositions land in
-     * the same {@code unbounded} state, so there is one determinability rule, not two.
+     * the same {@code unbounded} state, so there is one determinability rule, not two — and the
+     * tie-break runs only once the gate answers (T3).
      * </p>
      */
     static final class DateExtreme
@@ -170,11 +214,14 @@ public final class Extremes
          */
         private final boolean missingIsIndeterminate;
 
-        /** Raw cell text of the best determined candidate — the value ultimately returned. */
+        /** DT4 (b) — {@code ties="precise"}: refine within the hull winner (the class comment). */
+        private final boolean precise;
+
+        /** Raw cell text of the hull winner — the value returned in the default mode. */
         private @Nullable String best;
 
-        /** {@code best}'s own bound: upper for a max, lower for a min. */
-        private @Nullable String bestBound;
+        /** {@code best}'s hull. */
+        private IsoDateBounds.@Nullable Hull bestHull;
 
         /** The extreme bound across every candidate, determined or not. */
         private @Nullable String limit;
@@ -182,10 +229,26 @@ public final class Extremes
         /** Set when some candidate cannot be positioned at all, i.e. the hull is unbounded. */
         private boolean unbounded;
 
+        /** Precise mode: raw text of the refined candidate (the earliest / latest atom). */
+        private @Nullable String refined;
+
+        /** {@code refined}'s hull. */
+        private IsoDateBounds.@Nullable Hull refinedHull;
+
+        /** Precise mode only (T11): the undetermined candidates' hulls; usually never allocated. */
+        private @Nullable List<IsoDateBounds.Hull> undetermined;
+
         DateExtreme(boolean findMax, boolean missingIsIndeterminate)
+        {
+            this(findMax, missingIsIndeterminate, false);
+        }
+
+
+        DateExtreme(boolean findMax, boolean missingIsIndeterminate, boolean precise)
         {
             this.findMax = findMax;
             this.missingIsIndeterminate = missingIsIndeterminate;
+            this.precise = precise;
         }
 
 
@@ -212,20 +275,50 @@ public final class Extremes
 
         void add(String raw)
         {
-            String bound = findMax ? IsoDateBounds.upper(raw) : IsoDateBounds.lower(raw);
-            if (bound == null)
+            add(raw, IsoDateBounds.hullOf(raw));
+        }
+
+
+        /**
+         * The candidate with its hull read once (T10) — package-private so a test can feed a
+         * hand-built hull.
+         */
+        void add(String raw, IsoDateBounds.@Nullable Hull hull)
+        {
+            if (hull == null)
             {
                 unbounded = true;
                 return;
             }
+            String bound = primary(hull);
             if (limit == null || beats(bound, limit))
             {
                 limit = bound;
             }
-            if (IsoDateBounds.isDetermined(raw) && (bestBound == null || beats(bound, bestBound)))
+            if (!hull.determined())
+            {
+                if (precise)
+                {
+                    List<IsoDateBounds.Hull> u = undetermined;
+                    if (u == null)
+                    {
+                        u = new ArrayList<>(2);
+                        undetermined = u;
+                    }
+                    u.add(hull);
+                }
+                return;
+            }
+            if (best == null || bestHull == null || outranks(raw, hull, best, bestHull))
             {
                 best = raw;
-                bestBound = bound;
+                bestHull = hull;
+            }
+            if (precise && (refined == null || refinedHull == null
+                    || refines(raw, hull, refined, refinedHull)))
+            {
+                refined = raw;
+                refinedHull = hull;
             }
         }
 
@@ -234,14 +327,119 @@ public final class Extremes
         @Nullable
         String result()
         {
-            if (unbounded || best == null || bestBound == null || limit == null)
+            String b = best;
+            IsoDateBounds.Hull bh = bestHull;
+            if (unbounded || b == null || bh == null || limit == null)
             {
                 return null;
             }
             // The winner must reach the extreme of every rival's hull. Equality counts: it is the
             // non-strict case that makes min{2012-06, 2012-06-01} resolve to the complete date
             // (OQ1) and max{2012-06, 2012-06-30} to the complete date (the benign tie).
-            return bestBound.equals(limit) ? best : null;
+            if (!primary(bh).equals(limit))
+            {
+                return null;
+            }
+            String r = refined;
+            IsoDateBounds.Hull rh = refinedHull;
+            if (!precise || r == null || rh == null || blockedByUndetermined(bh, rh))
+            {
+                return b;
+            }
+            return r;
+        }
+
+
+        /**
+         * T11 (the class comment): whether an undetermined candidate that does not contain the hull
+         * winner could reach the refined value.
+         */
+        private boolean blockedByUndetermined(IsoDateBounds.Hull winner,
+                IsoDateBounds.Hull refinedOne)
+        {
+            List<IsoDateBounds.Hull> u = undetermined;
+            if (u == null)
+            {
+                return false;
+            }
+            for (IsoDateBounds.Hull h : u)
+            {
+                boolean containsWinner = h.lower().compareTo(winner.lower()) <= 0
+                        && h.upper().compareTo(winner.upper()) >= 0;
+                boolean reaches = findMax ? h.upper().compareTo(refinedOne.lower()) >= 0
+                        : h.lower().compareTo(refinedOne.upper()) <= 0;
+                if (!containsWinner && reaches)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+
+        /** The ranking bound: upper for a max, lower for a min. */
+        private String primary(IsoDateBounds.Hull hull)
+        {
+            return findMax ? hull.upper() : hull.lower();
+        }
+
+
+        /**
+         * The hull order (both modes): the extreme primary bound, then the wider hull (T2), then
+         * the DT3 key — {@code true} when {@code raw} outranks the current winner.
+         */
+        private boolean outranks(String raw, IsoDateBounds.Hull hull, String other,
+                IsoDateBounds.Hull otherHull)
+        {
+            int c = findMax ? otherHull.upper().compareTo(hull.upper())
+                    : hull.lower().compareTo(otherHull.lower());
+            if (c == 0)
+            {
+                // T2 — the wider hull: the earlier lower for a max, the later upper for a min
+                c = findMax ? hull.lower().compareTo(otherHull.lower())
+                        : otherHull.upper().compareTo(hull.upper());
+            }
+            return c != 0 ? c < 0 : textOutranks(raw, other);
+        }
+
+
+        /**
+         * The precise order (DT1 (a)): the earliest upper then the latest lower for a min (the
+         * earliest atom), the latest lower then the earliest upper for a max (the latest atom),
+         * then the DT3 key.
+         */
+        private boolean refines(String raw, IsoDateBounds.Hull hull, String other,
+                IsoDateBounds.Hull otherHull)
+        {
+            int c = findMax ? otherHull.lower().compareTo(hull.lower())
+                    : hull.upper().compareTo(otherHull.upper());
+            if (c == 0)
+            {
+                c = findMax ? hull.upper().compareTo(otherHull.upper())
+                        : otherHull.lower().compareTo(hull.lower());
+            }
+            return c != 0 ? c < 0 : textOutranks(raw, other);
+        }
+
+
+        /**
+         * DT3 / T8 — on an equal hull: the longer trimmed text, then code-point order ascending for
+         * a min and descending for a max (trimmed, then raw, so the order is total).
+         */
+        private boolean textOutranks(String raw, String other)
+        {
+            String a = raw.trim();
+            String b = other.trim();
+            int c = Integer.compare(b.length(), a.length());
+            if (c == 0)
+            {
+                c = findMax ? b.compareTo(a) : a.compareTo(b);
+            }
+            if (c == 0)
+            {
+                c = findMax ? other.compareTo(raw) : raw.compareTo(other);
+            }
+            return c < 0;
         }
 
 

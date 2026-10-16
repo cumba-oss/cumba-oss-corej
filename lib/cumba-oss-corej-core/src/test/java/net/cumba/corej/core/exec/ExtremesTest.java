@@ -2,8 +2,12 @@ package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import net.cumba.corej.core.expr.eval.IsoDateBounds;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.values.IDataValue;
 import org.junit.jupiter.api.Test;
@@ -191,6 +195,244 @@ class ExtremesTest
                 Extremes.genericStringExtreme(List.of("2012-06", "2012-06-15"), false),
                 "the shorter text is the minimum — plain text order, no calendar");
         assertNull(Extremes.genericStringExtreme(List.of(), true), "no candidate, no answer");
+    }
+
+    // -----------------------------------------------------------------------
+    // PLAN-date-extreme-precision-tie — the default (hull) mode is row-order free (T2, DT3)
+    // -----------------------------------------------------------------------
+
+
+    /** {@code raws} reversed — every tie row below is asserted in both row orders. */
+    private static String[] reversed(String... raws)
+    {
+        List<String> out = new ArrayList<>(List.of(raws));
+        Collections.reverse(out);
+        return out.toArray(String[]::new);
+    }
+
+
+    private static void assertMinInBothOrders(String expected, String... raws)
+    {
+        assertEquals(expected, min(raws), () -> "min" + List.of(raws));
+        assertEquals(expected, min(reversed(raws)), () -> "min" + List.of(reversed(raws)));
+    }
+
+
+    private static void assertMaxInBothOrders(String expected, String... raws)
+    {
+        assertEquals(expected, max(raws), () -> "max" + List.of(raws));
+        assertEquals(expected, max(reversed(raws)), () -> "max" + List.of(reversed(raws)));
+    }
+
+
+    /**
+     * T2: a nested pair on the same edge — {@code 2020-01-01} and {@code …T00:00} share the lower
+     * bound {@code T00:00:00}, {@code 2020-01-01} and {@code …T23:59} the upper {@code T23:59:59}.
+     * The first-seen candidate used to win (strict {@code beats}); the default answers the wider
+     * hull — the date, as the rule guide documents — in both row orders.
+     */
+    @Test
+    void t2_aNestedSameEdgePairAnswersTheWiderHullInEitherRowOrder()
+    {
+        assertMinInBothOrders("2020-01-01", "2020-01-01", "2020-01-01T00:00");
+        assertMaxInBothOrders("2020-01-01", "2020-01-01", "2020-01-01T23:59");
+        assertMaxInBothOrders("2020-01-01", "2020-01-01T23:59", "2020-01-01", "2019-12-31");
+        assertMinInBothOrders("2020-01-01T08:00", "2020-01-01T08:00", "2020-01-01T08:00:00",
+                "2020-01-01T09:00");
+        assertMaxInBothOrders("2020-01-01T08:00", "2020-01-01T08:00", "2020-01-01T08:00:59");
+    }
+
+
+    /**
+     * DT3 / T8: an equal hull spelt differently answers the longer trimmed text (the explicit
+     * offset, the fraction), then code-point order — ascending for a min, descending for a max.
+     */
+    @Test
+    void dt3_anEqualHullAnswersTheLongerTextThenTheDirectionalCodePointOrder()
+    {
+        assertMinInBothOrders("2020-01-01T09:00+01:00", "2020-01-01T08:00Z",
+                "2020-01-01T09:00+01:00");
+        assertMaxInBothOrders("2020-01-01T09:00+01:00", "2020-01-01T08:00Z",
+                "2020-01-01T09:00+01:00");
+        assertMinInBothOrders("2020-01-01T08:00Z", "2020-01-01T08:00", "2020-01-01T08:00Z");
+        assertMaxInBothOrders("2020-01-01T08:00:00.5", "2020-01-01T08:00:00",
+                "2020-01-01T08:00:00.5");
+        assertMinInBothOrders("2020-01-01T08:00:00.1", "2020-01-01T08:00:00.1",
+                "2020-01-01T08:00:00.9");
+        assertMaxInBothOrders("2020-01-01T08:00:00.9", "2020-01-01T08:00:00.1",
+                "2020-01-01T08:00:00.9");
+        // the trimmed length: a leading blank is not "more explicit"
+        assertMinInBothOrders("2020-01-01T08:00Z", " 2020-01-01T08:00", "2020-01-01T08:00Z");
+        // the one instant across midnight in two offsets (the date_diff_days shape, T7 (ii))
+        assertMinInBothOrders("2020-01-01T23:30-01:00", "2020-01-02T00:30Z",
+                "2020-01-01T23:30-01:00");
+    }
+
+
+    /** §4.2's worked table, default (hull) mode — the date keeps its EC-46 answer. */
+    @Test
+    void workedTable_theDefaultModeKeepsTheHullAnswers()
+    {
+        assertMinInBothOrders("2020-01-01", "2020-01-01", "2020-01-01T08:00");
+        assertMaxInBothOrders("2020-01-01", "2020-01-01", "2020-01-01T08:00");
+        assertMinInBothOrders("2020-01-01", "2020-01-01", "2020-01-01T08", "2020-01-01T09:15");
+        assertMaxInBothOrders("2020-01-01", "2020-01-01", "2020-01-01T08", "2020-01-01T09:15");
+        assertNull(min("2020-01", "2020-01-01T08:00"), "DT2 (a): the partial could be earlier");
+        assertNull(max("2020-01", "2020-01-01T08:00"));
+        assertMinInBothOrders("2020-01-01", "2020-01", "2020-01-01", "2020-01-01T08:00");
+        assertNull(max("2020-01", "2020-01-01", "2020-01-01T08:00"), "the 31st");
+        assertMinInBothOrders("2020-01-01", "2020-01-01", "2020-01-02T08:00");
+        assertMaxInBothOrders("2020-01-02T08:00", "2020-01-01", "2020-01-02T08:00");
+        // hour precision is NOT determined (isCompleteDate: lengths 10 / 16 / 19 only), so the
+        // EC-46 gate answers nothing for a pair it nests in — in both modes (the plan's §4.2 row
+        // "…T08, …T08:30 → …T08" assumed otherwise)
+        assertNull(min("2020-01-01T08", "2020-01-01T08:30"));
+        assertNull(max("2020-01-01T08", "2020-01-01T08:30"));
+    }
+
+    // -----------------------------------------------------------------------
+    // PLAN-date-extreme-precision-tie — ties="precise" (DT1 (a), DT2 (a), DT3 (a), T3, T4, T11)
+    // -----------------------------------------------------------------------
+
+
+    private static String precise(boolean findMax, boolean indeterminate, String... raws)
+    {
+        Extremes.DateExtreme extreme = new Extremes.DateExtreme(findMax, indeterminate, true);
+        for (String raw : raws)
+        {
+            extreme.add(raw);
+        }
+        String answer = extreme.result();
+        // T4: the answer is always one candidate's own raw text
+        if (answer != null)
+        {
+            assertTrue(List.of(raws).contains(answer), answer + " is not an input");
+        }
+        return answer;
+    }
+
+
+    private static void assertPreciseMin(String expected, String... raws)
+    {
+        assertEquals(expected, precise(false, false, raws), () -> "precise min" + List.of(raws));
+        assertEquals(expected, precise(false, false, reversed(raws)),
+                () -> "precise min" + List.of(reversed(raws)));
+    }
+
+
+    private static void assertPreciseMax(String expected, String... raws)
+    {
+        assertEquals(expected, precise(true, false, raws), () -> "precise max" + List.of(raws));
+        assertEquals(expected, precise(true, false, reversed(raws)),
+                () -> "precise max" + List.of(reversed(raws)));
+    }
+
+
+    /** The precise twin of {@link #ec46_dayPrecisionSpansItsDayAgainstASameDayTimestamp}. */
+    @Test
+    void precise_aSameDayTimestampWinsBothExtremesOverItsDay()
+    {
+        assertPreciseMin("2012-06-15T10:30:00", "2012-06-15", "2012-06-15T10:30:00");
+        assertPreciseMax("2012-06-15T10:30:00", "2012-06-15", "2012-06-15T10:30:00");
+    }
+
+
+    /** §4.2's worked table, precise mode, every row in both row orders. */
+    @Test
+    void workedTable_thePreciseModeAnswersTheEarliestOrLatestAtom()
+    {
+        assertPreciseMin("2020-01-01T08:00", "2020-01-01", "2020-01-01T08:00");
+        assertPreciseMax("2020-01-01T08:00", "2020-01-01", "2020-01-01T08:00");
+        assertPreciseMin("2020-01-01T08:00", "2020-01-01", "2020-01-01T08:00", "2020-01-01T09:15");
+        assertPreciseMax("2020-01-01T09:15", "2020-01-01", "2020-01-01T08:00", "2020-01-01T09:15");
+        assertPreciseMin("2020-01-01T08:00:30", "2020-01-01", "2020-01-01T08:00",
+                "2020-01-01T08:00:30");
+        assertPreciseMax("2020-01-01T08:00:30", "2020-01-01", "2020-01-01T08:00",
+                "2020-01-01T08:00:30");
+        assertPreciseMin("2020-01-01T00:00", "2020-01-01", "2020-01-01T00:00");
+        assertPreciseMax("2020-01-01T00:00", "2020-01-01", "2020-01-01T00:00");
+        assertPreciseMax("2020-01-01T23:59", "2020-01-01", "2020-01-01T23:59");
+        assertPreciseMin("2020-01-01T09:00+01:00", "2020-01-01T08:00Z", "2020-01-01T09:00+01:00");
+        assertPreciseMin("2020-01-01T08:00:00.1", "2020-01-01T08:00:00.1", "2020-01-01T08:00:00.9");
+        assertPreciseMax("2020-01-01T08:00:00.9", "2020-01-01T08:00:00.1", "2020-01-01T08:00:00.9");
+        // DT2 (a): determinability is unchanged
+        assertNull(precise(false, false, "2020-01", "2020-01-01T08:00"));
+        assertNull(precise(true, false, "2020-01", "2020-01-01T08:00"));
+        assertPreciseMin("2020-01-01T08:00", "2020-01", "2020-01-01", "2020-01-01T08:00");
+        assertNull(precise(true, false, "2020-01", "2020-01-01", "2020-01-01T08:00"));
+        assertNull(precise(false, false, "2020-01-01T08", "2020-01-01T08:30"));
+        // no tie: unchanged
+        assertPreciseMin("2020-01-01", "2020-01-01", "2020-01-02T08:00");
+        assertPreciseMax("2020-01-02T08:00", "2020-01-01", "2020-01-02T08:00");
+    }
+
+
+    /**
+     * T11: an undetermined value (hour precision, an interval) inside the winning day never wins
+     * (DT2 (a)), and where it could reach the refined value the precise mode keeps the hull answer
+     * rather than answer a value that is provably not the extreme.
+     */
+    @Test
+    void t11_anUndeterminedValueInsideTheDayKeepsTheHullAnswerWhereItCouldReachTheRefinedOne()
+    {
+        // …T08 is certainly earlier than …T09:15: the earliest determined atom is not the min
+        assertPreciseMin("2020-01-01", "2020-01-01", "2020-01-01T08", "2020-01-01T09:15");
+        assertPreciseMax("2020-01-01", "2020-01-01", "2020-01-01T10", "2020-01-01T09:15");
+        // …T08 contains …T08:30 — it could be 08:05
+        assertPreciseMin("2020-01-01", "2020-01-01", "2020-01-01T08", "2020-01-01T08:30");
+        // an interval inside the day, starting before the refined value
+        assertPreciseMin("2020-01-01", "2020-01-01", "2020-01-01T07:00/2020-01-01T07:30",
+                "2020-01-01T08:00");
+        // ... and one that cannot reach it does not block
+        assertPreciseMin("2020-01-01T08:00", "2020-01-01", "2020-01-01T10", "2020-01-01T08:00");
+        assertPreciseMax("2020-01-01T09:15", "2020-01-01", "2020-01-01T08", "2020-01-01T09:15");
+        // a partial CONTAINING the winning day does not block (DT2 (a)'s consequence)
+        assertPreciseMin("2020-01-01T08:00", "2020", "2020-01-01", "2020-01-01T08:00");
+    }
+
+
+    /** T3: indeterminate short-circuits before any tie-break, in both modes. */
+    @Test
+    void t3_anIndeterminateMissingWinsOverATie()
+    {
+        for (boolean findMax : new boolean[]
+        {
+                false, true
+        })
+        {
+            Extremes.DateExtreme e = new Extremes.DateExtreme(findMax, true, true);
+            e.addCell(cell("2020-01-01"));
+            e.addCell(cell("2020-01-01T08:00"));
+            e.addCell(cell(""));
+            assertNull(e.result(), "a missing candidate under indeterminate, findMax=" + findMax);
+            Extremes.DateExtreme skip = new Extremes.DateExtreme(findMax, false, true);
+            skip.addCell(cell("2020-01-01"));
+            skip.addCell(cell(""));
+            skip.addCell(cell("2020-01-01T08:00"));
+            assertEquals("2020-01-01T08:00", skip.result(), "skip, findMax=" + findMax);
+        }
+    }
+
+
+    /**
+     * The refinement stays inside the hull winner by construction — even for hand-built hulls that
+     * are not laminar (the real bounds are): the winner {@code W} is a candidate of the refined
+     * search and the refined {@code Y} one of {@code W}'s, so {@code Y.upper <= W.upper} and
+     * {@code Y.lower >= W.lower} (a min). The plan's "within-best" guard would be unreachable.
+     */
+    @Test
+    void theRefinedAnswerLiesInsideTheHullWinnerEvenForNonLaminarHulls()
+    {
+        Extremes.DateExtreme min = new Extremes.DateExtreme(false, false, true);
+        min.add("W", new IsoDateBounds.Hull("2020-01-01T00:00:00", "2020-01-01T10:00:00", true));
+        min.add("Y", new IsoDateBounds.Hull("2020-01-01T05:00:00", "2020-01-01T06:00:00", true));
+        min.add("Z", new IsoDateBounds.Hull("2020-01-01T05:30:00", "2020-01-02T00:00:00", true));
+        assertEquals("Y", min.result());
+        Extremes.DateExtreme max = new Extremes.DateExtreme(true, false, true);
+        max.add("W", new IsoDateBounds.Hull("2020-01-01T00:00:00", "2020-01-01T23:00:00", true));
+        max.add("Z", new IsoDateBounds.Hull("2019-12-31T00:00:00", "2020-01-01T21:00:00", true));
+        max.add("Y", new IsoDateBounds.Hull("2020-01-01T20:00:00", "2020-01-01T20:30:00", true));
+        assertEquals("Y", max.result());
     }
 
     // -----------------------------------------------------------------------

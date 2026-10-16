@@ -999,13 +999,19 @@ public final class BuiltinFunctions implements FunctionProvider
         // refused (a number never wins — IsoDateBounds.isDetermined needs a calendar-complete
         // core), and a numeric COLUMN argument is a stage-B fact (D10): stage A types a column
         // as unknown, so it is observed at evaluation as D55's date(NUM) is (observe-only).
-        // Two arguments exactly, positional or by name; no missing_values= (S8).
+        // Two dates, positional or by name, and one optional keyword ties (a literal of
+        // {hull, precise}, ExprCompiler.STATIC_STRING_VOCABULARIES — PLAN-date-extreme-precision-
+        // tie DT4 (b) / T9); no missing_values= (S8).
         fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.ScalarDateExtremes.EARLIEST,
-                List.of(p("a", Primitive.DATE), p("b", Primitive.DATE)), FunctionKind.VALUE,
-                net.cumba.corej.core.exec.ScalarDateExtremes::earliest));
+                List.of(p("a", Primitive.DATE), p("b", Primitive.DATE),
+                        opt(net.cumba.corej.core.exec.GroupedAggregate.TIES_PARAMETER,
+                                Primitive.STRING)),
+                FunctionKind.VALUE, net.cumba.corej.core.exec.ScalarDateExtremes::earliest));
         fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.ScalarDateExtremes.LATEST,
-                List.of(p("a", Primitive.DATE), p("b", Primitive.DATE)), FunctionKind.VALUE,
-                net.cumba.corej.core.exec.ScalarDateExtremes::latest));
+                List.of(p("a", Primitive.DATE), p("b", Primitive.DATE),
+                        opt(net.cumba.corej.core.exec.GroupedAggregate.TIES_PARAMETER,
+                                Primitive.STRING)),
+                FunctionKind.VALUE, net.cumba.corej.core.exec.ScalarDateExtremes::latest));
 
         // -- BOOLEAN interval predicates (SPEC §5.3, D27 — phase 3b) ---------
         // Container-first, matching contains(haystack, needle). date_overlaps is by construction

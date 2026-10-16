@@ -180,6 +180,7 @@ class QualifiedNameUniformityTest
             dy | reference | N | V:dy(#D, @D)
             earliest_date | a | N | V:earliest_date(date(@D), date("2020-01-10"))
             earliest_date | b | N | V:earliest_date(date("2020-01-10"), date(@D))
+            earliest_date | ties | - | static string {hull,precise} (PLAN-date-extreme-precision-tie)
             earliest_possible | x | N | V:earliest_possible(@D)
             empty | x | N | B:empty(@S)
             empty_within_except_last_row | name | N | B:empty_within_except_last_row(@S, #G, by=#L)
@@ -287,6 +288,7 @@ class QualifiedNameUniformityTest
             joined | condition | - | a boolean condition, fused into any / all / none (PLAN-cg0218 P1); its leaves are probed by their own rows
             latest_date | a | N | V:latest_date(date(@D), date("2020-01-10"))
             latest_date | b | N | V:latest_date(date("2020-01-10"), date(@D))
+            latest_date | ties | - | static string {hull,precise} (PLAN-date-extreme-precision-tie)
             latest_possible | x | N | V:latest_possible(@D)
             len | x | N | V:len(@S)
             len | unit | - | static string {bytes,chars} (runbook W1b BL1)
@@ -313,6 +315,7 @@ class QualifiedNameUniformityTest
             max_date | group | N | V:max_date(#D, group=[@G])
             max_date | keep_missings | - | static boolean
             max_date | missing_values | - | static string
+            max_date | ties | - | static string {hull,precise} (PLAN-date-extreme-precision-tie)
             max_value_length | name | N | V:max_value_length(@S) ; S:max_value_length("@S")
             max_value_length | unit | - | static string {bytes,chars} (runbook W1b BL1)
             max_value_length | encoding | - | static string, a charset name (runbook W1b BL1)
@@ -322,6 +325,7 @@ class QualifiedNameUniformityTest
             min_date | group | N | V:min_date(#D, group=[@G])
             min_date | keep_missings | - | static boolean
             min_date | missing_values | - | static string
+            min_date | ties | - | static string {hull,precise} (PLAN-date-extreme-precision-tie)
             minus | value | - | a $-binding holding a list, never a column
             minus | subtract | - | a $-binding holding a list, never a column
             union | first | - | a $-binding holding a list or a list literal, never a column (PLAN-union-function)
@@ -898,7 +902,7 @@ class QualifiedNameUniformityTest
                         + " + is_not_unique_member_set, runbook W1b SS1; + referenced_record_count /"
                         + " referenced_key_is_unique, runbook W1b VA; + ct_class_terms,"
                         + " PLAN-ct-class-exemption-data-rules CC1)");
-        assertEquals(333,
+        assertEquals(337,
                 FunctionRegistry.all().stream().mapToInt(d -> d.parameters().size()).sum(),
                 "declared parameters (283 + one each for any / all / none / joined + one each"
                         + " for var_is_single_value / var_is_all_missing + three for union + one for"
@@ -912,7 +916,9 @@ class QualifiedNameUniformityTest
                         + " referenced_dataset_variables, four for referenced_record_count and"
                         + " three for referenced_key_is_unique, W1b VA; - three ordering=,"
                         + " renamed in place to by=, runbook W4 OR2; + ct_class / ct_role of"
-                        + " ct_class_terms, PLAN-ct-class-exemption-data-rules CC1)");
+                        + " ct_class_terms, PLAN-ct-class-exemption-data-rules CC1; + ties on"
+                        + " min_date / max_date / earliest_date / latest_date,"
+                        + " PLAN-date-extreme-precision-tie DT4 (b))");
         assertEquals(32, MetadataAttribute.values().length,
                 "metadata accessors (28 + the three var_vlm_has_* coverage accessors,"
                         + " PLAN-stopped-rule-engine-fixes SR1; + var_vlm_origin_types,"
@@ -967,10 +973,12 @@ class QualifiedNameUniformityTest
         // (PLAN-stopped-rule-engine-fixes SR1).
         // +2 for ct_class_terms' ct_class / ct_role (PLAN-ct-class-exemption-data-rules CC1).
         // +1 for var_vlm_origin_types' level (PLAN-vlm-origin-value-accessor VO1).
-        assertEquals(170, rows.stream().filter(r -> !r.name()).count(),
+        // +4 for ties on min_date / max_date / earliest_date / latest_date
+        // (PLAN-date-extreme-precision-tie DT4 (b)).
+        assertEquals(174, rows.stream().filter(r -> !r.name()).count(),
                 "non-name rows (153 + the ~ literal, W1b SX; + 8, W1b RO; + 1, W1b VA;"
                         + " + 3 var_vlm_has_* levels, SR1; + 2 ct_class_terms, CT CC1;"
-                        + " + 1 var_vlm_origin_types level, VO1)");
+                        + " + 1 var_vlm_origin_types level, VO1; + 4 ties, DT4 (b))");
     }
 
     // ------------------------------------------------------------------

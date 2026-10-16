@@ -331,9 +331,9 @@ public final class RuleLanguage
 
     /**
      * The enumerated values of parameters a function reads at plan build rather than per row —
-     * {@code read_value}'s {@code mode}, the {@code missing_values} policy, the next-record
-     * {@code relation} — one line per (function, parameter) that declares the parameter, plus the
-     * metadata level vocabulary of the accessors.
+     * {@code read_value}'s {@code mode}, the {@code missing_values} policy, the grouped date
+     * extremes' {@code ties} mode, the next-record {@code relation} — one line per (function,
+     * parameter) that declares the parameter, plus the metadata level vocabulary of the accessors.
      */
     private static List<String> parameterValueLines()
     {
@@ -355,6 +355,15 @@ public final class RuleLanguage
             {
                 out.add(d.name() + "." + GroupedAggregate.MISSING_VALUES_PARAMETER + ": "
                         + String.join(",", sorted(missingValues)));
+            }
+            // PLAN-date-extreme-precision-tie C4d: the grouped extremes read ties at plan build;
+            // earliest_date / latest_date's ties is a static vocabulary (staticParameterLines),
+            // so only the compiler-dispatched pair is listed here
+            if (GroupedAggregate.isFunction(d.name())
+                    && d.parameter(GroupedAggregate.TIES_PARAMETER) != null)
+            {
+                out.add(d.name() + "." + GroupedAggregate.TIES_PARAMETER + ": "
+                        + String.join(",", sorted(GroupedAggregate.TIES)));
             }
             if (d.parameter("relation") != null)
             {

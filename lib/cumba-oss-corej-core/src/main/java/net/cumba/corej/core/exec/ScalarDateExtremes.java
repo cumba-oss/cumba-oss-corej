@@ -23,13 +23,17 @@ import org.jspecify.annotations.Nullable;
  * {@code -0205} / {@code -0305} / {@code -0306}: {@code earliest_date($own, $pool)}).
  *
  * <p>
- * <b>Arity</b> (S1): exactly two arguments, {@code a} and {@code b}, positional or by name
+ * <b>Arity</b> (S1): two dates, {@code a} and {@code b}, positional or by name
  * ({@code earliest_date(X, b=Y)} binds, D19a; a name already bound by position is refused, an
- * unknown keyword is a binder load error). No other parameter — in particular no
- * {@code missing_values=} (S8): a per-part {@code indeterminate} stays on the grouped call that
- * feeds it. More than two dates nest, {@code earliest_date(a, earliest_date(b, c))}, which is exact
- * for determinate operands; for partial operands nesting is not the three-way extreme (EC-46 is not
- * associative once an inner pair is undeterminable).
+ * unknown keyword is a binder load error), and one optional keyword {@code ties}
+ * ({@code PLAN-date-extreme-precision-tie} DT4 (b): {@code "hull"}, the default, or
+ * {@code "precise"} — a string literal checked at load through
+ * {@code ExprCompiler.STATIC_STRING_VOCABULARIES}, T9; a positional third argument binds it). No
+ * other parameter — in particular no {@code missing_values=} (S8): a per-part {@code indeterminate}
+ * stays on the grouped call that feeds it. More than two dates nest,
+ * {@code earliest_date(a, earliest_date(b, c))}, which is exact for determinate operands; for
+ * partial operands nesting is not the three-way extreme (EC-46 is not associative once an inner
+ * pair is undeterminable).
  * </p>
  *
  * <p>
@@ -62,11 +66,15 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * <b>The answer</b> (S5, EC-46): the determined candidate that reaches every possible completion of
- * the other wins, and its <b>cell</b> is handed back, identity and type kept; on equal text
- * {@code a} wins. {@code earliest_date("2012-06", "2012-06-01")} is {@code 2012-06-01};
- * {@code earliest_date("2012-06", "2012-06-02")} has no answer (the partial could be the 1st); two
- * partials have no answer; a present unpositionable value ({@code UNK}, {@code 2020-02-30}, a
- * masked day) makes the answer undeterminable — unlike a missing, which is skipped.
+ * the other wins, and its <b>cell</b> is handed back, identity and type kept; on identical text
+ * {@code a} wins. A same-day tie follows the accumulator's {@code ties} mode
+ * ({@link Extremes.DateExtreme}: the wider hull by default, the more precise value under
+ * {@code ties="precise"}), and an equal hull spelt differently its DT3 key (the longer trimmed
+ * text) — never the argument order. {@code earliest_date("2012-06", "2012-06-01")} is
+ * {@code 2012-06-01}; {@code earliest_date("2012-06", "2012-06-02")} has no answer (the partial
+ * could be the 1st); two partials have no answer; a present unpositionable value ({@code UNK},
+ * {@code 2020-02-30}, a masked day) makes the answer undeterminable — unlike a missing, which is
+ * skipped.
  * </p>
  *
  * <p>
@@ -141,6 +149,8 @@ public final class ScalarDateExtremes
     {
         Vector a = args.get(0);
         Vector b = args.get(1);
+        // T9: the constant keyword, validated at load, read once per call (never per row)
+        boolean precise = precise(args.size() > 2 ? args.get(2) : null);
         String context = (findMax ? LATEST : EARLIEST) + "()";
         // D55, observe-only (the class comment): a numeric column read as a date is observed,
         // never refused — it cannot win, so the answer stays a date or a missing.
@@ -148,7 +158,27 @@ public final class ScalarDateExtremes
         ColumnTypeGate.observeIsoConversionRead(b, context);
         DataValueType declared = declaredType(a, b);
         return ComputedVector.typed(run.rowCount(), declared,
-                row -> pairExtreme(a.value(row), b.value(row), findMax));
+                row -> pairExtreme(a.value(row), b.value(row), findMax, precise));
+    }
+
+
+    /**
+     * Whether the optional {@code ties} argument says {@code "precise"} — a string literal of
+     * {@code {hull, precise}} by the load-time check, so its first row is the call's value.
+     *
+     * @param ties
+     *            the bound {@code ties} vector, or {@code null} when absent
+     * @return {@code true} for {@code ties="precise"}
+     */
+    static boolean precise(@Nullable Vector ties)
+    {
+        if (ties == null)
+        {
+            return false;
+        }
+        TypedValue tv = ties.value(0);
+        return tv.missing() == null
+                && GroupedAggregate.TIES_PRECISE.equals(String.valueOf(tv.resolved()));
     }
 
 
@@ -180,10 +210,12 @@ public final class ScalarDateExtremes
      *            the second argument's carrier
      * @param findMax
      *            {@code true} for the later date, {@code false} for the earlier
+     * @param precise
+     *            {@code true} for {@code ties="precise"}
      * @return the winning input cell, the carried missing when both are missing, or the computed
      *         missing when there is no other answer; never {@code null}
      */
-    static IDataValue pairExtreme(TypedValue ta, TypedValue tb, boolean findMax)
+    static IDataValue pairExtreme(TypedValue ta, TypedValue tb, boolean findMax, boolean precise)
     {
         if (ta.missing() != null && tb.missing() != null)
         {
@@ -196,7 +228,7 @@ public final class ScalarDateExtremes
         IDataValue cb = tb.cell();
         // S4 / S5: the shared candidate filter (a missing or blank cell is no candidate) and the
         // EC-46 determinability rule, in the one accumulator min_date / max_date use.
-        Extremes.DateExtreme block = new Extremes.DateExtreme(findMax, false);
+        Extremes.DateExtreme block = new Extremes.DateExtreme(findMax, false, precise);
         block.addCell(ca);
         block.addCell(cb);
         @Nullable
@@ -205,7 +237,7 @@ public final class ScalarDateExtremes
         {
             return ScalarSemantics.computedMissing();
         }
-        // The winning CELL, identity and type kept; on equal text `a` wins.
+        // The winning CELL, identity and type kept; on identical text `a` wins.
         return best.equals(Extremes.extremeCandidate(ca)) ? ca : cb;
     }
 
