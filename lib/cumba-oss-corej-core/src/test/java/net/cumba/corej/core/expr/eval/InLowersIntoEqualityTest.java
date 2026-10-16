@@ -94,7 +94,8 @@ class InLowersIntoEqualityTest
     {
         IDataTable t = MockTable.of().col("X", "yes", "No", "").build();
         Vector x = VectorLayerTest.col(t, "X");
-        // set pre-upper-cased, as the compiler builds it for upper(X) in [...]
+        // the primitive's flag, the set pre-upper-cased: the compiler no longer passes true (SVY
+        // OQ6 retired the upper(X)-membership surface); the primitive keeps the parameter
         assertTrue(Primitives.isMember(x.value(0).cell(), Set.of("YES"), true));
         assertTrue(Primitives.isMember(x.value(1).cell(), Set.of("NO"), true));
         assertFalse(Primitives.isMember(x.value(2).cell(), Set.of("YES"), true));

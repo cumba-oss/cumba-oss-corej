@@ -69,15 +69,18 @@ class ExprCompilerMembershipPlansTest
 
 
     @Test
-    void upperWrappedMembershipFoldsProbeAndSet()
+    void upperWrappedMembershipFoldsTheProbeOnly()
     {
         IDataTable t = MockTable.of().name("DS").col("UC", "abc", "ABC", "xyz", "").build();
         EvaluationContext c = ctxOf(t);
-        // The set member is authored lower-case: only a case-folded compare matches "ABC".
-        assertEquals(bits(0, 1), eval("upper(UC) in [\"abc\"]", c),
-                "case-insensitive membership must fold BOTH the probe and the set");
-        assertEquals(bits(2, 3), eval("upper(UC) not in [\"abc\"]", c),
-                "the negated case-insensitive surface is the exact complement");
+        // SVY OQ6 (B5 S6, 2026-10-16): upper is a plain function — the probe is folded, the
+        // members are matched as written (a lower-case literal against an upper probe is the
+        // load error FoldProbePlainFunctionTest pins; the evaluator itself answers as written).
+        assertEquals(bits(0, 1), eval("upper(UC) in [\"ABC\"]", c),
+                "the folded probe matches the member as written");
+        assertEquals(bits(2, 3), eval("upper(UC) not in [\"ABC\"]", c),
+                "the negated form is the exact complement");
+        assertEquals(bits(), eval("upper(UC) in [\"abc\"]", c), "members are not folded");
     }
 
     // ---- numeric list literal (decision D2) --------------------------------------

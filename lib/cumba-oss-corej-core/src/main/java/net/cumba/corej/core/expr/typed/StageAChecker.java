@@ -707,6 +707,11 @@ public final class StageAChecker
     {
         listBindingComparison(b, b.left());
         listBindingComparison(b, b.right());
+        if (b.op() == Expr.BinOp.EQ || b.op() == Expr.BinOp.NEQ)
+        {
+            foldProbeLiteralCase(b, b.left(), b.right());
+            foldProbeLiteralCase(b, b.right(), b.left());
+        }
         ExprType lt = left.type().dereference();
         ExprType rt = right.type().dereference();
         if (mixedTemporalString(lt, rt) || mixedTemporalString(rt, lt))
@@ -726,6 +731,75 @@ public final class StageAChecker
             find(StageAErrorKind.PARAMETER_TYPE, "comparison operands disagree: " + lt.describe()
                     + " " + b.op() + " " + rt.describe() + at(b));
         }
+    }
+
+
+    /**
+     * {@code SVY OQ6} (B5 S6): a case-fold probe compared with a literal not in the fold's case can
+     * never match — {@code upper} / {@code upcase} / {@code lower} / {@code lowcase} are plain
+     * functions since 2026-10-16 (the retired surface folded the members too), so a rule written
+     * for the old surface would go silent. Judged for {@code in} / {@code not in} (every string
+     * member of a list literal) and {@code ==} / {@code !=} (a string literal on the other side); a
+     * non-literal member source ({@code $set}, {@code upper($set)}, an accessor) and a literal with
+     * no cased character pass. "Not in that case" is {@code Locale.ROOT} upper- / lower-casing, the
+     * fold {@code caseFold} applies.
+     */
+    private void foldProbeLiteralCase(Expr.Binary b, Expr probe, Expr other)
+    {
+        Boolean upper = caseFoldOf(probe);
+        if (upper == null)
+        {
+            return;
+        }
+        List<String> literals = new ArrayList<>();
+        if (other instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING)
+        {
+            literals.add(String.valueOf(lit.value()));
+        }
+        else if (other instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
+                && lit.value() instanceof List<?> items)
+        {
+            for (Object item : items)
+            {
+                if (item instanceof Expr.Lit m && m.kind() == Expr.LitKind.STRING)
+                {
+                    literals.add(String.valueOf(m.value()));
+                }
+            }
+        }
+        for (String literal : literals)
+        {
+            String folded = upper ? literal.toUpperCase(java.util.Locale.ROOT)
+                    : literal.toLowerCase(java.util.Locale.ROOT);
+            if (!literal.equals(folded))
+            {
+                find(StageAErrorKind.FOLD_PROBE_LITERAL_CASE,
+                        "the " + ((Expr.Call) probe).name() + "(…) probe can never match the"
+                                + " literal \"" + literal + "\", which is not "
+                                + (upper ? "upper" : "lower") + "-case — upper / lower are plain"
+                                + " functions (SVY OQ6): write the literal as \"" + folded
+                                + "\", or fold both sides (upper(X) in upper($list))" + at(b));
+            }
+        }
+    }
+
+
+    /**
+     * The case fold a one-argument {@code upper} / {@code upcase} ({@code true}) or {@code lower} /
+     * {@code lowcase} ({@code false}) call applies, else {@code null}.
+     */
+    private static @Nullable Boolean caseFoldOf(Expr e)
+    {
+        if (!(e instanceof Expr.Call c) || c.args().size() != 1 || !c.kwargs().isEmpty())
+        {
+            return null;
+        }
+        return switch (c.name())
+        {
+        case "upper", "upcase" -> Boolean.TRUE;
+        case "lower", "lowcase" -> Boolean.FALSE;
+        default -> null;
+        };
     }
 
 
@@ -779,6 +853,7 @@ public final class StageAChecker
 
     private void membership(Expr.Binary b, TypedExpr left, TypedExpr right)
     {
+        foldProbeLiteralCase(b, b.left(), b.right());
         ExprType lt = left.type().dereference();
         ExprType rt = right.type().dereference();
         if (rt != Unknown.UNKNOWN && !rt.isCollection())

@@ -26,16 +26,14 @@ public final class ExprCompilerTestAccess
      *            the rows to decide
      * @param negate
      *            {@code not in}
-     * @param caseInsensitive
-     *            the case-insensitive surface
      * @param listLhs
      *            a list-valued probe
      * @return the verdicts
      */
     public static BitSet boundMembership(Vector v, Vector bound, int rowCount, boolean negate,
-            boolean caseInsensitive, boolean listLhs)
+            boolean listLhs)
     {
-        return ExprCompiler.boundMembership(v, bound, rowCount, negate, caseInsensitive, listLhs);
+        return ExprCompiler.boundMembership(v, bound, rowCount, negate, listLhs);
     }
 
 }

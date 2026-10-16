@@ -157,12 +157,10 @@ class MemberSetBuilderIdentityTest
         IDataTable t = probeTable();
         List<Object> members = List.of(MissingValue.MIS, "A");
         Vector perRow = new ComputedVector(3, DataValueType.STRING, _ -> members);
-        assertEquals(bits(1, 2),
-                ExprCompiler.boundMembership(col(t, "X"), perRow, 3, false, false, false),
+        assertEquals(bits(1, 2), ExprCompiler.boundMembership(col(t, "X"), perRow, 3, false, false),
                 "the per-row set keeps MIS by identity: row 2 matches, the present '.' of row 0"
                         + " does not");
-        assertEquals(bits(0),
-                ExprCompiler.boundMembership(col(t, "X"), perRow, 3, true, false, false),
+        assertEquals(bits(0), ExprCompiler.boundMembership(col(t, "X"), perRow, 3, true, false),
                 "not in is the exact complement");
     }
 
@@ -203,7 +201,7 @@ class MemberSetBuilderIdentityTest
     {
         IDataTable t = probeTable();
         BitSet fired = ExprCompiler.vlmListMembership(col(t, "X"),
-                ConstVector.of(List.of(MissingValue.MIS, "A")), 3, false, false, false);
+                ConstVector.of(List.of(MissingValue.MIS, "A")), 3, false, false);
         assertEquals(bits(1), fired,
                 "only the present 'A' matches: the present '.' of row 0 must NOT match the MIS"
                         + " member (it did when the member was rendered), and the missing probe of"
@@ -217,7 +215,7 @@ class MemberSetBuilderIdentityTest
     {
         IDataTable t = probeTable();
         BitSet fired = ExprCompiler.vlmListMembership(col(t, "X"), ConstVector.of(List.of(".")), 3,
-                false, false, false);
+                false, false);
         assertEquals(bits(0), fired, "a present '.' member IS matched by a present '.' probe");
     }
 
@@ -292,15 +290,18 @@ class MemberSetBuilderIdentityTest
     }
 
 
-    /** The case-insensitive surface keeps a missing member's identity too. */
+    /**
+     * A folded probe keeps a missing member's identity too (the members are matched as written
+     * since {@code SVY OQ6}: {@code upper} is a plain function, so the set holds {@code "A"}).
+     */
     @Test
-    void caseInsensitiveMembershipMatchesAMissingByIdentity()
+    void aFoldedProbeMatchesAMissingByIdentity()
     {
         IDataTable t = probeTable();
         EvaluationContext c = EvaluationContext.builder().table(t)
-                .variables(Map.of("$ref", List.of(MissingValue.MIS, "a"))).build();
+                .variables(Map.of("$ref", List.of(MissingValue.MIS, "A"))).build();
         assertEquals(bits(1, 2), eval("upper(X) in $ref", c),
-                "row 1 'A' matches the folded 'a'; row 2 MIS matches MIS; row 0 '.' matches"
+                "row 1 'a' folds to 'A' and matches; row 2 MIS matches MIS; row 0 '.' matches"
                         + " nothing");
     }
 
@@ -319,8 +320,7 @@ class MemberSetBuilderIdentityTest
                 .str("G", "g1", "g1", "g1").build();
         List<Object> members = List.of("", "B");
         Vector perRow = new ComputedVector(3, DataValueType.STRING, _ -> members);
-        assertEquals(bits(0),
-                ExprCompiler.boundMembership(col(t, "X"), perRow, 3, false, false, false),
+        assertEquals(bits(0), ExprCompiler.boundMembership(col(t, "X"), perRow, 3, false, false),
                 "the present \"\" member is matched by the present blank of row 0 and NOT by the"
                         + " missing of row 2 (D12)");
     }

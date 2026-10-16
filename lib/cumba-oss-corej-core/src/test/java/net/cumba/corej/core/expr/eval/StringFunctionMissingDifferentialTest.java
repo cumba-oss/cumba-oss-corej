@@ -29,10 +29,9 @@ import org.opentest4j.AssertionFailedError;
  * <li>{@code upper(X) == upper(Y)} ≡ {@code equalsIgnoreCase(X, Y)} (two missings are equal iff
  * they are the same missing, D34 #5-2; a missing equals no string);</li>
  * <li>{@code upper(X) == ""} ≡ {@code upper(X) in [""]} ≡ "X is the empty string" (D34 #1 —
- * {@code ""} is present; a missing is not {@code ""}). ⚠ Only the {@code lower} spelling of the
- * membership reaches {@code caseFold}: {@code upper(X) in […]} is the case-insensitive membership
- * surface, which {@code ExprCompiler} unwraps to a probe of the bare {@code X}
- * ({@code isUpperCall}), so {@code upper(X) in [""]} tests that path, not the fold;</li>
+ * {@code ""} is present; a missing is not {@code ""}). Since {@code SVY OQ6} (B5 S6) both spellings
+ * of the membership reach {@code caseFold}: {@code upper} is a plain function in membership too
+ * (the case-insensitive surface that unwrapped the probe is retired);</li>
  * <li>{@code empty(upper(X))} ≡ {@code empty(X)} (D34 #7 — the broad blank predicate is unmoved). ⚠
  * A <b>regression guard</b> for D34 #7, <b>not evidence for D36</b>: {@code empty} is true for a
  * missing <em>and</em> for {@code ""}, so it held over the old fold-to-{@code ""} as well;</li>

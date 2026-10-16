@@ -610,7 +610,9 @@ class CompiledBindingTest
                         "CSEQ not in", "[\"1\", \"2\"]"
                 },
                 {
-                        "upper(X) in", "[\"a\"]"
+                        // SVY OQ6: a member not in the fold's case is a load error, so the
+                        // literal is written upper-case
+                        "upper(X) in", "[\"A\"]"
                 }
         })
         {
@@ -768,7 +770,7 @@ class CompiledBindingTest
         Vector perRow = new ComputedVector(4, DataValueType.STRING,
                 row -> row == 3 ? other : shared);
         BitSet members = net.cumba.corej.core.expr.eval.ExprCompilerTestAccess
-                .boundMembership(probe, perRow, 4, false, false, false);
+                .boundMembership(probe, perRow, 4, false, false);
         assertEquals(BitSet.valueOf(new long[]
         {
                 0b1101
@@ -781,7 +783,7 @@ class CompiledBindingTest
         Vector alternating = new ComputedVector(4, DataValueType.STRING,
                 row -> row % 2 == 0 ? shared : other);
         net.cumba.corej.core.expr.eval.ExprCompilerTestAccess.boundMembership(probe, alternating, 4,
-                false, false, false);
+                false, false);
         assertEquals(4, folds.get(), "an alternating pair refolds per row: memory stays O(1)");
     }
 

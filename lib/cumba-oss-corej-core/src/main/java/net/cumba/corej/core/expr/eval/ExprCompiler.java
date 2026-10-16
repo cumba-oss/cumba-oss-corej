@@ -1268,7 +1268,7 @@ public final class ExprCompiler
 
     private static ExprProgram.BoolPlan compileMembershipAsWritten(Expr.Binary b)
     {
-        Expr probe = isUpperCall(b.left()) ? ((Expr.Call) b.left()).args().get(0) : b.left();
+        Expr probe = b.left();
         if (!isDynamicValue(probe))
         {
             return compileMembershipAsWritten(b, false, null);
@@ -1416,17 +1416,17 @@ public final class ExprCompiler
         {
             return compileTupleMembership(tupleCall, b.right(), negate);
         }
-        // upper(X) in/not in […] is the (is_)(not_)contained_by_case_insensitive surface: read the
-        // unwrapped column, build an upper-cased set, and fold the probe (Primitives.membership
-        // upper-cases the cell), exactly as the legacy operator does.
-        boolean caseInsensitive = isUpperCall(b.left());
-        // Both the positive (is_contained_by_case_insensitive) and negative
-        // (is_not_contained_by_case_insensitive) case-insensitive membership surfaces nativize:
-        // Primitives.membership(v, set, rowCount, negate, caseInsensitive=true) upper-cases the
-        // probe and returns `negate != set.contains(probe)`, so the negated form evaluates
-        // correctly. (The retired legacy `is_not_contained_by_case_insensitive` operator was an
-        // unimplemented no-op until PLAN-regex-rule-optimization Phase 1 made it mirror this.)
-        Expr nameExpr = caseInsensitive ? ((Expr.Call) b.left()).args().get(0) : b.left();
+        // SVY OQ6 / B5-Q1 (a) (owner 2026-10-16): `upper(X) in […]` is NO LONGER a surface of its
+        // own. Until then it was the (is_)(not_)contained_by_case_insensitive surface — the probe
+        // unwrapped to the bare column, the MEMBERS folded too, every set-builder below threaded a
+        // caseInsensitive flag — so `upper(X)` meant two things: a value function everywhere, and
+        // a membership mode that also folded the right side. Now upper / upcase / lower / lowcase
+        // are plain functions: the probe is the folded VALUE, the members are matched as written,
+        // and a rule that wants a case-insensitive membership folds both sides itself —
+        // `upper(X) in upper($list)` (the corpus was rewritten to that idiom first, B5 P5). A fold
+        // probe compared with a literal not in its case can never match and is a load error
+        // (StageAChecker.foldProbeLiteralCase).
+        Expr nameExpr = b.left();
         // PLAN-dynamic-column-functions (review round 1 lane A L1, round 2 engine 2): a colref
         // whose argument is a $-binding may yield a list on one row and a name's cell on another;
         // the caller decides per row, and this is its element-wise half. Runbook W2 BS4: so may a
@@ -1478,7 +1478,7 @@ public final class ExprCompiler
                     return new BitSet();
                 }
                 Vector rv = rightP.eval(run);
-                return vlmListMembership(v, rv, run.rowCount(), negate, caseInsensitive, listLhs);
+                return vlmListMembership(v, rv, run.rowCount(), negate, listLhs);
             };
         }
         if (!listLhs && isListAccessor(right))
@@ -1491,8 +1491,8 @@ public final class ExprCompiler
                 {
                     return new BitSet();
                 }
-                return Primitives.membership(v, listAccessorSet(rightP, run, caseInsensitive),
-                        run.rowCount(), negate, caseInsensitive);
+                return Primitives.membership(v, listAccessorSet(rightP, run, false), run.rowCount(),
+                        negate, false);
             };
         }
         // Phase 9b (decision D2): an ALL-NUMERIC list LITERAL runs membership numerically — the
@@ -1500,8 +1500,7 @@ public final class ExprCompiler
         // member 10. A MIXED list literal (a NUMBER and a STRING member) is a load error. This
         // classification applies ONLY to a static list literal, never to a $-var list, a ${*}
         // wildcard, or a per-row binding (their contents are dynamic / not statically typed)
-        // — those stay textual. The case-insensitive surface (upper(X) in [...]) is all-string and
-        // never numeric (numbers have no case). (The retired legacy membership path ran the same
+        // — those stay textual. (The retired legacy membership path ran the same
         // classification on the JSON-array node types, isNumber() vs isTextual(), which agree
         // element-for-element with these Expr.Lit kinds.)
         if (listLhs && isNumberValued(b.left()))
@@ -1524,7 +1523,7 @@ public final class ExprCompiler
                 };
             }
         }
-        if (!caseInsensitive && !listLhs)
+        if (!listLhs)
         {
             Set<Double> numericMembers = numericMemberSet(right);
             if (numericMembers != null)
@@ -1590,13 +1589,12 @@ public final class ExprCompiler
         // its members.
         // ⭐ Review round 3 recorded this rather than reporting it, and it is written down because
         // the asymmetry is otherwise invisible: the numeric-literal branch above is guarded
-        // `!caseInsensitive && !listLhs`, and this arm is guarded by NEITHER. Round 2's widening to
-        // the members' marker therefore newly lets `upper(X) in [date("…")]` and a list-LHS
-        // accessor reach it. Neither is a defect: ISO text is case-neutral, so the fold `upper`
-        // drops is a no-op here, and a list-valued LHS against a date list is type-nonsense that
-        // Stage A's membership element check rejects before evaluation. Corpus instances: zero of
-        // each. ⛔ If a temporal comparison ever becomes case- or collection-sensitive, this arm
-        // needs those two guards and the numeric branch is the precedent for how to spell them.
+        // `!listLhs`, and this arm is not. Round 2's widening to the members' marker therefore
+        // lets a list-LHS accessor reach it — type-nonsense that Stage A's membership element
+        // check rejects before evaluation (corpus instances: zero). ⛔ If a temporal comparison
+        // ever becomes collection-sensitive, this arm needs the guard and the numeric branch is
+        // the precedent for how to spell it. (Until SVY OQ6 the guard also named a
+        // caseInsensitive flag, the retired upper(X)-membership surface; ISO text is case-neutral.)
         String probeMarker = markerOf(b.left());
         boolean temporalLiteralSet = b.right() instanceof Expr.Lit setLit
                 && setLit.kind() == Expr.LitKind.LIST;
@@ -1625,8 +1623,8 @@ public final class ExprCompiler
                 {
                     return new BitSet();
                 }
-                return Primitives.temporalMembership(v,
-                        literalMembers((Expr.Lit) temporalSet, false), run.rowCount(), negate);
+                return Primitives.temporalMembership(v, literalMembers((Expr.Lit) temporalSet),
+                        run.rowCount(), negate);
             };
         }
         if (temporalLiteralSet && "time".equals(temporalMarker))
@@ -1639,7 +1637,7 @@ public final class ExprCompiler
                 {
                     return new BitSet();
                 }
-                return Primitives.timeMembership(v, literalMembers((Expr.Lit) timeSet, false),
+                return Primitives.timeMembership(v, literalMembers((Expr.Lit) timeSet),
                         run.rowCount(), negate);
             };
         }
@@ -1655,7 +1653,7 @@ public final class ExprCompiler
         OperandSubstitutor.Wildcard wild = wildcardOperand(right);
         if (wild != null)
         {
-            return wildcardMembershipPlan(nameP, wild, negate, caseInsensitive);
+            return wildcardMembershipPlan(nameP, wild, negate);
         }
         // Review round 1, L2 (decided: SUPPORT, not a load error): a list-valued REGISTRY function
         // written inline as the right-hand side reads its Vector exactly as a compiled binding
@@ -1680,9 +1678,10 @@ public final class ExprCompiler
                 : null;
         // Phase 3 (R9): only a STATIC all-string list literal states a character expectation the
         // gate can hold a probe to; a $-list, wildcard, accessor or grouped set is dynamic and
-        // never gates (mirroring numericMemberSet's literal-only classification). The explicit
-        // case-insensitive surface (upper(X) in […]) is a declared string mode and is not gated.
-        boolean allStringLiteralList = !caseInsensitive && isAllStringList(right);
+        // never gates (mirroring numericMemberSet's literal-only classification). A folded probe
+        // (upper(X)) is a ComputedVector without a gated name, so the gate never sees it — the
+        // fold is an explicit text reading, as str() is (B5 C13 (6)).
+        boolean allStringLiteralList = isAllStringList(right);
         return run ->
         {
             Vector v = nameP.eval(run);
@@ -1694,8 +1693,7 @@ public final class ExprCompiler
             {
                 Vector members = listCallP.eval(run);
                 return members == null ? new BitSet()
-                        : boundMembership(v, members, run.rowCount(), negate, caseInsensitive,
-                                listLhs);
+                        : boundMembership(v, members, run.rowCount(), negate, listLhs);
             }
             if (allStringLiteralList)
             {
@@ -1709,14 +1707,12 @@ public final class ExprCompiler
                 Vector bound = boundVector(run, boundRef.name());
                 if (bound != null)
                 {
-                    return boundMembership(v, bound, run.rowCount(), negate, caseInsensitive,
-                            listLhs);
+                    return boundMembership(v, bound, run.rowCount(), negate, listLhs);
                 }
             }
-            Primitives.MemberSet set = buildSet(run, right, caseInsensitive);
-            return listLhs
-                    ? Primitives.listMembership(v, set, run.rowCount(), negate, caseInsensitive)
-                    : Primitives.membership(v, set, run.rowCount(), negate, caseInsensitive);
+            Primitives.MemberSet set = buildSet(run, right);
+            return listLhs ? Primitives.listMembership(v, set, run.rowCount(), negate, false)
+                    : Primitives.membership(v, set, run.rowCount(), negate, false);
         };
     }
 
@@ -1868,7 +1864,7 @@ public final class ExprCompiler
      * value-level codelist still decides nothing.
      */
     static BitSet vlmListMembership(Vector probe, @Nullable Vector listVec, int rowCount,
-            boolean negate, boolean caseInsensitive, boolean listLhs)
+            boolean negate, boolean listLhs)
     {
         BitSet out = new BitSet();
         if (listVec == null)
@@ -1886,8 +1882,8 @@ public final class ExprCompiler
             }
             if (listLhs)
             {
-                Primitives.MemberSet set = Primitives.MemberSet.of(list, caseInsensitive);
-                if (negate != Primitives.anyInSet(probe.value(r).resolved(), set, caseInsensitive))
+                Primitives.MemberSet set = Primitives.MemberSet.of(list, false);
+                if (negate != Primitives.anyInSet(probe.value(r).resolved(), set, false))
                 {
                     out.set(r);
                 }
@@ -1901,9 +1897,9 @@ public final class ExprCompiler
             // ⭐ PLAN-member-set-identity-hardening: classified, never rendered — a MissingValue
             // member keeps its identity. No element is null: the VLM list is built null-free by
             // VlmResolver (register NNL §1).
-            Primitives.MemberSet set = Primitives.MemberSet.of(list, caseInsensitive);
+            Primitives.MemberSet set = Primitives.MemberSet.of(list, false);
             // D81 (phase 6b): the probe is =='s own per-member decision tree.
-            if (negate != Primitives.isMember(dv, set, caseInsensitive))
+            if (negate != Primitives.isMember(dv, set, false))
             {
                 out.set(r);
             }
@@ -1959,13 +1955,13 @@ public final class ExprCompiler
      * Package-private for the unit tests.
      */
     static BitSet boundMembership(Vector v, Vector bound, int rowCount, boolean negate,
-            boolean caseInsensitive, boolean listLhs)
+            boolean listLhs)
     {
         if (bound instanceof ConstVector constant)
         {
-            Primitives.MemberSet set = toSet(constant.memberValue(), caseInsensitive);
-            return listLhs ? Primitives.listMembership(v, set, rowCount, negate, caseInsensitive)
-                    : Primitives.membership(v, set, rowCount, negate, caseInsensitive);
+            Primitives.MemberSet set = toSet(constant.memberValue(), false);
+            return listLhs ? Primitives.listMembership(v, set, rowCount, negate, false)
+                    : Primitives.membership(v, set, rowCount, negate, false);
         }
         Object lastList = null;
         Primitives.MemberSet lastSet = null;
@@ -1980,7 +1976,7 @@ public final class ExprCompiler
             }
             else
             {
-                set = toSet(cell, caseInsensitive);
+                set = toSet(cell, false);
                 if (cell instanceof Collection<?>)
                 {
                     lastList = cell;
@@ -1989,9 +1985,8 @@ public final class ExprCompiler
             }
             // The same per-row decisions Primitives.listMembership / Primitives.membership make,
             // one row at a time because the set is the row's own.
-            boolean member = listLhs
-                    ? Primitives.anyInSet(v.value(r).resolved(), set, caseInsensitive)
-                    : Primitives.isMember(v.value(r).cell(), set, caseInsensitive);
+            boolean member = listLhs ? Primitives.anyInSet(v.value(r).resolved(), set, false)
+                    : Primitives.isMember(v.value(r).cell(), set, false);
             if (negate != member)
             {
                 out.set(r);
@@ -2105,7 +2100,7 @@ public final class ExprCompiler
             boolean literal, boolean negate, boolean time)
     {
         Primitives.TemporalMembers literalSet = literal
-                ? Primitives.TemporalMembers.of(literalMembers((Expr.Lit) right, false), time)
+                ? Primitives.TemporalMembers.of(literalMembers((Expr.Lit) right), time)
                 : null;
         ValuePlan membersP = literal || right instanceof Expr.Ref ? null : valuePlan(right);
         return run ->
@@ -2309,7 +2304,7 @@ public final class ExprCompiler
      * </p>
      */
     private static ExprProgram.BoolPlan wildcardMembershipPlan(ValuePlan nameP,
-            OperandSubstitutor.Wildcard wild, boolean negate, boolean caseInsensitive)
+            OperandSubstitutor.Wildcard wild, boolean negate)
     {
         Pattern compiledPattern = wild.hasDrivers() ? null : compileWildcardPattern(wild);
         return run ->
@@ -2327,12 +2322,11 @@ public final class ExprCompiler
                 List<Object> values = net.cumba.corej.core.exec.ValueResolver
                         .resolveWildcardValues(wild, compiledPattern, ctx, r);
                 // ⭐ phase 0 + §2a: MemberSet classifies, so a MissingValue member keeps its
-                // IDENTITY
-                // and a present value is folded for case-insensitivity exactly as before. The
-                // hand-rolled upper-casing loop that stood here could only carry strings.
-                Primitives.MemberSet set = Primitives.MemberSet.of(values, caseInsensitive);
+                // IDENTITY (the hand-rolled upper-casing loop that stood here could only carry
+                // strings; the case fold it served went with the SVY OQ6 surface).
+                Primitives.MemberSet set = Primitives.MemberSet.of(values, false);
                 // D81 (phase 6b): the probe is =='s own per-member decision tree.
-                return negate != Primitives.isMember(dv, set, caseInsensitive);
+                return negate != Primitives.isMember(dv, set, false);
             });
         };
     }
@@ -2350,16 +2344,26 @@ public final class ExprCompiler
 
 
     /**
-     * Whether {@code e} is a one-argument {@code upper(…)} — or {@code upcase(…)}, its registered
-     * alias (runbook W2 UA, {@code FINDINGS-unowned-residuals} G2): the case-insensitive membership
-     * surface, read at three places (the probe unwrap of a {@code colref($x)} probe, the
-     * case-insensitive flag, an {@code upper("…")} member in {@link #setTerm}). {@code lower} /
-     * {@code lowcase} have no such surface.
+     * The case fold {@code e} applies when it is a one-argument {@code upper(…)} /
+     * {@code upcase(…)} ({@code true}: to upper case) or {@code lower(…)} / {@code lowcase(…)}
+     * ({@code false}), else {@code null}. Since {@code SVY OQ6} (B5 S6, 2026-10-16) the four are
+     * plain value functions — the case-insensitive membership surface that read {@code isUpperCall}
+     * at three places (the probe unwrap, the members' fold flag, an {@code upper("…")} member) is
+     * gone; the one reader left is {@link #setTerm}, which constant-folds a {@code upper("…")}
+     * member to the function's own answer, as the plain function would compute it.
      */
-    private static boolean isUpperCall(Expr e)
+    private static @Nullable Boolean caseFoldOf(Expr e)
     {
-        return e instanceof Expr.Call c && ("upper".equals(c.name()) || "upcase".equals(c.name()))
-                && c.args().size() == 1 && c.kwargs().isEmpty();
+        if (!(e instanceof Expr.Call c) || c.args().size() != 1 || !c.kwargs().isEmpty())
+        {
+            return null;
+        }
+        return switch (c.name())
+        {
+        case "upper", "upcase" -> Boolean.TRUE;
+        case "lower", "lowcase" -> Boolean.FALSE;
+        default -> null;
+        };
     }
 
 
@@ -10154,13 +10158,13 @@ public final class ExprCompiler
     }
 
 
-    private static Primitives.MemberSet buildSet(EvalRun run, Expr right, boolean caseInsensitive)
+    private static Primitives.MemberSet buildSet(EvalRun run, Expr right)
     {
         if (right instanceof Expr.Lit lit)
         {
             // An authored literal has no spelling for a missing member, so every member is
             // present — stated by the factory rather than left to the reader.
-            return Primitives.MemberSet.ofStrings(literalMembers(lit, caseInsensitive));
+            return Primitives.MemberSet.ofStrings(literalMembers(lit));
         }
         if (right instanceof Expr.Ref ref)
         {
@@ -10174,18 +10178,17 @@ public final class ExprCompiler
             // table it runs on has no RDOMAIN column.
             // Legacy then runs is_(not_)contained_by against an empty set, and so must the native
             // path. The Collection / scalar / null folding is toSet's.
-            return toSet(var, caseInsensitive);
+            return toSet(var, false);
         }
         throw unsupported("membership right-hand side must be a list literal or a $-variable list");
     }
 
 
     /**
-     * The members of an authored list literal (or a single literal), folded for case-insensitivity
-     * — the textual member set of {@link #buildSet} and of the temporal arms, which take a list
-     * literal only.
+     * The members of an authored list literal (or a single literal), as written — the textual
+     * member set of {@link #buildSet} and of the temporal arms, which take a list literal only.
      */
-    private static Set<String> literalMembers(Expr.Lit lit, boolean caseInsensitive)
+    private static Set<String> literalMembers(Expr.Lit lit)
     {
         if (lit.kind() == Expr.LitKind.LIST)
         {
@@ -10194,22 +10197,24 @@ public final class ExprCompiler
             Set<String> set = LinkedHashSet.newLinkedHashSet(items.size());
             for (Expr item : items)
             {
-                set.add(setTerm(item, caseInsensitive));
+                set.add(setTerm(item));
             }
             return set;
         }
-        return Set.of(setTerm(lit, caseInsensitive));
+        return Set.of(setTerm(lit));
     }
 
 
     /**
-     * A membership-set term: unwraps an {@code upper("…")} wrapper (the case-insensitive surface
-     * preserves the original mixed-case literal under {@code upper(...)}) to its underlying text,
-     * then upper-cases it when {@code caseInsensitive} so the set matches the upper-cased probe.
+     * A membership-set term: a {@code upper("…")} / {@code lower("…")} member is constant-folded to
+     * the function's own answer over its literal ({@link #caseFoldOf}; the plain function, applied
+     * at compile time — not the retired surface's fold of every member), a temporal conversion is
+     * unwrapped to its ISO text, any other literal is its text as written.
      */
-    private static String setTerm(Expr item, boolean caseInsensitive)
+    private static String setTerm(Expr item)
     {
-        Expr inner = isUpperCall(item) ? ((Expr.Call) item).args().get(0) : item;
+        Boolean fold = caseFoldOf(item);
+        Expr inner = fold != null ? ((Expr.Call) item).args().get(0) : item;
         // Phase 1a: a TEMPORAL member is written `date("2020-01-01")` — the conversion spelling
         // Q2 rules to be the authoring (a bare string member against a date probe is the
         // MIXED_DATE_STRING_COMPARISON type error, never a reinterpretation). The conversion is
@@ -10220,7 +10225,9 @@ public final class ExprCompiler
         // merely compare as text, it did not BUILD.
         Expr unwrapped = temporalConversionOf(inner) != null ? ((Expr.Call) inner).args().get(0)
                 : inner;
-        return fold(literalText(unwrapped), caseInsensitive);
+        String text = literalText(unwrapped);
+        return fold == null ? text
+                : fold ? text.toUpperCase(Locale.ROOT) : text.toLowerCase(Locale.ROOT);
     }
 
 
@@ -10268,12 +10275,6 @@ public final class ExprCompiler
     {
         String marker = markerOf(e);
         return "date".equals(marker) || "time".equals(marker) ? marker : null;
-    }
-
-
-    private static String fold(String s, boolean caseInsensitive)
-    {
-        return caseInsensitive ? s.toUpperCase(Locale.ROOT) : s;
     }
 
     // ---------------------------------------------------------------------

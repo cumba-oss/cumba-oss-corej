@@ -205,8 +205,8 @@ class MembershipRoutingByValueTest
         assertTwins(List.of(1L), "lower($s) in [\"b\"]", "$u in [\"b\"]", "lower($s)", s);
         assertTwins(List.of(2L, 3L), "lower($s) not in [\"b\"]", "$u not in [\"b\"]", "lower($s)",
                 s);
-        // the case-insensitive surface: upper($s) folds probe and members alike
-        assertTwins(List.of(1L), "upper($s) in [\"b\"]", "$u in [\"B\"]", "upper($s)", s);
+        // SVY OQ6 (B5 S6): upper is a plain function — the members are matched as written
+        assertTwins(List.of(1L), "upper($s) in [\"B\"]", "$u in [\"B\"]", "upper($s)", s);
     }
 
 
@@ -231,7 +231,7 @@ class MembershipRoutingByValueTest
         {
                 "$a", "trim(A)"
         };
-        assertTwins(List.of(1L), "upper($a) in [\"a\"]", "upper($u) in [\"a\"]", "$a", a);
+        assertTwins(List.of(1L), "upper($a) in [\"A\"]", "upper($u) in [\"A\"]", "$a", a);
         assertTwins(List.of(3L), "lower($a) in [\"c\"]", "$u in [\"c\"]", "lower($a)", a);
     }
 }

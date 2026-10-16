@@ -322,6 +322,22 @@ public enum StageAErrorKind
     JOINED_QUANTIFIER(true),
 
     /**
+     * A case-fold probe — {@code upper(…)} / {@code upcase(…)} / {@code lower(…)} /
+     * {@code lowcase(…)} — compared by {@code in} / {@code not in} / {@code ==} / {@code !=} with a
+     * string literal (or a list-literal member) that is not in the fold's case:
+     * {@code upper(X) in ["mild"]} can never match, since the probe is upper-case text and the
+     * member is matched as written ({@code SVY OQ6}, owner 2026-10-16: <i>"the load error
+     * only"</i>; B5 S6). "Not in that case" is {@code !lit.equals(lit.toUpperCase(Locale.ROOT))}
+     * for the upper folds and the lower-case twin for the lower folds — the locale {@code caseFold}
+     * itself uses — so a literal with no cased character passes and {@code "ß"} (upper-cases to
+     * {@code "SS"}) errors. Armed: the corpus census of 2026-10-16 found no literal compared to a
+     * fold probe in the other case (291 fold-probe comparisons, both corpora), so no shipped rule
+     * parks; the kind exists because until SVY OQ6 the surface folded the members too, and a rule
+     * written for that surface would otherwise go silent.
+     */
+    FOLD_PROBE_LITERAL_CASE(true),
+
+    /**
      * The checker itself failed on this rule. Never armed: a checker defect must not park a rule
      * (that would be an evaluation change caused by the instrument).
      */

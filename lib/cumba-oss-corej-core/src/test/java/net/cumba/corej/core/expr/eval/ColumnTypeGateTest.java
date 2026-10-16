@@ -266,7 +266,7 @@ class ColumnTypeGateTest
         // str()==str() is the explicit type-insensitive surface (kept per R12's "no char()" —
         // str() compares string FORMS by declaration, not by accident).
         assertEquals(bits(2), eval("str(AVAL) == str(\"1\")", c));
-        // upper() membership is the explicit case-insensitive surface.
+        // upper() over a column is a computed value with no gated name: never gated (B5 C13 (6)).
         assertEquals(new BitSet(), eval("upper(DOSE) in [\"X\"]", c));
     }
 
