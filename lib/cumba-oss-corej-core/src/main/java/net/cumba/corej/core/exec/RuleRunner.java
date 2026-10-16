@@ -3107,7 +3107,14 @@ public final class RuleRunner
                 for (Map.Entry<String, String> e : dfMeta.entrySet())
                 {
                     String key = "define_variable_" + e.getKey();
-                    varMeta.put(key, reportedMeta(key, e.getValue()));
+                    // C14 on BOTH data-universe paths (VLM review MED-1): a list attribute reports
+                    // in the canonical sorted form — the column-level finding and the
+                    // per-(variable, row) one (addVariableRowViolations; FDA/PMDA-SD0037) read
+                    // it from here. A null provider value stays the entry's default, never a
+                    // rendered "[.]" (ENGINE FOLD LOW-1). Report-only: this map is built after
+                    // the verdict.
+                    varMeta.put(key,
+                            reportedMeta(key, formatDefineOutput(e.getKey(), e.getValue())));
                 }
                 String simpleDatatype = dfMeta.get("simpleDatatype");
                 if (simpleDatatype != null)
@@ -3242,28 +3249,11 @@ public final class RuleRunner
             {
                 if (varMeta.containsKey(ov))
                 {
+                    // A define list attribute is already in the canonical sorted form (C14, VLM
+                    // review MED-1): buildVariableMetadata renders it for both data-universe paths
                     Object val = varMeta.get(ov);
-                    String text = val != null ? val.toString()
-                            : OutputEntryKind.of(ov).defaultValue();
-                    if (ov.startsWith(DEFINE_VARIABLE_PREFIX) && LIST_DEFINE_KEYS
-                            .contains(ov.substring(DEFINE_VARIABLE_PREFIX.length())))
-                    {
-                        // C14 on the DATA universe too (VLM review MED-1): varMeta carries the
-                        // provider's JSON encoding of a list attribute for the EVALUATION; the
-                        // report renders it in the canonical sorted form, as the define universe
-                        // does (buildDefineVariableViolation) — the effective Output_Variables of
-                        // a rule reading var_vlm_origin_types land here. The rendering is the one
-                        // the block above already made from the RAW provider value: varMeta holds
-                        // a null provider value as the entry's default, which formatted would
-                        // report "[.]" / "[]" for a value the provider never gave (ENGINE FOLD
-                        // LOW-1)
-                        String rendered = values.get(ov);
-                        if (rendered != null)
-                        {
-                            text = rendered;
-                        }
-                    }
-                    filtered.put(ov, text);
+                    filtered.put(ov,
+                            val != null ? val.toString() : OutputEntryKind.of(ov).defaultValue());
                 }
                 else if (ov.startsWith("$") && contextVariables != null
                         && contextVariables.containsKey(ov))
@@ -3637,9 +3627,6 @@ public final class RuleRunner
 
     /** {@link OutputEntryKind#VARIABLE_VALUE}. */
     private static final String VARIABLE_VALUE = OutputEntryKind.VARIABLE_VALUE;
-
-    /** The report key prefix of a define-variable attribute ({@code define_variable_<key>}). */
-    private static final String DEFINE_VARIABLE_PREFIX = "define_variable_";
 
     /**
      * The provider keys of the list-valued define attributes ({@link MetadataAttribute#isList()}),

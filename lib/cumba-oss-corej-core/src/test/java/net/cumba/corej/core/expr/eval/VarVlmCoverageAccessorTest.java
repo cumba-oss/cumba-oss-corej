@@ -686,6 +686,66 @@ class VarVlmCoverageAccessorTest
                 values.get("define_variable_vlm_origin_types"), values.toString());
     }
 
+
+    /**
+     * The per-(variable, row) path ({@code RuleRunner.addVariableRowViolations}, a Check reading
+     * {@code value()}) reports a list attribute in the same canonical sorted form as the
+     * column-level path — {@code FDA-SD0037} / {@code PMDA-SD0037} reach it with
+     * {@code define_variable_codelist_coded_values} in their derived Output_Variables. Before the
+     * fix every row carried the provider's raw JSON encoding ({@code ["Collected","CRF"]}).
+     */
+    @Test
+    void thePerRowPathReportsTheListInTheSortedFormToo() throws Exception
+    {
+        Rule rule = load(
+                """
+                        {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                         "Check":{"expression": "equalsIgnoreCase(varname(), \\"LBORNRLO\\") and not empty(value()) and not empty(var_vlm_origin_types(\\"DEFINE\\"))"},
+                         "Outcome":{"Message":"m"}}""");
+        assertTrue(
+                rule.effectiveOutputVariablesOrAuthored()
+                        .contains("define_variable_vlm_origin_types"),
+                rule.effectiveOutputVariablesOrAuthored().toString());
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, lbRanges(), _ -> null, "LB",
+                null, null, define);
+        assertEquals("EXECUTED", result.getStatus().name(), result.getStatusMessage());
+        // one finding per ROW: the per-(variable, row) path, not the column-level one
+        assertEquals(2, result.getViolationCount(), result.getViolations().toString());
+        for (Violation v : result.getViolations())
+        {
+            assertEquals("LBORNRLO", v.getValues().get("variable_name"));
+            assertEquals("[CRF, Collected]", v.getValues().get("define_variable_vlm_origin_types"),
+                    v.getValues().toString());
+        }
+    }
+
+
+    /**
+     * ENGINE FOLD LOW-1 on the per-(variable, row) path: a {@code null} list value reports the
+     * entry's default, never the default run through the list rendering.
+     */
+    @Test
+    void thePerRowPathReportsANullListValueAsTheEntrysDefault() throws Exception
+    {
+        Rule rule = load(
+                """
+                        {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                         "Check":{"expression": "equalsIgnoreCase(varname(), \\"LBORNRLO\\") and not empty(value()) and not empty(var_name(\\"DEFINE\\"))"},
+                         "Outcome":{"Message":"m","Output_Variables":["variable_name","define_variable_vlm_origin_types"]}}""");
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, lbRanges(), _ -> null, "LB",
+                null, null, new NullListValueProvider());
+        assertEquals("EXECUTED", result.getStatus().name(), result.getStatusMessage());
+        assertEquals(2, result.getViolationCount(), result.getViolations().toString());
+        for (Violation v : result.getViolations())
+        {
+            assertEquals(
+                    net.cumba.corej.core.exec.OutputEntryKind.of("define_variable_vlm_origin_types")
+                            .defaultValue(),
+                    v.getValues().get("define_variable_vlm_origin_types"),
+                    v.getValues().toString());
+        }
+    }
+
     /** A define provider serving every LB variable its name and a {@code null} origin list. */
     private static final class NullListValueProvider implements MetadataProvider
     {
