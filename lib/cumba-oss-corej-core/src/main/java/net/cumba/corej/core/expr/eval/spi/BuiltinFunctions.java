@@ -1338,9 +1338,9 @@ public final class BuiltinFunctions implements FunctionProvider
      */
     private static ComputedVector affixValue(int rowCount, Vector x, Vector n, boolean isPrefix)
     {
-        // Gate hoisted to vector construction, as between/numericValue do: a missing x takes the
-        // D36 early return before n is read, so the per-row gate in integral() alone would let a
-        // Char n column pass wherever x is missing on every row.
+        // Gate at vector construction, as between/numericValue do: a missing x takes the D36
+        // early return before n is read, so a gate reached only per row (integral() has none
+        // since B5 review MED-1) would let a Char n column pass wherever x is missing on every row.
         net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(n,
                 "a numeric function operand");
         return new ComputedVector(rowCount, DataValueType.STRING, row ->

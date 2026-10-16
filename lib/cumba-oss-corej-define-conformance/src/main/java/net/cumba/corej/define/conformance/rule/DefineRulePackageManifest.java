@@ -97,12 +97,14 @@ public record DefineRulePackageManifest(@JsonProperty("generatedFrom") String ge
      * Reads {@code packages.json} from a directory.
      *
      * <p>
-     * Three shapes are refused at load, each a {@link DefineRuleSelectionException} naming the
-     * file, because with an open family set nothing else would catch them: an entry without a
-     * family (it could never be selected and would reach every comparison as {@code null}); a
-     * family spelled like an engine category ({@code XSD} / {@code SCHEMA} / {@code SPECIFICATION},
-     * ignoring case — its findings would merge into that category); and two entries whose families
-     * differ only in case (one spelling per family, so {@link #canonicalFamily} has one answer).
+     * Five shapes are refused at load, each a {@link DefineRuleSelectionException} naming the file,
+     * because with an open family set nothing else would catch them: an entry without a file and an
+     * entry without a version (neither could ever be selected or resolved — each would reach
+     * {@code find} / {@code versionsFor} as {@code null}); an entry without a family (it could
+     * never be selected and would reach every comparison as {@code null}); a family spelled like an
+     * engine category ({@code XSD} / {@code SCHEMA} / {@code SPECIFICATION}, ignoring case — its
+     * findings would merge into that category); and two entries whose families differ only in case
+     * (one spelling per family, so {@link #canonicalFamily} has one answer).
      * </p>
      */
     public static DefineRulePackageManifest load(Path aDirectory) throws IOException

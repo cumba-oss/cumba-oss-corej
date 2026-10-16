@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.IntFunction;
-import java.util.function.Supplier;
 import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
@@ -76,26 +75,24 @@ final class MergedViewLookup implements JoinLookup
 
     /**
      * The keyed partner table's declared {@code Encoding}, or {@code null} — for a Child parent or
-     * a RELREC domain the source table's own, read lazily ({@link #declaredEncoding}).
+     * a RELREC domain the source table's own, read from {@link #source}
+     * ({@link #declaredEncoding}).
      */
     private final @Nullable String encoding;
 
     /**
-     * The part's source table as resolved for the merge: a keyed partner the builder holds, or the
-     * dataset a Child parent / RELREC domain names, resolved on first use through the run's
-     * resolver (B5 review L2) — {@code null} when the resolver refuses it (a type-clashing split
-     * domain: the merge's own ERROR, not this lookup's), so {@link #sourceColumnIsBlank} then
-     * answers "not blank" and {@link #declaredEncoding} none.
+     * The part's source table as the merge read it: a keyed partner the builder holds, or the
+     * dataset a Child parent / RELREC domain names, captured from the merge's own resolution at
+     * construction (B5 review L2; ENGINE FOLD MED-1: a final field, never a lazy memo — the built
+     * view is shared by the rules running in parallel) — {@code null} when the merge resolved no
+     * table under the part's source name, so {@link #sourceColumnIsBlank} then answers "not blank"
+     * and {@link #declaredEncoding} none.
      */
-    private final Supplier<@Nullable IDataTable> source;
-
-    private boolean sourceResolved;
-
-    private @Nullable IDataTable resolvedSource;
+    private final @Nullable IDataTable source;
 
     MergedViewLookup(MergedTable aView, MergedPart aPart, IntFunction<@Nullable MergedPart> aPartOf,
             boolean aShifted, Map<String, String> aFlagged, @Nullable String aEncoding,
-            Supplier<@Nullable IDataTable> aSource)
+            @Nullable IDataTable aSource)
     {
         view = aView;
         part = aPart;
@@ -108,17 +105,6 @@ final class MergedViewLookup implements JoinLookup
     }
 
 
-    private @Nullable IDataTable source()
-    {
-        if (!sourceResolved)
-        {
-            resolvedSource = source.get();
-            sourceResolved = true;
-        }
-        return resolvedSource;
-    }
-
-
     /**
      * {@inheritDoc} Answered from the SOURCE table's own content status
      * ({@code IDataTable.getColumnContent}, cached per table where the table caches it), never from
@@ -127,20 +113,19 @@ final class MergedViewLookup implements JoinLookup
     @Override
     public boolean sourceColumnIsBlank(String columnName)
     {
-        IDataTable table = source();
-        if (table == null)
+        if (source == null)
         {
             return false;
         }
-        int idx = table.getMetaData().getColumnIndex(columnName);
-        return idx >= 0 && table.getColumnContent(idx).isBlank();
+        int idx = source.getMetaData().getColumnIndex(columnName);
+        return idx >= 0 && source.getColumnContent(idx).isBlank();
     }
 
 
     /**
      * {@inheritDoc} The keyed partner's declared {@code Encoding} as the builder read it; for a
      * Child parent or a RELREC domain the source table's own declared {@code Encoding}, or
-     * {@code null} when it declares none or the source cannot be reached — a missing byte count
+     * {@code null} when it declares none or the merge read no source table — a missing byte count
      * either way, never the primary's charset (B3 review LOW-1).
      */
     @Override
@@ -150,8 +135,7 @@ final class MergedViewLookup implements JoinLookup
         {
             return encoding;
         }
-        IDataTable table = source();
-        Object declared = table == null ? null : table.getMetaData().getMetaData("Encoding");
+        Object declared = source == null ? null : source.getMetaData().getMetaData("Encoding");
         return declared == null ? null : declared.toString();
     }
 

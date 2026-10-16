@@ -3245,15 +3245,23 @@ public final class RuleRunner
                     Object val = varMeta.get(ov);
                     String text = val != null ? val.toString()
                             : OutputEntryKind.of(ov).defaultValue();
-                    if (val != null && ov.startsWith(DEFINE_VARIABLE_PREFIX))
+                    if (ov.startsWith(DEFINE_VARIABLE_PREFIX) && LIST_DEFINE_KEYS
+                            .contains(ov.substring(DEFINE_VARIABLE_PREFIX.length())))
                     {
                         // C14 on the DATA universe too (VLM review MED-1): varMeta carries the
                         // provider's JSON encoding of a list attribute for the EVALUATION; the
                         // report renders it in the canonical sorted form, as the define universe
                         // does (buildDefineVariableViolation) — the effective Output_Variables of
-                        // a rule reading var_vlm_origin_types land here
-                        text = reportedMeta(ov, formatDefineOutput(
-                                ov.substring(DEFINE_VARIABLE_PREFIX.length()), text));
+                        // a rule reading var_vlm_origin_types land here. The rendering is the one
+                        // the block above already made from the RAW provider value: varMeta holds
+                        // a null provider value as the entry's default, which formatted would
+                        // report "[.]" / "[]" for a value the provider never gave (ENGINE FOLD
+                        // LOW-1)
+                        String rendered = values.get(ov);
+                        if (rendered != null)
+                        {
+                            text = rendered;
+                        }
                     }
                     filtered.put(ov, text);
                 }

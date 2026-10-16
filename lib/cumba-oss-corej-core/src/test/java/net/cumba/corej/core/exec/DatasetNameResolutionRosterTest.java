@@ -117,11 +117,10 @@ class DatasetNameResolutionRosterTest
                     "C19 the primary's SUPP sources"),
             Map.entry("exec/MergedEvaluation#build:SplitDomainResolution.resolveTableOrThrow",
                     "C19 the D11 callback: every non-chosen name through the widened seam"),
-            Map.entry("exec/MergedEvaluation#resolveQuietly:datasets.resolve",
-                    "§9 the lazy source of a Child parent / RELREC part's lookup (B5 review L2): the D11"
-                            + " callback's own seam, reached only once the merged view exists; a refusal"
-                            + " (a type-clashing split domain) is swallowed because the merge raises it"
-                            + " where it reads the table"),
+            Map.entry("exec/MergedEvaluation#construct:datasets.resolve",
+                    "§9 the merge's own resolution through the D11 callback, recorded so a Child parent /"
+                            + " RELREC part's lookup holds the table the merge read (B5 review L2, ENGINE"
+                            + " FOLD MED-1); a refusal propagates as the merge's own ERROR"),
             Map.entry("exec/MergedEvaluation#keyedSpecs:DatasetIdentity.resolveDatasetWildcard",
                     "C18 non-Child Match_Datasets SUPP--"),
             Map.entry("exec/MergedEvaluation#keyedSpecs:SplitDomainResolution.resolveTableOrThrow",

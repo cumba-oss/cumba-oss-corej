@@ -597,9 +597,24 @@ public final class MergedEvaluation
         IDataTable primary = child == null ? dataset
                 : ChildEntries.withPointerTokens(dataset, child, datasets);
         List<List<KeyedMergeSpec>> stages = stages(keyed);
+        // ENGINE FOLD MED-1: every table the merge resolves, under the name its part carries
+        // (MergedPart.source, the table's own name) — so a Child parent's / RELREC domain's lookup
+        // holds the very table the merge read from construction on, a final field shared safely
+        // by the rules running in parallel over the cached view, never re-resolved
+        Map<String, IDataTable> mergeRead = new ConcurrentHashMap<>();
+        net.cumba.datatable.merge.DatasetResolver recording = name ->
+        {
+            IDataTable table = datasets.resolve(name);
+            String tableName = table == null ? null : table.getMetaData().getName();
+            if (tableName != null)
+            {
+                mergeRead.putIfAbsent(tableName, table);
+            }
+            return table;
+        };
         MergedTable view = MergedTables.build(MergeRequest.builder().primary(primary)
                 .primaryDomain(primaryDomain).keyed(stages.get(0)).supp(supp).child(child)
-                .relrec(relrec).resolver(datasets).matchedFlags(true).standard(standard).build());
+                .relrec(relrec).resolver(recording).matchedFlags(true).standard(standard).build());
         List<MergedPart> parts = new ArrayList<>(view.parts().subList(1, view.parts().size()));
         java.util.Set<String> suppQnams = view.suppQnams();
         boolean rowMapped = view.isRowMapped();
@@ -610,7 +625,7 @@ public final class MergedEvaluation
             // a chained key (W6): the next stage keys on a column of the table built so far
             // (DM.RPATHCD), which is that stage's primary; its columns keep their indices
             view = MergedTables.build(MergeRequest.builder().primary(view)
-                    .primaryDomain(primaryDomain).keyed(stages.get(s)).resolver(datasets)
+                    .primaryDomain(primaryDomain).keyed(stages.get(s)).resolver(recording)
                     .matchedFlags(true).standard(standard).build());
             parts.addAll(view.parts().subList(1, view.parts().size()));
             rowMapped |= view.isRowMapped();
@@ -668,13 +683,12 @@ public final class MergedEvaluation
             if (part.kind() == MergeKind.KEYED || part.kind() == MergeKind.CHILD
                     || part.kind() == MergeKind.RELREC)
             {
-                // a keyed partner is held; a Child parent / RELREC domain is resolved on first
-                // use through the run's resolver (B5 review L2) — a type-clashing split domain's
-                // refusal is the merge's own ERROR where the merge reads it, never this lookup's
+                // a keyed partner is held; a Child parent / RELREC domain is the table the merge
+                // read for it (B5 review L2) — a type-clashing split domain never gets here: the
+                // merge's own resolution refused it above
                 IDataTable held = partners.get(part.source());
-                String sourceName = part.source();
-                java.util.function.Supplier<@Nullable IDataTable> source = held != null ? () -> held
-                        : () -> resolveQuietly(datasets, sourceName);
+                @Nullable
+                IDataTable source = held != null ? held : mergeRead.get(part.source());
                 lookups.put(part.qualifier(),
                         new MergedViewLookup(view, part, partOf, plant == part.kind(),
                                 Collections.unmodifiableMap(flagged), encodings.get(part.source()),
@@ -683,25 +697,6 @@ public final class MergedEvaluation
         }
         return new Built(view, table, lookups, flat, suppQnams, flagged, plant == MergeKind.SUPP,
                 shared, relrec != null, child != null);
-    }
-
-
-    /**
-     * A part's source table through the run's resolver, or {@code null} when it cannot be resolved
-     * — the invalid-split refusal ({@code InvalidJoinedDomainException}) and any other refusal of
-     * the resolver are the merge's to raise where the merge reads the table, not a lookup's.
-     */
-    private static @Nullable IDataTable resolveQuietly(
-            net.cumba.datatable.merge.DatasetResolver datasets, String name)
-    {
-        try
-        {
-            return datasets.resolve(name);
-        }
-        catch (RuntimeException _)
-        {
-            return null;
-        }
     }
 
 

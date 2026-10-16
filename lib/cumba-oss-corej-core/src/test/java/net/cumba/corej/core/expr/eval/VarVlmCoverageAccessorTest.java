@@ -661,6 +661,109 @@ class VarVlmCoverageAccessorTest
 
 
     /**
+     * ENGINE FOLD LOW-1: a provider that maps a list attribute to {@code null} (the real define
+     * provider never serves the key then, so a small fake does) reports the entry's default on the
+     * DATA-universe Output_Variables projection, exactly as the default projection and the define
+     * universe do — never the default run through the list rendering ({@code "[.]"}).
+     */
+    @Test
+    void aNullListValueReportsTheEntrysDefaultNotARenderedList() throws Exception
+    {
+        Rule rule = load(
+                """
+                        {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                         "Check":{"expression": "equalsIgnoreCase(varname(), \\"LBORNRLO\\") and not empty(var_name(\\"DEFINE\\"))"},
+                         "Outcome":{"Message":"m","Output_Variables":["variable_name","define_variable_vlm_origin_types"]}}""");
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, lbRanges(), _ -> null, "LB",
+                null, null, new NullListValueProvider());
+        assertEquals("EXECUTED", result.getStatus().name(), result.getStatusMessage());
+        assertEquals(1, result.getViolationCount(), result.getViolations().toString());
+        Map<String, String> values = result.getViolations().get(0).getValues();
+        assertEquals("LBORNRLO", values.get("variable_name"));
+        assertEquals(
+                net.cumba.corej.core.exec.OutputEntryKind.of("define_variable_vlm_origin_types")
+                        .defaultValue(),
+                values.get("define_variable_vlm_origin_types"), values.toString());
+    }
+
+    /** A define provider serving every LB variable its name and a {@code null} origin list. */
+    private static final class NullListValueProvider implements MetadataProvider
+    {
+
+        @Override
+        public Map<String, String> getVariableMetadata(String domain, String variable)
+        {
+            Map<String, String> out = new java.util.HashMap<>();
+            out.put("name", variable);
+            out.put("vlm_origin_types", null);
+            return out;
+        }
+
+
+        @Override
+        public List<String> getRequiredVariables(String domain)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public List<String> getExpectedVariables(String domain)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public List<String> getColumnOrder(String domain)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public boolean isDomainCustom(String domain)
+        {
+            return false;
+        }
+
+
+        @Override
+        public List<String> getCodelistTerms(String codelistCode)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public List<Map<String, String>> getDomainVariables(String domain)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public Map<String, String> getDatasetMetadata(String domain)
+        {
+            return Map.of();
+        }
+
+
+        @Override
+        public java.util.Optional<Boolean> isCodelistExtensible(String codelistName)
+        {
+            return java.util.Optional.empty();
+        }
+
+
+        @Override
+        public String getStandard()
+        {
+            return "SENDIG";
+        }
+    }
+
+    /**
      * {@code CDISC-SEND-0129.1}: the same cases as 0112.1; LBORNRHI (Collected + an entry without
      * an origin, both without a method) and LBSTRESN (a dangling entry) stay silent because
      * {@code ""} is exempt (VU3 (a)) — without the {@code ""} member they fire (sensitivity).
