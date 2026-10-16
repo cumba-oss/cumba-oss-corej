@@ -400,6 +400,26 @@ class GroupedResultKeyIdentityTest
         assertEquals(List.of(2L, 1L, 2L), counts(List.of("USUBJID", "VISITNUM"), union));
     }
 
+
+    /**
+     * The character twin of {@link #aSplitDomainUnionGroupsAnAbsentMemberColumnWithAStoredMissing}
+     * (owner ruling {@code SVY OQ8} ⓑ, 2026-10-16; PLAN-bugfix-datatable-readers-views U15): a
+     * member that lacks the STRING column {@code LBSPEC} reads its absent-column default {@code ""}
+     * on both channels, so its rows form ONE group with a member's stored {@code ""} &mdash; no
+     * tripwire, no second block. Before the ruling the absent cell read {@code MIS}, a group of its
+     * own. The DOUBLE case above is unchanged (a numeric absent cell stays {@code MIS}).
+     */
+    @Test
+    void aSplitDomainUnionGroupsAnAbsentCharMemberColumnWithAStoredEmptyString()
+    {
+        IDataTable lbc1 = RealTables.of("lbc1").str("USUBJID", "S1", "S1")
+                .str("LBSPEC", "", "SERUM").build();
+        IDataTable lbc2 = RealTables.of("lbc2").str("USUBJID", "S1").build();
+        UnionDataTable union = new UnionDataTable("LB", lbc1, lbc2);
+        assertEquals(List.of(2L, 1L, 2L), counts(List.of("USUBJID", "LBSPEC"), union));
+        assertEquals(List.of(2L, 1L, 2L), counts(List.of("LBSPEC"), union));
+    }
+
     // ---------------------------------------------------------------- the tripwire
 
 

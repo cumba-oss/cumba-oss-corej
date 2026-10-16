@@ -157,6 +157,82 @@ class RuleRunnerSplitJoinTest
         assertEquals(List.of(), rows(res), "without an inventory the rule stays a no-op");
     }
 
+    // ------------------------------- SVY OQ8 ⓑ: a member-absent char cell of a split partner
+
+
+    /** Member 1 stores {@code LBSPEC = ""}; member 2 lacks the column. */
+    private static IDataTable lbspecCh()
+    {
+        return RealTables.of("lbch").str("DOMAIN", "LB").str("USUBJID", "U1").str("LBSEQ", "1")
+                .str("LBSPEC", "").build();
+    }
+
+
+    private static IDataTable lbspecHe()
+    {
+        return RealTables.of("lbhe").str("DOMAIN", "LB").str("USUBJID", "U2").str("LBSEQ", "9")
+                .build();
+    }
+
+
+    /** Primary rows joined to member 1 (row 0) and to member 2 (row 1). */
+    private static IDataTable adlbBoth()
+    {
+        return RealTables.of("ADLB").str("USUBJID", "U1", "U2").str("LBSEQ", "1", "9").build();
+    }
+
+
+    private static Rule onSplitPartner(String aId, String aCheck)
+    {
+        Rule rule = new Rule();
+        RuleCore core = new RuleCore();
+        core.setId(aId);
+        rule.setCore(core);
+        rule.setScope(new Scope());
+        rule.setSensitivity(Sensitivity.RECORD);
+        Outcome outcome = new Outcome();
+        outcome.setMessage("split partner probe");
+        outcome.setOutputVariables(List.of("USUBJID", "LBSEQ"));
+        rule.setOutcome(outcome);
+        rule.setMatchDatasets(List.of(md("LB", "left", "USUBJID", "LBSEQ")));
+        rule.setCheck(new CheckConditionAll(List.of(expr(aCheck))));
+        RulePackageLoader.installNativeExpr(rule);
+        return rule;
+    }
+
+
+    private static List<Long> firedOnSplitPartner(String aCheck)
+    {
+        DatasetResolver.WithInventory inv = RealTables.inventoryOf(adlbBoth(), lbspecCh(),
+                lbspecHe());
+        RuleExecutionResult res = RuleRunnerCalls.execute(onSplitPartner("TEST-OQ8", aCheck),
+                adlbBoth(), inv, null, null);
+        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(), aCheck);
+        return rows(res);
+    }
+
+
+    /**
+     * The engine-verdict sensitivity instrument of U15 (PLAN-bugfix-datatable-readers-views; owner
+     * ruling {@code SVY OQ8} ⓑ, 2026-10-16): over a split-domain merge partner ({@code LB} =
+     * {@code lbch} + {@code lbhe}, {@code lbhe} lacking the char column {@code LBSPEC}), a row
+     * joined to the {@code lbhe} member reads the absent-column default {@code ""}. So
+     * {@code LB.LBSPEC == ""} holds on BOTH joined rows (before the ruling the absent cell read
+     * {@code MIS} and only row 0 fired: {@code MIS == ""} is false) and {@code is_missing} holds on
+     * neither (it is true only for a genuine missing value, {@code Primitives.isMissing}).
+     * {@code empty()} is blank-insensitive ({@code ScalarSemantics.isMissing} &rarr;
+     * {@code DataValueSupport.isEmptyOrMissing}: true for {@code MIS} and {@code ""} alike), so it
+     * fires on both rows before and after &mdash; the control that the join itself is unchanged.
+     */
+    @Test
+    void aSplitPartnersMemberAbsentCharCellReadsTheEmptyString()
+    {
+        assertEquals(List.of(0L, 1L), firedOnSplitPartner("LB.LBSPEC == \"\""));
+        assertEquals(List.of(), firedOnSplitPartner("LB.LBSPEC != \"\""));
+        assertEquals(List.of(), firedOnSplitPartner("is_missing(LB.LBSPEC)"));
+        assertEquals(List.of(0L, 1L), firedOnSplitPartner("empty(LB.LBSPEC)"));
+    }
+
     // --------------------------------------------------------------- exact path byte-identical
 
 
