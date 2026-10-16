@@ -10723,6 +10723,12 @@ public final class ExprCompiler
                             net.cumba.corej.core.exec.LibraryLists.LEVELS,
                             net.cumba.corej.core.exec.LibraryLists.RETURNTYPE_PARAMETER,
                             net.cumba.corej.core.exec.LibraryLists.RETURNTYPES),
+                    // PLAN-ct-class-exemption-data-rules CC1: the QRS class and role
+                    net.cumba.corej.core.exec.LibraryLists.CT_CLASS_TERMS,
+                    map2(net.cumba.corej.core.exec.LibraryLists.CT_CLASS_PARAMETER,
+                            net.cumba.corej.core.exec.LibraryLists.CT_CLASSES,
+                            net.cumba.corej.core.exec.LibraryLists.CT_ROLE_PARAMETER,
+                            net.cumba.corej.core.exec.LibraryLists.CT_ROLES),
                     net.cumba.corej.core.exec.LibraryLists.GET_DATASET_FILTERED_VARIABLES,
                     map1(net.cumba.corej.core.exec.LibraryLists.KEY_NAME_PARAMETER,
                             net.cumba.corej.core.metadata.LibraryVariableAttributes.KEYS),

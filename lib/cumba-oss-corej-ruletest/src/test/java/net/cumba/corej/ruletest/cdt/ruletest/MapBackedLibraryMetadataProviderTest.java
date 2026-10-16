@@ -628,4 +628,45 @@ class MapBackedLibraryMetadataProviderTest
                     .build().isEmpty());
         }
     }
+
+
+    /**
+     * {@code PLAN-ct-class-exemption-data-rules} C6: the class rides on
+     * {@code codelist-meta pref=}.
+     */
+    @Nested
+    class CodelistsOfClass
+    {
+
+        @Test
+        void aCodelistMatchesByThePreferredTermsClassAndRole()
+        {
+            MapBackedLibraryMetadataProvider p = MapBackedLibraryMetadataProvider.builder()
+                    .codelistTerms("HAMD1TC", "HAMD101", "HAMD102")
+                    .codelistMeta("HAMD1TC",
+                            Map.of("pref",
+                                    "CDISC Clinical Classification HAMD 17 Test Code Terminology"))
+                    .codelistTerms("HAMD1TN", "HAMD1-Depressed Mood")
+                    .codelistMeta("HAMD1TN",
+                            Map.of("pref",
+                                    "CDISC Clinical Classification HAMD 17 Test Name Terminology"))
+                    .codelistTerms("SEX", "M", "F")
+                    .codelistMeta("SEX", Map.of("pref", "CDISC SDTM Sex Terminology"))
+                    // terms but no pref=: never in a class
+                    .codelistTerms("CGI01TC", "CGI0101").build();
+
+            List<ICodeList> testCodes = p.getCodelistsOfClass("Clinical Classification",
+                    "Test Code");
+            assertEquals(List.of("HAMD1TC"), testCodes.stream().map(ICodeList::getName).toList());
+            assertEquals(List.of("HAMD101", "HAMD102"), testCodes.get(0).getEntries().stream()
+                    .map(ICodelistEntry::getCodeValue).toList());
+            assertEquals(List.of("HAMD1TN"),
+                    p.getCodelistsOfClass("Clinical Classification", "Test Name").stream()
+                            .map(ICodeList::getName).toList());
+            assertEquals(List.of(), p.getCodelistsOfClass("Questionnaire", "Test Code"));
+            assertEquals(List.of(), p.getCodelistsOfClass("Clinical Classification", "Category"));
+            assertEquals(List.of(), MapBackedLibraryMetadataProvider.empty()
+                    .getCodelistsOfClass("Clinical Classification", "Test Code"));
+        }
+    }
 }

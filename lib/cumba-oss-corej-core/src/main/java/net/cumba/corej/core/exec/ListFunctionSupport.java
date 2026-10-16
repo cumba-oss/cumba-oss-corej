@@ -44,7 +44,7 @@ public final class ListFunctionSupport
             LibraryLists.VARIABLE_NAMES, LibraryLists.STANDARD_DOMAINS,
             LibraryLists.GET_DATASET_FILTERED_VARIABLES, LibraryLists.NATURAL_KEY_VARIABLES,
             LibraryLists.GET_MODEL_FILTERED_VARIABLES, LibraryLists.VALID_CODELIST_DATES,
-            LibraryLists.CODELIST_TERMS, ParentModelColumnOrder.NAME,
+            LibraryLists.CODELIST_TERMS, LibraryLists.CT_CLASS_TERMS, ParentModelColumnOrder.NAME,
             DefineLists.DEFINE_VARIABLE_NAMES, DefineLists.DEFINE_DATASET_NAMES,
             DefineLists.DEFINE_KEY_VARIABLES, InventoryLists.GET_COLUMN_ORDER_FROM_DATASET,
             InventoryLists.DATASET_NAMES, InventoryLists.STUDY_DOMAINS,

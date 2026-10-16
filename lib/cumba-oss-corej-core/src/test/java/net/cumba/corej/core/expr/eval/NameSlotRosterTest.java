@@ -146,6 +146,8 @@ class NameSlotRosterTest
         BASE.put("none", "none(joined(X == \"a\"))");
         BASE.put("joined", "any(joined(X == \"a\"))");
         BASE.put("codelist_terms", "codelist_terms([\"C1\"], \"term\", \"value\")");
+        // PLAN-ct-class-exemption-data-rules CC1: both parameters are closed vocabularies
+        BASE.put("ct_class_terms", "ct_class_terms(\"Clinical Classification\", \"Test Code\")");
         // runbook W1b BL1: unit= / encoding= are static literals with a closed vocabulary / a
         // charset name, so the auto-built call cannot find an evaluating combination
         BASE.put("len", "len(X, \"bytes\", \"UTF-8\")");

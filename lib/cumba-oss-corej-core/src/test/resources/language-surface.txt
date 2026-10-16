@@ -1,4 +1,4 @@
-LEVEL=5
+LEVEL=6
 functions:
 abs(x:unknown) kind=value elementwise
 all(list:list<boolean>) kind=boolean
@@ -19,6 +19,7 @@ contains_all(source:unknown, required:unknown?, keys:list<unknown>?) kind=boolea
 contains_any(x:string, list:list<string>) kind=boolean
 count(x:unknown) kind=value
 cross_dataset_variable_metadata(name:string, domain:string@name) kind=value aggregate perVariable
+ct_class_terms(ct_class:string, ct_role:string) kind=value aggregate provider=library
 dataset_class_from_library() kind=value aggregate provider=library
 dataset_names() kind=value aggregate
 date(x:unknown) kind=value elementwise
@@ -348,6 +349,8 @@ column_series_metadata.name: literal
 column_series_metadata.name_pattern: literal
 cross_dataset_variable_metadata.domain: literal
 cross_dataset_variable_metadata.name: literal {data_type,format,label,length}
+ct_class_terms.ct_class: literal {Clinical Classification,Functional Test,Questionnaire}
+ct_class_terms.ct_role: literal {Category,Character Response,Original Response,Test Code,Test Name}
 distinct.keep_missings: literal boolean plan-build
 empty_within_except_last_row.keep_missings: literal boolean plan-build
 get_dataset_filtered_variables.key_name: literal {core,definition,describedValueDomain,description,examples,label,name,notes,ordinal,role,roleDescription,simpleDatatype,usageRestrictions,variableCcode}

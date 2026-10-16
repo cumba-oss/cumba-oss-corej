@@ -632,6 +632,18 @@ public final class ScenarioDeclaredScopeProvider implements MetadataProvider
     }
 
 
+    /**
+     * Forwarded for the same reason as {@link #getCodelist}: inheriting the empty default would
+     * turn every {@code ct_class_terms} exemption off in the scenarios this decorator wraps
+     * ({@code PLAN-ct-class-exemption-data-rules} §4.2).
+     */
+    @Override
+    public List<ICodeList> getCodelistsOfClass(String aQrsClass, String aRole)
+    {
+        return base.getCodelistsOfClass(aQrsClass, aRole);
+    }
+
+
     @Override
     public Map<String, String> getCodelistCodeMap(String aDomain, String aVariable)
     {

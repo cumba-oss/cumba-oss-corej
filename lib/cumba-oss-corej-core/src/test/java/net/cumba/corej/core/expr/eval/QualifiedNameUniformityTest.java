@@ -127,6 +127,8 @@ class QualifiedNameUniformityTest
             count | x | N | V:count(split_by(@S, ","))
             cross_dataset_variable_metadata | name | - | a metadata FIELD name ("label"), not a column
             cross_dataset_variable_metadata | domain | - | a dataset (plan Q1)
+            ct_class_terms | ct_class | - | static string
+            ct_class_terms | ct_role | - | static string
             dataset_class_from_library | - | - | nullary
             dataset_names | - | - | nullary
             date | x | N | V:date(@D)
@@ -880,7 +882,7 @@ class QualifiedNameUniformityTest
     {
         // +1 descriptor / +2 parameters / +1 accessor since PLAN-library-template-label-resolution
         // (matches_label_template(label, template) and label_template(…, "LIBRARY")).
-        assertEquals(190, FunctionRegistry.all().size(),
+        assertEquals(191, FunctionRegistry.all().size(),
                 "registered descriptors (165 + any / all / none / joined, PLAN-cg0218; + 2"
                         + " column-status predicates, PLAN-present-empty-column-fold; + the nullary"
                         + " get_permitted_column_order, PLAN-permitted-addition-position; + union,"
@@ -892,8 +894,9 @@ class QualifiedNameUniformityTest
                         + " is_prefix_of / is_not_prefix_of / is_increasing / collapse_runs,"
                         + " runbook W1b RO; + duration / duration_between, runbook W1b DO;"
                         + " + is_not_unique_member_set, runbook W1b SS1; + referenced_record_count /"
-                        + " referenced_key_is_unique, runbook W1b VA)");
-        assertEquals(331,
+                        + " referenced_key_is_unique, runbook W1b VA; + ct_class_terms,"
+                        + " PLAN-ct-class-exemption-data-rules CC1)");
+        assertEquals(333,
                 FunctionRegistry.all().stream().mapToInt(d -> d.parameters().size()).sum(),
                 "declared parameters (283 + one each for any / all / none / joined + one each"
                         + " for var_is_single_value / var_is_all_missing + three for union + one for"
@@ -906,7 +909,8 @@ class QualifiedNameUniformityTest
                         + " + three for is_not_unique_member_set, W1b SS1; + one qualifiers= for"
                         + " referenced_dataset_variables, four for referenced_record_count and"
                         + " three for referenced_key_is_unique, W1b VA; - three ordering=,"
-                        + " renamed in place to by=, runbook W4 OR2)");
+                        + " renamed in place to by=, runbook W4 OR2; + ct_class / ct_role of"
+                        + " ct_class_terms, PLAN-ct-class-exemption-data-rules CC1)");
         assertEquals(31, MetadataAttribute.values().length,
                 "metadata accessors (28 + the three var_vlm_has_* coverage accessors,"
                         + " PLAN-stopped-rule-engine-fixes SR1)");
@@ -957,9 +961,10 @@ class QualifiedNameUniformityTest
         // +1 for referenced_dataset_variables' qualifiers= (runbook W1b VA, V3).
         // +3 for the level slots of var_vlm_has_method / _comment / _origin
         // (PLAN-stopped-rule-engine-fixes SR1).
-        assertEquals(167, rows.stream().filter(r -> !r.name()).count(),
+        // +2 for ct_class_terms' ct_class / ct_role (PLAN-ct-class-exemption-data-rules CC1).
+        assertEquals(169, rows.stream().filter(r -> !r.name()).count(),
                 "non-name rows (153 + the ~ literal, W1b SX; + 8, W1b RO; + 1, W1b VA;"
-                        + " + 3 var_vlm_has_* levels, SR1)");
+                        + " + 3 var_vlm_has_* levels, SR1; + 2 ct_class_terms, CT CC1)");
     }
 
     // ------------------------------------------------------------------

@@ -21,6 +21,7 @@ import net.cumba.corej.core.metadata.MetadataKeys;
 import net.cumba.corej.core.metadata.SdtmObservationClasses;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.ICodeList;
+import net.cumba.datatable.metadata.ICodelistEntry;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -79,6 +80,12 @@ public final class LibraryLists
     /** {@code codelist_terms(codelists=, level=, returntype=)}. */
     public static final String CODELIST_TERMS = "codelist_terms";
 
+    /**
+     * {@code ct_class_terms(ct_class=, ct_role=)} — {@code PLAN-ct-class-exemption-data-rules} CC1
+     * (submission values only, T7).
+     */
+    public static final String CT_CLASS_TERMS = "ct_class_terms";
+
     /** The {@code key_name} parameter of the two filtered walks. */
     public static final String KEY_NAME_PARAMETER = "key_name";
 
@@ -99,6 +106,26 @@ public final class LibraryLists
 
     /** The {@code ct_package_types} parameter of {@link #VALID_CODELIST_DATES}. */
     public static final String CT_PACKAGE_TYPES_PARAMETER = "ct_package_types";
+
+    /** The {@code ct_class} parameter of {@link #CT_CLASS_TERMS}. */
+    public static final String CT_CLASS_PARAMETER = "ct_class";
+
+    /** The {@code ct_role} parameter of {@link #CT_CLASS_TERMS}. */
+    public static final String CT_ROLE_PARAMETER = "ct_role";
+
+    /**
+     * The {@code ct_class} vocabulary of {@link #CT_CLASS_TERMS}: the three QRS classes
+     * {@code CodelistClass} reads from a codelist's NCI preferred term.
+     */
+    public static final Set<String> CT_CLASSES = Set.of("Clinical Classification", "Questionnaire",
+            "Functional Test");
+
+    /**
+     * The {@code ct_role} vocabulary of {@link #CT_CLASS_TERMS}: the five role suffixes
+     * {@code CodelistClass} reads from a codelist's NCI preferred term.
+     */
+    public static final Set<String> CT_ROLES = Set.of("Test Code", "Test Name", "Original Response",
+            "Character Response", "Category");
 
     /** The {@code level} vocabulary of {@link #CODELIST_TERMS}. */
     public static final Set<String> LEVELS = Set.of("term", "codelist");
@@ -807,6 +834,46 @@ public final class LibraryLists
                     "no codelist terms for " + names);
         }
         return ListFunctionSupport.broadcast(CODELIST_TERMS, values);
+    }
+
+
+    /**
+     * {@code ct_class_terms(ct_class=, ct_role=)} — the term submission values, order-preserving
+     * and deduplicated, of every codelist of the run's <b>bound</b> CT whose QRS class and role
+     * ({@code CodelistClass}, read from the NCI preferred term) equal the arguments
+     * ({@link MetadataProvider#getCodelistsOfClass}). Built for class exemptions: since SDTMIG 3.3
+     * an RS clinical-classification record carries its instrument's own codes, which a rule can
+     * admit with {@code value() in ct_class_terms(ct_class="Clinical Classification", ct_role="Test
+     * Code")}.
+     *
+     * <p>
+     * ⚠ Unlike {@link #codelistTerms}, an <b>empty</b> answer — no CT bound, no codelist of that
+     * class and role (every SEND run), a provider without the lookup — is an <b>answer</b>, never a
+     * SKIP: the exemption then never applies and the rule runs as before
+     * ({@code PLAN-ct-class-exemption-data-rules} CC1, T2, review L1). Only a missing Library
+     * provider SKIPs, as for every Library function.
+     * </p>
+     *
+     * @param run
+     *            the evaluation run
+     * @param args
+     *            the bound {@code ct_class} and {@code ct_role} (static strings of their closed
+     *            vocabularies, checked at load)
+     * @return the broadcast list, possibly empty
+     */
+    public static Vector ctClassTerms(EvalRun run, List<Vector> args)
+    {
+        MetadataProvider provider = ListFunctionSupport.library(run, CT_CLASS_TERMS);
+        String ctClass = ListFunctionSupport.staticString(args.get(0), run.rowCount());
+        String ctRole = ListFunctionSupport.staticString(args.get(1), run.rowCount());
+        if (ctClass == null || ctRole == null)
+        {
+            return ListFunctionSupport.broadcast(CT_CLASS_TERMS, List.of());
+        }
+        List<String> values = provider.getCodelistsOfClass(ctClass, ctRole).stream()
+                .flatMap(cl -> cl.getEntries().stream()).map(ICodelistEntry::getCodeValue)
+                .filter(Objects::nonNull).distinct().toList();
+        return ListFunctionSupport.broadcast(CT_CLASS_TERMS, values);
     }
 
 

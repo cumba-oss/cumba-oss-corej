@@ -57,7 +57,9 @@ class BuiltinFunctionsRegistrationTest
             // retired GET_CODELIST_ATTRIBUTES operation
             "get_codelist_attributes/3/VALUE", "has_alpha/1/BOOLEAN", "has_digit/1/BOOLEAN",
             // wave 4 (PLAN-list-functions): the 21 dataset-level list functions
-            "codelist_terms/2-3/VALUE", "dataset_names/0/VALUE", "define_dataset_names/0/VALUE",
+            "codelist_terms/2-3/VALUE",
+            // PLAN-ct-class-exemption-data-rules CC1: the class-exemption lookup
+            "ct_class_terms/2/VALUE", "dataset_names/0/VALUE", "define_dataset_names/0/VALUE",
             "define_key_variables/0/VALUE", "define_variable_names/0/VALUE",
             "duplicate_label_variables/0/VALUE", "expected_variables/0/VALUE",
             "get_column_order_from_dataset/0/VALUE", "get_column_order_from_library/0/VALUE",

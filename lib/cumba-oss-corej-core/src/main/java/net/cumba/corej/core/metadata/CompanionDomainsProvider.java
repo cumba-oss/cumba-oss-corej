@@ -7,6 +7,7 @@ import java.util.Set;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.metadata.ICodeList;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -220,10 +221,21 @@ public final class CompanionDomainsProvider implements MetadataProvider
 
 
     @Override
-    public java.util.Optional<net.cumba.datatable.metadata.ICodeList> getCodelist(
-            String aCodelistName)
+    public java.util.Optional<ICodeList> getCodelist(String aCodelistName)
     {
         return base.getCodelist(aCodelistName);
+    }
+
+
+    /**
+     * Forwarded: a capability — inheriting the empty default would silently turn every
+     * {@code ct_class_terms} exemption off behind this decorator
+     * ({@code PLAN-ct-class-exemption-data-rules} §4.2).
+     */
+    @Override
+    public List<ICodeList> getCodelistsOfClass(String aQrsClass, String aRole)
+    {
+        return base.getCodelistsOfClass(aQrsClass, aRole);
     }
 
 

@@ -428,6 +428,33 @@ public interface MetadataProvider
 
 
     /**
+     * The codelists of the run's bound CT whose CDISC QRS class and role ({@code CodelistClass},
+     * read from the NCI preferred term {@code MetadataKeys.CODELIST_PREFERRED_TERM}) equal the
+     * arguments, in CT order — e.g. {@code ("Clinical Classification", "Test Code")} answers every
+     * instrument's Test Code list. Backs {@code ct_class_terms(ct_class=, ct_role=)}.
+     *
+     * <p>
+     * ⚠ A <b>capability</b>: empty when no CT is bound, when none matches, or when this provider
+     * has no lookup. Empty is an answer, never a SKIP — so a provider (or a decorator) without the
+     * lookup makes a class exemption never apply and the rule fires as before (the conservative
+     * direction; {@code PLAN-ct-class-exemption-data-rules} CC1, T2). A decorator must forward it.
+     * </p>
+     *
+     * @param aQrsClass
+     *            the QRS class ({@code Clinical Classification}, {@code Questionnaire},
+     *            {@code Functional Test})
+     * @param aRole
+     *            the role ({@code Test Code}, {@code Test Name}, {@code Original Response},
+     *            {@code Character Response}, {@code Category})
+     * @return the matching codelists, possibly empty, never {@code null}
+     */
+    default List<ICodeList> getCodelistsOfClass(String aQrsClass, String aRole)
+    {
+        return List.of();
+    }
+
+
+    /**
      * Returns variable metadata (type, role, label, etc.) for a specific variable in a domain.
      *
      * @param domain

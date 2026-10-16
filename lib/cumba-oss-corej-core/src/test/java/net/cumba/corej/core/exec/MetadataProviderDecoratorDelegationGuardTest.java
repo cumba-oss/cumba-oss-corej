@@ -349,7 +349,15 @@ class MetadataProviderDecoratorDelegationGuardTest
                     "getVariableMetadata(IDataTable, List<String>, List<String>, String, String)",
                     MAP_OF_TABLE_LISTS_TWO_STRINGS),
             capability("getColumnOrderForStructures(List<String>, List<String>, String)",
-                    LIST_OF_LISTS_STRING));
+                    LIST_OF_LISTS_STRING),
+            // PLAN-ct-class-exemption-data-rules §4.2 (review H2): the bound CT's codelists of a
+            // QRS
+            // class and role, behind ct_class_terms. Its empty default means "no such codelist", so
+            // a decorator inheriting it silently turns every class exemption off — the rule fires
+            // as if the IG allowed nothing, with nothing red. Every decorator forwards it.
+            capability("getCodelistsOfClass(String, String)",
+                    "(?<![\\w.])List<(?:[\\w.]+\\.)?ICodeList>\\s+%s\\s*\\(\\s*String\\s+(\\w+)"
+                            + "\\s*,\\s*String\\s+(\\w+)\\s*\\)"));
 
     /**
      * Floor on the capability set itself, so an accidental deletion reds.
@@ -360,7 +368,7 @@ class MetadataProviderDecoratorDelegationGuardTest
      * and carry different values on purpose. Never copy one across.
      * </p>
      */
-    private static final int MIN_CAPABILITIES = 13;
+    private static final int MIN_CAPABILITIES = 14;
 
     /** Floor on the interface's own default count, so a truncated parse cannot pass. */
     private static final int MIN_INTERFACE_DEFAULTS = 26;

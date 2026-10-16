@@ -1783,6 +1783,12 @@ public final class BuiltinFunctions implements FunctionProvider
                         opt(net.cumba.corej.core.exec.LibraryLists.RETURNTYPE_PARAMETER,
                                 Primitive.STRING)),
                 net.cumba.corej.core.exec.LibraryLists::codelistTerms, library);
+        // PLAN-ct-class-exemption-data-rules CC1: both parameters required, each a closed
+        // vocabulary held to a literal (ExprCompiler.STATIC_STRING_VOCABULARIES)
+        listFn(fns, net.cumba.corej.core.exec.LibraryLists.CT_CLASS_TERMS, List.of(
+                p(net.cumba.corej.core.exec.LibraryLists.CT_CLASS_PARAMETER, Primitive.STRING),
+                p(net.cumba.corej.core.exec.LibraryLists.CT_ROLE_PARAMETER, Primitive.STRING)),
+                net.cumba.corej.core.exec.LibraryLists::ctClassTerms, library);
         // get_parent_model_column_order(RDOMAIN) — the one PER-ROW list: the parent column is an
         // explicit COLUMN reference (D-W4-2), whose ROW demand is what makes the binding per-row;
         // not an aggregate.

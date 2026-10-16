@@ -123,6 +123,7 @@ public final class ElementTable
             Map.entry("get_model_filtered_variables", new ListOf(Primitive.STRING)),
             Map.entry("valid_codelist_dates", new ListOf(Primitive.STRING)),
             Map.entry("codelist_terms", new ListOf(Primitive.STRING)),
+            Map.entry("ct_class_terms", new ListOf(Primitive.STRING)),
             Map.entry("get_parent_model_column_order", new ListOf(Primitive.STRING)),
             Map.entry("define_variable_names", new ListOf(Primitive.STRING)),
             Map.entry("define_dataset_names", new ListOf(Primitive.STRING)),

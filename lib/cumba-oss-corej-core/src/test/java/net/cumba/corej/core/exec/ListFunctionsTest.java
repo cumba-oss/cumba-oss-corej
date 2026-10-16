@@ -80,7 +80,7 @@ class ListFunctionsTest
                 LibraryLists.STANDARD_DOMAINS, LibraryLists.GET_DATASET_FILTERED_VARIABLES,
                 LibraryLists.NATURAL_KEY_VARIABLES, LibraryLists.GET_MODEL_FILTERED_VARIABLES,
                 LibraryLists.VALID_CODELIST_DATES, LibraryLists.CODELIST_TERMS,
-                ParentModelColumnOrder.NAME))
+                LibraryLists.CT_CLASS_TERMS, ParentModelColumnOrder.NAME))
         {
             assertEquals(ProviderNeed.LIBRARY, descriptor(name).provider(), name);
         }
@@ -96,7 +96,8 @@ class ListFunctionsTest
         {
             assertNull(descriptor(name).provider(), name + " needs no provider");
         }
-        assertEquals(23, ListFunctionSupport.FUNCTION_NAMES.size());
+        // +1 ct_class_terms (PLAN-ct-class-exemption-data-rules CC1)
+        assertEquals(24, ListFunctionSupport.FUNCTION_NAMES.size());
     }
 
     // ============================================================ the LIBRARY walks

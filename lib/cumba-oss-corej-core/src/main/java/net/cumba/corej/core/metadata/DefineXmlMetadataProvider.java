@@ -7,6 +7,7 @@ import java.util.Map;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.gen.DefineXMLProvider;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.metadata.ICodeList;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -311,6 +312,18 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
             return fallback.getCodelistTerms(codelistCode);
         }
         return terms;
+    }
+
+
+    /**
+     * Delegated to {@code fallback}, empty when absent: the Define-XML declares no QRS class (its
+     * codelists carry no NCI preferred term), so the bound CT's answer is the fallback's
+     * ({@code PLAN-ct-class-exemption-data-rules} §4.2; a capability, never inherited).
+     */
+    @Override
+    public List<ICodeList> getCodelistsOfClass(String aQrsClass, String aRole)
+    {
+        return fallback != null ? fallback.getCodelistsOfClass(aQrsClass, aRole) : List.of();
     }
 
 

@@ -28,6 +28,7 @@ import net.cumba.corej.core.metadata.store.StoredProduct;
 import net.cumba.corej.core.metadata.store.StoredTerm;
 import net.cumba.corej.core.metadata.store.StoredVariable;
 import net.cumba.corej.core.metadata.store.StoredVariableSet;
+import net.cumba.corej.define.conformance.ct.CodelistClass;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.ICodeList;
 import net.cumba.datatable.metadata.ICodelistEntry;
@@ -319,6 +320,13 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
     /** Memoised entries per structure, keyed by {@link SourcedStructure#describe()}. */
     private final Map<String, List<LibraryTemplates.Entry>> entriesCache = new ConcurrentHashMap<>();
+
+    /**
+     * Memoised {@link #getCodelistsOfClass} answers per requested class and role — derived data
+     * only, built once per key by {@code computeIfAbsent} over {@code library.getCodelists()}, so
+     * no rule or row rescans the CT ({@code PLAN-ct-class-exemption-data-rules} §4.2).
+     */
+    private final Map<CodelistClass, List<ICodeList>> codelistsByClassCache = new ConcurrentHashMap<>();
 
     /**
      * One declared ADaM product with its provenance: the {@code standards/...} cache key it was
@@ -3622,6 +3630,25 @@ public final class MetadataLibraryProvider implements MetadataProvider
     public Optional<ICodeList> getCodelist(String aCodelistName)
     {
         return findCodelist(aCodelistName);
+    }
+
+
+    /**
+     * The bound CT's codelists of one QRS class and role, in library order: every codelist whose
+     * {@link MetadataKeys#CODELIST_PREFERRED_TERM} reads, through {@link CodelistClass#of}, as
+     * exactly that class and role. The library holds only the run's bound CT (no CT bound ⇒ no
+     * codelists ⇒ empty), so no "newest package" can leak in ({@code PLAN-ct-class-exemption-data-
+     * rules} T2). A codelist without a preferred term, outside the three QRS classes or without a
+     * role suffix never matches.
+     */
+    @Override
+    public List<ICodeList> getCodelistsOfClass(String aQrsClass, String aRole)
+    {
+        return codelistsByClassCache.computeIfAbsent(
+                new CodelistClass(aQrsClass, Optional.of(aRole)),
+                key -> library.getCodelists().stream().filter(cl -> CodelistClass
+                        .of(metaString(cl, MetadataKeys.CODELIST_PREFERRED_TERM).orElse(null))
+                        .filter(key::equals).isPresent()).toList());
     }
 
 

@@ -14,6 +14,7 @@ import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.LibraryTemplates;
 import net.cumba.corej.core.metadata.MetadataKeys;
+import net.cumba.corej.define.conformance.ct.CodelistClass;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.ICodeList;
 import net.cumba.datatable.metadata.ICodelistEntry;
@@ -582,6 +583,31 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         }
         return java.util.Optional.of(new MapBackedCodelist(key, codelistExtensible.get(key),
                 List.copyOf(entries), Collections.unmodifiableMap(metaKeys)));
+    }
+
+
+    /**
+     * {@code PLAN-ct-class-exemption-data-rules} C6: the scenario's codelists whose
+     * {@code #library codelist-meta <CL> pref="…"} preferred term reads, through the engine's own
+     * {@code CodelistClass.of}, as exactly this QRS class and role — each materialised as
+     * {@link #getCodelist} does (terms from {@code codelist-terms}). No new directive: the class
+     * rides on the preferred term, as in the store. A codelist without a {@code pref=} never
+     * matches. Ordered by codelist name, so a scenario's answer is deterministic.
+     */
+    @Override
+    public List<ICodeList> getCodelistsOfClass(String aQrsClass, String aRole)
+    {
+        CodelistClass wanted = new CodelistClass(aQrsClass, java.util.Optional.of(aRole));
+        List<ICodeList> out = new ArrayList<>();
+        for (Map.Entry<String, Map<String, String>> cl : new java.util.TreeMap<>(codelistMeta)
+                .entrySet())
+        {
+            if (CodelistClass.of(cl.getValue().get("pref")).filter(wanted::equals).isPresent())
+            {
+                getCodelist(cl.getKey()).ifPresent(out::add);
+            }
+        }
+        return List.copyOf(out);
     }
 
     /** The {@link ICodeList} materialisation behind {@link #getCodelist}. */
