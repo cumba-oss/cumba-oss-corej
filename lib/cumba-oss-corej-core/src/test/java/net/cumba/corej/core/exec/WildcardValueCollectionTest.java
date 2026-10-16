@@ -260,7 +260,10 @@ class WildcardValueCollectionTest
     {
         // ${*} matches DIGITS (\d+), so the members carry TRT01PN-shaped columns — one per
         // member, proving the enumeration runs over the UNION's column set (TRT02PN exists only
-        // in lbhe, and only S2's row carries it).
+        // in lbhe). A member that lacks a matched char column contributes its absent-column
+        // default "" (owner ruling SVY OQ8 ⓑ, 2026-10-16; before it the union read MIS there and
+        // the value list skipped it), exactly as an unmatched row contributes the type default
+        // (§2a, D72/D72a-1).
         IDataTable primary = RealTables.of("ADLB").str("USUBJID", "S1", "S2").build();
         IDataTable lbch = RealTables.of("lbch").str("DOMAIN", "LB").str("USUBJID", "S1")
                 .str("TRT01PN", "7").build();
@@ -276,9 +279,9 @@ class WildcardValueCollectionTest
         EvaluationContext c = EvaluationContext.builder().table(built.table())
                 .datasetResolver(inventory).mergedView(built).variables(new LinkedHashMap<>())
                 .build();
-        assertEquals(List.of("7"),
+        assertEquals(List.of("7", ""),
                 ValueResolver.resolveWildcardValues(wildcard("LB.TRT${*}PN"), null, c, 0));
-        assertEquals(List.of("9"),
+        assertEquals(List.of("", "9"),
                 ValueResolver.resolveWildcardValues(wildcard("LB.TRT${*}PN"), null, c, 1),
                 "the union's column set must drive the wildcard enumeration");
     }
