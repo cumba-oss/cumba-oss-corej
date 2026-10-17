@@ -425,7 +425,7 @@ class VarVlmCoverageAccessorTest
 
 
     /**
-     * C14: on the define universe ({@code RuleRunner.formatDefineOutput}) the list reports in the
+     * C14: on the define universe ({@code RuleRunner.formatListOutput}) the list reports in the
      * canonical sorted {@code [a, b]} form, not its JSON encoding — the list keys come from
      * {@link MetadataAttribute#isList()}, so a new list accessor cannot be missed.
      */

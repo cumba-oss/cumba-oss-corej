@@ -3081,7 +3081,11 @@ public final class RuleRunner
                 for (Map.Entry<String, String> e : libMeta.entrySet())
                 {
                     String key = "library_variable_" + e.getKey();
-                    varMeta.put(key, reportedMeta(key, e.getValue()));
+                    // PACK I E3 (PI-C9): a list attribute reports in the canonical sorted form on
+                    // the LIBRARY half too — the provider encodes it with the same codec as the
+                    // define half (MetadataLibraryProvider.columnToMap), so one rendering serves
+                    // both; the raw JSON used to leak into the report here
+                    varMeta.put(key, reportedMeta(key, formatListOutput(e.getKey(), e.getValue())));
                 }
                 String simpleDatatype = libMeta.get("simpleDatatype");
                 if (simpleDatatype != null)
@@ -3115,8 +3119,7 @@ public final class RuleRunner
                     // it from here. A null provider value stays the entry's default, never a
                     // rendered "[.]" (ENGINE FOLD LOW-1). Report-only: this map is built after
                     // the verdict.
-                    varMeta.put(key,
-                            reportedMeta(key, formatDefineOutput(e.getKey(), e.getValue())));
+                    varMeta.put(key, reportedMeta(key, formatListOutput(e.getKey(), e.getValue())));
                 }
                 String simpleDatatype = dfMeta.get("simpleDatatype");
                 if (simpleDatatype != null)
@@ -3207,7 +3210,9 @@ public final class RuleRunner
                     if (!e.getKey().startsWith(LibraryTemplates.STEM_TEMPLATE_KEY_PREFIX))
                     {
                         String key = "library_variable_" + e.getKey();
-                        values.put(key, reportedMeta(key, e.getValue()));
+                        // PACK I E3: the library list attributes in the canonical sorted form
+                        values.put(key,
+                                reportedMeta(key, formatListOutput(e.getKey(), e.getValue())));
                     }
                 }
                 if (judgedStem != null)
@@ -3235,8 +3240,7 @@ public final class RuleRunner
                     String key = "define_variable_" + e.getKey();
                     // C14 on the DATA universe too (VLM review MED-1): a list attribute reports
                     // in the canonical sorted form, as buildDefineVariableViolation renders it
-                    values.put(key,
-                            reportedMeta(key, formatDefineOutput(e.getKey(), e.getValue())));
+                    values.put(key, reportedMeta(key, formatListOutput(e.getKey(), e.getValue())));
                 }
             }
         }
@@ -3251,8 +3255,9 @@ public final class RuleRunner
             {
                 if (varMeta.containsKey(ov))
                 {
-                    // A define list attribute is already in the canonical sorted form (C14, VLM
-                    // review MED-1): buildVariableMetadata renders it for both data-universe paths
+                    // A define or library list attribute is already in the canonical sorted form
+                    // (C14, VLM review MED-1; PACK I E3 for the library half):
+                    // buildVariableMetadata renders it for both data-universe paths
                     Object val = varMeta.get(ov);
                     filtered.put(ov,
                             val != null ? val.toString() : OutputEntryKind.of(ov).defaultValue());
@@ -3631,13 +3636,14 @@ public final class RuleRunner
     private static final String VARIABLE_VALUE = OutputEntryKind.VARIABLE_VALUE;
 
     /**
-     * The provider keys of the list-valued define attributes ({@link MetadataAttribute#isList()}),
-     * derived once so a new list accessor cannot be missed by {@link #formatDefineOutput}
-     * ({@code PLAN-vlm-origin-value-accessor} C14 — the roster was three literals kept by hand).
+     * The provider keys of the list-valued define / library attributes
+     * ({@link MetadataAttribute#isList()}), derived once so a new list accessor cannot be missed by
+     * {@link #formatListOutput} ({@code PLAN-vlm-origin-value-accessor} C14 — the roster was three
+     * literals kept by hand).
      */
-    private static final Set<String> LIST_DEFINE_KEYS = listDefineKeys();
+    private static final Set<String> LIST_METADATA_KEYS = listMetadataKeys();
 
-    private static Set<String> listDefineKeys()
+    private static Set<String> listMetadataKeys()
     {
         Set<String> keys = new LinkedHashSet<>();
         for (MetadataAttribute attribute : MetadataAttribute.values())
@@ -3652,16 +3658,18 @@ public final class RuleRunner
 
 
     /**
-     * Formats a define-variable attribute value for the violation output. A list-valued attribute
-     * ({@link #LIST_DEFINE_KEYS}: {@code codelist_coded_codes}, {@code vlm_origin_types}, …) is
-     * carried JSON-encoded through the provider channel; emit it instead in the canonical
-     * {@code [a, b, c]} form — sorted, no inner quotes — matching the Python reference engine's
-     * list stringification (see {@code engine_adapter._engine_value_to_str}, which mirrors
-     * {@code java.util.List.toString()} and sorts). Scalar values pass through.
+     * Formats a define- or library-variable attribute value for the violation output. A list-valued
+     * attribute ({@link #LIST_METADATA_KEYS}: {@code codelist_coded_codes},
+     * {@code vlm_origin_types}, …) is carried JSON-encoded through the provider channel — the
+     * library provider with the same {@code DefineMetadataListCodec} as the define provider (PACK I
+     * E3, PI-C9) — emit it instead in the canonical {@code [a, b, c]} form — sorted, no inner
+     * quotes — matching the Python reference engine's list stringification (see
+     * {@code engine_adapter._engine_value_to_str}, which mirrors {@code java.util.List.toString()}
+     * and sorts). Scalar values pass through.
      */
-    private static @Nullable String formatDefineOutput(String key, @Nullable String value)
+    private static @Nullable String formatListOutput(String key, @Nullable String value)
     {
-        if (value == null || !LIST_DEFINE_KEYS.contains(key))
+        if (value == null || !LIST_METADATA_KEYS.contains(key))
         {
             return value;
         }
@@ -3700,8 +3708,7 @@ public final class RuleRunner
                 for (Map.Entry<String, String> e : dfMeta.entrySet())
                 {
                     String key = "define_variable_" + e.getKey();
-                    values.put(key,
-                            reportedMeta(key, formatDefineOutput(e.getKey(), e.getValue())));
+                    values.put(key, reportedMeta(key, formatListOutput(e.getKey(), e.getValue())));
                 }
                 String label = dfMeta.get("label");
                 if (label != null)
@@ -3721,7 +3728,8 @@ public final class RuleRunner
                 for (Map.Entry<String, String> e : libMeta.entrySet())
                 {
                     String key = "library_variable_" + e.getKey();
-                    values.put(key, reportedMeta(key, e.getValue()));
+                    // PACK I E3: the library list attributes in the canonical sorted form
+                    values.put(key, reportedMeta(key, formatListOutput(e.getKey(), e.getValue())));
                 }
             }
         }
