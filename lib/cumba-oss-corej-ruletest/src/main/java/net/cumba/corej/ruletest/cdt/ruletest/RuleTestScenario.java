@@ -195,6 +195,22 @@ public class RuleTestScenario
     String expectErrorMessage;
 
     /**
+     * The datasets the scenario declares <b>absent and reported</b>, from a
+     * {@code #reported-absent DS [DS ...]} directive — upper-cased, in file order; empty when the
+     * directive is absent. The rule-level runner passes them to the engine as the run's
+     * {@code reportedDatasets} ({@code Fix #222}): in production that set is derived from the run's
+     * rule list ({@code AbsentDatasetSkip.reportedDatasets} — a rule whose whole Check is a bare
+     * {@code not ds_exists("D")} reports D's absence), and a rule reading a listed dataset that is
+     * not supplied is silenced ({@code SKIPPED}, or its reading branch dropped) instead of
+     * flooding. A scenario runs one rule, so it states the presence rule's coverage here instead.
+     * The parser rejects a name that is also one of the scenario's datasets: the directive says the
+     * dataset is absent. Ignored by the run-level CT-selection runner, which derives the coverage
+     * from its rule package as production does.
+     */
+    @Singular("reportedAbsentDataset")
+    List<String> reportedAbsent;
+
+    /**
      * The dataset whose name equals {@code getDomain()} (case-insensitive).
      *
      * @return the primary table, or {@code null} if the domain does not match any declared dataset

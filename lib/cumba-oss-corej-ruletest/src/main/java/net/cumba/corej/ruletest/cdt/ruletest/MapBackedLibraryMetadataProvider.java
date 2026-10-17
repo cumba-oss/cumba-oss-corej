@@ -125,6 +125,18 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
     private final Map<String, Map<String, String>> codelistTermCcodes;
 
     /**
+     * Per-codelist term submission value → CDISC synonyms ({@code #library codelist-term-synonyms
+     * CODELIST TERM SYN [SYN ...]}, one line per term), served as each term's
+     * {@link MetadataKeys#TERM_SYNONYMS} meta value through {@link #getCodelist} — the channel
+     * {@code codelist_terms(level="term", returntype="synonym")} reads, exactly as
+     * {@code CdiscLibraryMetadataLibrary} projects a stored term's {@code synonyms}. The codelist
+     * key is upper-cased, the term keys (submission values) and the synonyms are kept verbatim and
+     * in declared order. A term the scenario gives no line carries no meta value (unpublished), so
+     * a codelist without any line projects nothing and the rule SKIPs.
+     */
+    private final Map<String, Map<String, List<String>>> codelistTermSynonyms;
+
+    /**
      * Per-codelist own attributes ({@code #library codelist-meta CODELIST ccode=C66734
      * pref="..."}): key {@code ccode} is the codelist NCI concept id, key {@code pref} its NCI
      * preferred term. The codelist's own submission value is the directive key itself.
@@ -182,6 +194,14 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         this.codelistExtensible = Map.copyOf(b.codelistExtensible);
         this.codelistTermMappings = deepCopyLeaf(b.codelistTermMappings);
         this.codelistTermCcodes = deepCopyLeaf(b.codelistTermCcodes);
+        Map<String, Map<String, List<String>>> synonyms = new HashMap<>();
+        b.codelistTermSynonyms.forEach((codelist, byTerm) ->
+        {
+            Map<String, List<String>> copy = new LinkedHashMap<>();
+            byTerm.forEach((term, values) -> copy.put(term, List.copyOf(values)));
+            synonyms.put(codelist, Collections.unmodifiableMap(copy));
+        });
+        this.codelistTermSynonyms = Collections.unmodifiableMap(synonyms);
         this.codelistMeta = deepCopyLeaf(b.codelistMeta);
         Map<String, Map<String, List<String>>> attributes = new LinkedHashMap<>();
         b.codelistAttributes.forEach((pkg, byAttribute) ->
@@ -556,19 +576,20 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
     {
         String key = up(aCodelistName);
         boolean declared = codelistTerms.containsKey(key) || codelistTermMappings.containsKey(key)
-                || codelistTermCcodes.containsKey(key) || codelistMeta.containsKey(key)
-                || codelistExtensible.containsKey(key);
+                || codelistTermCcodes.containsKey(key) || codelistTermSynonyms.containsKey(key)
+                || codelistMeta.containsKey(key) || codelistExtensible.containsKey(key);
         if (!declared)
         {
             return java.util.Optional.empty();
         }
         Map<String, String> mappings = codelistTermMappings.getOrDefault(key, Map.of());
         Map<String, String> ccodes = codelistTermCcodes.getOrDefault(key, Map.of());
+        Map<String, List<String>> synonyms = codelistTermSynonyms.getOrDefault(key, Map.of());
         List<ICodelistEntry> entries = new ArrayList<>();
         for (String term : codelistTerms.getOrDefault(key, List.of()))
         {
             entries.add(new MapBackedCodelistEntry(term, mappings.getOrDefault(term, ""),
-                    ccodes.get(term)));
+                    ccodes.get(term), synonyms.get(term)));
         }
         Map<String, String> meta = codelistMeta.getOrDefault(key, Map.of());
         Map<String, Object> metaKeys = new LinkedHashMap<>();
@@ -658,9 +679,14 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
     }
 
 
-    /** One term of a {@link MapBackedCodelist}. */
-    private record MapBackedCodelistEntry(String code, String decode,
-            @Nullable String conceptId) implements ICodelistEntry
+    /**
+     * One term of a {@link MapBackedCodelist}. {@code synonyms} is the term's
+     * {@link MetadataKeys#TERM_SYNONYMS} meta value; {@code null} (no
+     * {@code codelist-term-synonyms} line) is no meta value, as {@code CdiscLibraryMetadataLibrary}
+     * serves an unpublished one.
+     */
+    private record MapBackedCodelistEntry(String code, String decode, @Nullable String conceptId,
+            @Nullable List<String> synonyms) implements ICodelistEntry
     {
 
         @Override
@@ -687,14 +713,15 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         @Override
         public Set<String> getMetaKeys()
         {
-            return Set.of();
+            return synonyms == null ? Set.of() : Set.of(MetadataKeys.TERM_SYNONYMS);
         }
 
 
         @Override
         public java.util.Optional<Object> getMetaValue(String aKey)
         {
-            return java.util.Optional.empty();
+            return MetadataKeys.TERM_SYNONYMS.equals(aKey) ? java.util.Optional.ofNullable(synonyms)
+                    : java.util.Optional.empty();
         }
     }
 
@@ -798,6 +825,13 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
     }
 
 
+    /** The {@code codelist-term-synonyms} declarations: codelist → term → synonyms. */
+    public Map<String, Map<String, List<String>>> getCodelistTermSynonymsMap()
+    {
+        return codelistTermSynonyms;
+    }
+
+
     public Map<String, Map<String, List<String>>> getCodelistAttributesMap()
     {
         return codelistAttributes;
@@ -838,9 +872,10 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
                 && domainVariables.isEmpty() && modelVariables.isEmpty()
                 && modelClassVariables.isEmpty() && datasetMetadata.isEmpty()
                 && codelistExtensible.isEmpty() && codelistTermMappings.isEmpty()
-                && codelistTermCcodes.isEmpty() && codelistMeta.isEmpty()
-                && codelistAttributes.isEmpty() && publishedCtPackages.isEmpty()
-                && standardDatasetNames == null && standardVariableNames == null;
+                && codelistTermCcodes.isEmpty() && codelistTermSynonyms.isEmpty()
+                && codelistMeta.isEmpty() && codelistAttributes.isEmpty()
+                && publishedCtPackages.isEmpty() && standardDatasetNames == null
+                && standardVariableNames == null;
     }
 
     // ---- Helpers --------------------------------------------------------------
@@ -937,6 +972,8 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         private final Map<String, Map<String, String>> codelistTermMappings = new HashMap<>();
 
         private final Map<String, Map<String, String>> codelistTermCcodes = new HashMap<>();
+
+        private final Map<String, Map<String, List<String>>> codelistTermSynonyms = new HashMap<>();
 
         private final Map<String, Map<String, String>> codelistMeta = new HashMap<>();
 
@@ -1051,6 +1088,36 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         {
             codelistTermCcodes.put(up(aCodelistName), new LinkedHashMap<>(aCcodes));
             return this;
+        }
+
+
+        /**
+         * Declare one term's CDISC synonyms, served as its {@link MetadataKeys#TERM_SYNONYMS} meta
+         * value through {@code MetadataProvider.getCodelist} (the channel of
+         * {@code codelist_terms(level="term", returntype="synonym")}). The codelist is case-folded,
+         * the term and the synonyms are kept verbatim and in order; declaring the same term twice
+         * replaces its synonyms. Served only for a term the codelist's
+         * {@link #codelistTerms(String, String...)} lists — the materialised entries come from that
+         * list, as in the production library.
+         */
+        public Builder codelistTermSynonyms(String aCodelistName, String aTerm,
+                List<String> aSynonyms)
+        {
+            codelistTermSynonyms.computeIfAbsent(up(aCodelistName), _ -> new LinkedHashMap<>())
+                    .put(aTerm, new ArrayList<>(aSynonyms));
+            return this;
+        }
+
+
+        /**
+         * The terms {@link #codelistTerms(String, String...)} declared for a codelist so far, or
+         * {@code null} when it declared none — what the {@code .cdt} parser checks a
+         * {@code codelist-term-synonyms} line against once every line is applied.
+         */
+        @Nullable
+        List<String> declaredCodelistTerms(String aCodelistName)
+        {
+            return codelistTerms.get(up(aCodelistName));
         }
 
 

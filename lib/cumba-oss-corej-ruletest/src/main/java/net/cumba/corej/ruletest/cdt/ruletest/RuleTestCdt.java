@@ -43,6 +43,9 @@ public final class RuleTestCdt
     /** The magic discriminator that must appear as the first non-empty line. */
     public static final String SHEBANG = "#!RuleTest";
 
+    /** The {@code #library} kind that declares one term's CDISC synonyms. */
+    private static final String CODELIST_TERM_SYNONYMS = "codelist-term-synonyms";
+
     private RuleTestCdt()
     {
     }
@@ -179,6 +182,9 @@ public final class RuleTestCdt
         String expectCtMismatch = null;
         int expectCtMismatchLine = -1;
         String runProduct = null;
+        // #reported-absent: the datasets the scenario declares absent AND reported (Fix #222).
+        List<String> reportedAbsent = null;
+        int reportedAbsentLine = -1;
 
         for (Directive d : directives)
         {
@@ -308,14 +314,23 @@ public final class RuleTestCdt
                 }
                 runProduct = parseRunProductPayload(tokens, aSource, d.lineIdx);
             }
+            case "reported-absent" ->
+            {
+                if (reportedAbsent != null)
+                {
+                    throw error(aSource, d.lineIdx, "duplicate #reported-absent directive");
+                }
+                reportedAbsent = parseReportedAbsentPayload(tokens, aSource, d.lineIdx);
+                reportedAbsentLine = d.lineIdx;
+            }
             case "setup", "teardown" -> throw error(aSource, d.lineIdx, "directive '#" + keyword
                     + "' is reserved for a future version and not implemented in v1");
             default -> throw error(aSource, d.lineIdx,
                     "unknown directive: #" + keyword
                             + " (expected #test, #note, #library, #library-include, #library-ref, "
                             + "#define, #define-include, #define-xml, #dictionaries, #runLevel, "
-                            + "#ct-packages, #ct-available, #expect-abort, #expect-ct-mismatch, or "
-                            + "#run-product)");
+                            + "#ct-packages, #ct-available, #expect-abort, #expect-ct-mismatch, "
+                            + "#run-product, or #reported-absent)");
             }
         }
         if (!sawTest)
@@ -376,6 +391,22 @@ public final class RuleTestCdt
         {
             throw error(aSource, shebangIdx,
                     "#test domain=" + testDomain + " does not match any dataset in the file");
+        }
+
+        // #reported-absent says the dataset is ABSENT: listing one the scenario supplies would make
+        // the directive a silent no-op (the engine only silences a reading of a dataset that does
+        // not resolve), so it is a load error.
+        if (reportedAbsent != null)
+        {
+            for (String name : reportedAbsent)
+            {
+                if (seen.contains(name))
+                {
+                    throw error(aSource, reportedAbsentLine, "#reported-absent " + name
+                            + ": the scenario supplies this dataset (the directive declares a "
+                            + "dataset absent)");
+                }
+            }
         }
 
         LibraryRef libraryRef = buildLibraryRef(libraryRefLines, aSource);
@@ -465,7 +496,39 @@ public final class RuleTestCdt
                 .expectedViolations(expectedViolations).ctPackages(ctPackages)
                 .ctAvailable(ctAvailable).expectAbort(expectAbort)
                 .expectCtMismatch(expectCtMismatch).expectErrorMessage(expectErrorMessage)
-                .runProduct(runProduct).build();
+                .runProduct(runProduct)
+                .reportedAbsent(reportedAbsent == null ? List.of() : reportedAbsent).build();
+    }
+
+
+    /**
+     * {@code #reported-absent DS [DS ...]}: one or more dataset names, upper-cased (the engine's
+     * coverage set and its candidates are upper case), in file order. An empty list and a name
+     * given twice are errors.
+     */
+    private static List<String> parseReportedAbsentPayload(List<String> aTokens, String aSource,
+            int aLineIdx)
+    {
+        if (aTokens.size() < 2)
+        {
+            throw error(aSource, aLineIdx,
+                    "#reported-absent expects one or more dataset names, e.g. '#reported-absent TS'");
+        }
+        List<String> names = new ArrayList<>();
+        for (String tok : aTokens.subList(1, aTokens.size()))
+        {
+            String name = tok.toUpperCase(Locale.ROOT);
+            if (name.isBlank())
+            {
+                throw error(aSource, aLineIdx, "#reported-absent: empty dataset name");
+            }
+            if (names.contains(name))
+            {
+                throw error(aSource, aLineIdx, "#reported-absent: duplicate dataset " + name);
+            }
+            names.add(name);
+        }
+        return List.copyOf(names);
     }
 
 
@@ -512,7 +575,44 @@ public final class RuleTestCdt
         {
             parseLibraryPayload(builder, line.tokens(), aSource, line.lineIdx(), aLabel);
         }
+        checkSynonymTerms(builder, aInline, aSource, aLabel);
         return builder.build();
+    }
+
+
+    /**
+     * Every {@code codelist-term-synonyms} line names a codelist the merged declarations give
+     * {@code codelist-terms}, and a term among them. The provider materialises a codelist's entries
+     * from its {@code codelist-terms} list, so a synonym of any other term would be accepted and
+     * then served by nothing — the scenario would SKIP for a reason its text does not show. Checked
+     * after every line (and sidecar) is applied, so the order of the lines does not matter.
+     */
+    private static void checkSynonymTerms(MapBackedLibraryMetadataProvider.Builder aBuilder,
+            List<LibLine> aInline, String aSource, String aLabel)
+    {
+        for (LibLine line : aInline)
+        {
+            List<String> tokens = line.tokens();
+            if (tokens.size() < 4 || !CODELIST_TERM_SYNONYMS.equals(tokens.get(1)))
+            {
+                continue;
+            }
+            String codelist = tokens.get(2);
+            String term = tokens.get(3);
+            List<String> terms = aBuilder.declaredCodelistTerms(codelist);
+            if (terms == null)
+            {
+                throw error(aSource, line.lineIdx(),
+                        aLabel + " " + CODELIST_TERM_SYNONYMS + ": unknown codelist '" + codelist
+                                + "' (declare its terms with '" + aLabel + " codelist-terms "
+                                + codelist + " ...')");
+            }
+            if (!terms.contains(term))
+            {
+                throw error(aSource, line.lineIdx(), aLabel + " " + CODELIST_TERM_SYNONYMS + ": '"
+                        + term + "' is not a term of codelist '" + codelist + "' " + terms);
+            }
+        }
     }
 
 
@@ -815,6 +915,17 @@ public final class RuleTestCdt
             aOut.write(runProduct);
             aOut.write('\n');
         }
+        List<String> reportedAbsent = aScenario.getReportedAbsent();
+        if (!reportedAbsent.isEmpty())
+        {
+            aOut.write("#reported-absent");
+            for (String name : reportedAbsent)
+            {
+                aOut.write(' ');
+                aOut.write(quoteIfNeeded(name));
+            }
+            aOut.write('\n');
+        }
 
         boolean first = true;
         for (IDataTable t : aScenario.getDatasets())
@@ -939,6 +1050,22 @@ public final class RuleTestCdt
             aOut.write(quoteIfNeeded(e.getKey()));
             writeKeyValues(aOut, e.getValue());
             aOut.write('\n');
+        }
+        for (var cl : new java.util.TreeMap<>(aLib.getCodelistTermSynonymsMap()).entrySet())
+        {
+            for (var term : new java.util.TreeMap<>(cl.getValue()).entrySet())
+            {
+                aOut.write("#library " + CODELIST_TERM_SYNONYMS + " ");
+                aOut.write(quoteIfNeeded(cl.getKey()));
+                aOut.write(' ');
+                aOut.write(quoteIfNeeded(term.getKey()));
+                for (String synonym : term.getValue())
+                {
+                    aOut.write(' ');
+                    aOut.write(quoteIfNeeded(synonym));
+                }
+                aOut.write('\n');
+            }
         }
         for (var e : new java.util.TreeMap<>(aLib.getCodelistMetaMap()).entrySet())
         {
@@ -1379,6 +1506,7 @@ public final class RuleTestCdt
      * #library custom-domain         DOMAIN [DOMAIN ...]
      * #library codelist-terms        CODELIST TERM TERM ...
      * #library codelist-term-ccodes  CODELIST TERM=Cxxxxx TERM=Cxxxxx ...
+     * #library codelist-term-synonyms CODELIST TERM SYNONYM [SYNONYM ...]   (one line per term)
      * #library codelist-meta         CODELIST ccode=Cxxxxx pref="NCI Preferred Term"
      * #library published-ct-packages PKG [PKG ...]
      * #library codelist-attributes   PKG "ATTRIBUTE" VALUE VALUE ...
@@ -1521,6 +1649,19 @@ public final class RuleTestCdt
             }
             aBuilder.codelistTermCcodes(rest.get(0),
                     parseKeyValues(rest.subList(1, rest.size()), aSource, aLineIdx, kind));
+        }
+        // A term's CDISC synonyms, the term-synonym channel of codelist_terms(level="term",
+        // returntype="synonym"): one line per term, CODELIST TERM SYN [SYN ...]. That the term is
+        // one of the codelist's codelist-terms is checked once every line is applied
+        // (checkSynonymTerms), so line order and a sidecar's terms do not matter.
+        case CODELIST_TERM_SYNONYMS ->
+        {
+            if (rest.size() < 3)
+            {
+                throw error(aSource, aLineIdx, aLabel + " " + CODELIST_TERM_SYNONYMS
+                        + ": expected CODELIST TERM SYNONYM [SYNONYM ...]");
+            }
+            aBuilder.codelistTermSynonyms(rest.get(0), rest.get(1), rest.subList(2, rest.size()));
         }
         // The codelist's OWN attributes (its submission value is the directive key):
         // ccode=<NCI concept id>, pref=<NCI preferred term>.

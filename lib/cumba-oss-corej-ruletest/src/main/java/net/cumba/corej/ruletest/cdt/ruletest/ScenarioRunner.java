@@ -628,7 +628,8 @@ public final class ScenarioRunner
 
         List<RuleExecutionResult> results = new ArrayList<>();
         EvalOutcome outcome = evaluate(aRule, aPrimary, resolver, aScenario.getDomain(), library,
-                defineProvider, dictionaries, vlm, aScenario.getRunLevel(), aObserver, results);
+                defineProvider, dictionaries, vlm, aScenario.getRunLevel(),
+                Set.copyOf(aScenario.getReportedAbsent()), aObserver, results);
         return new ScenarioEvaluation(ScopeGate.IN, outcome, results, null);
     }
 
@@ -848,6 +849,9 @@ public final class ScenarioRunner
      *            the VLM resolver, or {@code null}
      * @param aRunLevel
      *            the scenario's {@code #runLevel}, or {@code null} for the engine default
+     * @param aReportedDatasets
+     *            the scenario's {@code #reported-absent} datasets (upper case), the run's
+     *            presence-rule coverage as RuleRunner takes it; empty when it declares none
      * @param aObserver
      *            the observer, or {@code null}
      * @param aResults
@@ -858,8 +862,8 @@ public final class ScenarioRunner
             DatasetResolver.WithInventory aResolver, String aDomain,
             @Nullable MetadataProvider aLibrary, @Nullable MetadataProvider aDefine,
             @Nullable RuntimeDictionaryProvider aDictionaries, @Nullable VlmResolver aVlm,
-            @Nullable Severity aRunLevel, @Nullable ExecutionObserver aObserver,
-            List<RuleExecutionResult> aResults)
+            @Nullable Severity aRunLevel, Set<String> aReportedDatasets,
+            @Nullable ExecutionObserver aObserver, List<RuleExecutionResult> aResults)
     {
         // nativeEval=true runs the native expression engine — the engine production uses
         // (StudyValidationParams / LibraryValidator both default nativeEval=true; the legacy
@@ -875,7 +879,7 @@ public final class ScenarioRunner
         case WildcardExpander.ExpansionResult.NotApplicable _ ->
         {
             RuleExecutionResult r = execute(aRule, aPrimary, aResolver, aDomain, aLibrary, aDefine,
-                    aDictionaries, aVlm, aRunLevel, aObserver);
+                    aDictionaries, aVlm, aRunLevel, aReportedDatasets, aObserver);
             aResults.add(r);
             List<Violation> v = r.getViolations() != null ? r.getViolations() : List.of();
             boolean ran = !(r.isSkipped() || r.isError());
@@ -905,7 +909,7 @@ public final class ScenarioRunner
             for (Rule r : concrete)
             {
                 RuleExecutionResult res = execute(r, aPrimary, aResolver, aDomain, aLibrary,
-                        aDefine, aDictionaries, aVlm, aRunLevel, aObserver);
+                        aDefine, aDictionaries, aVlm, aRunLevel, aReportedDatasets, aObserver);
                 aResults.add(res);
                 if (!(res.isSkipped() || res.isError()))
                 {
@@ -944,7 +948,8 @@ public final class ScenarioRunner
             DatasetResolver.WithInventory aResolver, String aDomain,
             @Nullable MetadataProvider aLibrary, @Nullable MetadataProvider aDefine,
             @Nullable RuntimeDictionaryProvider aDictionaries, @Nullable VlmResolver aVlm,
-            @Nullable Severity aRunLevel, @Nullable ExecutionObserver aObserver)
+            @Nullable Severity aRunLevel, Set<String> aReportedDatasets,
+            @Nullable ExecutionObserver aObserver)
     {
         // Plan C §3.4: the scenario's `#runLevel`, or the engine default (Warning) when it
         // declares none — so every scenario in this suite that says nothing is a
@@ -958,7 +963,7 @@ public final class ScenarioRunner
                 MergeStandard.ofStandardName(aLibrary != null ? aLibrary.getStandard() : null));
         RuleExecutionResult result = RuleRunner.execute(aRule, aPrimary, aResolver, aDomain,
                 aLibrary, joinCache, aDefine, Integer.MAX_VALUE, null, aDictionaries, aVlm,
-                Set.of(), Set.of(), EngineLimits.resolveSeverityThreshold(aRunLevel));
+                aReportedDatasets, Set.of(), EngineLimits.resolveSeverityThreshold(aRunLevel));
         if (aObserver != null)
         {
             // PLAN-output-variable-null-key-provenance §2.1: the corpus's finding-map null guard
