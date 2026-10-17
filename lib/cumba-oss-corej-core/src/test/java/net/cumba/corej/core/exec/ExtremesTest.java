@@ -283,11 +283,45 @@ class ExtremesTest
         assertNull(max("2020-01", "2020-01-01", "2020-01-01T08:00"), "the 31st");
         assertMinInBothOrders("2020-01-01", "2020-01-01", "2020-01-02T08:00");
         assertMaxInBothOrders("2020-01-02T08:00", "2020-01-01", "2020-01-02T08:00");
-        // hour precision is NOT determined (isCompleteDate: lengths 10 / 16 / 19 only), so the
-        // EC-46 gate answers nothing for a pair it nests in — in both modes (the plan's §4.2 row
-        // "…T08, …T08:30 → …T08" assumed otherwise)
-        assertNull(min("2020-01-01T08", "2020-01-01T08:30"));
-        assertNull(max("2020-01-01T08", "2020-01-01T08:30"));
+        // PACK I E5 (PI-Q4 (ii)): hour precision IS determined on the extreme path, so the §4.2
+        // row "…T08, …T08:30 → …T08" holds in the hull mode: …T08's hull nests …T08:30 on both
+        // edges (lower 08:00:00, upper 08:59:59). (Until E5 the 13-tier gap of isCompleteDate
+        // made both answers null.)
+        assertMinInBothOrders("2020-01-01T08", "2020-01-01T08", "2020-01-01T08:30");
+        assertMaxInBothOrders("2020-01-01T08", "2020-01-01T08", "2020-01-01T08:30");
+    }
+
+
+    /**
+     * PACK I E5 (PI-Q4 (ii), owner 2026-10-17): an hour-precision value ({@code yyyy-MM-ddTHH}) is
+     * determined in the date extremes — a lone candidate answers itself, it wins against a day it
+     * precedes, the hull mode keeps the wider (hour) hull over a minute inside it and the precise
+     * mode the minute (the DT2 (a) refinement, as the day beside {@code …T08:00}). An interval
+     * stays undetermined (D5). RED before: every answer here was {@code null}.
+     */
+    @Test
+    void e5_hourPrecisionIsDeterminedInTheExtremes()
+    {
+        assertEquals("2020-04-11T10", min("2020-04-11T10"), "a lone hour-precision candidate");
+        assertEquals("2020-04-11T10", max("2020-04-11T10"));
+        assertMinInBothOrders("2020-04-11T10", "2020-04-11T10", "2020-04-12");
+        assertMaxInBothOrders("2020-04-12", "2020-04-11T10", "2020-04-12");
+        assertPreciseMin("2020-04-11T10", "2020-04-11T10", "2020-04-12");
+        assertPreciseMax("2020-04-12", "2020-04-11T10", "2020-04-12");
+        // hour vs minute in the same hour: the hull mode keeps the wider hull, the precise mode
+        // the refined value (DT1 (a) / DT2 (a))
+        assertMinInBothOrders("2020-01-01T08", "2020-01-01T08", "2020-01-01T08:30");
+        assertPreciseMin("2020-01-01T08:30", "2020-01-01T08", "2020-01-01T08:30");
+        assertPreciseMax("2020-01-01T08:30", "2020-01-01T08", "2020-01-01T08:30");
+        // the day beside an hour inside it: the hull mode answers the day (T2, the wider hull),
+        // the precise mode the hour (the refinement)
+        assertMinInBothOrders("2020-01-01", "2020-01-01", "2020-01-01T08");
+        assertPreciseMin("2020-01-01T08", "2020-01-01", "2020-01-01T08");
+        // an interval of hour-precision ends is still undetermined and still blocks
+        assertNull(min("2020-04-11T10/2020-04-11T12", "2020-04-12"));
+        assertNull(precise(false, false, "2020-04-11T10/2020-04-11T12", "2020-04-12"));
+        // a partial that could be earlier still blocks (DT2 (a))
+        assertNull(min("2020-04", "2020-04-11T10"));
     }
 
     // -----------------------------------------------------------------------
@@ -360,7 +394,8 @@ class ExtremesTest
         assertNull(precise(true, false, "2020-01", "2020-01-01T08:00"));
         assertPreciseMin("2020-01-01T08:00", "2020-01", "2020-01-01", "2020-01-01T08:00");
         assertNull(precise(true, false, "2020-01", "2020-01-01", "2020-01-01T08:00"));
-        assertNull(precise(false, false, "2020-01-01T08", "2020-01-01T08:30"));
+        // PACK I E5: the hour is determined, the minute inside it is the refinement
+        assertPreciseMin("2020-01-01T08:30", "2020-01-01T08", "2020-01-01T08:30");
         // no tie: unchanged
         assertPreciseMin("2020-01-01", "2020-01-01", "2020-01-02T08:00");
         assertPreciseMax("2020-01-02T08:00", "2020-01-01", "2020-01-02T08:00");
@@ -368,18 +403,21 @@ class ExtremesTest
 
 
     /**
-     * T11: an undetermined value (hour precision, an interval) inside the winning day never wins
-     * (DT2 (a)), and where it could reach the refined value the precise mode keeps the hull answer
-     * rather than answer a value that is provably not the extreme.
+     * T11: an undetermined value (an interval; hour precision until PACK I E5) inside the winning
+     * day never wins (DT2 (a)), and where it could reach the refined value the precise mode keeps
+     * the hull answer rather than answer a value that is provably not the extreme. Since E5 (PI-Q4
+     * (ii)) an hour-precision value is a determined atom: {@code …T08} beside {@code …T09:15} IS
+     * the earliest atom (the earliest upper bound), {@code …T10} the latest (the latest lower
+     * bound), and {@code …T08:30} inside {@code …T08} the refinement.
      */
     @Test
     void t11_anUndeterminedValueInsideTheDayKeepsTheHullAnswerWhereItCouldReachTheRefinedOne()
     {
-        // …T08 is certainly earlier than …T09:15: the earliest determined atom is not the min
-        assertPreciseMin("2020-01-01", "2020-01-01", "2020-01-01T08", "2020-01-01T09:15");
-        assertPreciseMax("2020-01-01", "2020-01-01", "2020-01-01T10", "2020-01-01T09:15");
-        // …T08 contains …T08:30 — it could be 08:05
-        assertPreciseMin("2020-01-01", "2020-01-01", "2020-01-01T08", "2020-01-01T08:30");
+        // E5: …T08 is a determined atom and certainly the earliest; …T10 the latest
+        assertPreciseMin("2020-01-01T08", "2020-01-01", "2020-01-01T08", "2020-01-01T09:15");
+        assertPreciseMax("2020-01-01T10", "2020-01-01", "2020-01-01T10", "2020-01-01T09:15");
+        // E5: …T08 contains …T08:30 — the minute is the refinement (DT2 (a))
+        assertPreciseMin("2020-01-01T08:30", "2020-01-01", "2020-01-01T08", "2020-01-01T08:30");
         // an interval inside the day, starting before the refined value
         assertPreciseMin("2020-01-01", "2020-01-01", "2020-01-01T07:00/2020-01-01T07:30",
                 "2020-01-01T08:00");
@@ -435,33 +473,73 @@ class ExtremesTest
      * DT review M1 (PACK H fold): the blocking test is decided from O(1) state — the undetermined
      * candidates' best primary bound, the best secondary bound among those sharing it, and the
      * second-best primary — never from a list of hulls. These cases exercise each piece: a
-     * candidate sharing the winner's lower that does not contain the winner ({@code T00}), one that
-     * contains it beside a second-best that reaches ({@code 2020} + {@code T07}), and the same
-     * second-best out of reach ({@code T09}); the max arm mirrors them.
+     * candidate sharing the winner's lower that does not contain the winner (the
+     * {@code 00:00–00:59} interval), one that contains it beside a second-best that reaches
+     * ({@code 2020} + the {@code 07} hour interval), and the same second-best out of reach (the
+     * {@code 09} interval); the max arm mirrors them. ⚑ Since PACK I E5 (PI-Q4 (ii)) the
+     * undetermined candidates are INTERVALS with the hour's hull ({@code …T00:00/…T00:59} has
+     * {@code …T00}'s bounds) — an hour-precision value is a determined atom now, and the same cases
+     * spelt with the hour answer the atom
+     * ({@link #e5_theHourAtomsOfTheFormerBlockCasesAnswerThemselves}).
      */
     @Test
     void theUndeterminedBlockIsDecidedFromTheBestAndSecondBestBounds()
     {
         // lower == the winner's lower, upper inside the day: it could be 00:30, before 08:00
-        assertPreciseMin("2020-01-01", "2020-01-01", "2020-01-01T00", "2020-01-01T08:00");
-        // the year contains the day (no block of its own); T07 is the second-best lower and reaches
-        assertPreciseMin("2020-01-01", "2020", "2020-01-01", "2020-01-01T07", "2020-01-01T08:00");
-        // ... and T09 cannot reach 08:00
-        assertPreciseMin("2020-01-01T08:00", "2020", "2020-01-01", "2020-01-01T09",
+        assertPreciseMin("2020-01-01", "2020-01-01", "2020-01-01T00:00/2020-01-01T00:59",
                 "2020-01-01T08:00");
-        // two sharing the winner's lower: the smaller upper decides (T00 does not contain the day)
-        assertPreciseMin("2020-01-01", "2020-01", "2020-01-01", "2020-01-01T00",
+        // the year contains the day (no block of its own); the 07 interval is the second-best lower
+        // and reaches
+        assertPreciseMin("2020-01-01", "2020", "2020-01-01", "2020-01-01T07:00/2020-01-01T07:59",
+                "2020-01-01T08:00");
+        // ... and the 09 interval cannot reach 08:00
+        assertPreciseMin("2020-01-01T08:00", "2020", "2020-01-01",
+                "2020-01-01T09:00/2020-01-01T09:59", "2020-01-01T08:00");
+        // two sharing the winner's lower: the smaller upper decides (the interval does not contain
+        // the day)
+        assertPreciseMin("2020-01-01", "2020-01", "2020-01-01", "2020-01-01T00:00/2020-01-01T00:59",
                 "2020-01-01T08:00");
         // the mirror: upper == the winner's upper, lower inside the day (the containing partial
         // is the MONTH of the month's LAST day — a year's upper would be later than the day's,
         // and the day could not reach the limit: indeterminate, EC-46)
-        assertPreciseMax("2020-01-31", "2020-01-31", "2020-01-31T23", "2020-01-31T20:00");
-        assertPreciseMax("2020-01-31", "2020-01", "2020-01-31", "2020-01-31T21",
+        assertPreciseMax("2020-01-31", "2020-01-31", "2020-01-31T23:00/2020-01-31T23:59",
+                "2020-01-31T20:00");
+        assertPreciseMax("2020-01-31", "2020-01", "2020-01-31", "2020-01-31T21:00/2020-01-31T21:59",
+                "2020-01-31T20:00");
+        assertPreciseMax("2020-01-31T20:00", "2020-01", "2020-01-31",
+                "2020-01-31T19:00/2020-01-31T19:59", "2020-01-31T20:00");
+        assertPreciseMax("2020-01-31", "2020-01", "2020-01-31", "2020-01-31T23:00/2020-01-31T23:59",
+                "2020-01-31T20:00");
+    }
+
+
+    /**
+     * PACK I E5 (PI-Q4 (ii)): the block cases above spelt with the HOUR value — a determined atom
+     * since E5 — answer the atom in the precise mode: the earliest upper bound for a min ({@code
+     * …T00} before {@code …T08:00}), the latest lower bound for a max ({@code …T23} after
+     * {@code …T20:00}); an hour that cannot reach the refined value leaves it the answer. RED
+     * before: the hour blocked and the day was answered (the rows of the test above).
+     */
+    @Test
+    void e5_theHourAtomsOfTheFormerBlockCasesAnswerThemselves()
+    {
+        assertPreciseMin("2020-01-01T00", "2020-01-01", "2020-01-01T00", "2020-01-01T08:00");
+        assertPreciseMin("2020-01-01T07", "2020", "2020-01-01", "2020-01-01T07",
+                "2020-01-01T08:00");
+        assertPreciseMin("2020-01-01T08:00", "2020", "2020-01-01", "2020-01-01T09",
+                "2020-01-01T08:00");
+        assertPreciseMin("2020-01-01T00", "2020-01", "2020-01-01", "2020-01-01T00",
+                "2020-01-01T08:00");
+        assertPreciseMax("2020-01-31T23", "2020-01-31", "2020-01-31T23", "2020-01-31T20:00");
+        assertPreciseMax("2020-01-31T21", "2020-01", "2020-01-31", "2020-01-31T21",
                 "2020-01-31T20:00");
         assertPreciseMax("2020-01-31T20:00", "2020-01", "2020-01-31", "2020-01-31T19",
                 "2020-01-31T20:00");
-        assertPreciseMax("2020-01-31", "2020-01", "2020-01-31", "2020-01-31T23",
+        assertPreciseMax("2020-01-31T23", "2020-01", "2020-01-31", "2020-01-31T23",
                 "2020-01-31T20:00");
+        // the hull mode is unmoved: the wider hull (the day) wins these
+        assertMinInBothOrders("2020-01-01", "2020-01-01", "2020-01-01T00", "2020-01-01T08:00");
+        assertMaxInBothOrders("2020-01-31", "2020-01-31", "2020-01-31T23", "2020-01-31T20:00");
     }
 
 

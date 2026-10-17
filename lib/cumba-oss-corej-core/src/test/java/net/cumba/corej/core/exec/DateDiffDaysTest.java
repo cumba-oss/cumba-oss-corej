@@ -191,6 +191,28 @@ class DateDiffDaysTest
     }
 
 
+    /**
+     * PACK I E5 (PI-Q4 (ii)): the asymmetry closed — {@code date_diff_days} over a column value
+     * always took the date portion of an hour-precision text, while a {@code min_date} over the
+     * same values dropped it as undetermined and the day count had no value (SEND-0202..0205
+     * skipped the subject, SEND-0401..0403 reported the phase). The earliest EXSTDTC
+     * {@code 2020-01-01T10} is determined now and the count is the day count.
+     */
+    @Test
+    void aMinDateOfAnHourPrecisionValueGivesTheDayCount()
+    {
+        IDataTable exHour = RealTableFixture.of("EX").str("USUBJID", "S1", "S1", "S2")
+                .str("EXSTDTC", "2020-01-05", "2020-01-01T10", "2020-03-01").build();
+        String binding = "date_diff_days(TFDTC, min_date(EXSTDTC, domain=EX, group=[USUBJID]))";
+        assertEquals(List.of("S1", "S1", "S2"),
+                fired(binding, "$d == 10 or $d == -2 or $d == 5", tf(), exHour),
+                "S1's earliest EXSTDTC is the hour-precision 2020-01-01T10: 10 and -2");
+        // the only missing day count left is S1's PARTIAL TFDTC row (2020-01): the reference
+        // itself has a value now (before E5 all three S1 rows were missing)
+        assertEquals(List.of("S1"), fired(binding, "empty($d)", tf(), exHour));
+    }
+
+
     @Test
     void aMaxDateReferenceIsTheGroupsLatest()
     {

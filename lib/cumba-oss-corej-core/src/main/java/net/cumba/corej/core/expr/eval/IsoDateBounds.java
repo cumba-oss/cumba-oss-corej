@@ -147,7 +147,9 @@ public final class IsoDateBounds
     /**
      * {@code true} iff {@code s} denotes a single known date (or instant) — the eligibility test
      * for <i>winning</i> an extreme. Day precision counts as determined: these are date extremes,
-     * and {@code 2012-06-15} is a determinate calendar day.
+     * and {@code 2012-06-15} is a determinate calendar day — and so, since PACK I E5 (PI-Q4 (ii)),
+     * does hour precision ({@code 2012-06-15T10}): one hour lies within one day
+     * ({@link #isDeterminedCore}).
      *
      * <p>
      * &#9873; <b>An interval of uncertainty is never determined</b> (D5) — uncertainty is what it
@@ -205,9 +207,52 @@ public final class IsoDateBounds
             return false;
         }
         String core = core(s);
-        return core != null && isReadableCore(core) && CalendarDates.isCompleteDate(core);
+        return core != null && isReadableCore(core) && CalendarDates.isValidDate(core)
+                && isDeterminedCore(core);
     }
 
+
+    /**
+     * The determinability of a readable, calendar-valid, non-interval core — the ONE predicate
+     * {@link #isDetermined} and {@link #hullOf} share: a complete date ({@code ScalarSemantics
+     * .isCompleteDate}: day, minute, second) or, since PACK I E5 (PI-Q4 (ii), owner 2026-10-17),
+     * <b>hour precision</b> ({@code yyyy-MM-ddTHH}, the 13 tier). An hour's hull lies within one
+     * calendar day a fortiori, which is the engine's own reason for "day is determined"; the 13-gap
+     * was inherited from the retired Python oracle's {@code is_complete_date}, not from an
+     * authority. ⚠ Local to the extreme path by design: {@code ScalarSemantics.isCompleteDate} and
+     * {@code is_complete_date} keep rejecting {@code …T10} (Fix #157), and
+     * {@link IsoDateComparison}'s fast path keeps its own gate.
+     */
+    private static boolean isDeterminedCore(String core)
+    {
+        return ScalarSemantics.isCompleteDate(core) || isHourPrecision(core);
+    }
+
+
+    /**
+     * Exactly {@code yyyy-MM-ddTHH}: a complete calendar date, {@code 'T'}, a two-digit hour
+     * {@code 00}–{@code 23} — never a masked form or junk that merely has 13 characters (the
+     * {@code isDetermined ⇒ canPosition} invariant, Fix #226).
+     */
+    private static boolean isHourPrecision(String core)
+    {
+        if (core.length() != HOUR_PRECISION || core.charAt(10) != 'T'
+                || ScalarSemantics.isMaskedDate(core) || !CalendarDates.isCompleteDatePart(core))
+        {
+            return false;
+        }
+        char h1 = core.charAt(11);
+        char h2 = core.charAt(12);
+        if (h1 < '0' || h1 > '9' || h2 < '0' || h2 > '9')
+        {
+            return false;
+        }
+        int hour = (h1 - '0') * 10 + (h2 - '0');
+        return hour <= 23;
+    }
+
+    /** {@link ScalarSemantics#detectIsoPrecision}'s hour tier: {@code yyyy-MM-ddTHH}. */
+    private static final int HOUR_PRECISION = 13;
 
     /**
      * {@code Fix #220}'s <b>readability</b> guard, extracted by {@code Fix #226} and widened to
@@ -371,10 +416,10 @@ public final class IsoDateBounds
             return null;
         }
         int precision = ScalarSemantics.detectIsoPrecision(core);
-        // CalendarDates.isCompleteDate(core) == isValidDate(core) && ScalarSemantics
-        // .isCompleteDate(core); the first conjunct holds here
+        // isDetermined(s) == isValidDate(core) && isDeterminedCore(core) for a non-interval; the
+        // first conjunct holds here
         return new Hull(truncatedAt(core, precision, false), truncatedAt(core, precision, true),
-                ScalarSemantics.isCompleteDate(core));
+                isDeterminedCore(core));
     }
 
 

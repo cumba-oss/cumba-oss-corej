@@ -170,11 +170,12 @@ public final class Extremes
      * </ul>
      *
      * <p>
-     * &#9873; <b>An undetermined candidate inside {@code W} (T11).</b> Hour precision
-     * ({@code …T08}) and an interval are not {@link IsoDateBounds#isDetermined determined}, so they
-     * never win (DT2 (a): EC-46 determinability is unchanged), yet such a value can lie inside the
-     * winning day — {@code min{2020-01-01, …T08, …T09:15}}: {@code …T08} is certainly earlier than
-     * {@code …T09:15}. Answering the earliest <i>determined</i> atom would then answer a value that
+     * &#9873; <b>An undetermined candidate inside {@code W} (T11).</b> An interval (and, until PACK
+     * I E5 / PI-Q4 (ii), hour precision — {@code …T08} is a determined atom since) is not
+     * {@link IsoDateBounds#isDetermined determined}, so it never wins (DT2 (a): the partial-date
+     * determinability is unchanged), yet such a value can lie inside the winning day —
+     * {@code min{2020-01-01, …T07:00/…T07:30, …T08:00}}: the interval is certainly earlier than
+     * {@code …T08:00}. Answering the earliest <i>determined</i> atom would then answer a value that
      * is provably not the extreme, so the precise mode keeps the hull answer {@code W} whenever an
      * undetermined candidate that does not contain {@code W} could reach the refined value (for a
      * min: its lower bound is strictly before the refined value's upper; for a max: its upper

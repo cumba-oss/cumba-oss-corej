@@ -355,15 +355,16 @@ class IsoDateBoundsTest
          * <p>
          * &#9888; {@code 2012-06-15T10:30} does <b>not</b> belong here — length 16 is one of
          * {@code ScalarSemantics.isCompleteDate}'s three tiers (10/16/19), so a minute-precision
-         * value <i>is</i> determined. Only the hour tier (13) is partial-with-a-hull among the
-         * time-bearing shapes. It is pinned as determined by
-         * {@link #singlyDecoratedCompleteDatesStayDetermined(String)} instead.
+         * value <i>is</i> determined; it is pinned as determined by
+         * {@link #singlyDecoratedCompleteDatesStayDetermined(String)} instead. Nor does the hour
+         * tier (13) since PACK I E5 (PI-Q4 (ii)) — {@code hourPrecisionIsPositionedAndDetermined}
+         * pins it; an interval of hour-precision ends stands in here (D5).
          * </p>
          */
         @ParameterizedTest
         @ValueSource(strings =
         {
-                "2012", "2012-06", "2012-06--", "2012---15", "2012-06-15T10"
+                "2012", "2012-06", "2012-06--", "2012---15", "2012-06-15T10/2012-06-15T12"
         })
         void canPositionDoesNotImplyIsDetermined(String s)
         {
@@ -961,14 +962,33 @@ class IsoDateBoundsTest
         }
 
 
+        /**
+         * PACK I E5 (PI-Q4 (ii), owner 2026-10-17): an hour-precision value is determined on the
+         * extreme path — its one-hour hull lies within one calendar day a fortiori, which is the
+         * engine's own reason for "day is determined" ({@code isDetermined} javadoc, EC-46 hull
+         * containment). Was {@code hourPrecisionIsPositionedButNotDetermined}: the 13-gap came from
+         * {@code ScalarSemantics.isCompleteDate}'s 10 / 16 / 19 tiers, inherited from the retired
+         * Python oracle, not from an authority. {@code is_complete_date} itself is unchanged (Fix
+         * #157), and an interval stays undetermined (D5).
+         */
         @Test
-        void hourPrecisionIsPositionedButNotDetermined()
+        void hourPrecisionIsPositionedAndDetermined()
         {
             IsoDateBounds.Hull h = IsoDateBounds.hullOf("2020-01-01T08");
             assertNotNull(h);
             assertEquals("2020-01-01T08:00:00", h.lower());
             assertEquals("2020-01-01T08:59:59", h.upper());
-            assertFalse(h.determined(), "isCompleteDate admits lengths 10 / 16 / 19 only");
+            assertTrue(h.determined(), "an hour lies within one day: determined (PI-Q4 (ii))");
+            assertTrue(IsoDateBounds.isDetermined("2020-01-01T08"));
+            assertTrue(IsoDateBounds.isDetermined("2012-06-15T10+02:00"), "offset applied first");
+            // the gate's own scalar predicate is NOT widened (is_complete_date, Fix #157)
+            assertFalse(net.cumba.corej.core.exec.ScalarSemantics.isCompleteDate("2020-01-01T08"));
+            assertFalse(CalendarDates.isCompleteDate("2020-01-01T08"));
+            // an interval of hour-precision ends stays undetermined (D5)
+            IsoDateBounds.Hull interval = IsoDateBounds.hullOf("2020-01-01T08/2020-01-01T09");
+            assertNotNull(interval);
+            assertFalse(interval.determined());
+            assertFalse(IsoDateBounds.isDetermined("2020-01-01T08/2020-01-01T09"));
             assertNull(IsoDateBounds.hullOf("UNK"));
             assertNull(IsoDateBounds.hullOf(null));
         }
