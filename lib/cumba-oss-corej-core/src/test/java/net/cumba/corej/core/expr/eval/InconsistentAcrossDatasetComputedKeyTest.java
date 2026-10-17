@@ -88,9 +88,12 @@ class InconsistentAcrossDatasetComputedKeyTest
      * AE: rows 1-3 share the coded term {@code HEADACHE} (two via {@code AEMODIFY}, row 3 via its
      * {@code AETERM}) and row 2 is coded apart; rows 4-5 share the verbatim {@code PAIN} but were
      * modified to two terms, coded apart legitimately; rows 6-7 have neither term — blank
-     * {@code ""} — and are coded apart; rows 8-9 have neither term — missing — and are coded apart.
-     * Column {@code K} is the coding key materialised by hand: what {@code coalesce(AEMODIFY,
-     * AETERM)} answers per row (a computed missing where both are blank, CO1).
+     * {@code ""} — and are both coded {@code X}; rows 8-9 have neither term — missing — and are
+     * both coded {@code Y}. Column {@code K} is the coding key materialised by hand: what
+     * {@code coalesce(AEMODIFY, AETERM)} answers per row (a computed missing where both are blank,
+     * CO1). The two blank pairs are consistent each: only ONE missing key over all four rows ties
+     * (all four fire) — a {@code coalesce} answering {@code ""} for rows 6-7 would split them into
+     * two silent groups (review L1).
      */
     private static IDataTable ae()
     {
@@ -102,7 +105,7 @@ class InconsistentAcrossDatasetComputedKeyTest
                 .str("AEMODIFY", "HEADACHE", "HEADACHE", "", "BACK PAIN", "NECK PAIN", "", "", null,
                         null)
                 .str("AEDECOD", "Headache", "Cephalalgia", "Headache", "Back pain", "Neck pain",
-                        "X", "Y", "X", "Y")
+                        "X", "X", "Y", "Y")
                 .str("K", "HEADACHE", "HEADACHE", "HEADACHE", "BACK PAIN", "NECK PAIN", null, null,
                         null, null)
                 .build();
@@ -130,12 +133,13 @@ class InconsistentAcrossDatasetComputedKeyTest
     void theComputedKeyKeysExactlyAsTheMaterialisedColumn()
     {
         // the differential against the column path: under the DROP default and with
-        // keep_missings=true (the both-blank rows then form a group of their own, coded apart)
+        // keep_missings=true (the four both-blank rows are then ONE missing-key group, X x2
+        // against Y x2 - a tie, all four fire; a "" key for rows 6-7 would split it silent)
         assertEquals(fired(ae(), "is_inconsistent_across_dataset(AEDECOD, keys=[K])"), fired(ae(),
                 "is_inconsistent_across_dataset(AEDECOD, keys=[coalesce(AEMODIFY, AETERM)])"));
         List<Long> kept = fired(ae(),
                 "is_inconsistent_across_dataset(AEDECOD, keys=[K], keep_missings=true)");
-        assertTrue(kept.containsAll(List.of(6L, 7L, 8L, 9L)), "premise: " + kept);
+        assertEquals(List.of(2L, 6L, 7L, 8L, 9L), kept, "premise: the column path");
         assertEquals(kept, fired(ae(), "is_inconsistent_across_dataset(AEDECOD,"
                 + " keys=[coalesce(AEMODIFY, AETERM)], keep_missings=true)"));
     }
@@ -235,6 +239,90 @@ class InconsistentAcrossDatasetComputedKeyTest
                 load("is_not_unique_relationship(AEDECOD, keys=[coalesce(AEMODIFY, AETERM)])")
                         .getLoadError());
         assertTrue(error.contains("cannot splice the per-row member"), error);
+    }
+
+
+    /**
+     * Review L2: a loaded column may carry a value column's reserved name (a CSV / XLSX header is
+     * free text) — the key must still read the computed value, never the dataset's column of that
+     * name, which the name lookup answers first (case-insensitively). Shared with
+     * {@code is_(not_)unique_set}'s value members (UC1).
+     */
+    @Test
+    void aDatasetColumnNamedLikeAValueColumnDoesNotShadowTheKey()
+    {
+        for (String clash : List.of("#value0", "#VALUE0"))
+        {
+            IDataTable t = RealTables.of("AE").str("DOMAIN", "AE", "AE", "AE")
+                    .str("USUBJID", "S1", "S2", "S3")
+                    .str("AETERM", "HEAD ACHE", "HEADACHE!!", "HEADACHE")
+                    .str("AEMODIFY", "HEADACHE", "HEADACHE", "")
+                    .str("AEDECOD", "Headache", "Cephalalgia", "Headache").str(clash, "a", "b", "c")
+                    .build();
+            assertEquals(List.of(2L), fired(t,
+                    "is_inconsistent_across_dataset(AEDECOD, keys=[coalesce(AEMODIFY, AETERM)])"),
+                    clash);
+            assertEquals(List.of(1L, 2L, 3L),
+                    fired(t, "not is_unique_set([coalesce(AEMODIFY, AETERM)])"), clash);
+        }
+    }
+
+
+    /** Review L2, the backstop: {@code withValues} refuses a name the table already carries. */
+    @Test
+    void withValuesRefusesACollidingName()
+    {
+        IDataTable t = RealTables.of("AE").str("AETERM", "a", "b").str("#value0", "x", "y").build();
+        net.cumba.corej.core.exec.EvaluationContext ctx = net.cumba.corej.core.exec.EvaluationContext
+                .builder().table(t).build();
+        net.cumba.corej.core.exec.GroupSplice.Value member = net.cumba.corej.core.exec.GroupSplice.Value
+                .of(net.cumba.corej.core.expr.CheckExpressionParser.parse("upper(AETERM)"));
+        assertNotNull(member);
+        Vector v = net.cumba.corej.core.exec.GroupSplice.valueVector(member, ctx);
+        assertEquals("#value0#", net.cumba.corej.core.exec.GroupReadTable.valueColumnName(t, 0));
+        RuntimeException error = org.junit.jupiter.api.Assertions.assertThrows(
+                net.cumba.corej.core.exec.GroupSplice.GroupSpliceException.class,
+                () -> net.cumba.corej.core.exec.GroupReadTable.withValues(t, List.of("#value0"),
+                        List.of(v), List.of(false)));
+        assertTrue(String.valueOf(error.getMessage()).contains("collides"), error.getMessage());
+        assertEquals(3,
+                net.cumba.corej.core.exec.GroupReadTable
+                        .withValues(t, List.of("#value0#"), List.of(v), List.of(false))
+                        .getMetaData().getColumnCount());
+    }
+
+
+    /**
+     * Review L3, measured: the derived Output_Variables walk into the coding key, so the rule
+     * derives {@code CEMODIFY} — a column CE does not carry. The finding simply has no value for it
+     * (an absent output column is not projected), the present ones are reported; where the column
+     * exists its value is reported — the coded input, the useful half. (Only {@code coalesce}'s
+     * first operand is derived — a later positional is a value position, D2c — so the T3 rules
+     * author {@code --TERM}.)
+     */
+    @Test
+    void aDerivedOutputColumnTheDatasetLacksIsNotReported()
+    {
+        Rule r = load("is_inconsistent_across_dataset(CEDECOD, keys=[coalesce(CEMODIFY, CETERM)])");
+        assertTrue(r.effectiveOutputVariablesOrAuthored().contains("CEMODIFY"),
+                () -> "premise: derived " + r.effectiveOutputVariablesOrAuthored());
+        IDataTable ce = RealTables.of("CE").str("DOMAIN", "CE", "CE").str("USUBJID", "S1", "S2")
+                .str("CETERM", "MIGRAINE", "MIGRAINE").str("CEDECOD", "Migraine", "Headache")
+                .build();
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, ce);
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        assertEquals(2, result.getViolations().size());
+        for (net.cumba.corej.core.exec.Violation v : result.getViolations())
+        {
+            assertTrue(
+                    v.getValues().containsKey("CEDECOD") && !v.getValues().containsKey("CEMODIFY"),
+                    v::toString);
+        }
+        RuleExecutionResult ae = RuleRunnerCalls.execute(
+                load("is_inconsistent_across_dataset(AEDECOD, keys=[coalesce(AEMODIFY, AETERM)])"),
+                ae());
+        net.cumba.corej.core.exec.Violation row2 = ae.getViolations().get(0);
+        assertEquals("HEADACHE", row2.getValues().get("AEMODIFY"), row2::toString);
     }
 
 

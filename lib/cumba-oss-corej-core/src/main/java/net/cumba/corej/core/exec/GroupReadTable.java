@@ -86,9 +86,11 @@ public final class GroupReadTable extends AbstractDataTable
             "record_count", "distinct", "sequence", GroupSplice.NOT_UNIQUE_MEMBER_SET);
 
     /**
-     * The prefix of a value member's reserved column name (runbook W1b UC1, coordinator D3): no
-     * authored column name starts with {@code #}, so the per-row key columns {@link #withValues}
-     * appends never shadow or collide with a dataset's own.
+     * The prefix of a value member's reserved column name (runbook W1b UC1, coordinator D3). No
+     * authored column name starts with {@code #}, but a loaded one can (a CSV / XLSX header is free
+     * text), so {@link #valueColumnName} picks a name the evaluated table does not carry and
+     * {@link #withValues} refuses a collision ({@code PLAN-engine-per-row-key-expression} review
+     * L2): the lookup answers the first column of a name, which would be the dataset's own.
      */
     private static final String VALUE_COLUMN_PREFIX = "#value";
 
@@ -193,15 +195,26 @@ public final class GroupReadTable extends AbstractDataTable
 
 
     /**
-     * The reserved column name of the {@code index}-th value member of a key list (W1b UC1).
+     * The reserved column name of the {@code index}-th value member of a key list (W1b UC1): the
+     * prefix and the index, padded with {@code #} while {@code table} already carries the name
+     * (case-insensitively where its lookup is). The padding keeps two indices apart: the index is
+     * digits only, the padding never one.
      *
+     * @param table
+     *            the evaluated table the value columns will be appended to
      * @param index
      *            the member's position in the authored list
      * @return the name
      */
-    public static String valueColumnName(int index)
+    public static String valueColumnName(IDataTable table, int index)
     {
-        return VALUE_COLUMN_PREFIX + index;
+        DataTableMeta meta = table.getMetaData();
+        StringBuilder name = new StringBuilder(VALUE_COLUMN_PREFIX).append(index);
+        while (meta.getColumnIndex(name.toString()) >= 0)
+        {
+            name.append('#');
+        }
+        return name.toString();
     }
 
 
@@ -239,6 +252,13 @@ public final class GroupReadTable extends AbstractDataTable
         IDataTableColumn[] columns = new IDataTableColumn[names.size()];
         for (int i = 0; i < columns.length; i++)
         {
+            if (meta.getColumnIndex(names.get(i)) >= 0)
+            {
+                // the lookup answers a name's FIRST column: a value column named like one of
+                // the table's own would be shadowed by it, keying on the wrong cells (review L2)
+                throw new GroupSplice.GroupSpliceException("the value key column " + names.get(i)
+                        + " collides with a column of the table — a reserved name must be free");
+            }
             Vector vector = vectors.get(i);
             DataValueType type = vector.declaredType() == DataValueType.MISSING
                     ? DataValueType.STRING

@@ -4532,7 +4532,7 @@ public final class ExprCompiler
                                 + ": regex= applies to column members only and cannot normalise"
                                 + " the value member " + value.printed());
                     }
-                    String name = GroupReadTable.valueColumnName(i);
+                    String name = GroupReadTable.valueColumnName(ctx.getTable(), i);
                     members.add(name);
                     valueNames.add(name);
                     valueVectors.add(net.cumba.corej.core.exec.GroupSplice.valueVector(value, ctx));
@@ -4738,7 +4738,7 @@ public final class ExprCompiler
                 if (member instanceof net.cumba.corej.core.exec.GroupSplice.Value value
                         && net.cumba.corej.core.exec.GroupSplice.readsRowCursor(value, ctx))
                 {
-                    String reserved = GroupReadTable.valueColumnName(i);
+                    String reserved = GroupReadTable.valueColumnName(ctx.getTable(), i);
                     members.add(reserved);
                     valueNames.add(reserved);
                     valueVectors.add(net.cumba.corej.core.exec.GroupSplice.valueVector(value, ctx));
