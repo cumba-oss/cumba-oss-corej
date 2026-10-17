@@ -61,6 +61,29 @@ class RuleRunnerVariableScopeTest
     }
 
 
+    /**
+     * PACK I E1 (PI-C4, ECT-Q5 ⓐ in the scope gate): a typed requirement on a column that holds no
+     * value in any row is satisfied — the column has no type — so the rule EXECUTES; the valued
+     * Char column under {@code :N} keeps the skip and its reason.
+     */
+    @Test
+    void typedRequirementOnABlankColumn_ruleRuns()
+    {
+        Rule rule = ruleWithVarScope(List.of("RPRFDY:N"), null);
+        IDataTable blank = RealTables.of("TP").str("USUBJID", "S1", "S2").str("AESTDY", "1", "2")
+                .str("RPRFDY", "", "").build();
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, blank);
+        assertNotEquals(RuleExecutionStatus.SKIPPED, result.getStatus(),
+                "a blank column has no type to contradict RPRFDY:N: " + result.getStatusMessage());
+        IDataTable valued = RealTables.of("TP").str("USUBJID", "S1", "S2").str("AESTDY", "1", "2")
+                .str("RPRFDY", "", "7").build();
+        RuleExecutionResult skipped = RuleRunnerCalls.execute(rule, valued);
+        assertEquals(RuleExecutionStatus.SKIPPED, skipped.getStatus());
+        assertTrue(skipped.getStatusMessage().contains("required to be Numeric but is Character"),
+                skipped.getStatusMessage());
+    }
+
+
     @Test
     void includeVariablePresent_ruleRuns()
     {

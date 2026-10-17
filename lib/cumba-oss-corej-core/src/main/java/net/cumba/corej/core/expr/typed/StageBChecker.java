@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import net.cumba.corej.core.exec.GroupKeyIdentity;
 import net.cumba.corej.core.exec.ScopeVariableEntry;
 import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.OperandKind;
@@ -168,8 +169,7 @@ public final class StageBChecker
         {
             List<Expr> roots = expressionRoots(rule);
             DataTableMeta meta = table.getMetaData();
-            checkColumnTypes(rule, schema != null ? schema : meta, meta.getName(), schema != null,
-                    findings);
+            checkColumnTypes(rule, schema != null ? schema : meta, table, schema != null, findings);
             if (concreteContract)
             {
                 checkUnresolvedWildcards(rule, roots, findings);
@@ -254,9 +254,10 @@ public final class StageBChecker
      * ({@code PLAN-column-typed-function-absent-type} fold, LOW-4) — the call site's, which the
      * column's own direct-read default need not equal.
      */
-    private static void checkColumnTypes(Rule rule, DataTableMeta meta, @Nullable String dataset,
+    private static void checkColumnTypes(Rule rule, DataTableMeta meta, IDataTable table,
             boolean mergedSchema, List<StageBFinding> findings)
     {
+        String dataset = table.getMetaData().getName();
         // (A rule with no expression roots walks nothing: no value read, no equality pair.)
         // ⭐ The ONE factory the engine's application of the defaults reads too
         // (RuleRunner.typeExpectations; PLAN-column-typed-function-absent-type §6 M2): the same
@@ -305,15 +306,20 @@ public final class StageBChecker
                 continue;
             }
             Set<TypeExpectations.Expectation> expected = expectations.expectationsOf(column);
+            // PACK I E1 (PI-C4): ECT-Q5 ⓐ here as in the gate — a column of the PRIMARY holding
+            // no value in any row has no type to mismatch. Asked only where a mismatch would be
+            // reported; a dotted / merged-schema column is not a primary column and stays judged
+            // on its declared kind (named gap); the D55 observation below is deliberately kept.
+            boolean blank = GroupKeyIdentity.isBlank(table, column);
             if (kind == ColumnTypeGate.Kind.CHARACTER
-                    && expected.contains(TypeExpectations.Expectation.NUMERIC))
+                    && expected.contains(TypeExpectations.Expectation.NUMERIC) && !blank)
             {
                 findings.add(new StageBFinding(StageBErrorKind.COLUMN_TYPE_MISMATCH, column,
                         column + " is declared Char but a numeric-expected position reads it — "
                                 + "author num(" + column + ") if the rule means a numeric read"));
             }
             if (kind == ColumnTypeGate.Kind.NUMERIC
-                    && expected.contains(TypeExpectations.Expectation.CHARACTER))
+                    && expected.contains(TypeExpectations.Expectation.CHARACTER) && !blank)
             {
                 findings.add(new StageBFinding(StageBErrorKind.COLUMN_TYPE_MISMATCH, column,
                         column + " is declared Num but a character-expected position reads it — "
@@ -338,8 +344,11 @@ public final class StageBChecker
             }
             ColumnTypeGate.Kind lk = ColumnTypeGate.kindOf(meta.getColumn(li).getType());
             ColumnTypeGate.Kind rk = ColumnTypeGate.kindOf(meta.getColumn(ri).getType());
-            if (lk != null && rk != null && lk != rk)
+            if (lk != null && rk != null && lk != rk
+                    && !GroupKeyIdentity.isBlank(table, pair.left())
+                    && !GroupKeyIdentity.isBlank(table, pair.right()))
             {
+                // (a blank side has no type: ECT-Q5 ⓐ, as ColumnTypeGate.requireAgreedEquality)
                 String charSide = lk == ColumnTypeGate.Kind.CHARACTER ? pair.left() : pair.right();
                 findings.add(new StageBFinding(StageBErrorKind.COLUMN_TYPE_MISMATCH, pair.left(),
                         pair.left() + " and " + pair.right() + " compare with disagreeing "

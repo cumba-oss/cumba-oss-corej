@@ -246,14 +246,42 @@ public final class GroupKeyIdentity
     /**
      * Whether {@code aColumn} of {@code aTable} holds no value in any row — every cell missing or
      * {@code ""} ({@link net.cumba.datatable.ColumnContent#isBlank()}, the one predicate every
-     * key-kind check, {@code RowMax} and the column-type gate share; a 0-row table counts as blank,
+     * key-kind check, {@code RowMax}, the column-type gate, the scope gate's typed requirement and
+     * stage B's column-type observation share (ECT-Q5 ⓐ, PACK I E1); a 0-row table counts as blank,
      * harmlessly — it groups nothing). An absent column answers {@code false}: it has no content to
      * be blank, and is not judged anyway.
      */
-    static boolean isBlank(IDataTable aTable, String aColumn)
+    public static boolean isBlank(IDataTable aTable, String aColumn)
     {
         int idx = aTable.getMetaData().getColumnIndex(aColumn);
         return idx >= 0 && aTable.getColumnContent(idx).isBlank();
+    }
+
+
+    /**
+     * Whether {@code aColumn} is blank in <b>every</b> member that carries it — the blank predicate
+     * of a split domain or a SUPP family, asked by the scope gate's qualified and pivot arms (PACK
+     * I E1): with ECT-Q7 an all-blank union resolves {@code STRING}, which is a default, not a
+     * type. Answers {@code false} when no member carries the column (there is no content to be
+     * blank, and the entry is absent or undecidable anyway).
+     */
+    public static boolean allBlank(List<IDataTable> aMembers, String aColumn)
+    {
+        boolean carried = false;
+        for (IDataTable member : aMembers)
+        {
+            int idx = member.getMetaData().getColumnIndex(aColumn);
+            if (idx < 0)
+            {
+                continue;
+            }
+            carried = true;
+            if (!member.getColumnContent(idx).isBlank())
+            {
+                return false;
+            }
+        }
+        return carried;
     }
 
 

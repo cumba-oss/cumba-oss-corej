@@ -3,6 +3,7 @@ package net.cumba.corej.core.exec;
 import java.util.List;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.DataTableMeta;
+import net.cumba.datatable.IDataTable;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -102,6 +103,17 @@ public final class ScopeMatcherCalls
             @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign)
     {
         return ScopeMatcher.describeVariablesMismatch(rule, meta, domainPrefix, foreign);
+    }
+
+
+    /**
+     * The TABLE form production calls since PACK I E1 — the one that can see a blank column (ECT-Q5
+     * ⓐ extended to the scope gate, PI-C4). The meta-only forms above answer "never blank".
+     */
+    public static @Nullable String describeVariablesMismatch(Rule rule, IDataTable table,
+            @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign)
+    {
+        return ScopeMatcher.describeVariablesMismatch(rule, table, domainPrefix, foreign);
     }
 
 

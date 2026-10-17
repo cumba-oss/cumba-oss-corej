@@ -84,6 +84,31 @@ class StageBCheckerTest
     }
 
 
+    /**
+     * PACK I E1 (PI-C4): ECT-Q5 ⓐ in the observation channel too — a column that holds no value in
+     * any row has no type, so neither a numeric-expected read of a blank Char column nor an
+     * equality pair with a blank side is a {@code COLUMN_TYPE_MISMATCH} (the gate itself already
+     * exempts it, {@code ColumnTypeGate.requireAgreedEquality}). The valued columns keep the
+     * finding.
+     */
+    @Test
+    void aBlankColumnIsNoColumnTypeMismatch()
+    {
+        IDataTable blank = MockTable.of().col("AESEQ", "", "").colDouble("AEDUR", 1.0, 2.0).build();
+        assertEquals(List.of(), of(check("AESEQ > 5", blank), StageBErrorKind.COLUMN_TYPE_MISMATCH),
+                "a blank Char column under a numeric read has no type to mismatch");
+        assertEquals(List.of(),
+                of(check("AESEQ == AEDUR", blank), StageBErrorKind.COLUMN_TYPE_MISMATCH),
+                "an equality pair with a blank side has no disagreeing kinds");
+        IDataTable valued = MockTable.of().col("AESEQ", "", "3").colDouble("AEDUR", 1.0, 2.0)
+                .build();
+        assertEquals(1,
+                of(check("AESEQ > 5", valued), StageBErrorKind.COLUMN_TYPE_MISMATCH).size());
+        assertEquals(1,
+                of(check("AESEQ == AEDUR", valued), StageBErrorKind.COLUMN_TYPE_MISMATCH).size());
+    }
+
+
     @Test
     void aNumConversionSatisfiesTheNumericDirection()
     {

@@ -12,9 +12,11 @@ import net.cumba.corej.core.gen.GeneratedRulePackage;
 import net.cumba.corej.core.gen.SkippedSourceRule;
 import net.cumba.corej.core.gen.WildcardExpander;
 import net.cumba.corej.core.model.Outcome;
+import net.cumba.corej.core.model.Requirements;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.Sensitivity;
+import net.cumba.corej.core.model.VariableRequirement;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.BeforeEach;
@@ -283,6 +285,46 @@ class DatasetRuleResolverTest
         assertEquals(1, skipped.size());
         assertEquals("data structure ADAM OTHER not in Scope.Data_Structures.Include"
                 + " [BASIC DATA STRUCTURE]", skipped.getFirst().reason());
+    }
+
+
+    /**
+     * PACK I E1 parity: the generator's scope gate and {@code RuleRunner}'s evaluate the same
+     * predicate — a typed requirement on a blank column admits the rule here too, and the valued
+     * Char column under {@code :N} is skipped at generation time with the type reason.
+     */
+    @Test
+    void typedVariableRequirementOnABlankColumn_admittedAtGenerationTime()
+    {
+        Rule rule = structureScopedRule(null, null);
+        VariableRequirement vr = new VariableRequirement();
+        vr.setAll(List.of("RPRFDY:N"));
+        Requirements req = new Requirements();
+        req.setVariables(vr);
+        rule.setRequirements(req);
+
+        DatasetRuleResolver gen = new DatasetRuleResolver(new AdamMockLibraryProvider());
+        gen.setStaticRules(List.of(rule));
+        GeneratedRulePackage blank = gen(gen,
+                MockTable.of().name("TP").col("STUDYID", "S1", "S1").col("RPRFDY", "", "").build(),
+                "TP", "TRIAL DESIGN");
+        assertTrue(
+                blank.getRules().stream().anyMatch(r -> "TEST-DSGATE".equals(r.getCore().getId())),
+                "a blank column has no type to contradict RPRFDY:N: "
+                        + blank.getSkippedSourceRules());
+
+        Rule rule2 = structureScopedRule(null, null);
+        rule2.setRequirements(req);
+        DatasetRuleResolver gen2 = new DatasetRuleResolver(new AdamMockLibraryProvider());
+        gen2.setStaticRules(List.of(rule2));
+        GeneratedRulePackage valued = gen(gen2,
+                MockTable.of().name("TP").col("STUDYID", "S1", "S1").col("RPRFDY", "", "7").build(),
+                "TP", "TRIAL DESIGN");
+        List<SkippedSourceRule> skipped = valued.getSkippedSourceRules().stream()
+                .filter(s -> "TEST-DSGATE".equals(s.rule().getCore().getId())).toList();
+        assertEquals(1, skipped.size());
+        assertTrue(skipped.getFirst().reason().contains("required to be Numeric but is Character"),
+                skipped.getFirst().reason());
     }
 
 

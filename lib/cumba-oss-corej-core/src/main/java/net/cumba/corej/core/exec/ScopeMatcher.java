@@ -638,8 +638,9 @@ public final class ScopeMatcher
      *
      * @param rule
      *            the rule to check
-     * @param meta
-     *            the primary dataset's metadata
+     * @param table
+     *            the primary dataset — its metadata answers presence and declared type, its content
+     *            whether a column is blank
      * @param domainPrefix
      *            the variable wildcard prefix resolving a leading {@code --} in an unqualified
      *            entry, or {@code null}
@@ -648,8 +649,35 @@ public final class ScopeMatcher
      *            evaluated (every qualified entry is then undecidable)
      * @return {@code null} when matching, otherwise the mismatch description
      */
-    public static @Nullable String describeVariablesMismatch(Rule rule, DataTableMeta meta,
+    public static @Nullable String describeVariablesMismatch(Rule rule, IDataTable table,
             @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign)
+    {
+        return describeVariablesMismatch(rule, table.getMetaData(), table, domainPrefix, foreign);
+    }
+
+
+    /**
+     * The metadata-only form — PACKAGE-PRIVATE, test callers only ({@code ScopeMatcherCalls}): it
+     * cannot see a blank column, so it answers as if no column were blank (review L5: a future
+     * production caller must take the table form, not silently lose the exemption).
+     */
+    static @Nullable String describeVariablesMismatch(Rule rule, DataTableMeta meta,
+            @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign)
+    {
+        return describeVariablesMismatch(rule, meta, null, domainPrefix, foreign);
+    }
+
+
+    /**
+     * The one implementation behind both forms. {@code primary} is the dataset whose CONTENT
+     * answers the blank question for the unqualified arms (PACK I E1, PI-C4: ECT-Q5 ⓐ "an empty
+     * column has no type", asked only after the kinds disagree); {@code null} means no column of
+     * the primary is ever blank. The qualified and pivot arms ask {@code foreign}'s tables, which
+     * always carry content.
+     */
+    private static @Nullable String describeVariablesMismatch(Rule rule, DataTableMeta meta,
+            @Nullable IDataTable primary, @Nullable String domainPrefix,
+            @Nullable ScopeVariableSource foreign)
     {
         if (meta == null)
         {
@@ -668,8 +696,8 @@ public final class ScopeMatcher
         {
             for (String varName : all)
             {
-                EntryMismatch mismatch = describeIncludeEntry(varName, meta, domainPrefix, foreign,
-                        "All");
+                EntryMismatch mismatch = describeIncludeEntry(varName, meta, primary, domainPrefix,
+                        foreign, "All");
                 if (mismatch != null)
                 {
                     return mismatch.reason();
@@ -684,7 +712,7 @@ public final class ScopeMatcher
             // first unmet All entry wins above.
             for (int g = 0; g < anyGroups.size(); g++)
             {
-                String reason = describeAnyLeg(anyGroups.get(g), g + 1, meta, domainPrefix,
+                String reason = describeAnyLeg(anyGroups.get(g), g + 1, meta, primary, domainPrefix,
                         foreign);
                 if (reason != null)
                 {
@@ -949,7 +977,7 @@ public final class ScopeMatcher
      * </p>
      */
     private static @Nullable String describeAnyLeg(List<String> group, int groupIndex,
-            DataTableMeta meta, @Nullable String domainPrefix,
+            DataTableMeta meta, @Nullable IDataTable primary, @Nullable String domainPrefix,
             @Nullable ScopeVariableSource foreign)
     {
         // ⚠ An undecidable qualified entry is a mismatch like any other, so it does not satisfy
@@ -963,8 +991,8 @@ public final class ScopeMatcher
         String wrongType = null;
         for (String varName : group)
         {
-            EntryMismatch mismatch = describeIncludeEntry(varName, meta, domainPrefix, foreign,
-                    "Any");
+            EntryMismatch mismatch = describeIncludeEntry(varName, meta, primary, domainPrefix,
+                    foreign, "Any");
             if (mismatch == null)
             {
                 return null; // short-circuit: one present entry satisfies the whole group
@@ -1132,7 +1160,8 @@ public final class ScopeMatcher
 
 
     private static @Nullable EntryMismatch describeIncludeEntry(String varName, DataTableMeta meta,
-            @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign, String facet)
+            @Nullable IDataTable primary, @Nullable String domainPrefix,
+            @Nullable ScopeVariableSource foreign, String facet)
     {
         ScopeVariableEntry entry = ScopeVariableEntry.parse(varName);
         // ⭐ PLAN-variable-type-requirements: the demanded type, or null for an untagged entry —
@@ -1180,7 +1209,8 @@ public final class ScopeMatcher
                     return EntryMismatch.absent("no variable matching Requirements.Variables."
                             + facet + " entry " + varName + " present in dataset " + dataset);
                 }
-                if (required != null && firstColumnMatching(metas, pattern, required) == null)
+                if (required != null && firstColumnMatching(foreign.tablesOf(qualifier), pattern,
+                        required) == null)
                 {
                     return EntryMismatch.wrongType("no variable matching Requirements.Variables."
                             + facet + " entry " + varName + " present in dataset " + dataset + " — "
@@ -1198,9 +1228,18 @@ public final class ScopeMatcher
                 // must not (the constraint JoinLookup.declaredTypeOf's decision D1 records). A
                 // clash of valued members therefore yields null = undecidable, the entry does not
                 // block, and the domain's own InvalidJoinedDomainException keeps reporting it.
-                return asTypeMismatch(typeMismatch(facet, varName, required,
+                // PACK I E1 (ECT-Q5 ⓐ): a column blank in every member carrying it has no type
+                // — ECT-Q7's all-blank STRING is a default, not a type — so it never contradicts
+                // the requirement. Asked only after the kinds disagree.
+                String reason = typeMismatch(facet, varName, required,
                         agreedKind(foreign.tablesOf(qualifier), entry.variable()),
-                        " in dataset " + dataset));
+                        " in dataset " + dataset);
+                if (reason != null
+                        && GroupKeyIdentity.allBlank(foreign.tablesOf(qualifier), entry.variable()))
+                {
+                    return null;
+                }
+                return asTypeMismatch(reason);
             }
             else if (foreign.existsViaSuppQnam(qualifier, entry.variable()))
             {
@@ -1230,7 +1269,7 @@ public final class ScopeMatcher
                         + " entry " + entryLabel(varName, entry.variable(), resolved)
                         + " present in dataset");
             }
-            if (required != null && firstColumnMatching(meta, pattern, required) == null)
+            if (required != null && firstColumnMatching(meta, primary, pattern, required) == null)
             {
                 // ⚠ The pattern is satisfied by NAME but by no column of the demanded type. Said
                 // apart from plain absence on purpose: "nothing matched" and "the match is the
@@ -1257,9 +1296,17 @@ public final class ScopeMatcher
         }
         else
         {
-            return asTypeMismatch(
-                    typeMismatch(facet, entryLabel(varName, entry.variable(), resolved), required,
-                            kindOf(meta, resolved), ""));
+            String reason = typeMismatch(facet, entryLabel(varName, entry.variable(), resolved),
+                    required, kindOf(meta, resolved), "");
+            // PACK I E1 (PI-C4): ECT-Q5 ⓐ — a column holding no value in any row has no type to
+            // contradict the requirement; the rule executes and its reads fold to missing. Asked
+            // only after the kinds disagree, and only of a caller that passed the table (the
+            // meta-only form cannot see content and keeps the mismatch).
+            if (reason != null && primary != null && GroupKeyIdentity.isBlank(primary, resolved))
+            {
+                return null;
+            }
+            return asTypeMismatch(reason);
         }
         return null;
     }
@@ -1320,6 +1367,13 @@ public final class ScopeMatcher
         }
         ColumnTypeGate.Kind actual = ColumnTypeGate.kindOf(foreign.suppQvalType(qualifier));
         if (actual == null || actual == required)
+        {
+            return null;
+        }
+        // PACK I E1 (ECT-Q5 ⓐ): a QVAL blank in every SUPP source delivers no typed value — the
+        // pivoted variable has no type to contradict the requirement (asked after the kinds
+        // disagree; judged over the whole SUPP's QVAL, review L4).
+        if (foreign.suppQvalBlank(qualifier))
         {
             return null;
         }
@@ -1807,8 +1861,8 @@ public final class ScopeMatcher
      * {@code /^..ORRES.?$/:N} through the second, and testing only the first would skip it. A
      * column whose kind is not decidable is accepted (D2).
      */
-    private static @Nullable String firstColumnMatching(DataTableMeta meta, Pattern pattern,
-            ColumnTypeGate.Kind required)
+    private static @Nullable String firstColumnMatching(DataTableMeta meta,
+            @Nullable IDataTable table, Pattern pattern, ColumnTypeGate.Kind required)
     {
         for (int i = 0; i < meta.getColumnCount(); i++)
         {
@@ -1818,7 +1872,10 @@ public final class ScopeMatcher
                 continue;
             }
             ColumnTypeGate.Kind kind = ColumnTypeGate.kindOf(meta.getColumn(i).getType());
-            if (kind == null || kind == required)
+            // PACK I E1 (ECT-Q5 ⓐ): a blank column of the wrong kind has no type — accepted like
+            // an undecidable one; asked only after the kinds disagree, and only with a table
+            if (kind == null || kind == required
+                    || (table != null && GroupKeyIdentity.isBlank(table, column)))
             {
                 return column;
             }
@@ -1827,13 +1884,16 @@ public final class ScopeMatcher
     }
 
 
-    /** Multi-table kind-aware variant — see {@link #firstColumnMatching(List, Pattern)}. */
-    private static @Nullable String firstColumnMatching(List<DataTableMeta> metas, Pattern pattern,
+    /**
+     * Multi-table kind-aware variant over the TABLES (a blank member column is accepted, E1) — see
+     * {@link #firstColumnMatching(List, Pattern)}.
+     */
+    private static @Nullable String firstColumnMatching(List<IDataTable> tables, Pattern pattern,
             ColumnTypeGate.Kind required)
     {
-        for (DataTableMeta meta : metas)
+        for (IDataTable table : tables)
         {
-            String hit = firstColumnMatching(meta, pattern, required);
+            String hit = firstColumnMatching(table.getMetaData(), table, pattern, required);
             if (hit != null)
             {
                 return hit;

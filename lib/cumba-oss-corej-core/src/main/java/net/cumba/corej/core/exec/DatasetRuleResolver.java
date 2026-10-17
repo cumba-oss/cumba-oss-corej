@@ -366,7 +366,7 @@ public class DatasetRuleResolver
                 scopedStaticRules.add(r);
                 continue;
             }
-            String scopeReason = describeScopeSkip(r, domName, meta, scopeDomainPrefix,
+            String scopeReason = describeScopeSkip(r, domName, table, scopeDomainPrefix,
                     scopeUnsplitName, detectedStructures, detectedSubclasses, scopeForeign);
             // Review L6: count only rules that actually go on to RUN with their cross-dataset
             // gate ignored. Counting before the scope check inflated the figure with rules that
@@ -709,10 +709,11 @@ public class DatasetRuleResolver
      * Python. {@code domainPrefix} (Phase 4) resolves {@code --} placeholders in
      * variable-requirement entries.
      */
-    private @Nullable String describeScopeSkip(Rule r, String domName, DataTableMeta meta,
+    private @Nullable String describeScopeSkip(Rule r, String domName, IDataTable table,
             @Nullable String domainPrefix, String unsplitName, List<String> detectedStructures,
             List<String> detectedSubclasses, @Nullable ScopeVariableSource scopeForeign)
     {
+        DataTableMeta meta = table.getMetaData();
         // Owner ruling X1 (PLAN-use-case-scope-filter): Scope.Use_Case is a per-RUN axis, checked
         // first because it is the same for every dataset; order only decides which reason a
         // multiply-mismatched rule reports. ⚠ The study-anchor pass never reaches this method, so
@@ -786,7 +787,9 @@ public class DatasetRuleResolver
         // SAME predicate at two moments, so a split policy between them would be drift by
         // construction: a rule the generator let through would then be skipped at execution, and
         // the audit trail would name two different reasons for one fact.
-        return ScopeMatcher.describeVariablesMismatch(r, meta, domainPrefix, scopeForeign);
+        // The TABLE form (PACK I E1): the blank-column exemption needs content, and both gates
+        // must keep evaluating the same predicate.
+        return ScopeMatcher.describeVariablesMismatch(r, table, domainPrefix, scopeForeign);
     }
 
 }

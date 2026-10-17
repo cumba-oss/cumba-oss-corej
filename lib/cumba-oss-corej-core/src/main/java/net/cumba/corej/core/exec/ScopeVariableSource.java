@@ -107,6 +107,9 @@ public final class ScopeVariableSource
      */
     private final Map<String, DataValueType> qvalMemo = new ConcurrentHashMap<>();
 
+    /** PACK I E1: whether {@code QVAL} is blank in every SUPP source of a qualifier (memoised). */
+    private final Map<String, Boolean> qvalBlankMemo = new ConcurrentHashMap<>();
+
     private ScopeVariableSource(DatasetResolver.WithInventory resolver, IDataTable primary,
             boolean suppMerge, JoinCache.@Nullable SharedIndexCache sharedIndex)
     {
@@ -347,16 +350,42 @@ public final class ScopeVariableSource
         String resolved = resolveQualifierName(qualifier);
         return qvalMemo.computeIfAbsent(resolved, name ->
         {
-            IDataTable foreign = resolveIgnoringCase(name);
-            String domain = java.util.Objects
-                    .requireNonNullElse(DatasetIdentity.domainOfDataset(name, resolver), name);
-            List<IDataTable> sources = SplitDomainResolution.suppMergeSources(resolver, foreign,
-                    name, domain, null);
+            List<IDataTable> sources = suppSourcesOf(name);
             DataValueType type = sources.isEmpty() ? null
                     : net.cumba.datatable.impl.view.UnionDataTable
                             .resolvedColumnType(sources.toArray(IDataTable[]::new), "QVAL");
             return type == null ? DataValueType.MISSING : type;
         });
+    }
+
+
+    /**
+     * PACK I E1 (PI-C4, ECT-Q5 ⓐ in the scope gate): whether the {@code QVAL} of
+     * {@code SUPP<qualifier>} holds no value in any row of any SUPP source carrying it — then the
+     * pivot delivers no typed value and a typed requirement on a pivoted variable is satisfied.
+     * Judged over the whole SUPP's {@code QVAL}, not per {@code QNAM} (plan §2, review L4). The
+     * sources are {@link #suppQvalType}'s; memoised per resolved qualifier like it.
+     *
+     * @param qualifier
+     *            the qualifier half of the entry, {@code --} not yet resolved
+     * @return whether every SUPP source carrying {@code QVAL} is blank in it; {@code false} when
+     *         none carries it
+     */
+    public boolean suppQvalBlank(String qualifier)
+    {
+        String resolved = resolveQualifierName(qualifier);
+        return qvalBlankMemo.computeIfAbsent(resolved,
+                name -> GroupKeyIdentity.allBlank(suppSourcesOf(name), "QVAL"));
+    }
+
+
+    /** The qualifier's SUPP sources (the one chooser's members, PLAN-split-supp-resolution C5). */
+    private List<IDataTable> suppSourcesOf(String name)
+    {
+        IDataTable foreign = resolveIgnoringCase(name);
+        String domain = java.util.Objects
+                .requireNonNullElse(DatasetIdentity.domainOfDataset(name, resolver), name);
+        return SplitDomainResolution.suppMergeSources(resolver, foreign, name, domain, null);
     }
 
 

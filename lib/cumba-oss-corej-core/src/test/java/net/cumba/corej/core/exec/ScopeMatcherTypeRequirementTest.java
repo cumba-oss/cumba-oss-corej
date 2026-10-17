@@ -504,6 +504,70 @@ class ScopeMatcherTypeRequirementTest
         }
 
 
+        /**
+         * PACK I E1 (PI-C4): a qualified entry's blank column has no type either — every member
+         * carrying the column holds no value, so the typed requirement is satisfied. The valued
+         * column keeps the reason.
+         */
+        @Test
+        void aQualifiedBlankColumnSatisfiesTheTypedRequirement()
+        {
+            IDataTable dm = MockTable.of().name("DM").col("ARM", "A", "B").col("AGE", "", "")
+                    .build();
+            assertNull(describeWith(ruleAll("DM.AGE:N"), map("DM", dm)));
+            assertNull(describeWith(ruleAll("DM.AGE:C"), map("DM", dm)));
+            IDataTable valued = MockTable.of().name("DM").col("ARM", "A", "B").col("AGE", "", "42")
+                    .build();
+            String reason = describeWith(ruleAll("DM.AGE:N"), map("DM", valued));
+            assertNotNull(reason);
+            assertTrue(reason.contains("required to be Numeric but is Character"), reason);
+        }
+
+
+        /**
+         * PACK I E1 with ECT-Q7's all-blank arm: two members declaring the column differently and
+         * BOTH blank resolve STRING (ECT-Q7), which used to fail {@code :N} — a blank union has no
+         * type, so neither direction blocks. (The valued-disagreeing split stays undecidable, the
+         * test above.)
+         */
+        @Test
+        void anAllBlankDisagreeingSplitSatisfiesEitherKind()
+        {
+            IDataTable lb1 = MockTable.of().name("lbch").col("DOMAIN", "LB").col("LBSTRESN", "")
+                    .build();
+            IDataTable lb2 = RealTables.of("lbhe").str("DOMAIN", "LB").lng("LBSTRESN", new Long[]
+            {
+                    null
+            }).build();
+            Map<String, IDataTable> split = map("lbch", lb1, "lbhe", lb2);
+            assertNull(describeWith(ruleAll("LB.LBSTRESN:N"), split),
+                    "all members blank ⇒ no type to contradict");
+            assertNull(describeWith(ruleAll("LB.LBSTRESN:C"), split));
+        }
+
+
+        /**
+         * PACK I E1 for the SUPP-QNAM delivery (D9): a SUPP whose QVAL holds no value in any row
+         * delivers no typed value, so the typed requirement on the pivoted variable is satisfied.
+         * Judged over the whole SUPP's QVAL, not per QNAM (plan §2, review L4).
+         */
+        @Test
+        void aBlankSuppQvalSatisfiesTheTypedPivotRequirement()
+        {
+            IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").build();
+            IDataTable suppae = RealTables.of("SUPPAE").str("QNAM", "AETRTEM").str("QVAL", "")
+                    .build();
+            Map<String, IDataTable> study = map("AE", ae, "SUPPAE", suppae);
+            assertNull(describeWith(ruleAll("AE.AETRTEM:N"), study));
+            assertNull(describeWith(ruleAll("AE.AETRTEM:C"), study));
+            IDataTable valued = RealTables.of("SUPPAE").str("QNAM", "AETRTEM").str("QVAL", "Y")
+                    .build();
+            String reason = describeWith(ruleAll("AE.AETRTEM:N"), map("AE", ae, "SUPPAE", valued));
+            assertNotNull(reason);
+            assertTrue(reason.contains("delivered as a supplemental qualifier"), reason);
+        }
+
+
         /** D9's edge: no QVAL column at all means no type, which is D2's undecidable. */
         @Test
         void aSuppTableWithoutQvalIsUndecidable()
@@ -513,6 +577,99 @@ class ScopeMatcherTypeRequirementTest
             Map<String, IDataTable> study = map("AE", ae, "SUPPAE", suppae);
             assertNull(describeWith(ruleAll("AE.AETRTEM:N"), study));
             assertNull(describeWith(ruleAll("AE.AETRTEM:C"), study));
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // ECT-Q5 ⓐ extended to the scope gate (PACK I E1, PI-C4): a blank column has no type
+    // ------------------------------------------------------------------
+
+
+    /**
+     * PACK I E1 (coordinator decision PI-C4): "an empty column has no type" (ECT-Q5 ⓐ, D2, SVY
+     * OQ11) holds in the scope gate too. A typed requirement ({@code RPRFDY:N}) on a Char column
+     * whose every cell is missing or {@code ""} is <b>satisfied</b>, so the rule executes (and its
+     * reads fold to missing); the valued Char column keeps the mismatch. Judged on the TABLE
+     * ({@code IDataTable} overload) — the metadata alone cannot see a blank column, so the
+     * meta-only overload keeps answering "never blank" (pinned last).
+     */
+    @Nested
+    class BlankColumns
+    {
+
+        private @Nullable String describeTable(Rule rule, IDataTable table)
+        {
+            return ScopeMatcherCalls.describeVariablesMismatch(rule, table, null, null);
+        }
+
+
+        @Test
+        void aBlankCharColumnSatisfiesANumericRequirement()
+        {
+            IDataTable blank = MockTable.of().name("TP").col("TPETCD", "SCREEN", "TRT")
+                    .col("RPRFDY", "", "").build();
+            assertNull(describeTable(ruleAll("RPRFDY:N"), blank),
+                    "a blank column has no type to contradict the requirement (ECT-Q5 ⓐ)");
+            assertNull(describeTable(ruleAll("RPRFDY:C"), blank));
+            // control: the VALUED Char column keeps the reason
+            IDataTable valued = MockTable.of().name("TP").col("TPETCD", "SCREEN", "TRT")
+                    .col("RPRFDY", "", "7").build();
+            String reason = describeTable(ruleAll("RPRFDY:N"), valued);
+            assertNotNull(reason);
+            assertTrue(reason.contains("required to be Numeric but is Character"), reason);
+        }
+
+
+        @Test
+        void aBlankNumColumnSatisfiesACharacterRequirement()
+        {
+            IDataTable blank = RealTables.of("TP").str("TPETCD", "SCREEN").lng("RPRFDY", new Long[]
+            {
+                    null
+            }).build();
+            assertNull(describeTable(ruleAll("RPRFDY:C"), blank));
+            IDataTable valued = RealTables.of("TP").str("TPETCD", "SCREEN").lng("RPRFDY", 7L)
+                    .build();
+            assertNotNull(describeTable(ruleAll("RPRFDY:C"), valued));
+        }
+
+
+        /** The pattern arm: a blank column matching the name is accepted for the demanded kind. */
+        @Test
+        void aBlankColumnMatchingThePatternSatisfies()
+        {
+            IDataTable blank = MockTable.of().name("AE").col("AEORRES", "", "").build();
+            assertNull(describeTable(ruleAll("/^AEORRES.?$/:N"), blank));
+            IDataTable valued = MockTable.of().name("AE").col("AEORRES", "5").build();
+            String reason = describeTable(ruleAll("/^AEORRES.?$/:N"), valued);
+            assertNotNull(reason);
+            assertTrue(reason.contains("matches the name but is Character"), reason);
+        }
+
+
+        /** The Any leg goes through the same entry matcher: a blank entry satisfies its group. */
+        @Test
+        void aBlankColumnSatisfiesAnAnyGroup()
+        {
+            IDataTable blank = MockTable.of().name("TP").col("RPRFDY", "", "").build();
+            Rule any = rule(null, List.of(List.of("RPRFDY:N", "RPSTDY:N")));
+            assertNull(describeTable(any, blank));
+            IDataTable valued = MockTable.of().name("TP").col("RPRFDY", "7").build();
+            String reason = describeTable(any, valued);
+            assertNotNull(reason);
+            assertTrue(reason.contains("is of the required type"), reason);
+        }
+
+
+        /**
+         * ⚠ The meta-only overload has no content to judge, so it answers "never blank" — the
+         * meta-only test calls keep their verdicts (review L5). Production calls the table form.
+         */
+        @Test
+        void theMetaOnlyOverloadNeverSeesABlankColumn()
+        {
+            IDataTable blank = MockTable.of().name("TP").col("RPRFDY", "", "").build();
+            assertNotNull(describe(ruleAll("RPRFDY:N"), blank.getMetaData()));
         }
     }
 

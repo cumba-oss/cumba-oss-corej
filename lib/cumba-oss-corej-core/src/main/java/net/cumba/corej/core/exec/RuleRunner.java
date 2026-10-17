@@ -538,8 +538,10 @@ public final class RuleRunner
         // into
         // Requirements running with nothing in the guard's place. The reason string names the
         // resolver, never the dataset, so the report cannot be read as "the column was absent".
-        String variableScopeMismatch = ScopeMatcher.describeVariablesMismatch(rule,
-                table.getMetaData(), varWildcardPrefix, scopeForeign);
+        // The TABLE form (PACK I E1): a typed requirement on a blank column is satisfied —
+        // ECT-Q5 ⓐ, the same predicate DatasetRuleResolver.describeScopeSkip evaluates.
+        String variableScopeMismatch = ScopeMatcher.describeVariablesMismatch(rule, table,
+                varWildcardPrefix, scopeForeign);
         if (variableScopeMismatch != null)
         {
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
