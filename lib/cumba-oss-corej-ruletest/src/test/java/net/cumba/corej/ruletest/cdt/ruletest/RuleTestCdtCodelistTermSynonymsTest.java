@@ -175,6 +175,27 @@ class RuleTestCdtCodelistTermSynonymsTest
 
 
     @Test
+    void theSynonymKindIsALoadErrorUnderDefine()
+    {
+        // #define shares the #library parser, but nothing reads a synonym from the define slot:
+        // the engine's codelist_terms(returntype="synonym") reads the library. Accepted, the line
+        // would be served by nothing — rejected instead, naming the line. Malformed or not.
+        for (String line : List.of("#define codelist-term-synonyms UNIT g Gram\n",
+                "#define codelist-term-synonyms\n"))
+        {
+            RuleTestCdtException e = assertThrows(RuleTestCdtException.class,
+                    () -> parse("#test CDISC-XX9453 expect=violation domain=BW\n"
+                            + "#define codelist-terms UNIT g\n" + line),
+                    line);
+            String message = String.valueOf(e.getMessage());
+            assertTrue(message.startsWith("inline.cdt:4: #define codelist-term-synonyms: "
+                    + "CT synonyms are library metadata"), message);
+            assertTrue(message.contains("'#library codelist-term-synonyms'"), message);
+        }
+    }
+
+
+    @Test
     void theTermMatchIsExactAsTheEngineReadsSubmissionValues()
     {
         // Term keys are submission values, kept verbatim: 'G' is not the term 'g'.

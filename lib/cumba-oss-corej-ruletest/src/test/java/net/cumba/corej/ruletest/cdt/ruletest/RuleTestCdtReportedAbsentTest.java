@@ -152,6 +152,82 @@ class RuleTestCdtReportedAbsentTest
         }
     }
 
+    /** A split LB: two members, no standalone LB, each member's DOMAIN cell {@code LB}. */
+    private static final String SPLIT_LB = """
+
+            dataset LBCH label="Laboratory Test Results - Chemistry"
+            col USUBJID type=Char
+            col DOMAIN type=Char
+            ---
+            S1 | LB
+            ---
+
+            dataset LBHE label="Laboratory Test Results - Hematology"
+            col USUBJID type=Char
+            col DOMAIN type=Char
+            ---
+            S1 | LB
+            ---
+            """;
+
+    /** A split SUPPAE family: two members, no standalone SUPPAE, each with {@code RDOMAIN = AE}. */
+    private static final String SPLIT_SUPPAE = """
+
+            dataset SUPPAE1 label="Supplemental Qualifiers for AE"
+            col USUBJID type=Char
+            col RDOMAIN type=Char
+            col QNAM type=Char
+            ---
+            S1 | AE | AETRTEM
+            ---
+
+            dataset SUPPAE2 label="Supplemental Qualifiers for AE"
+            col USUBJID type=Char
+            col RDOMAIN type=Char
+            col QNAM type=Char
+            ---
+            S1 | AE | AESOSP
+            ---
+            """;
+
+    @Test
+    void aSplitDomainTheScenarioSuppliesCannotBeDeclaredAbsent()
+    {
+        // LBCH + LBHE make LB present (Fix #358): the engine treats the split as supplied, so the
+        // directive would silence nothing — the same silent no-op as an exactly supplied name.
+        RuleTestCdtException e = assertThrows(RuleTestCdtException.class,
+                () -> parse("#test FDA-XX1148 expect=skipped domain=EX\n#reported-absent TS lb\n",
+                        EX + SPLIT_LB));
+        assertTrue(String.valueOf(e.getMessage()).startsWith("inline.cdt:3: #reported-absent LB: "
+                + "the scenario supplies this dataset as a split domain or supplemental family"),
+                e.getMessage());
+    }
+
+
+    @Test
+    void aSplitSupplementalFamilyTheScenarioSuppliesCannotBeDeclaredAbsent()
+    {
+        // SUPPAE1 + SUPPAE2 make SUPPAE present (PLAN-split-supp-resolution D2 / D3).
+        RuleTestCdtException e = assertThrows(RuleTestCdtException.class,
+                () -> parse("#test FDA-XX1148 expect=skipped domain=EX\n#reported-absent SUPPAE\n",
+                        EX + SPLIT_SUPPAE));
+        assertTrue(String.valueOf(e.getMessage()).startsWith("inline.cdt:3: #reported-absent "
+                + "SUPPAE: the scenario supplies this dataset as a split domain or supplemental family"),
+                e.getMessage());
+    }
+
+
+    @Test
+    void aSplitOfAnotherDatasetDoesNotRejectTheDirective()
+    {
+        // The over-fire arm: the splits make LB and SUPPAE present, nothing else — TS is still
+        // absent, so the directive loads and names it.
+        RuleTestScenario s = parse(
+                "#test FDA-XX1148 expect=skipped domain=EX\n#reported-absent TS SUPPLB\n",
+                EX + SPLIT_LB + SPLIT_SUPPAE);
+        assertEquals(java.util.List.of("TS", "SUPPLB"), s.getReportedAbsent());
+    }
+
     // ---- end to end ----------------------------------------------------------------------------
 
 

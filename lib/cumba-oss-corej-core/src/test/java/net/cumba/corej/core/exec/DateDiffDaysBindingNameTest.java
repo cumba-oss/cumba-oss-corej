@@ -27,8 +27,39 @@ import org.junit.jupiter.api.Test;
 class DateDiffDaysBindingNameTest
 {
 
-    /** The draft CDISC-SEND-0202 bindings and Check, the R4 split left out. */
+    /**
+     * The draft's R4 bindings ({@code send-0202-0203.md}): the masses of each domain, the other
+     * domain's earliest date and its day difference to this one's. PM is not supplied in the
+     * fixture, so every mass is CL-only and the R4 split never removes one.
+     */
+    private static final String R4_BINDINGS = ",{\"name\":\"$own_masses\",\"expression\":"
+            + "\"distinct([USUBJID, CLSPID], domain=CL, filter=(not empty(CLSPID)))\"},"
+            + "{\"name\":\"$other_masses\",\"expression\":"
+            + "\"distinct([USUBJID, PMSPID], domain=PM, filter=(not empty(PMSPID)))\"},"
+            + "{\"name\":\"$other_date\",\"expression\":\"min_date(PMDTC, domain=PM,"
+            + " group=[USUBJID, {left: TFSPID, right: PMSPID}], filter=(not empty(PMSPID)))\"},"
+            + "{\"name\":\"$other_minus_own\",\"expression\":"
+            + "\"date_diff_days($other_date, $own_date)\"}";
+
+    /**
+     * The draft CDISC-SEND-0202 Check as written in {@code send-0202-0203.md} (the {@code -A}
+     * sibling's first dose: the subject's own, no pool).
+     */
+    private static final String DRAFT_CHECK = "not empty(TFSPID) and not empty(TFDETECT)"
+            + " and tuple(USUBJID, TFSPID) in $own_masses and is_complete_date(trim($own_date))"
+            + " and (tuple(USUBJID, TFSPID) not in $other_masses"
+            + " or (not empty($other_minus_own) and $other_minus_own >= 0))"
+            + " and TFDETECT != $days_to_detection";
+
+    /** The draft CDISC-SEND-0202 day-count bindings and the given Check. */
     private static Rule send0202(String aCheck)
+    {
+        return send0202(aCheck, "");
+    }
+
+
+    /** The draft CDISC-SEND-0202 day-count bindings, {@code aMoreBindings} and the given Check. */
+    private static Rule send0202(String aCheck, String aMoreBindings)
     {
         String json = "{\"rules\":{\"X-0202\":{\"Core\":{\"Id\":\"X-0202\"}," + "\"Bindings\":["
                 + "{\"name\":\"$own_date\",\"expression\":\"min_date(CLDTC, domain=CL,"
@@ -36,7 +67,7 @@ class DateDiffDaysBindingNameTest
                 + "{\"name\":\"$first_dose\",\"expression\":"
                 + "\"min_date(EXSTDTC, domain=EX, group=[USUBJID])\"},"
                 + "{\"name\":\"$days_to_detection\",\"expression\":"
-                + "\"date_diff_days($own_date, $first_dose) + 1\"}],"
+                + "\"date_diff_days($own_date, $first_dose) + 1\"}" + aMoreBindings + "],"
                 + "\"Check\":{\"expression\":\"" + aCheck + "\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":"
                 + "[\"USUBJID\",\"TFSPID\",\"$days_to_detection\",\"TFDETECT\"]}}}}";
@@ -124,8 +155,15 @@ class DateDiffDaysBindingNameTest
     /** {@code USUBJID/TFSPID=$days_to_detection} of every row the Check fires on. */
     private static List<String> fired(String aCheck)
     {
+        return fired(send0202(aCheck));
+    }
+
+
+    /** {@code USUBJID/TFSPID=$days_to_detection} of every row the rule fires on. */
+    private static List<String> fired(Rule aRule)
+    {
         IDataTable target = tf();
-        RuleExecutionResult result = RuleRunnerCalls.execute(send0202(aCheck), target,
+        RuleExecutionResult result = RuleRunnerCalls.execute(aRule, target,
                 resolver(target, cl(), ex()), "TF");
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
         return result.getViolations().stream().map(v -> v.getValues().get("USUBJID") + "/"
@@ -145,10 +183,15 @@ class DateDiffDaysBindingNameTest
 
 
     @Test
-    void theShippedCheckFiresOnlyOnTheWrongInterval()
+    void theDraftCheckJudgesOnlyAMassWithACompleteClDate()
     {
-        // The draft's comparison: S1's two masses match, S2's 99 is reported against 13, and S3's
-        // populated TFDETECT is reported against the missing day count (EC-45).
+        // The draft Check gates on tuple(USUBJID, TFSPID) in $own_masses and a complete
+        // $own_date: S1's two masses match their day counts, S2's 99 is reported against 13, and
+        // S3's mass — no CL record — is not judged at all (EC-45 is about an unusable FIRST DOSE,
+        // which is reported; a mass with no detection date is not).
+        assertEquals(List.of("S2/MASS A=13"), fired(send0202(DRAFT_CHECK, R4_BINDINGS)));
+        // The sensitivity arm: the comparison without the own-mass gate also reports S3 against
+        // its missing day count, so the expectation above is the gate's, not the fixture's.
         assertEquals(List.of("S2/MASS A=13", "S3/MASS A=."),
                 fired("not empty(TFDETECT) and TFDETECT != $days_to_detection"));
     }

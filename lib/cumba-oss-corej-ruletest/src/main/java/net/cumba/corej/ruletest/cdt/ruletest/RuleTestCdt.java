@@ -18,6 +18,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import net.cumba.corej.core.exec.EvaluationContext;
+import net.cumba.corej.core.exec.OperatorRegistry;
 import net.cumba.corej.ruletest.cdt.CdtLoader;
 import net.cumba.corej.ruletest.cdt.ruletest.RuleTestScenario.Verdict;
 import net.cumba.datatable.IDataTable;
@@ -45,6 +47,9 @@ public final class RuleTestCdt
 
     /** The {@code #library} kind that declares one term's CDISC synonyms. */
     private static final String CODELIST_TERM_SYNONYMS = "codelist-term-synonyms";
+
+    /** The {@code #define} directive's label, as {@link #buildLibrary} hands it to the parser. */
+    private static final String DEFINE_LABEL = "#define";
 
     private RuleTestCdt()
     {
@@ -395,9 +400,13 @@ public final class RuleTestCdt
 
         // #reported-absent says the dataset is ABSENT: listing one the scenario supplies would make
         // the directive a silent no-op (the engine only silences a reading of a dataset that does
-        // not resolve), so it is a load error.
+        // not resolve), so it is a load error. "Supplied" is the engine's presence fact, the one
+        // ds_exists evaluates (OperatorRegistry.existsAsDataset): a split domain (LBCH + LBHE for
+        // LB) or a split supplemental family (SUPPAE1 + SUPPAE2 for SUPPAE) is present too, and
+        // AbsentDatasetSkip.decide never silences it.
         if (reportedAbsent != null)
         {
+            EvaluationContext presence = null;
             for (String name : reportedAbsent)
             {
                 if (seen.contains(name))
@@ -405,6 +414,19 @@ public final class RuleTestCdt
                     throw error(aSource, reportedAbsentLine, "#reported-absent " + name
                             + ": the scenario supplies this dataset (the directive declares a "
                             + "dataset absent)");
+                }
+                if (presence == null)
+                {
+                    presence = EvaluationContext.builder()
+                            .datasetResolver(ScenarioResolver.of(datasets)).build();
+                }
+                if (OperatorRegistry.existsAsDataset(presence, name))
+                {
+                    throw error(aSource, reportedAbsentLine,
+                            "#reported-absent " + name
+                                    + ": the scenario supplies this dataset as a split domain or "
+                                    + "supplemental family (ds_exists(\"" + name
+                                    + "\") is true, so the " + "engine never treats it as absent)");
                 }
             }
         }
@@ -422,7 +444,7 @@ public final class RuleTestCdt
         MapBackedLibraryMetadataProvider library = buildLibrary(includes, inlineLibrary, aResolver,
                 aSource, "#library");
         MapBackedLibraryMetadataProvider define = buildLibrary(defineIncludes, inlineDefine,
-                aResolver, aSource, "#define");
+                aResolver, aSource, DEFINE_LABEL);
 
         // A scenario tests either the real parsed Define-XML sidecar or the synthetic map-backed
         // define double, never a blend (both would compete for the define-provider slot).
@@ -1656,6 +1678,14 @@ public final class RuleTestCdt
         // (checkSynonymTerms), so line order and a sidecar's terms do not matter.
         case CODELIST_TERM_SYNONYMS ->
         {
+            // The define slot serves no CT synonyms: codelist_terms(returntype="synonym") reads
+            // the library, so the line would parse and be served by nothing.
+            if (DEFINE_LABEL.equals(aLabel))
+            {
+                throw error(aSource, aLineIdx, aLabel + " " + CODELIST_TERM_SYNONYMS
+                        + ": CT synonyms are library metadata, not define metadata (declare "
+                        + "them with '#library " + CODELIST_TERM_SYNONYMS + "')");
+            }
             if (rest.size() < 3)
             {
                 throw error(aSource, aLineIdx, aLabel + " " + CODELIST_TERM_SYNONYMS

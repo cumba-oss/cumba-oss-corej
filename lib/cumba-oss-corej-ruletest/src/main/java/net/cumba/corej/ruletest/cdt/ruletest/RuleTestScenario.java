@@ -202,10 +202,15 @@ public class RuleTestScenario
      * rule list ({@code AbsentDatasetSkip.reportedDatasets} — a rule whose whole Check is a bare
      * {@code not ds_exists("D")} reports D's absence), and a rule reading a listed dataset that is
      * not supplied is silenced ({@code SKIPPED}, or its reading branch dropped) instead of
-     * flooding. A scenario runs one rule, so it states the presence rule's coverage here instead.
-     * The parser rejects a name that is also one of the scenario's datasets: the directive says the
-     * dataset is absent. Ignored by the run-level CT-selection runner, which derives the coverage
-     * from its rule package as production does.
+     * flooding. A scenario runs one rule, so it states the presence rule's coverage here instead —
+     * and it may state only a coverage a run has: every listed name must be one a bare presence
+     * rule of the rule's package reports. The harness cannot see the package, so the host checks
+     * that (the corpus factories derive {@code AbsentDatasetSkip.reportedDatasets} from the
+     * scenario's family package and fail a scenario listing any other name). The parser rejects a
+     * name the scenario supplies — exactly, or as a split domain or supplemental family
+     * ({@code ds_exists} is true for it, so the engine never treats it as absent): the directive
+     * says the dataset is absent. Ignored by the run-level CT-selection runner, which derives the
+     * coverage from its rule package as production does.
      */
     @Singular("reportedAbsentDataset")
     List<String> reportedAbsent;
