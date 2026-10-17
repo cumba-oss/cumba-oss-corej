@@ -308,18 +308,21 @@ public final class StageBChecker
             Set<TypeExpectations.Expectation> expected = expectations.expectationsOf(column);
             // PACK I E1 (PI-C4): ECT-Q5 ⓐ here as in the gate — a column of the PRIMARY holding
             // no value in any row has no type to mismatch. Asked only where a mismatch would be
-            // reported; a dotted / merged-schema column is not a primary column and stays judged
-            // on its declared kind (named gap); the D55 observation below is deliberately kept.
-            boolean blank = GroupKeyIdentity.isBlank(table, column);
+            // reported — after the kind / expectation conjunct holds (review fold L2: a column
+            // scan per read column otherwise); a dotted / merged-schema column is not a primary
+            // column and stays judged on its declared kind (named gap); the D55 observation below
+            // is deliberately kept.
             if (kind == ColumnTypeGate.Kind.CHARACTER
-                    && expected.contains(TypeExpectations.Expectation.NUMERIC) && !blank)
+                    && expected.contains(TypeExpectations.Expectation.NUMERIC)
+                    && !GroupKeyIdentity.isBlank(table, column))
             {
                 findings.add(new StageBFinding(StageBErrorKind.COLUMN_TYPE_MISMATCH, column,
                         column + " is declared Char but a numeric-expected position reads it — "
                                 + "author num(" + column + ") if the rule means a numeric read"));
             }
             if (kind == ColumnTypeGate.Kind.NUMERIC
-                    && expected.contains(TypeExpectations.Expectation.CHARACTER) && !blank)
+                    && expected.contains(TypeExpectations.Expectation.CHARACTER)
+                    && !GroupKeyIdentity.isBlank(table, column))
             {
                 findings.add(new StageBFinding(StageBErrorKind.COLUMN_TYPE_MISMATCH, column,
                         column + " is declared Num but a character-expected position reads it — "

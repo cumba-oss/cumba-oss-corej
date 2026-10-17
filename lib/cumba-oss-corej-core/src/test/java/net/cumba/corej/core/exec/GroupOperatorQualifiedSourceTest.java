@@ -47,21 +47,37 @@ class GroupOperatorQualifiedSourceTest
             "is_inconsistent_across_dataset(name=J.S, keys=[K])", "has_same_values(J.S)",
             "max(J.N, group=[K]) == N", "record_count(group=[J.S]) > 1",
             "empty_within_except_last_row(J.S, group=[K], by=K)",
-            "contains_all(source=J.S, required=[\"a\"])", "is_unique_value(J.S)",
+            // PACK I review fold H1 / M1: the keyword spelling compiles (it loaded with no
+            // checkExpr before); a list literal as `required=` is a load error, keys= is the list
+            "contains_all(source=J.S, keys=[\"a\"])", "is_unique_value(J.S)",
             "is_unique_relationship(J.S, K)");
 
-    /** QK12: over a {@code left} join as over an {@code inner} one, every shape loads. */
+    /**
+     * QK12: over a {@code left} join as over an {@code inner} one, every shape loads — and compiles
+     * (review fold H1, closed for every operator: a clean load with no {@code checkExpr} is an
+     * ERROR every run; the keyword spellings of has_multiple_values_for,
+     * present_on_multiple_rows_within, is_inconsistent_across_dataset and
+     * empty_within_except_last_row below compiled nothing before {@code canonicalCall}).
+     */
     @Test
     void aQualifiedOperandLoadsOverALeftJoinAsOverAnInnerJoin()
     {
+        List<String> notCompiled = new java.util.ArrayList<>();
         for (String shape : SHAPES)
         {
-            assertNull(rule(match("J", "left"), shape).getLoadError(), shape
-                    + " loads over a left join: " + rule(match("J", "left"), shape).getLoadError());
-            assertNull(rule(match("J", "inner"), shape).getLoadError(),
-                    shape + " loads over an inner join: "
-                            + rule(match("J", "inner"), shape).getLoadError());
+            for (String joinType : List.of("left", "inner"))
+            {
+                Rule rule = rule(match("J", joinType), shape);
+                assertNull(rule.getLoadError(),
+                        shape + " loads over a " + joinType + " join: " + rule.getLoadError());
+                if (rule.getCheckExpr() == null)
+                {
+                    notCompiled.add(shape + " (" + joinType + ")");
+                }
+            }
         }
+        assertEquals(List.of(), notCompiled, "every shape compiles — a clean load without a"
+                + " checkExpr is an ERROR every run (review fold H1)");
     }
 
 

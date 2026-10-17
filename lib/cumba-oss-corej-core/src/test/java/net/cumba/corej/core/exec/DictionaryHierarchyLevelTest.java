@@ -609,6 +609,32 @@ class DictionaryHierarchyLevelTest
             assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(), r.getStatusMessage());
             assertEquals(List.of(1L), rows(r),
                     "the ERROR finding only — the WARNING level cannot be answered and is skipped");
+            // review fold M1 (E4): the skip leaves a trace on the EXECUTED result — its status
+            // message names the skipped level and the reason (no silent false assurance)
+            assertEquals(SKIPPED_WARNING_LEVEL, r.getStatusMessage());
+        }
+
+        /** The EXECUTED result's status message when the WARNING level alone was skipped. */
+        private static final String SKIPPED_WARNING_LEVEL = "Rule executed; check level WARNING"
+                + " skipped — " + REASON.substring("Rule skipped — ".length());
+
+        /**
+         * (1b) Review fold M1 (E4): the levels swapped — the ERROR level reads the hierarchy, the
+         * WARNING level is {@code A == "x"} — used to report EXECUTED with the WARNING finding and
+         * no trace that the ERROR-worthy check never ran (first-claim then reports the record at
+         * WARNING). The result stays EXECUTED (the WARNING level did evaluate) and its status
+         * message names the skipped ERROR level and its reason.
+         */
+        @Test
+        void aGappedErrorLevelIsNamedOnTheExecutedResult() throws IOException
+        {
+            RuleExecutionResult r = run(twoLevels(HIERARCHY, "A == \\\"x\\\"", null), ae(), stale(),
+                    Set.of(), Severity.WARNING);
+            assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(), r.getStatusMessage());
+            assertEquals(List.of(1L), rows(r), "the WARNING level's finding");
+            assertEquals(Severity.WARNING, r.getViolations().getFirst().getLevel());
+            assertEquals("Rule executed; check level ERROR skipped — "
+                    + REASON.substring("Rule skipped — ".length()), r.getStatusMessage());
         }
 
 
@@ -660,6 +686,8 @@ class DictionaryHierarchyLevelTest
                     Set.of(), Severity.ERROR);
             assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(), r.getStatusMessage());
             assertEquals(List.of(1L), rows(r));
+            // a level not asked is not a skipped level: nothing to report (review fold M1)
+            assertNull(r.getStatusMessage(), r.getStatusMessage());
         }
 
 

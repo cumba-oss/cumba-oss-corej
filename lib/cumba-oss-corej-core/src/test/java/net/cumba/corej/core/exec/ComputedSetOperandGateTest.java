@@ -96,6 +96,8 @@ class ComputedSetOperandGateTest
                 "contains_all(AETERM, keys=[\"A\"])",
                 // CDISC-SEND-0049's shape: a per-row token producer as the REQUIRED side
                 "not contains_all(var_codelist_coded_values(\"LIBRARY\"), split_by(value(), \";\"))",
+                // review fold H1: the accessor-source arm, keyword-spelled, binds the same way
+                "not_contains_all(source=var_codelist_coded_values(\"LIBRARY\"), required=$y)",
                 // the advised route
                 "contains_all($src, $y)", "is_ordered_subset_of($x, $y)",
                 "is_not_ordered_subset_of(AETERM, $y)",
@@ -106,6 +108,104 @@ class ComputedSetOperandGateTest
             assertNull(r.getLoadError(), check + ": " + r.getLoadError());
             assertNotNull(r.getCheckExpr(), check + " must install a checkExpr");
         }
+    }
+
+    // ------------------------------------------------------------------
+    // PACK I review fold — H1: keyword, mixed and positional spellings are one call
+    // ------------------------------------------------------------------
+
+
+    /**
+     * Two rows, AETERM distinct = {A, B}; the bindings are {@code $x = [A, B]}, {@code $y = [A]}.
+     */
+    private static int violations(String check) throws Exception
+    {
+        Rule r = load(check);
+        assertNull(r.getLoadError(), check + ": " + r.getLoadError());
+        assertNotNull(r.getCheckExpr(), check + " must install a checkExpr");
+        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1", "S2").col("AETERM", "A", "B")
+                .build();
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, ae);
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
+                check + ": " + result.getStatusMessage());
+        return result.getViolationCount();
+    }
+
+
+    /**
+     * Review fold H1: the compile read {@code c.args()} positionally while the gate bound the
+     * keywords, so {@code contains_all(source=AETERM, required=$y)} loaded clean with no
+     * {@code checkExpr} (ERROR every run) and the mixed {@code contains_all(AETERM, required=$y)}
+     * dropped {@code required=} (a wrong verdict). Now the compile normalises the call to its bound
+     * positional form once, through the same binding stage A uses: the three spellings of all four
+     * operators compile and give the SAME verdict on one fixture, {@code keys=} included.
+     */
+    @Test
+    @DisplayName("keyword, mixed and positional spellings compile and give the same verdict")
+    void everySpellingCompilesToTheSameVerdict() throws Exception
+    {
+        // contains family: {A, B} contains every member of [A] ⇒ contains_all fires (one
+        // dataset-level finding: the rule declares no Sensitivity), the negation does not
+        int containsAll = violations("contains_all(AETERM, $y)");
+        assertEquals(1, containsAll, "the fixture's contains_all verdict fires");
+        assertEquals(containsAll, violations("contains_all(source=AETERM, required=$y)"));
+        assertEquals(containsAll, violations("contains_all(AETERM, required=$y)"));
+        assertEquals(containsAll, violations("contains_all(AETERM, keys=[\"A\"])"));
+        assertEquals(containsAll, violations("contains_all(source=AETERM, keys=[\"A\"])"));
+        int notContainsAll = violations("not_contains_all(AETERM, $y)");
+        assertEquals(0, notContainsAll, "the negated operator is the complement");
+        assertEquals(notContainsAll, violations("not_contains_all(source=AETERM, required=$y)"));
+        assertEquals(notContainsAll, violations("not_contains_all(AETERM, required=$y)"));
+        assertEquals(notContainsAll, violations("not_contains_all(source=AETERM, keys=[\"A\"])"));
+        // ordered-subset family: [A, B] is not an ordered subset of [A]
+        int ordered = violations("is_ordered_subset_of($x, $y)");
+        assertEquals(0, ordered, "the fixture's is_ordered_subset_of verdict flags no row");
+        assertEquals(ordered, violations("is_ordered_subset_of(name=$x, value=$y)"));
+        assertEquals(ordered, violations("is_ordered_subset_of($x, value=$y)"));
+        int notOrdered = violations("is_not_ordered_subset_of($x, $y)");
+        assertEquals(1, notOrdered, "the negated operator is the complement");
+        assertEquals(notOrdered, violations("is_not_ordered_subset_of(name=$x, value=$y)"));
+        assertEquals(notOrdered, violations("is_not_ordered_subset_of($x, value=$y)"));
+    }
+
+    // ------------------------------------------------------------------
+    // PACK I review fold — M1: every shape the compile refuses is a load error
+    // ------------------------------------------------------------------
+
+
+    /**
+     * Review fold M1: the predicate covered only the first-level operand kinds; a list literal or a
+     * number as the required operand ({@code keyValues}), a quoted name as the source
+     * ({@code groupOperandName}) or a non-list {@code keys=} were refused by the compile and loaded
+     * silently. The compile's operand validations are now the one classification the gate calls, so
+     * each is a load error naming what was refused, and no {@code checkExpr} is installed.
+     */
+    @Test
+    @DisplayName("the deeper operand refusals of the compile are load errors too")
+    void theDeeperCompileRefusalsAreLoadErrors() throws Exception
+    {
+        Map<String, String> refused = new LinkedHashMap<>();
+        refused.put("contains_all(AETERM, [\"A\", \"B\"])", "keys= member must be a value");
+        refused.put("contains_all(AETERM, 1)", "keys= member must be a value");
+        refused.put("not_contains_all(source=AETERM, required=[\"A\"])",
+                "keys= member must be a value");
+        refused.put("contains_all(AETERM, keys=\"A\")", "keys= must be a list of values");
+        // a quoted name is a string literal, never a column (W8 R1): refused as the source kind
+        refused.put("contains_all(\"AETERM\", $y)", "source list must be a column");
+        refused.put("not contains_all(\"AETERM\", split_by(AETERM, \";\"))", "not \"AETERM\"");
+        for (Map.Entry<String, String> e : refused.entrySet())
+        {
+            Rule r = load(e.getKey());
+            assertNotNull(r.getLoadError(), e.getKey() + " must fail to load");
+            assertTrue(r.getLoadError().contains(e.getValue()),
+                    e.getKey() + ": " + r.getLoadError());
+            assertNull(r.getCheckExpr(), e.getKey() + " must not install a checkExpr");
+        }
+        // review fold L4: the ordered-subset value operand may be a column or a $-binding
+        Rule r = load("is_ordered_subset_of($x, upper($y))");
+        assertNotNull(r.getLoadError());
+        assertTrue(r.getLoadError().contains("value operand must be a column or a $-binding"),
+                r.getLoadError());
     }
 
     // ------------------------------------------------------------------

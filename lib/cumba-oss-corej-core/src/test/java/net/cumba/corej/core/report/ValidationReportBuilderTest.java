@@ -143,6 +143,37 @@ class ValidationReportBuilderTest
     }
 
 
+    /**
+     * PACK I review fold M1 (E4): an EXECUTED multi-level rule whose level was skipped carries the
+     * skip as its status message; the report keeps it visible as a {@code Skipped_Rules} row (the
+     * one per-(rule × dataset) reason channel the report has) while the pair still counts as an
+     * execution — {@code Rules_Report} keeps the rule's executed status, and nothing reads the row
+     * as "never ran" because the rule is in the executed set. A plain EXECUTED result (no status
+     * message) adds no row.
+     */
+    @Test
+    void executedResultWithAStatusMessageKeepsTheMessageInSkippedRulesAndCountsAsExecuted()
+    {
+        String levelSkip = "Rule executed; check level WARNING skipped — external dictionary"
+                + " meddra cannot answer the HLT → SOC hierarchy";
+        RuleExecutionResult partial = RuleExecutionResult.builder().ruleId("CORE-001").message("m")
+                .violations(List.of(v(1, "USUBJID", "S1"))).totalRows(100)
+                .status(RuleExecutionStatus.EXECUTED).statusMessage(levelSkip).build();
+        ValidationReport report = new ValidationReportBuilder()
+                .add("AE", "ae.xpt", rule("CORE-001"), partial)
+                .add("CM", "cm.xpt", rule("CORE-001"), cleanResult("CORE-001")).build();
+
+        assertEquals(List.of("CORE-001", "CORE-001"), report.getExecutedCoreIds(),
+                "both pairs are executions");
+        assertEquals(1, report.getSkippedRules().size(), "only the partial pair leaves a row");
+        SkippedRuleEntry entry = report.getSkippedRules().get(0);
+        assertEquals("CORE-001", entry.getCoreId());
+        assertEquals("AE", entry.getDataset());
+        assertEquals(levelSkip, entry.getReason());
+        assertEquals(1, report.getForMember("AE").getFindings().size(), "the finding is kept");
+    }
+
+
     @Test
     void skippedRuleMethodRecordsGenerationTimeSkip()
     {

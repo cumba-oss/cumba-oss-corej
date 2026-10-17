@@ -694,8 +694,11 @@ public final class ExprCompiler
      * The Q1 negation pairs of {@link #compileNot}: the negative group semantics a converted
      * {@code not <positive>(…)} spells, or {@code null} for any other call.
      */
-    private static ExprProgram.@Nullable BoolPlan compileNegativeGroupOperator(Expr.Call call)
+    private static ExprProgram.@Nullable BoolPlan compileNegativeGroupOperator(Expr.Call aCall)
     {
+        // Review fold (the H1 class): the negative plans read the same positional / keyword
+        // operands as the dispatch arms — the same bound canonical form (canonicalCall).
+        Expr.Call call = canonicalCall(aCall);
         if ("present_on_multiple_rows_within".equals(call.name()))
         {
             return compileMultipleRowsWithin(call, false);
@@ -1839,25 +1842,41 @@ public final class ExprCompiler
 
 
     /**
+     * The four whole-column set operators whose operand shapes {@link #setSourceRefusal} judges.
+     */
+    private static boolean isSetOperator(String fn)
+    {
+        return "contains_all".equals(fn) || "not_contains_all".equals(fn)
+                || "is_ordered_subset_of".equals(fn) || "is_not_ordered_subset_of".equals(fn);
+    }
+
+
+    /**
      * PACK I E2 (PI-C3): the ONE predicate behind the set operators' fixed operand shapes — the
-     * reason {@code c} cannot be compiled because of a computed source operand, or {@code null}
-     * when its shape is one the compiler takes. Mirrors {@link #compileNotContainsAll} and
-     * {@link #compileIsNotOrderedSubsetOf} exactly, and both throw with it, so the compiler and the
-     * stage-A gate ({@code StageAErrorKind.COMPUTED_SET_OPERAND}, armed) cannot drift: the shape
-     * that is refused here is a load error naming the function <em>as written</em>
-     * ({@code c.name()} — the guide documents {@code not_contains_all} and
-     * {@code is_not_ordered_subset_of}), never a rule that loads silently and ERRORs at run.
+     * reason {@code c} cannot be compiled because of its operands, or {@code null} when its shape
+     * is one the compiler takes. It runs the compile's own operand reading ({@link #containsShape}
+     * / {@link #orderedSubsetShape}, on the call's bound positional form {@link #canonicalCall})
+     * and reports what that reading refuses, so the compiler and the stage-A gate
+     * ({@code StageAErrorKind.COMPUTED_SET_OPERAND}, armed) cannot drift: the shape that is refused
+     * here is a load error naming the function <em>as written</em> ({@code c.name()} — the guide
+     * documents {@code not_contains_all} and {@code is_not_ordered_subset_of}), never a rule that
+     * loads silently and ERRORs at run.
      * <ul>
      * <li>contains family ({@code contains_all}, {@code not_contains_all}): the source (first
      * operand) is a reference — a column or a {@code $}-binding — or a list-valued {@code var_*}
-     * accessor <b>with a second operand</b> (the {@code args.size() >= 2} arm; with {@code keys=}
-     * alone the accessor fell through to the reference check and was silent — review L6);</li>
+     * accessor <b>with a second operand</b> (with {@code keys=} alone the accessor fell through to
+     * the reference check and was silent — review L6); a column source passes
+     * {@link #groupOperandName}, the required operand is a {@code $}-binding, a per-row token
+     * producer or a value, {@code keys=} a list of values ({@link #keyValues});</li>
      * <li>ordered-subset family ({@code is_ordered_subset_of}, {@code is_not_ordered_subset_of}):
      * both operands are references.</li>
      * </ul>
-     * Any other operand — {@code upper(…)}, {@code split_by(…)}, a literal, a nested call — is
-     * computed, and the advice is the {@code $}-binding route, which the engine evaluates per
-     * variable under iteration like the inline accessor ({@code ComputedSetOperandGateTest}).
+     * Any other operand — {@code upper(…)}, {@code split_by(…)} as the source, a literal, a nested
+     * call — is computed, and the advice is the {@code $}-binding route, which the engine evaluates
+     * per variable under iteration like the inline accessor ({@code ComputedSetOperandGateTest}).
+     * Review fold M1: before, the predicate mirrored only the first-level operand kinds, and a list
+     * literal or a number as the required operand, a quoted name as the source or a non-list
+     * {@code keys=} loaded silently.
      *
      * @param c
      *            the call as the author wrote it (name-slot bindings inlined, nothing else;
@@ -1867,84 +1886,252 @@ public final class ExprCompiler
     public static @Nullable String setSourceRefusal(Expr.Call c)
     {
         String fn = c.name();
-        if (!"contains_all".equals(fn) && !"not_contains_all".equals(fn)
-                && !"is_ordered_subset_of".equals(fn) && !"is_not_ordered_subset_of".equals(fn))
+        if (!isSetOperator(fn))
         {
             return null;
         }
-        // The operands in DESCRIPTOR order (source / required, name / value), however the author
-        // spelled them: stage A walks the authored call, where `contains_all(source=J.S,
-        // required=[…])` still carries keywords, while the compile reads the bound positions —
-        // one binding (ArgumentBinder) keeps the two readings identical. An arity failure is
-        // stage A's own ARITY finding, not a refusal here.
-        List<@Nullable Expr> args;
-        FunctionDescriptor descriptor = FunctionRegistry.descriptor(fn);
-        if (descriptor == null)
+        Expr.Call bound = canonicalCall(c); // a binder failure passes the call through unchanged
+        try
         {
-            args = new ArrayList<>(c.args());
-        }
-        else
-        {
-            try
+            if ("contains_all".equals(fn) || "not_contains_all".equals(fn))
             {
-                args = ArgumentBinder.bind(descriptor, c);
+                containsShape(bound);
             }
-            catch (RuntimeException _)
+            else
             {
-                return null;
+                orderedSubsetShape(bound);
             }
+            return null;
         }
-        while (!args.isEmpty() && args.get(args.size() - 1) == null)
+        catch (ExpressionException e)
         {
-            args.remove(args.size() - 1); // an unbound optional slot is "not given"
+            String detail = messageOf(e);
+            return detail.startsWith(UNSUPPORTED_PREFIX)
+                    ? detail.substring(UNSUPPORTED_PREFIX.length())
+                    : detail;
         }
-        if ("contains_all".equals(fn) || "not_contains_all".equals(fn))
+    }
+
+    /**
+     * The descriptor parameters every group compile reads BY NAME from {@code c.kwargs()} —
+     * {@code within=}, {@code by=}, {@code keys=}, {@code regex=}, {@code keep_missings=},
+     * {@code include_empty=}, {@code nulls=}; the parameters before the first of them are the
+     * operands the compile reads positionally from {@code c.args()} ({@link #canonicalCall}).
+     */
+    private static final Set<String> KEYWORD_PARAMETERS = Set.of("within",
+            net.cumba.corej.core.exec.SortKeys.PARAMETER,
+            net.cumba.corej.core.exec.GroupSplice.KEYS_PARAMETER, "regex", "keep_missings",
+            "include_empty", net.cumba.corej.core.exec.SortKeys.NULLS_PARAMETER);
+
+    /**
+     * Review fold H1, widened to every dispatched operator: the call in its BOUND canonical form —
+     * the operands in descriptor order however the author spelled them, an absent optional slot
+     * dropped: the parameters before the first {@link #KEYWORD_PARAMETERS keyword parameter}
+     * positional (the compiles read them from {@code c.args()}), that one and every later one by
+     * name (the compiles read them from {@code c.kwargs()}). ONE binding ({@link ArgumentBinder},
+     * the one stage A uses) for the gate and the compile. Before, the compiles read the authored
+     * call, so {@code contains_all(source=AETERM, required=$y)},
+     * {@code has_multiple_values_for(name=X, key=K)} or
+     * {@code is_inconsistent_across_dataset(name=X, keys=[K])} loaded clean with no
+     * {@code checkExpr} (ERROR every run), the mixed {@code contains_all(AETERM, required=$y)}
+     * dropped {@code required=} (a wrong verdict), and {@code empty_within_except_last_row(X,
+     * group=K, by=S)} — the guide's own spelling — compiled nothing.
+     *
+     * <p>
+     * The call passes through <b>unchanged</b> — the reader's own diagnostic then speaks, as it did
+     * — when: the name has no descriptor, a registry-evaluated function ({@code fn != null}, bound
+     * by the generic arm itself) or a collector (the {@code tuple} sugar, positional only); a
+     * keyword parameter is given by <em>position</em> (runbook W4 / W8: {@code within=},
+     * {@code keep_missings=}, {@code by=} … are read by keyword only, and each reader refuses the
+     * positional spelling with its own message — {@code rejectPositionalKeywordOnly}, "takes its
+     * sort key by keyword", the one-list grammar of {@code is_unique_set}); or the binder itself
+     * refuses the call (an unknown or repeated name, arity — stage A's own finding on a loaded
+     * rule, the reader's message on a direct compile).
+     * </p>
+     */
+    private static Expr.Call canonicalCall(Expr.Call c)
+    {
+        FunctionDescriptor descriptor = FunctionRegistry.descriptor(c.name());
+        if (descriptor == null || descriptor.fn() != null || descriptor.parameters().isEmpty()
+                || descriptor.parameters().get(descriptor.parameters().size() - 1).collector())
         {
-            if (!args.isEmpty() && args.get(0) instanceof Expr.Ref)
+            return c;
+        }
+        List<Parameter> params = descriptor.parameters();
+        int leading = params.size();
+        for (int i = 0; i < params.size(); i++)
+        {
+            if (KEYWORD_PARAMETERS.contains(params.get(i).name()))
             {
-                return null;
+                leading = i;
+                break;
             }
-            if (args.size() >= 2 && args.get(1) != null && isListAccessor(args.get(0)))
-            {
-                return null;
-            }
-            if (args.isEmpty() || args.get(0) == null)
-            {
-                return fn + " has no source list operand";
-            }
-            String source = spelled(args.get(0));
-            if (isListAccessor(args.get(0)))
-            {
-                return fn + "'s source list " + source + " is a list-valued var_* accessor, which"
-                        + " needs the required list as the second operand (a $-binding, a list"
-                        + " accessor or a per-row list such as split_by(…)), not keys=";
-            }
-            return fn + "'s source list must be a column, a $-binding or a list-valued var_*"
-                    + " accessor, not " + source + " — bind it first: `$src: " + source
-                    + "`, then `" + fn + "($src, …)`";
         }
-        if (args.isEmpty() || args.get(0) == null)
+        if (c.args().size() > leading)
         {
-            return fn + " has no name operand";
+            return c; // a keyword parameter by position: the reader's own refusal (W4 / W8)
         }
-        if (!(args.get(0) instanceof Expr.Ref))
+        List<@Nullable Expr> slots;
+        try
         {
-            String source = spelled(args.get(0));
-            return fn + "'s name operand must be a column or a $-binding, not " + source
-                    + " — bind it first: `$src: " + source + "`, then `" + fn + "($src, …)`";
+            slots = ArgumentBinder.bind(descriptor, c);
         }
-        if (args.size() < 2 || args.get(1) == null)
+        catch (ExpressionException _)
         {
-            return fn + " has no value operand";
+            return c; // the reader's own diagnostic, as before
         }
-        if (!(args.get(1) instanceof Expr.Ref))
+        List<Expr> positional = new ArrayList<>();
+        Map<String, Expr> kwargs = new LinkedHashMap<>();
+        for (int i = 0; i < params.size(); i++)
+        {
+            Expr slot = slots.get(i);
+            if (slot == null)
+            {
+                continue;
+            }
+            if (i < leading)
+            {
+                positional.add(slot);
+            }
+            else
+            {
+                kwargs.put(params.get(i).name(), slot);
+            }
+        }
+        return new Expr.Call(c.name(), positional, kwargs);
+    }
+
+    /** How the contains family reads its operands ({@link #containsShape}). */
+    private enum ContainsKind
+    {
+        /** a list-valued accessor as the source with a required operand (CT-004, Fix #329) */
+        ACCESSOR_SOURCE,
+        /** a per-row token producer as the required operand (the T9 branch) */
+        PER_ROW_TOKENS,
+        /** the source's distinct values against a {@code $}-list or the {@code keys=} values */
+        DISTINCT_VALUES
+    }
+
+
+    /**
+     * The compile-time reading of a contains-family call — the branch
+     * {@link #compileNotContainsAll} takes and the operands it needs, from the
+     * {@linkplain #canonicalCall bound positional form}.
+     *
+     * @param rawName
+     *            {@code PER_ROW_TOKENS}: the source name as the plan resolves it; {@code
+     *            DISTINCT_VALUES}: the raw name ({@code $}-binding or {@link #groupOperandName})
+     * @param requiredRef
+     *            {@code DISTINCT_VALUES}: the required {@code $}-list, or {@code null} when the
+     *            required values are {@code requiredCols}
+     */
+    private record ContainsShape(ContainsKind kind, Expr source, @Nullable Expr required,
+            String rawName, boolean nameIsOperation, @Nullable String requiredRef,
+            List<String> requiredCols)
+    {
+    }
+
+    /**
+     * Review fold M1: ONE classification that both {@link #compileNotContainsAll} and the stage-A
+     * gate ({@link #setSourceRefusal}) run — so every operand shape the compile refuses (the source
+     * kinds, {@link #groupOperandName}'s strictness on a column source, a value operand that is not
+     * a value, a {@code keys=} that is not a list of values — {@link #keyValues}) is a load error,
+     * never a rule that loads silently and ERRORs at run. There is no second copy of these checks:
+     * the compile builds its plans from the shape this returns.
+     *
+     * @throws ExpressionException
+     *             the refusal, as {@link #unsupported}
+     */
+    private static ContainsShape containsShape(Expr.Call bound)
+    {
+        String fn = bound.name();
+        List<Expr> args = bound.args();
+        if (args.isEmpty())
+        {
+            throw unsupported(fn + " has no source list operand");
+        }
+        Expr source = args.get(0);
+        Expr required = args.size() >= 2 ? args.get(1) : null;
+        if (required != null && isListAccessor(source))
+        {
+            return new ContainsShape(ContainsKind.ACCESSOR_SOURCE, source, required, "", false,
+                    null, List.of());
+        }
+        if (!(source instanceof Expr.Ref nameRef))
+        {
+            String spelled = spelled(source);
+            if (isListAccessor(source))
+            {
+                throw unsupported(fn + "'s source list " + spelled
+                        + " is a list-valued var_* accessor, which needs the required list as the"
+                        + " second operand (a $-binding, a list accessor or a per-row list such as"
+                        + " split_by(…)), not keys=");
+            }
+            throw unsupported(fn + "'s source list must be a column, a $-binding or a list-valued"
+                    + " var_* accessor, not " + spelled + " — bind it first: `$src: " + spelled
+                    + "`, then `" + fn + "($src, …)`");
+        }
+        String rawName = nameRef.name();
+        boolean nameIsOperation = rawName.startsWith("$");
+        if (required instanceof Expr.Call)
+        {
+            String sourceName = nameIsOperation ? rawName : groupOperandName(source);
+            return new ContainsShape(ContainsKind.PER_ROW_TOKENS, source, required, sourceName,
+                    nameIsOperation, null, List.of());
+        }
+        if (!nameIsOperation)
+        {
+            rawName = groupOperandName(source); // plain column / -- shape check
+        }
+        String requiredRef = required instanceof Expr.Ref vr && vr.name().startsWith("$")
+                ? vr.name()
+                : null;
+        List<String> requiredCols = requiredRef != null ? List.of() : keyValues(bound);
+        return new ContainsShape(ContainsKind.DISTINCT_VALUES, source, required, rawName,
+                nameIsOperation, requiredRef, requiredCols);
+    }
+
+    /** The two reference operands of the ordered-subset family ({@link #orderedSubsetShape}). */
+    private record OrderedSubsetShape(String name, String valueName)
+    {
+    }
+
+    /**
+     * The compile-time reading of an ordered-subset call — the one classification
+     * {@link #compileIsNotOrderedSubsetOf} and the stage-A gate ({@link #setSourceRefusal}) run:
+     * both operands are references (a column or a {@code $}-binding; a non-{@code $} value operand
+     * resolves to no list and flags no row, the operator's documented contract).
+     *
+     * @throws ExpressionException
+     *             the refusal, as {@link #unsupported}
+     */
+    private static OrderedSubsetShape orderedSubsetShape(Expr.Call bound)
+    {
+        String fn = bound.name();
+        List<Expr> args = bound.args();
+        if (args.isEmpty())
+        {
+            throw unsupported(fn + " has no name operand");
+        }
+        if (!(args.get(0) instanceof Expr.Ref nameRef))
+        {
+            String spelled = spelled(args.get(0));
+            throw unsupported(fn + "'s name operand must be a column or a $-binding, not " + spelled
+                    + " — bind it first: `$src: " + spelled + "`, then `" + fn + "($src, …)`");
+        }
+        if (args.size() < 2)
+        {
+            throw unsupported(fn + " has no value operand");
+        }
+        if (!(args.get(1) instanceof Expr.Ref valueRef))
         {
             String values = spelled(args.get(1));
-            return fn + "'s value operand must be a $-binding, not " + values
+            // review fold L4: the operand may be a column or a $-binding, as the shape says
+            throw unsupported(fn + "'s value operand must be a column or a $-binding, not " + values
                     + " — bind it first: `$values: " + values + "`, then `" + fn + "("
-                    + spelled(args.get(0)) + ", $values)`";
+                    + spelled(args.get(0)) + ", $values)`");
         }
-        return null;
+        return new OrderedSubsetShape(nameRef.name(), valueRef.name());
     }
 
 
@@ -3352,8 +3539,12 @@ public final class ExprCompiler
     }
 
 
-    private static ExprProgram.BoolPlan compileBoolCallPlan(Expr.Call c)
+    private static ExprProgram.BoolPlan compileBoolCallPlan(Expr.Call aCall)
     {
+        // Review fold (the H1 class, every operator): the arms below read their operands
+        // positionally from c.args() and the keyword parameters from c.kwargs(); the call is
+        // normalised ONCE to that canonical form, through the binding stage A uses.
+        Expr.Call c = canonicalCall(aCall);
         String name = c.name();
         int arity = c.args().size();
         if (("exists".equals(name) || "not_exists".equals(name)) && arity == 1)
@@ -5039,13 +5230,10 @@ public final class ExprCompiler
      */
     private static ExprProgram.BoolPlan compileNotContainsAll(Expr.Call c)
     {
-        // PACK I E2: the one predicate the stage-A gate shares (setSourceRefusal) — a shape it
-        // refuses never reaches the branches below, and is a load error upstream.
-        String refusal = setSourceRefusal(c);
-        if (refusal != null)
-        {
-            throw unsupported(refusal);
-        }
+        // PACK I E2, review fold H1 / M1: the call in its bound positional form, read by the one
+        // classification the stage-A gate runs (setSourceRefusal → containsShape) — a shape it
+        // refuses is a load error upstream and never reaches the branches below.
+        ContainsShape shape = containsShape(canonicalCall(c));
         // CT-004 (NRI-007, PLAN-value-check-against-library-codelist Phase 5b): a list-valued
         // metadata accessor as the SOURCE set — `not contains_all(var_codelist_coded_values(
         // "LIBRARY"), var_codelist_coded_values("DEFINE"))` fires when the required list carries a
@@ -5062,10 +5250,10 @@ public final class ExprCompiler
         // CDISC-SEND-0049, where the vector carries a different List per row. Both are correct
         // because the verdict is delegated to Primitives.notContainsAllTokens, whose javadoc is the
         // authority on the per-row contract (a null / non-list / empty-list cell never fires).
-        if (c.args().size() >= 2 && isListAccessor(c.args().get(0)))
+        if (shape.kind() == ContainsKind.ACCESSOR_SOURCE)
         {
-            ValuePlan sourceP = operandPlan(c.args().get(0), true);
-            ValuePlan requiredP = operandPlan(c.args().get(1), true);
+            ValuePlan sourceP = operandPlan(shape.source(), true);
+            ValuePlan requiredP = operandPlan(Objects.requireNonNull(shape.required()), true);
             return run ->
             {
                 Vector tokens = requiredP.eval(run);
@@ -5081,12 +5269,7 @@ public final class ExprCompiler
                         listAccessorSet(sourceP, run).asComponents(), run.rowCount());
             };
         }
-        if (c.args().isEmpty() || !(c.args().get(0) instanceof Expr.Ref nameRef))
-        {
-            throw unsupported(c.name() + " requires a reference name operand"); // setSourceRefusal
-        }
-        String rawName = nameRef.name();
-        boolean nameIsOperation = rawName.startsWith("$");
+        boolean nameIsOperation = shape.nameIsOperation();
         // T9 per-row token branch: `$codelist not_contains_all split_by(--VAR, "…")`. When the
         // value operand is a per-row list producer (a call such as split_by(...)), the verdict is
         // PER ROW — the row fires when any of its tokens is not in the source set — rather than the
@@ -5094,10 +5277,10 @@ public final class ExprCompiler
         // not_contains_all over two columns of iterables (proven per-row by CoreIssue890). The
         // source (name) side is the allowed set: a $-operation list (e.g. codelist_terms) or a
         // column's distinct values.
-        if (c.args().size() >= 2 && c.args().get(1) instanceof Expr.Call)
+        if (shape.kind() == ContainsKind.PER_ROW_TOKENS)
         {
-            ValuePlan tokensPlan = operandPlan(c.args().get(1), true);
-            String sourceName = nameIsOperation ? rawName : groupOperandName(c.args().get(0));
+            ValuePlan tokensPlan = operandPlan(Objects.requireNonNull(shape.required()), true);
+            String sourceName = shape.rawName();
             return run ->
             {
                 EvaluationContext ctx = run.ctx();
@@ -5117,14 +5300,9 @@ public final class ExprCompiler
                 return Primitives.notContainsAllTokens(tokens, allowed, run.rowCount());
             };
         }
-        if (!nameIsOperation)
-        {
-            rawName = groupOperandName(c.args().get(0)); // plain column / -- shape check
-        }
-        String requiredRef = c.args().size() >= 2 && c.args().get(1) instanceof Expr.Ref vr
-                && vr.name().startsWith("$") ? vr.name() : null;
-        List<String> requiredCols = requiredRef != null ? List.of() : keyValues(c);
-        String name = rawName;
+        String requiredRef = shape.requiredRef();
+        List<String> requiredCols = shape.requiredCols();
+        String name = shape.rawName();
         return run ->
         {
             EvaluationContext ctx = run.ctx();
@@ -5262,22 +5440,11 @@ public final class ExprCompiler
      */
     private static ExprProgram.BoolPlan compileIsNotOrderedSubsetOf(Expr.Call c)
     {
-        // PACK I E2: the one predicate the stage-A gate shares (setSourceRefusal).
-        String refusal = setSourceRefusal(c);
-        if (refusal != null)
-        {
-            throw unsupported(refusal);
-        }
-        if (c.args().isEmpty() || !(c.args().get(0) instanceof Expr.Ref nameRef))
-        {
-            throw unsupported(c.name() + " requires a reference name operand"); // setSourceRefusal
-        }
-        if (c.args().size() < 2 || !(c.args().get(1) instanceof Expr.Ref valueRef))
-        {
-            throw unsupported(c.name() + " requires a reference value operand"); // setSourceRefusal
-        }
-        String name = nameRef.name();
-        String valueName = valueRef.name();
+        // PACK I E2, review fold H1 / M1: the bound positional form, read by the one
+        // classification the stage-A gate runs (setSourceRefusal → orderedSubsetShape).
+        OrderedSubsetShape shape = orderedSubsetShape(canonicalCall(c));
+        String name = shape.name();
+        String valueName = shape.valueName();
         return run ->
         {
             EvaluationContext ctx = run.ctx();
@@ -11491,11 +11658,13 @@ public final class ExprCompiler
                         : e.getClass().getSimpleName();
     }
 
+    /** The prefix of every {@link #unsupported} message; {@link #setSourceRefusal} strips it. */
+    private static final String UNSUPPORTED_PREFIX = "Expression construct not supported by the"
+            + " native evaluator: ";
 
     private static ExpressionException unsupported(String detail)
     {
-        return new ExpressionException(
-                "Expression construct not supported by the native evaluator: " + detail);
+        return new ExpressionException(UNSUPPORTED_PREFIX + detail);
     }
 
 

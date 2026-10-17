@@ -345,12 +345,15 @@ public enum StageAErrorKind
      * sides. {@code contains_all(upper($x), $y)}, {@code not contains_all(split_by(X, ";"), $y)},
      * {@code is_ordered_subset_of($x, upper($y))} or an accessor source with {@code keys=} used to
      * load silently and ERROR at run — the compile refused them and the loader installed no
-     * {@code checkExpr}. The predicate is the compiler's own
-     * ({@code ExprCompiler.setSourceRefusal}, which both compile methods throw with), so the gate
-     * and the compiler cannot drift; the message names the function as written and the
-     * {@code $}-binding route. Armed: the 2026-10-17 census found no shipped rule of the shape in
-     * either corpus (precedent: the binding gate and the W8 Precondition gate — a refused form is a
-     * load error, never silent).
+     * {@code checkExpr}. The predicate is the compiler's own operand reading
+     * ({@code ExprCompiler.setSourceRefusal} runs the classification both compile methods build
+     * their plans from, on the call's bound positional form — review fold H1 / M1), so the gate and
+     * the compiler cannot drift and EVERY operand shape the compile refuses is this finding: a
+     * quoted name as the source, a list literal or a number as the required operand, a
+     * {@code keys=} that is not a list of values included. The message names the function as
+     * written and, for a computed source, the {@code $}-binding route. Armed: the 2026-10-17 census
+     * found no shipped rule of the shape in either corpus (precedent: the binding gate and the W8
+     * Precondition gate — a refused form is a load error, never silent).
      */
     COMPUTED_SET_OPERAND(true),
 

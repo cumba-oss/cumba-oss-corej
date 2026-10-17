@@ -75,8 +75,11 @@ public record DatasetExecutionSummary(String domain, @Nullable String fileName, 
      *            for a generated rule, the variable the template was expanded for (the primary
      *            wildcard column); {@code null} for non-generated rules
      * @param notExecutedReason
-     *            why the rule was not executed (the status message) when {@code SKIPPED} or
-     *            {@code ERROR}; {@code null} when {@code EXECUTED}
+     *            the rule's status message: why the rule was not executed when {@code SKIPPED} or
+     *            {@code ERROR}; for an {@code EXECUTED} multi-level rule, which declared level was
+     *            skipped and why ({@code "Rule executed; check level WARNING skipped — …"}, PACK I
+     *            review fold M1 of E4); {@code null} for a plain execution. ⚠ Not a status: a
+     *            consumer decides "executed" from {@code status}, never from this being present
      * @param description
      *            the rule's human-readable description ({@code Rule#getDescription()}), or
      *            {@code null} when the rule carries none

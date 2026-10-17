@@ -1,7 +1,6 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -46,6 +45,9 @@ class RuleRunnerVariableScopeTest
         Requirements req = new Requirements();
         req.setVariables(vr);
         rule.setRequirements(req);
+        // review fold L3: without the native form every "ran" assertion below was satisfied by
+        // an ERROR ("the Check has no native expression form") — the rule must really execute
+        net.cumba.corej.core.RulePackageLoader.installNativeExpr(rule);
         return rule;
     }
 
@@ -73,7 +75,8 @@ class RuleRunnerVariableScopeTest
         IDataTable blank = RealTables.of("TP").str("USUBJID", "S1", "S2").str("AESTDY", "1", "2")
                 .str("RPRFDY", "", "").build();
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, blank);
-        assertNotEquals(RuleExecutionStatus.SKIPPED, result.getStatus(),
+        // review fold L3: EXECUTED, not merely "not SKIPPED" (an ERROR is not a run either)
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
                 "a blank column has no type to contradict RPRFDY:N: " + result.getStatusMessage());
         IDataTable valued = RealTables.of("TP").str("USUBJID", "S1", "S2").str("AESTDY", "1", "2")
                 .str("RPRFDY", "", "7").build();
@@ -90,7 +93,7 @@ class RuleRunnerVariableScopeTest
         Rule rule = ruleWithVarScope(List.of("AESTDTC"), null);
         IDataTable table = aeTable("USUBJID", "AESTDY", "AESTDTC");
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
-        assertNotEquals(RuleExecutionStatus.SKIPPED, result.getStatus(),
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
                 "rule must run when the All variable is present");
     }
 
@@ -115,7 +118,7 @@ class RuleRunnerVariableScopeTest
         Rule rule = ruleWithVarScope(List.of("--STDTC"), null);
         IDataTable table = aeTable("USUBJID", "AESTDY", "AESTDTC");
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, null, "AE");
-        assertNotEquals(RuleExecutionStatus.SKIPPED, result.getStatus(),
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
                 "--STDTC resolves to AESTDTC, which is present");
     }
 
@@ -152,9 +155,11 @@ class RuleRunnerVariableScopeTest
         core.setId("TEST-NOSCOPE");
         rule.setCore(core);
         rule.setCheck(expr("var_exists(\"AESTDY\")"));
+        net.cumba.corej.core.RulePackageLoader.installNativeExpr(rule);
         IDataTable table = aeTable("USUBJID", "AESTDY");
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
-        assertNotEquals(RuleExecutionStatus.SKIPPED, result.getStatus(),
-                "a rule without Requirements.Variables is never skipped by the variable gate");
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
+                "a rule without Requirements.Variables is never skipped by the variable gate: "
+                        + result.getStatusMessage());
     }
 }

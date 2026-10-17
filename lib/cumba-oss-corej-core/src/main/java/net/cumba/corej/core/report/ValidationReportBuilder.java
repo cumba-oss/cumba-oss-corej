@@ -124,6 +124,18 @@ public final class ValidationReportBuilder
                     .reason(aResult.getStatusMessage()).build());
             return this;
         }
+        if (!aResult.isError() && aResult.getStatusMessage() != null)
+        {
+            // PACK I review fold M1 (E4): an EXECUTED multi-level rule whose level was skipped
+            // (RuleRunner.executeLevels) says so in its status message; the report keeps that
+            // visible as a Skipped_Rules row — the one per-(rule × dataset) reason channel it
+            // has — while the pair is recorded as an execution below. Rules_Report's status is
+            // the executed set's (ReportAssembler.buildSkippedEverywhereCoreIds), so the row
+            // never reads as "never ran"; the per-rule skipped count does count the skipped
+            // level, as it counts every other skipped check.
+            skippedRules.add(SkippedRuleEntry.builder().coreId(coreIdOf(aRule)).dataset(aDomain)
+                    .reason(aResult.getStatusMessage()).build());
+        }
         // Everything below this point is a real execution — error, violations, or a clean pass.
         // Recorded here, once, rather than before each of the three returns that follow.
         String executedCoreId = coreIdOf(aRule);

@@ -547,6 +547,44 @@ class ScopeMatcherTypeRequirementTest
 
 
         /**
+         * PACK I review fold L1 (E1): a qualified PATTERN entry over a split judged a blank member
+         * of the wrong kind as accepted on its own ({@code QS./^QSORRES$/:N} satisfied by a blank
+         * Char QS1 beside a valued Char QS2) while the bare {@code QS.QSORRES:N} refused through
+         * the valued member. A blank member now defers unless every member carrying the name is
+         * blank (the bare arm's {@code allBlank}), so the two spellings agree in both directions.
+         */
+        @Test
+        void aPatternEntryOverASplitDefersABlankMemberLikeTheBareSpelling()
+        {
+            IDataTable blank = MockTable.of().name("qs1").col("DOMAIN", "QS").col("QSORRES", "")
+                    .build();
+            IDataTable valued = MockTable.of().name("qs2").col("DOMAIN", "QS").col("QSORRES", "POS")
+                    .build();
+            Map<String, IDataTable> split = map("qs1", blank, "qs2", valued);
+            String bare = describeWith(ruleAll("QS.QSORRES:N"), split);
+            assertNotNull(bare, "the valued Character member is out of scope under :N");
+            assertTrue(bare.contains("required to be Numeric but is Character"), bare);
+            String pattern = describeWith(ruleAll("QS./^QSORRES$/:N"), split);
+            assertNotNull(pattern, "the pattern spelling agrees with the bare one: the blank"
+                    + " member defers to the valued Character member");
+            assertTrue(pattern.contains("matches the name but is Character"), pattern);
+            // the order of the members does not matter
+            assertNotNull(
+                    describeWith(ruleAll("QS./^QSORRES$/:N"), map("qs2", valued, "qs1", blank)));
+            // every member blank ⇒ no type to contradict, in both spellings
+            IDataTable blank2 = MockTable.of().name("qs2").col("DOMAIN", "QS").col("QSORRES", "")
+                    .build();
+            assertNull(describeWith(ruleAll("QS.QSORRES:N"), map("qs1", blank, "qs2", blank2)));
+            assertNull(describeWith(ruleAll("QS./^QSORRES$/:N"), map("qs1", blank, "qs2", blank2)));
+            // control: a valued member of the right kind satisfies through the pattern
+            IDataTable numeric = MockTable.of().name("qs2").col("DOMAIN", "QS")
+                    .colDouble("QSORRES", 1.0).build();
+            assertNull(
+                    describeWith(ruleAll("QS./^QSORRES$/:N"), map("qs1", blank, "qs2", numeric)));
+        }
+
+
+        /**
          * PACK I E1 for the SUPP-QNAM delivery (D9): a SUPP whose QVAL holds no value in any row
          * delivers no typed value, so the typed requirement on the pivoted variable is satisfied.
          * Judged over the whole SUPP's QVAL, not per QNAM (plan §2, review L4).

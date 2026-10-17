@@ -1885,18 +1885,35 @@ public final class ScopeMatcher
 
 
     /**
-     * Multi-table kind-aware variant over the TABLES (a blank member column is accepted, E1) — see
-     * {@link #firstColumnMatching(List, Pattern)}.
+     * Multi-table kind-aware variant over the TABLES — see
+     * {@link #firstColumnMatching(List, Pattern)}. A matching column of the required (or an
+     * undecidable) kind in any member satisfies; a blank member of the wrong kind defers to the
+     * valued members carrying the name and satisfies only when <b>every</b> member carrying it is
+     * blank — the bare qualified arm's {@code allBlank} (PACK I E1, review fold L1: judged per
+     * member, {@code QS./^QSORRES$/:N} accepted a blank Char QS1 beside a valued Char QS2 while
+     * {@code QS.QSORRES:N} refused through the valued member).
      */
     private static @Nullable String firstColumnMatching(List<IDataTable> tables, Pattern pattern,
             ColumnTypeGate.Kind required)
     {
         for (IDataTable table : tables)
         {
-            String hit = firstColumnMatching(table.getMetaData(), table, pattern, required);
+            String hit = firstColumnMatching(table.getMetaData(), null, pattern, required);
             if (hit != null)
             {
                 return hit;
+            }
+        }
+        for (IDataTable table : tables)
+        {
+            DataTableMeta meta = table.getMetaData();
+            for (int i = 0; i < meta.getColumnCount(); i++)
+            {
+                String column = meta.getColumn(i).getName();
+                if (pattern.matcher(column).matches() && GroupKeyIdentity.allBlank(tables, column))
+                {
+                    return column;
+                }
             }
         }
         return null;

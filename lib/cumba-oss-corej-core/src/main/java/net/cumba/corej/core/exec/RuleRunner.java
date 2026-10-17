@@ -1436,8 +1436,12 @@ public final class RuleRunner
      *
      * <p>
      * <b>Status.</b> An evaluation ERROR at any level is the rule's ERROR (it is a defect, not a
-     * verdict). A level that SKIPs — a provider it needs is absent — contributes nothing; the rule
-     * reports SKIPPED only when no level evaluated at all, naming the first reason.
+     * verdict). A level that SKIPs — a provider it needs is absent, or a hierarchy gap of its own
+     * ({@link CheckLevelPlan#skipReason}) — contributes nothing; the rule reports SKIPPED only when
+     * no level evaluated at all, naming the first reason. When another level did evaluate, the
+     * EXECUTED result's status message names every skipped level and its reason, and the skip is
+     * logged (PACK I review fold M1: a skipped level left no trace — swapped levels reported
+     * EXECUTED with zero findings, the same false assurance the threshold gate argues against).
      * </p>
      */
     private static RuleExecutionResult executeLevels(Rule rule, @Nullable String ruleId,
@@ -1449,7 +1453,10 @@ public final class RuleRunner
         long total = 0;
         long totalRows = RealRows.count(ctx.getTable());
         RecordKeyResolver.KeySource keySource = RecordKeyResolver.KeySource.NONE;
-        String skipReason = null;
+        // The levels that could not be evaluated, with their reasons, in ladder order: the rule's
+        // SKIPPED reason when none evaluated, the EXECUTED result's status message otherwise
+        // (review fold M1 of PACK I E4 — a skipped level leaves a trace either way).
+        SequencedMap<Severity, @Nullable String> skippedLevels = new LinkedHashMap<>();
         int evaluated = 0;
         // PLAN-present-empty-column-fold: the merged result carries Message_Folded when every
         // level that contributed a finding folded or collapsed (its own result says so: a level's
@@ -1473,12 +1480,9 @@ public final class RuleRunner
             if (level.skipReason() != null)
             {
                 // PACK I E4: this level alone reads a hierarchy its dictionary cannot answer —
-                // treated exactly like a level whose result is SKIPPED (below): silent while
-                // another level evaluates, the rule's reason when none does.
-                if (skipReason == null)
-                {
-                    skipReason = level.skipReason();
-                }
+                // treated exactly like a level whose result is SKIPPED (below): named on the
+                // EXECUTED result while another level evaluates, the rule's reason when none does.
+                skippedLevels.putIfAbsent(level.level(), level.skipReason());
                 continue;
             }
             EvaluationContext levelCtx = ctx.toBuilder().checkExprOverride(level.expr())
@@ -1496,10 +1500,7 @@ public final class RuleRunner
             }
             if (result.isSkipped())
             {
-                if (skipReason == null)
-                {
-                    skipReason = result.getStatusMessage();
-                }
+                skippedLevels.putIfAbsent(level.level(), result.getStatusMessage());
                 continue;
             }
             evaluated++;
@@ -1553,6 +1554,8 @@ public final class RuleRunner
 
         if (evaluated == 0)
         {
+            String skipReason = skippedLevels.values().stream().filter(Objects::nonNull).findFirst()
+                    .orElse(null);
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
                     .violations(List.of()).totalRows(totalRows).status(RuleExecutionStatus.SKIPPED)
                     .statusMessage(skipReason != null ? skipReason
@@ -1564,10 +1567,45 @@ public final class RuleRunner
         int cap = Math.max(0, ctx.getMaxErrorsPerRule());
         List<Violation> capped = merged.size() <= cap ? merged : merged.subList(0, cap);
         String mergedMessage = anyContributor && allContributorsFolded ? foldedMessage : message;
+        String levelSkips = skippedLevels.isEmpty() ? null : describeSkippedLevels(skippedLevels);
+        if (levelSkips != null)
+        {
+            LOGGER.log(System.Logger.Level.INFO, "[{0}] {1}", ruleId != null ? ruleId : "?",
+                    levelSkips);
+        }
         return RuleExecutionResult.builder().ruleId(ruleId).message(mergedMessage)
                 .violations(List.copyOf(capped)).totalViolationCount(Math.max(total, merged.size()))
-                .totalRows(totalRows).keySource(keySource).build();
+                .totalRows(totalRows).keySource(keySource).statusMessage(levelSkips).build();
     }
+
+
+    /**
+     * The EXECUTED result's status message when a declared level could not be evaluated while
+     * another did (PACK I review fold M1 of E4): one clause per skipped level, in ladder order,
+     * each naming the level and its reason without the reason's own {@code "Rule skipped — "} lead
+     * — e.g. {@code "Rule executed; check level WARNING skipped — external dictionary meddra
+     * cannot answer the HLT → SOC hierarchy: …"}. The report keeps it as a {@code Skipped_Rules}
+     * row of the executed pair ({@code ValidationReportBuilder.add}).
+     */
+    private static String describeSkippedLevels(SequencedMap<Severity, @Nullable String> skipped)
+    {
+        StringBuilder sb = new StringBuilder("Rule executed");
+        for (Map.Entry<Severity, @Nullable String> e : skipped.entrySet())
+        {
+            String reason = e.getValue() == null ? "no reason given" : e.getValue();
+            if (reason.startsWith(SKIP_LEAD))
+            {
+                reason = reason.substring(SKIP_LEAD.length());
+            }
+            // name(): the level as the Check declares it ("ERROR", "WARNING"), not the JSON value
+            sb.append("; check level ").append(e.getKey().name()).append(" skipped — ")
+                    .append(reason);
+        }
+        return sb.toString();
+    }
+
+    /** The lead every whole-rule skip reason carries; a skipped level's clause drops it. */
+    private static final String SKIP_LEAD = "Rule skipped — ";
 
     /**
      * The <b>finding unit</b> first-claim is keyed on (Plan C &#167;3.4 step 4): the

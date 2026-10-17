@@ -132,10 +132,11 @@ class BindingSubstitutabilityCensusTest
             // advised route: the bound spelling is clean where the inline filler is refused by
             // design (until E2 the compile refused the inline spelling silently and the rule
             // ERRORed at run). The ordered family refuses both plants (the value filler is a
-            // literal) and the two messages name the slot each refusal sits in.
+            // literal) and the two messages name the slot each refusal sits in (review fold L4:
+            // the value operand is "a column or a $-binding", as the compile reads it).
             "contains_all[0] source: bound=clean | inline=stage A: COMPUTED_SET_OPERAND: contains_all's source list must be a column, a $-binding or a list-valued var_* accessor,",
-            "is_not_ordered_subset_of[0] name: bound=stage A: COMPUTED_SET_OPERAND: is_not_ordered_subset_of's value operand must be a $-binding, not \"a\" \u2014 bind it first: `$ | inline=stage A: COMPUTED_SET_OPERAND: is_not_ordered_subset_of's name operand must be a column or a $-binding, not \u2039arg\u203a \u2014 bind",
-            "is_ordered_subset_of[0] name: bound=stage A: COMPUTED_SET_OPERAND: is_ordered_subset_of's value operand must be a $-binding, not \"a\" \u2014 bind it first: `$valu | inline=stage A: COMPUTED_SET_OPERAND: is_ordered_subset_of's name operand must be a column or a $-binding, not \u2039arg\u203a \u2014 bind it ",
+            "is_not_ordered_subset_of[0] name: bound=stage A: COMPUTED_SET_OPERAND: is_not_ordered_subset_of's value operand must be a column or a $-binding, not \"a\" \u2014 bind  | inline=stage A: COMPUTED_SET_OPERAND: is_not_ordered_subset_of's name operand must be a column or a $-binding, not \u2039arg\u203a \u2014 bind",
+            "is_ordered_subset_of[0] name: bound=stage A: COMPUTED_SET_OPERAND: is_ordered_subset_of's value operand must be a column or a $-binding, not \"a\" \u2014 bind it f | inline=stage A: COMPUTED_SET_OPERAND: is_ordered_subset_of's name operand must be a column or a $-binding, not \u2039arg\u203a \u2014 bind it ",
             "not_contains_all[0] source: bound=clean | inline=stage A: COMPUTED_SET_OPERAND: not_contains_all's source list must be a column, a $-binding or a list-valued var_* acces",
             "imatches[1] pattern: bound=imatches requires a /regex/ literal pattern argument | inline=clean",
             "prefix_matches[1] pattern: bound=prefix_matches requires a /regex/ literal pattern argument | inline=clean",

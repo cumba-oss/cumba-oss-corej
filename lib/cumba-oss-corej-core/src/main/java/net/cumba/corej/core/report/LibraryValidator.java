@@ -933,7 +933,9 @@ public final class LibraryValidator
             {
                 RuleExecutionResult res = e.result();
                 String status = res.isSkipped() ? "SKIPPED" : res.isError() ? "ERROR" : "EXECUTED";
-                String reason = res.isSkipped() || res.isError() ? res.getStatusMessage() : null;
+                // why the rule was not executed, or which level of an EXECUTED rule was skipped
+                // (PACK I review fold M1 of E4); null for a plain execution
+                String reason = res.getStatusMessage();
                 ruleExecutions.add(new DatasetExecutionSummary.RuleExecution(coreIdOf(e.rule()),
                         e.rule().effectiveId(), status, res.getViolationCount(),
                         res.getRuntimeMillis(), expandedVariableOf(e.rule()), reason,
@@ -1013,7 +1015,9 @@ public final class LibraryValidator
             Rule rule = sr.rule();
             RuleExecutionResult res = sr.result();
             String status = res.isSkipped() ? "SKIPPED" : res.isError() ? "ERROR" : "EXECUTED";
-            String reason = res.isSkipped() || res.isError() ? res.getStatusMessage() : null;
+            // why the rule was not executed, or which level of an EXECUTED rule was skipped
+            // (PACK I review fold M1 of E4); null for a plain execution
+            String reason = res.getStatusMessage();
             runtimeMillis += Math.max(0L, res.getRuntimeMillis());
             ruleExecutions.add(new DatasetExecutionSummary.RuleExecution(coreIdOf(rule),
                     rule.effectiveId(), status, res.getViolationCount(), res.getRuntimeMillis(),
