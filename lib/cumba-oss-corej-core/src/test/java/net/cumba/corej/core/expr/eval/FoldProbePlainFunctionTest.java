@@ -200,7 +200,9 @@ class FoldProbePlainFunctionTest
         for (String check : List.of("upper(X) in [\"A\", \"B C\"]", "upper(X) == \"MILD\"",
                 "upper(X) not in [\"1\", \"-\", \"\"]", "lower(X) in [\"a\"]", "upper(X) in $set",
                 "upper(X) in upper($set)", "upper(X) != upper(Y)", "upper(X) in [upper(\"a\")]",
-                "X in [\"a\"]", "upper(X) in [\"10\"]"))
+                "X in [\"a\"]", "upper(X) in [\"10\"]",
+                // PI-C3 (PACK I E2): the membership over a computed list is supported as written
+                "upper(value()) in upper(var_codelist_coded_values(\"LIBRARY\"))"))
         {
             Rule r = load(check);
             assertNull(r.getLoadError(), check + ": " + r.getLoadError());

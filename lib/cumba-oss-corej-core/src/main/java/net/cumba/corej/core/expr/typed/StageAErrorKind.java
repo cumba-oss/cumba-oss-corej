@@ -338,6 +338,23 @@ public enum StageAErrorKind
     FOLD_PROBE_LITERAL_CASE(true),
 
     /**
+     * A computed operand where a set operator's shape is fixed (PACK I E2, PI-C3):
+     * {@code contains_all} / {@code not contains_all} take a column, a {@code $}-binding or a
+     * list-valued {@code var_*} accessor <em>with a second operand</em> as the source list;
+     * {@code is_ordered_subset_of} / {@code is_not_ordered_subset_of} take a reference on both
+     * sides. {@code contains_all(upper($x), $y)}, {@code not contains_all(split_by(X, ";"), $y)},
+     * {@code is_ordered_subset_of($x, upper($y))} or an accessor source with {@code keys=} used to
+     * load silently and ERROR at run — the compile refused them and the loader installed no
+     * {@code checkExpr}. The predicate is the compiler's own
+     * ({@code ExprCompiler.setSourceRefusal}, which both compile methods throw with), so the gate
+     * and the compiler cannot drift; the message names the function as written and the
+     * {@code $}-binding route. Armed: the 2026-10-17 census found no shipped rule of the shape in
+     * either corpus (precedent: the binding gate and the W8 Precondition gate — a refused form is a
+     * load error, never silent).
+     */
+    COMPUTED_SET_OPERAND(true),
+
+    /**
      * The checker itself failed on this rule. Never armed: a checker defect must not park a rule
      * (that would be an evaluation change caused by the instrument).
      */

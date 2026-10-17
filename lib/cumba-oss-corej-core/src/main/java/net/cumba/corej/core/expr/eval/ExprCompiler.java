@@ -1839,6 +1839,102 @@ public final class ExprCompiler
 
 
     /**
+     * PACK I E2 (PI-C3): the ONE predicate behind the set operators' fixed operand shapes — the
+     * reason {@code c} cannot be compiled because of a computed source operand, or {@code null}
+     * when its shape is one the compiler takes. Mirrors {@link #compileNotContainsAll} and
+     * {@link #compileIsNotOrderedSubsetOf} exactly, and both throw with it, so the compiler and the
+     * stage-A gate ({@code StageAErrorKind.COMPUTED_SET_OPERAND}, armed) cannot drift: the shape
+     * that is refused here is a load error naming the function <em>as written</em>
+     * ({@code c.name()} — the guide documents {@code not_contains_all} and
+     * {@code is_not_ordered_subset_of}), never a rule that loads silently and ERRORs at run.
+     * <ul>
+     * <li>contains family ({@code contains_all}, {@code not_contains_all}): the source (first
+     * operand) is a reference — a column or a {@code $}-binding — or a list-valued {@code var_*}
+     * accessor <b>with a second operand</b> (the {@code args.size() >= 2} arm; with {@code keys=}
+     * alone the accessor fell through to the reference check and was silent — review L6);</li>
+     * <li>ordered-subset family ({@code is_ordered_subset_of}, {@code is_not_ordered_subset_of}):
+     * both operands are references.</li>
+     * </ul>
+     * Any other operand — {@code upper(…)}, {@code split_by(…)}, a literal, a nested call — is
+     * computed, and the advice is the {@code $}-binding route, which the engine evaluates per
+     * variable under iteration like the inline accessor ({@code ComputedSetOperandGateTest}).
+     *
+     * @param c
+     *            the call as the author wrote it (name-slot bindings inlined, nothing else)
+     * @return the refusal, or {@code null} when the shape compiles
+     */
+    public static @Nullable String setSourceRefusal(Expr.Call c)
+    {
+        String fn = c.name();
+        List<Expr> args = c.args();
+        if ("contains_all".equals(fn) || "not_contains_all".equals(fn))
+        {
+            if (!args.isEmpty() && args.get(0) instanceof Expr.Ref)
+            {
+                return null;
+            }
+            if (args.size() >= 2 && isListAccessor(args.get(0)))
+            {
+                return null;
+            }
+            if (args.isEmpty())
+            {
+                return fn + " has no source list operand";
+            }
+            String source = spelled(args.get(0));
+            if (isListAccessor(args.get(0)))
+            {
+                return fn + "'s source list " + source + " is a list-valued var_* accessor, which"
+                        + " needs the required list as the second operand (a $-binding, a list"
+                        + " accessor or a per-row list such as split_by(…)), not keys=";
+            }
+            return fn + "'s source list must be a column, a $-binding or a list-valued var_*"
+                    + " accessor, not " + source + " — bind it first: `$src: " + source
+                    + "`, then `" + fn + "($src, …)`";
+        }
+        if ("is_ordered_subset_of".equals(fn) || "is_not_ordered_subset_of".equals(fn))
+        {
+            if (args.isEmpty())
+            {
+                return fn + " has no name operand";
+            }
+            if (!(args.get(0) instanceof Expr.Ref))
+            {
+                String source = spelled(args.get(0));
+                return fn + "'s name operand must be a column or a $-binding, not " + source
+                        + " — bind it first: `$src: " + source + "`, then `" + fn + "($src, …)`";
+            }
+            if (args.size() < 2)
+            {
+                return fn + " has no value operand";
+            }
+            if (!(args.get(1) instanceof Expr.Ref))
+            {
+                String values = spelled(args.get(1));
+                return fn + "'s value operand must be a $-binding, not " + values
+                        + " — bind it first: `$values: " + values + "`, then `" + fn + "("
+                        + spelled(args.get(0)) + ", $values)`";
+            }
+        }
+        return null;
+    }
+
+
+    /** An operand as the author wrote it, for a refusal message; never throws. */
+    private static String spelled(Expr e)
+    {
+        try
+        {
+            return net.cumba.corej.core.expr.ExpressionPrinter.print(e);
+        }
+        catch (RuntimeException ex)
+        {
+            return "a computed expression";
+        }
+    }
+
+
+    /**
      * Whether {@code e} is a per-record VLM list-valued accessor ({@code vlm_codelist_coded_values}
      * / {@code vlm_codelist_coded_codes}) — its cell is a {@code List<String>} that varies per row,
      * so membership must rebuild the set for each row.
@@ -4911,6 +5007,13 @@ public final class ExprCompiler
      */
     private static ExprProgram.BoolPlan compileNotContainsAll(Expr.Call c)
     {
+        // PACK I E2: the one predicate the stage-A gate shares (setSourceRefusal) — a shape it
+        // refuses never reaches the branches below, and is a load error upstream.
+        String refusal = setSourceRefusal(c);
+        if (refusal != null)
+        {
+            throw unsupported(refusal);
+        }
         // CT-004 (NRI-007, PLAN-value-check-against-library-codelist Phase 5b): a list-valued
         // metadata accessor as the SOURCE set — `not contains_all(var_codelist_coded_values(
         // "LIBRARY"), var_codelist_coded_values("DEFINE"))` fires when the required list carries a
@@ -4948,7 +5051,7 @@ public final class ExprCompiler
         }
         if (c.args().isEmpty() || !(c.args().get(0) instanceof Expr.Ref nameRef))
         {
-            throw unsupported("not_contains_all requires a reference name operand");
+            throw unsupported(c.name() + " requires a reference name operand"); // setSourceRefusal
         }
         String rawName = nameRef.name();
         boolean nameIsOperation = rawName.startsWith("$");
@@ -5127,13 +5230,19 @@ public final class ExprCompiler
      */
     private static ExprProgram.BoolPlan compileIsNotOrderedSubsetOf(Expr.Call c)
     {
+        // PACK I E2: the one predicate the stage-A gate shares (setSourceRefusal).
+        String refusal = setSourceRefusal(c);
+        if (refusal != null)
+        {
+            throw unsupported(refusal);
+        }
         if (c.args().isEmpty() || !(c.args().get(0) instanceof Expr.Ref nameRef))
         {
-            throw unsupported("is_not_ordered_subset_of requires a reference name operand");
+            throw unsupported(c.name() + " requires a reference name operand"); // setSourceRefusal
         }
         if (c.args().size() < 2 || !(c.args().get(1) instanceof Expr.Ref valueRef))
         {
-            throw unsupported("is_not_ordered_subset_of requires a reference value operand");
+            throw unsupported(c.name() + " requires a reference value operand"); // setSourceRefusal
         }
         String name = nameRef.name();
         String valueName = valueRef.name();

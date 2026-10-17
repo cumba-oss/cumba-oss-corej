@@ -1318,6 +1318,15 @@ public final class StageAChecker
             return call(probe);
         }
         String name = c.name();
+        // PACK I E2: a set operator whose fixed operand is computed — the compiler's own refusal
+        // (one predicate, so the gate and the compile cannot drift), as a load error naming the
+        // function as written and the $-binding route. Judged on the un-inlined Check: a $src is
+        // still an Expr.Ref here (RulePackageLoader inlines name-slot bindings only).
+        String setSourceRefusal = ExprCompiler.setSourceRefusal(c);
+        if (setSourceRefusal != null)
+        {
+            find(StageAErrorKind.COMPUTED_SET_OPERAND, setSourceRefusal + at(c));
+        }
         Expr joinedArgument = quantifierPosition(c);
         Expr outerExpected = expectedJoined;
         expectedJoined = joinedArgument;
