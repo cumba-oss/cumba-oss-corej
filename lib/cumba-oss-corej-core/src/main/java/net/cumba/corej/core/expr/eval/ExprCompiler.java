@@ -1905,11 +1905,20 @@ public final class ExprCompiler
         }
         catch (ExpressionException e)
         {
-            String detail = messageOf(e);
-            return detail.startsWith(UNSUPPORTED_PREFIX)
-                    ? detail.substring(UNSUPPORTED_PREFIX.length())
-                    : detail;
+            return refusalDetail(e);
         }
+    }
+
+
+    /**
+     * A compiler refusal's own text — its message without the {@link #UNSUPPORTED_PREFIX} lead —
+     * for the stage-A gate and the loader (PACK I E6: a Check's refusal is the rule's load error).
+     */
+    public static String refusalDetail(Throwable aThrown)
+    {
+        String detail = messageOf(aThrown);
+        return detail.startsWith(UNSUPPORTED_PREFIX) ? detail.substring(UNSUPPORTED_PREFIX.length())
+                : detail;
     }
 
     /**
@@ -3547,6 +3556,16 @@ public final class ExprCompiler
         Expr.Call c = canonicalCall(aCall);
         String name = c.name();
         int arity = c.args().size();
+        if (net.cumba.corej.core.expr.eval.spi.CompilerDispatchedCalls
+                .negationDispatchedBooleanCallNames().contains(name))
+        {
+            // PACK I E6 (PI-Q5 ⓐ): the two Q1 group operators are evaluated under `not` only
+            // (compileNot's arms — the guide authors them so); the positive form fell through to
+            // the dispatch-drift sentinel, and with a Check's refusal swallowed at load it ERRORed
+            // at every run. Named for the author; the loader files it as the load error.
+            throw unsupported("'" + name + "' is authored under `not` \u2014 write not " + name
+                    + "(\u2026); the positive form has no plan");
+        }
         if (("exists".equals(name) || "not_exists".equals(name)) && arity == 1)
         {
             // Owner ruling 1 (PLAN-leaf-scope-domain-inference.md): the Rule_Type-dependent generic

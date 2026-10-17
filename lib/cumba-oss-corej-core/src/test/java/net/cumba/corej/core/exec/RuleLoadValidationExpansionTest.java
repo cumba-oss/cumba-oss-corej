@@ -447,7 +447,10 @@ class RuleLoadValidationExpansionTest
                   "Check": {"all": [{"expression": "A&&B&&C"}]}
                 }
                 """);
-        assertNull(rule.getLoadError(), rule.getLoadError());
+        // G2 sees no token; the bare references are the compiler's own refusal, a load error
+        // since PACK I E6 (not this guard's)
+        String error = rule.getLoadError();
+        assertTrue(error == null || !error.contains("undeclared expansion token"), error);
     }
 
 
@@ -977,9 +980,12 @@ class RuleLoadValidationExpansionTest
                 }
                 """);
         String error = rule.getLoadError();
-        assertTrue(error == null || !error.contains("no native expression form"),
+        assertTrue(error == null || !error.contains("Expansion over an 'all_*' source"),
                 () -> "this guard must be about all_* expansions, not about non-native rules: "
                         + error);
+        // PACK I E6: the non-native Check is a load error of its own (the compiler's reason)
+        assertNotNull(error);
+        assertTrue(error.contains("no native function 'no_such_native_function_xyz'"), error);
     }
 
 }

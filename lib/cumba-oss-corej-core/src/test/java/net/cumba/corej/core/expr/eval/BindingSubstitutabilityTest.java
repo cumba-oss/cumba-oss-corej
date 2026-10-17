@@ -110,6 +110,18 @@ class BindingSubstitutabilityTest
             Rule bound = loadCall(call.replace("‹arg›", "$x"), "$x", expr);
             assertNull(bound.getLoadError(), call + " bound → " + bound.getLoadError());
             Rule inline = loadCall(call.replace("‹arg›", expr));
+            if ("(1 == 2)".equals(expr))
+            {
+                // ⚠ Measured with PACK I E6 (a Check's compile refusal is a load error): a boolean
+                // EXPRESSION written inline as a flag argument never compiled — operandPlan takes
+                // no Binary — so the inline spelling loaded clean and ERRORed at every run while
+                // this test read "alike". The bound spelling compiles (the binding is its own
+                // program). Reported with the fold as a D3 / D16 gap; pinned as measured here.
+                assertNotNull(inline.getLoadError(), call + " inline must not load clean");
+                assertTrue(inline.getLoadError().contains("unsupported operand Binary"),
+                        call + " inline → " + inline.getLoadError());
+                continue;
+            }
             assertNull(inline.getLoadError(), call + " inline → " + inline.getLoadError());
         }
     }

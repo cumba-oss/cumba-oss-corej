@@ -55,6 +55,10 @@ class RuleLoadValidationDsExistsTest
         Rule rule = load("TEST-401", "ds_exists", "AE.AESTDY");
         assertNull(rule.getCheckExpr(),
                 "a dotted dataset name must be refused by the compiler (no native form)");
+        // PACK I E6 (PI-Q5 ⓐ): the compiler's refusal of a Check is the rule's load error — it no
+        // longer loads clean to ERROR at every run
+        assertNotNull(rule.getLoadError(), "the refusal is a load error");
+        assertTrue(rule.getLoadError().contains("no native expression form"), rule.getLoadError());
 
         IDataTable table = MockTable.of().name("ADAE").col("USUBJID", "S1").build();
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
@@ -62,8 +66,10 @@ class RuleLoadValidationDsExistsTest
         assertNotNull(result.getStatusMessage());
         assertTrue(result.getStatusMessage().contains("no native expression form"),
                 result.getStatusMessage());
-        assertEquals(0, result.getViolationCount(),
-                "the no-native ERROR is a status, not a finding row");
+        // since PACK I E6 the ERROR is the load error's (the loader refused the Check), and the
+        // runner reports a load error as it reports every load error
+        assertTrue(result.getStatusMessage().contains(rule.getLoadError()),
+                result.getStatusMessage());
     }
 
 

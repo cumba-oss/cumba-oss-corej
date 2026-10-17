@@ -599,8 +599,10 @@ class GroupedAggregateQualifiedGroupTest
     void aDottedWithinMemberOfAGroupOperatorLoads()
     {
         assertNull(
-                loadClean("has_multiple_values_for(BWSEQ, RPHASE, within=[DM.RPATHCD])", "not $v")
-                        .getLoadError());
+                // `$v == false`: a bare `not $v` is not a boolean condition to the compiler, and
+                // since PACK I E6 a Check that does not compile is a load error
+                loadClean("has_multiple_values_for(BWSEQ, RPHASE, within=[DM.RPATHCD])",
+                        "$v == false").getLoadError());
     }
 
 }

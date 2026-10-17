@@ -3063,13 +3063,26 @@ public class RulePackageLoader
     private static void installCompiledLevels(Rule rule,
             SequencedMap<Severity, net.cumba.corej.core.expr.ast.Expr> levels)
     {
-        for (net.cumba.corej.core.expr.ast.Expr level : levels.values())
+        // PACK I E6 (PI-Q5 ⓐ): a Check the compiler refuses is a LOAD ERROR on a non-template
+        // rule — as a compiled Binding's refusal always was (installCompiledBindings) — never a
+        // rule that loads clean with no checkExpr and reports ERROR at every run. A template (a
+        // wildcard name in the Check, WildcardExpander.isTemplate) is expanded per dataset and
+        // compiles there: it keeps loading without a checkExpr, as before.
+        Map.Entry<Severity, net.cumba.corej.core.expr.ast.Expr> refused = levels.entrySet().stream()
+                .filter(level -> !net.cumba.corej.core.expr.eval.NativeExprEvaluator
+                        .isSupported(level.getValue()))
+                .findFirst().orElse(null);
+        if (refused != null)
         {
-            if (!net.cumba.corej.core.expr.eval.NativeExprEvaluator.isSupported(level))
+            if (net.cumba.corej.core.gen.WildcardExpander.isTemplate(rule))
             {
                 rejectUndecidableAllExpansion(rule);
                 return;
             }
+            String where = levels.size() > 1 ? "Check (" + refused.getKey().name() + ")" : "Check";
+            rule.addLoadError("[" + ruleId(rule) + "] the " + where
+                    + " has no native expression form: " + nativeRefusal(refused.getValue()));
+            return;
         }
         net.cumba.corej.core.expr.eval.Domain join = null;
         for (Map.Entry<Severity, net.cumba.corej.core.expr.ast.Expr> level : levels.entrySet())
@@ -3156,7 +3169,7 @@ public class RulePackageLoader
         }
         catch (net.cumba.corej.core.expr.ExpressionException ex)
         {
-            return String.valueOf(ex.getMessage());
+            return net.cumba.corej.core.expr.eval.ExprCompiler.refusalDetail(ex);
         }
     }
 

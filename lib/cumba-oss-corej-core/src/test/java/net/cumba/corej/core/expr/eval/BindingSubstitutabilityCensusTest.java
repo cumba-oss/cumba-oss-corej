@@ -134,30 +134,34 @@ class BindingSubstitutabilityCensusTest
             // ERRORed at run). The ordered family refuses both plants (the value filler is a
             // literal) and the two messages name the slot each refusal sits in (review fold L4:
             // the value operand is "a column or a $-binding", as the compile reads it).
+            //
+            // PACK I E6 (PI-Q5 ⓐ, 2026-10-17): a Check the compiler refuses is a LOAD ERROR on a
+            // non-template rule, so refusals that were swallowed (the rule loaded clean, ERRORed
+            // at run — "clean" here) now read as the compiler's message: the relationship /
+            // consistency readers' inline string-literal filler ("group operator operand takes a
+            // column reference, not the string literal"), and has_mixed_emptiness_within_group's
+            // name slot, which bindStrict refuses for a $-binding (not a declared name slot) while
+            // the inline column is fine — a refusal that was silent before E6 and is loud now.
+            //
+            // C10 — left with BS1 (2026-10-08); C7 — declared exception (G2); the W1b DT targets;
+            // runbook W4 KP (W4-D3): a positional $ key of the relationship / consistency readers
+            // is refused BY DESIGN — see the class javadoc.
             "contains_all[0] source: bound=clean | inline=stage A: COMPUTED_SET_OPERAND: contains_all's source list must be a column, a $-binding or a list-valued var_* accessor,",
-            "is_not_ordered_subset_of[0] name: bound=stage A: COMPUTED_SET_OPERAND: is_not_ordered_subset_of's value operand must be a column or a $-binding, not \"a\" \u2014 bind  | inline=stage A: COMPUTED_SET_OPERAND: is_not_ordered_subset_of's name operand must be a column or a $-binding, not \u2039arg\u203a \u2014 bind",
-            "is_ordered_subset_of[0] name: bound=stage A: COMPUTED_SET_OPERAND: is_ordered_subset_of's value operand must be a column or a $-binding, not \"a\" \u2014 bind it f | inline=stage A: COMPUTED_SET_OPERAND: is_ordered_subset_of's name operand must be a column or a $-binding, not \u2039arg\u203a \u2014 bind it ",
-            "not_contains_all[0] source: bound=clean | inline=stage A: COMPUTED_SET_OPERAND: not_contains_all's source list must be a column, a $-binding or a list-valued var_* acces",
+            "has_mixed_emptiness_within_group[0] name: bound=[BS0-CENSUS] the Check has no native expression form: argument 'name' of 'has_mixed_emptiness_within_group' must be a pl | inline=clean",
             "imatches[1] pattern: bound=imatches requires a /regex/ literal pattern argument | inline=clean",
+            "is_inconsistent_across_dataset[1] key: bound=argument 'key' of 'is_inconsistent_across_dataset' takes a column, not the binding ‹arg› — a binding of column names is  | inline=[BS0-CENSUS] the Check has no native expression form: group operator operand takes a column reference, not the string li",
+            "is_inconsistent_across_dataset[2] keys: bound=positional argument 3 of 'is_inconsistent_across_dataset' is keys — a binding of column names is spliced through keys=[‹ | inline=[BS0-CENSUS] the Check has no native expression form: group operator operand takes a column reference, not the string li",
+            "is_inconsistent_across_dataset[3] include_empty: bound=positional argument 4 of 'is_inconsistent_across_dataset' is include_empty — write include_empty=… | inline=stage A: PARAMETER_TYPE: Check (ERROR): argument 'keys' of 'is_inconsistent_across_dataset' takes list<column-reference>",
+            "is_inconsistent_across_dataset[4] keep_missings: bound=positional argument 5 of 'is_inconsistent_across_dataset' is keep_missings — write keep_missings=… | inline=stage A: PARAMETER_TYPE: Check (ERROR): argument 'keys' of 'is_inconsistent_across_dataset' takes list<column-reference>",
+            "is_not_ordered_subset_of[0] name: bound=stage A: COMPUTED_SET_OPERAND: is_not_ordered_subset_of's value operand must be a column or a $-binding, not \"a\" — bind  | inline=stage A: COMPUTED_SET_OPERAND: is_not_ordered_subset_of's name operand must be a column or a $-binding, not ‹arg› — bind",
+            "is_not_unique_relationship[1] value: bound=argument 'value' of 'is_not_unique_relationship' takes a column, not the binding ‹arg› — a binding of column names is sp | inline=[BS0-CENSUS] the Check has no native expression form: group operator operand takes a column reference, not the string li",
+            "is_not_unique_relationship[2] keys: bound=positional argument 3 of 'is_not_unique_relationship' is keys — a binding of column names is spliced through keys=[‹arg› | inline=[BS0-CENSUS] the Check has no native expression form: group operator operand takes a column reference, not the string li",
+            "is_ordered_subset_of[0] name: bound=stage A: COMPUTED_SET_OPERAND: is_ordered_subset_of's value operand must be a column or a $-binding, not \"a\" — bind it f | inline=stage A: COMPUTED_SET_OPERAND: is_ordered_subset_of's name operand must be a column or a $-binding, not ‹arg› — bind it ",
+            "is_unique_relationship[1] value: bound=argument 'value' of 'is_unique_relationship' takes a column, not the binding ‹arg› — a binding of column names is splice | inline=[BS0-CENSUS] the Check has no native expression form: group operator operand takes a column reference, not the string li",
+            "is_unique_relationship[2] keys: bound=positional argument 3 of 'is_unique_relationship' is keys — a binding of column names is spliced through keys=[‹arg›] | inline=[BS0-CENSUS] the Check has no native expression form: group operator operand takes a column reference, not the string li",
+            "not_contains_all[0] source: bound=clean | inline=stage A: COMPUTED_SET_OPERAND: not_contains_all's source list must be a column, a $-binding or a list-valued var_* acces",
             "prefix_matches[1] pattern: bound=prefix_matches requires a /regex/ literal pattern argument | inline=clean",
-            "suffix_matches[1] pattern: bound=suffix_matches requires a /regex/ literal pattern argument | inline=clean",
-            // runbook W4 KP (coordinator W4-D3): a positional $ key of the relationship /
-            // consistency readers is refused BY DESIGN (a load error, not a single-reference
-            // splice): keyMembers read every positional after the name RAW as a column name and
-            // dropped it; a binding of names goes in keys=[$k]. The inline filler ("a") is the
-            // written key the readers always took; past the declared key slot the message names
-            // the parameter the position binds (W4 fold, R5 P1-L1). (The W1b BS2c row of
-            // is_last_in_group's
-            // ordering= left with W4 OR2: by= is a list<column-reference> sort-key slot, its
-            // filler a list, and both spellings are judged alike.)
-            "is_inconsistent_across_dataset[1] key: bound=argument 'key' of 'is_inconsistent_across_dataset' takes a column, not the binding \u2039arg\u203a \u2014 a binding of column names is  | inline=clean",
-            "is_inconsistent_across_dataset[2] keys: bound=positional argument 3 of 'is_inconsistent_across_dataset' is keys \u2014 a binding of column names is spliced through keys=[\u2039 | inline=clean",
-            "is_inconsistent_across_dataset[3] include_empty: bound=positional argument 4 of 'is_inconsistent_across_dataset' is include_empty \u2014 write include_empty=\u2026 | inline=stage A: PARAMETER_TYPE: Check (ERROR): argument 'keys' of 'is_inconsistent_across_dataset' takes list<column-reference>",
-            "is_inconsistent_across_dataset[4] keep_missings: bound=positional argument 5 of 'is_inconsistent_across_dataset' is keep_missings \u2014 write keep_missings=\u2026 | inline=stage A: PARAMETER_TYPE: Check (ERROR): argument 'keys' of 'is_inconsistent_across_dataset' takes list<column-reference>",
-            "is_not_unique_relationship[1] value: bound=argument 'value' of 'is_not_unique_relationship' takes a column, not the binding \u2039arg\u203a \u2014 a binding of column names is sp | inline=clean",
-            "is_not_unique_relationship[2] keys: bound=positional argument 3 of 'is_not_unique_relationship' is keys \u2014 a binding of column names is spliced through keys=[\u2039arg\u203a | inline=clean",
-            "is_unique_relationship[1] value: bound=argument 'value' of 'is_unique_relationship' takes a column, not the binding \u2039arg\u203a \u2014 a binding of column names is splice | inline=clean",
-            "is_unique_relationship[2] keys: bound=positional argument 3 of 'is_unique_relationship' is keys \u2014 a binding of column names is spliced through keys=[\u2039arg\u203a] | inline=clean"));
+            "suffix_matches[1] pattern: bound=suffix_matches requires a /regex/ literal pattern argument | inline=clean"));
 
     /** Floor of (descriptor, parameter) pairs the census must visit — the registry was walked. */
     private static final int VISITED_FLOOR = 150;

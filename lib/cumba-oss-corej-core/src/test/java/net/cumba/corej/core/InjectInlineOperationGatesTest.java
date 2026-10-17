@@ -173,8 +173,13 @@ class InjectInlineOperationGatesTest
         // exemption: the gate collector found it, the suppression walker did not, and
         // available(<op>) was injected -- which per the exemption's own javadoc makes an
         // emptiness-testing rule unreachable. The two walkers must see the same tree.
-        Rule rule = load("{\"Core\":{\"Id\":\"X-1\"}," + "\"Check\":{\"expression\":"
-                + "\"wrapper_fn(k = empty(dataset_class_from_library()))\"}}");
+        // PACK I E6: a Check that does not compile is a load error, so the wrapper is a real
+        // function whose kwarg takes an expression — shares_no_elements_with's value= over a
+        // dataset-level $-list (its name operand may not read a per-row column)
+        Rule rule = load("{\"Core\":{\"Id\":\"X-1\"},"
+                + "\"Bindings\":[{\"name\":\"$a\",\"expression\":\"[\\\"x\\\"]\"}],"
+                + "\"Check\":{\"expression\":"
+                + "\"shares_no_elements_with($a, value=empty(dataset_class_from_library()))\"}}");
         assertNull(rule.getLoadError());
         assertEquals("library_available()", preconditionText(rule),
                 "the emptiness exemption must apply through a kwarg exactly as through an arg");
