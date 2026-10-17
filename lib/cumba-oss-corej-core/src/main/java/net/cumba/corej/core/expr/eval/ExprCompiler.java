@@ -1860,24 +1860,55 @@ public final class ExprCompiler
      * variable under iteration like the inline accessor ({@code ComputedSetOperandGateTest}).
      *
      * @param c
-     *            the call as the author wrote it (name-slot bindings inlined, nothing else)
+     *            the call as the author wrote it (name-slot bindings inlined, nothing else;
+     *            positional or keyword spelling — the operands are read in descriptor order)
      * @return the refusal, or {@code null} when the shape compiles
      */
     public static @Nullable String setSourceRefusal(Expr.Call c)
     {
         String fn = c.name();
-        List<Expr> args = c.args();
+        if (!"contains_all".equals(fn) && !"not_contains_all".equals(fn)
+                && !"is_ordered_subset_of".equals(fn) && !"is_not_ordered_subset_of".equals(fn))
+        {
+            return null;
+        }
+        // The operands in DESCRIPTOR order (source / required, name / value), however the author
+        // spelled them: stage A walks the authored call, where `contains_all(source=J.S,
+        // required=[…])` still carries keywords, while the compile reads the bound positions —
+        // one binding (ArgumentBinder) keeps the two readings identical. An arity failure is
+        // stage A's own ARITY finding, not a refusal here.
+        List<@Nullable Expr> args;
+        FunctionDescriptor descriptor = FunctionRegistry.descriptor(fn);
+        if (descriptor == null)
+        {
+            args = new ArrayList<>(c.args());
+        }
+        else
+        {
+            try
+            {
+                args = ArgumentBinder.bind(descriptor, c);
+            }
+            catch (RuntimeException _)
+            {
+                return null;
+            }
+        }
+        while (!args.isEmpty() && args.get(args.size() - 1) == null)
+        {
+            args.remove(args.size() - 1); // an unbound optional slot is "not given"
+        }
         if ("contains_all".equals(fn) || "not_contains_all".equals(fn))
         {
             if (!args.isEmpty() && args.get(0) instanceof Expr.Ref)
             {
                 return null;
             }
-            if (args.size() >= 2 && isListAccessor(args.get(0)))
+            if (args.size() >= 2 && args.get(1) != null && isListAccessor(args.get(0)))
             {
                 return null;
             }
-            if (args.isEmpty())
+            if (args.isEmpty() || args.get(0) == null)
             {
                 return fn + " has no source list operand";
             }
@@ -1892,37 +1923,38 @@ public final class ExprCompiler
                     + " accessor, not " + source + " — bind it first: `$src: " + source
                     + "`, then `" + fn + "($src, …)`";
         }
-        if ("is_ordered_subset_of".equals(fn) || "is_not_ordered_subset_of".equals(fn))
+        if (args.isEmpty() || args.get(0) == null)
         {
-            if (args.isEmpty())
-            {
-                return fn + " has no name operand";
-            }
-            if (!(args.get(0) instanceof Expr.Ref))
-            {
-                String source = spelled(args.get(0));
-                return fn + "'s name operand must be a column or a $-binding, not " + source
-                        + " — bind it first: `$src: " + source + "`, then `" + fn + "($src, …)`";
-            }
-            if (args.size() < 2)
-            {
-                return fn + " has no value operand";
-            }
-            if (!(args.get(1) instanceof Expr.Ref))
-            {
-                String values = spelled(args.get(1));
-                return fn + "'s value operand must be a $-binding, not " + values
-                        + " — bind it first: `$values: " + values + "`, then `" + fn + "("
-                        + spelled(args.get(0)) + ", $values)`";
-            }
+            return fn + " has no name operand";
+        }
+        if (!(args.get(0) instanceof Expr.Ref))
+        {
+            String source = spelled(args.get(0));
+            return fn + "'s name operand must be a column or a $-binding, not " + source
+                    + " — bind it first: `$src: " + source + "`, then `" + fn + "($src, …)`";
+        }
+        if (args.size() < 2 || args.get(1) == null)
+        {
+            return fn + " has no value operand";
+        }
+        if (!(args.get(1) instanceof Expr.Ref))
+        {
+            String values = spelled(args.get(1));
+            return fn + "'s value operand must be a $-binding, not " + values
+                    + " — bind it first: `$values: " + values + "`, then `" + fn + "("
+                    + spelled(args.get(0)) + ", $values)`";
         }
         return null;
     }
 
 
     /** An operand as the author wrote it, for a refusal message; never throws. */
-    private static String spelled(Expr e)
+    private static String spelled(@Nullable Expr e)
     {
+        if (e == null)
+        {
+            return "nothing";
+        }
         try
         {
             return net.cumba.corej.core.expr.ExpressionPrinter.print(e);

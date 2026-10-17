@@ -137,8 +137,8 @@ class DatasetNameResolutionRosterTest
                     "exec/ScopeVariableSource#localQualifier:SplitDomainResolution.suppMergeSources",
                     "C18 the bare probe"),
             Map.entry(
-                    "exec/ScopeVariableSource#suppQvalType:SplitDomainResolution.suppMergeSources",
-                    "C18 the typed probe"),
+                    "exec/ScopeVariableSource#suppSourcesOf:SplitDomainResolution.suppMergeSources",
+                    "C18 the typed probe (suppQvalType) and PACK I E1's blank probe (suppQvalBlank)"),
             Map.entry(
                     "exec/ScopeVariableSource#resolveQualifierName:DatasetIdentity.resolveDatasetWildcard",
                     "C18 a qualified SUPP--.QNAM entry"),
