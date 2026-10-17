@@ -247,7 +247,7 @@ public final class IsoDateBounds
         {
             return false;
         }
-        int hour = (h1 - '0') * 10 + (h2 - '0');
+        int hour = (h1 - '0') * 10 + h2 - '0';
         return hour <= 23;
     }
 

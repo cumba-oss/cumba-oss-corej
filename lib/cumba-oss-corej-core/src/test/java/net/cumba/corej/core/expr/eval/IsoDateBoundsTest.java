@@ -982,7 +982,7 @@ class IsoDateBoundsTest
             assertTrue(IsoDateBounds.isDetermined("2020-01-01T08"));
             assertTrue(IsoDateBounds.isDetermined("2012-06-15T10+02:00"), "offset applied first");
             // the gate's own scalar predicate is NOT widened (is_complete_date, Fix #157)
-            assertFalse(net.cumba.corej.core.exec.ScalarSemantics.isCompleteDate("2020-01-01T08"));
+            assertFalse(ScalarSemantics.isCompleteDate("2020-01-01T08"));
             assertFalse(CalendarDates.isCompleteDate("2020-01-01T08"));
             // an interval of hour-precision ends stays undetermined (D5)
             IsoDateBounds.Hull interval = IsoDateBounds.hullOf("2020-01-01T08/2020-01-01T09");
