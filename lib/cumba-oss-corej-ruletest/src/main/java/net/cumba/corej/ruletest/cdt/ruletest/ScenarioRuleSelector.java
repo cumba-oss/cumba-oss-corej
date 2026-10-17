@@ -79,31 +79,52 @@ public final class ScenarioRuleSelector
     public static @Nullable Rule resolveIn(Map<String, Map<String, Rule>> aPackages,
             RuleTestScenario aScenario)
     {
+        List<String> holding = new java.util.ArrayList<>();
+        for (Map.Entry<String, Map<String, Rule>> e : aPackages.entrySet())
+        {
+            if (e.getValue() != null && e.getValue().containsKey(aScenario.getCoreId()))
+            {
+                holding.add(e.getKey());
+            }
+        }
+        String key = packageKey(aScenario, holding);
+        Map<String, Rule> pkg = key == null ? null : aPackages.get(key);
+        return pkg != null ? pkg.get(aScenario.getCoreId()) : null;
+    }
+
+
+    /**
+     * The {@code standard-version} key of the package a scenario's rule runs from — the one
+     * selection {@link #resolveIn} makes, for a host that holds no package map (the rule editor
+     * knows the packages the authored rule's {@code Standards} name, not their contents): the
+     * declared standard+version when the scenario declares one (whether or not the rule is a
+     * member), else the first canonical package holding the rule
+     * ({@link #DEFAULT_PACKAGE_PREFERENCE}), else the last of the sorted holding packages.
+     *
+     * @param aScenario
+     *            the scenario
+     * @param aHolding
+     *            the {@code standard-version} keys of the packages that contain the rule
+     * @return the key, or {@code null} when the scenario declares none and no package holds the
+     *         rule
+     */
+    public static @Nullable String packageKey(RuleTestScenario aScenario,
+            java.util.Collection<String> aHolding)
+    {
         String declared = declaredStandardVersion(aScenario);
         if (declared != null)
         {
-            Map<String, Rule> pkg = aPackages.get(declared);
-            return pkg != null ? pkg.get(aScenario.getCoreId()) : null;
+            return declared;
         }
         for (String preferred : DEFAULT_PACKAGE_PREFERENCE)
         {
-            Map<String, Rule> pkg = aPackages.get(preferred);
-            if (pkg != null && pkg.containsKey(aScenario.getCoreId()))
+            if (aHolding.contains(preferred))
             {
-                return pkg.get(aScenario.getCoreId());
+                return preferred;
             }
         }
-        Rule found = null;
-        for (String standardVersion : new TreeSet<>(aPackages.keySet()))
-        {
-            Map<String, Rule> pkg = aPackages.get(standardVersion);
-            Rule candidate = pkg == null ? null : pkg.get(aScenario.getCoreId());
-            if (candidate != null)
-            {
-                found = candidate;
-            }
-        }
-        return found;
+        TreeSet<String> sorted = new TreeSet<>(aHolding);
+        return sorted.isEmpty() ? null : sorted.last();
     }
 
 
