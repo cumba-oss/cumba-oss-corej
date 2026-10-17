@@ -944,34 +944,40 @@ class RuleLoadValidationExpansionTest
 
 
     /**
-     * ⛔ Review round 1: G3's domain test lives at the end of {@code installCompiledLevels}, and two
-     * earlier returns skip it — a level {@code tryRaiseToExpr} cannot raise, and one
-     * {@code NativeExprEvaluator} does not support. An {@code all_*} rule taking either path
-     * carried no load error, expanded to one rule per column, and each minted copy then reported
-     * the per-rule "no native expression form" ERROR: N duplicated rows where one belongs, and the
-     * R6 violation never reported at all. It is now a load error of its own.
+     * ⛔ Review round 1 of {@code PLAN-expansion-over-all-variables}: G3's domain test lives at the
+     * end of {@code installCompiledLevels}, and the early return for a level
+     * {@code NativeExprEvaluator} does not support skips it. Such an {@code all_*} rule used to
+     * carry no load error, expand to one rule per column, and report the per-rule "no native
+     * expression form" ERROR on every copy. A dedicated G3 guard closed that; since PACK I E6 the
+     * refusal is the rule's own load error on EVERY non-template rule, so the rule is parked at
+     * load and never expanded — the dedicated guard was unreachable (a template, the one rule E6
+     * exempts, cannot declare {@code Expansion:}) and is retired. The pin is now the E6 message,
+     * exactly: the compiler's reason, anchored on the Check.
      */
     @Test
     void anAllVariablesRuleWithNoNativeFormIsRejected() throws IOException
     {
-        String error = errorOf("""
+        Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-G3-NONNATIVE"},
                   "Expansion": [{"token": "&VAR&", "over": "all_variables"}],
                   "Check": {"all": [{"expression": "no_such_native_function_xyz(USUBJID)"}]}
                 }
                 """);
-        assertTrue(error.contains("no native expression form"), error);
+        assertEquals(
+                List.of("[TEST-G3-NONNATIVE] Check: the Check has no native expression form:"
+                        + " no native function 'no_such_native_function_xyz'"),
+                rule.getLoadErrors());
     }
 
 
     /**
-     * The sensitivity arm for the one above: the SAME non-native Check without an {@code all_*}
-     * expansion must NOT acquire this error, or the new guard is just rejecting broken rules twice
-     * and says nothing about expansions.
+     * The control for the one above: the SAME non-native Check without an expansion carries the
+     * SAME single load error — the refusal is about the Check, not about the expansion, and nothing
+     * expansion-specific is added on top of it.
      */
     @Test
-    void aNonNativeRuleWithoutAnAllExpansionIsNotRejectedByThisGuard() throws IOException
+    void aNonNativeRuleWithoutAnAllExpansionGetsTheSameLoadError() throws IOException
     {
         Rule rule = load("""
                 {
@@ -979,13 +985,10 @@ class RuleLoadValidationExpansionTest
                   "Check": {"all": [{"expression": "no_such_native_function_xyz(USUBJID)"}]}
                 }
                 """);
-        String error = rule.getLoadError();
-        assertTrue(error == null || !error.contains("Expansion over an 'all_*' source"),
-                () -> "this guard must be about all_* expansions, not about non-native rules: "
-                        + error);
-        // PACK I E6: the non-native Check is a load error of its own (the compiler's reason)
-        assertNotNull(error);
-        assertTrue(error.contains("no native function 'no_such_native_function_xyz'"), error);
+        assertEquals(
+                List.of("[TEST-G3-NONNATIVE-PLAIN] Check: the Check has no native expression"
+                        + " form: no native function 'no_such_native_function_xyz'"),
+                rule.getLoadErrors());
     }
 
 }

@@ -2532,11 +2532,12 @@ public class RulePackageLoader
      * {@code loadError} runtime-only precedent — never serialised). The dispatch sites use it
      * unconditionally: since the legacy {@code CheckEvaluator} retirement the native evaluator is
      * the only backend, so there is no flag and no kill-switch. Every Check raises
-     * ({@code tryRaiseToExpr} cannot fail); a rule whose raised levels fail to compile keeps
-     * {@code checkExpr == null} and can no longer be evaluated at all — {@code RuleRunner} reports
-     * it as a per-rule {@code ERROR} rather than falling back — and that every shipped rule does
-     * compile is gated corpus-wide by {@code NativeCorpusFullCoverageTest}. Sees the same
-     * materialised Check tree.
+     * ({@code tryRaiseToExpr} cannot fail); a non-template rule whose raised levels fail to compile
+     * keeps {@code checkExpr == null} and carries the compiler's refusal as its <b>load error</b>
+     * (PACK I E6, {@code installCompiledLevels}), which {@code RuleRunner} reports through its
+     * load-error sentinel; a wildcard template keeps {@code checkExpr == null} with no error and is
+     * compiled per expanded copy. That every shipped rule does compile is gated corpus-wide by
+     * {@code NativeCorpusFullCoverageTest}. Sees the same materialised Check tree.
      *
      * <p>
      * Per-rule work is {@link #installNativeExpr(Rule)}; this driver only walks the package.
@@ -3045,11 +3046,15 @@ public class RulePackageLoader
      * level has been raised, inlined, guarded and canonicalised.
      *
      * <p>
-     * <b>All or nothing.</b> If any level's expression has no native form, nothing is installed and
-     * the rule reports the "no native expression form" ERROR at runtime; installing the supported
-     * levels only would silently drop a declared level's verdict, which is a worse failure than a
-     * loud one. For a single-level rule this is exactly the pre-Plan-C behaviour, one
-     * {@code isSupported} call on one expression.
+     * <b>All or nothing.</b> If any level's expression has no native form, nothing is installed;
+     * installing the supported levels only would silently drop a declared level's verdict. On a
+     * non-template rule the first refused level (in level order, strictest first) is the rule's
+     * <b>load error</b> ({@link #checkRefusalMessage}, PACK I E6 / PI-Q5 &#9426;), as a refused
+     * compiled Binding's always was ({@code installCompiledBindings}, which also reports its first
+     * refusal only). A template ({@code WildcardExpander.isTemplate}) keeps no {@code checkExpr}
+     * and no error: it is compiled per expanded copy ({@code WildcardExpander} /
+     * {@code DatasetRuleResolver} call {@link #installNativeExpr} on each), and a copy the compiler
+     * refuses gets the same load error there, reported by {@code RuleRunner}'s load-error sentinel.
      * </p>
      *
      * <p>
@@ -3074,14 +3079,10 @@ public class RulePackageLoader
                 .findFirst().orElse(null);
         if (refused != null)
         {
-            if (net.cumba.corej.core.gen.WildcardExpander.isTemplate(rule))
+            if (!net.cumba.corej.core.gen.WildcardExpander.isTemplate(rule))
             {
-                rejectUndecidableAllExpansion(rule);
-                return;
+                rule.addLoadError(checkRefusalMessage(rule, refused));
             }
-            String where = levels.size() > 1 ? "Check (" + refused.getKey().name() + ")" : "Check";
-            rule.addLoadError("[" + ruleId(rule) + "] the " + where
-                    + " has no native expression form: " + nativeRefusal(refused.getValue()));
             return;
         }
         net.cumba.corej.core.expr.eval.Domain join = null;
@@ -3156,6 +3157,36 @@ public class RulePackageLoader
             // retired generic exists) is a rule load error, never a propagating throw.
             rule.addLoadError(ex.getMessage());
         }
+    }
+
+
+    /**
+     * The load error of a Check level the compiler refused (PACK I E6), anchored on the authored
+     * key so the editor can place it ({@code LoadErrorDiagnostics.pathOf}): {@code Check} for a
+     * plain Check, {@code Check.<LEVEL>} for a declared level map (the level keys are the canonical
+     * {@code Severity} names, {@code RuleCheckDeserializer.isLevelName}).
+     *
+     * <ul>
+     * <li>{@code [id] Check: the Check has no native expression form: <reason>}</li>
+     * <li>{@code [id] Check.WARNING: the WARNING level has no native expression form: <reason>}</li>
+     * </ul>
+     *
+     * @param rule
+     *            the rule whose level was refused
+     * @param refused
+     *            the refused level and its expression
+     * @return the message, the compiler's reason ({@link #nativeRefusal}) last
+     */
+    private static String checkRefusalMessage(Rule rule,
+            Map.Entry<Severity, net.cumba.corej.core.expr.ast.Expr> refused)
+    {
+        SequencedMap<Severity, LevelCheck> declared = rule.getCheckLevels();
+        String level = refused.getKey().name();
+        String anchor = declared != null && !declared.isEmpty()
+                ? "Check." + level + ": the " + level + " level"
+                : "Check: the Check";
+        return "[" + ruleId(rule) + "] " + anchor + " has no native expression form: "
+                + nativeRefusal(refused.getValue());
     }
 
 
@@ -3235,57 +3266,6 @@ public class RulePackageLoader
     private static final java.util.Set<String> DEFINE_ITEM_ONLY_ACCESSORS = java.util.Set.of(
             "var_ccode", "var_codelist_extended_values", "var_external_dictionary",
             "var_external_dictionary_version", "define_variable_decode_matches");
-
-    /**
-     * The other half of gate <b>G3</b>: an {@code over: all_*} rule whose Check has <b>no native
-     * form</b> is rejected at load, because the exclusivity test cannot be decided for it.
-     *
-     * <p>
-     * ⚠ Found by review round 1 of {@code plans/PLAN-expansion-over-all-variables.md}. The domain
-     * test lives at the end of {@link #installCompiledLevels}, and an earlier return skips it — a
-     * level {@code NativeExprEvaluator} does not support (⚑ a second early return, for a level
-     * {@code tryRaiseToExpr} could not raise, went with K7 of
-     * {@code PLAN-retire-dead-multi-match-lookup}: the raise cannot fail). Without this, such a
-     * rule would carry no load error, expand to one rule per column, and each minted copy would
-     * then report the per-rule "no native expression form" ERROR: N duplicated error rows per
-     * dataset where one belongs, and the R6 violation never reported to the author at all.
-     * </p>
-     *
-     * <p>
-     * ⚑ It is a load error rather than a silent skip for the same reason the domain half is: the
-     * rule cannot be evaluated either way, so expanding it multiplies noise and tells the author
-     * nothing. Blocking says exactly what is wrong.
-     * </p>
-     *
-     * @param rule
-     *            the rule whose native installation is being abandoned
-     */
-    private static void rejectUndecidableAllExpansion(Rule rule)
-    {
-        if (!hasAllVariablesExpansion(rule))
-        {
-            return;
-        }
-        String error = "[" + ruleId(rule) + "] Expansion over an 'all_*' source on a rule whose"
-                + " Check has no native expression form — the expansion/cursor exclusivity cannot"
-                + " be decided, and the rule could not be evaluated in any case; fix the Check or"
-                + " drop the Expansion block";
-        rule.addLoadError(error);
-    }
-
-
-    /**
-     * Whether the rule declares an expansion over one of the three dataset-enumerating sources.
-     *
-     * @param rule
-     *            the rule to inspect
-     * @return {@code true} when at least one directive names an {@code all_*} source
-     */
-    private static boolean hasAllVariablesExpansion(Rule rule)
-    {
-        return allVariablesExpansionSource(rule) != null;
-    }
-
 
     /**
      * The first {@code all_*} expansion source the rule declares, or {@code null}.

@@ -2021,9 +2021,12 @@ public final class RuleRunner
         // The legacy Step-1/Step-3/Step-4 cascade (partialEvaluateDataset fold, per-variable
         // partialEvaluateVariable loop, CheckEvaluator row residue) is retired: the native
         // routing gates above cover every bundled rule (NativeCorpusFullCoverageTest, 0-legacy
-        // static + dynamic). A rule reaching this point without a compiled checkExpr can only be
-        // an externally-supplied rule whose Check has no native form — reported as a per-rule
-        // ERROR rather than silently evaluated on a removed engine.
+        // static + dynamic). Since PACK I E6 a Check the compiler refuses is a LOAD error (the
+        // sentinel at the top of this method), on a loaded rule and on every expanded copy alike,
+        // so a rule reaching this point without a compiled checkExpr is one that never went
+        // through RulePackageLoader.installNativeExpr: a hand-built rule, or a wildcard template
+        // run directly instead of through its per-dataset expansion. Reported as a per-rule ERROR
+        // rather than silently evaluated on a removed engine.
         if (checkExprOf(rule, ctx) == null)
         {
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
@@ -4182,7 +4185,8 @@ public final class RuleRunner
         // is any-row-fires, anchored at the block's first flagged row), so evaluate it once on the
         // native
         // backend (B3 — group-sensitivity is native; the legacy evaluator is retired). A missing
-        // checkExpr can only be an externally-supplied rule without a native form.
+        // checkExpr can only be a rule that bypassed installNativeExpr — a hand-built rule or an
+        // unexpanded template; a refused Check is a load error since PACK I E6.
         if (checkExprOf(rule, ctx) == null)
         {
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)

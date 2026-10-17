@@ -16,10 +16,11 @@ import org.junit.jupiter.api.Test;
 /**
  * Review F2 (PLAN-extend-expression-engine) — the {@code ds_exists}/{@code ds_not_exists} operand
  * takes a PLAIN dataset name only. The dotted / filter / {@code ${...}} / {@code --}-prefix forms
- * are rejected by the native compiler, so the rule never acquires a {@code checkExpr} and executes
- * as the loud rule-level ERROR ({@code RuleRunner}'s no-native-expression sentinel). Phase 7d
- * (D121): the legacy-JSON leaf surface this guard once covered at load is retired — the leaf form
- * itself no longer binds — so the compiler rejection plus the runtime ERROR is the whole contract.
+ * are rejected by the native compiler, so the rule never acquires a {@code checkExpr}; since PACK I
+ * E6 the compiler's refusal is the rule's LOAD error, which {@code RuleRunner} reports through its
+ * load-error sentinel. Phase 7d (D121): the legacy-JSON leaf surface this guard once covered at
+ * load is retired — the leaf form itself no longer binds — so the compiler rejection, surfaced as
+ * that load error, is the whole contract.
  */
 class RuleLoadValidationDsExistsTest
 {
@@ -60,16 +61,21 @@ class RuleLoadValidationDsExistsTest
         assertNotNull(rule.getLoadError(), "the refusal is a load error");
         assertTrue(rule.getLoadError().contains("no native expression form"), rule.getLoadError());
 
-        IDataTable table = MockTable.of().name("ADAE").col("USUBJID", "S1").build();
+        // three records: the sentinel is one per executed dataset, never one per record
+        IDataTable table = MockTable.of().name("ADAE").col("USUBJID", "S1", "S2", "S3").build();
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertEquals(RuleExecutionStatus.ERROR, result.getStatus());
         assertNotNull(result.getStatusMessage());
         assertTrue(result.getStatusMessage().contains("no native expression form"),
                 result.getStatusMessage());
         // since PACK I E6 the ERROR is the load error's (the loader refused the Check), and the
-        // runner reports a load error as it reports every load error
-        assertTrue(result.getStatusMessage().contains(rule.getLoadError()),
-                result.getStatusMessage());
+        // runner reports it as it reports every load error: the status message IS the error, and
+        // ONE sentinel violation (row 0, `__error__` = the error) per executed dataset
+        assertEquals(rule.getLoadError(), result.getStatusMessage());
+        assertEquals(1, result.getViolationCount(), "one sentinel, not a finding per row");
+        assertEquals(0L, result.getViolations().getFirst().getRow());
+        assertEquals(java.util.Map.of("__error__", rule.getLoadError()),
+                result.getViolations().getFirst().getValues());
     }
 
 
