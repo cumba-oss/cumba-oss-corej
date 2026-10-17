@@ -6,6 +6,7 @@ import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.Domain;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.datatable.report.Severity;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One rung of a <b>multi-level</b> rule's evaluation (Plan C &#167;3.4): everything
@@ -40,9 +41,15 @@ import net.cumba.datatable.report.Severity;
  *            the projected {@code Output_Variables}, computed once over the join of the levels'
  *            conditions: &#167;3.3 makes {@code Outcome.Output_Variables} shared across levels, so
  *            a finding must carry the same columns whichever level claimed it
+ * @param skipReason
+ *            PACK I E4: the reason this level cannot be evaluated on this run — an external
+ *            dictionary that cannot answer the hierarchy the level alone reads
+ *            ({@code RuleRunner.hierarchyCapabilitySkip}, judged per runnable level) — or
+ *            {@code null}. {@code executeLevels} treats such a level like one whose result is
+ *            SKIPPED: silently when another level evaluates, the rule's reason when none does
  */
 public record CheckLevelPlan(Severity level, CheckCondition condition, Expr expr, boolean collapsed,
-        Domain domain, List<String> outputVariables)
+        Domain domain, List<String> outputVariables, @Nullable String skipReason)
 {
 
     /**

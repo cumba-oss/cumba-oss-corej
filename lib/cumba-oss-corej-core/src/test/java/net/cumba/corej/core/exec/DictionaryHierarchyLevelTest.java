@@ -1,6 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -13,13 +14,17 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.dictionary.convert.MedDraConverter;
 import net.cumba.datatable.dictionary.house.RuntimeDictionaryProvider;
 import net.cumba.datatable.dictionary.house.ValueMapDictionary;
+import net.cumba.datatable.report.Severity;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -514,6 +519,164 @@ class DictionaryHierarchyLevelTest
     {
         Files.writeString(raw.resolve(aFileName), String.join("\n", aLines) + "\n",
                 StandardCharsets.UTF_8);
+    }
+
+    // ------------------------------------------------------------------ per-level hierarchy skip
+    // (PACK I E4)
+
+    /**
+     * PACK I E4 (PI-C13): the hierarchy capability gap is judged per <b>runnable level</b>. A
+     * multi-level rule whose WARNING level alone reads a hierarchy the file cannot answer keeps its
+     * ERROR level: the level is skipped (silently when another level evaluates, as
+     * {@code executeLevels} already treats a SKIPPED level), the rule EXECUTES. Every runnable
+     * level gapped, or the call in a binding (read by any level — named gap), keeps today's
+     * whole-rule SKIP with the union reason; a level below the run threshold is not asked.
+     */
+    @Nested
+    class PerLevelHierarchySkip
+    {
+
+        private static final String HIERARCHY = "not valid_external_dictionary_hierarchy(AEHLT,"
+                + " AESOC, external_dictionary_type=\\\"meddra\\\")";
+
+        private static final String REASON = "Rule skipped \u2014 external dictionary meddra cannot"
+                + " answer the HLT \u2192 SOC hierarchy: its house file has no level-scoped hierarchy"
+                + " (hierarchy_by_level) \u2014 it was converted before this release; re-install"
+                + " meddra to re-convert it (the rule needs this external dictionary)";
+
+        private ObjectNode stale()
+        {
+            ObjectNode legacy = converted.deepCopy();
+            legacy.remove("hierarchy_by_level");
+            return legacy;
+        }
+
+
+        private IDataTable ae()
+        {
+            return RealTables.of("AE").str("USUBJID", "1", "2", "3", "4")
+                    .str("A", "x", "y", "y", "y").str("AGE", "31", "32", "33", "34")
+                    .str("AEHLT", "Beta", "Beta", "Hlt One", "Hlt Two")
+                    .str("AEDECOD", "Alpha", "Beta", "Gamma", "Nope")
+                    .str("AESOC", "Soc Two", "Soc One", "Soc One", "Soc One").build();
+        }
+
+
+        /** A two-level rule; {@code aBindings} is the JSON array text or {@code null}. */
+        private String twoLevels(String aError, String aWarning, @Nullable String aBindings)
+        {
+            return "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"E4\"},\"Sensitivity\":\"Record\","
+                    + "\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
+                    + (aBindings == null ? "" : "\"Bindings\":" + aBindings + ",")
+                    + "\"Check\":{\"ERROR\":{\"expression\":\"" + aError + "\"},"
+                    + "\"WARNING\":{\"expression\":\"" + aWarning + "\"}},"
+                    + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}";
+        }
+
+
+        private RuleExecutionResult run(String aPackage, IDataTable aTable, ObjectNode aDictionary,
+                Set<String> aReported, Severity aThreshold)
+            throws IOException
+        {
+            Rule rule = RulePackageLoader
+                    .loadFromString(net.cumba.corej.core.KeyedJoinFixtures.declared(aPackage))
+                    .getRules().get("x");
+            assertNotNull(rule, "the rule loads");
+            assertNull(rule.getLoadError(), rule.getLoadError());
+            RuntimeDictionaryProvider dicts = new RuntimeDictionaryProvider(
+                    Map.of("meddra", ValueMapDictionary.parse(aDictionary)));
+            return RuleRunnerCalls.execute(rule, aTable,
+                    name -> name.equals(aTable.getMetaData().getName()) ? aTable : null, null, null,
+                    null, null, Integer.MAX_VALUE, null, dicts, null, aReported, Set.of(),
+                    aThreshold);
+        }
+
+
+        private List<Long> rows(RuleExecutionResult aResult)
+        {
+            List<Long> rows = new ArrayList<>();
+            aResult.getViolations().forEach(v -> rows.add(v.getRowNumber()));
+            return rows;
+        }
+
+
+        /** (1) The stale file: the ERROR level evaluates, the WARNING level is skipped. */
+        @Test
+        void aGappedWarningLevelLeavesTheErrorLevelEvaluating() throws IOException
+        {
+            RuleExecutionResult r = run(twoLevels("A == \\\"x\\\"", HIERARCHY, null), ae(), stale(),
+                    Set.of(), Severity.WARNING);
+            assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(), r.getStatusMessage());
+            assertEquals(List.of(1L), rows(r),
+                    "the ERROR finding only — the WARNING level cannot be answered and is skipped");
+        }
+
+
+        /** (2) The call in every level: every runnable level gapped ⇒ SKIPPED, the exact reason. */
+        @Test
+        void everyLevelGappedSkipsTheRuleWithTheReason() throws IOException
+        {
+            RuleExecutionResult r = run(twoLevels(HIERARCHY, HIERARCHY, null), ae(), stale(),
+                    Set.of(), Severity.WARNING);
+            assertEquals(RuleExecutionStatus.SKIPPED, r.getStatus(), r.getStatusMessage());
+            assertEquals(REASON, r.getStatusMessage());
+        }
+
+
+        /** (3) The call in a binding: a binding is read by any level — the whole rule skips. */
+        @Test
+        void aGappedBindingSkipsTheWholeRule() throws IOException
+        {
+            String bindings = "[{\"name\":\"$p\",\"expression\":"
+                    + "\"valid_external_dictionary_hierarchy(AEHLT, AESOC,"
+                    + " external_dictionary_type=\\\"meddra\\\")\"}]";
+            RuleExecutionResult r = run(twoLevels("A == \\\"x\\\"", "$p == false", bindings), ae(),
+                    stale(), Set.of(), Severity.WARNING);
+            assertEquals(RuleExecutionStatus.SKIPPED, r.getStatus(), r.getStatusMessage());
+            assertEquals(REASON, r.getStatusMessage());
+        }
+
+
+        /** (4) The healthy file: both levels evaluate; the union of their rows is reported. */
+        @Test
+        void aHealthyFileEvaluatesBothLevels() throws IOException
+        {
+            List<Long> hierarchyRows = fired(ae(), "AEHLT, AESOC", converted);
+            assertFalse(hierarchyRows.isEmpty(), "the fixture's WARNING level has findings");
+            RuleExecutionResult r = run(twoLevels("A == \\\"x\\\"", HIERARCHY, null), ae(),
+                    converted, Set.of(), Severity.WARNING);
+            assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(), r.getStatusMessage());
+            java.util.Set<Long> expected = new java.util.TreeSet<>(hierarchyRows);
+            expected.add(1L); // the ERROR level's row (A == "x"), 1-based like getRowNumber()
+            assertEquals(expected, new java.util.TreeSet<>(rows(r)));
+        }
+
+
+        /** (5) The WARNING level below the run threshold is not asked: no gap, no SKIP. */
+        @Test
+        void aLevelBelowTheRunThresholdIsNotAsked() throws IOException
+        {
+            RuleExecutionResult r = run(twoLevels("A == \\\"x\\\"", HIERARCHY, null), ae(), stale(),
+                    Set.of(), Severity.ERROR);
+            assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(), r.getStatusMessage());
+            assertEquals(List.of(1L), rows(r));
+        }
+
+
+        /**
+         * (6) The ERROR level collapsed by an absent, reported dataset (Fix #222) and the WARNING
+         * level gapped: nothing evaluates ⇒ SKIPPED, and the reason is the hierarchy gap.
+         */
+        @Test
+        void aCollapsedErrorLevelAndAGappedWarningLevelSkipWithTheHierarchyReason()
+            throws IOException
+        {
+            RuleExecutionResult r = run(
+                    twoLevels("not empty(AGE) and AGE != DM.AGE", HIERARCHY, null), ae(), stale(),
+                    Set.of("DM"), Severity.WARNING);
+            assertEquals(RuleExecutionStatus.SKIPPED, r.getStatus(), r.getStatusMessage());
+            assertEquals(REASON, r.getStatusMessage());
+        }
     }
 
 }

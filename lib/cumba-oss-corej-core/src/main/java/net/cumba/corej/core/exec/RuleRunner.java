@@ -885,11 +885,11 @@ public final class RuleRunner
         // the bindings' calls' capabilities. (Until runbook W8 an operation binding sat beside it
         // as a memoised supplier over the executor; the operation kind is gone with the carrier.)
         Map<String, Object> variables = Map.of();
-        RuleExecutionResult unanswerable = hierarchyCapabilitySkip(rule, ruleId, message, evalTable,
-                dictionaryProvider);
-        if (unanswerable != null)
+        HierarchyGaps hierarchyGaps = hierarchyCapabilitySkip(rule, ruleId, message, evalTable,
+                dictionaryProvider, runnableLevels, declaredLevels);
+        if (hierarchyGaps.wholeRuleSkip() != null)
         {
-            return unanswerable;
+            return hierarchyGaps.wholeRuleSkip();
         }
         List<net.cumba.corej.core.model.CompiledBinding> compiledBindings = rule.bindingOrder();
         if (!compiledBindings.isEmpty())
@@ -987,7 +987,8 @@ public final class RuleRunner
             // ⭐ `null` for every single-level rule — the entire shipped corpus — so executeAgainst
             // takes the same branch, with the same arguments, that it took before this plan.
             List<CheckLevelPlan> levels = levelSkips == null ? null
-                    : buildLevelPlans(rule, runnableLevels, declaredLevels, levelSkips, check, ctx);
+                    : buildLevelPlans(rule, runnableLevels, declaredLevels, levelSkips,
+                            hierarchyGaps.levelGaps(), check, ctx);
             return executeAgainst(rule, ruleId, message, check, ctx, levels);
         }
         finally
@@ -1098,21 +1099,100 @@ public final class RuleRunner
      * unavailability arms ({@link #noProviderSkip}, the inline gate), which answer first and name
      * that state; with no provider at all every dictionary rule SKIPs there, so nothing is walked.
      *
-     * @return the SKIPPED result, or {@code null} when every hierarchy read can be answered
+     * <p>
+     * PACK I E4 (PI-C13): judged per <b>runnable</b> level. A gap read only by one level of a
+     * multi-level rule skips that level ({@link CheckLevelPlan#skipReason}); every runnable level
+     * gapped, or a gap in a binding, is the whole-rule SKIP with the union reason, as before.
+     * </p>
+     *
+     * @return the disposition: a whole-rule SKIP, per-level reasons, or {@link HierarchyGaps#NONE}
      */
-    private static @Nullable RuleExecutionResult hierarchyCapabilitySkip(Rule rule,
-            @Nullable String ruleId, @Nullable String message, IDataTable evalTable,
-            @Nullable RuntimeDictionaryProvider dictionaryProvider)
+    private static HierarchyGaps hierarchyCapabilitySkip(Rule rule, @Nullable String ruleId,
+            @Nullable String message, IDataTable evalTable,
+            @Nullable RuntimeDictionaryProvider dictionaryProvider, List<Severity> runnableLevels,
+            SequencedMap<Severity, LevelCheck> declaredLevels)
     {
         if (dictionaryProvider == null)
         {
-            return null;
+            return HierarchyGaps.NONE;
         }
-        ProviderNeeds needs = ProviderNeeds.ofBindings(rule);
+        ProviderNeeds bindingNeeds = ProviderNeeds.ofBindings(rule);
+        ProviderNeeds needs = bindingNeeds;
         for (CheckCondition level : rule.checkConditions())
         {
             needs = needs.union(ProviderNeeds.ofCondition(level));
         }
+        if (needs.hierarchyReads().isEmpty())
+        {
+            return HierarchyGaps.NONE;
+        }
+        String unionReason = hierarchyGapReason(needs, dictionaryProvider);
+        if (unionReason == null)
+        {
+            return HierarchyGaps.NONE;
+        }
+        // PACK I E4 (PI-C13): the gap is judged per RUNNABLE level. A binding is read by any
+        // level, so a gap in the bindings keeps the whole-rule SKIP with the union reason (named
+        // gap: a binding read only by a weaker level); a level below the run threshold is not
+        // asked. Precedent: executeLevels, where a level's SKIP is silent while another level
+        // evaluates and becomes the rule's reason when none does.
+        if (hierarchyGapReason(bindingNeeds, dictionaryProvider) != null)
+        {
+            return HierarchyGaps.wholeRule(ruleId, message, evalTable, unionReason);
+        }
+        Map<Severity, String> levelGaps = new LinkedHashMap<>();
+        for (Severity level : runnableLevels)
+        {
+            String reason = hierarchyGapReason(
+                    ProviderNeeds.ofCondition(levelOf(declaredLevels, level).condition()),
+                    dictionaryProvider);
+            if (reason != null)
+            {
+                levelGaps.put(level, reason);
+            }
+        }
+        if (levelGaps.isEmpty())
+        {
+            return HierarchyGaps.NONE;
+        }
+        if (levelGaps.size() == runnableLevels.size())
+        {
+            return HierarchyGaps.wholeRule(ruleId, message, evalTable, unionReason);
+        }
+        return new HierarchyGaps(null, Map.copyOf(levelGaps));
+    }
+
+    /**
+     * The hierarchy-capability disposition of one (rule × dataset) execution: a whole-rule SKIP, or
+     * the per-level reasons {@link #buildLevelPlans} hands to {@link CheckLevelPlan#skipReason}
+     * (empty when every runnable level can be answered).
+     */
+    private record HierarchyGaps(@Nullable RuleExecutionResult wholeRuleSkip,
+            Map<Severity, String> levelGaps)
+    {
+
+        static final HierarchyGaps NONE = new HierarchyGaps(null, Map.of());
+
+        static HierarchyGaps wholeRule(@Nullable String ruleId, @Nullable String message,
+                IDataTable evalTable, String reason)
+        {
+            return new HierarchyGaps(
+                    RuleExecutionResult.builder().ruleId(ruleId).message(message)
+                            .violations(List.of()).totalRows(RealRows.count(evalTable))
+                            .status(RuleExecutionStatus.SKIPPED).statusMessage(reason).build(),
+                    Map.of());
+        }
+    }
+
+    /**
+     * The reason {@code needs}' hierarchy reads cannot be answered, or {@code null} when every read
+     * can be ({@code answersHierarchyAt}), when there is none, or when a needed dictionary type is
+     * not loaded at all (left to the unavailability arms, which answer first and name that state).
+     * One wording for the whole rule and for a level (PACK I E4).
+     */
+    private static @Nullable String hierarchyGapReason(ProviderNeeds needs,
+            RuntimeDictionaryProvider dictionaryProvider)
+    {
         if (needs.hierarchyReads().isEmpty())
         {
             return null;
@@ -1149,9 +1229,7 @@ public final class RuleRunner
         }
         skipReason.append(types.size() == 1 ? " (the rule needs this external dictionary)"
                 : " (the rule needs these external dictionaries)");
-        return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(List.of())
-                .totalRows(RealRows.count(evalTable)).status(RuleExecutionStatus.SKIPPED)
-                .statusMessage(skipReason.toString()).build();
+        return skipReason.toString();
     }
 
 
@@ -1392,6 +1470,17 @@ public final class RuleRunner
                 // evaluating it would be a guaranteed-empty pass over the dataset.
                 continue;
             }
+            if (level.skipReason() != null)
+            {
+                // PACK I E4: this level alone reads a hierarchy its dictionary cannot answer —
+                // treated exactly like a level whose result is SKIPPED (below): silent while
+                // another level evaluates, the rule's reason when none does.
+                if (skipReason == null)
+                {
+                    skipReason = level.skipReason();
+                }
+                continue;
+            }
             EvaluationContext levelCtx = ctx.toBuilder().checkExprOverride(level.expr())
                     .levelPlan(level).build();
             RuleExecutionResult result = grouped
@@ -1623,8 +1712,8 @@ public final class RuleRunner
      */
     private static List<CheckLevelPlan> buildLevelPlans(Rule rule, List<Severity> runnable,
             SequencedMap<Severity, LevelCheck> declared,
-            Map<Severity, AbsentDatasetSkip.Decision> skips, CheckCondition strictestResolved,
-            EvaluationContext ctx)
+            Map<Severity, AbsentDatasetSkip.Decision> skips, Map<Severity, String> hierarchyGaps,
+            CheckCondition strictestResolved, EvaluationContext ctx)
     {
         Severity strictest = declared.firstEntry().getKey();
         Map<Severity, CheckCondition> conditions = new LinkedHashMap<>();
@@ -1664,7 +1753,8 @@ public final class RuleRunner
                     Objects.requireNonNull(conditions.get(level), "resolved condition"),
                     Objects.requireNonNull(effective.get(level), "effective expression"),
                     decisionOf(skips, level).collapsed(),
-                    Objects.requireNonNull(domain, "at least one runnable level"), outputVars));
+                    Objects.requireNonNull(domain, "at least one runnable level"), outputVars,
+                    hierarchyGaps.get(level)));
         }
         return plans;
     }
