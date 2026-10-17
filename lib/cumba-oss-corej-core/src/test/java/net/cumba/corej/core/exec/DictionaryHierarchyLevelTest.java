@@ -361,10 +361,10 @@ class DictionaryHierarchyLevelTest
     @Test
     void everyHierarchyLevelHasARank()
     {
-        java.util.Set<String> bases = new java.util.TreeSet<>();
+        Set<String> bases = new java.util.TreeSet<>();
         DictionaryFunctions.hierarchyLevels()
                 .forEach(l -> bases.add(DictionaryFunctions.baseLevel(l)));
-        assertEquals(java.util.Set.of("LLT", "PT", "HLT", "HLGT", "SOC"), bases,
+        assertEquals(Set.of("LLT", "PT", "HLT", "HLGT", "SOC"), bases,
                 "the shared MedDRA levels (not vacuous)");
         assertEquals(bases, DictionaryFunctions.rankedLevels());
         assertTrue(DictionaryFunctions.hierarchyLevels().contains("SOCCD"),
@@ -646,7 +646,7 @@ class DictionaryHierarchyLevelTest
             RuleExecutionResult r = run(twoLevels("A == \\\"x\\\"", HIERARCHY, null), ae(),
                     converted, Set.of(), Severity.WARNING);
             assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(), r.getStatusMessage());
-            java.util.Set<Long> expected = new java.util.TreeSet<>(hierarchyRows);
+            Set<Long> expected = new java.util.TreeSet<>(hierarchyRows);
             expected.add(1L); // the ERROR level's row (A == "x"), 1-based like getRowNumber()
             assertEquals(expected, new java.util.TreeSet<>(rows(r)));
         }

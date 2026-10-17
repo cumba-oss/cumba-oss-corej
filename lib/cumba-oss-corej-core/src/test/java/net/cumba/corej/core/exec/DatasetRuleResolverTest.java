@@ -380,9 +380,9 @@ class DatasetRuleResolverTest
         classes.setInclude(List.of("BASIC DATA STRUCTURE"));
         scope.setClasses(classes);
         template.setScope(scope);
-        net.cumba.corej.core.model.VariableRequirement variables = new net.cumba.corej.core.model.VariableRequirement();
+        VariableRequirement variables = new VariableRequirement();
         variables.setAll(List.of("TRTPGy", "TRTPGyN"));
-        net.cumba.corej.core.model.Requirements requirements = new net.cumba.corej.core.model.Requirements();
+        Requirements requirements = new Requirements();
         requirements.setVariables(variables);
         template.setRequirements(requirements);
 
@@ -414,8 +414,7 @@ class DatasetRuleResolverTest
                 .noneMatch(s -> "TEST-WCSCOPE".equals(s.rule().getCore().getId())));
 
         // The expansion's own requirement is concrete, so the runtime variable gate passes too.
-        net.cumba.corej.core.model.VariableRequirement expandedVars = expanded.getFirst()
-                .effectiveVariableRequirement();
+        VariableRequirement expandedVars = expanded.getFirst().effectiveVariableRequirement();
         assertNotNull(expandedVars);
         assertEquals(List.of("TRTPG1", "TRTPG1N"), expandedVars.getAll());
     }
@@ -538,9 +537,9 @@ class DatasetRuleResolverTest
         RuleCore core = new RuleCore();
         core.setId(coreId);
         rule.setCore(core);
-        net.cumba.corej.core.model.VariableRequirement vr = new net.cumba.corej.core.model.VariableRequirement();
+        VariableRequirement vr = new VariableRequirement();
         vr.setAll(List.of(includeEntries));
-        net.cumba.corej.core.model.Requirements req = new net.cumba.corej.core.model.Requirements();
+        Requirements req = new Requirements();
         req.setVariables(vr);
         rule.setRequirements(req);
         rule.setCheck(expr("not empty(STUDYID)"));

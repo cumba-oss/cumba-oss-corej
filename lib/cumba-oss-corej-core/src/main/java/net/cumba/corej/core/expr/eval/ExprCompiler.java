@@ -1957,7 +1957,7 @@ public final class ExprCompiler
         }
         try
         {
-            return net.cumba.corej.core.expr.ExpressionPrinter.print(e);
+            return ExpressionPrinter.print(e);
         }
         catch (RuntimeException ex)
         {
