@@ -182,14 +182,17 @@ public final class GroupSplice
     /**
      * The splice slots whose per-row member is a VALUE key component instead of a refused splice
      * (runbook W1b UC1, {@code PLAN-engine-gap-unique-computed} Q2 / Q3, coordinator D2): the
-     * member list of {@code is_(not_)unique_set} only — every other slot keeps refusing a per-row
-     * member at load. The level decides, never the value's content: a dataset-level {@code $} or
-     * expression splices names (as everywhere), a row-cursor one is read per row as a key column
+     * member list of {@code is_(not_)unique_set} and, since
+     * {@code PLAN-engine-per-row-key-expression} (rule round 2026-10-15-b, batch 8 #9 — the coding
+     * key {@code coalesce(--MODIFY, --TERM)}), the {@code keys=} list of
+     * {@code is_inconsistent_across_dataset} — every other slot keeps refusing a per-row member at
+     * load. The level decides, never the value's content: a dataset-level {@code $} or expression
+     * splices names (as everywhere), a row-cursor one is read per row as a key column
      * ({@link Value}).
      */
     private static final java.util.Map<String, List<String>> VALUE_MEMBER_SLOTS = java.util.Map.of(
             "is_unique_set", List.of(MEMBERS_PARAMETER), "is_not_unique_set",
-            List.of(MEMBERS_PARAMETER));
+            List.of(MEMBERS_PARAMETER), "is_inconsistent_across_dataset", List.of(KEYS_PARAMETER));
 
     /**
      * Whether a per-row member at {@code (function, parameter)} is a value key component (W1b UC1)
@@ -199,7 +202,8 @@ public final class GroupSplice
      *            the call name
      * @param parameter
      *            the parameter name
-     * @return {@code true} for {@code is_(not_)unique_set}'s members
+     * @return {@code true} for {@code is_(not_)unique_set}'s members and
+     *         {@code is_inconsistent_across_dataset}'s {@code keys=}
      */
     public static boolean admitsValueMember(String function, String parameter)
     {
@@ -334,13 +338,13 @@ public final class GroupSplice
 
     /**
      * A member of a {@linkplain #admitsValueMember value-admitting} slot —
-     * {@code is_(not_)unique_set}'s members (runbook W1b UC1, coordinator D1–D3) — that is not a
-     * plain name: what {@link #spliced} answers ({@link Bound} / {@link Computed}), read at
-     * evaluation by its LEVEL over the rule's installed binding domains ({@link #readsRowCursor}):
-     * a dataset-level one splices as names exactly as the other slots' members do, a row-cursor one
-     * is a per-row VALUE key component ({@link #valueVector}) — bound and inline alike (G1). A
-     * member written with the {@code duration(…)} marker keys by its hull ({@link #hullKeyed},
-     * dur-order Q5 (a)).
+     * {@code is_(not_)unique_set}'s members (runbook W1b UC1, coordinator D1–D3) and
+     * {@code is_inconsistent_across_dataset}'s {@code keys=} — that is not a plain name: what
+     * {@link #spliced} answers ({@link Bound} / {@link Computed}), read at evaluation by its LEVEL
+     * over the rule's installed binding domains ({@link #readsRowCursor}): a dataset-level one
+     * splices as names exactly as the other slots' members do, a row-cursor one is a per-row VALUE
+     * key component ({@link #valueVector}) — bound and inline alike (G1). A member written with the
+     * {@code duration(…)} marker keys by its hull ({@link #hullKeyed}, dur-order Q5 (a)).
      *
      * @param expr
      *            the member expression — the {@code $} reference, or the computed expression

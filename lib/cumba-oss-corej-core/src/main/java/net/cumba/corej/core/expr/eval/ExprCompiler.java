@@ -4686,7 +4686,10 @@ public final class ExprCompiler
      * flags every row whose group (by the {@code keys} columns) holds more than one distinct NAME
      * value, via the shared {@link GroupSemantics}. {@code include_empty=true} (Fix #121,
      * Java-only, default {@code false}) disables the D.2 emptiness-exception so a blank NAME value
-     * participates (folded to the canonical {@code ""}).
+     * participates (folded to the canonical {@code ""}). A {@code keys=} member that reads the row
+     * cursor ({@code coalesce(--MODIFY, --TERM)}, or a {@code $} binding holding it) is a per-row
+     * VALUE key component ({@code PLAN-engine-per-row-key-expression}, the W1b UC1 path of
+     * {@link #compileUniqueSet}); a list without one compiles to the column path unchanged.
      */
     private static ExprProgram.BoolPlan compileInconsistentAcrossDataset(Expr.Call c)
     {
@@ -4698,15 +4701,59 @@ public final class ExprCompiler
         List<net.cumba.corej.core.exec.GroupSplice.Member> keyMembers = keyMembers(c);
         boolean includeEmpty = includeEmptyKwarg(c);
         GroupKeyPolicy policy = groupKeyPolicy(c, GroupKeyPolicy.DROP_MISSING_KEYS);
+        if (keyMembers.stream()
+                .noneMatch(m -> m instanceof net.cumba.corej.core.exec.GroupSplice.Value))
+        {
+            // no member can be a per-row value: the column / splice path, as it always was
+            return run ->
+            {
+                String name = resolveDomainPrefix(rawName, run.ctx());
+                List<String> keys = resolveDomainPrefixes(spliceMembers(c.name(),
+                        net.cumba.corej.core.exec.GroupSplice.KEYS_PARAMETER, keyMembers,
+                        run.ctx()), run.ctx());
+                return GroupSemantics.inconsistentAcrossDatasetViolations(
+                        groupReadTable(run.ctx(), List.of(keys), name), name, keys, run.rowCount(),
+                        includeEmpty, policy);
+            };
+        }
+        String fn = c.name();
         return run ->
         {
-            String name = resolveDomainPrefix(rawName, run.ctx());
-            List<String> keys = resolveDomainPrefixes(spliceMembers(c.name(),
-                    net.cumba.corej.core.exec.GroupSplice.KEYS_PARAMETER, keyMembers, run.ctx()),
-                    run.ctx());
-            return GroupSemantics.inconsistentAcrossDatasetViolations(
-                    groupReadTable(run.ctx(), List.of(keys), name), name, keys, run.rowCount(),
-                    includeEmpty, policy);
+            // PLAN-engine-per-row-key-expression (rule round 2026-10-15-b, batch 8 #9): a keys=
+            // member whose LEVEL reads the row cursor — the coding key coalesce(--MODIFY, --TERM),
+            // inline or bound — is a per-row VALUE key component, exactly as at is_unique_set's
+            // members (W1b UC1, compileUniqueSet): its vector becomes a reserved column of the
+            // reader's table (GroupReadTable.withValues), so the KeyPart identity, the missing-key
+            // policy and the minority verdict run unchanged over it. Members are spliced one by
+            // one so the authored order survives.
+            EvaluationContext ctx = run.ctx();
+            String name = resolveDomainPrefix(rawName, ctx);
+            List<String> members = new ArrayList<>(keyMembers.size());
+            List<String> valueNames = new ArrayList<>(1);
+            List<Vector> valueVectors = new ArrayList<>(1);
+            List<Boolean> hullKeyed = new ArrayList<>(1);
+            for (int i = 0; i < keyMembers.size(); i++)
+            {
+                net.cumba.corej.core.exec.GroupSplice.Member member = keyMembers.get(i);
+                if (member instanceof net.cumba.corej.core.exec.GroupSplice.Value value
+                        && net.cumba.corej.core.exec.GroupSplice.readsRowCursor(value, ctx))
+                {
+                    String reserved = GroupReadTable.valueColumnName(i);
+                    members.add(reserved);
+                    valueNames.add(reserved);
+                    valueVectors.add(net.cumba.corej.core.exec.GroupSplice.valueVector(value, ctx));
+                    hullKeyed.add(net.cumba.corej.core.exec.GroupSplice.hullKeyed(value, ctx));
+                    continue;
+                }
+                members.addAll(
+                        spliceMembers(fn, net.cumba.corej.core.exec.GroupSplice.KEYS_PARAMETER,
+                                List.of(member), ctx));
+            }
+            List<String> keys = resolveDomainPrefixes(members, ctx);
+            IDataTable table = GroupReadTable.withValues(groupReadTable(ctx, List.of(keys), name),
+                    valueNames, valueVectors, hullKeyed);
+            return GroupSemantics.inconsistentAcrossDatasetViolations(table, name, keys,
+                    run.rowCount(), includeEmpty, policy);
         };
     }
 
@@ -5292,7 +5339,10 @@ public final class ExprCompiler
      * BS2b ({@code PLAN-binding-substitutability} C6, ruled Q2): a {@code $} reference or a
      * computed expression ({@code GroupSplice.spliced}) is spliced at evaluation
      * ({@link #spliceMembers}) into the column names it holds, and the bare {@code keys=$names} /
-     * {@code keys=<expression>} is the one-member list (C5); a bare column keeps the load error.
+     * {@code keys=<expression>} is the one-member list (C5); a bare column keeps the load error. At
+     * a value-admitting slot ({@code GroupSplice.admitsValueMember}: the {@code keys=} of
+     * {@code is_inconsistent_across_dataset}) such a member is a {@code GroupSplice.Value}, read
+     * per row when its level reads the row cursor ({@code PLAN-engine-per-row-key-expression}).
      */
     private static List<net.cumba.corej.core.exec.GroupSplice.Member> keyMembers(Expr.Call c)
     {
@@ -5308,14 +5358,19 @@ public final class ExprCompiler
                     groupOperandName(c.args().get(i))));
         }
         Expr keys = c.kwargs().get(net.cumba.corej.core.exec.GroupSplice.KEYS_PARAMETER);
+        // PLAN-engine-per-row-key-expression: at a value-admitting keys= slot
+        // (is_inconsistent_across_dataset) a spliced member is a Value member — spliced as names
+        // when dataset-level, a per-row key component when it reads the row cursor (W1b UC1)
+        boolean valueMembers = net.cumba.corej.core.exec.GroupSplice.admitsValueMember(c.name(),
+                net.cumba.corej.core.exec.GroupSplice.KEYS_PARAMETER);
         if (keys instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
         {
             @SuppressWarnings("unchecked")
             List<Expr> items = (List<Expr>) lit.value();
             for (Expr item : items)
             {
-                net.cumba.corej.core.exec.GroupSplice.Member spliced = net.cumba.corej.core.exec.GroupSplice
-                        .spliced(item);
+                net.cumba.corej.core.exec.GroupSplice.Member spliced = keyMember(item,
+                        valueMembers);
                 members.add(spliced != null ? spliced
                         : new net.cumba.corej.core.exec.GroupSplice.Name(groupOperandName(item)));
             }
@@ -5323,7 +5378,7 @@ public final class ExprCompiler
         else if (keys != null)
         {
             net.cumba.corej.core.exec.GroupSplice.Member spliced = keys instanceof Expr.Lit ? null
-                    : net.cumba.corej.core.exec.GroupSplice.spliced(keys);
+                    : keyMember(keys, valueMembers);
             if (spliced == null)
             {
                 throw unsupported("keys= must be a list of column references");
@@ -5331,6 +5386,19 @@ public final class ExprCompiler
             members.add(spliced);
         }
         return members;
+    }
+
+
+    /**
+     * The spliced form of one {@code keys=} member ({@code GroupSplice.spliced}), as a
+     * {@code GroupSplice.Value} member where the slot admits a per-row value key
+     * ({@code valueMembers}); {@code null} for a plain name or a literal.
+     */
+    private static net.cumba.corej.core.exec.GroupSplice.@Nullable Member keyMember(Expr item,
+            boolean valueMembers)
+    {
+        return valueMembers ? net.cumba.corej.core.exec.GroupSplice.Value.of(item)
+                : net.cumba.corej.core.exec.GroupSplice.spliced(item);
     }
 
 

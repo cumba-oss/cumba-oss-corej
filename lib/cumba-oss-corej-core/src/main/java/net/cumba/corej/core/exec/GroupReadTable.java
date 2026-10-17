@@ -208,12 +208,14 @@ public final class GroupReadTable extends AbstractDataTable
     /**
      * {@code table} grown by one column per {@code vectors} entry, named by {@code names} (W1b UC1,
      * {@code PLAN-engine-gap-unique-computed} — coordinator D3): the per-row VALUE key members of
-     * {@code is_(not_)unique_set}, materialised as columns of the reader's table so
-     * {@code GroupSemantics.uniqueSetViolations} and its {@code KeyPart} identity run unchanged
-     * over them — the column path stays byte-for-byte by construction. {@code table} may itself be
-     * the merged-column table {@link #of} answered. A hull-keyed vector (a {@code duration(…)}
-     * member, dur-order Q5 (a)) keys a positionable cell by its canonical hull text, an
-     * unpositionable one by its text; a missing keeps its identity.
+     * {@code is_(not_)unique_set} and of {@code is_inconsistent_across_dataset}'s {@code keys=}
+     * ({@code PLAN-engine-per-row-key-expression}), materialised as columns of the reader's table
+     * so {@code GroupSemantics.uniqueSetViolations} / {@code inconsistentAcrossDatasetViolations}
+     * and their {@code KeyPart} identity run unchanged over them — the column path stays
+     * byte-for-byte by construction. {@code table} may itself be the merged-column table
+     * {@link #of} answered. A hull-keyed vector (a {@code duration(…)} member, dur-order Q5 (a))
+     * keys a positionable cell by its canonical hull text, an unpositionable one by its text; a
+     * missing keeps its identity.
      *
      * @param table
      *            the table to grow
@@ -444,9 +446,9 @@ public final class GroupReadTable extends AbstractDataTable
             }
             if (tv.resolved() instanceof Collection<?>)
             {
-                throw new GroupSplice.GroupSpliceException("a value member of is_(not_)unique_set"
-                        + " answered a list at row " + (aRow + 1)
-                        + " — a list is not a key component; key on one value per row");
+                throw new GroupSplice.GroupSpliceException(
+                        "a value key member answered a list" + " at row " + (aRow + 1)
+                                + " — a list is not a key component; key on one value per row");
             }
             if (hullKeyed)
             {

@@ -317,10 +317,11 @@ public final class ListOperandLevel
      * The refusal's text for a per-row member of a splice slot (every slot of {@code GroupSplice}'s
      * roster — {@code GroupSplice.SPLICING_READERS}: every {@code group=}, the
      * {@code qualifying_any_populated=} and {@code keys=} lists, {@code values}' columns; since W1b
-     * UC1 <em>not</em> {@code is_(not_)unique_set}'s members, where a per-row member is a value key
-     * component) — one sentence for both spellings; stage A files it as {@code PARAMETER_TYPE} (the
-     * splice is a shape of the {@code list<column-reference>} parameter), the loader's seam pass as
-     * the load error.
+     * UC1 <em>not</em> {@code is_(not_)unique_set}'s members, and since
+     * {@code PLAN-engine-per-row-key-expression} not {@code is_inconsistent_across_dataset}'s
+     * {@code keys=}, where a per-row member is a value key component) — one sentence for both
+     * spellings; stage A files it as {@code PARAMETER_TYPE} (the splice is a shape of the
+     * {@code list<column-reference>} parameter), the loader's seam pass as the load error.
      *
      * @param function
      *            the splicing function
@@ -379,8 +380,9 @@ public final class ListOperandLevel
                 else if (net.cumba.corej.core.exec.GroupSplice.spliced(member) != null
                         && readsRowCursor(member, rule))
                 {
-                    // W1b UC1: at is_(not_)unique_set's members the per-row member is a VALUE key
-                    // component, admitted — unless regex= is to normalise it (Q4)
+                    // W1b UC1: at is_(not_)unique_set's members (and is_inconsistent_across_
+                    // dataset's keys=, PLAN-engine-per-row-key-expression) the per-row member is a
+                    // VALUE key component, admitted — unless regex= is to normalise it (Q4)
                     boolean value = net.cumba.corej.core.exec.GroupSplice
                             .admitsValueMember(c.name(), slot.parameter());
                     if (!value)

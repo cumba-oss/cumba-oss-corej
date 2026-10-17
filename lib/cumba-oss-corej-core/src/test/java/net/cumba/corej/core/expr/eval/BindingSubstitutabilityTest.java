@@ -279,10 +279,12 @@ class BindingSubstitutabilityTest
                     load(slot.replace("‹arg›", "$x"), "$x", "upper(AETERM)").getLoadError());
             String inline = String
                     .valueOf(load(slot.replace("‹arg›", "upper(AETERM)")).getLoadError());
-            if (slot.contains("unique_set("))
+            if (slot.contains("unique_set(") || slot.startsWith("is_inconsistent_across_dataset("))
             {
                 // W1b UC1 (PLAN-engine-gap-unique-computed Q2): at is_(not_)unique_set's members
-                // the per-row member is a VALUE key component — both spellings load
+                // — and since PLAN-engine-per-row-key-expression at is_inconsistent_across_
+                // dataset's keys= — the per-row member is a VALUE key component: both spellings
+                // load
                 assertEquals("null", bound, slot + " bound → " + bound);
                 assertEquals("null", inline, slot + " inline → " + inline);
                 continue;
